@@ -19,6 +19,9 @@ import {
   usedWidth,
   validate,
   withNormalizedX,
+  swapWith,
+  findSwapTarget,
+  applySwapTarget,
   type BookMap,
 } from '../layout-engine';
 import { SAMPLE_BOOKS, SAMPLE_LAYOUT } from '../onboarding-sample';
@@ -260,5 +263,31 @@ describe('저장 형식', () => {
     const row1 = saved.placements.filter((p) => p.shelfId === 'shelf-1').sort((a, b) => a.order - b.order);
     expect(row1.map((p) => p.x)).toEqual([...row1.map((p) => p.x)].sort((a, b) => a! - b!));
     expect(normalize(saved)).toEqual(SAMPLE_LAYOUT);
+  });
+});
+
+describe('자리 바꾸기', () => {
+  it('같은 선반의 두 책이 서로 자리를 바꾼다', () => {
+    const l = ok(swapWith(SAMPLE_LAYOUT, books, 'b01', 'b03'));
+    expect(shelfItems(l, 'shelf-1').map((it) => it.key).slice(0, 3)).toEqual(['b03', 'b02', 'b01']);
+    expect(swapWith(SAMPLE_LAYOUT, books, 'b01', 'b01')).toEqual({ ok: false, reason: 'no-change' });
+  });
+
+  it('책 위 판정: 다른 책 위면 바꾸기, 자기 자리면 그대로, 끝 너머면 맨 끝', () => {
+    expect(findSwapTarget(SAMPLE_LAYOUT, books, 'b01', 5)).toEqual({ kind: 'self' });
+    expect(findSwapTarget(SAMPLE_LAYOUT, books, 'b01', 60)).toEqual({ kind: 'swap', itemKey: 'b02' });
+    const l = ok(moveToDrawer(SAMPLE_LAYOUT, 'b06'));
+    expect(findSwapTarget(l, books, 'b01', 356)).toEqual({ kind: 'end' });
+    const r = ok(applySwapTarget(l, books, 'b01', { kind: 'end' }));
+    expect(shelfItems(r, 'shelf-1').at(-1)!.key).toBe('b01');
+  });
+
+  it('쌓인 책을 옮기면 그룹에서 빠져 그 자리로 간다', () => {
+    // 3번 선반 공간을 비워 두고(고요한 우연 → 서랍) 쌓인 위 책을 그룹 자리로 옮긴다
+    const base = ok(moveToDrawer(roomy(), 'b14'));
+    const l = ok(swapWith(base, books, 'b13', 'stack:b12'));
+    expect(shelfItems(l, 'shelf-3').map((it) => it.key)).toEqual(['b13', 'b12']);
+    expect(placementOf(l, 'b13')?.stackId).toBeUndefined();
+    expect(placementOf(l, 'b12')?.stackId).toBeUndefined();
   });
 });

@@ -372,3 +372,53 @@ export function withNormalizedX(layout: ShelfLayout, books: BookMap): ShelfLayou
   }
   return { ...layout, placements: layout.placements.map((p) => ({ ...p, x: xs.get(p.bookId) })) };
 }
+
+// ---------- 자리 바꾸기(꾹 눌러 좌우로 옮길 때) ----------
+
+// 같은 선반의 다른 자리와 서로 위치를 바꾼다. 쌓인 책이면 그룹에서 빠져 그 자리로 가고, 원래 자리 책은 뒤로 밀린다.
+export function swapWith(layout: ShelfLayout, books: BookMap, bookId: string, targetKey: string): Result {
+  const p = placementOf(layout, bookId);
+  if (!p) return { ok: false, reason: 'unknown-book' };
+  const items = shelfItems(layout, p.shelfId);
+  const j = items.findIndex((it) => it.key === targetKey);
+  if (j < 0) return { ok: false, reason: 'unknown-book' };
+  if (p.stackId) {
+    return moveBook(layout, books, bookId, { kind: 'insert', shelfId: p.shelfId, index: j });
+  }
+  const i = items.findIndex((it) => it.bookIds.includes(bookId));
+  if (i === j) return { ok: false, reason: 'no-change' };
+  const next = [...items];
+  [next[i], next[j]] = [next[j], next[i]];
+  return finish(layout, normalize({ ...layout, placements: withOrders(layout, p.shelfId, next) }), books);
+}
+
+// 끌고 있는 책 가운데(centerX, 설계 단위)가 어느 자리 위에 있는지. 확정 배치 기준으로 판정해 미리보기가 출렁이지 않게 한다.
+// 눕힌 책을 눕힌 책/그룹의 가운데 절반 위에 놓으면 쌓기.
+export type SwapTarget = { kind: 'swap'; itemKey: string } | { kind: 'stack'; itemKey: string } | { kind: 'end' } | { kind: 'self' };
+
+export function findSwapTarget(layout: ShelfLayout, books: BookMap, bookId: string, centerX: number): SwapTarget {
+  const p = placementOf(layout, bookId)!;
+  const positions = itemPositions(shelfItems(layout, p.shelfId), layout, books);
+  for (const pos of positions) {
+    if (centerX < pos.x || centerX > pos.x + pos.width) continue;
+    if (pos.item.bookIds.includes(bookId)) return { kind: 'self' };
+    const middle = centerX >= pos.x + pos.width * 0.25 && centerX <= pos.x + pos.width * 0.75;
+    if (p.pose === 'horizontal' && middle && isHorizontalItem(pos.item, layout)) return { kind: 'stack', itemKey: pos.item.key };
+    return { kind: 'swap', itemKey: pos.item.key };
+  }
+  const last = positions.at(-1);
+  if (last && centerX > last.x + last.width) return { kind: 'end' };
+  return { kind: 'self' };
+}
+
+export function applySwapTarget(layout: ShelfLayout, books: BookMap, bookId: string, t: SwapTarget): Result {
+  const p = placementOf(layout, bookId);
+  if (!p) return { ok: false, reason: 'unknown-book' };
+  if (t.kind === 'self') return { ok: false, reason: 'no-change' };
+  if (t.kind === 'stack') return moveBook(layout, books, bookId, { kind: 'stack', shelfId: p.shelfId, itemKey: t.itemKey });
+  if (t.kind === 'end') {
+    const count = shelfItems(detach(layout, bookId), p.shelfId).length;
+    return moveBook(layout, books, bookId, { kind: 'insert', shelfId: p.shelfId, index: count });
+  }
+  return swapWith(layout, books, bookId, t.itemKey);
+}

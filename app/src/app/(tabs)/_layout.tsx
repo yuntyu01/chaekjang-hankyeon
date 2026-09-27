@@ -1,14 +1,9 @@
 import { Tabs } from 'expo-router';
-import { Text, type ColorValue } from 'react-native';
-import { FileText, UserRound } from 'lucide-react-native';
 
 import { ko } from '@/i18n/ko';
-import { ShelfIcon } from '@/ui/TabIcons';
+import { MyIcon, RecordIcon, ShelfIcon } from '@/ui/TabIcons';
 import { colors } from '@/ui/theme';
 
-function TabLabel({ color, focused, text }: { color: ColorValue; focused: boolean; text: string }) {
-  return <Text style={{ color, fontSize: 12.5, marginTop: 2, fontWeight: focused ? '700' : '400' }}>{text}</Text>;
-}
 
 export default function TabsLayout() {
   return (
@@ -19,20 +14,20 @@ export default function TabsLayout() {
         tabBarActiveTintColor: colors.tabActive,
         tabBarInactiveTintColor: colors.tabInactive,
         tabBarStyle: { backgroundColor: 'transparent', borderTopWidth: 0, elevation: 0, height: 62 },
-        tabBarLabelStyle: { fontSize: 12.5, marginTop: 2 },
+        tabBarShowLabel: false, // 글자 없이 속이 찬 아이콘만
         sceneStyle: { backgroundColor: 'transparent' },
       }}>
       <Tabs.Screen
         name="index"
-        options={{ title: ko.tabs.shelf, tabBarIcon: ({ color, focused }) => <ShelfIcon color={String(color)} filled={focused} />, tabBarLabel: ({ color, focused }) => <TabLabel color={color} focused={focused} text={ko.tabs.shelf} /> }}
+        options={{ title: ko.tabs.shelf, tabBarIcon: ({ color }) => <ShelfIcon color={String(color)} filled size={28} />, tabBarAccessibilityLabel: ko.tabs.shelf }}
       />
       <Tabs.Screen
         name="record"
-        options={{ title: ko.tabs.record, tabBarIcon: ({ color }) => <FileText color={color} size={24} strokeWidth={1.4} />, tabBarLabel: ({ color, focused }) => <TabLabel color={color} focused={focused} text={ko.tabs.record} /> }}
+        options={{ title: ko.tabs.record, tabBarIcon: ({ color }) => <RecordIcon color={String(color)} bg={colors.bg} size={27} />, tabBarAccessibilityLabel: ko.tabs.record }}
       />
       <Tabs.Screen
         name="my"
-        options={{ title: ko.tabs.my, tabBarIcon: ({ color }) => <UserRound color={color} size={24} strokeWidth={1.4} />, tabBarLabel: ({ color, focused }) => <TabLabel color={color} focused={focused} text={ko.tabs.my} /> }}
+        options={{ title: ko.tabs.my, tabBarIcon: ({ color }) => <MyIcon color={String(color)} size={27} />, tabBarAccessibilityLabel: ko.tabs.my }}
       />
     </Tabs>
   );

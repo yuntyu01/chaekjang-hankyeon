@@ -151,9 +151,18 @@ function Spine({ book, scale: s }: { book: Book; scale: number }) {
   const sample = book.sample;
   if (sample?.kind === 'spine') {
     const fs = sample.titleSize * s;
+    const cap = (sample.cap ?? 0) * s;
+    const capColor = sample.capColor ?? sample.color;
+    const capW = (sample.capW ?? 1) * w;
     return (
       <View style={{ width: w, height: h }}>
-        <Image source={sample.image} style={{ width: w, height: h }} resizeMode="stretch" />
+        {/* 잘라낸 윗부분: 둥근 머리 + 얕은 윗면을 책 색으로 다시 그린다 */}
+        <View style={[styles.body, { position: 'absolute', left: 0, top: 0, width: capW, height: cap + 2, backgroundColor: capColor, borderTopLeftRadius: 3.2 * s, borderTopRightRadius: 3.2 * s }]}>
+          <View style={{ position: 'absolute', left: 0, right: 0, top: 0, height: Math.min(cap * 0.55, 2.6 * s), backgroundColor: shade(capColor, 0.1) }} />
+          <View style={{ position: 'absolute', right: 0, top: 0, bottom: 0, width: capW * 0.1, backgroundColor: shade(capColor, -0.1) }} />
+          <Grain />
+        </View>
+        <Image source={sample.image} style={{ position: 'absolute', left: 0, top: cap, width: w, height: h - cap }} resizeMode="stretch" />
         <View style={{ position: 'absolute', top: (sample.titleTop ?? 0.2) * h, left: (sample.titleCx ?? 0.5) * w - w, width: w * 2, flexDirection: 'row', justifyContent: 'center' }}>
           <VerticalText columns={[book.title]} fs={fs} color={sample.ink} />
         </View>
@@ -261,7 +270,7 @@ function Horizontal({ book, scale: s }: { book: Book; scale: number }) {
       </View>
       <View style={[styles.body, { position: 'absolute', top: face, width: len, height: t, backgroundColor: book.themeColor, borderRadius: 3 * s }]}>
         {sample ? (
-          <Image source={sample.image} style={{ width: len, height: t }} resizeMode="stretch" />
+          <Image source={sample.image} style={{ width: len, height: t, borderRadius: 3 * s }} resizeMode="stretch" />
         ) : (
           <>
             {/* 오른쪽 끝: 앞뒤 표지판 사이의 속지 단면 */}
@@ -312,7 +321,7 @@ function Front({ book, scale: s }: { book: Book; scale: number }) {
     const full = fw + side;
     return (
       <View style={{ width: full, height: h }}>
-        <Image source={sample.image} style={{ width: full, height: h }} resizeMode="stretch" />
+        <Image source={sample.image} style={{ width: full, height: h, borderRadius: 3 * s }} resizeMode="stretch" />
         <View style={{ position: 'absolute', top: (sample.titleTop ?? 0.2) * h - (lh - fs) / 2, left: (sample.titleCx ?? 0.5) * full - full, width: full * 2, alignItems: 'center' }}>
           {lines.map((l, i) => (
             <Text key={i} allowFontScaling={false} style={{ fontFamily: fonts.bookTitle, fontSize: fs, lineHeight: lh, color: sample.ink, letterSpacing: lines.length === 1 ? fs * 0.08 : 0 }}>

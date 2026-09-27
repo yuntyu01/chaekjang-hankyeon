@@ -248,22 +248,43 @@ def main():
         clean, _ = remove_title(img, b["title_box"])
         tm = TITLES[b["id"]]
         x0, y0, x1, y1 = b["box"]
-        w, h = x1 - x0, y1 - y0
-        crop = clean[y0:y1, x0:x1]
         color = body_color(img, b)
-        if b["kind"] == "horizontal":
-            alpha = rounded_alpha(w, h, 5, 5)
-        elif b.get("poly"):
-            alpha = rounded_alpha(w, h, 0, 0, poly=b["poly"], offset=(x0, y0))
+        # 책 윗면은 입체라 모서리가 깎여 있어 사각형으로 자르면 벽·옆 책이 섞인다.
+        # 책등: 윗부분 T px와 왼쪽 2px을 잘라내고, 잘라낸 윗면은 앱이 책 색으로 다시 그린다(cap).
+        # 표지·가로 책: 가장자리를 안쪽으로 잘라 벽 픽셀을 뺀다(둥근 모서리는 앱이 처리).
+        cap = cap_w = 0
+        cap_color = color
+        if b["kind"] == "spine":
+            T = max(7, round(0.035 * (y1 - y0)))
+            cx0, cy0, cx1, cy1 = x0 + 2, y0 + T, x1, y1
+        elif b["kind"] == "cover":
+            cx0, cy0, cx1, cy1 = x0 + 2, y0 + 2, x1 - 2, y1 - 1
         else:
-            alpha = rounded_alpha(w, h, 6, 2)
+            cx0, cy0, cx1, cy1 = x0 + 2, y0 + 2, x1 - 1, y1 - 1
+        w, h = cx1 - cx0, cy1 - cy0
+        crop = clean[cy0:cy1, cx0:cx1]
+        if b.get("poly"):
+            alpha = rounded_alpha(w, h, 0, 0, poly=b["poly"], offset=(cx0, cy0))
+        else:
+            a = Image.new("L", (w, h), 255)
+            alpha = a
+        if b["kind"] == "spine":
+            cap = (cy0 - y0) * S
+            band = crop[0:6, int(w * 0.2) : int(w * 0.7)]
+            cap_color = hexc(np.median(band.reshape(-1, 3), axis=0))
+            row0 = np.nonzero(np.asarray(alpha)[0] > 128)[0]
+            cap_w = (row0.max() + 1) / w if len(row0) else 1.0
         rgba = Image.fromarray(crop).convert("RGBA")
         rgba.putalpha(alpha)
         name = {"spine": "spine", "cover": "cover", "horizontal": "horizontal"}[b["kind"]]
         rgba.save(os.path.join(OUT, f"{b['id']}-{name}.png"), optimize=True)
+        # 치수는 원래 칸 기준(윗면 cap 포함)
+        if b["kind"] == "spine":
+            w, h = cx1 - cx0, y1 - y0
         entry = dict(id=b["id"], title=b["title"], author=b.get("author"), kind=b["kind"], shelf=b["shelf"],
                      w=round(w * S, 1), h=round(h * S, 1), color=color, title_meta=tm,
-                     tilt=b.get("tilt", 0), stack=b.get("stack"), cover_lines=b.get("cover_lines"))
+                     tilt=b.get("tilt", 0), stack=b.get("stack"), cover_lines=b.get("cover_lines"),
+                     cap=round(cap, 2), cap_color=cap_color, cap_w=round(cap_w, 3))
         if b.get("motif"):
             mot = extract_motif(clean, b, color, b.get("motif_thr", 17))
             if mot:
@@ -306,6 +327,8 @@ def write_ts(meta):
                       f"image: require('../../assets/temp-reference/{e['id']}-horizontal.png')"]
         else:
             parts += [f"titleTop: {t['top']:.3f}", f"titleCx: {t['cx']:.3f}"]
+            if e["kind"] == "spine":
+                parts += [f"cap: {e['cap']}", f"capColor: '{e['cap_color']}'", f"capW: {e['cap_w']}"]
             parts.append(f"image: require('../../assets/temp-reference/{e['id']}-{'cover' if e['kind'] == 'cover' else 'spine'}.png')")
         if e.get("motif"):
             parts.append(f"motif: require('../../assets/temp-reference/{e['id']}-motif.png')")

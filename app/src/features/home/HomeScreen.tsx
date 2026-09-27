@@ -7,10 +7,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { AppState, Pressable, StyleSheet, Text, View } from 'react-native';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import Animated, {
-  scrollTo,
   useAnimatedRef,
   useAnimatedScrollHandler,
-  useFrameCallback,
   useReducedMotion,
   useSharedValue,
   withTiming,
@@ -18,24 +16,22 @@ import Animated, {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { scheduleOnRN } from 'react-native-worklets';
 
-import { SHELF, SHELF_USABLE_WIDTH } from '@/domain/geometry';
+import { SHELF } from '@/domain/geometry';
 import {
   addShelf,
-  detach,
-  findDropTarget,
-  moveBook,
+  applySwapTarget,
+  findSwapTarget,
   moveBy,
   moveToDrawer,
   moveToShelf,
   placeFromDrawer,
   placementOf,
   removeShelf,
-  sameTarget,
   setPose,
   setTilt,
   shelfItems,
   sortedShelves,
-  type DropTarget,
+  type SwapTarget,
   type FailReason,
   type Result,
 } from '@/domain/layout-engine';
@@ -44,17 +40,18 @@ import type { Pose, ShelfLayout, Tilt } from '@/domain/types';
 import { ko } from '@/i18n/ko';
 import { placementStore, usePlacementStore } from '@/store/placement-store';
 import { DragOverlay, frameBBox } from '@/ui/shelf/DragOverlay';
-import { CONTENT_TOP, computeRows, rowAt, toContent, toScene, useShelfMetrics, type RowGeom } from '@/ui/shelf/metrics';
+import { CONTENT_TOP, computeRows, rowAt, toContent, toScene, useShelfMetrics } from '@/ui/shelf/metrics';
 import { ShelfRow, type DropHint } from '@/ui/shelf/ShelfRow';
 import { colors, fonts, motion } from '@/ui/theme';
 
 import { BookDetail, type MoveAction } from './BookDetail';
+import { BookPopover } from './BookPopover';
 import { DrawerSheet } from './DrawerSheet';
 
 type Preview =
-  | { kind: 'ok'; layout: ShelfLayout; target: DropTarget }
-  | { kind: 'same'; target: DropTarget }
-  | { kind: 'bad'; reason: FailReason | 'outside'; target: DropTarget | null };
+  | { kind: 'ok'; layout: ShelfLayout; target: SwapTarget }
+  | { kind: 'same'; target: SwapTarget }
+  | { kind: 'bad'; reason: FailReason | 'outside'; target: SwapTarget | null };
 
 type Drag = {
   bookId: string;
@@ -64,7 +61,7 @@ type Drag = {
   grabY: number;
   preview: Preview | null;
   settling: ShelfLayout | null; // 놓은 뒤 스냅 애니메이션 동안 보여줄 레이아웃
-  newShelfId: string; // 편집 중 '새 선반' 영역에 놓을 때 쓸 id
+  shelfId: string; // 꾹 누른 책의 선반(좌우로만 움직인다)
 };
 
 type Toast = { text: string; action?: 'undo' | 'retry' } | null;
@@ -112,12 +109,15 @@ export function HomeScreen() {
 
   const [drag, setDrag] = useState<Drag | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [detailId, setDetailId] = useState<string | null>(null);
+  const [detailId, setDetailId] = useState<string | null>(null); // 서랍 책(시트)
+  const [popId, setPopId] = useState<string | null>(null); // 선반 책(떠오르는 상자)
+  const [vpH, setVpH] = useState(0);
   const [editing, setEditing] = useState(false);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [toast, setToast] = useState<Toast>(null);
   const dragRef = useRef<Drag | null>(null);
   const lastDragEnd = useRef(0);
+  const popScroll = useRef(0); // 정보 상자를 연 순간의 스크롤(렌더 중에 공유값을 읽지 않으려고)
 
   const scrollRef = useAnimatedRef<Animated.ScrollView>();
   const scrollY = useSharedValue(0);
@@ -162,39 +162,14 @@ export function HomeScreen() {
     [showToast],
   );
 
-  // ---------- 좌표 변환 ----------
-  // 뷰포트 좌표 → 콘텐츠 좌표(스크롤 반영) → 선반 인덱스·설계 단위 x
-  const rowIndexAt = (cy: number, rs: RowGeom[]) => {
-    if (!rs.length || cy < rs[0].top) return -1;
-    const i = rowAt(rs, cy);
-    return i === -1 ? rs.length : i;
-  };
-  const locate = (vx: number, vy: number, scroll: number) => {
-    const cy = vy + scroll;
-    return { cx: vx, cy, index: rowIndexAt(cy, rows) };
-  };
-
-  const computePreview = (d: Drag, vx: number, vy: number, scroll: number): Preview => {
-    const { cy, index } = locate(vx, vy, scroll);
-    const p = placementOf(layout, d.bookId)!;
+  // ---------- 미리보기 ----------
+  // 꾹 눌러 좌우로 움직이면, 끌고 있는 책 가운데가 올라간 책과 자리를 바꾼다(눕힌 책끼리 가운데면 쌓기).
+  const computePreview = (d: Drag, vx: number): Preview => {
     const centerPx = vx - d.grabX + d.boxW / 2;
     const centerDU = (centerPx - m.originX) / m.scale - SHELF.sideMargin;
-    const withinX = centerDU > -SHELF.sideMargin && centerDU < SHELF.innerLeft + SHELF_USABLE_WIDTH + SHELF.innerRight + SHELF.sideMargin;
-    if (editing && index >= shelves.length && withinX) {
-      // 새 선반 추가 영역
-      const target: DropTarget = { kind: 'insert', shelfId: d.newShelfId, index: 0 };
-      if (d.preview?.target && sameTarget(d.preview.target, target)) return d.preview;
-      const withNew = addShelf(layout, d.newShelfId);
-      const r = moveBook(withNew, books, d.bookId, target);
-      return r.ok ? { kind: 'ok', layout: r.layout, target } : { kind: 'bad', reason: r.reason, target };
-    }
-    if (index < 0 || index >= shelves.length || cy < CONTENT_TOP || !withinX) {
-      return { kind: 'bad', reason: 'outside', target: null };
-    }
-    const shelfId = shelves[index].id;
-    const target = findDropTarget(detach(layout, d.bookId), books, shelfId, centerDU, p.pose);
-    if (d.preview?.target && sameTarget(d.preview.target, target)) return d.preview;
-    const r = moveBook(layout, books, d.bookId, target);
+    const target = findSwapTarget(layout, books, d.bookId, centerDU);
+    if (d.preview?.target && JSON.stringify(d.preview.target) === JSON.stringify(target)) return d.preview;
+    const r = applySwapTarget(layout, books, d.bookId, target);
     if (r.ok) return { kind: 'ok', layout: r.layout, target };
     if (r.reason === 'no-change') return { kind: 'same', target };
     return { kind: 'bad', reason: r.reason, target };
@@ -206,7 +181,8 @@ export function HomeScreen() {
     const hit = hitAt(x, y);
     if (!hit) return;
     setSelectedId(hit.bookId);
-    setTimeout(() => setDetailId(hit.bookId), reduceMotion ? 0 : 170);
+    popScroll.current = scrollY.value;
+    setTimeout(() => setPopId(hit.bookId), reduceMotion ? 0 : 120);
   };
 
   const hitAt = (x: number, y: number) => {
@@ -227,9 +203,9 @@ export function HomeScreen() {
       boxW: box.width * m.scale,
       grabX: x - tl.x,
       grabY: y - tl.y,
-      preview: null,
+      preview: { kind: 'same', target: { kind: 'self' } },
       settling: null,
-      newShelfId: `shelf-${Date.now().toString(36)}`,
+      shelfId: hit.shelfId,
     };
     grab.value = { x: d.grabX, y: d.grabY };
     vpOrigin.value = { x: absX - x, y: absY - (y - scroll) };
@@ -240,14 +216,13 @@ export function HomeScreen() {
     active.value = true;
     void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
     setSelectedId(null);
-    d.preview = { kind: 'same', target: { kind: 'insert', shelfId: hit.shelfId, index: -1 } };
     updateDrag(d);
   };
 
-  const moveDrag = (vx: number, vy: number, scroll: number) => {
+  const moveDrag = (vx: number) => {
     const d = dragRef.current;
     if (!d || d.settling) return;
-    const preview = computePreview(d, vx, vy, scroll);
+    const preview = computePreview(d, vx);
     if (preview === d.preview) return;
     updateDrag({ ...d, preview });
   };
@@ -315,12 +290,10 @@ export function HomeScreen() {
     })
     .onUpdate((e) => {
       if (!active.value) return;
+      // 좌우로만 움직인다(세로는 그 선반에 고정)
       const vx = e.absoluteX - vpOrigin.value.x;
-      const vy = e.absoluteY - vpOrigin.value.y;
-      pointer.value = { x: vx, y: vy };
       dragX.value = vx - grab.value.x;
-      dragY.value = vy - grab.value.y;
-      scheduleOnRN(moveDrag, vx, vy, scrollY.value);
+      scheduleOnRN(moveDrag, vx);
     })
     .onFinalize((_e, success) => {
       scheduleOnRN(endDrag, !success);
@@ -331,23 +304,6 @@ export function HomeScreen() {
       if (success) scheduleOnRN(onTap, e.x, e.y);
     });
   const gesture = Gesture.Race(pan, tap);
-
-  // 가장자리 자동 스크롤. 스크롤하면서도 최신 좌표로 삽입 자리를 다시 계산한다.
-  useFrameCallback(() => {
-    if (!active.value) return;
-    const y = pointer.value.y;
-    const edge = motion.autoScrollEdge;
-    let delta = 0;
-    if (y < edge) delta = -motion.autoScrollMaxSpeed * Math.min(1, (edge - y) / edge);
-    else if (y > viewportH.value - edge) delta = motion.autoScrollMaxSpeed * Math.min(1, (y - (viewportH.value - edge)) / edge);
-    if (delta === 0) return;
-    const max = Math.max(0, contentH.value - viewportH.value);
-    const next = Math.max(0, Math.min(max, scrollY.value + delta));
-    if (next === scrollY.value) return;
-    scrollY.value = next;
-    scrollTo(scrollRef, 0, next, false);
-    scheduleOnRN(moveDrag, pointer.value.x, pointer.value.y, next);
-  });
 
   const onScroll = useAnimatedScrollHandler((e) => {
     scrollY.value = e.contentOffset.y;
@@ -360,20 +316,35 @@ export function HomeScreen() {
   const rows = useMemo(() => computeRows(shown, books, m.scale), [shown, books, m.scale]);
   const rowOf = useMemo(() => new Map(rows.map((r) => [r.shelfId, r])), [rows]);
 
+  // 정보 상자 위치: 선택한 책의 윤곽(현재 배치 기준)을 뷰포트 좌표로
+  const popAnchor = useMemo(() => {
+    if (!popId) return null;
+    const p = placementOf(shown, popId);
+    const row = p && rowOf.get(p.shelfId);
+    const f = row && frames.get(p.shelfId)?.find((fr) => fr.bookId === popId);
+    if (!row || !f) return null;
+    const box = frameBBox(f);
+    const tl = toContent(m, row, { x: box.minX, y: box.minY });
+    const br = toContent(m, row, { x: box.minX + box.width, y: box.minY + box.height });
+    const sy = popScroll.current;
+    return { cx: (tl.x + br.x) / 2, top: tl.y - sy - 7 * m.scale, bottom: br.y - sy + (SHELF.below + 2) * m.scale };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [popId, shown, rowOf, frames, m]);
+
   const hintFor = (shelfId: string): DropHint => {
     const p = drag?.preview;
-    if (!drag || drag.settling || !p || !p.target || p.target.shelfId !== shelfId) return null;
+    if (!drag || drag.settling || !p || !p.target || drag.shelfId !== shelfId) return null;
     if (p.kind === 'bad') return { text: ko.fail[p.reason] || ko.fail.outside, bad: true };
-    if (p.kind === 'same' && p.target.kind === 'insert' && p.target.index === -1) return null;
-    if (p.target.shelfId === drag.newShelfId) return { text: ko.hint.newShelf, bad: false };
-    return { text: p.target.kind === 'stack' ? ko.hint.stack : ko.hint.beside, bad: false };
+    if (p.target.kind === 'self') return null;
+    return { text: ko.hint[p.target.kind], bad: false };
   };
 
   // ---------- 메뉴 동작 ----------
+  const activeId = popId ?? detailId;
   const detailPlacement = detailId ? placementOf(layout, detailId) ?? null : null;
-  const menuPose = (pose: Pose) => (detailId ? commit(setPose(layout, books, detailId, pose)) : null);
-  const menuTilt = (t: Tilt) => (detailId ? commit(setTilt(layout, books, detailId, t)) : null);
-  const menuMove = (mv: MoveAction, id = detailId): string | null => {
+  const menuPose = (pose: Pose) => (activeId ? commit(setPose(layout, books, activeId, pose)) : null);
+  const menuTilt = (t: Tilt) => (activeId ? commit(setTilt(layout, books, activeId, t)) : null);
+  const menuMove = (mv: MoveAction, id = activeId): string | null => {
     if (!id) return null;
     if (mv === 'prev' || mv === 'next') return commit(moveBy(layout, books, id, mv === 'prev' ? -1 : 1));
     const p = placementOf(layout, id)!;
@@ -384,7 +355,10 @@ export function HomeScreen() {
 
   const onA11y = useCallback(
     (bookId: string, action: string) => {
-      if (action === 'activate') setDetailId(bookId);
+      if (action === 'activate') {
+        popScroll.current = scrollY.value;
+        setPopId(bookId);
+      }
       else if (action === 'prev' || action === 'next') {
         const err = menuMove(action, bookId);
         if (err) showToast({ text: err });
@@ -460,10 +434,15 @@ export function HomeScreen() {
         style={{ flex: 1 }}
         onLayout={(e) => {
           viewportH.value = e.nativeEvent.layout.height;
+          setVpH(e.nativeEvent.layout.height);
         }}>
         <Animated.ScrollView
           ref={scrollRef}
           onScroll={onScroll}
+          onScrollBeginDrag={() => {
+            setPopId(null);
+            setSelectedId(null);
+          }}
           scrollEventThrottle={16}
           scrollEnabled={!drag}
           onContentSizeChange={(_w, h) => {
@@ -483,7 +462,7 @@ export function HomeScreen() {
                   height={rowOf.get(s.id)?.height ?? 0}
                   clear={rowOf.get(s.id)?.clear ?? SHELF.minClear}
                   placeholderId={drag?.bookId ?? null}
-                  selectedId={detailId ?? selectedId}
+                  selectedId={popId ?? detailId ?? selectedId}
                   hint={hintFor(s.id)}
                   editing={editing && !drag}
                   canRemove={shelves.length > 1 && shelfItems(layout, s.id).length === 0}
@@ -493,7 +472,7 @@ export function HomeScreen() {
                   onRemove={onRemoveShelf}
                 />
               ))}
-              {editing && !(drag && shownShelves.some((s) => s.id === drag.newShelfId)) ? (
+              {editing && !drag ? (
                 <View style={styles.addShelfWrap}>
                   <Pressable
                     style={[styles.addShelf, drag && styles.addShelfDrop]}
@@ -510,6 +489,28 @@ export function HomeScreen() {
 
         {drag && draggedBook ? (
           <DragOverlay book={draggedBook} frame={drag.frame} scale={m.scale} x={dragX} y={dragY} lift={lift} />
+        ) : null}
+
+        {popId && popAnchor && books[popId] && placementOf(layout, popId) ? (
+          <BookPopover
+            book={books[popId]}
+            placement={placementOf(layout, popId)!}
+            anchor={popAnchor}
+            viewportH={vpH}
+            reduceMotion={reduceMotion}
+            onClose={() => {
+              setPopId(null);
+              setSelectedId(null);
+            }}
+            onPose={menuPose}
+            onTilt={menuTilt}
+            onMove={(mv) => menuMove(mv)}
+            onToDrawer={() => {
+              commit(moveToDrawer(layout, popId), ko.drawer.stored);
+              setPopId(null);
+              setSelectedId(null);
+            }}
+          />
         ) : null}
 
         {toast ? (

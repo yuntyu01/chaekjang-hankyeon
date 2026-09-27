@@ -52,6 +52,10 @@ export type SampleArt = {
   topFace?: string;
   topFaceH?: number;
   coverLines?: string;
+  // 책등 그림 위쪽을 잘라낸 높이(DU)와 그 자리를 다시 그릴 색·폭(비율). 시안 윗면의 깎인 모서리에 벽이 섞여서.
+  cap?: number;
+  capColor?: string;
+  capW?: number;
   image: ImageSource;
   motif?: ImageSource;
 };

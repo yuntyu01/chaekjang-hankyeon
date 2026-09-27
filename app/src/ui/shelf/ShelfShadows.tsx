@@ -54,9 +54,10 @@ export const ShelfShadows = memo(function ShelfShadows({ frames, scale: s, hidde
           return (
             <G key={f.bookId}>
               {blurSteps.map((w, i) => (
-                <Polygon key={i} points={pts} fill="none" stroke={`url(#${id}cast)`} strokeOpacity={1 / (blurSteps.length + 1)} strokeWidth={w * s} strokeLinejoin="round" />
+                <Polygon key={i} points={pts} fill="none" stroke={`url(#${id}cast)`} strokeOpacity={1 / (blurSteps.length + 2)} strokeWidth={w * s} strokeLinejoin="round" />
               ))}
-              <Polygon points={pts} fill={`url(#${id}cast)`} />
+              {/* 가운데는 옅게: 경계가 또렷한 상자처럼 보이지 않게 */}
+              <Polygon points={pts} fill={`url(#${id}cast)`} fillOpacity={0.5} />
             </G>
           );
         })}
