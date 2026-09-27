@@ -2,13 +2,13 @@
 // 앞면은 기존 책 몸체(둥근 책등·표지·종이 결·모티프)를 그대로 쓰고, 옆면·윗면만 상자에서 계산해 화면 좌표로 그린다.
 // 기울어도 깊이 방향은 카메라 고정이라 옆면은 화면에서 따로 그려야 맞다.
 import { BlurMask, Canvas, Group, LinearGradient, Path, Skia, useImage, vec } from '@shopify/react-native-skia';
-import { memo, useMemo } from 'react';
+import { memo, useEffect, useMemo, useRef, useState } from 'react';
 import { StyleSheet, View } from 'react-native';
 
 import { frontPoly, project, silhouette, visibleFaces, type Camera, type Face, type Placed } from '@/domain/box';
 import { BRUSH_DETAIL } from '@/domain/body-art.generated';
-import { DESIGN_WIDTH, SHELF } from '@/domain/geometry';
-import type { BookFrame, Point } from '@/domain/shelf-scene';
+import { CAMERA, DESIGN_WIDTH, SHELF } from '@/domain/geometry';
+import { frameBBox, standaloneFrame, type BookFrame, type Point } from '@/domain/shelf-scene';
 import type { Book, Pose } from '@/domain/types';
 import { BOX_HEAD_BOW, edgeFactor, Grain, mix, PAGE, PAGE_LINE, scaleColor } from '@/ui/book/BookBody';
 import { BookRenderer } from '@/ui/book/BookRenderer';
@@ -374,18 +374,49 @@ export const BoxShelf = memo(function BoxShelf({ entries, cam, scale: s, originX
 // 선반 줄(ShelfRow)과 드래그(DragOverlay)가 같이 쓴다. 부모는 frameBBox의 왼쪽 위에 놓고, 이 뷰는 -BOX_PAD에서 시작한다.
 export const BOX_PAD = 3;
 
-export const BoxBookView = memo(function BoxBookView({ frame, book, scale: s, cam }: { frame: BookFrame; book: Book; scale: number; cam: Camera }) {
+// origin: 부모 뷰의 (0,0)이 장면 좌표 어디인지(없으면 최종 외곽의 왼쪽 위)
+export const BoxBookView = memo(function BoxBookView({ frame, book, scale: s, cam, animate = true, origin }: { frame: BookFrame; book: Book; scale: number; cam: Camera; animate?: boolean; origin?: Point }) {
   const grain = useImage(BRUSH_DETAIL);
-  const xs = frame.poly.map((p) => p.x);
-  const ys = frame.poly.map((p) => p.y);
+  // 기울기 변화: 각도를 짧게 보간하며 상자(앞면·옆면·윗면)를 함께 다시 그린다(둘이 어긋나지 않게)
+  const [ang, setAng] = useState(frame.rotate);
+  const angRef = useRef(frame.rotate);
+  useEffect(() => {
+    const to = frame.rotate;
+    const from = angRef.current;
+    if (!animate || Math.abs(to - from) < 0.01) {
+      angRef.current = to;
+      setAng(to);
+      return;
+    }
+    const t0 = Date.now();
+    const dur = 220;
+    let raf = 0;
+    const step = () => {
+      const t = Math.min(1, (Date.now() - t0) / dur);
+      const e = 1 - (1 - t) * (1 - t) * (1 - t); // 끝에서 부드럽게 멈춤(튕기지 않음)
+      angRef.current = from + (to - from) * e;
+      setAng(angRef.current);
+      if (t < 1) raf = requestAnimationFrame(step);
+    };
+    raf = requestAnimationFrame(step);
+    return () => cancelAnimationFrame(raf);
+  }, [frame.rotate, animate]);
+
+  // 자리(부모)는 최종 모양의 외곽 기준이고, 보간 중 모양은 그 기준에서 벗어날 수 있어 현재 외곽으로 그린다
+  const bb = frameBBox(frame);
+  const base = origin ?? { x: bb.minX, y: bb.minY };
+  const box = frame.box ? { ...frame.box, angle: ang } : undefined;
+  const poly = box ? silhouette(cam, box) : frame.poly;
+  const xs = poly.map((p) => p.x);
+  const ys = poly.map((p) => p.y);
   const minX = Math.min(...xs) - BOX_PAD;
   const minY = Math.min(...ys) - BOX_PAD;
   const w = Math.max(...xs) - minX + BOX_PAD;
   const h = Math.max(...ys) - minY + BOX_PAD;
   const px: Px = (p) => ({ x: (p.x - minX) * s, y: (p.y - minY) * s });
-  const faces = frame.box ? visibleFaces(cam, frame.box).sides.sort((a, b) => (a.kind === 'top' ? 1 : 0) - (b.kind === 'top' ? 1 : 0)) : [];
+  const faces = box ? visibleFaces(cam, box).sides.sort((a, b) => (a.kind === 'top' ? 1 : 0) - (b.kind === 'top' ? 1 : 0)) : [];
   return (
-    <View pointerEvents="none" style={{ position: 'absolute', left: -BOX_PAD * s, top: -BOX_PAD * s, width: w * s, height: h * s }}>
+    <View pointerEvents="none" style={{ position: 'absolute', left: (minX - base.x) * s, top: (minY - base.y) * s, width: w * s, height: h * s }}>
       <Canvas style={StyleSheet.absoluteFill}>
         {faces.map((f) => (
           <FaceShape key={f.kind} face={f} book={book} pose={frame.pose} s={s} px={px} grain={grain} />
@@ -398,8 +429,8 @@ export const BoxBookView = memo(function BoxBookView({ frame, book, scale: s, ca
           top: (frame.top - minY) * s,
           width: frame.width * s,
           height: frame.height * s,
-          transformOrigin: frame.origin,
-          transform: [{ rotate: `${frame.rotate}deg` }],
+          transformOrigin: ang > 0 ? 'right bottom' : 'left bottom',
+          transform: [{ rotate: `${ang}deg` }],
         }}>
         <BookRenderer book={book} pose={frame.pose} scale={s} box />
       </View>
@@ -410,4 +441,15 @@ export const BoxBookView = memo(function BoxBookView({ frame, book, scale: s, ca
 // 그리는 순서: 뒤(깊이 큰) 상자부터, 쌓기는 아래부터, 같은 줄은 왼쪽부터(오른쪽 책의 앞면이 왼쪽 책 옆면을 가린다)
 export function paintOrder<T extends { box?: Placed; left: number }>(frames: T[]) {
   return [...frames].sort((a, b) => (b.box?.z ?? 0) - (a.box?.z ?? 0) || (a.box?.y ?? 0) - (b.box?.y ?? 0) || (a.box?.x ?? a.left) - (b.box?.x ?? b.left));
+}
+
+// 선반 밖의 책 한 권(서랍·상세): 홈과 같은 상자 렌더러. 뷰 크기 = 투영 외곽.
+export function StandaloneBook({ book, pose, scale: s }: { book: Book; pose: Pose; scale: number }) {
+  const frame = useMemo(() => standaloneFrame(book, pose), [book, pose]);
+  const bb = frameBBox(frame);
+  return (
+    <View style={{ width: bb.width * s, height: bb.height * s }}>
+      <BoxBookView frame={frame} book={book} scale={s} cam={CAMERA} animate={false} />
+    </View>
+  );
 }

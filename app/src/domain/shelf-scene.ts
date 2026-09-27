@@ -229,3 +229,9 @@ export function frameBBox(f: BookFrame) {
   const minY = Math.min(...ys);
   return { minX, minY, width: Math.max(...xs) - minX, height: Math.max(...ys) - minY };
 }
+
+// 선반 밖에서 한 권만 그릴 때(서랍·상세): 똑바로 선 상자 하나의 프레임. 바닥 = FLOOR, 왼쪽 = 0.
+export function standaloneFrame(book: Book, pose: Pose): BookFrame {
+  const box: Placed = { bookId: book.id, pose, size: boxSize(book, pose), x: 0, y: 0, z: 0, angle: 0 };
+  return frameOf(box, book.id, book.id, '', 0, 0);
+}

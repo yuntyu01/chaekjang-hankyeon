@@ -5,11 +5,11 @@ import { Image, Modal, Pressable, ScrollView, StyleSheet, Text, useWindowDimensi
 const SHELF_PNG = require('../../../assets/bookshelf/shelf-plank.png');
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { bookHeight, bookThickness, SHELF, SHELF_STYLE } from '@/domain/geometry';
+import { bookThickness, SHELF, SHELF_STYLE, singleFootprint } from '@/domain/geometry';
 import { SHELF_ASSET } from '@/domain/shelf-asset.generated';
 import type { Book } from '@/domain/types';
 import { ko } from '@/i18n/ko';
-import { BookRenderer } from '@/ui/book/BookRenderer';
+import { StandaloneBook } from '@/ui/box/BoxShelf';
 import { Plank } from '@/ui/shelf/Plank';
 import { ShelfShadow } from '@/ui/shelf/ShelfShadow';
 import { colors, typeScale } from '@/ui/theme';
@@ -33,7 +33,7 @@ export function DrawerSheet({ visible, books, scale, onPick, onClose }: Props) {
   // 선반 이미지: 사용 범위가 줄 폭과 같도록 원본 비율 유지
   const imgW = (rowWidth + 12) / (SHELF_ASSET.usableRight - SHELF_ASSET.usableLeft);
   const imgH = (imgW * SHELF_ASSET.height) / SHELF_ASSET.width;
-  const rowH = (row: Book[]) => Math.max(...row.map((b) => bookHeight(b))) * s;
+  const rowH = (row: Book[]) => Math.max(...row.map((b) => singleFootprint(b, { pose: 'spine', tilt: 0 }).height)) * s; // 상자 윗면 포함
   // 폭 기준으로 줄을 나눈다.
   const rows = useMemo(() => {
     const out: Book[][] = [[]];
@@ -88,7 +88,7 @@ export function DrawerSheet({ visible, books, scale, onPick, onClose }: Props) {
                         accessibilityRole="button"
                         accessibilityLabel={[b.title, b.author, ko.drawer.a11y].filter(Boolean).join(', ')}
                         style={({ pressed }) => pressed && { transform: [{ translateY: -5 }] }}>
-                        <BookRenderer book={b} pose="spine" scale={s} />
+                        <StandaloneBook book={b} pose="spine" scale={s} />
                       </Pressable>
                     ))}
                   </View>

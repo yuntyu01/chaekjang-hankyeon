@@ -4,7 +4,7 @@ import { Pressable, StyleSheet, Text, View } from 'react-native';
 import Animated, { useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
 
 import { CAMERA, DESIGN_WIDTH, SHELF, SHELF_STYLE } from '@/domain/geometry';
-import { frameBBox, type BookFrame } from '@/domain/shelf-scene';
+import type { BookFrame } from '@/domain/shelf-scene';
 import type { Book } from '@/domain/types';
 import { ko } from '@/i18n/ko';
 import { BoxBookView, Contacts, paintOrder } from '@/ui/box/BoxShelf';
@@ -30,10 +30,9 @@ type SlotProps = {
 const boxesOf = (frames: BookFrame[], hidden: string | null) => frames.filter((f) => f.box && f.bookId !== hidden).map((f) => f.box!);
 
 const BookSlot = memo(function BookSlot({ frame, clear, book, scale: s, placeholder, lifted, reduceMotion, a11yLabel, onA11y }: SlotProps) {
-  // 상자 모델: 투영 외곽의 왼쪽 위에 놓고, 옆면·윗면·앞면을 BoxBookView가 그린다(기울기도 그 안에서)
-  const bb = frameBBox(frame);
-  const left = (SHELF.sideMargin + bb.minX) * s;
-  const top = (clear + bb.minY - SHELF.clearHeight) * s;
+  // 상자 모델: 앞면 사각형(기울기와 무관한 자리)에 놓고, 옆면·윗면·앞면과 기울기는 BoxBookView가 그린다
+  const left = (SHELF.sideMargin + frame.left) * s;
+  const top = (clear + frame.top - SHELF.clearHeight) * s;
   const x = useSharedValue(left);
   const y = useSharedValue(top);
   const lift = useSharedValue(0);
@@ -52,7 +51,7 @@ const BookSlot = memo(function BookSlot({ frame, clear, book, scale: s, placehol
   }));
   return (
     <Animated.View
-      style={[styles.slot, { width: bb.width * s, height: bb.height * s }, style]}
+      style={[styles.slot, { width: frame.width * s, height: frame.height * s }, style]}
       accessible
       accessibilityRole="button"
       accessibilityLabel={a11yLabel}
@@ -66,7 +65,7 @@ const BookSlot = memo(function BookSlot({ frame, clear, book, scale: s, placehol
       {placeholder ? (
         <View style={[styles.placeholder, { borderRadius: 3 * s }]} />
       ) : (
-        <BoxBookView frame={frame} book={book} scale={s} cam={CAMERA} />
+        <BoxBookView frame={frame} book={book} scale={s} cam={CAMERA} animate={!reduceMotion} origin={{ x: frame.left, y: frame.top }} />
       )}
     </Animated.View>
   );

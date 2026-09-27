@@ -5,7 +5,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import type { Book, BookPlacement, Pose, Tilt } from '@/domain/types';
 import { ko } from '@/i18n/ko';
-import { BookRenderer } from '@/ui/book/BookRenderer';
+import { StandaloneBook } from '@/ui/box/BoxShelf';
 import { colors, typeScale } from '@/ui/theme';
 
 export type MoveAction = 'prev' | 'next' | 'up' | 'down';
@@ -72,7 +72,7 @@ export function BookDetail({ book, placement, onClose, onPose, onTilt, onMove, o
                 {book.originalCoverUri ? (
                   <Image source={{ uri: book.originalCoverUri }} style={{ width: 118, height: 170, borderRadius: 3 }} />
                 ) : (
-                  <BookRenderer book={book} pose="front" scale={1.02} />
+                  <StandaloneBook book={book} pose="front" scale={1.02} />
                 )}
               </View>
               <View style={{ flex: 1 }}>
