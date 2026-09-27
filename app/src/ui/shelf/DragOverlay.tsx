@@ -5,19 +5,13 @@ import Animated, { type SharedValue, useAnimatedStyle } from 'react-native-reani
 import Svg from 'react-native-svg';
 import { SoftShadow } from './SoftShadow';
 
-import type { BookFrame } from '@/domain/shelf-scene';
+import { frameBBox, type BookFrame } from '@/domain/shelf-scene';
 import type { Book } from '@/domain/types';
-import { viewOf } from '@/domain/geometry';
-import { BookRenderer } from '@/ui/book/BookRenderer';
+import { CAMERA } from '@/domain/geometry';
+import { BoxBookView } from '@/ui/box/BoxShelf';
 import { colors, shadow } from '@/ui/theme';
 
-export function frameBBox(f: BookFrame) {
-  const xs = f.poly.map((p) => p.x);
-  const ys = f.poly.map((p) => p.y);
-  const minX = Math.min(...xs);
-  const minY = Math.min(...ys);
-  return { minX, minY, width: Math.max(...xs) - minX, height: Math.max(...ys) - minY };
-}
+export { frameBBox };
 
 type Props = {
   book: Book;
@@ -26,12 +20,11 @@ type Props = {
   x: SharedValue<number>;
   y: SharedValue<number>;
   lift: SharedValue<number>;
-  viewY?: number;
 };
 
 const PAD = 40;
 
-export function DragOverlay({ book, frame, scale: s, x, y, lift, viewY = 0 }: Props) {
+export function DragOverlay({ book, frame, scale: s, x, y, lift }: Props) {
   const box = frameBBox(frame);
   const liftPath = frame.poly.map((p) => ({ x: (p.x - box.minX + shadow.lifted.dx) * s + PAD, y: (p.y - box.minY + shadow.lifted.dy) * s + PAD }));
   const style = useAnimatedStyle(() => ({
@@ -47,18 +40,7 @@ export function DragOverlay({ book, frame, scale: s, x, y, lift, viewY = 0 }: Pr
           <SoftShadow points={liftPath} fill={colors.shadow} opacity={shadow.lifted.opacity} blur={8 * s} />
         </Svg>
       </Animated.View>
-      <View
-        style={{
-          position: 'absolute',
-          left: (frame.left - box.minX) * s,
-          top: (frame.top - box.minY) * s,
-          width: frame.width * s,
-          height: frame.height * s,
-          transformOrigin: frame.origin,
-          transform: [{ rotate: `${frame.rotate}deg` }],
-        }}>
-        <BookRenderer book={book} pose={frame.pose} scale={s} view={viewOf(frame.left + frame.width / 2)} viewY={viewY} />
-      </View>
+      <BoxBookView frame={frame} book={book} scale={s} cam={CAMERA} />
     </Animated.View>
   );
 }

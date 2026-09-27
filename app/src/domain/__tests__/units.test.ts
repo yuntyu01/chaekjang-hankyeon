@@ -35,11 +35,11 @@ describe('단위', () => {
     expect(bookThickness(book('b', 140, 210, 450))).toBeGreaterThan(t300);
   });
 
-  it('자세별 점유 폭: 세움=두께, 누움=책 높이, 표지=표지 폭(+옆면), 쌓기=가장 긴 책', () => {
+  it('자세별 점유 폭(상자 앞면): 세움=두께, 누움=책 높이, 표지=표지 폭, 쌓기=가장 긴 책', () => {
     const b = book('x', 140, 210, 300);
     expect(singleFootprint(b, { pose: 'spine', tilt: 0 }).width).toBeCloseTo(bookThickness(b), 6);
     expect(singleFootprint(b, { pose: 'horizontal', tilt: 0 }).width).toBeCloseTo(mm(210), 6);
-    expect(singleFootprint(b, { pose: 'front', tilt: 0 }).width).toBeGreaterThan(mm(140));
+    expect(singleFootprint(b, { pose: 'front', tilt: 0 }).width).toBeCloseTo(mm(140), 6);
     const long = book('y', 152, 225, 300);
     expect(stackFootprint([b, long]).width).toBeGreaterThanOrEqual(mm(225));
   });

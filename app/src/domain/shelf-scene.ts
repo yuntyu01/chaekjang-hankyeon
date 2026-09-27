@@ -1,17 +1,9 @@
 // 선반 한 칸의 책 프레임 계산(순수). 렌더링·터치 판정·그림자가 모두 이 결과를 쓴다.
 // 좌표: 설계 단위, x는 선반 판 안쪽 왼쪽 끝 기준, y는 아래로 증가하며 선반 바닥이 SHELF.clearHeight.
-import {
-  bookHeight,
-  bookThickness,
-  FRONT_SIDE,
-  frontWidth,
-  SHELF,
-  stackOffsets,
-  LYING_BACK,
-  TOP_FACE,
-} from './geometry';
+import { boxSize, collide, frontPoly, silhouette, solveLean, type Placed } from './box';
+import { bookHeight, bookThickness, CAMERA, LYING_BACK_Z, SHELF, stackOffsets } from './geometry';
 import { itemPositions, placementOf, shelfItems, type BookMap } from './layout-engine';
-import { contactAngle, firstContact, MAX_LEAN, overlaps } from './lean';
+import { firstContact, MAX_LEAN } from './lean';
 import type { Book, Pose, ShelfLayout, Tilt } from './types';
 
 export type Point = { x: number; y: number };
@@ -36,6 +28,8 @@ export type BookFrame = {
   leanFailed?: boolean;
   // 기댄 상대 책
   leanOn?: string;
+  // 선반 공간 상자(그리기·충돌의 원본)
+  box?: Placed;
 };
 
 export type ItemFrame = { key: string; x: number; width: number; bookIds: string[] };
@@ -88,6 +82,22 @@ export function tiltedFrame(footX: number, w: number, h: number, tilt: Tilt) {
 // 선반 판 좌우 끝(장면 좌표). 이 밖으로 쓰러지면 바로 선다.
 export const PLANK_BOUNDS = { min: -SHELF.sideMargin + 2, max: 390 - SHELF.sideMargin - 2 };
 
+// 상자 하나에서 프레임을 만든다: 앞면 사각형(그리기 위치, 기울기 전), 회전, 투영 실루엣(터치·그림자)
+function frameOf(p: Placed, bookId: string, itemKey: string, shelfId: string, tilt: Tilt, stackIndex: number): BookFrame {
+  const left = p.x + p.z * CAMERA.kx;
+  const top = FLOOR - (p.y + p.size.h) - p.z * CAMERA.ky;
+  return {
+    bookId, itemKey, shelfId, pose: p.pose, tilt,
+    left, top, width: p.size.w, height: p.size.h,
+    rotate: p.angle || 0,
+    origin: p.angle > 0 ? 'right bottom' : 'left bottom',
+    poly: silhouette(CAMERA, p),
+    stackIndex,
+    box: p,
+  };
+}
+
+// 선반 한 칸의 상자 배치와 프레임. 충돌·기대기는 선반 공간(가로·깊이·회전), 프레임은 투영 결과.
 export function computeShelf(layout: ShelfLayout, books: BookMap, shelfId: string) {
   const positions = itemPositions(shelfItems(layout, shelfId), layout, books);
   const frames: BookFrame[] = [];
@@ -95,76 +105,55 @@ export function computeShelf(layout: ShelfLayout, books: BookMap, shelfId: strin
   for (const { item, x, width } of positions) {
     items.push({ key: item.key, x, width, bookIds: item.bookIds });
     if (item.stacked) {
-      let bottom = FLOOR - LYING_BACK;
+      let y = 0;
       const offs = stackOffsets(item.bookIds.map((id) => books[id]));
       item.bookIds.forEach((id, i) => {
         const b = books[id];
-        const len = bookHeight(b);
-        const t = bookThickness(b);
-        const left = x + offs[i];
-        const top = bottom - t - TOP_FACE;
-        frames.push({
-          bookId: id, itemKey: item.key, shelfId, pose: 'horizontal', tilt: 0,
-          left, top, width: len, height: t + TOP_FACE, rotate: 0, origin: 'left bottom',
-          poly: rectPoly(left, top, len, t + TOP_FACE), stackIndex: i,
-        });
-        bottom -= t;
+        const box: Placed = { bookId: id, pose: 'horizontal', size: boxSize(b, 'horizontal'), x: x + offs[i], y, z: LYING_BACK_Z, angle: 0 };
+        frames.push(frameOf(box, id, item.key, shelfId, 0, i));
+        y += box.size.h;
       });
       continue;
     }
     const id = item.bookIds[0];
     const b = books[id];
     const p = placementOf(layout, id)!;
-    if (p.pose === 'spine') {
-      const f = leanFrame(b, x, 0);
-      frames.push({ bookId: id, itemKey: item.key, shelfId, pose: 'spine', tilt: p.tilt, stackIndex: 0, ...f });
-    } else if (p.pose === 'horizontal') {
-      const len = bookHeight(b);
-      const hh = bookThickness(b) + TOP_FACE;
-      frames.push({
-        bookId: id, itemKey: item.key, shelfId, pose: 'horizontal', tilt: 0,
-        left: x, top: FLOOR - LYING_BACK - hh, width: len, height: hh, rotate: 0, origin: 'left bottom',
-        poly: rectPoly(x, FLOOR - LYING_BACK - hh, len, hh), stackIndex: 0,
-      });
-    } else {
-      const w = frontWidth(b) + FRONT_SIDE;
-      const h = bookHeight(b);
-      frames.push({
-        bookId: id, itemKey: item.key, shelfId, pose: 'front', tilt: 0,
-        left: x, top: FLOOR - h, width: w, height: h, rotate: 0, origin: 'left bottom',
-        poly: rectPoly(x, FLOOR - h, w, h), stackIndex: 0,
-      });
-    }
+    const box: Placed = { bookId: id, pose: p.pose, size: boxSize(b, p.pose), x, y: 0, z: p.pose === 'horizontal' ? LYING_BACK_Z : 0, angle: 0 };
+    frames.push(frameOf(box, id, item.key, shelfId, p.pose === 'spine' ? p.tilt : 0, 0));
   }
-  solveLeans(frames, books, layout);
+  solveLeans(frames, layout);
   return { frames, items };
+}
+
+// 앞면 윤곽(장면 좌표, 깊이 밀림 없이 선반 공간 x·바닥 기준). 접촉·겹침 검사용. 터치·그림자는 frame.poly(투영 실루엣).
+export function frontOutline(f: BookFrame): Point[] {
+  return frontPoly(f.box!).map((q) => ({ x: q.x, y: FLOOR - q.y }));
 }
 
 const inside = (poly: Point[]) => poly.every((p) => p.x >= PLANK_BOUNDS.min - 0.01 && p.x <= PLANK_BOUNDS.max + 0.01);
 
-// 기대는 책들의 각도. 저장된 결과(각도·상대)가 아직 맞으면 그대로 쓰고(사용자가 꾸민 모습 유지),
-// 상대가 바뀌었거나 더 이상 닿지 않거나 파고들면 옆 책의 실제 윤곽에 닿을 때까지 다시 구한다.
-// 순서: 오른쪽으로 기대는 책은 오른쪽 이웃이 먼저 정해져야 하므로 오른쪽부터, 왼쪽으로 기대는 책은 왼쪽부터.
-// 서로 마주 기대거나 연쇄로 기대는 경우를 위해 몇 번 반복한다.
-function solveLeans(frames: BookFrame[], books: BookMap, layout: ShelfLayout) {
+// 기대는 책들의 각도(선반 공간). 저장된 결과(각도·상대)가 아직 맞으면 그대로 쓰고(사용자가 꾸민 모습 유지),
+// 상대가 바뀌었거나 더 이상 닿지 않거나 파고들면 옆 상자에 처음 닿는 각도를 다시 구한다(0.5도 탐색 + 이분 탐색).
+// 깊이 구간이 겹치는 상자만 장애물이다(뒤에 놓인 눕힌 책은 화면에서 겹쳐도 닿지 않는다).
+// 순서: 오른쪽으로 기대는 책은 오른쪽 이웃부터, 왼쪽으로 기대는 책은 왼쪽부터. 연쇄를 위해 몇 번 반복한다.
+function solveLeans(frames: BookFrame[], layout: ShelfLayout) {
   const leaners = frames.filter((f) => f.pose === 'spine' && f.tilt !== 0);
   if (!leaners.length) return;
-  const foot = new Map(leaners.map((f) => [f.bookId, f.left]));
-  const ordered = [...leaners].sort((a, b) => a.left - b.left);
-  // 마주 보고 기대는 두 권(오른쪽으로 기대는 책 바로 오른쪽에 왼쪽으로 기대는 책)은 같은 각도로 함께 기울여 처음 닿는 곳에서 멈춘다.
-  // 한 권씩 풀면 먼저 푼 책이 빈틈을 다 차지하기 때문이다.
+  const set = (f: BookFrame, angle: number, extra: Partial<BookFrame>) => {
+    Object.assign(f, frameOf({ ...f.box!, angle }, f.bookId, f.itemKey, f.shelfId, f.tilt, f.stackIndex), extra);
+  };
+  const ordered = [...leaners].sort((a, b) => a.box!.x - b.box!.x);
+  // 마주 보고 기대는 두 권은 같은 각도로 함께 기울여 처음 닿는 곳에서 멈춘다(한 권씩 풀면 먼저 푼 책이 빈틈을 다 차지한다).
   const paired = new Set<string>();
-  const byLeft = [...frames].filter((f) => f.stackIndex === 0).sort((a, b) => a.left - b.left);
+  const byLeft = [...frames].filter((f) => f.stackIndex === 0).sort((a, b) => a.box!.x - b.box!.x);
   for (let i = 0; i + 1 < byLeft.length; i++) {
     const a = byLeft[i];
     const b = byLeft[i + 1];
     if (!(a.pose === 'spine' && b.pose === 'spine' && a.tilt > 0 && b.tilt < 0)) continue;
-    const ba = books[a.bookId];
-    const bb = books[b.bookId];
-    const c = firstContact((d) => overlaps(leanFrame(ba, a.left, d).poly, leanFrame(bb, b.left, -d).poly));
+    const c = firstContact((d) => collide({ ...a.box!, angle: d }, { ...b.box!, angle: -d }));
     if (!c.found || c.angle === 0) continue;
-    Object.assign(a, leanFrame(ba, a.left, c.angle), { leanFailed: false, leanOn: b.bookId });
-    Object.assign(b, leanFrame(bb, b.left, -c.angle), { leanFailed: false, leanOn: a.bookId });
+    set(a, c.angle, { leanFailed: false, leanOn: b.bookId });
+    set(b, -c.angle, { leanFailed: false, leanOn: a.bookId });
     paired.add(a.bookId).add(b.bookId);
   }
   const passes = [ordered.filter((f) => f.tilt < 0), [...ordered].reverse().filter((f) => f.tilt > 0)].map((pass) =>
@@ -173,32 +162,21 @@ function solveLeans(frames: BookFrame[], books: BookMap, layout: ShelfLayout) {
   for (let iter = 0; iter < 3; iter++) {
     for (const pass of passes) {
       for (const f of pass) {
-        const dir = Math.sign(f.tilt);
-        const book = books[f.bookId];
-        const x0 = foot.get(f.bookId)!;
-        const mid = x0 + bookThickness(book) / 2;
-        const side = frames
-          .filter((o) => o !== f)
-          .filter((o) => (dir > 0 ? Math.max(...o.poly.map((p) => p.x)) > mid : Math.min(...o.poly.map((p) => p.x)) < mid));
-        const obstacles = side.map((o) => o.poly);
-        const at = (deg: number) => leanFrame(book, x0, dir * deg).poly;
+        const dir = Math.sign(f.tilt) as -1 | 1;
+        const base = { ...f.box!, angle: 0 };
+        const others = frames.filter((o) => o !== f).map((o) => o.box!);
         const stored = placementOf(layout, f.bookId)?.lean;
-        const partner = stored && side.find((o) => o.bookId === stored.on);
-        if (
-          stored &&
-          partner &&
-          Math.sign(stored.angle) === dir &&
-          Math.abs(stored.angle) <= MAX_LEAN &&
-          !obstacles.some((o) => overlaps(at(Math.abs(stored.angle)), o)) &&
-          overlaps(at(Math.abs(stored.angle) + 0.6), partner.poly) &&
-          inside(at(Math.abs(stored.angle)))
-        ) {
-          Object.assign(f, leanFrame(book, x0, stored.angle), { leanFailed: false, leanOn: stored.on });
-          continue;
+        const partner = stored && others.find((o) => o.bookId === stored.on);
+        if (stored && partner && Math.sign(stored.angle) === dir && Math.abs(stored.angle) <= MAX_LEAN) {
+          const q = { ...base, angle: stored.angle };
+          const touching = collide({ ...base, angle: stored.angle + dir * 0.6 }, partner);
+          if (touching && !others.some((o) => collide(q, o)) && inside(frontPoly(q))) {
+            set(f, stored.angle, { leanFailed: false, leanOn: stored.on });
+            continue;
+          }
         }
-        const r = contactAngle(at, obstacles, PLANK_BOUNDS);
-        const on = r.supported && r.angle > 0 ? side.find((o) => overlaps(at(r.angle + 0.6), o.poly))?.bookId : undefined;
-        Object.assign(f, leanFrame(book, x0, dir * r.angle), { leanFailed: !r.supported, leanOn: on });
+        const r = solveLean(base, dir, others, PLANK_BOUNDS);
+        set(f, r.angle, { leanFailed: !r.supported, leanOn: r.on });
       }
     }
   }
@@ -241,4 +219,13 @@ export function hitTest(frames: BookFrame[], pt: Point, slop = 3): BookFrame | n
     }
   }
   return null;
+}
+
+// 프레임의 화면 외곽(투영 실루엣) 바운딩 박스
+export function frameBBox(f: BookFrame) {
+  const xs = f.poly.map((p) => p.x);
+  const ys = f.poly.map((p) => p.y);
+  const minX = Math.min(...xs);
+  const minY = Math.min(...ys);
+  return { minX, minY, width: Math.max(...xs) - minX, height: Math.max(...ys) - minY };
 }

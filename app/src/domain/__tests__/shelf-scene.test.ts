@@ -1,7 +1,7 @@
 import { bookHeight, bookThickness, LYING_BACK, SHELF, singleFootprint } from '../geometry';
 import type { BookMap } from '../layout-engine';
 import { SAMPLE_BOOKS, SAMPLE_LAYOUT } from '../onboarding-sample';
-import { computeShelf, hitTest, leanFrame, PLANK_BOUNDS, pointInPoly } from '../shelf-scene';
+import { computeShelf, frontOutline, hitTest, leanFrame, PLANK_BOUNDS, pointInPoly } from '../shelf-scene';
 
 const books: BookMap = Object.fromEntries(SAMPLE_BOOKS.map((b) => [b.id, b]));
 const FLOOR = SHELF.clearHeight;
@@ -29,32 +29,32 @@ describe('선반 장면', () => {
       const t = Math.max(0, Math.min(1, ((point.x - p.x) * dx + (point.y - p.y) * dy) / (dx * dx + dy * dy)));
       return Math.hypot(point.x - p.x - t * dx, point.y - p.y - t * dy);
     };
-    const distances = [[a.poly, b.poly], [b.poly, a.poly]].flatMap(([points, edges]) =>
+    const [ap, bp] = [frontOutline(a), frontOutline(b)];
+    const distances = [[ap, bp], [bp, ap]].flatMap(([points, edges]) =>
       points.flatMap((p) => edges.map((q, i) => distance(p, q, edges[(i + 1) % edges.length]))));
     expect(b.leanOn).toBe('b17');
     expect(Math.min(...distances)).toBeLessThan(0.1);
-    expect(Math.max(...b.poly.map((p) => p.y))).toBeCloseTo(FLOOR, 6);
+    expect(Math.max(...bp.map((p) => p.y))).toBeCloseTo(FLOOR, 6);
   });
 
   it('모든 책이 바닥 위에 있고 실제 윤곽은 서로 겹치지 않는다', () => {
     for (const s of SAMPLE_LAYOUT.shelves) {
       const { frames, items } = computeShelf(SAMPLE_LAYOUT, books, s.id);
-      for (const f of frames) expect(Math.max(...f.poly.map((p) => p.y))).toBeLessThanOrEqual(FLOOR + 1e-6);
+      for (const f of frames) expect(Math.max(...frontOutline(f).map((p) => p.y))).toBeLessThanOrEqual(FLOOR + 1e-6);
       for (let i = 1; i < items.length; i++) {
         expect(items[i].x).toBeGreaterThan(items[i - 1].x);
       }
       // 기댄 책은 자기 칸 밖(빈틈)으로 기울 수 있다. 대신 선반 판 안에 있어야 한다(눕힌 책은 끝을 조금 넘을 수 있음).
       for (const f of frames) {
         if (f.pose === 'horizontal') continue;
-        const xs = f.poly.map((p) => p.x);
+        const xs = frontOutline(f).map((p) => p.x);
         expect(Math.min(...xs)).toBeGreaterThanOrEqual(PLANK_BOUNDS.min - 1e-6);
         expect(Math.max(...xs)).toBeLessThanOrEqual(PLANK_BOUNDS.max + 1e-6);
       }
-      // Silhouettes may share bounding boxes while leaning against each other.
-      // Sample the interior along every scanline to detect real overlap.
+      // 같은 깊이의 앞면끼리 겹치면 안 된다(뒤에 놓인 눕힌 책은 화면에서 겹쳐도 닿지 않는다).
       for (let y = 0.5; y < FLOOR; y += 2) {
         for (let x = 0.5; x < 365; x += 2) {
-          const touching = frames.filter((f) => pointInPoly({ x, y }, f.poly));
+          const touching = frames.filter((f) => f.box!.z === 0 && pointInPoly({ x, y }, frontOutline(f)));
           const groups = new Set(touching.map((f) => f.itemKey));
           expect(groups.size).toBeLessThanOrEqual(1);
         }
@@ -77,6 +77,7 @@ describe('선반 장면', () => {
       for (const shelf of layout.shelves) {
         const { frames } = computeShelf(layout, books, shelf.id);
         for (const f of frames.filter((frame) => frame.stackIndex === 0)) {
+          expect(Math.max(...frontOutline(f).map((p) => p.y))).toBeCloseTo(FLOOR, 6); // 선반 공간 바닥(깊이 밀림 전)
           expect(Math.max(...f.poly.map((p) => p.y))).toBeCloseTo(FLOOR - (f.pose === 'horizontal' ? LYING_BACK : 0), 6);
           const center = f.poly.reduce((p, q) => ({ x: p.x + q.x / f.poly.length, y: p.y + q.y / f.poly.length }), { x: 0, y: 0 });
           expect(hitTest([f], center, 0)?.bookId).toBe(f.bookId);

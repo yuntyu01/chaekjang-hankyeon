@@ -87,10 +87,14 @@ export function thicknessMm(pages: number) {
 export const BOOK_HEIGHT: Record<HeightClass, number> = { short: 136, medium: 174, tall: 188 };
 export const BOOK_THICKNESS: Record<ThicknessClass, number> = { thin: 28, medium: 36, thick: 42 };
 
-// 눕힌 책의 윗면(표지 면) 깊이, 표지 전시의 옆면 두께.
+// 상자 모델 카메라(앱 전체 하나): 직교 투영 + 살짝 내려다보는 고정 사선.
+// 선반 공간 깊이 1DU가 화면에서 오른쪽으로 kx, 위로 ky 밀린다. 줄·가로 위치로 바꾸지 않는다(모든 책이 같은 쪽 옆면·윗면).
+export const CAMERA = { kx: 0.07, ky: 0.045 };
+// 누운 책(더미)은 선반 위에서 세운 책보다 뒤에 놓인다(선반 공간 깊이 DU). 화면에서는 LYING_BACK_Z × ky만큼 올라간다.
+export const LYING_BACK_Z = 40;
+export const LYING_BACK = LYING_BACK_Z * CAMERA.ky;
+// (예전 방식 렌더러용: 서랍 등) 눕힌 책의 윗면 깊이, 표지 전시의 옆면 두께
 export const TOP_FACE = 9;
-// 누운 책(더미)은 선반 위에서 세운 책보다 조금 뒤에 놓인다: 화면에서 바닥이 이만큼 위(DU). 시안 3번 줄 약 2DU.
-export const LYING_BACK = 2;
 export const FRONT_SIDE = 4;
 // 쌓을 때 위 책을 살짝 어긋나게 둔다(아래에서 위 순서).
 export const STACK_OFFSETS = [0, 8, 3];
@@ -132,25 +136,26 @@ export function tiltedBounds(w: number, h: number, tilt: number) {
   return { width: w * Math.cos(t) + h * Math.sin(t), height: h * Math.cos(t) + w * Math.sin(t) };
 }
 
-// 한 권(쌓기 전)의 선반 점유 크기. 세운 책은 항상 똑바로 선 모양으로 잰다(기울기는 빈틈 안에서 생긴다).
+// 한 권(쌓기 전)의 선반 점유 크기(상자 모델). 폭은 앞면 가로(옆면은 옆 책 뒤로 숨는다),
+// 높이는 화면에서 보이는 높이(앞면 + 위로 밀린 윗면, 눕힌 책은 뒤에 놓인 만큼 더). 세운 책은 똑바로 선 모양으로 잰다.
 export function singleFootprint(book: Book, p: Pick<BookPlacement, 'pose' | 'tilt'>) {
   const h = bookHeight(book);
-  const w = bookThickness(book);
+  const t = bookThickness(book);
+  const w = frontWidth(book);
   switch (p.pose) {
     case 'spine':
-      return { width: w, height: h };
+      return { width: t, height: h + w * CAMERA.ky };
     case 'horizontal':
-      return { width: h, height: w + TOP_FACE };
+      return { width: h, height: t + (LYING_BACK_Z + w) * CAMERA.ky };
     case 'front':
-      return { width: frontWidth(book) + FRONT_SIDE, height: h };
+      return { width: w, height: h + t * CAMERA.ky };
   }
 }
 
-// Actual visible contour, normalized to left x=0 and floor y=0.
-// Shared by packing and painting so tilted books can lean against neighbours.
+// 앞면 윤곽(왼쪽 x=0, 바닥 y=0, 위로 음수). 배치(packing)가 쓴다.
 export function visibleBookOutline(book: Book, p: Pick<BookPlacement, 'pose' | 'tilt'>) {
-  const h = p.pose === 'horizontal' ? bookThickness(book) + TOP_FACE : bookHeight(book);
-  const w = p.pose === 'horizontal' ? bookHeight(book) : p.pose === 'front' ? frontWidth(book) + FRONT_SIDE : bookThickness(book);
+  const h = p.pose === 'horizontal' ? bookThickness(book) : bookHeight(book);
+  const w = p.pose === 'horizontal' ? bookHeight(book) : p.pose === 'front' ? frontWidth(book) : bookThickness(book);
   const points = [{ x: 0, y: 0 }, { x: w, y: 0 }, { x: w, y: h }, { x: 0, y: h }];
   const t = rad(p.pose === 'spine' ? p.tilt : 0);
   const turned = points.map((q) => ({ x: q.x * Math.cos(t) - q.y * Math.sin(t), y: q.x * Math.sin(t) + q.y * Math.cos(t) }));
@@ -174,11 +179,13 @@ export function stackOffsets(books: Book[]) {
 
 export function stackFootprint(books: Book[]) {
   let width = 0;
-  let height = TOP_FACE;
+  let height = LYING_BACK_Z * CAMERA.ky;
+  let depth = 0;
   const offs = stackOffsets(books);
   books.forEach((b, i) => {
     width = Math.max(width, bookHeight(b) + offs[i]);
     height += bookThickness(b);
+    depth = Math.max(depth, frontWidth(b));
   });
-  return { width, height };
+  return { width, height: height + depth * CAMERA.ky };
 }

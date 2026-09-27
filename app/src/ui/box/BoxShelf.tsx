@@ -12,7 +12,7 @@ import type { BookFrame, Point } from '@/domain/shelf-scene';
 import type { Book, Pose } from '@/domain/types';
 import { edgeFactor, Grain, HEAD_BOW, mix, PAGE, PAGE_LINE, scaleColor } from '@/ui/book/BookBody';
 import { BookRenderer } from '@/ui/book/BookRenderer';
-import { ShelfFront, ShelfImage } from '@/ui/shelf/ShelfRow';
+import { ShelfFront, ShelfImage } from '@/ui/shelf/ShelfPlank';
 import { ShelfShadows } from '@/ui/shelf/ShelfShadows';
 
 export type BoxEntry = { book: Book; placed: Placed };
@@ -154,7 +154,7 @@ function faceStyle(kind: Face['kind'], s: number) {
   }
 }
 
-function FaceShape({ face, book, pose, s, px, grain }: { face: Face; book: Book; pose: Pose; s: number; px: Px; grain: ReturnType<typeof useImage> }) {
+export function FaceShape({ face, book, pose, s, px, grain }: { face: Face; book: Book; pose: Pose; s: number; px: Px; grain: ReturnType<typeof useImage> }) {
   const tone = toneOf(book, pose);
   const m = materialOf(pose, face.kind);
   let [A, B, Bb, Ab] = face.poly.map(px);
@@ -268,11 +268,11 @@ const DepthFaces = memo(function DepthFaces({ entries, cam, s, clear, height }: 
 // 바닥 접촉: 상자가 선반에 닿는 바닥면(앞면 윤곽에서 바닥 높이의 점 × 깊이)을 투영해 그린다.
 // 1) 닿는 곳 바로 밑의 진하고 좁은 접촉 그늘, 2) 빛(왼쪽 위) 반대쪽으로 선반 윗면에 짧게 번지는 그늘.
 // front = false: 책 밑·뒤로 번지는 그늘(책보다 먼저), true: 바닥 앞 그늘과 접촉선(책 위에)
-const Contacts = memo(function Contacts({ entries, cam, s, clear, height, front = false }: { entries: BoxEntry[]; cam: Camera; s: number; clear: number; height: number; front?: boolean }) {
+export const Contacts = memo(function Contacts({ boxes, cam, s, clear, height, front = false }: { boxes: Placed[]; cam: Camera; s: number; clear: number; height: number; front?: boolean }) {
   const px: Px = (p) => ({ x: (SHELF.sideMargin + p.x) * s, y: (clear + p.y - FLOOR) * s });
-  const shapes = entries
-    .filter(({ placed }) => placed.y < 0.5)
-    .map(({ placed: p }) => {
+  const shapes = boxes
+    .filter((p) => p.y < 0.5)
+    .map((p) => {
       const feet = frontPoly(p).filter((q) => q.y < p.y + 0.6);
       let x0 = Math.min(...feet.map((q) => q.x));
       let x1 = Math.max(...feet.map((q) => q.x));
@@ -359,13 +359,55 @@ export const BoxShelf = memo(function BoxShelf({ entries, cam, scale: s, originX
     <View style={{ height, width: DESIGN_WIDTH * s, marginLeft: originX }}>
       <ShelfShadows frames={frames} scale={s} hiddenId={null} height={height} clear={clear} />
       <ShelfImage scale={s} clear={clear} />
-      <Contacts entries={entries} cam={cam} s={s} clear={clear} height={height} />
+      <Contacts boxes={entries.map((e) => e.placed)} cam={cam} s={s} clear={clear} height={height} />
       <DepthFaces entries={entries} cam={cam} s={s} clear={clear} height={height} />
       {fronts.map((e) => (
         <FrontFace key={e.placed.bookId} entry={e} cam={cam} s={s} clear={clear} />
       ))}
-      <Contacts entries={entries} cam={cam} s={s} clear={clear} height={height} front />
+      <Contacts boxes={entries.map((e) => e.placed)} cam={cam} s={s} clear={clear} height={height} front />
       <ShelfFront scale={s} clear={clear} />
     </View>
   );
 });
+
+// 책 한 권(상자 모델): 옆면·윗면 캔버스 + 앞면 몸체. 자기 투영 외곽(frame.poly)의 바운딩 박스를 BOX_PAD만큼 넓힌 곳에 그린다.
+// 선반 줄(ShelfRow)과 드래그(DragOverlay)가 같이 쓴다. 부모는 frameBBox의 왼쪽 위에 놓고, 이 뷰는 -BOX_PAD에서 시작한다.
+export const BOX_PAD = 3;
+
+export const BoxBookView = memo(function BoxBookView({ frame, book, scale: s, cam }: { frame: BookFrame; book: Book; scale: number; cam: Camera }) {
+  const grain = useImage(BRUSH_DETAIL);
+  const xs = frame.poly.map((p) => p.x);
+  const ys = frame.poly.map((p) => p.y);
+  const minX = Math.min(...xs) - BOX_PAD;
+  const minY = Math.min(...ys) - BOX_PAD;
+  const w = Math.max(...xs) - minX + BOX_PAD;
+  const h = Math.max(...ys) - minY + BOX_PAD;
+  const px: Px = (p) => ({ x: (p.x - minX) * s, y: (p.y - minY) * s });
+  const faces = frame.box ? visibleFaces(cam, frame.box).sides.sort((a, b) => (a.kind === 'top' ? 1 : 0) - (b.kind === 'top' ? 1 : 0)) : [];
+  return (
+    <View pointerEvents="none" style={{ position: 'absolute', left: -BOX_PAD * s, top: -BOX_PAD * s, width: w * s, height: h * s }}>
+      <Canvas style={StyleSheet.absoluteFill}>
+        {faces.map((f) => (
+          <FaceShape key={f.kind} face={f} book={book} pose={frame.pose} s={s} px={px} grain={grain} />
+        ))}
+      </Canvas>
+      <View
+        style={{
+          position: 'absolute',
+          left: (frame.left - minX) * s,
+          top: (frame.top - minY) * s,
+          width: frame.width * s,
+          height: frame.height * s,
+          transformOrigin: frame.origin,
+          transform: [{ rotate: `${frame.rotate}deg` }],
+        }}>
+        <BookRenderer book={book} pose={frame.pose} scale={s} box />
+      </View>
+    </View>
+  );
+});
+
+// 그리는 순서: 뒤(깊이 큰) 상자부터, 쌓기는 아래부터, 같은 줄은 왼쪽부터(오른쪽 책의 앞면이 왼쪽 책 옆면을 가린다)
+export function paintOrder<T extends { box?: Placed; left: number }>(frames: T[]) {
+  return [...frames].sort((a, b) => (b.box?.z ?? 0) - (a.box?.z ?? 0) || (a.box?.y ?? 0) - (b.box?.y ?? 0) || (a.box?.x ?? a.left) - (b.box?.x ?? b.left));
+}

@@ -1,3 +1,5 @@
+import { CAMERA } from '@/domain/geometry';
+
 // 디자인 토큰. 색은 책이 주인공이라 화면 자체는 아이보리·크림·먹색만 쓴다.
 // 색은 시안(docs/design/home-reference.png)에서 채취했다.
 export const colors = {
@@ -46,9 +48,8 @@ export const typeScale = {
 };
 
 // 그림자 토큰. 빛은 화면 좌상단, 외부 그림자는 화면 좌표 기준 오른쪽 아래.
-// 상자 모델 카메라(앱 전체 하나): 직교 투영 + 살짝 내려다보는 고정 사선.
-// 깊이 1DU가 화면에서 오른쪽으로 kx, 위로 ky 밀린다. 모든 책이 오른쪽 옆면과 윗면을 조금 보인다.
-export const camera = { kx: 0.07, ky: 0.045 };
+// 상자 모델 카메라(앱 전체 하나). 값은 domain/geometry CAMERA(배치·충돌도 같은 값을 쓴다).
+export const camera = CAMERA;
 
 export const shadow = {
   contact: { opacity: 0.42, height: 1.4, spread: -1, shift: 2, blur: 1 }, // 선반에 닿는 좁은 그림자(책 밑에만, 빛 반대쪽으로 조금)

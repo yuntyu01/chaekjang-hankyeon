@@ -20,7 +20,7 @@ import Animated, {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { scheduleOnRN } from 'react-native-worklets';
 
-import { SHELF, SHELF_USABLE_WIDTH, viewYOf } from '@/domain/geometry';
+import { SHELF, SHELF_USABLE_WIDTH } from '@/domain/geometry';
 import {
   applySwapTarget,
   detach,
@@ -368,7 +368,6 @@ export function HomeScreen() {
   // ---------- 표시할 레이아웃 ----------
   const shown = drag?.settling ?? (drag?.preview?.kind === 'ok' ? drag.preview.layout : layout);
   const shownShelves = useMemo(() => sortedShelves(shown), [shown]);
-  const dragRow = drag ? shownShelves.findIndex((x) => x.id === drag.frame.shelfId) : -1;
   const frames = useShelfScenes(shown, books);
   // Keep drop bands steady while a book travels between differently sized rows.
   const rows = useMemo(() => {
@@ -516,11 +515,10 @@ export function HomeScreen() {
           showsVerticalScrollIndicator={false}>
           <GestureDetector gesture={gesture}>
             <View style={{ height: contentHeight, paddingTop: rows[0]?.top ?? CONTENT_TOP }} collapsable={false}>
-              {shownShelves.map((s, i) => (
+              {shownShelves.map((s) => (
                 <ShelfRow
                   key={s.id}
                   shelfId={s.id}
-                  viewY={viewYOf(i)}
                   frames={frames.get(s.id) ?? []}
                   books={books}
                   scale={m.scale}
@@ -543,7 +541,7 @@ export function HomeScreen() {
         </Animated.ScrollView>
 
         {drag && draggedBook ? (
-          <DragOverlay book={draggedBook} frame={drag.frame} scale={m.scale} x={dragX} y={dragY} lift={lift} viewY={dragRow < 0 ? 0 : viewYOf(dragRow)} />
+          <DragOverlay book={draggedBook} frame={drag.frame} scale={m.scale} x={dragX} y={dragY} lift={lift} />
         ) : null}
 
         {popId && popAnchor && books[popId] && placementOf(layout, popId) ? (

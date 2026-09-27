@@ -2,7 +2,7 @@
 import { bookHeight, bookThickness, SHELF } from '../geometry';
 import { bookXs, moveBook, normalize, setTilt, shelfItems, type BookMap } from '../layout-engine';
 import { MAX_LEAN, overlaps } from '../lean';
-import { computeShelf, leanFrame, withLeans, type BookFrame } from '../shelf-scene';
+import { computeShelf, frontOutline, leanFrame, withLeans, type BookFrame } from '../shelf-scene';
 import type { Book, BookPlacement, ShelfLayout } from '../types';
 
 const FLOOR = SHELF.clearHeight;
@@ -32,20 +32,21 @@ const allFrames = (l: ShelfLayout) => computeShelf(l, books, 's').frames;
 
 function expectSeated(f: BookFrame) {
   // 가장 낮은 점이 선반 바닥에 닿고, 축 모서리가 바닥에 있다
-  expect(Math.max(...f.poly.map((p) => p.y))).toBeCloseTo(FLOOR, 6);
+  const o = frontOutline(f);
+  expect(Math.max(...o.map((p) => p.y))).toBeCloseTo(FLOOR, 6);
   if (f.rotate) {
     const pivotX = f.rotate > 0 ? f.left + f.width : f.left;
-    expect(f.poly.some((p) => Math.abs(p.x - pivotX) < 1e-6 && Math.abs(p.y - FLOOR) < 1e-6)).toBe(true);
+    expect(o.some((p) => Math.abs(p.x - pivotX) < 1e-6 && Math.abs(p.y - FLOOR) < 1e-6)).toBe(true);
   }
 }
 function expectNoOverlap(frames: BookFrame[]) {
   for (let i = 0; i < frames.length; i++)
-    for (let j = i + 1; j < frames.length; j++) expect(overlaps(frames[i].poly, frames[j].poly, 0.2)).toBe(false);
+    for (let j = i + 1; j < frames.length; j++) expect(overlaps(frontOutline(frames[i]), frontOutline(frames[j]), 0.2)).toBe(false);
 }
 function expectTouching(f: BookFrame, other: BookFrame) {
   const dir = Math.sign(f.rotate);
   const more = leanFrame(books[f.bookId], f.left, f.rotate + dir * 0.6).poly;
-  expect(overlaps(more, other.poly)).toBe(true);
+  expect(overlaps(more, frontOutline(other))).toBe(true);
 }
 
 describe('한 권이 똑바로 선 책에 기댄다', () => {

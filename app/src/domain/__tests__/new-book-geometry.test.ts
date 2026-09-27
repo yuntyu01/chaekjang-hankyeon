@@ -1,6 +1,6 @@
 import { toShelfBook } from '../catalog';
 import { LYING_BACK, SHELF, singleFootprint } from '../geometry';
-import { computeShelf } from '../shelf-scene';
+import { computeShelf, frontOutline } from '../shelf-scene';
 import { castShape } from '../shadow-shape';
 import type { Pose, ShelfLayout, Tilt } from '../types';
 import { shadow, shelfShadow } from '@/ui/theme';
@@ -21,7 +21,8 @@ describe('예시 이미지가 없는 새 책의 공통 배치와 그림자', () 
     expect(bottom).toBeCloseTo(SHELF.clearHeight - (pose === 'horizontal' ? LYING_BACK : 0), 6); // 누운 책은 조금 뒤에 놓인다
     expect(bottom).toBeLessThan(SHELF.clearHeight + SHELF.lip - 6); // 책 앞에 나무판이 보인다
     const extent = singleFootprint(fresh, { pose, tilt });
-    expect(Math.max(...f.poly.map((p) => p.x)) - Math.min(...f.poly.map((p) => p.x))).toBeCloseTo(extent.width, 6);
+    const o = frontOutline(f);
+    expect(Math.max(...o.map((p) => p.x)) - Math.min(...o.map((p) => p.x))).toBeCloseTo(extent.width, 6); // 점유 폭 = 앞면 폭
     const far = shadow.cast.layers.at(-1)!;
     const projected = castShape(f.poly, far.dx, far.dy);
     expect(Math.max(...projected.map((p) => p.y)) - bottom).toBeGreaterThan(30);

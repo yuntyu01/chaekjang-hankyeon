@@ -4,8 +4,9 @@ import { boxSize, collide, frontPoly, solveLean, type Placed } from './box';
 import { PLANK_BOUNDS } from './shelf-scene';
 import type { Book, Pose } from './types';
 
-// 눕힌 책은 선반 위에서 세운 책보다 뒤에 놓인다(선반 공간 깊이, DU). 카메라 ky를 곱하면 화면에서 올라가는 양.
-export const LYING_BACK_Z = 40;
+import { LYING_BACK_Z } from './geometry';
+
+export { LYING_BACK_Z };
 
 export type PilotItem = {
   bookId: string;
