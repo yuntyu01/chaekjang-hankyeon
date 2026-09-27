@@ -17,6 +17,7 @@ import {
   useImage,
   vec,
   type SkImage as SkImageType,
+  type SkPath,
 } from '@shopify/react-native-skia';
 import { memo, useMemo } from 'react';
 
@@ -121,55 +122,123 @@ function jitter(seed: string) {
   };
 }
 
-// 세운 책 몸체 윤곽(px): 둥근 왼쪽 위, 비스듬히 깎인 오른쪽 위, 평평한 바닥, 가장자리의 아주 작은 불규칙.
+// 손으로 그은 선의 흔들림: 파장이 다른 사인 둘을 더한 부드러운 잡음(0~1). t는 선을 따라간 거리(DU).
+// 늘 안쪽으로만 밀어서 캔버스 밖으로 나가지 않는다.
+export const WOBBLE = 0.32; // 최대 흔들림(DU)
+function wobble(seed: string, edge: number) {
+  const r = jitter(seed);
+  const waves = [24, 10].map((len, i) => ({ len, amp: [0.65, 0.35][i], ph: (r(edge * 7 + i) + 0.5) * Math.PI * 2 }));
+  return (t: number) => 0.5 + 0.5 * waves.reduce((sum, w) => sum + w.amp * Math.sin((t / w.len) * Math.PI * 2 + w.ph), 0);
+}
+
+// 책등 머리가 볼록한 정도(DU). 시안 데미안·모순: 가운데가 양끝보다 1DU쯤 높다.
+export const HEAD_BOW = 0.9;
+
+// 세운 책 몸체 윤곽(px): 둥근 왼쪽 위, 살짝 볼록한 머리, 비스듬히 깎인 오른쪽 위, 평평한 바닥,
+// 손으로 그은 듯 부드럽게 흔들리는 가장자리.
 export function bodyOutline(w: number, h: number, s: number, seed: string, side = SPINE_SIDE): Point[] {
   const r = 4.6 * s;
   const rb = 2 * s;
   const sideX = w * side;
   const ch = w * Math.max(0.03, Math.min(CHAMFER, 1 - side)); // 옆면이 좁을수록 윗부분 깎임도 작다
-  const rnd = jitter(seed);
+  const bow = HEAD_BOW * s;
+  const amp = WOBBLE * s;
+  const step = 1.5 * s;
+  const [wTop, wRight, wBottom, wLeft] = [0, 1, 2, 3].map((e) => wobble(seed, e));
+  const headY = (x: number) => bow * (1 - Math.sin((Math.PI * Math.min(x, sideX)) / sideX)); // 머리 곡선
   const pts: Point[] = [];
-  const arc = (cx: number, cy: number, rad: number, a0: number, a1: number) => {
-    for (let i = 0; i <= 6; i++) {
-      const a = a0 + ((a1 - a0) * i) / 6;
-      pts.push({ x: cx + rad * Math.cos(a), y: cy + rad * Math.sin(a) });
-    }
-  };
-  arc(r, r, r, Math.PI, Math.PI * 1.5);
-  const topN = Math.max(2, Math.round(sideX / (5 * s)));
-  for (let i = 1; i < topN; i++) pts.push({ x: r + ((sideX - r) * i) / topN, y: 0.35 * s * rnd(i) });
-  pts.push({ x: sideX, y: 0 });
+  // 왼쪽 위 모서리(머리 곡선 높이에 맞춰 붙인다)
+  const y0 = headY(r);
+  for (let i = 0; i <= 6; i++) {
+    const a = Math.PI + (Math.PI / 2) * (i / 6);
+    pts.push({ x: r + r * Math.cos(a), y: y0 + r + r * Math.sin(a) });
+  }
+  for (let x = r + step; x < sideX; x += step) pts.push({ x, y: headY(x) + amp * wTop(x / s) });
+  pts.push({ x: sideX, y: headY(sideX) });
   pts.push({ x: w - 0.6 * s, y: ch - 0.4 * s });
   pts.push({ x: w, y: ch + 0.6 * s });
-  const sideN = Math.max(3, Math.round(h / (12 * s)));
-  for (let i = 1; i < sideN; i++) pts.push({ x: w + 0.3 * s * rnd(100 + i), y: ch + ((h - rb - ch) * i) / sideN });
-  arc(w - rb, h - rb, rb, 0, Math.PI / 2);
-  arc(rb, h - rb, rb, Math.PI / 2, Math.PI);
-  for (let i = sideN - 1; i >= 1; i--) pts.push({ x: 0.3 * s * rnd(200 + i), y: r + ((h - rb - r) * i) / sideN });
+  for (let y = ch + step; y < h - rb; y += step) pts.push({ x: w - amp * wRight(y / s), y });
+  for (let i = 0; i <= 4; i++) {
+    const a = (Math.PI / 2) * (i / 4);
+    pts.push({ x: w - rb + rb * Math.cos(a), y: h - rb + rb * Math.sin(a) });
+  }
+  for (let x = w - rb - step; x > rb; x -= step) pts.push({ x, y: h - 0.5 * amp * wBottom(x / s) });
+  for (let i = 0; i <= 4; i++) {
+    const a = Math.PI / 2 + (Math.PI / 2) * (i / 4);
+    pts.push({ x: rb + rb * Math.cos(a), y: h - rb + rb * Math.sin(a) });
+  }
+  for (let y = h - rb - step; y > y0 + r; y -= step) pts.push({ x: amp * wLeft(y / s), y });
   return pts;
 }
 
-// 표지 윤곽: 둥근 네 모서리 + 아주 작은 불규칙
+// 표지 윤곽: 둥근 네 모서리 + 손으로 그은 듯한 흔들림
 function coverOutline(w: number, h: number, s: number, seed: string): Point[] {
   const r = 3 * s;
-  const rnd = jitter(seed);
+  const amp = WOBBLE * s;
+  const step = 2 * s;
+  const wv = [0, 1, 2, 3].map((e) => wobble(seed, e));
   const pts: Point[] = [];
-  const corners: [number, number, number][] = [
-    [w - r, r, -Math.PI / 2],
-    [w - r, h - r, 0],
-    [r, h - r, Math.PI / 2],
-    [r, r, Math.PI],
-  ];
-  corners.forEach(([cx, cy, a0], k) => {
+  const corner = (cx: number, cy: number, a0: number) => {
     for (let i = 0; i <= 5; i++) {
       const a = a0 + (Math.PI / 2) * (i / 5);
-      pts.push({ x: cx + r * Math.cos(a) + (i === 5 ? 0.25 * s * rnd(k) : 0), y: cy + r * Math.sin(a) });
+      pts.push({ x: cx + r * Math.cos(a), y: cy + r * Math.sin(a) });
     }
-  });
+  };
+  corner(w - r, r, -Math.PI / 2);
+  for (let y = r + step; y < h - r; y += step) pts.push({ x: w - amp * wv[1](y / s), y });
+  corner(w - r, h - r, 0);
+  for (let x = w - r - step; x > r; x -= step) pts.push({ x, y: h - 0.5 * amp * wv[2](x / s) });
+  corner(r, h - r, Math.PI / 2);
+  for (let y = h - r - step; y > r; y -= step) pts.push({ x: amp * wv[3](y / s), y });
+  corner(r, r, Math.PI);
+  for (let x = r + step; x < w - r; x += step) pts.push({ x, y: amp * wv[0](x / s) });
   return pts;
 }
 
 const poly = (pts: Point[]) => Skia.Path.Polygon(pts.map((q) => ({ x: q.x, y: q.y })), true);
+
+// 빛 받는 가장자리: 왼쪽 위에서 오는 빛에 둥근 모서리(머리·왼쪽 가장자리)가 밝게 빛난다(시안 모순·데미안).
+// 윤곽 선을 흰색으로 그리고 위쪽·왼쪽 띠로만 보이게 가린다. lying: 몸체가 눕혀져 그려지는 경우(화면 위 = 몸체 오른쪽).
+function RimLight({ outline, w, h, s, lying = false }: { outline: SkPath; w: number; h: number; s: number; lying?: boolean }) {
+  const t = 6 * s;
+  const l = 4 * s;
+  const fade = (x0: number, y0: number, x1: number, y1: number) => (
+    <LinearGradient start={vec(x0, y0)} end={vec(x1, y1)} colors={['rgba(0,0,0,1)', 'rgba(0,0,0,0)']} />
+  );
+  const mask = lying ? (
+    <Group>
+      <Rect x={w - t} y={0} width={t} height={h}>{fade(w, 0, w - t, 0)}</Rect>
+      <Rect x={0} y={0} width={w} height={l}>{fade(0, 0, 0, l)}</Rect>
+    </Group>
+  ) : (
+    <Group>
+      <Rect x={0} y={0} width={w} height={t}>{fade(0, 0, 0, t)}</Rect>
+      <Rect x={0} y={0} width={l} height={h}>{fade(0, 0, l, 0)}</Rect>
+    </Group>
+  );
+  return (
+    <Mask mode="alpha" mask={mask}>
+      <Path path={outline} style="stroke" strokeWidth={7 * s} color="rgba(255,255,255,0.26)">
+        <BlurMask blur={1.1 * s} style="normal" />
+      </Path>
+    </Mask>
+  );
+}
+
+// 가장자리 선: 책 색을 어둡게 한 또렷한 선 + 조금 어긋난 두 번째 선(굵기가 고르지 않은 손그림 선)
+function EdgeLine({ outline, outline2, s, face }: { outline: SkPath; outline2: SkPath; s: number; face: string }) {
+  const edge = scaleColor(face, edgeFactor(face));
+  return (
+    <>
+      <Path path={outline} style="stroke" strokeWidth={2.2 * s} color={edge}>
+        <BlurMask blur={0.3 * s} style="normal" />
+      </Path>
+      <Path path={outline2} style="stroke" strokeWidth={2.6 * s} color={edge} opacity={0.45}>
+        <BlurMask blur={0.35 * s} style="normal" />
+      </Path>
+    </>
+  );
+}
 
 function Grain({ w, h, s, image }: { w: number; h: number; s: number; image: SkImageType | null }) {
   if (!image) return null;
@@ -205,12 +274,12 @@ function SpineSkin({
 }) {
   const mx = (p: Point) => (mirror ? { x: w - p.x, y: p.y } : p);
   const outline = useMemo(() => poly(bodyOutline(w, h, s, id, side).map(mx)), [w, h, s, id, side, mirror]);
+  const outline2 = useMemo(() => poly(bodyOutline(w, h, s, `${id}~`, side).map(mx)), [w, h, s, id, side, mirror]);
   const sideTop = useMemo(
     () => poly([{ x: w * side, y: 0 }, { x: w, y: w * (1 - side) }, { x: w, y: w * (1 - side) + 1.6 * s }, { x: w * side, y: 1.6 * s }].map(mx)),
     [w, s, side, mirror],
   );
   const prof = lying ? lyingProfile(side, face) : shadeProfile(spineProfile(side), side, face, mirror);
-  const edge = scaleColor(face, edgeFactor(face));
   return (
     <Group>
       <Group clip={outline}>
@@ -223,24 +292,21 @@ function SpineSkin({
           />
         </Rect>
         <Grain w={w} h={h} s={s} image={grain} />
-        {/* 윗모서리를 따라 밝은 빛 띠(왼쪽 위 빛) */}
-        <Rect x={0} y={0} width={w} height={3 * s}>
-          <LinearGradient start={vec(0, 0)} end={vec(0, 3 * s)} colors={['rgba(255,255,255,0.26)', 'rgba(255,255,255,0)']} />
-        </Rect>
         <Path path={sideTop} color="rgba(255,255,255,0.16)" />
         {/* 바닥 쪽 살짝 어둡게 */}
         <Rect x={0} y={h - 3 * s} width={w} height={3 * s}>
           <LinearGradient start={vec(0, h - 3 * s)} end={vec(0, h)} colors={['rgba(0,0,0,0)', 'rgba(0,0,0,0.1)']} />
         </Rect>
         {/* 가장자리 안쪽 살짝 어둡게(둥글게 넘어가는 모서리) */}
-        <Path path={outline} style="stroke" strokeWidth={5 * s} color={scaleColor(face, 0.85)} opacity={0.1 + 0.45 * (1 - luminance(face))}>
+        <Path path={outline} style="stroke" strokeWidth={3.5 * s} color={scaleColor(face, 0.85)} opacity={0.1 + 0.45 * (1 - luminance(face))}>
           <BlurMask blur={1.4 * s} style="normal" />
         </Path>
+        <RimLight outline={outline} w={w} h={h} s={s} lying={lying} />
         {/* 또렷한 같은 색 가장자리 선(안쪽 절반만 보인다: 약 1.1DU) */}
-        <Path path={outline} style="stroke" strokeWidth={2.2 * s} color={edge}>
-          <BlurMask blur={0.3 * s} style="normal" />
-        </Path>
+        <EdgeLine outline={outline} outline2={outline2} s={s} face={face} />
       </Group>
+      {/* 클립 경계는 계단처럼 깨지므로 실루엣 바깥을 부드러운 선으로 한 번 더 덮는다 */}
+      <Path path={outline} style="stroke" strokeWidth={1.3 * s} color={scaleColor(face, edgeFactor(face))} antiAlias />
     </Group>
   );
 }
@@ -340,6 +406,7 @@ export const CoverBody = memo(function CoverBody({
   const image = useImage((cover as number) ?? null);
   const motif = useImage(art?.motif ?? null);
   const outline = useMemo(() => poly(coverOutline(fw, h, s, id)), [fw, h, s, id]);
+  const outline2 = useMemo(() => poly(coverOutline(fw, h, s, `${id}~`)), [fw, h, s, id]);
   const lines = 4;
   let mh = h * 0.38;
   let mw = motif ? (mh * motif.width()) / motif.height() : 0;
@@ -376,14 +443,10 @@ export const CoverBody = memo(function CoverBody({
         <Rect x={0} y={0} width={fw} height={h}>
           <LinearGradient start={vec(0, 0)} end={vec(fw, h)} colors={['rgba(255,255,255,0.08)', 'rgba(255,255,255,0)', 'rgba(0,0,0,0.08)']} positions={[0, 0.45, 1]} />
         </Rect>
-        <Rect x={0} y={0} width={fw} height={3 * s}>
-          <LinearGradient start={vec(0, 0)} end={vec(0, 3 * s)} colors={['rgba(255,255,255,0.2)', 'rgba(255,255,255,0)']} />
-        </Rect>
-        {/* 또렷한 같은 색 가장자리 선(책등 몸체와 같은 규칙) */}
-        <Path path={outline} style="stroke" strokeWidth={2.2 * s} color={scaleColor(face, edgeFactor(face))}>
-          <BlurMask blur={0.3 * s} style="normal" />
-        </Path>
+        <RimLight outline={outline} w={fw} h={h} s={s} />
+        <EdgeLine outline={outline} outline2={outline2} s={s} face={face} />
       </Group>
+      <Path path={outline} style="stroke" strokeWidth={1.3 * s} color={scaleColor(face, edgeFactor(face))} antiAlias />
       </Group>
     </Canvas>
   );
