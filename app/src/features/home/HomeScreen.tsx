@@ -20,7 +20,7 @@ import Animated, {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { scheduleOnRN } from 'react-native-worklets';
 
-import { SHELF, SHELF_USABLE_WIDTH } from '@/domain/geometry';
+import { DESIGN_WIDTH, PLANK_INSET, SHELF, SHELF_USABLE_WIDTH } from '@/domain/geometry';
 import {
   applySwapTarget,
   detach,
@@ -376,20 +376,33 @@ export function HomeScreen() {
   }, [shown, layout, books, m.scale, vpH, insets.bottom, !!drag, drag?.settling]);
   const rowOf = useMemo(() => new Map(rows.map((r) => [r.shelfId, r])), [rows]);
 
-  // 정보 상자 위치: 선택한 책의 윤곽(현재 배치 기준)을 뷰포트 좌표로
+  // 정보 상자 위치: 위 선반 칸(화면 밖이면 아래 칸)을 덮는 선반 크기 상자. 한 줄뿐이면 책 위 빈 곳.
   const popAnchor = useMemo(() => {
     if (!popId) return null;
     const p = placementOf(shown, popId);
-    const row = p && rowOf.get(p.shelfId);
-    const f = row && frames.get(p.shelfId)?.find((fr) => fr.bookId === popId);
+    const idx = p ? rows.findIndex((r) => r.shelfId === p.shelfId) : -1;
+    const row = rows[idx];
+    const f = row && frames.get(p!.shelfId)?.find((fr) => fr.bookId === popId);
     if (!row || !f) return null;
-    const box = frameBBox(f);
-    const tl = toContent(m, row, { x: box.minX, y: box.minY });
-    const br = toContent(m, row, { x: box.minX + box.width, y: box.minY + box.height });
     const sy = popScroll.current;
-    return { cx: (tl.x + br.x) / 2, top: tl.y - sy - 7 * m.scale, bottom: br.y - sy + (SHELF.below + 2) * m.scale };
+    const box = frameBBox(f);
+    const cx = toContent(m, row, { x: box.minX + box.width / 2, y: 0 }).x;
+    const left = m.originX + PLANK_INSET * m.scale;
+    const width = (DESIGN_WIDTH - PLANK_INSET * 2) * m.scale;
+    // 칸: 줄 윗끝부터 선반 판 윗면 조금 위까지(책이 서는 공간)
+    const slot = (r: (typeof rows)[number]) => ({ left, width, top: r.top - sy + 2, height: r.clear * m.scale - 2 });
+    const fits = (b: { top: number; height: number }) => b.top >= 0 && b.top + b.height <= vpH - navigation.height - insets.bottom;
+    const up = idx > 0 ? slot(rows[idx - 1]) : null;
+    const down = idx + 1 < rows.length ? slot(rows[idx + 1]) : null;
+    if (up && fits(up)) return { cx, box: up, above: true };
+    if (down && fits(down)) return { cx, box: down, above: false };
+    const bookTop = toContent(m, row, { x: 0, y: box.minY }).y - sy;
+    const h = (row.clear - 2) * m.scale - 4;
+    return bookTop - h - 10 >= 0 || !down
+      ? { cx, box: { left, width, top: Math.max(4, bookTop - h - 10), height: h }, above: true }
+      : { cx, box: down, above: false };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [popId, shown, rowOf, frames, m]);
+  }, [popId, shown, rows, frames, m, vpH, insets.bottom]);
 
   const hintFor = (shelfId: string): DropHint => {
     const p = drag?.preview;
@@ -549,7 +562,6 @@ export function HomeScreen() {
             book={books[popId]}
             placement={placementOf(layout, popId)!}
             anchor={popAnchor}
-            viewportH={vpH}
             reduceMotion={reduceMotion}
             onClose={() => {
               setPopId(null);
@@ -557,7 +569,6 @@ export function HomeScreen() {
             }}
             onPose={menuPose}
             onTilt={menuTilt}
-            onMove={(mv) => menuMove(mv)}
             onToDrawer={() => {
               commit(moveToDrawer(layout, popId, books), ko.drawer.stored);
               setPopId(null);

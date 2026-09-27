@@ -18,6 +18,17 @@ export const ko = {
   section: { pose: '배치 형태', tilt: '기울기', place: '자리' },
   finished: (d: string) => `${d.replace(/-/g, '.')} 완독`,
   noCover: '실제 표지 이미지가 아직 없어요',
+  info: {
+    published: '출간',
+    period: '읽은 기간',
+    readingSince: (d: string) => `${d}부터 읽는 중`,
+    finished: '다 읽음',
+    pose: { spine: '세움', horizontal: '눕힘', front: '표지' },
+    bookmarks: '책갈피',
+    bookmarkCount: (n: number) => `${n}개 남김`,
+    noBookmark: '없음',
+    noPhoto: '실제 표지 사진이\n아직 없어요',
+  },
   a11yHint: '두 번 탭하면 책 정보와 배치 메뉴가 열려요',
   hint: {
     stack: '쌓기',
