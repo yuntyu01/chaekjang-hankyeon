@@ -27,6 +27,26 @@ export function boxSize(book: Book, pose: Pose): BoxSize {
   }
 }
 
+// 볼록 껍질(모노톤 체인)
+export function hull(points: Point[]): Point[] {
+  'worklet';
+  const p = [...points].sort((a, b) => a.x - b.x || a.y - b.y);
+  if (p.length < 3) return p;
+  const cross = (o: Point, a: Point, b: Point) => (a.x - o.x) * (b.y - o.y) - (a.y - o.y) * (b.x - o.x);
+  const lower: Point[] = [];
+  for (const q of p) {
+    while (lower.length >= 2 && cross(lower[lower.length - 2], lower[lower.length - 1], q) <= 0) lower.pop();
+    lower.push(q);
+  }
+  const upper: Point[] = [];
+  for (const q of [...p].reverse()) {
+    while (upper.length >= 2 && cross(upper[upper.length - 2], upper[upper.length - 1], q) <= 0) upper.pop();
+    upper.push(q);
+  }
+  return [...lower.slice(0, -1), ...upper.slice(0, -1)];
+}
+
+// 워클릿은 만들어질 때 쓰는 함수를 붙잡으므로, 쓰이는 함수(hull·rad·at)를 먼저 정의한다.
 // 놓인 상자. angle(도): +면 오른쪽으로 기울어 오른쪽 아래 모서리가 축, -면 왼쪽 아래 모서리가 축(세운 책만).
 export type Placed = {
   bookId: string;
@@ -38,10 +58,14 @@ export type Placed = {
   angle: number;
 };
 
-const rad = (d: number) => (d * Math.PI) / 180;
+function rad(d: number) {
+  'worklet';
+  return (d * Math.PI) / 180;
+}
 
 // 앞면 윤곽(선반 공간 x-y, y 위로). 반시계 순서: 왼아래 → 오른아래 → 오른위 → 왼위.
 export function frontPoly(p: Placed): Point[] {
+  'worklet';
   const { w, h } = p.size;
   const base: Point[] = [
     { x: p.x, y: p.y },
@@ -59,13 +83,18 @@ export function frontPoly(p: Placed): Point[] {
 
 // 선반 공간 → 장면 좌표(기존 프레임과 같은 좌표: x 그대로, y 아래로 증가, 바닥 = SHELF.clearHeight)
 export function project(cam: Camera, v: Vec3): Point {
+  'worklet';
   return { x: v.x + v.z * cam.kx, y: SHELF.clearHeight - v.y - v.z * cam.ky };
 }
 
-const at = (q: Point, z: number): Vec3 => ({ x: q.x, y: q.y, z });
+function at(q: Point, z: number): Vec3 {
+  'worklet';
+  return { x: q.x, y: q.y, z };
+}
 
 // 상자 꼭짓점 8개를 투영한 볼록 외곽(터치·그림자용)
 export function silhouette(cam: Camera, p: Placed): Point[] {
+  'worklet';
   const f = frontPoly(p);
   const pts = [...f.map((q) => project(cam, at(q, p.z))), ...f.map((q) => project(cam, at(q, p.z + p.size.d)))];
   return hull(pts);
@@ -77,6 +106,7 @@ export type Face = { kind: FaceKind; poly: Point[]; front: [Point, Point] };
 
 // 카메라에 보이는 옆면·윗면(장면 좌표). 바깥 법선 n이 깊이 방향 (kx, ky)과 같은 쪽을 향하면 보인다.
 export function visibleFaces(cam: Camera, p: Placed): { front: Point[]; sides: Face[] } {
+  'worklet';
   const f = frontPoly(p);
   const kinds: FaceKind[] = ['bottom', 'right', 'top', 'left']; // 변 i: f[i] → f[i+1]
   const sides: Face[] = [];
@@ -98,10 +128,12 @@ export function visibleFaces(cam: Camera, p: Placed): { front: Point[]; sides: F
 // 선반 공간 충돌: 깊이 구간이 겹치고 앞면 윤곽이 겹칠 때만(깊이가 다르면 화면에서 겹쳐도 닿지 않는다)
 const EPS = 0.05;
 export function zOverlap(a: Placed, b: Placed) {
+  'worklet';
   return a.z < b.z + b.size.d - EPS && b.z < a.z + a.size.d - EPS;
 }
-export function collide(a: Placed, b: Placed) {
-  return zOverlap(a, b) && overlaps(frontPoly(a), frontPoly(b));
+export function collide(a: Placed, b: Placed, margin = 0.05) {
+  'worklet';
+  return zOverlap(a, b) && overlaps(frontPoly(a), frontPoly(b), margin);
 }
 
 // 기대기: 선반 공간에서 옆 상자에 처음 닿는 각도(0.5도 탐색 + 이분 탐색, lean.ts). 깊이가 겹치는 상자만 장애물.
@@ -116,22 +148,4 @@ export function solveLean(p: Placed, dir: -1 | 1, others: Placed[], bounds: { mi
   );
   const on = r.supported && r.angle > 0 ? obstacles.find((o) => overlaps(polyAt(r.angle + 0.6), frontPoly(o)))?.bookId : undefined;
   return { angle: dir * r.angle, supported: r.supported, on };
-}
-
-// 볼록 껍질(모노톤 체인)
-export function hull(points: Point[]): Point[] {
-  const p = [...points].sort((a, b) => a.x - b.x || a.y - b.y);
-  if (p.length < 3) return p;
-  const cross = (o: Point, a: Point, b: Point) => (a.x - o.x) * (b.y - o.y) - (a.y - o.y) * (b.x - o.x);
-  const lower: Point[] = [];
-  for (const q of p) {
-    while (lower.length >= 2 && cross(lower[lower.length - 2], lower[lower.length - 1], q) <= 0) lower.pop();
-    lower.push(q);
-  }
-  const upper: Point[] = [];
-  for (const q of [...p].reverse()) {
-    while (upper.length >= 2 && cross(upper[upper.length - 2], upper[upper.length - 1], q) <= 0) upper.pop();
-    upper.push(q);
-  }
-  return [...lower.slice(0, -1), ...upper.slice(0, -1)];
 }

@@ -1,13 +1,15 @@
 // 선반 바깥 그림자(선반 PNG에서 분리됨). 빛은 왼쪽 위(책 그림자와 같은 방향).
 // 나무판 윤곽을 오른쪽 아래로 옮겨 이은 모양을 Skia 블러로 흐린다. 접촉층과 긴 감쇠층은 theme.shelfShadow에서 조정한다.
 // 판 뒤에 그리므로 판과 겹치는 부분은 가려진다. 캔버스는 흐림 폭만큼 넓게 잡아 가장자리가 잘리지 않는다.
-import { BlurMask, Canvas, Group, LinearGradient, Path, rect, vec } from '@shopify/react-native-skia';
+import { BlurMask, Canvas, Group, LinearGradient, Path, rect, Skia, vec } from '@shopify/react-native-skia';
 import { memo, useMemo } from 'react';
 import { View } from 'react-native';
 
 import { castShape, rgba } from '@/domain/shadow-shape';
-import { toPath } from '@/ui/shelf/ShelfShadows';
+import type { Point } from '@/domain/shelf-scene';
 import { shelfShadow } from '@/ui/theme';
+
+const toPath = (points: Point[]) => Skia.Path.Polygon(points.map((q) => ({ x: q.x, y: q.y })), true);
 
 type Props = {
   plankLeft: number; // px, 나무판 왼쪽 끝(부모 기준)

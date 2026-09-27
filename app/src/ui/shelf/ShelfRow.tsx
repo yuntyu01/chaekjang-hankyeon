@@ -1,73 +1,51 @@
-// 선반 한 칸: 벽 그림자 → 선반 → 접촉 그림자 → 책 → 앞턱.
-import { memo, useEffect } from 'react';
+// 선반 한 칸: 벽 그림자 → 선반 → 접촉 그림자 → 옆면·윗면 → 앞면 → 바닥 앞 그늘 → 앞턱.
+// 모든 책 모양은 줄의 움직임(ShelfMotion)이 공통 진행률로 계산한 상자에서 나온다.
+import { memo, useMemo } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
-import Animated, { useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
 
 import { CAMERA, DESIGN_WIDTH, SHELF, SHELF_STYLE } from '@/domain/geometry';
 import type { BookFrame } from '@/domain/shelf-scene';
 import type { Book } from '@/domain/types';
 import { ko } from '@/i18n/ko';
-import { BoxBookView, Contacts, paintOrder } from '@/ui/box/BoxShelf';
+import { BookRenderer } from '@/ui/book/BookRenderer';
+import { paintOrder } from '@/ui/box/BoxShelf';
+import { BookFront, RowContacts, RowFaces, RowShadows, useShelfMotion, type Motion } from '@/ui/shelf/ShelfMotion';
 import { ShelfFront, ShelfImage } from '@/ui/shelf/ShelfPlank';
 import { Plank } from '@/ui/shelf/Plank';
-import { ShelfShadows } from '@/ui/shelf/ShelfShadows';
-import { colors, fonts, motion } from '@/ui/theme';
+import { colors, fonts } from '@/ui/theme';
 
 export type DropHint = { text: string; bad: boolean } | null;
 
 type SlotProps = {
+  m: Motion;
   frame: BookFrame;
   clear: number;
   book: Book;
   scale: number;
   placeholder: boolean;
-  lifted: boolean;
-  reduceMotion: boolean;
   a11yLabel: string;
   onA11y: (bookId: string, action: string) => void;
 };
 
-const boxesOf = (frames: BookFrame[], hidden: string | null) => frames.filter((f) => f.box && f.bookId !== hidden).map((f) => f.box!);
-
-const BookSlot = memo(function BookSlot({ frame, clear, book, scale: s, placeholder, lifted, reduceMotion, a11yLabel, onA11y }: SlotProps) {
-  // 상자 모델: 앞면 사각형(기울기와 무관한 자리)에 놓고, 옆면·윗면·앞면과 기울기는 BoxBookView가 그린다
-  const left = (SHELF.sideMargin + frame.left) * s;
-  const top = (clear + frame.top - SHELF.clearHeight) * s;
-  const x = useSharedValue(left);
-  const y = useSharedValue(top);
-  const lift = useSharedValue(0);
-  useEffect(() => {
-    const d = reduceMotion ? 0 : motion.shift;
-    x.value = withTiming(left, { duration: d });
-    y.value = withTiming(top, { duration: d });
-  }, [left, top, reduceMotion, x, y]);
-  useEffect(() => {
-    lift.value = withTiming(lifted ? 1 : 0, { duration: reduceMotion ? 0 : 160 });
-  }, [lifted, reduceMotion, lift]);
-  const style = useAnimatedStyle(() => ({
-    left: x.value,
-    top: y.value,
-    transform: [{ translateY: -7 * s * lift.value }, { scale: 1 + 0.03 * lift.value }],
-  }));
+// 앞면(몸체·글자). 위치·기울기·들림은 줄의 움직임(ShelfMotion)이 같은 상자에서 계산한다.
+const BookSlot = memo(function BookSlot({ m, frame, clear, book, scale: s, placeholder, a11yLabel, onA11y }: SlotProps) {
   return (
-    <Animated.View
-      style={[styles.slot, { width: frame.width * s, height: frame.height * s }, style]}
-      accessible
-      accessibilityRole="button"
-      accessibilityLabel={a11yLabel}
-      accessibilityHint={ko.a11yHint}
-      accessibilityActions={[
-        { name: 'activate' },
-        { name: 'prev', label: ko.place.prev },
-        { name: 'next', label: ko.place.next },
-      ]}
-      onAccessibilityAction={(e) => onA11y(frame.bookId, e.nativeEvent.actionName)}>
-      {placeholder ? (
-        <View style={[styles.placeholder, { borderRadius: 3 * s }]} />
-      ) : (
-        <BoxBookView frame={frame} book={book} scale={s} cam={CAMERA} animate={!reduceMotion} origin={{ x: frame.left, y: frame.top }} />
-      )}
-    </Animated.View>
+    <BookFront m={m} frame={frame} s={s} clear={clear}>
+      <View
+        style={StyleSheet.absoluteFill}
+        accessible
+        accessibilityRole="button"
+        accessibilityLabel={a11yLabel}
+        accessibilityHint={ko.a11yHint}
+        accessibilityActions={[
+          { name: 'activate' },
+          { name: 'prev', label: ko.place.prev },
+          { name: 'next', label: ko.place.next },
+        ]}
+        onAccessibilityAction={(e) => onA11y(frame.bookId, e.nativeEvent.actionName)}>
+        {placeholder ? <View style={[styles.placeholder, { borderRadius: 3 * s }]} /> : <BookRenderer book={book} pose={frame.pose} scale={s} box />}
+      </View>
+    </BookFront>
   );
 });
 
@@ -92,31 +70,34 @@ type Props = {
 
 export const ShelfRow = memo(function ShelfRow(p: Props) {
   const s = p.scale;
+  const m = useShelfMotion(p.frames, p.reduceMotion, p.selectedId);
+  const ids = useMemo(() => p.frames.filter((f) => f.box && f.bookId !== p.placeholderId).map((f) => f.bookId), [p.frames, p.placeholderId]);
   return (
     <View style={{ height: p.height, width: DESIGN_WIDTH * s, marginLeft: p.originX, overflow: 'visible' }}>
-      <ShelfShadows frames={p.frames} scale={s} hiddenId={p.placeholderId} height={p.height} clear={p.clear} />
+      <RowShadows m={m} ids={ids} cam={CAMERA} s={s} clear={p.clear} height={p.height} />
       {SHELF_STYLE === 'asset' ? (
         <ShelfImage scale={s} clear={p.clear} />
       ) : (
         <Plank left={SHELF.sideMargin * s} width={(DESIGN_WIDTH - SHELF.sideMargin * 2) * s} floorY={p.clear * s} scale={s} height={p.height + 20 * s} canvasWidth={DESIGN_WIDTH * s} />
       )}
-      <Contacts boxes={boxesOf(p.frames, p.placeholderId)} cam={CAMERA} s={s} clear={p.clear} height={p.height} />
-      {/* 뒤에 놓인 상자부터 그린다(오른쪽 책 앞면이 왼쪽 책 옆면을 가린다) */}
+      <RowContacts m={m} ids={ids} cam={CAMERA} s={s} clear={p.clear} height={p.height} />
+      {/* 옆면·윗면은 모든 앞면 아래(앞에 있는 책의 앞면이 가린다) */}
+      <RowFaces m={m} frames={p.frames} books={p.books} hiddenId={p.placeholderId} cam={CAMERA} s={s} clear={p.clear} height={p.height} />
+      {/* 뒤에 놓인 상자부터 그린다 */}
       {paintOrder(p.frames).map((f) => (
         <BookSlot
           key={f.bookId}
+          m={m}
           frame={f}
           clear={p.clear}
           book={p.books[f.bookId]}
           scale={s}
           placeholder={f.bookId === p.placeholderId}
-          lifted={f.bookId === p.selectedId}
-          reduceMotion={p.reduceMotion}
           a11yLabel={p.a11yLabelOf(f.bookId)}
           onA11y={p.onA11y}
         />
       ))}
-      <Contacts boxes={boxesOf(p.frames, p.placeholderId)} cam={CAMERA} s={s} clear={p.clear} height={p.height} front />
+      <RowContacts m={m} ids={ids} cam={CAMERA} s={s} clear={p.clear} height={p.height} front />
       {SHELF_STYLE === 'asset' ? <ShelfFront scale={s} clear={p.clear} /> : null}
       {p.hint ? (
         <View style={[styles.hint, { top: 2 * s }, p.hint.bad && styles.hintBad]} pointerEvents="none">

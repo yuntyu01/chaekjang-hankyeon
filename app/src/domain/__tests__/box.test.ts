@@ -1,7 +1,6 @@
 import { boxSize, collide, frontPoly, project, silhouette, solveLean, visibleFaces, type Placed } from '../box';
-import { SHELF } from '../geometry';
+import { LYING_BACK_Z, SHELF } from '../geometry';
 import { SAMPLE_BOOKS } from '../onboarding-sample';
-import { contactReport, LYING_BACK_Z, PILOT_LAYOUT, placePilot, withPilotLeans } from '../pilot';
 import { PLANK_BOUNDS } from '../shelf-scene';
 
 const books = Object.fromEntries(SAMPLE_BOOKS.map((b) => [b.id, b]));
@@ -61,21 +60,4 @@ describe('책 상자', () => {
     expect(Math.min(...frontPoly({ ...spine, angle: r.angle }).map((q) => q.y))).toBeCloseTo(0);
   });
 
-  it('파일럿: 저장 후 다시 불러도 같은 배치(저장된 각도 재사용)', () => {
-    const saved = withPilotLeans(PILOT_LAYOUT, books);
-    const leaner = saved.items.find((i) => i.bookId === 'b06')!;
-    expect(leaner.saved?.on).toBe('b12');
-    const again = placePilot(JSON.parse(JSON.stringify(saved)), books);
-    const first = placePilot(saved, books);
-    expect(again.placed.map((p) => [p.bookId, p.x, p.y, p.z, p.angle])).toEqual(first.placed.map((p) => [p.bookId, p.x, p.y, p.z, p.angle]));
-    const report = contactReport(first.placed);
-    expect(report.every((r) => r.penetrates.length === 0)).toBe(true);
-    expect(report.find((r) => r.bookId === 'b06')?.touching).toBe('b12');
-  });
-
-  it('기댈 곳이 없으면 바로 선다', () => {
-    const lone = { version: 1 as const, items: [{ bookId: 'b06', pose: 'spine' as const, x: 150, lean: -1 as const }] };
-    const out = withPilotLeans(lone, books);
-    expect(out.items[0].lean).toBeUndefined();
-  });
 });

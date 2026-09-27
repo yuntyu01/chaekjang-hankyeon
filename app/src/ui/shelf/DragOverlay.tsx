@@ -40,7 +40,7 @@ export function DragOverlay({ book, frame, scale: s, x, y, lift }: Props) {
           <SoftShadow points={liftPath} fill={colors.shadow} opacity={shadow.lifted.opacity} blur={8 * s} />
         </Svg>
       </Animated.View>
-      <BoxBookView frame={frame} book={book} scale={s} cam={CAMERA} animate={false} />
+      <BoxBookView frame={frame} book={book} scale={s} cam={CAMERA} />
     </Animated.View>
   );
 }

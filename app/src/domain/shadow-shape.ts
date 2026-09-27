@@ -3,6 +3,7 @@ import type { Point } from './shelf-scene';
 
 // 볼록 껍질(모노톤 체인)
 export function hull(points: Point[]): Point[] {
+  'worklet';
   const p = [...points].sort((a, b) => a.x - b.x || a.y - b.y);
   const cross = (o: Point, a: Point, b: Point) => (a.x - o.x) * (b.y - o.y) - (a.y - o.y) * (b.x - o.x);
   const lower: Point[] = [];
@@ -22,6 +23,7 @@ export function hull(points: Point[]): Point[] {
 // blur(표준편차)를 주면 시작 윤곽도 빛 반대쪽으로 조금 민다. 흐림이 빛 쪽(왼쪽·위)으로 새어
 // 책 둘레에 후광처럼 번지지 않게 한다(시안: 그림자는 오른쪽 아래로만 떨어진다).
 export function castShape(poly: Point[], dx: number, dy: number, blur = 0) {
+  'worklet';
   const lx = Math.min(dx, 2 * blur);
   const ly = Math.min(dy, blur);
   return hull([...poly.map((p) => ({ x: p.x + lx, y: p.y + ly })), ...poly.map((p) => ({ x: p.x + dx, y: p.y + dy }))]);

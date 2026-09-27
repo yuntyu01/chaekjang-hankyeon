@@ -7,6 +7,7 @@ import type { Point } from './shelf-scene';
 export const MAX_LEAN = 15;
 
 function hullOf(points: Point[]): Point[] {
+  'worklet';
   const p = [...points].sort((a, b) => a.x - b.x || a.y - b.y);
   if (p.length < 3) return p;
   const cross = (o: Point, a: Point, b: Point) => (a.x - o.x) * (b.y - o.y) - (a.y - o.y) * (b.x - o.x);
@@ -25,6 +26,7 @@ function hullOf(points: Point[]): Point[] {
 
 // 볼록 다각형 충돌(분리축). margin만큼 겹쳐야 충돌로 본다(맞닿음은 허용).
 export function overlaps(a: Point[], b: Point[], margin = 0.05) {
+  'worklet';
   const A = hullOf(a);
   const B = hullOf(b);
   for (const poly of [A, B]) {

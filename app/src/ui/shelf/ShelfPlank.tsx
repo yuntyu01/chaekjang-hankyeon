@@ -1,4 +1,4 @@
-// 선반 판 이미지와 앞턱(책 앞을 가리는 판 앞면). ShelfRow와 파일럿(BoxShelf)이 같이 쓴다.
+// 선반 판 이미지와 앞턱(책 앞을 가리는 판 앞면). ShelfRow가 쓴다.
 import { Image, View } from 'react-native';
 
 import { DESIGN_WIDTH, SHELF, SHELF_IMG_H, SHELF_IMG_W, SHELF_IMG_X } from '@/domain/geometry';
