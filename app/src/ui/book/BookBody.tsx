@@ -178,7 +178,8 @@ export function bodyOutline(w: number, h: number, s: number, seed: string, side 
   const wTop = flat ?? wTop0;
   const wRight = flat ?? wRight0;
   const wBottom = flat ?? wBottom0;
-  const headY = (x: number) => (side >= 0.999 ? 0 : bow * (1 - Math.sin((Math.PI * Math.min(x, sideX)) / sideX))); // 머리 곡선
+  // 머리 곡선(상자 모델에서도 세운 책은 볼록하게. 윗면이 같은 곡선을 따라간다). 누운 책 앞면은 평평
+  const headY = (x: number) => (lyingFront ? 0 : bow * (1 - Math.sin((Math.PI * Math.min(x, sideX)) / sideX)));
   const pts: Point[] = [];
   // 왼쪽 위 모서리(머리 곡선 높이에 맞춰 붙인다)
   const y0 = headY(r);

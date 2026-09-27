@@ -10,7 +10,7 @@ import { BRUSH_DETAIL } from '@/domain/body-art.generated';
 import { DESIGN_WIDTH, SHELF } from '@/domain/geometry';
 import type { BookFrame, Point } from '@/domain/shelf-scene';
 import type { Book, Pose } from '@/domain/types';
-import { edgeFactor, Grain, mix, PAGE, PAGE_LINE, scaleColor } from '@/ui/book/BookBody';
+import { edgeFactor, Grain, HEAD_BOW, mix, PAGE, PAGE_LINE, scaleColor } from '@/ui/book/BookBody';
 import { BookRenderer } from '@/ui/book/BookRenderer';
 import { ShelfFront, ShelfImage } from '@/ui/shelf/ShelfRow';
 import { ShelfShadows } from '@/ui/shelf/ShelfShadows';
@@ -56,25 +56,135 @@ export function roundedPath(pts: Point[], radii: number[]) {
   return path;
 }
 
-// 면 네 꼭짓점 [앞 A, 앞 B, 뒤 B, 뒤 A]의 둥글기. 다른 면과 이어지는 앞 모서리는 곧게, 바깥 모서리는 둥글게(시안: 베개처럼 둥근 책).
-function faceRadii(kind: Face['kind'], s: number) {
+// 손으로 그은 선의 흔들림(0 근처 부드러운 잡음). t는 선을 따라간 거리(px), s = 1DU px.
+function wobbleAt(t: number, s: number, seed: number) {
+  return 0.65 * Math.sin((t / (24 * s)) * Math.PI * 2 + seed) + 0.35 * Math.sin((t / (10 * s)) * Math.PI * 2 + seed * 2.3);
+}
+
+const sub = (a: Point, b: Point) => ({ x: a.x - b.x, y: a.y - b.y });
+const unit = (v: Point) => {
+  const l = Math.hypot(v.x, v.y) || 1;
+  return { x: v.x / l, y: v.y / l };
+};
+
+// 부드러운 면 윤곽: 모서리마다 둥글기(radii), 변마다 손그림 흔들림(wob)과 볼록함(bulge: 변 가운데를 이 벡터만큼 민다).
+// outer: 바깥 실루엣에 해당하는 변(연한 선을 그을 곳). 다른 면과 이어지는 변은 곧게 두고 선을 긋지 않는다.
+export function softFace(pts: Point[], opt: { radii: number[]; wob: boolean[]; outer: boolean[]; bulge?: (Point | null)[]; s: number; seed: number }) {
+  const { radii, wob, outer, bulge, s, seed } = opt;
+  const n = pts.length;
+  const amp = 0.32 * s;
+  const cutAt = (i: number, j: number) => {
+    const a = pts[i];
+    const b = pts[j];
+    const len = Math.hypot(b.x - a.x, b.y - a.y) || 1;
+    const t = Math.min(radii[i] ?? 0, len / 2) / len;
+    return { x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t };
+  };
+  const p0 = pts.map((_, i) => cutAt(i, (i + n - 1) % n));
+  const p1 = pts.map((_, i) => cutAt(i, (i + 1) % n));
+  const corner = pts.map((c, i) => {
+    if (!(radii[i] > 0)) return [c];
+    const out: Point[] = [];
+    for (let k = 0; k <= 5; k++) {
+      const t = k / 5;
+      const u = 1 - t;
+      out.push({ x: u * u * p0[i].x + 2 * u * t * c.x + t * t * p1[i].x, y: u * u * p0[i].y + 2 * u * t * c.y + t * t * p1[i].y });
+    }
+    return out;
+  });
+  const edge = pts.map((a, i) => {
+    const b = pts[(i + 1) % n];
+    const from = p1[i];
+    const to = p0[(i + 1) % n];
+    const L = Math.hypot(to.x - from.x, to.y - from.y);
+    const full = Math.hypot(b.x - a.x, b.y - a.y) || 1;
+    const d = unit(sub(to, from));
+    const nrm = { x: -d.y, y: d.x };
+    const out: Point[] = [];
+    const steps = Math.max(1, Math.floor(L / (1.5 * s)));
+    for (let k = 1; k < steps; k++) {
+      const t = (k / steps) * L;
+      const q = { x: from.x + d.x * t, y: from.y + d.y * t };
+      const u = Math.hypot(q.x - a.x, q.y - a.y) / full;
+      let off = 0;
+      if (wob[i]) off = amp * wobbleAt(t + i * 37 * s, s, seed) * Math.sin((Math.PI * k) / steps);
+      const bv = bulge?.[i];
+      const bs = Math.sin(Math.PI * u);
+      out.push({ x: q.x + nrm.x * off + (bv ? bv.x * bs : 0), y: q.y + nrm.y * off + (bv ? bv.y * bs : 0) });
+    }
+    return out;
+  });
+  const all: Point[] = [];
+  for (let i = 0; i < n; i++) all.push(...corner[i], ...edge[i]);
+  // 바깥 변 이어 긋기
+  const runs: Point[][] = [];
+  const start = outer.findIndex((o) => !o);
+  if (start < 0) runs.push([...all, all[0]]);
+  else {
+    let run: Point[] = [];
+    for (let k = 1; k <= n; k++) {
+      const i = (start + k) % n;
+      if (!outer[i]) continue;
+      const prevOuter = outer[(i + n - 1) % n];
+      if (prevOuter) run.push(...corner[i]);
+      else run = [p1[i]];
+      run.push(...edge[i]);
+      const nx = (i + 1) % n;
+      if (!outer[nx]) {
+        run.push(p0[nx]);
+        runs.push(run);
+        run = [];
+      }
+    }
+  }
+  return { all, runs };
+}
+
+// 면 네 꼭짓점의 둥글기·흔들림·바깥 변. visibleFaces 순서:
+// top = [A 앞 오른쪽 위(옆면과 공유), B 앞 왼쪽 위, Bb 뒤 왼쪽, Ab 뒤 오른쪽(옆면과 공유)], 변 0 = 앞, 1 = 왼쪽, 2 = 뒤, 3 = 옆면과 공유
+// right = [A 앞 오른쪽 아래, B 앞 오른쪽 위(윗면과 공유), Bb 뒤 위, Ab 뒤 아래], 변 0 = 앞, 1 = 윗면과 공유, 2 = 뒤, 3 = 바닥
+function faceStyle(kind: Face['kind'], s: number) {
   switch (kind) {
-    case 'top': // A = 앞 왼쪽 위(앞면의 둥근 모서리와 이어짐), B = 앞 오른쪽 위(옆면과 공유)
-      return [4 * s, 0, 5 * s, 4 * s];
-    case 'right': // A = 앞 오른쪽 아래(바닥), B = 앞 오른쪽 위(윗면과 공유)
-      return [1.5 * s, 0, 5 * s, 2.5 * s];
+    case 'top':
+      return { radii: [0, 4 * s, 4 * s, 5 * s], wob: [false, true, true, false], outer: [false, true, true, false] };
+    case 'right':
+      return { radii: [1.5 * s, 0, 5 * s, 2.5 * s], wob: [false, false, true, false], outer: [false, false, true, true] };
     default:
-      return [0, 0, 2 * s, 2 * s];
+      return { radii: [0, 0, 2 * s, 2 * s], wob: [false, true, true, true], outer: [false, true, true, true] };
   }
 }
 
 function FaceShape({ face, book, pose, s, px, grain }: { face: Face; book: Book; pose: Pose; s: number; px: Px; grain: ReturnType<typeof useImage> }) {
   const tone = toneOf(book, pose);
   const m = materialOf(pose, face.kind);
-  const [A, B, Bb, Ab] = face.poly.map(px);
-  const path = roundedPath([A, B, Bb, Ab], faceRadii(face.kind, s));
-  // 평행사변형 위의 점: u = 앞 모서리 A→B, v = 깊이 A→Ab
-  const P = (u: number, v: number) => ({ x: A.x + (B.x - A.x) * u + (Ab.x - A.x) * v, y: A.y + (B.y - A.y) * u + (Ab.y - A.y) * v });
+  let [A, B, Bb, Ab] = face.poly.map(px);
+  // 세운 책의 볼록한 머리(앞면과 같은 곡선): 윗면은 양끝이 bow만큼 내려오고 가운데가 솟는다. 옆면 위 모서리도 같이 내려온다.
+  const bow = pose === 'spine' ? HEAD_BOW * s : 0;
+  let bulge: (Point | null)[] | undefined;
+  if (bow && face.kind === 'top') {
+    const d = unit(sub(B, A));
+    let nIn = { x: -d.y, y: d.x };
+    const depthDir = sub(Ab, A);
+    if (nIn.x * depthDir.x + nIn.y * depthDir.y > 0) nIn = { x: -nIn.x, y: -nIn.y }; // 앞면 쪽
+    const sh = (p: Point) => ({ x: p.x + nIn.x * bow, y: p.y + nIn.y * bow });
+    [A, B, Bb, Ab] = [sh(A), sh(B), sh(Bb), sh(Ab)];
+    const up = { x: -nIn.x * bow, y: -nIn.y * bow };
+    bulge = [up, null, { x: up.x, y: up.y }, null];
+  } else if (bow && face.kind === 'right') {
+    const dn = unit(sub(A, B));
+    B = { x: B.x + dn.x * bow, y: B.y + dn.y * bow };
+    Bb = { x: Bb.x + dn.x * bow, y: Bb.y + dn.y * bow };
+  }
+  const st = faceStyle(face.kind, s);
+  const seed = [...book.id].reduce((h, c) => h + c.charCodeAt(0), 0) * 0.37 + face.kind.length;
+  const soft = softFace([A, B, Bb, Ab], { ...st, bulge, s, seed });
+  const path = Skia.Path.Polygon(soft.all, true);
+  // 평행사변형 위의 점: u = 앞 모서리 A→B, v = 깊이 A→Ab (볼록한 머리면 u 가운데가 솟는다)
+  const P = (u: number, v: number) => {
+    const bs = bulge?.[0] ? Math.sin(Math.PI * u) : 0;
+    const up = bulge?.[0] ?? { x: 0, y: 0 };
+    return { x: A.x + (B.x - A.x) * u + (Ab.x - A.x) * v + up.x * bs, y: A.y + (B.y - A.y) * u + (Ab.y - A.y) * v + up.y * bs };
+  };
   const len = Math.hypot(B.x - A.x, B.y - A.y) || 1;
   const depth = Math.hypot(Ab.x - A.x, Ab.y - A.y) || 1;
   const bu = Math.min(0.3, (1.0 * s) / len); // 표지 판 두께(앞 모서리 방향)
@@ -122,11 +232,15 @@ function FaceShape({ face, book, pose, s, px, grain }: { face: Face; book: Book;
       </Path>
       {/* 빛을 받는 둥근 모서리의 부드러운 광택(그늘 쪽 모서리에는 없다) */}
       {lit ? (
-        <Path path={Skia.Path.Polygon([A, B], false)} style="stroke" strokeWidth={1.6 * s} strokeCap="round">
+        <Path path={Skia.Path.Polygon(Array.from({ length: 13 }, (_, k) => P(k / 12, 0)), false)} style="stroke" strokeWidth={1.6 * s} strokeCap="round">
           <LinearGradient start={vec(A.x, A.y)} end={vec(B.x, B.y)} colors={['rgba(255,255,255,0.4)', 'rgba(255,255,255,0.2)']} />
           <BlurMask blur={0.9 * s} style="normal" />
         </Path>
       ) : null}
+      {/* 바깥 실루엣 변만 연한 같은 색 선(면 사이에는 긋지 않는다) */}
+      {soft.runs.map((r, k) => (
+        <Path key={`o${k}`} path={Skia.Path.Polygon(r, false)} style="stroke" strokeWidth={0.8 * s} strokeJoin="round" strokeCap="round" color={scaleColor(tone, edgeFactor(tone))} opacity={0.7} />
+      ))}
     </>
   );
 }
@@ -145,18 +259,6 @@ const DepthFaces = memo(function DepthFaces({ entries, cam, s, clear, height }: 
             .map((f) => (
               <FaceShape key={f.kind} face={f} book={book} pose={placed.pose} s={s} px={px} grain={grain} />
             ))}
-          {/* 상자 바깥 실루엣만 연한 같은 색 선 하나(면 사이에는 선을 긋지 않는다). 앞면 쪽은 앞면이 덮는다 */}
-          <Path
-            path={(() => {
-              const h = silhouette(cam, placed).map(px);
-              return roundedPath(h, h.map(() => 4 * s));
-            })()}
-            style="stroke"
-            strokeWidth={0.8 * s}
-            strokeJoin="round"
-            color={scaleColor(toneOf(book, placed.pose), edgeFactor(toneOf(book, placed.pose)))}
-            opacity={0.7}
-          />
         </Group>
       ))}
     </Canvas>

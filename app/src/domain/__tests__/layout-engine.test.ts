@@ -256,7 +256,7 @@ describe('책 서랍', () => {
     expect(a.where).toBe('shelf');
     let l = a.layout;
     const placed: string[] = [];
-    for (let i = 0; i < 12; i++) {
+    for (let i = 0; i < 30; i++) {
       const id = `x${i}`;
       extra[id] = { ...books.b02, id };
       const r = addBook(l, extra, id);

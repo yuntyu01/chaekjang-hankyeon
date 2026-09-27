@@ -30,8 +30,8 @@ describe('단위', () => {
     expect(bookThickness(book('thin', 110, 175, 100))).toBe(MIN_SPINE_DU);
     // 두꺼울수록 늘고, 300쪽은 약 35DU
     const t300 = bookThickness(book('a', 140, 210, 300));
-    expect(t300).toBeGreaterThan(33);
-    expect(t300).toBeLessThan(37);
+    expect(t300).toBeGreaterThan(27);
+    expect(t300).toBeLessThan(31);
     expect(bookThickness(book('b', 140, 210, 450))).toBeGreaterThan(t300);
   });
 
@@ -46,7 +46,7 @@ describe('단위', () => {
 });
 
 describe('선반 용량', () => {
-  it('보통 책(300쪽)은 세워서 10권까지, 11권째에서 넘친다', () => {
+  it('보통 책(300쪽)은 선반 폭을 두께로 나눈 만큼 세워지고, 한 권 더면 넘친다', () => {
     const books: BookMap = {};
     const layout = (n: number): ShelfLayout => ({
       version: 2,
@@ -55,9 +55,11 @@ describe('선반 용량', () => {
       placements: Array.from({ length: n }, (_, i) => ({ bookId: `b${i}`, shelfId: 's', order: i, pose: 'spine' as const, tilt: 0 as const })),
     });
     for (let i = 0; i < 20; i++) books[`b${i}`] = book(`b${i}`, 140, 210, 300);
-    // 300쪽 ≈ 35DU, 선반 366DU → 10권
-    expect(checkSpace(layout(10), books)).toBeNull();
-    expect(checkSpace(layout(11), books)).toBe('no-space');
+    // 300쪽 ≈ 29DU, 선반 366DU → 12권
+    const fit = Math.floor(SHELF_USABLE_WIDTH / bookThickness(books.b0));
+    expect(fit).toBe(12);
+    expect(checkSpace(layout(fit), books)).toBeNull();
+    expect(checkSpace(layout(fit + 1), books)).toBe('no-space');
   });
 
   it('예시 책장 세 줄이 모두 선반 안에 들어간다', () => {
