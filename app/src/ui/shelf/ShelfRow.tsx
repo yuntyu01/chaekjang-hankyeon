@@ -120,7 +120,7 @@ type Props = {
 export const ShelfRow = memo(function ShelfRow(p: Props) {
   const s = p.scale;
   return (
-    <View style={{ height: p.height, width: DESIGN_WIDTH * s, marginLeft: p.originX }}>
+    <View style={{ height: p.height, width: DESIGN_WIDTH * s, marginLeft: p.originX, overflow: 'visible' }}>
       {SHELF_STYLE === 'asset' ? (
         <ShelfImage scale={s} clear={p.clear} />
       ) : (

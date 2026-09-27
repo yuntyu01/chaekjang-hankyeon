@@ -1,11 +1,13 @@
-// 외부 그림자. 책과 함께 회전하는 부모 밖(선반 좌표)에서 그려서, 기울어진 책도 그림자는 화면 기준 오른쪽 아래로 떨어진다.
-// 플랫폼 그림자 API 대신 SVG 도형을 써서 iOS/Android 모양을 맞춘다. 터치·점유 폭에는 포함하지 않는다.
-// 빛은 왼쪽 위: 책 그림자는 오른쪽 아래로 비스듬히, 두 겹 가우시안 블러(theme.shadow.cast).
-import { memo, useId } from 'react';
-import { StyleSheet } from 'react-native';
-import Svg, { ClipPath, Defs, Ellipse, FeGaussianBlur, Filter, G, LinearGradient, Polygon, RadialGradient, Rect, Stop } from 'react-native-svg';
+// 책 그림자. 책과 함께 회전하는 부모 밖(선반 좌표)에서 그려서, 기울어진 책도 그림자는 화면 기준으로 떨어진다.
+// 빛은 왼쪽 위: 책 윤곽을 오른쪽 아래로 옮겨 이은 모양(castShape)을 Skia 블러로 흐린다.
+// react-native-svg의 안드로이드 블러는 반경이 25px로 잘려 넓은 그림자가 네모나게 나오므로 Skia를 쓴다.
+// 터치·점유 폭에는 포함하지 않는다. 수치는 theme.shadow.cast.
+import { BlurMask, Canvas, Group, LinearGradient, Oval, Path, Skia, rect, vec } from '@shopify/react-native-skia';
+import { memo, useMemo } from 'react';
+import { StyleSheet, View } from 'react-native';
 
 import { DESIGN_WIDTH, SHELF } from '@/domain/geometry';
+import { castShape, rgba } from '@/domain/shadow-shape';
 import type { BookFrame, Point } from '@/domain/shelf-scene';
 import { colors, shadow } from '@/ui/theme';
 
@@ -19,87 +21,57 @@ export function contactOf(poly: Point[]) {
   const [a, b] = sorted;
   const lo = Math.min(a.x, b.x);
   const hi = Math.max(a.x, b.x);
-  // 기울인 책은 바닥에 닿은 모서리 쪽으로 무게를 둔다.
   const flat = Math.abs(a.y - b.y) < 0.5;
   return { cx: flat ? (lo + hi) / 2 : ((lo + hi) / 2) * 0.4 + a.x * 0.6, half: (hi - lo) / 2 };
 }
 
-// 볼록 껍질(모노톤 체인). 책 윤곽과 오른쪽으로 옮긴 윤곽을 합친 '끌린 그림자' 모양을 만든다.
-export function hull(points: Point[]): Point[] {
-  const p = [...points].sort((a, b) => a.x - b.x || a.y - b.y);
-  const cross = (o: Point, a: Point, b: Point) => (a.x - o.x) * (b.y - o.y) - (a.y - o.y) * (b.x - o.x);
-  const lower: Point[] = [];
-  for (const q of p) {
-    while (lower.length >= 2 && cross(lower[lower.length - 2], lower[lower.length - 1], q) <= 0) lower.pop();
-    lower.push(q);
-  }
-  const upper: Point[] = [];
-  for (const q of [...p].reverse()) {
-    while (upper.length >= 2 && cross(upper[upper.length - 2], upper[upper.length - 1], q) <= 0) upper.pop();
-    upper.push(q);
-  }
-  return [...lower.slice(0, -1), ...upper.slice(0, -1)];
-}
-
-// 빛 반대쪽(dx, dy)으로 옮긴 윤곽과 원래 윤곽을 이은 모양: 비스듬히 가로지르는 그림자.
-export function castShape(poly: Point[], dx: number, dy: number) {
-  return hull([...poly, ...poly.map((p) => ({ x: p.x + dx, y: p.y + dy }))]);
+export function toPath(points: Point[]) {
+  return Skia.Path.Polygon(points.map((q) => ({ x: q.x, y: q.y })), true);
 }
 
 export const ShelfShadows = memo(function ShelfShadows({ frames, scale: s, hiddenId, height, clear }: Props) {
-  const id = useId().replace(/[^a-zA-Z0-9]/g, '');
-  const X = (x: number) => (SHELF.sideMargin + x) * s;
-  const Y = (y: number) => (clear + y - FLOOR) * s;
   const floorY = clear * s;
-  const visible = frames.filter((f) => f.bookId !== hiddenId);
+  const width = DESIGN_WIDTH * s;
   const { layers, fade } = shadow.cast;
   const fadeTop = fade[fade.length - 1][0];
+  const visible = useMemo(() => frames.filter((f) => f.bookId !== hiddenId), [frames, hiddenId]);
+  const paths = useMemo(() => {
+    const X = (x: number) => (SHELF.sideMargin + x) * s;
+    const Y = (y: number) => (clear + y - FLOOR) * s;
+    return layers.map((l) => visible.map((f) => toPath(castShape(f.poly, l.dx, l.dy).map((p) => ({ x: X(p.x), y: Y(p.y) })))));
+  }, [visible, layers, s, clear]);
+  // 바닥에서 위로 옅어지는 색(fade)
+  const gradColors = fade.map(([, k]) => rgba(colors.shadow, k));
+  const gradPos = fade.map(([h]) => h / fadeTop);
   return (
-    <Svg style={StyleSheet.absoluteFill} width={DESIGN_WIDTH * s} height={height} pointerEvents="none">
-      <Defs>
-        <RadialGradient id={`${id}c`} cx="50%" cy="50%" rx="50%" ry="50%">
-          <Stop offset="0" stopColor={colors.shadow} stopOpacity={shadow.contact.opacity} />
-          <Stop offset="1" stopColor={colors.shadow} stopOpacity={0} />
-        </RadialGradient>
-        {/* 바닥 쪽이 진하고 위로 옅어지는 그림자(theme.shadow.cast.fade) */}
-        <LinearGradient id={`${id}cast`} x1="0" y1={floorY - fadeTop * s} x2="0" y2={floorY} gradientUnits="userSpaceOnUse">
-          {[...fade].reverse().map(([h, k]) => (
-            <Stop key={h} offset={1 - h / fadeTop} stopColor={colors.shadow} stopOpacity={k} />
+    <View style={[StyleSheet.absoluteFill, { height }]} pointerEvents="none">
+      <Canvas style={{ width, height }}>
+        <Group clip={rect(0, 0, width, floorY + SHELF.lip * s)}>
+          {layers.map((l, i) => (
+            <Group key={i} opacity={l.opacity}>
+              {paths[i].map((p, j) => (
+                <Path key={j} path={p}>
+                  <LinearGradient start={vec(0, floorY)} end={vec(0, floorY - fadeTop * s)} colors={gradColors} positions={gradPos} />
+                  <BlurMask blur={l.blur * s} style="normal" />
+                </Path>
+              ))}
+            </Group>
           ))}
-        </LinearGradient>
-        {/* 겹마다 가우시안 블러. 영역을 캔버스 전체로 잡아 흐린 가장자리가 잘리지 않게 한다 */}
-        {layers.map((l, i) => (
-          <Filter key={i} id={`${id}blur${i}`} x={0} y={0} width={DESIGN_WIDTH * s} height={height} filterUnits="userSpaceOnUse">
-            <FeGaussianBlur stdDeviation={l.blur * s} />
-          </Filter>
-        ))}
-        <ClipPath id={`${id}clip`}>
-          <Rect x={0} y={0} width={DESIGN_WIDTH * s} height={floorY + SHELF.lip * s} />
-        </ClipPath>
-      </Defs>
-      <G clipPath={`url(#${id}clip)`}>
-        {layers.map((l, i) => (
-          <G key={i} filter={`url(#${id}blur${i})`} opacity={l.opacity}>
-            {visible.map((f) => (
-              <Polygon key={f.bookId} points={castShape(f.poly, l.dx, l.dy).map((p) => `${X(p.x)},${Y(p.y)}`).join(' ')} fill={`url(#${id}cast)`} />
-            ))}
-          </G>
-        ))}
-      </G>
-      {visible.map((f) => {
-        if (f.stackIndex > 0) return null;
-        const c = contactOf(f.poly);
-        return (
-          <Ellipse
-            key={`c-${f.bookId}`}
-            cx={X(c.cx + 1.5)}
-            cy={floorY + 0.5 * s}
-            rx={(c.half + shadow.contact.spread) * s}
-            ry={shadow.contact.height * s}
-            fill={`url(#${id}c)`}
-          />
-        );
-      })}
-    </Svg>
+        </Group>
+        {/* 책이 선반에 닿는 곳의 좁은 접촉 그림자 */}
+        {visible.map((f) => {
+          if (f.stackIndex > 0) return null;
+          const c = contactOf(f.poly);
+          const cx = (SHELF.sideMargin + c.cx + 1.5) * s;
+          const rx = (c.half + shadow.contact.spread) * s;
+          const ry = shadow.contact.height * s;
+          return (
+            <Oval key={f.bookId} x={cx - rx} y={floorY + 0.5 * s - ry} width={rx * 2} height={ry * 2} color={rgba(colors.shadow, shadow.contact.opacity)}>
+              <BlurMask blur={1.6 * s} style="normal" />
+            </Oval>
+          );
+        })}
+      </Canvas>
+    </View>
   );
 });

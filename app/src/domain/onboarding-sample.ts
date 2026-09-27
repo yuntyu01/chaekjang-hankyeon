@@ -28,8 +28,8 @@ const META: Meta[] = [
 ];
 
 // 폰 화면을 채우도록 책 키를 키운다. 폭은 그대로(1번 선반이 이미 가득 참). 늘어난 만큼은 그림 없는 빈 띠(band)만 늘린다.
-export const SPINE_GROW = 1.15;
-export const COVER_GROW = 1.12;
+export const SPINE_GROW = 1.1;
+export const COVER_GROW = 1.08;
 
 const heightClass = (h: number): HeightClass => (h < 140 ? 'short' : h < 165 ? 'medium' : 'tall');
 const thicknessClass = (t: number): ThicknessClass => (t < 32 ? 'thin' : t < 40 ? 'medium' : 'thick');

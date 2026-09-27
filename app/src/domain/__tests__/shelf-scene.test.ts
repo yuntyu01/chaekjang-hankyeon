@@ -46,7 +46,7 @@ describe('선반 장면', () => {
   });
 });
 
-import { castShape, hull } from '../../ui/shelf/ShelfShadows';
+import { castShape, hull } from '../shadow-shape';
 
 describe('책 그림자 모양', () => {
   it('책 윤곽과 오른쪽 아래로 옮긴 윤곽을 이은 볼록 껍질', () => {

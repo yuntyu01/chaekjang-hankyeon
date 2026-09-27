@@ -52,11 +52,12 @@ export const shadow = {
   // dx/dy: 오른쪽·아래 이동(DU), blur: 표준편차(DU), opacity: 최대 불투명도.
   // fade: 바닥에서 위로 [높이 DU, 배율] — 위쪽은 조금 옅게.
   cast: {
+    // 시안 측정(맨 끝 책 오른쪽 2/6/12DU): 28/26/20, 판 위 110DU까지 거의 평평 → 옅고 넓게
     layers: [
-      { dx: 5, dy: 4, blur: 3, opacity: 0.1 },
-      { dx: 18, dy: 14, blur: 11, opacity: 0.13 },
+      { dx: 3, dy: 2, blur: 2, opacity: 0.03 },
+      { dx: 26, dy: 12, blur: 12, opacity: 0.11 },
     ],
-    fade: [[0, 1], [90, 0.8], [200, 0.5]] as [number, number][],
+    fade: [[0, 1], [60, 0.9], [100, 0.75], [130, 0.4], [165, 0]] as [number, number][],
   },
   lifted: { dx: 12, dy: 14, opacity: 0.16, scale: 1.06 }, // 드래그 중 들린 느낌
   plank: { opacity: 0.3, height: 20 }, // 선반 판 아래 벽 그림자
@@ -64,12 +65,14 @@ export const shadow = {
 
 // 선반 바깥 그림자(선반 PNG에서 분리, ShelfShadow가 그린다). 단위 DU(폭 390 기준).
 // 책 그림자와 같은 빛(왼쪽 위): 나무판 모양을 오른쪽 아래로 옮겨 이은 모양을 가우시안 블러.
-// 두 겹: 판 바로 밑의 좁고 진한 접촉 그림자 + 아래로 넓게 퍼지는 옅은 그림자. 여기 값만 바꾸면 된다.
+// 세 겹(접촉·중간·퍼짐)을 겹쳐 시안의 감쇠 곡선을 만든다. 여기 값만 바꾸면 된다.
 export const shelfShadow = {
   color: '#5A3E26',
+  // 시안 측정(판 밑 1/3/6/10/15/20/25/30DU 불투명도 환산): .32/.30/.26/.22/.18/.15/.105/.09
   layers: [
-    { dx: 1.5, dy: 2.5, blur: 2.2, opacity: 0.2 }, // 접촉
-    { dx: 12, dy: 15, blur: 11, opacity: 0.13 }, // 퍼짐
+    { dx: 1, dy: 4, blur: 2, opacity: 0.085 }, // 접촉: 판 바로 밑 선명한 선
+    { dx: 3, dy: 12, blur: 6, opacity: 0.12 }, // 중간
+    { dx: 6, dy: 30, blur: 12, opacity: 0.19 }, // 퍼짐: 아래로 길게
   ],
 };
 

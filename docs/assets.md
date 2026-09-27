@@ -18,10 +18,14 @@ plankLeft 0.0239 · plankRight 0.9761 · plankTopY 0.395 · frontTopY 0.5 · pla
 
 ## 그림자(코드)
 
-빛은 왼쪽 위. 책·선반 모두 윤곽을 오른쪽 아래로 옮긴 모양과 원래 윤곽을 이은 볼록 껍질(비스듬히 가로지르는 그림자)을 SVG 가우시안 블러로 흐린다. 두 겹(가까운 선명한 그림자 + 멀리 퍼지는 옅은 그림자).
-- 책: `theme.ts`의 `shadow.cast.layers`(dx·dy·blur·opacity), `fade`(높이별 옅어짐) → `src/ui/shelf/ShelfShadows.tsx`
-- 선반: `theme.ts`의 `shelfShadow.layers` → `src/ui/shelf/ShelfShadow.tsx`(판 뒤에 그림, 판 위쪽으로는 번지지 않게 자름)
-- 선반 두께: `geometry.ts`의 `SHELF_THICKNESS`(나무판 세로 배율, 현재 1.3)
+빛은 왼쪽 위. 책·선반 모두 윤곽을 오른쪽 아래로 옮긴 모양과 원래 윤곽을 이은 볼록 껍질을 **Skia**(`@shopify/react-native-skia`, Expo Go 포함) BlurMask로 흐린다.
+react-native-svg의 안드로이드 FeGaussianBlur는 반경을 25px로 잘라(`FeGaussianBlurView.java` maxRadius) 넓은 그림자가 네모나게 나오므로 그림자 층만 Skia로 그린다.
+- 책: `theme.ts` `shadow.cast.layers`(dx·dy·blur·opacity), `fade`(높이별) → `src/ui/shelf/ShelfShadows.tsx`
+- 선반: `theme.ts` `shelfShadow.layers`(접촉·중간·퍼짐 3겹) → `src/ui/shelf/ShelfShadow.tsx`
+- 선반 두께: `geometry.ts` `SHELF_THICKNESS`(1.2)
+
+시안 대조 도구: `app/scripts/qa/cmpshadow.py 시안.png 캡처.png`, `rightprof.py`(벽색→그림자색 방향으로 그림자 세기를 떼어 같은 지점 비교).
+에뮬레이터 측정: 판 밑 6/10/15/20/25/30DU 시안 81/70/56/46/33/28 ↔ 앱 81/72/58/46/35/27. 끝 책 오른쪽 벽(50DU 높이) 시안 28/26/20 ↔ 앱 37/36/24.
 
 ## 추가로 필요한 최종 자산
 

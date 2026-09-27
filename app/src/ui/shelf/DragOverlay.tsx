@@ -2,7 +2,9 @@
 // 들린 느낌: 살짝 확대 + 접촉 그림자 없이 넓고 흐린 그림자.
 import { StyleSheet, View } from 'react-native';
 import Animated, { type SharedValue, useAnimatedStyle } from 'react-native-reanimated';
-import Svg, { Defs, FeGaussianBlur, Filter, Polygon } from 'react-native-svg';
+import { BlurMask, Canvas, Path, Skia } from '@shopify/react-native-skia';
+
+import { rgba } from '@/domain/shadow-shape';
 
 import type { BookFrame } from '@/domain/shelf-scene';
 import type { Book } from '@/domain/types';
@@ -30,9 +32,10 @@ const PAD = 40;
 
 export function DragOverlay({ book, frame, scale: s, x, y, lift }: Props) {
   const box = frameBBox(frame);
-  const pts = frame.poly
-    .map((p) => `${(p.x - box.minX + shadow.lifted.dx) * s + PAD},${(p.y - box.minY + shadow.lifted.dy) * s + PAD}`)
-    .join(' ');
+  const liftPath = Skia.Path.Polygon(
+    frame.poly.map((p) => ({ x: (p.x - box.minX + shadow.lifted.dx) * s + PAD, y: (p.y - box.minY + shadow.lifted.dy) * s + PAD })),
+    true,
+  );
   const style = useAnimatedStyle(() => ({
     transform: [{ translateX: x.value }, { translateY: y.value }, { scale: 1 + (shadow.lifted.scale - 1) * lift.value }],
   }));
@@ -42,14 +45,11 @@ export function DragOverlay({ book, frame, scale: s, x, y, lift }: Props) {
       pointerEvents="none"
       style={[styles.root, { width: box.width * s, height: box.height * s }, style]}>
       <Animated.View style={[{ position: 'absolute', left: -PAD, top: -PAD }, shadowStyle]}>
-        <Svg width={box.width * s + PAD * 2 + shadow.lifted.dx * s} height={box.height * s + PAD * 2 + shadow.lifted.dy * s}>
-          <Defs>
-            <Filter id="lift" x={0} y={0} width={box.width * s + PAD * 2 + shadow.lifted.dx * s} height={box.height * s + PAD * 2 + shadow.lifted.dy * s} filterUnits="userSpaceOnUse">
-              <FeGaussianBlur stdDeviation={7 * s} />
-            </Filter>
-          </Defs>
-          <Polygon points={pts} fill={colors.shadow} fillOpacity={shadow.lifted.opacity * 1.4} filter="url(#lift)" />
-        </Svg>
+        <Canvas style={{ width: box.width * s + PAD * 2 + shadow.lifted.dx * s, height: box.height * s + PAD * 2 + shadow.lifted.dy * s }}>
+          <Path path={liftPath} color={rgba(colors.shadow, shadow.lifted.opacity * 1.4)}>
+            <BlurMask blur={8 * s} style="normal" />
+          </Path>
+        </Canvas>
       </Animated.View>
       <View
         style={{
