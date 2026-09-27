@@ -41,18 +41,19 @@ function scaleColor(hex: string, k: number) {
 // 앞면·홈·옆면의 가로 명암(위치: 책 폭 비율, 값: 밝기 배율). side = 옆면 시작 비율.
 export function spineProfile(side: number): [number, number][] {
   const f = side - 0.095; // 앞면 끝
+  // 홈·옆면은 형태가 읽힐 만큼만 어둡게(너무 진하면 책마다 검은 띠처럼 보인다)
   return [
-    [0, 0.8],
+    [0, 0.9],
     [0.035, 1.0],
-    [0.08, 1.05],
+    [0.08, 1.04],
     [0.3 * f, 1.03],
-    [0.6 * f, 0.98],
-    [f, 0.95],
-    [f + 0.02, 0.66],
-    [side - 0.01, 0.64],
-    [side + 0.01, 0.82],
-    [0.975, 0.78],
-    [1, 0.64],
+    [0.6 * f, 0.99],
+    [f, 0.97],
+    [f + 0.02, 0.86],
+    [side - 0.01, 0.85],
+    [side + 0.01, 0.93],
+    [0.975, 0.91],
+    [1, 0.84],
   ];
 }
 
@@ -150,7 +151,7 @@ function SpineSkin({ id, w, h, s, face, side, grain }: { id: string; w: number; 
           <LinearGradient start={vec(0, h - 3 * s)} end={vec(0, h)} colors={['rgba(0,0,0,0)', 'rgba(0,0,0,0.12)']} />
         </Rect>
       </Group>
-      <Path path={outline} style="stroke" strokeWidth={0.9 * s} color="rgba(20, 26, 24, 0.42)">
+      <Path path={outline} style="stroke" strokeWidth={0.8 * s} color="rgba(20, 26, 24, 0.24)">
         <BlurMask blur={0.3 * s} style="normal" />
       </Path>
     </Group>
@@ -257,7 +258,7 @@ export const CoverBody = memo(function CoverBody({
   return (
     <Canvas style={{ width: fw + side, height: h }}>
       {/* 속지 단면(뒤표지판 + 종이) */}
-      <RoundedRect x={fw - 3 * s} y={1.2 * s} width={side + 3 * s} height={h - 1.2 * s} r={2 * s} color={scaleColor(face, 0.72)} />
+      <RoundedRect x={fw - 3 * s} y={1.2 * s} width={side + 3 * s} height={h - 1.2 * s} r={2 * s} color={scaleColor(face, 0.86)} />
       <Rect x={fw - 1 * s} y={2.4 * s} width={side - 0.4 * s} height={h - 4.8 * s} color={PAGE} />
       {Array.from({ length: lines }, (_, i) => (
         <Rect key={i} x={fw - 1 * s + ((i + 1) * (side - 0.4 * s)) / (lines + 1)} y={2.4 * s} width={0.5} height={h - 4.8 * s} color={PAGE_LINE} />
@@ -276,7 +277,7 @@ export const CoverBody = memo(function CoverBody({
           <LinearGradient start={vec(0, 0)} end={vec(fw, h)} colors={['rgba(255,255,255,0.08)', 'rgba(255,255,255,0)', 'rgba(0,0,0,0.08)']} positions={[0, 0.45, 1]} />
         </Rect>
       </Group>
-      <Path path={outline} style="stroke" strokeWidth={0.9 * s} color="rgba(20, 26, 24, 0.35)">
+      <Path path={outline} style="stroke" strokeWidth={0.8 * s} color="rgba(20, 26, 24, 0.22)">
         <BlurMask blur={0.3 * s} style="normal" />
       </Path>
     </Canvas>
