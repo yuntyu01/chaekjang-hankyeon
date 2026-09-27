@@ -92,6 +92,8 @@ export type Book = {
   // 모티프 그림 자산(투명 PNG). 없으면 art.motif 슬롯의 개발용 SVG.
   motifImage?: ImageSource;
   sample?: SampleArt;
+  // 코드로 그리는 몸체에 입힐 재료(색·모티프). 있으면 잘라 붙인 예시 그림(reference·sample) 대신 쓴다.
+  body?: import('./body-art.generated').BodyArt;
   reference?: ReferenceArt;
 };
 

@@ -33,7 +33,7 @@ export function useShelfMetrics() {
   return makeMetrics(width);
 }
 
-export const RIBBON_OUT = 8;
+export const RIBBON_OUT = 12;
 
 export function computeRows(layout: ShelfLayout, books: BookMap, scale: number, viewportHeight = 0, bottomInset = 0): RowGeom[] {
   const shelves = sortedShelves(layout);

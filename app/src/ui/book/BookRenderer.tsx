@@ -13,6 +13,7 @@ import { MotifArt } from '@/ui/art/motifs';
 import { SCENE_TITLE, SceneArt, spineCropViewBox } from '@/ui/art/scenes';
 import { PAPER_GRAIN } from '@/ui/art/texture';
 import { fonts } from '@/ui/theme';
+import { BookBody } from './BookBody';
 import { ReferenceBook } from './ReferenceBook';
 
 type Props = { book: Book; pose: Pose; scale: number };
@@ -98,13 +99,13 @@ function BandImage({ source, width, natural, target, band, radius }: { source: S
 }
 
 // 갈피: 저장된 문장이 있는 책에만. 문장 수만큼(최대 2개) 책 위로 8DU 돌출된 끈. 책 몸체 뒤에 그려 아래쪽은 가려진다.
-export const RIBBON_OUT = 8;
+export const RIBBON_OUT = 12; // 시안: 갈피가 책 위로 약 13DU
 function Ribbons({ book, cx, scale: s }: { book: Book; cx: number; scale: number }) {
   const n = Math.min(2, book.quotes ?? 0);
   if (!n) return null;
   const color = book.art.ribbon ?? shade(book.themeColor, 0.25);
-  const w = 5.4 * s;
-  const gap = 1.4 * s;
+  const w = 8 * s;
+  const gap = 2 * s;
   const total = n * w + (n - 1) * gap;
   return (
     <>
@@ -121,6 +122,9 @@ function Ribbons({ book, cx, scale: s }: { book: Book; cx: number; scale: number
             overflow: 'hidden',
             borderTopLeftRadius: 0.8 * s,
             borderTopRightRadius: 0.8 * s,
+            // 시안처럼 끈이 살짝 벌어져 있다
+            transformOrigin: 'center bottom',
+            transform: [{ rotate: i ? '3deg' : '-4deg' }],
           }}
         >
           <View style={[StyleSheet.absoluteFill, { borderLeftWidth: 0.5 * s, borderLeftColor: 'rgba(255,255,255,0.22)' }]} />
@@ -209,6 +213,19 @@ function Spine({ book, scale: s }: { book: Book; scale: number }) {
   const w = bookThickness(book) * s;
   const h = bookHeight(book) * s;
   const sample = book.sample;
+  if (book.body) {
+    // 코드 몸체 + 앱 조판 제목
+    const fs = (sample?.titleSize ?? 11) * s;
+    return (
+      <View style={{ width: w, height: h }}>
+        <Ribbons book={book} cx={w * 0.52} scale={s} />
+        <BookBody id={book.id} width={w} height={h} scale={s} art={book.body} />
+        <View style={{ position: 'absolute', top: (sample?.titleTop ?? 0.2) * h, left: (sample?.titleCx ?? 0.45) * w - w, width: w * 2, flexDirection: 'row', justifyContent: 'center' }}>
+          <VerticalText columns={[book.title]} fs={fs} color={sample?.ink ?? inkOf(book)} />
+        </View>
+      </View>
+    );
+  }
   if (sample?.kind === 'spine') {
     const fs = sample.titleSize * s;
     const cap = (sample.cap ?? 0) * s;

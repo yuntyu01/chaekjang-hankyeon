@@ -2,6 +2,7 @@
 // 기본 자세는 원본 시안의 개별 책 윤곽을 표시한다. 자세를 바꾸면 기존 샘플/모티프 렌더러를 쓴다.
 import { FRONT_SIDE, TOP_FACE } from './geometry';
 import { SAMPLE_ART } from './onboarding-sample.generated';
+import { BODY_ART } from './body-art.generated';
 import { REFERENCE_ART } from './reference-art';
 import type { Book, BookPlacement, HeightClass, ShelfLayout, ThicknessClass } from './types';
 
@@ -34,7 +35,12 @@ const thicknessClass = (t: number): ThicknessClass => (t < 32 ? 'thin' : t < 40 
 function toBook(m: Meta): Book {
   const s = SAMPLE_ART[m.id];
   const reference = REFERENCE_ART[m.id];
+  const body = BODY_ART[m.id];
   const base = { id: m.id, title: m.title, author: m.author, themeColor: s.color, quotes: m.quotes, art: { motif: m.motif, ribbon: m.ribbon }, finishedAt: m.finishedAt, motifImage: s.motif, sample: s, reference };
+  if (reference.pose === 'spine' && body) {
+    // 코드 몸체로 옮긴 책: 잘라 붙인 윤곽은 쓰지 않고 크기만 가져온다
+    return { ...base, reference: undefined, body, themeColor: body.face, heightClass: heightClass(reference.height), thicknessClass: thicknessClass(reference.width), coverAspectRatio: 0.7, dims: { height: reference.height, thickness: reference.width } };
+  }
   if (reference.pose === 'spine') {
     return { ...base, heightClass: heightClass(reference.height), thicknessClass: thicknessClass(reference.width), coverAspectRatio: 0.7, dims: { height: reference.height, thickness: reference.width } };
   }
