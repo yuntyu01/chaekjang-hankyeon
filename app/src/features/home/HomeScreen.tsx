@@ -6,7 +6,7 @@ import { useFocusEffect } from 'expo-router';
 import * as Haptics from 'expo-haptics';
 import { BookMarked, Check, Paintbrush, Plus } from 'lucide-react-native';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { AppState, Modal, Pressable, StyleSheet, Text, View } from 'react-native';
+import { AppState, Modal, Pressable, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import Animated, {
   scrollTo,
@@ -32,6 +32,7 @@ import {
   moveToShelf,
   placeFromDrawer,
   placementOf,
+  rotateStep,
   setPose,
   setTilt,
   sortedShelves,
@@ -51,6 +52,7 @@ import { colors, fonts, motion, navigation } from '@/ui/theme';
 
 import { BookDetail, type MoveAction } from './BookDetail';
 import { BookPopover } from './BookPopover';
+import { BookTools } from './BookTools';
 import { DrawerSheet } from './DrawerSheet';
 
 type HintKind = SwapTarget['kind'] | 'beside';
@@ -112,12 +114,15 @@ export function HomeScreen() {
   const store = usePlacementStore();
   const { books, layout } = store;
   const m = useShelfMetrics();
+  const { width: winW } = useWindowDimensions();
   const reduceMotion = useReducedMotion();
 
   const [drag, setDrag] = useState<Drag | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [detailId, setDetailId] = useState<string | null>(null); // 서랍 책(시트)
   const [popId, setPopId] = useState<string | null>(null); // 선반 책(떠오르는 상자)
+  const [toolsId, setToolsId] = useState<string | null>(null); // 꾹 눌렀다 뗀 책(도구 막대)
+  const [toolsMsg, setToolsMsg] = useState<string | null>(null);
   const [selectedYear, setSelectedYear] = useState<number | null>(null); // 헤더 독서 연도
   const [vpH, setVpH] = useState(0);
   const [editing, setEditing] = useState(false);
@@ -211,6 +216,10 @@ export function HomeScreen() {
   // ---------- 제스처 콜백(JS) ----------
   const onTap = (x: number, y: number) => {
     if (Date.now() - lastDragEnd.current < 350 || dragRef.current) return;
+    if (toolsId) {
+      closeTools();
+      return;
+    }
     const hit = hitAt(x, y);
     if (!hit) {
       setPopId(null);
@@ -301,6 +310,13 @@ export function HomeScreen() {
       scheduleOnRN(finishDrag);
     });
     if (!committed && d.preview?.kind !== 'ok') void Haptics.selectionAsync().catch(() => {});
+    // 움직이지 않고 뗐으면 책 밑에 도구 막대(돌리기·표지·서랍)
+    if (!cancelled && d.preview?.kind === 'same') {
+      popScroll.current = scrollY.value;
+      setToolsMsg(null);
+      setToolsId(d.bookId);
+      setSelectedId(d.bookId);
+    }
   };
 
   // 화면 이탈·앱 비활성화: 임시 배치를 버리고 확정 상태 유지
@@ -433,6 +449,37 @@ export function HomeScreen() {
     return commit(moveToShelf(layout, books, id, shelves[i].id));
   };
 
+  const closeTools = () => {
+    setToolsId(null);
+    setToolsMsg(null);
+    setSelectedId(null);
+  };
+  // 좌우 돌리기 한 단계. 기댈 곳이 없어 바로 선 경우 알려 준다.
+  const toolRotate = (id: string, dir: -1 | 1): string | null => {
+    const r = rotateStep(layout, books, id, dir);
+    const err = commit(r);
+    if (err) return err;
+    const now = placementOf(placementStore.get().layout, id);
+    if (r.ok && placementOf(r.layout, id)?.tilt !== 0 && now && now.pose === 'spine' && now.tilt === 0) return ko.lean.noSupport;
+    return null;
+  };
+
+  // 도구 막대 위치: 책 밑(선반 앞턱 아래), 화면 밖이면 책 위
+  const toolsAnchor = useMemo(() => {
+    if (!toolsId) return null;
+    const p = placementOf(shown, toolsId);
+    const row = p && rows.find((r) => r.shelfId === p.shelfId);
+    const f = row && frames.get(p!.shelfId)?.find((fr) => fr.bookId === toolsId);
+    if (!row || !f) return null;
+    const sy = popScroll.current;
+    const box = frameBBox(f);
+    const cx = toContent(m, row, { x: box.minX + box.width / 2, y: 0 }).x;
+    const under = row.top + (row.clear + SHELF.below) * m.scale + 6 - sy;
+    if (under + 60 <= vpH - navigation.height - insets.bottom) return { cx, y: under, below: true };
+    return { cx, y: toContent(m, row, { x: 0, y: box.minY }).y - sy - 8, below: false };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [toolsId, shown, rows, frames, m, vpH, insets.bottom]);
+
   const onA11y = useCallback(
     (bookId: string, action: string) => {
       if (action === 'activate') {
@@ -560,20 +607,32 @@ export function HomeScreen() {
         {popId && popAnchor && books[popId] && placementOf(layout, popId) ? (
           <BookPopover
             book={books[popId]}
-            placement={placementOf(layout, popId)!}
             anchor={popAnchor}
             reduceMotion={reduceMotion}
             onClose={() => {
               setPopId(null);
               setSelectedId(null);
             }}
-            onPose={menuPose}
-            onTilt={menuTilt}
-            onToDrawer={() => {
-              commit(moveToDrawer(layout, popId, books), ko.drawer.stored);
-              setPopId(null);
-              setSelectedId(null);
+          />
+        ) : null}
+
+        {toolsId && toolsAnchor && placementOf(layout, toolsId) ? (
+          <BookTools
+            anchor={toolsAnchor}
+            pose={placementOf(layout, toolsId)!.pose}
+            width={winW}
+            msg={toolsMsg}
+            reduceMotion={reduceMotion}
+            onRotate={(dir) => setToolsMsg(toolRotate(toolsId, dir))}
+            onCover={() => {
+              const p = placementOf(layout, toolsId)!;
+              setToolsMsg(commit(setPose(layout, books, toolsId, p.pose === 'front' ? 'spine' : 'front')));
             }}
+            onDrawer={() => {
+              commit(moveToDrawer(layout, toolsId, books), ko.drawer.stored);
+              closeTools();
+            }}
+            onClose={closeTools}
           />
         ) : null}
 

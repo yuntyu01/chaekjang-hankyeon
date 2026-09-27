@@ -12,6 +12,7 @@ import {
   normalize,
   placeFromDrawer,
   placementOf,
+  rotateStep,
   removeShelf,
   setPose,
   setTilt,
@@ -318,5 +319,33 @@ describe('자리 바꾸기', () => {
     expect(shelfItems(l, 'shelf-3').map((it) => it.key)).toEqual(['b13', 'b12']);
     expect(placementOf(l, 'b13')?.stackId).toBeUndefined();
     expect(placementOf(l, 'b12')?.stackId).toBeUndefined();
+  });
+});
+
+describe('좌우 돌리기', () => {
+  it('세운 책: 반대 기울임 → 똑바로 → 이쪽 기울임 → 눕힘, 누운 책은 다시 선다', () => {
+    const books: BookMap = Object.fromEntries(SAMPLE_BOOKS.map((b) => [b.id, b]));
+    // 공간이 넉넉한 선반(두 권)
+    let l: ShelfLayout = {
+      version: 2,
+      drawer: [],
+      shelves: [{ id: 's', order: 0 }],
+      placements: [
+        { bookId: 'b01', shelfId: 's', order: 0, pose: 'spine', tilt: 0 },
+        { bookId: 'b09', shelfId: 's', order: 1, pose: 'spine', tilt: 0 },
+      ],
+    };
+    const step = (dir: -1 | 1) => {
+      const r = rotateStep(l, books, 'b09', dir);
+      if (!r.ok) throw new Error(r.reason);
+      l = r.layout;
+      const p = placementOf(l, 'b09')!;
+      return p.pose === 'spine' ? p.tilt : p.pose;
+    };
+    expect(step(1)).toBe(7);
+    expect(step(-1)).toBe(0);
+    expect(step(-1)).toBe(-7);
+    expect(step(-1)).toBe('horizontal');
+    expect(step(1)).toBe(0);
   });
 });

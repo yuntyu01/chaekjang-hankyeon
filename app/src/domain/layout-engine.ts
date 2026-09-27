@@ -428,6 +428,20 @@ export function setPose(layout: ShelfLayout, books: BookMap, bookId: string, pos
   return finish(layout, settle(normalize({ ...layout, placements }), books, bookXs(layout, books)), books);
 }
 
+// 좌우 돌리기 한 단계. dir -1 = 왼쪽(반시계), +1 = 오른쪽(시계).
+// 세운 책: 반대쪽 기울임 → 똑바로 → 이쪽 기울임 → 눕힘(자리가 없으면 똑바로). 누운 책·표지 책은 다시 세운다.
+export function rotateStep(layout: ShelfLayout, books: BookMap, bookId: string, dir: -1 | 1): Result {
+  const p = placementOf(layout, bookId);
+  if (!p) return { ok: false, reason: 'unknown-book' };
+  if (p.pose !== 'spine') return setPose(layout, books, bookId, 'spine');
+  const side = Math.sign(p.tilt);
+  if (side === -dir) return setTilt(layout, books, bookId, 0);
+  if (side === 0) return setTilt(layout, books, bookId, (dir * 7) as Tilt);
+  // 눕힐 자리가 없으면 눕힘 단계를 건너뛰고 다시 세운다(돌리기가 막히지 않게)
+  const lie = setPose(layout, books, bookId, 'horizontal');
+  return lie.ok ? lie : setTilt(layout, books, bookId, 0);
+}
+
 export function setTilt(layout: ShelfLayout, books: BookMap, bookId: string, tilt: Tilt): Result {
   const p = placementOf(layout, bookId);
   if (!p) return { ok: false, reason: 'unknown-book' };

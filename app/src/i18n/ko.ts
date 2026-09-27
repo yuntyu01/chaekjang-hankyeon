@@ -18,6 +18,7 @@ export const ko = {
   section: { pose: '배치 형태', tilt: '기울기', place: '자리' },
   finished: (d: string) => `${d.replace(/-/g, '.')} 완독`,
   noCover: '실제 표지 이미지가 아직 없어요',
+  tools: { left: '왼쪽으로', right: '오른쪽으로', cover: '표지로', spine: '책등으로' },
   info: {
     published: '출간',
     period: '읽은 기간',
