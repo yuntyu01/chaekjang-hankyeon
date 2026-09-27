@@ -1,0 +1,24 @@
+node_modules/
+.expo/
+dist/
+web-build/
+*.log
+.env
+.env.*
+!.env.example
+
+# prebuild 산출물
+app/android/
+app/ios/
+
+# 서명·비밀
+*.jks
+*.keystore
+*.p8
+*.p12
+*.pem
+google-services.json
+service-account*.json
+
+# Go
+server/bin/

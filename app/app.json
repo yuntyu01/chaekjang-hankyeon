@@ -1,0 +1,20 @@
+{
+  "expo": {
+    "name": "책장 한켠",
+    "slug": "chaekjang-hankyeon",
+    "version": "0.1.0",
+    "orientation": "portrait",
+    "scheme": "chaekjang",
+    "userInterfaceStyle": "light",
+    "backgroundColor": "#F7F1E6",
+    "ios": { "bundleIdentifier": "com.chaekjang.app", "supportsTablet": true },
+    "android": { "package": "com.chaekjang.app", "predictiveBackGestureEnabled": false },
+    "plugins": [
+      "expo-router",
+      "expo-sqlite",
+      "expo-font",
+      ["expo-splash-screen", { "backgroundColor": "#F7F1E6" }]
+    ],
+    "experiments": { "typedRoutes": true }
+  }
+}
