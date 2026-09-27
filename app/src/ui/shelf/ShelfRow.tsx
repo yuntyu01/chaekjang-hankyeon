@@ -4,11 +4,12 @@ import { Image, Pressable, StyleSheet, Text, View } from 'react-native';
 import Animated, { useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
 import Svg, { Defs, LinearGradient, Rect, Stop } from 'react-native-svg';
 
-import { DESIGN_WIDTH, SHELF, SHELF_IMG_H, SHELF_IMG_W, SHELF_IMG_X } from '@/domain/geometry';
+import { DESIGN_WIDTH, SHELF, SHELF_IMG_H, SHELF_IMG_W, SHELF_IMG_X, SHELF_STYLE } from '@/domain/geometry';
 import type { BookFrame } from '@/domain/shelf-scene';
 import type { Book } from '@/domain/types';
 import { ko } from '@/i18n/ko';
 import { BookRenderer } from '@/ui/book/BookRenderer';
+import { Plank } from '@/ui/shelf/Plank';
 import { ShelfShadows } from '@/ui/shelf/ShelfShadows';
 import { colors, fonts, motion, shadow } from '@/ui/theme';
 
@@ -108,7 +109,11 @@ export const ShelfRow = memo(function ShelfRow(p: Props) {
   const s = p.scale;
   return (
     <View style={{ height: p.height, width: DESIGN_WIDTH * s, marginLeft: p.originX }}>
-      <ShelfImage scale={s} clear={p.clear} />
+      {SHELF_STYLE === 'asset' ? (
+        <ShelfImage scale={s} clear={p.clear} />
+      ) : (
+        <Plank left={SHELF.sideMargin * s} width={(DESIGN_WIDTH - SHELF.sideMargin * 2) * s} floorY={p.clear * s} scale={s} height={p.height + 20 * s} canvasWidth={DESIGN_WIDTH * s} />
+      )}
       <ShelfShadows frames={p.frames} scale={s} hiddenId={p.placeholderId} height={p.height} clear={p.clear} />
       {p.frames.map((f) => (
         <BookSlot

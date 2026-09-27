@@ -46,9 +46,9 @@ export const typeScale = {
 // 그림자 토큰. 빛은 화면 좌상단, 외부 그림자는 화면 좌표 기준 오른쪽 아래.
 export const shadow = {
   contact: { opacity: 0.34, height: 3.2, spread: 2.5 }, // 선반에 닿는 좁은 그림자
-  cast: { dx: 5, dy: 1.5, opacity: 0.22, blurSteps: [28, 20, 13, 7, 3] }, // 뒤 벽에 떨어지는 넓고 흐린 그림자(바닥 쪽 최대)
+  cast: { dx: 5, dy: 1.5, opacity: 0.2, blurSteps: [28, 20, 13, 7, 3] }, // 뒤 벽에 떨어지는 넓고 흐린 그림자(바닥 쪽 최대)
   lifted: { dx: 12, dy: 14, opacity: 0.16, scale: 1.06 }, // 드래그 중 들린 느낌
-  plank: { opacity: 0.3, height: 20 }, // 선반 판 아래 벽 그림자
+  plank: { opacity: 0.24, height: 14 }, // 선반 판 아래 짧은 그림자(시안 약 15DU)
 };
 
 export const motion = {

@@ -51,8 +51,10 @@ export const ShelfShadows = memo(function ShelfShadows({ frames, scale: s, hidde
       <G clipPath={`url(#${id}clip)`}>
         {visible.map((f) => {
           const pts = f.poly.map((p) => `${X(p.x + dx)},${Y(p.y + dy)}`).join(' ');
+          // 시안: 기울인 책·누운 책·표지 책 옆에만 그림자가 눈에 띄고, 나란히 선 책 사이는 거의 없다
+          const strong = f.tilt !== 0 || f.pose !== 'spine';
           return (
-            <G key={f.bookId}>
+            <G key={f.bookId} opacity={strong ? 1 : 0.4}>
               {blurSteps.map((w, i) => (
                 <Polygon key={i} points={pts} fill="none" stroke={`url(#${id}cast)`} strokeOpacity={1 / (blurSteps.length + 2)} strokeWidth={w * s} strokeLinejoin="round" />
               ))}

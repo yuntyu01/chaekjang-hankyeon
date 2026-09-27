@@ -5,11 +5,12 @@ import { Image, Modal, Pressable, ScrollView, StyleSheet, Text, useWindowDimensi
 const SHELF_PNG = require('../../../assets/bookshelf/shelf-single.png');
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { bookHeight, bookThickness } from '@/domain/geometry';
+import { bookHeight, bookThickness, SHELF, SHELF_STYLE } from '@/domain/geometry';
 import { SHELF_ASSET } from '@/domain/shelf-asset.generated';
 import type { Book } from '@/domain/types';
 import { ko } from '@/i18n/ko';
 import { BookRenderer } from '@/ui/book/BookRenderer';
+import { Plank } from '@/ui/shelf/Plank';
 import { colors, typeScale } from '@/ui/theme';
 
 type Props = {
@@ -58,13 +59,17 @@ export function DrawerSheet({ visible, books, scale, onPick, onClose }: Props) {
         <ScrollView contentContainerStyle={{ paddingTop: 8, paddingBottom: 8 }} showsVerticalScrollIndicator={false}>
           {books.length
             ? rows.map((row, i) => (
-                <View key={i} style={[styles.rowWrap, { height: rowH(row) + imgH * (SHELF_ASSET.frontBottomY - SHELF_ASSET.contactY) + 6 }]}>
+                <View key={i} style={[styles.rowWrap, { height: rowH(row) + SHELF.below * s + 8 }]}>
                   {/* 홈과 같은 선반 이미지. 책 밑면을 측정한 기준선(contactY)에 맞춘다 */}
-                  <Image
-                    source={SHELF_PNG}
-                    style={{ position: 'absolute', left: -imgW * SHELF_ASSET.usableLeft + 2, top: rowH(row) - imgH * SHELF_ASSET.contactY, width: imgW, height: imgH }}
-                    resizeMode="stretch"
-                  />
+                  {SHELF_STYLE === 'asset' ? (
+                    <Image
+                      source={SHELF_PNG}
+                      style={{ position: 'absolute', left: -imgW * SHELF_ASSET.usableLeft + 2, top: rowH(row) - imgH * SHELF_ASSET.contactY, width: imgW, height: imgH }}
+                      resizeMode="stretch"
+                    />
+                  ) : (
+                    <Plank left={0} width={rowWidth + 16} floorY={rowH(row)} scale={s} height={rowH(row) + 40 * s} canvasWidth={rowWidth + 16} />
+                  )}
                   <View style={styles.row}>
                     {row.map((b) => (
                       <Pressable

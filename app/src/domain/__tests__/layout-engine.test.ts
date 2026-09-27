@@ -103,7 +103,7 @@ describe('이동', () => {
     expect(moveBy(SAMPLE_LAYOUT, books, 'b01', -1)).toEqual({ ok: false, reason: 'no-change' });
     l = ok(moveToShelf(roomy(), books, 'b09', 'shelf-4'));
     expect(shelfItems(l, 'shelf-4').at(-1)!.key).toBe('b09');
-    expect(moveToShelf(SAMPLE_LAYOUT, books, 'b09', 'shelf-3')).toEqual({ ok: false, reason: 'no-space' });
+    expect(moveToShelf(SAMPLE_LAYOUT, books, 'b02', 'shelf-3')).toEqual({ ok: false, reason: 'no-space' });
   });
 });
 
