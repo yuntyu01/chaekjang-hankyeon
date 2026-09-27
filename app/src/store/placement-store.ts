@@ -3,11 +3,14 @@
 import { useSyncExternalStore } from 'react';
 import Storage from 'expo-sqlite/kv-store';
 
-import { normalize, validate, type BookMap } from '@/domain/layout-engine';
-import { SAMPLE_BOOKS, SAMPLE_LAYOUT } from '@/domain/sample-books';
-import type { ShelfLayout } from '@/domain/types';
+import { toShelfBook } from '@/domain/catalog';
+import { migrate, normalize, validate, withNormalizedX, type BookMap } from '@/domain/layout-engine';
+import { loadLibrary } from '@/db/local-db';
+import { SAMPLE_BOOKS, SAMPLE_LAYOUT } from '@/domain/onboarding-sample';
+import type { ShelfLayout, ShelfLayoutV1 } from '@/domain/types';
 
-const KEY = 'shelf-layout:v1';
+const KEY = 'shelf-layout';
+const LEGACY_KEY = 'shelf-layout:v1'; // v1(서랍 없음) 저장본
 
 export type SaveStatus = 'idle' | 'saving' | 'error';
 
@@ -19,6 +22,7 @@ type State = {
   loaded: boolean;
 };
 
+// 온보딩 예시 16권 + 로컬 DB의 내 책(읽음만 선반/서랍 대상, Phase 1에서 추가 흐름 연결)
 const books: BookMap = Object.fromEntries(SAMPLE_BOOKS.map((b) => [b.id, b]));
 
 let state: State = { books, layout: SAMPLE_LAYOUT, undo: null, save: 'idle', loaded: false };
@@ -29,27 +33,29 @@ function set(patch: Partial<State>) {
   listeners.forEach((l) => l());
 }
 
-// 저장본 복원. 모르는 책·중복은 버리고 빠진 책은 마지막 선반에 붙인다(기존 순서·그룹은 유지).
-export function repair(saved: ShelfLayout, bookMap: BookMap): ShelfLayout {
+// 저장본 복원. 모르는 책·중복은 버리고, 빠진 책은 서랍에 넣는다(기존 선반 순서·그룹은 그대로).
+export function repair(saved: ShelfLayout | ShelfLayoutV1, bookMap: BookMap): ShelfLayout {
+  const layout = migrate(saved);
   const seen = new Set<string>();
-  const placements = saved.placements.filter((p) => {
+  const placements = layout.placements.filter((p) => {
     if (!bookMap[p.bookId] || seen.has(p.bookId)) return false;
     seen.add(p.bookId);
     return true;
   });
-  const shelves = saved.shelves.length ? saved.shelves : [{ id: 'shelf-1', order: 0 }];
-  const last = [...shelves].sort((a, b) => b.order - a.order)[0];
-  const maxOrder = Math.max(-1, ...placements.filter((p) => p.shelfId === last.id).map((p) => p.order));
-  Object.keys(bookMap)
-    .filter((id) => !seen.has(id))
-    .forEach((id, i) => placements.push({ bookId: id, shelfId: last.id, order: maxOrder + 1 + i, pose: 'spine', tilt: 0 }));
-  return normalize({ version: 1, shelves, placements });
+  const drawer = layout.drawer.filter((id) => {
+    if (!bookMap[id] || seen.has(id)) return false;
+    seen.add(id);
+    return true;
+  });
+  for (const id of Object.keys(bookMap)) if (!seen.has(id)) drawer.push(id);
+  const shelves = layout.shelves.length ? layout.shelves : [{ id: 'shelf-1', order: 0 }];
+  return normalize({ version: 2, shelves, placements, drawer });
 }
 
 async function persist(layout: ShelfLayout) {
   set({ save: 'saving' });
   try {
-    await Storage.setItem(KEY, JSON.stringify(layout));
+    await Storage.setItem(KEY, JSON.stringify(withNormalizedX(layout, state.books)));
     // 저장 도중 다른 변경이 있었으면 그쪽이 다시 저장한다.
     if (state.layout === layout) set({ save: 'idle' });
   } catch {
@@ -66,12 +72,18 @@ export const placementStore = {
 
   async load() {
     try {
-      const raw = await Storage.getItem(KEY);
+      const lib = await loadLibrary();
+      const mine = lib.filter((r) => r.user.status === 'read').map((r) => toShelfBook(r.catalog, r.user));
+      if (mine.length) set({ books: { ...state.books, ...Object.fromEntries(mine.map((b) => [b.id, b])) } });
+    } catch {
+      // 로컬 DB를 못 열어도 예시 책장은 보여준다.
+    }
+    try {
+      const raw = (await Storage.getItem(KEY)) ?? (await Storage.getItem(LEGACY_KEY));
       if (raw) {
-        const saved = JSON.parse(raw) as ShelfLayout;
-        if (saved.version === 1) {
-          const fixed = repair(saved, state.books);
-          set({ layout: fixed, loaded: true });
+        const saved = JSON.parse(raw) as ShelfLayout | ShelfLayoutV1;
+        if (saved.version === 1 || saved.version === 2) {
+          set({ layout: repair(saved, state.books), loaded: true });
           return;
         }
       }

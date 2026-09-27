@@ -6,7 +6,7 @@ import {
   singleFootprint,
   stackFootprint,
 } from './geometry';
-import type { Book, BookPlacement, Pose, ShelfLayout, Tilt } from './types';
+import type { Book, BookPlacement, Pose, ShelfLayout, ShelfLayoutV1, Tilt } from './types';
 
 export type BookMap = Record<string, Book>;
 
@@ -26,6 +26,7 @@ export type FailReason =
   | 'unknown-book'
   | 'unknown-shelf'
   | 'shelf-not-empty'
+  | 'in-drawer'
   | 'no-change';
 
 export type Result = { ok: true; layout: ShelfLayout } | { ok: false; reason: FailReason };
@@ -77,7 +78,7 @@ export function itemHeight(item: ShelfItem, layout: ShelfLayout, books: BookMap)
 
 // 선반 안 자리들의 x(설계 단위, 선반 판 안쪽 기준). 빈 공간은 오른쪽에 남긴다.
 export function itemPositions(items: ShelfItem[], layout: ShelfLayout, books: BookMap) {
-  let x = SHELF.innerPadding;
+  let x = SHELF.innerLeft;
   return items.map((it) => {
     const width = itemWidth(it, layout, books);
     const pos = { item: it, x, width };
@@ -120,7 +121,14 @@ export function normalize(layout: ShelfLayout): ShelfLayout {
       });
     });
   }
-  return { version: 1, shelves, placements };
+  const placed = new Set(placements.map((p) => p.bookId));
+  const drawer = [...new Set(layout.drawer ?? [])].filter((id) => !placed.has(id));
+  return { version: 2, shelves, placements, drawer };
+}
+
+export function migrate(saved: ShelfLayout | ShelfLayoutV1): ShelfLayout {
+  if (saved.version === 1) return normalize({ ...saved, version: 2, drawer: [] });
+  return normalize(saved);
 }
 
 // 책을 자리에서 빼낸다. 그룹에서 빼면 나머지는 빈틈 없이 내려앉는다.
@@ -171,6 +179,11 @@ export function validate(layout: ShelfLayout, books: BookMap, expectedIds?: stri
     if (p.pose !== 'spine' && p.tilt !== 0) errors.push(`tilt:${p.bookId}`);
     if (![-7, 0, 7].includes(p.tilt)) errors.push(`tilt-value:${p.bookId}`);
   }
+  for (const id of layout.drawer) {
+    if (seen.has(id)) errors.push(`duplicate:${id}`);
+    seen.add(id);
+    if (!books[id]) errors.push(`unknown-book:${id}`);
+  }
   if (expectedIds) {
     for (const id of expectedIds) if (!seen.has(id)) errors.push(`missing:${id}`);
   }
@@ -204,7 +217,7 @@ function finish(prev: ShelfLayout, next: ShelfLayout, books: BookMap): Result {
 // 드롭 적용. 임시 레이아웃 전체를 만들고 검증된 경우만 돌려준다.
 export function moveBook(layout: ShelfLayout, books: BookMap, bookId: string, target: DropTarget): Result {
   const p = placementOf(layout, bookId);
-  if (!p) return { ok: false, reason: 'unknown-book' };
+  if (!p) return { ok: false, reason: layout.drawer.includes(bookId) ? 'in-drawer' : 'unknown-book' };
   if (!layout.shelves.some((s) => s.id === target.shelfId)) return { ok: false, reason: 'unknown-shelf' };
   const base = detach(layout, bookId);
   if (target.kind === 'insert') {
@@ -314,4 +327,48 @@ export function sameTarget(a: DropTarget | null, b: DropTarget | null) {
   if (!a || !b) return a === b;
   if (a.kind !== b.kind || a.shelfId !== b.shelfId) return false;
   return a.kind === 'insert' ? a.index === (b as typeof a).index : a.itemKey === (b as typeof a).itemKey;
+}
+
+// ---------- 책 서랍 ----------
+
+export function moveToDrawer(layout: ShelfLayout, bookId: string): Result {
+  if (!placementOf(layout, bookId)) return { ok: false, reason: layout.drawer.includes(bookId) ? 'no-change' : 'unknown-book' };
+  const base = detach(layout, bookId);
+  return { ok: true, layout: normalize({ ...base, drawer: [bookId, ...base.drawer] }) };
+}
+
+// 서랍 또는 새 책을 선반 끝 빈 자리에 세워 꽂는다. 위 선반부터 찾고, 자리가 없으면 no-space.
+function placeAtFirstFit(layout: ShelfLayout, books: BookMap, bookId: string): Result {
+  for (const shelf of sortedShelves(layout)) {
+    const count = shelfItems(layout, shelf.id).length;
+    const next = insertItem(layout, { bookId, pose: 'spine', tilt: 0 }, shelf.id, count);
+    if (!checkSpace(next, books)) return { ok: true, layout: next };
+  }
+  return { ok: false, reason: 'no-space' };
+}
+
+export function placeFromDrawer(layout: ShelfLayout, books: BookMap, bookId: string): Result {
+  if (!layout.drawer.includes(bookId)) return { ok: false, reason: 'unknown-book' };
+  const base = { ...layout, drawer: layout.drawer.filter((id) => id !== bookId) };
+  return placeAtFirstFit(base, books, bookId);
+}
+
+// 새 책 추가: 선반 빈 자리에 꽂고, 꽉 차 있으면 서랍에 넣는다.
+export function addBook(layout: ShelfLayout, books: BookMap, bookId: string): { layout: ShelfLayout; where: 'shelf' | 'drawer' } {
+  if (placementOf(layout, bookId) || layout.drawer.includes(bookId)) return { layout, where: placementOf(layout, bookId) ? 'shelf' : 'drawer' };
+  const r = placeAtFirstFit(layout, books, bookId);
+  if (r.ok) return { layout: r.layout, where: 'shelf' };
+  return { layout: normalize({ ...layout, drawer: [...layout.drawer, bookId] }), where: 'drawer' };
+}
+
+// 저장용: 각 자리의 정규화 위치(선반 사용 폭 대비, 0~1)를 기록한다. 화면 폭과 무관.
+export function withNormalizedX(layout: ShelfLayout, books: BookMap): ShelfLayout {
+  const xs = new Map<string, number>();
+  for (const shelf of layout.shelves) {
+    for (const pos of itemPositions(shelfItems(layout, shelf.id), layout, books)) {
+      const x = Math.round(((pos.x - SHELF.innerLeft) / SHELF_USABLE_WIDTH) * 10000) / 10000;
+      pos.item.bookIds.forEach((id) => xs.set(id, x));
+    }
+  }
+  return { ...layout, placements: layout.placements.map((p) => ({ ...p, x: xs.get(p.bookId) })) };
 }

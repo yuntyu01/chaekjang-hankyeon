@@ -2,7 +2,7 @@
 // 짧게 누르기 → 상세, 350ms 길게 누르기 → 드래그. 드래그 전 세로 이동은 스크롤이 가져간다.
 import { useFocusEffect } from 'expo-router';
 import * as Haptics from 'expo-haptics';
-import { Plus, Sparkles } from 'lucide-react-native';
+import { BookMarked, Check, Paintbrush, Plus } from 'lucide-react-native';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { AppState, Pressable, StyleSheet, Text, View } from 'react-native';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
@@ -25,7 +25,9 @@ import {
   findDropTarget,
   moveBook,
   moveBy,
+  moveToDrawer,
   moveToShelf,
+  placeFromDrawer,
   placementOf,
   removeShelf,
   sameTarget,
@@ -42,11 +44,12 @@ import type { Pose, ShelfLayout, Tilt } from '@/domain/types';
 import { ko } from '@/i18n/ko';
 import { placementStore, usePlacementStore } from '@/store/placement-store';
 import { DragOverlay, frameBBox } from '@/ui/shelf/DragOverlay';
-import { CONTENT_TOP, useShelfMetrics } from '@/ui/shelf/metrics';
+import { CONTENT_TOP, computeRows, rowAt, toContent, toScene, useShelfMetrics, type RowGeom } from '@/ui/shelf/metrics';
 import { ShelfRow, type DropHint } from '@/ui/shelf/ShelfRow';
 import { colors, fonts, motion } from '@/ui/theme';
 
 import { BookDetail, type MoveAction } from './BookDetail';
+import { DrawerSheet } from './DrawerSheet';
 
 type Preview =
   | { kind: 'ok'; layout: ShelfLayout; target: DropTarget }
@@ -86,6 +89,20 @@ function useShelfScenes(layout: ShelfLayout, books: Parameters<typeof computeShe
   }, [layout, books]);
 }
 
+function HeaderButton({ size, on, label, onPress, children }: { size: number; on?: boolean; label: string; onPress: () => void; children: React.ReactNode }) {
+  return (
+    <Pressable
+      onPress={onPress}
+      hitSlop={10}
+      accessibilityRole="button"
+      accessibilityLabel={label}
+      accessibilityState={on === undefined ? undefined : { selected: on }}
+      style={[styles.circle, { width: size, height: size, borderRadius: size / 2 }, on && styles.circleOn]}>
+      {children}
+    </Pressable>
+  );
+}
+
 export function HomeScreen() {
   const insets = useSafeAreaInsets();
   const store = usePlacementStore();
@@ -97,6 +114,7 @@ export function HomeScreen() {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [detailId, setDetailId] = useState<string | null>(null);
   const [editing, setEditing] = useState(false);
+  const [drawerOpen, setDrawerOpen] = useState(false);
   const [toast, setToast] = useState<Toast>(null);
   const dragRef = useRef<Drag | null>(null);
   const lastDragEnd = useRef(0);
@@ -135,10 +153,10 @@ export function HomeScreen() {
   }, [store.save]);
 
   const commit = useCallback(
-    (r: Result): string | null => {
+    (r: Result, text: string = ko.moved): string | null => {
       if (!r.ok) return ko.fail[r.reason] || null;
       if (!placementStore.commit(r.layout)) return ko.fail['no-space'];
-      showToast({ text: ko.moved, action: 'undo' });
+      showToast({ text, action: 'undo' });
       return null;
     },
     [showToast],
@@ -146,10 +164,14 @@ export function HomeScreen() {
 
   // ---------- 좌표 변환 ----------
   // 뷰포트 좌표 → 콘텐츠 좌표(스크롤 반영) → 선반 인덱스·설계 단위 x
+  const rowIndexAt = (cy: number, rs: RowGeom[]) => {
+    if (!rs.length || cy < rs[0].top) return -1;
+    const i = rowAt(rs, cy);
+    return i === -1 ? rs.length : i;
+  };
   const locate = (vx: number, vy: number, scroll: number) => {
     const cy = vy + scroll;
-    const i = Math.floor((cy - CONTENT_TOP) / m.rowHeight);
-    return { cx: vx, cy, index: i };
+    return { cx: vx, cy, index: rowIndexAt(cy, rows) };
   };
 
   const computePreview = (d: Drag, vx: number, vy: number, scroll: number): Preview => {
@@ -157,7 +179,7 @@ export function HomeScreen() {
     const p = placementOf(layout, d.bookId)!;
     const centerPx = vx - d.grabX + d.boxW / 2;
     const centerDU = (centerPx - m.originX) / m.scale - SHELF.sideMargin;
-    const withinX = centerDU > -SHELF.sideMargin && centerDU < SHELF.innerPadding * 2 + SHELF_USABLE_WIDTH + SHELF.sideMargin;
+    const withinX = centerDU > -SHELF.sideMargin && centerDU < SHELF.innerLeft + SHELF_USABLE_WIDTH + SHELF.innerRight + SHELF.sideMargin;
     if (editing && index >= shelves.length && withinX) {
       // 새 선반 추가 영역
       const target: DropTarget = { kind: 'insert', shelfId: d.newShelfId, index: 0 };
@@ -188,20 +210,17 @@ export function HomeScreen() {
   };
 
   const hitAt = (x: number, y: number) => {
-    const i = Math.floor((y - CONTENT_TOP) / m.rowHeight);
-    const shelf = shelves[i];
-    if (!shelf) return null;
-    const top = m.shelfTop(i);
-    const du = { x: (x - m.originX) / m.scale - SHELF.sideMargin, y: (y - top) / m.scale - SHELF.rowTopPad };
-    return hitTest(frames.get(shelf.id) ?? [], du);
+    const row = rows[rowAt(rows, y)];
+    if (!row) return null;
+    return hitTest(frames.get(row.shelfId) ?? [], toScene(m, row, x, y));
   };
 
   const beginDrag = (x: number, y: number, absX: number, absY: number, scroll: number) => {
     const hit = hitAt(x, y);
     if (!hit) return;
-    const i = shelves.findIndex((s) => s.id === hit.shelfId);
+    const row = rows.find((r) => r.shelfId === hit.shelfId)!;
     const box = frameBBox(hit);
-    const tl = m.toContent(i, { x: box.minX, y: box.minY });
+    const tl = toContent(m, row, { x: box.minX, y: box.minY });
     const d: Drag = {
       bookId: hit.bookId,
       frame: hit,
@@ -256,12 +275,12 @@ export function HomeScreen() {
       showToast({ text: ko.fail[d.preview.reason] || ko.fail.outside });
     }
     // 스냅 목적지 계산
-    const shelfOrder = sortedShelves(final);
     const pl = placementOf(final, d.bookId)!;
-    const idx = shelfOrder.findIndex((s) => s.id === pl.shelfId);
+    const finalRows = computeRows(final, books, m.scale);
+    const row = finalRows.find((r) => r.shelfId === pl.shelfId)!;
     const f = computeShelf(final, books, pl.shelfId).frames.find((fr) => fr.bookId === d.bookId)!;
     const box = frameBBox(f);
-    const tl = m.toContent(idx, { x: box.minX, y: box.minY });
+    const tl = toContent(m, row, { x: box.minX, y: box.minY });
     updateDrag({ ...d, frame: f, settling: final });
     const dur = reduceMotion ? 0 : motion.settle;
     lift.value = withTiming(0, { duration: dur });
@@ -338,6 +357,8 @@ export function HomeScreen() {
   const shown = drag?.settling ?? (drag?.preview?.kind === 'ok' ? drag.preview.layout : layout);
   const shownShelves = useMemo(() => sortedShelves(shown), [shown]);
   const frames = useShelfScenes(shown, books);
+  const rows = useMemo(() => computeRows(shown, books, m.scale), [shown, books, m.scale]);
+  const rowOf = useMemo(() => new Map(rows.map((r) => [r.shelfId, r])), [rows]);
 
   const hintFor = (shelfId: string): DropHint => {
     const p = drag?.preview;
@@ -396,32 +417,43 @@ export function HomeScreen() {
   const year = new Date().getFullYear();
   const count = Object.values(books).filter((b) => b.finishedAt?.startsWith(String(year))).length;
   const draggedBook = drag ? books[drag.bookId] : null;
-  const contentHeight = CONTENT_TOP + shownShelves.length * m.rowHeight + (editing ? 110 : 24);
+  const contentHeight = (rows.at(-1) ? rows.at(-1)!.top + rows.at(-1)!.height : CONTENT_TOP) + (editing ? 110 : 24);
 
   return (
     <View style={[styles.root, { paddingTop: insets.top }]}>
-      <View style={styles.header}>
+      {/* 시안 비율: 제목 26DU·요약 12.5DU·원형 버튼 28DU, 좌우 여백 23/18DU */}
+      <View style={[styles.header, { paddingLeft: 23 * m.scale + m.originX, paddingRight: 18 * m.scale + m.originX, paddingTop: 20 * m.scale, height: 84 * m.scale }]}>
         <View style={{ flex: 1 }}>
-          <Text style={styles.title} accessibilityRole="header" numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.7}>
+          <Text
+            style={[styles.title, { fontSize: 26 * m.scale, lineHeight: 34 * m.scale }]}
+            accessibilityRole="header"
+            numberOfLines={1}
+            adjustsFontSizeToFit
+            minimumFontScale={0.7}>
             {ko.title}
           </Text>
-          <Text style={styles.summary}>{ko.summary(year, count)}</Text>
+          <Text style={[styles.summary, { fontSize: 12.5 * m.scale, marginTop: 7 * m.scale }]}>{ko.summary(year, count)}</Text>
         </View>
-        <Pressable
-          onPress={() => setEditing((e) => !e)}
-          style={[styles.pill, editing && styles.pillOn]}
-          accessibilityRole="button"
-          accessibilityState={{ selected: editing }}>
-          {editing ? null : <Sparkles size={15} color={colors.ink} strokeWidth={1.6} />}
-          <Text style={[styles.pillText, editing && { color: colors.sheet }]}>{editing ? ko.done : ko.decorate}</Text>
-        </Pressable>
-        <Pressable
-          onPress={() => showToast({ text: ko.addSoon })}
-          style={styles.addBtn}
-          accessibilityRole="button"
-          accessibilityLabel={ko.add}>
-          <Plus size={24} color={colors.ink} strokeWidth={1.5} />
-        </Pressable>
+        <View style={[styles.actions, { gap: 8 * m.scale, marginTop: -14 * m.scale }]}>
+          <HeaderButton size={28 * m.scale} on={editing} label={editing ? ko.done : ko.decorate} onPress={() => setEditing((e) => !e)}>
+            {editing ? (
+              <Check size={14 * m.scale} color={colors.sheet} strokeWidth={1.8} />
+            ) : (
+              <Paintbrush size={13 * m.scale} color={colors.ink} strokeWidth={1.5} />
+            )}
+          </HeaderButton>
+          <HeaderButton size={28 * m.scale} label={ko.add} onPress={() => showToast({ text: ko.addSoon })}>
+            <Plus size={16 * m.scale} color={colors.ink} strokeWidth={1.4} />
+          </HeaderButton>
+          <HeaderButton size={28 * m.scale} label={`${ko.drawer.open}, ${ko.drawer.count(layout.drawer.length)}`} onPress={() => setDrawerOpen(true)}>
+            <BookMarked size={14 * m.scale} color={colors.ink} strokeWidth={1.5} />
+            {layout.drawer.length ? (
+              <View style={styles.badge}>
+                <Text style={styles.badgeText}>{layout.drawer.length}</Text>
+              </View>
+            ) : null}
+          </HeaderButton>
+        </View>
       </View>
 
       <View
@@ -448,7 +480,8 @@ export function HomeScreen() {
                   books={books}
                   scale={m.scale}
                   originX={m.originX}
-                  height={m.rowHeight}
+                  height={rowOf.get(s.id)?.height ?? 0}
+                  clear={rowOf.get(s.id)?.clear ?? SHELF.minClear}
                   placeholderId={drag?.bookId ?? null}
                   selectedId={detailId ?? selectedId}
                   hint={hintFor(s.id)}
@@ -510,37 +543,56 @@ export function HomeScreen() {
         onPose={menuPose}
         onTilt={menuTilt}
         onMove={(mv) => menuMove(mv)}
+        onToDrawer={() => {
+          if (!detailId) return;
+          commit(moveToDrawer(layout, detailId), ko.drawer.stored);
+          setDetailId(null);
+          setSelectedId(null);
+        }}
+        onToShelf={() => {
+          if (!detailId) return null;
+          const r = placeFromDrawer(layout, books, detailId);
+          if (!r.ok) return r.reason === 'no-space' ? ko.drawer.noRoom : ko.fail[r.reason] || null;
+          commit(r, ko.drawer.placed);
+          setDetailId(null);
+          return null;
+        }}
+      />
+      <DrawerSheet
+        visible={drawerOpen}
+        books={layout.drawer.map((id) => books[id]).filter(Boolean)}
+        scale={m.scale}
+        onClose={() => setDrawerOpen(false)}
+        onPick={(id) => {
+          setDrawerOpen(false);
+          setTimeout(() => setDetailId(id), 280);
+        }}
       />
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  root: { flex: 1, backgroundColor: colors.bg },
-  header: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 24, paddingTop: 18, paddingBottom: 8, gap: 10 },
-  title: { fontFamily: fonts.serif, fontSize: 32, lineHeight: 42, color: colors.ink, letterSpacing: 1 },
-  summary: { fontSize: 14, color: colors.inkSoft, marginTop: 2, letterSpacing: 0.3 },
-  pill: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 5,
-    height: 34,
-    paddingHorizontal: 12,
-    borderRadius: 17,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: colors.inkFaint,
-  },
-  pillOn: { backgroundColor: colors.ink, borderColor: colors.ink },
-  pillText: { fontSize: 13, color: colors.ink },
-  addBtn: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
-    borderWidth: 1,
-    borderColor: colors.inkFaint,
+  root: { flex: 1 },
+  header: { flexDirection: 'row', alignItems: 'flex-start' },
+  title: { fontFamily: fonts.bookTitle, color: colors.title },
+  summary: { color: colors.summary, letterSpacing: 0.3 },
+  actions: { flexDirection: 'row', alignItems: 'center', alignSelf: 'center' },
+  circle: { borderWidth: 1, borderColor: colors.circle, alignItems: 'center', justifyContent: 'center' },
+  circleOn: { backgroundColor: colors.ink, borderColor: colors.ink },
+  badge: {
+    position: 'absolute',
+    top: -2,
+    right: -2,
+    minWidth: 18,
+    height: 18,
+    borderRadius: 9,
+    paddingHorizontal: 4,
+    backgroundColor: colors.ink,
     alignItems: 'center',
     justifyContent: 'center',
   },
+  badgeText: { fontSize: 11, color: colors.sheet, fontWeight: '600' },
   addShelfWrap: { alignItems: 'center', paddingTop: 10, gap: 10 },
   addShelf: {
     width: '86%',

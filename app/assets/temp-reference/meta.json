@@ -1,0 +1,360 @@
+[
+ {
+  "id": "b01",
+  "title": "모순",
+  "author": "양귀자",
+  "kind": "spine",
+  "shelf": 1,
+  "w": 35.6,
+  "h": 160.0,
+  "color": "#F9EBDA",
+  "title_meta": {
+   "top": 0.195,
+   "cx": 0.44,
+   "size": 12.3,
+   "ink": "#1F2533"
+  },
+  "tilt": 0,
+  "stack": null,
+  "cover_lines": null,
+  "motif": true
+ },
+ {
+  "id": "b02",
+  "title": "데미안",
+  "author": "헤르만 헤세",
+  "kind": "spine",
+  "shelf": 1,
+  "w": 41.4,
+  "h": 173.2,
+  "color": "#3F6059",
+  "title_meta": {
+   "top": 0.218,
+   "cx": 0.455,
+   "size": 11.9,
+   "ink": "#F2EADB"
+  },
+  "tilt": 0,
+  "stack": null,
+  "cover_lines": null,
+  "motif": true
+ },
+ {
+  "id": "b03",
+  "title": "어린왕자",
+  "author": "생텍쥐페리",
+  "kind": "spine",
+  "shelf": 1,
+  "w": 38.1,
+  "h": 162.5,
+  "color": "#F8E9D6",
+  "title_meta": {
+   "top": 0.233,
+   "cx": 0.43,
+   "size": 10.8,
+   "ink": "#1F2533"
+  },
+  "tilt": 0,
+  "stack": null,
+  "cover_lines": null
+ },
+ {
+  "id": "b04",
+  "title": "달과 나",
+  "author": null,
+  "kind": "cover",
+  "shelf": 1,
+  "w": 114.4,
+  "h": 153.3,
+  "color": "#234A6F",
+  "title_meta": {
+   "top": 0.33,
+   "cx": 0.52,
+   "size": 13.2,
+   "ink": "#F3EEE3"
+  },
+  "tilt": 0,
+  "stack": null,
+  "cover_lines": null
+ },
+ {
+  "id": "b05",
+  "title": "문장 수집",
+  "author": null,
+  "kind": "spine",
+  "shelf": 1,
+  "w": 37.3,
+  "h": 167.9,
+  "color": "#BF624D",
+  "title_meta": {
+   "top": 0.151,
+   "cx": 0.587,
+   "size": 10.8,
+   "ink": "#F6E9D8"
+  },
+  "tilt": 0,
+  "stack": null,
+  "cover_lines": null,
+  "motif": true
+ },
+ {
+  "id": "b17",
+  "title": "느린 하루",
+  "author": null,
+  "kind": "spine",
+  "shelf": 1,
+  "w": 39.8,
+  "h": 162.1,
+  "color": "#B3C7D4",
+  "title_meta": {
+   "top": 0.205,
+   "cx": 0.56,
+   "size": 10.3,
+   "ink": "#1F2533"
+  },
+  "tilt": 0,
+  "stack": null,
+  "cover_lines": null,
+  "motif": true
+ },
+ {
+  "id": "b06",
+  "title": "흰",
+  "author": "한강",
+  "kind": "spine",
+  "shelf": 1,
+  "w": 32.7,
+  "h": 147.5,
+  "color": "#F9EDDE",
+  "title_meta": {
+   "top": 0.24,
+   "cx": 0.64,
+   "size": 11.0,
+   "ink": "#1F2533"
+  },
+  "tilt": -7,
+  "stack": null,
+  "cover_lines": null,
+  "motif": true
+ },
+ {
+  "id": "b07",
+  "title": "여름의 숲",
+  "author": null,
+  "kind": "cover",
+  "shelf": 2,
+  "w": 127.2,
+  "h": 158.7,
+  "color": "#7D896C",
+  "title_meta": {
+   "top": 0.303,
+   "cx": 0.528,
+   "size": 12.4,
+   "ink": "#1F2533"
+  },
+  "tilt": 0,
+  "stack": null,
+  "cover_lines": null
+ },
+ {
+  "id": "b08",
+  "title": "여행의 이유",
+  "author": "김영하",
+  "kind": "spine",
+  "shelf": 2,
+  "w": 34.0,
+  "h": 158.7,
+  "color": "#B6C5D4",
+  "title_meta": {
+   "top": 0.138,
+   "cx": 0.49,
+   "size": 9.5,
+   "ink": "#1F2533"
+  },
+  "tilt": 0,
+  "stack": null,
+  "cover_lines": null
+ },
+ {
+  "id": "b09",
+  "title": "작은 것들의 깊이",
+  "author": null,
+  "kind": "spine",
+  "shelf": 2,
+  "w": 29.0,
+  "h": 154.6,
+  "color": "#F7E7D2",
+  "title_meta": {
+   "top": 0.137,
+   "cx": 0.47,
+   "size": 7.9,
+   "ink": "#1F2533"
+  },
+  "tilt": 0,
+  "stack": null,
+  "cover_lines": null
+ },
+ {
+  "id": "b10",
+  "title": "사람의 마음이란",
+  "author": null,
+  "kind": "spine",
+  "shelf": 2,
+  "w": 36.1,
+  "h": 157.9,
+  "color": "#1E426A",
+  "title_meta": {
+   "top": 0.317,
+   "cx": 0.55,
+   "size": 7.8,
+   "ink": "#E8E2D6"
+  },
+  "tilt": 0,
+  "stack": null,
+  "cover_lines": null
+ },
+ {
+  "id": "b18",
+  "title": "아주 보통의 하루",
+  "author": null,
+  "kind": "spine",
+  "shelf": 2,
+  "w": 38.1,
+  "h": 162.9,
+  "color": "#526E63",
+  "title_meta": {
+   "top": 0.162,
+   "cx": 0.48,
+   "size": 9.1,
+   "ink": "#EFE6D2"
+  },
+  "tilt": 0,
+  "stack": null,
+  "cover_lines": null,
+  "motif": true
+ },
+ {
+  "id": "b11",
+  "title": "너라는 계절",
+  "author": null,
+  "kind": "spine",
+  "shelf": 2,
+  "w": 49.3,
+  "h": 153.3,
+  "color": "#F7C8A1",
+  "title_meta": {
+   "top": 0.18,
+   "cx": 0.555,
+   "size": 9.9,
+   "ink": "#1F2533"
+  },
+  "tilt": -7,
+  "stack": null,
+  "cover_lines": null,
+  "motif": true
+ },
+ {
+  "id": "b12",
+  "title": "찰나의 마음",
+  "author": null,
+  "kind": "horizontal",
+  "shelf": 3,
+  "w": 173.2,
+  "h": 39.8,
+  "color": "#E09C88",
+  "title_meta": {
+   "left": 0.121,
+   "cy": 0.536,
+   "size": 9.8,
+   "ink": "#2A2530"
+  },
+  "tilt": 0,
+  "stack": 0,
+  "cover_lines": null,
+  "motif": true,
+  "top_face": "#F1DFCA",
+  "top_face_h": 8.3
+ },
+ {
+  "id": "b13",
+  "title": "좋은 문장은 이렇게 온다",
+  "author": null,
+  "kind": "horizontal",
+  "shelf": 3,
+  "w": 160.8,
+  "h": 29.4,
+  "color": "#F6E5D1",
+  "title_meta": {
+   "left": 0.075,
+   "cy": 0.49,
+   "size": 7.9,
+   "ink": "#2A2E38"
+  },
+  "tilt": 0,
+  "stack": 1,
+  "cover_lines": null,
+  "motif": true,
+  "top_face": "#ECD9C3",
+  "top_face_h": 10.4
+ },
+ {
+  "id": "b14",
+  "title": "고요한 우연",
+  "author": null,
+  "kind": "spine",
+  "shelf": 3,
+  "w": 31.5,
+  "h": 123.5,
+  "color": "#833C3F",
+  "title_meta": {
+   "top": 0.157,
+   "cx": 0.5,
+   "size": 8.5,
+   "ink": "#F0E2DC"
+  },
+  "tilt": 0,
+  "stack": null,
+  "cover_lines": null,
+  "motif": true
+ },
+ {
+  "id": "b15",
+  "title": "아무튼, 독서",
+  "author": null,
+  "kind": "spine",
+  "shelf": 3,
+  "w": 26.9,
+  "h": 121.8,
+  "color": "#F5E4CF",
+  "title_meta": {
+   "top": 0.17,
+   "cx": 0.54,
+   "size": 8.4,
+   "ink": "#1F2533"
+  },
+  "tilt": 0,
+  "stack": null,
+  "cover_lines": null,
+  "motif": true
+ },
+ {
+  "id": "b16",
+  "title": "우리가 빛의 속도로 갈 수 없다면",
+  "author": "김초엽",
+  "kind": "cover",
+  "shelf": 3,
+  "w": 106.5,
+  "h": 118.5,
+  "color": "#FBCBAE",
+  "title_meta": {
+   "top": 0.164,
+   "cx": 0.52,
+   "size": 7.8,
+   "ink": "#2B2B38",
+   "line": 1.65
+  },
+  "tilt": 0,
+  "stack": null,
+  "cover_lines": "우리가\n빛의 속도로 갈 수 없다면"
+ }
+]

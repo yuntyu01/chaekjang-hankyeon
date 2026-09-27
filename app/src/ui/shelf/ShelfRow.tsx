@@ -1,10 +1,10 @@
 // 선반 한 칸: 선반 판 → 외부 그림자 → 책. 책 위치가 바뀌면 옆 책이 부드럽게 비켜준다.
 import { memo, useEffect, useId } from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { Image, Pressable, StyleSheet, Text, View } from 'react-native';
 import Animated, { useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
 import Svg, { Defs, LinearGradient, Rect, Stop } from 'react-native-svg';
 
-import { DESIGN_WIDTH, SHELF } from '@/domain/geometry';
+import { DESIGN_WIDTH, SHELF, SHELF_IMG_H, SHELF_IMG_W, SHELF_IMG_X } from '@/domain/geometry';
 import type { BookFrame } from '@/domain/shelf-scene';
 import type { Book } from '@/domain/types';
 import { ko } from '@/i18n/ko';
@@ -16,6 +16,7 @@ export type DropHint = { text: string; bad: boolean } | null;
 
 type SlotProps = {
   frame: BookFrame;
+  clear: number;
   book: Book;
   scale: number;
   placeholder: boolean;
@@ -25,9 +26,9 @@ type SlotProps = {
   onA11y: (bookId: string, action: string) => void;
 };
 
-const BookSlot = memo(function BookSlot({ frame, book, scale: s, placeholder, lifted, reduceMotion, a11yLabel, onA11y }: SlotProps) {
+const BookSlot = memo(function BookSlot({ frame, clear, book, scale: s, placeholder, lifted, reduceMotion, a11yLabel, onA11y }: SlotProps) {
   const left = (SHELF.sideMargin + frame.left) * s;
-  const top = (SHELF.rowTopPad + frame.top) * s;
+  const top = (clear + frame.top - SHELF.clearHeight) * s;
   const x = useSharedValue(left);
   const y = useSharedValue(top);
   const lift = useSharedValue(0);
@@ -70,40 +71,24 @@ const BookSlot = memo(function BookSlot({ frame, book, scale: s, placeholder, li
   );
 });
 
-function Plank({ scale: s, height }: { scale: number; height: number }) {
-  const id = useId().replace(/[^a-zA-Z0-9]/g, '');
-  const floorY = (SHELF.rowTopPad + SHELF.clearHeight) * s;
-  const w = (DESIGN_WIDTH - SHELF.sideMargin * 2) * s;
-  const left = SHELF.sideMargin * s;
-  const pt = SHELF.plankTop * s;
-  const pf = SHELF.plankFront * s;
+// 선반 한 칸 이미지(실제 자산). 원본 비율 유지, 책 밑면 기준선(contactY)이 이 줄의 바닥에 오도록 놓는다.
+// 선반 고정 그림자는 이미지에 들어 있어 코드로 다시 그리지 않는다.
+const SHELF_PNG = require('../../../assets/bookshelf/shelf-single.png');
+
+function ShelfImage({ scale: s, clear }: { scale: number; clear: number }) {
   return (
-    <Svg style={StyleSheet.absoluteFill} width={DESIGN_WIDTH * s} height={height} pointerEvents="none">
-      <Defs>
-        <LinearGradient id={`${id}under`} x1="0" y1="0" x2="0" y2="1">
-          <Stop offset="0" stopColor="#3B2B18" stopOpacity={shadow.plank.opacity} />
-          <Stop offset="1" stopColor="#3B2B18" stopOpacity={0} />
-        </LinearGradient>
-        <LinearGradient id={`${id}front`} x1="0" y1="0" x2="0" y2="1">
-          <Stop offset="0" stopColor={colors.plankFront} />
-          <Stop offset="1" stopColor={colors.plankEdge} />
-        </LinearGradient>
-        <LinearGradient id={`${id}top`} x1="0" y1="0" x2="0" y2="1">
-          <Stop offset="0" stopColor="#EAD6B6" />
-          <Stop offset="1" stopColor={colors.plankTop} />
-        </LinearGradient>
-      </Defs>
-      <Rect x={left + 4 * s} y={floorY + pt + pf} width={w - 8 * s} height={shadow.plank.height * s} fill={`url(#${id}under)`} />
-      <Rect x={left} y={floorY - 1 * s} width={w} height={pt + 2 * s} rx={2 * s} fill={`url(#${id}top)`} />
-      <Rect x={left} y={floorY + pt} width={w} height={pf} rx={2.5 * s} fill={`url(#${id}front)`} />
-      <Rect x={left} y={floorY + pt} width={w} height={1 * s} fill="#FFFFFF" opacity={0.35} />
-    </Svg>
+    <Image
+      source={SHELF_PNG}
+      style={{ position: 'absolute', left: SHELF_IMG_X * s, top: (clear - SHELF.contact) * s, width: SHELF_IMG_W * s, height: SHELF_IMG_H * s }}
+      resizeMode="stretch"
+    />
   );
 }
 
 type Props = {
   shelfId: string;
   frames: BookFrame[];
+  clear: number; // DU: 이 줄의 선반 위 공간
   books: Record<string, Book>;
   scale: number;
   originX: number;
@@ -123,12 +108,13 @@ export const ShelfRow = memo(function ShelfRow(p: Props) {
   const s = p.scale;
   return (
     <View style={{ height: p.height, width: DESIGN_WIDTH * s, marginLeft: p.originX }}>
-      <Plank scale={s} height={p.height} />
-      <ShelfShadows frames={p.frames} scale={s} hiddenId={p.placeholderId} height={p.height} />
+      <ShelfImage scale={s} clear={p.clear} />
+      <ShelfShadows frames={p.frames} scale={s} hiddenId={p.placeholderId} height={p.height} clear={p.clear} />
       {p.frames.map((f) => (
         <BookSlot
           key={f.bookId}
           frame={f}
+          clear={p.clear}
           book={p.books[f.bookId]}
           scale={s}
           placeholder={f.bookId === p.placeholderId}
@@ -139,14 +125,14 @@ export const ShelfRow = memo(function ShelfRow(p: Props) {
         />
       ))}
       {p.hint ? (
-        <View style={[styles.hint, { top: SHELF.rowTopPad * s }, p.hint.bad && styles.hintBad]} pointerEvents="none">
+        <View style={[styles.hint, { top: 2 * s }, p.hint.bad && styles.hintBad]} pointerEvents="none">
           <Text style={[styles.hintText, p.hint.bad && { color: colors.danger }]}>{p.hint.text}</Text>
         </View>
       ) : null}
       {p.editing && p.canRemove ? (
         <Pressable
           onPress={() => p.onRemove(p.shelfId)}
-          style={[styles.remove, { top: (SHELF.rowTopPad + SHELF.clearHeight / 2 - 16) * s }]}
+          style={[styles.remove, { top: (p.clear / 2 - 16) * s }]}
           accessibilityRole="button">
           <Text style={styles.removeText}>{ko.removeShelf}</Text>
         </Pressable>

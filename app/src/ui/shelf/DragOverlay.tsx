@@ -7,7 +7,7 @@ import Svg, { Polygon } from 'react-native-svg';
 import type { BookFrame } from '@/domain/shelf-scene';
 import type { Book } from '@/domain/types';
 import { BookRenderer } from '@/ui/book/BookRenderer';
-import { shadow } from '@/ui/theme';
+import { colors, shadow } from '@/ui/theme';
 
 export function frameBBox(f: BookFrame) {
   const xs = f.poly.map((p) => p.x);
@@ -26,7 +26,7 @@ type Props = {
   lift: SharedValue<number>;
 };
 
-const PAD = 24;
+const PAD = 40;
 
 export function DragOverlay({ book, frame, scale: s, x, y, lift }: Props) {
   const box = frameBBox(frame);
@@ -43,10 +43,10 @@ export function DragOverlay({ book, frame, scale: s, x, y, lift }: Props) {
       style={[styles.root, { width: box.width * s, height: box.height * s }, style]}>
       <Animated.View style={[{ position: 'absolute', left: -PAD, top: -PAD }, shadowStyle]}>
         <Svg width={box.width * s + PAD * 2 + shadow.lifted.dx * s} height={box.height * s + PAD * 2 + shadow.lifted.dy * s}>
-          {[14, 9, 5].map((w, i) => (
-            <Polygon key={i} points={pts} fill="none" stroke="#3B2B18" strokeOpacity={shadow.lifted.opacity / 3} strokeWidth={w * s} strokeLinejoin="round" />
+          {[26, 19, 13, 8, 4].map((w, i) => (
+            <Polygon key={i} points={pts} fill="none" stroke={colors.shadow} strokeOpacity={shadow.lifted.opacity / 5} strokeWidth={w * s} strokeLinejoin="round" />
           ))}
-          <Polygon points={pts} fill="#3B2B18" fillOpacity={shadow.lifted.opacity} />
+          <Polygon points={pts} fill={colors.shadow} fillOpacity={shadow.lifted.opacity * 0.8} />
         </Svg>
       </Animated.View>
       <View

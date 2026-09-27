@@ -1,12 +1,16 @@
 import { SHELF_USABLE_WIDTH, singleFootprint, tiltedBounds } from '../geometry';
 import {
+  addBook,
   addShelf,
   detach,
   findDropTarget,
+  migrate,
   moveBook,
   moveBy,
+  moveToDrawer,
   moveToShelf,
   normalize,
+  placeFromDrawer,
   placementOf,
   removeShelf,
   setPose,
@@ -14,9 +18,10 @@ import {
   shelfItems,
   usedWidth,
   validate,
+  withNormalizedX,
   type BookMap,
 } from '../layout-engine';
-import { SAMPLE_BOOKS, SAMPLE_LAYOUT } from '../sample-books';
+import { SAMPLE_BOOKS, SAMPLE_LAYOUT } from '../onboarding-sample';
 import type { ShelfLayout } from '../types';
 
 const books: BookMap = Object.fromEntries(SAMPLE_BOOKS.map((b) => [b.id, b]));
@@ -35,8 +40,8 @@ const roomy = () => {
 };
 
 describe('샘플 데이터', () => {
-  it('16권이 모두 한 번씩 유효하게 놓여 있다', () => {
-    expect(SAMPLE_BOOKS).toHaveLength(16);
+  it('18권(시안과 같은 수)이 모두 한 번씩 유효하게 놓여 있다', () => {
+    expect(SAMPLE_BOOKS).toHaveLength(18);
     expect(validate(SAMPLE_LAYOUT, books, ids)).toEqual([]);
     expect(normalize(SAMPLE_LAYOUT)).toEqual(SAMPLE_LAYOUT);
   });
@@ -67,9 +72,9 @@ describe('형상', () => {
 
 describe('이동', () => {
   it('선반 사이로 옮기고 원래 선반은 빈틈 없이 정리된다', () => {
-    const l = ok(moveBook(SAMPLE_LAYOUT, books, 'b01', { kind: 'insert', shelfId: 'shelf-2', index: 1 }));
-    expect(placementOf(l, 'b01')).toMatchObject({ shelfId: 'shelf-2', order: 1 });
-    expect(shelfItems(l, 'shelf-1').map((it) => it.order)).toEqual([0, 1, 2, 3, 4]);
+    const l = ok(moveBook(roomy(), books, 'b09', { kind: 'insert', shelfId: 'shelf-4', index: 1 }));
+    expect(placementOf(l, 'b09')).toMatchObject({ shelfId: 'shelf-4', order: 1 });
+    expect(shelfItems(l, 'shelf-2').map((it) => it.order)).toEqual([0, 1, 2, 3, 4]);
   });
 
   it('제자리 드롭은 변화 없음으로 처리한다', () => {
@@ -93,8 +98,8 @@ describe('이동', () => {
     let l = ok(moveBy(SAMPLE_LAYOUT, books, 'b02', 1));
     expect(shelfItems(l, 'shelf-1').map((it) => it.key).slice(0, 3)).toEqual(['b01', 'b03', 'b02']);
     expect(moveBy(SAMPLE_LAYOUT, books, 'b01', -1)).toEqual({ ok: false, reason: 'no-change' });
-    l = ok(moveToShelf(SAMPLE_LAYOUT, books, 'b01', 'shelf-2'));
-    expect(shelfItems(l, 'shelf-2').at(-1)!.key).toBe('b01');
+    l = ok(moveToShelf(roomy(), books, 'b09', 'shelf-4'));
+    expect(shelfItems(l, 'shelf-4').at(-1)!.key).toBe('b09');
     expect(moveToShelf(SAMPLE_LAYOUT, books, 'b09', 'shelf-3')).toEqual({ ok: false, reason: 'no-space' });
   });
 });
@@ -197,5 +202,63 @@ describe('선반', () => {
       placements: SAMPLE_LAYOUT.placements.map((p) => (p.bookId === 'b13' ? { ...p, order: 3 } : p)),
     };
     expect(validate(broken, books, ids)).toContain('stack-slot:stack:b12');
+  });
+});
+
+describe('책 서랍', () => {
+  it('v1 저장본은 빈 서랍을 가진 v2가 된다', () => {
+    const v1 = { version: 1 as const, shelves: SAMPLE_LAYOUT.shelves, placements: SAMPLE_LAYOUT.placements };
+    expect(migrate(v1)).toEqual(SAMPLE_LAYOUT);
+  });
+
+  it('서랍에 넣으면 선반에서 빠지고, 한 곳에만 있다', () => {
+    const r = moveToDrawer(SAMPLE_LAYOUT, 'b13');
+    const l = ok(r);
+    expect(placementOf(l, 'b13')).toBeUndefined();
+    expect(l.drawer).toEqual(['b13']);
+    // 쌓기 그룹은 한 권만 남아 풀린다
+    expect(placementOf(l, 'b12')?.stackId).toBeUndefined();
+    expect(validate({ ...l, drawer: ['b13', 'b01'] }, books, ids)).toContain('duplicate:b01');
+  });
+
+  it('서랍에서 선반 빈 자리로 꽂고, 자리가 없으면 거절한다', () => {
+    const inDrawer = ok(moveToDrawer(SAMPLE_LAYOUT, 'b09'));
+    const back = ok(placeFromDrawer(inDrawer, books, 'b09'));
+    expect(back.drawer).toEqual([]);
+    expect(placementOf(back, 'b09')).toMatchObject({ pose: 'spine', tilt: 0 });
+    expect(placeFromDrawer({ ...SAMPLE_LAYOUT, placements: SAMPLE_LAYOUT.placements.filter((p) => p.bookId !== 'b01'), drawer: ['b01'] }, books, 'b01').ok).toBe(true);
+  });
+
+  it('새 책은 빈 자리에, 꽉 차면 서랍으로 간다', () => {
+    const extra: BookMap = { ...books, n1: { ...books.b02, id: 'n1' }, n2: { ...books.b02, id: 'n2' } };
+    const base = ok(moveToDrawer(SAMPLE_LAYOUT, 'b16'));
+    const a = addBook(base, extra, 'n1');
+    expect(a.where).toBe('shelf');
+    let l = a.layout;
+    const placed: string[] = [];
+    for (let i = 0; i < 12; i++) {
+      const id = `x${i}`;
+      extra[id] = { ...books.b02, id };
+      const r = addBook(l, extra, id);
+      l = r.layout;
+      placed.push(r.where);
+    }
+    expect(placed).toContain('drawer');
+    expect(validate(l, extra)).toEqual([]);
+  });
+});
+
+describe('저장 형식', () => {
+  it('정규화 위치를 0~1로 기록하고, 복원(normalize)하면 순서가 그대로다', () => {
+    const saved = withNormalizedX(SAMPLE_LAYOUT, books);
+    for (const p of saved.placements) {
+      expect(p.x).toBeGreaterThanOrEqual(0);
+      expect(p.x).toBeLessThan(1);
+    }
+    const stack = saved.placements.filter((p) => p.stackId === 'stack:b12');
+    expect(new Set(stack.map((p) => p.x)).size).toBe(1);
+    const row1 = saved.placements.filter((p) => p.shelfId === 'shelf-1').sort((a, b) => a.order - b.order);
+    expect(row1.map((p) => p.x)).toEqual([...row1.map((p) => p.x)].sort((a, b) => a! - b!));
+    expect(normalize(saved)).toEqual(SAMPLE_LAYOUT);
   });
 });

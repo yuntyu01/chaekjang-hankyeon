@@ -2,60 +2,43 @@
 
 읽은 책을 모아 직접 배치해 꾸미는 책장 앱(가칭). 화면명은 "나의 책장".
 
-- 홈 지시서: `docs/HOME_BRIEF.md`, 시안: `docs/design/home-reference.png`
-- 홈 외 기능 지시서: `docs/SPEC.md` (Phase 0~6, 승인 후 진행)
-- 캡처: `docs/screenshots/`
+- 지시서: `docs/HOME_BRIEF.md`(홈), `docs/BOOKSHELF_ASSET_BRIEF.md`(선반·배경 자산 적용), `docs/SPEC.md`(홈 외, Phase 0~6)
+- 시안: `docs/design/home-reference.png` · 캡처: `docs/screenshots/` (00은 시안과 나란히 비교)
+- 자산 규격·임시/최종 구분: `docs/assets.md`
 
 ## 실행
 
 ```bash
-cd app
-npm install
-npx expo start --port 8095   # Expo Go(SDK 57)로 연다
-npm test                     # 배치 엔진·조판 단위 테스트
-npm run typecheck
+cd app && npm install
+npx expo start --port 8095     # Expo Go(SDK 57)
+npm test && npm run typecheck
+
+cd server && go test ./...
+PORT=8080 go run ./cmd/api     # 키·DB 없으면 메모리 저장소 + 가짜 도서로 뜬다(.env.example 참고)
 ```
 
-## 구조 (app/src)
+자산 스크립트: `python3 app/scripts/measure-shelf.py`(선반 측정·배경 이음새 검사), `python3 app/scripts/extract-reference-assets.py`(시안에서 임시 예시 자산 추출).
+
+## 구조
 
 | 경로 | 역할 |
 |---|---|
-| `domain/types.ts` | Book, BookPlacement, ShelfLayout |
-| `domain/geometry.ts` | 설계 단위(폭 390) 치수, 높이·두께 등급, 기울임 경계 |
-| `domain/layout-engine.ts` | LayoutEngine: 이동·쌓기·형태·기울기·검증(순수) |
-| `domain/shelf-scene.ts` | 회전 후 윤곽·바닥점·터치 판정(순수) |
-| `domain/title-layout.ts` | 세로 책등 제목 조판 |
-| `store/placement-store.ts` | PlacementStore: 확정 상태, 로컬 저장(expo-sqlite kv), 되돌리기 1회, 저장 실패 표시 |
-| `ui/book/BookRenderer.tsx` | 책 한 권(책등/가로/정면) |
-| `ui/art/` | 개발용 샘플 SVG 일러스트(장면 6종, 모티프 9종) |
-| `ui/shelf/ShelfRow.tsx`, `ShelfShadows.tsx`, `DragOverlay.tsx` | 선반, 화면 좌표 기준 그림자, 드래그 오버레이 |
-| `features/home/HomeScreen.tsx`, `BookDetail.tsx` | 홈 화면과 상세·배치 메뉴 |
+| `app/src/domain/` | 타입, 배치 엔진(이동·쌓기·형태·서랍·검증), 회전 형상, 제목 조판, 카탈로그 매핑·등급 규칙, 모티프 슬롯 30개, 선반 측정값 |
+| `app/src/store/placement-store.ts` | 확정 배치, 로컬 저장(v2: 선반+서랍, 정규화 x 기록), 되돌리기, 저장 실패 표시 |
+| `app/src/db/local-db.ts` | 기기 SQLite 캐시(catalog_books, user_books) |
+| `app/src/ui/` | 종이 배경, 책 렌더러, 선반 줄(선반 PNG)·그림자·드래그 오버레이 |
+| `app/src/features/home/` | 홈, 상세·배치 메뉴, 책 서랍 |
+| `server/internal/books` | ISBN 공유 캐시(TTL 갱신, ISBN당 외부 조회·색 추출 1회), 카카오 검색 프록시 |
+| `server/internal/llm` | Gemini·GPT 키 여러 개 순서대로, 한도·토큰·서버 오류 시 다음 키 |
 
-## 설계 메모
+## 상태 (2026-09-27)
 
-- 저장은 선반·순서·쌓기 그룹만. 픽셀 좌표는 매번 설계 단위로 계산해 화면 폭에 맞게 균일하게 스케일한다. 520px보다 넓으면 멈추고 가운데 정렬, 좁은 화면은 그대로 축소한다.
-- 모든 변경(드롭·형태·기울기·메뉴 이동)은 임시 레이아웃 전체를 만들어 공간과 무결성을 검증한 뒤 한 번에 확정한다.
-- 터치는 선반 전체에 제스처 하나를 두고 책 윤곽(회전 반영)으로 판정한다. 그림자는 판정에 들어가지 않는다.
-- 외부 그림자는 플랫폼 그림자 API 대신 선반 좌표의 SVG 도형으로 그린다(iOS/Android 동일, 회전과 무관하게 오른쪽 아래).
-- 서체: 제목 고운바탕(Gowun Batang, SIL OFL 1.1), 메뉴·숫자는 시스템 고딕.
+**동작 구현(Android 에뮬레이터 Expo Go에서 확인):** 선반 PNG·종이 배경 적용, 세운·기울인·누운(쌓기)·표지 책, 길게 눌러 드래그·자동 스크롤·새 선반·쌓기, 형태 변경 메뉴, 책 서랍(넣기/꽂기), 되돌리기, 앱 재시작 후 복원.
 
-## 현재 상태 (2026-09-27)
+**시각 품질:** 시안과 나란히 비교(`docs/screenshots/00-compare-reference.png`). 예시 책 그림은 시안에서 잘라낸 **임시 자산**이라 거의 같지만, 최종 재장정 아트는 아직 없다. 차이: 줄 간격이 모든 줄 공통(지시)이라 3번째 줄 위가 시안보다 넓고, 폰이 시안보다 길어 아래 여백이 남는다. 선반 PNG가 시안 선반보다 좌우가 짧다.
 
-홈 책장만 구현했다. Android 에뮬레이터(Pixel, API 36, Expo Go)에서 확인한 항목:
+**서버·외부 연동:** 카카오·Gemini·GPT는 코드와 가짜 서버 테스트만 있고 **실제 키로 호출하지 않았다**(키 없음). 알라딘 Open API는 2026-10-30 종료 공지(신규 키 발급 9/4 종료)라 쓰지 않는다 → 고해상도 표지·쪽수 대체 출처 결정 필요. Postgres 저장소는 로컬 DB가 없어 실행하지 못했다(`TEST_DATABASE_URL`로 도는 테스트만 있음). KoDeploy 배포 전(Dockerfile만).
 
-- 16권 샘플(세움·좌우 기울임·2권 쌓기·표지 전시 3권) 렌더링, 헤더 "2026년 · 16권"
-- 짧게 누르기 → 책이 살짝 들리고 상세 시트
-- 메뉴로 형태 변경(눕히기), 공간 부족 시 거절 안내
-- 길게 눌러 선반 간 이동, 가장자리 자동 스크롤, 새 선반 드롭, 눕힌 책 쌓기("쌓기" 미리보기), 맨 아래 책 빼기, 되돌리기
-- 앱 강제 종료 후 재실행 시 배치 복원
-- 화면 폭 약 308dp(density 560)에서 균일 축소, 헤더 한 줄
+**미구현:** 등록·재장정 흐름(사진 → 식별 확인 → 재장정 → 배치, SPEC Phase 1·3), 로그인·동기화.
 
-확인하지 않은 것: iOS 실기기·시뮬레이터, TalkBack/VoiceOver 실제 읽기, 동작 줄이기 설정 켠 상태, 200권 이상 성능(선반 단위 캐시만 있고 가상화는 없음), 저장 실패 경로(재시도 배너는 코드만 있음).
-
-## 자산 상태
-
-선반의 그림은 모두 코드로 그린 **개발용 샘플 SVG**다. 실제 재장정 자산 슬롯은 `Book.coverArtUri` / `Book.spineArtUri`이며 값이 있으면 샘플 대신 쓴다. 시안과 비교해 부족한 점:
-
-- 시안의 수채화·종이 질감이 없다(평면 벡터 + 그라데이션 명암).
-- 장면 그림의 밀도가 낮다(특히 여름의 숲 나무, 어린 왕자 인물).
-- 필요 자산: 모티프 약 30종(책등용 세로 PNG, 투명 배경), 표지 장면 일러스트(불투명 사각), 종이 질감 오버레이.
+**확인하지 않은 것:** iOS, 실제 기기, TalkBack/VoiceOver, 동작 줄이기 설정, 200권 성능(가상화 없음), 저장 실패 경로.

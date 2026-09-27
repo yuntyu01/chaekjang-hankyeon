@@ -6,7 +6,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { Book, BookPlacement, Pose, Tilt } from '@/domain/types';
 import { ko } from '@/i18n/ko';
 import { BookRenderer } from '@/ui/book/BookRenderer';
-import { colors, fonts } from '@/ui/theme';
+import { colors, typeScale } from '@/ui/theme';
 
 export type MoveAction = 'prev' | 'next' | 'up' | 'down';
 
@@ -17,6 +17,8 @@ type Props = {
   onPose: (p: Pose) => string | null;
   onTilt: (t: Tilt) => string | null;
   onMove: (m: MoveAction) => string | null;
+  onToDrawer: () => void;
+  onToShelf: () => string | null;
 };
 
 function Segment<T extends string | number>({
@@ -50,7 +52,7 @@ function Segment<T extends string | number>({
   );
 }
 
-export function BookDetail({ book, placement, onClose, onPose, onTilt, onMove }: Props) {
+export function BookDetail({ book, placement, onClose, onPose, onTilt, onMove, onToDrawer, onToShelf }: Props) {
   const insets = useSafeAreaInsets();
   const [msg, setMsg] = useState<string | null>(null);
   const run = (err: string | null) => setMsg(err);
@@ -61,7 +63,7 @@ export function BookDetail({ book, placement, onClose, onPose, onTilt, onMove }:
   return (
     <Modal visible={!!book} transparent animationType="slide" onRequestClose={close} statusBarTranslucent>
       <Pressable style={styles.backdrop} onPress={close} accessibilityLabel="닫기" />
-      {book && placement ? (
+      {book ? (
         <View style={[styles.sheet, { paddingBottom: insets.bottom + 16 }]}>
           <View style={styles.grip} />
           <ScrollView contentContainerStyle={{ paddingBottom: 8 }} showsVerticalScrollIndicator={false}>
@@ -81,35 +83,46 @@ export function BookDetail({ book, placement, onClose, onPose, onTilt, onMove }:
               </View>
             </View>
 
-            <Text style={styles.label}>{ko.section.pose}</Text>
-            <Segment<Pose>
-              value={placement.pose}
-              onPick={(p) => run(onPose(p))}
-              options={[
-                { value: 'spine', label: ko.pose.spine },
-                { value: 'horizontal', label: ko.pose.horizontal },
-                { value: 'front', label: ko.pose.front },
-              ]}
-            />
-            <Text style={styles.label}>{ko.section.tilt}</Text>
-            <Segment<Tilt>
-              value={placement.tilt}
-              disabled={placement.pose !== 'spine'}
-              onPick={(t) => run(onTilt(t))}
-              options={[
-                { value: -7, label: ko.tilt.left },
-                { value: 0, label: ko.tilt.none },
-                { value: 7, label: ko.tilt.right },
-              ]}
-            />
-            <Text style={styles.label}>{ko.section.place}</Text>
-            <View style={styles.moves}>
-              {(['prev', 'next', 'up', 'down'] as MoveAction[]).map((m) => (
-                <Pressable key={m} style={styles.move} onPress={() => run(onMove(m))} accessibilityRole="button">
-                  <Text style={styles.segText}>{ko.place[m]}</Text>
+            {placement ? (
+              <>
+                <Text style={styles.label}>{ko.section.pose}</Text>
+                <Segment<Pose>
+                  value={placement.pose}
+                  onPick={(p) => run(onPose(p))}
+                  options={[
+                    { value: 'spine', label: ko.pose.spine },
+                    { value: 'horizontal', label: ko.pose.horizontal },
+                    { value: 'front', label: ko.pose.front },
+                  ]}
+                />
+                <Text style={styles.label}>{ko.section.tilt}</Text>
+                <Segment<Tilt>
+                  value={placement.tilt}
+                  disabled={placement.pose !== 'spine'}
+                  onPick={(t) => run(onTilt(t))}
+                  options={[
+                    { value: -7, label: ko.tilt.left },
+                    { value: 0, label: ko.tilt.none },
+                    { value: 7, label: ko.tilt.right },
+                  ]}
+                />
+                <Text style={styles.label}>{ko.section.place}</Text>
+                <View style={styles.moves}>
+                  {(['prev', 'next', 'up', 'down'] as MoveAction[]).map((m) => (
+                    <Pressable key={m} style={styles.move} onPress={() => run(onMove(m))} accessibilityRole="button">
+                      <Text style={styles.segText}>{ko.place[m]}</Text>
+                    </Pressable>
+                  ))}
+                </View>
+                <Pressable style={[styles.move, styles.wide]} onPress={onToDrawer} accessibilityRole="button">
+                  <Text style={styles.segText}>{ko.drawer.put}</Text>
                 </Pressable>
-              ))}
-            </View>
+              </>
+            ) : (
+              <Pressable style={[styles.primary, styles.wide]} onPress={() => run(onToShelf())} accessibilityRole="button">
+                <Text style={styles.primaryText}>{ko.drawer.take}</Text>
+              </Pressable>
+            )}
             {msg ? <Text style={styles.msg}>{msg}</Text> : null}
           </ScrollView>
         </View>
@@ -131,7 +144,7 @@ const styles = StyleSheet.create({
   grip: { alignSelf: 'center', width: 36, height: 4, borderRadius: 2, backgroundColor: colors.line, marginBottom: 14 },
   top: { flexDirection: 'row', gap: 18, marginBottom: 12 },
   cover: { width: 118, alignItems: 'flex-start' },
-  title: { fontFamily: fonts.serif, fontSize: 21, lineHeight: 30, color: colors.ink, marginBottom: 6 },
+  title: { ...typeScale.sheetTitle, color: colors.ink, marginBottom: 6 },
   meta: { fontSize: 13.5, color: colors.inkSoft, marginBottom: 3 },
   note: { fontSize: 12, color: colors.inkFaint, marginTop: 10 },
   label: { fontSize: 12.5, color: colors.inkSoft, marginTop: 16, marginBottom: 8 },
@@ -156,5 +169,8 @@ const styles = StyleSheet.create({
     borderWidth: StyleSheet.hairlineWidth,
     borderColor: colors.inkFaint,
   },
+  wide: { marginTop: 16 },
+  primary: { alignItems: 'center', paddingVertical: 13, borderRadius: 10, backgroundColor: colors.ink },
+  primaryText: { fontSize: 15, color: colors.sheet },
   msg: { marginTop: 12, fontSize: 13, color: colors.danger },
 });

@@ -2,9 +2,10 @@
 import { memo } from 'react';
 import Svg, { Circle, G, Path } from 'react-native-svg';
 
+import { devMotifFor } from '@/domain/motif-slots';
 import type { MotifId } from '@/domain/types';
 
-type Props = { motif: MotifId; width: number; height: number; color: string };
+type Props = { motif: string; width: number; height: number; color: string };
 
 const leafPair = (y: number, s: number, c: string, k: string) => (
   <G key={k}>
@@ -101,7 +102,7 @@ function draw(motif: MotifId, c: string) {
 export const MotifArt = memo(function MotifArt({ motif, width, height, color }: Props) {
   return (
     <Svg width={width} height={height} viewBox="0 0 24 60" preserveAspectRatio="xMidYMax meet">
-      {draw(motif, color)}
+      {draw(devMotifFor(motif), color)}
     </Svg>
   );
 });

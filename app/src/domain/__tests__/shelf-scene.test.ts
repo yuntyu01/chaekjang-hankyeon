@@ -1,6 +1,6 @@
-import { SHELF, singleFootprint } from '../geometry';
+import { bookHeight, bookThickness, SHELF, singleFootprint } from '../geometry';
 import type { BookMap } from '../layout-engine';
-import { SAMPLE_BOOKS, SAMPLE_LAYOUT } from '../sample-books';
+import { SAMPLE_BOOKS, SAMPLE_LAYOUT } from '../onboarding-sample';
 import { computeShelf, hitTest, tiltedFrame } from '../shelf-scene';
 
 const books: BookMap = Object.fromEntries(SAMPLE_BOOKS.map((b) => [b.id, b]));
@@ -8,7 +8,8 @@ const FLOOR = SHELF.clearHeight;
 
 describe('기울인 책', () => {
   it.each([7, -7] as const)('%i°: 가장 낮은 점이 선반 바닥에 닿고 점유 폭 안에 들어간다', (tilt) => {
-    const f = tiltedFrame(100, 34, 148, tilt);
+    const b = books.b01;
+    const f = tiltedFrame(100, bookThickness(b), bookHeight(b), tilt);
     const ys = f.poly.map((p) => p.y);
     const xs = f.poly.map((p) => p.x);
     expect(Math.max(...ys)).toBeCloseTo(FLOOR, 6);
