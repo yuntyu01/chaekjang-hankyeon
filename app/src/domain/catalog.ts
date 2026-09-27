@@ -24,6 +24,7 @@ export type CatalogBook = {
 export type UserBook = {
   isbn13: string;
   status: BookStatus;
+  startedAt?: string;
   finishedAt?: string;
   note?: string;
   songTitle?: string;
@@ -90,6 +91,9 @@ export function toShelfBook(c: CatalogBook, u?: UserBook): Book {
     physical: size && c.pageCount ? { ...size, pages: c.pageCount } : undefined,
     // coverArtUri/spineArtUri는 모티프 PNG가 생기면 슬롯에서 채운다.
     art: { motif: motifOf(c, u) },
+    publisher: c.publisher,
+    publishedAt: c.publishedAt,
+    startedAt: u?.status === 'reading' || u?.status === 'read' ? u.startedAt : undefined,
     finishedAt: u?.status === 'read' ? u.finishedAt : undefined,
   };
 }

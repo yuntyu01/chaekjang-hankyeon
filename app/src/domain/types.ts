@@ -54,6 +54,9 @@ export type Book = {
   thicknessClass: ThicknessClass;
   coverAspectRatio: number; // 너비/높이
   art: BookArt;
+  publisher?: string;
+  publishedAt?: string; // 출간 YYYY-MM 또는 YYYY-MM-DD
+  startedAt?: string; // 읽기 시작 YYYY-MM-DD
   finishedAt?: string; // YYYY-MM-DD
   quotes?: number; // 저장된 문장 수. 갈피 표시와 연결(0이면 갈피 없음)
   // 실제 판형·쪽수. 있으면 등급 대신 이걸로 크기를 정한다.

@@ -1,6 +1,9 @@
 // 순수 배치 계산. UI와 저장소는 여기서 검증된 레이아웃만 확정한다.
 import {
   bookHeight,
+  CAMERA,
+  frontWidth,
+  LYING_BACK_Z,
   H_OVERHANG,
   LEGACY_LEAN,
   MAX_STACK,
@@ -95,6 +98,12 @@ function intervalAt(poly: XY[], y: number) {
   return xs.length ? { left: Math.min(...xs), right: Math.max(...xs) } : null;
 }
 
+// 눕힌 책 끝면이 화면에서 차지하는 폭(DU): 깊이 끝까지 × 카메라 kx
+function lyingEndGap(item: ShelfItem, books: BookMap) {
+  const depth = Math.max(...item.bookIds.map((id) => frontWidth(books[id])));
+  return (LYING_BACK_Z + depth) * CAMERA.kx;
+}
+
 function packedPositions(items: ShelfItem[], layout: ShelfLayout, books: BookMap) {
   const packed: { item: ShelfItem; x: number; width: number; poly: XY[] }[] = [];
   for (const item of items) {
@@ -103,6 +112,9 @@ function packedPositions(items: ShelfItem[], layout: ShelfLayout, books: BookMap
       ? [{ x: 0, y: -height }, { x: width, y: -height }, { x: width, y: 0 }, { x: 0, y: 0 }]
       : visibleBookOutline(books[item.bookIds[0]], { ...placementOf(layout, item.bookIds[0])!, tilt: 0 });
     let x = 0;
+    const last = packed[packed.length - 1];
+    // 눕힌 책(더미) 바로 뒤에는 오른쪽 끝면이 보일 만큼 띄운다(뒤에 놓여 옆 책 앞면에 가려지지 않게, 시안처럼)
+    if (last && isHorizontalItem(last.item, layout)) x = last.x + last.width + lyingEndGap(last.item, books);
     for (const prev of packed) {
       for (const y of [...prev.poly, ...poly].map((q) => q.y)) {
         const a = intervalAt(prev.poly, y), b = intervalAt(poly, y);
@@ -592,7 +604,7 @@ export function findSwapTarget(layout: ShelfLayout, books: BookMap, bookId: stri
     if (pos.item.bookIds.includes(bookId)) return { kind: 'self' };
     const middle = centerX >= pos.x + pos.width * 0.25 && centerX <= pos.x + pos.width * 0.75;
     if (p.pose === 'horizontal' && middle && isHorizontalItem(pos.item, layout)) return { kind: 'stack', itemKey: pos.item.key };
-    return { kind: 'swap', itemKey: pos.item.key };
+    break; // 다른 책 위: 그 자리에 끼워 넣고 옆 책들을 민다(자리 바꾸기 대신)
   }
   const mine = positions.find((pos) => pos.item.bookIds.includes(bookId));
   const w = mine?.width ?? 0;
@@ -605,8 +617,11 @@ export function applySwapTarget(layout: ShelfLayout, books: BookMap, bookId: str
   if (t.kind === 'self') return { ok: false, reason: 'no-change' };
   if (t.kind === 'stack') return moveBook(layout, books, bookId, { kind: 'stack', shelfId: p.shelfId, itemKey: t.itemKey });
   if (t.kind === 'place') {
-    const rest = itemPositions(shelfItems(detach(layout, bookId), p.shelfId), detach(layout, bookId), books);
-    const index = rest.filter((pos) => pos.x + pos.width / 2 < t.x).length;
+    // 끼울 순서: 지금 화면의 위치(빼기 전)에서 끄는 책의 가운데보다 가운데가 왼쪽인 책 수
+    const all = itemPositions(shelfItems(layout, p.shelfId), layout, books);
+    const mine = all.find((pos) => pos.item.bookIds.includes(bookId));
+    const center = t.x + (mine?.width ?? 0) / 2;
+    const index = all.filter((pos) => pos !== mine && pos.x + pos.width / 2 < center).length;
     return moveBook(layout, books, bookId, { kind: 'insert', shelfId: p.shelfId, index, x: t.x });
   }
   return swapWith(layout, books, bookId, t.itemKey);

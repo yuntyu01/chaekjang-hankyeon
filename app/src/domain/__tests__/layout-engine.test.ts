@@ -290,10 +290,16 @@ describe('자리 바꾸기', () => {
     expect(swapWith(SAMPLE_LAYOUT, books, 'b01', 'b01')).toEqual({ ok: false, reason: 'no-change' });
   });
 
-  it('책 위 판정: 다른 책 위면 바꾸기, 자기 자리면 그대로, 빈 공간이면 그 자리에 놓기', () => {
+  it('책 위 판정: 다른 책 위면 끼워 넣고 밀기, 자기 자리면 그대로, 빈 공간이면 그 자리에 놓기', () => {
     const x = (id: string) => bookXs(SAMPLE_LAYOUT, books).get(id)!;
     expect(findSwapTarget(SAMPLE_LAYOUT, books, 'b01', x('b01') + 5)).toEqual({ kind: 'self' });
-    expect(findSwapTarget(SAMPLE_LAYOUT, books, 'b01', x('b02') + 10)).toEqual({ kind: 'swap', itemKey: 'b02' });
+    // 데미안 위로 끌면 그 자리에 끼워지고 데미안은 옆으로 밀린다
+    const over = findSwapTarget(SAMPLE_LAYOUT, books, 'b03', x('b02') + 4);
+    expect(over.kind).toBe('place');
+    const moved = ok(applySwapTarget(SAMPLE_LAYOUT, books, 'b03', over));
+    expect(shelfItems(moved, 'shelf-1').map((it) => it.key).slice(0, 3)).toEqual(['b01', 'b03', 'b02']);
+    const xs = bookXs(moved, books);
+    expect(xs.get('b02')!).toBeGreaterThan(xs.get('b03')!);
     const l = ok(moveToDrawer(SAMPLE_LAYOUT, 'b06', books));
     const t = findSwapTarget(l, books, 'b01', 356);
     expect(t.kind).toBe('place');

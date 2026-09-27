@@ -10,7 +10,7 @@ import { BRUSH_DETAIL } from '@/domain/body-art.generated';
 import { DESIGN_WIDTH, SHELF } from '@/domain/geometry';
 import type { BookFrame, Point } from '@/domain/shelf-scene';
 import type { Book, Pose } from '@/domain/types';
-import { edgeFactor, Grain, HEAD_BOW, mix, PAGE, PAGE_LINE, scaleColor } from '@/ui/book/BookBody';
+import { BOX_HEAD_BOW, edgeFactor, Grain, mix, PAGE, PAGE_LINE, scaleColor } from '@/ui/book/BookBody';
 import { BookRenderer } from '@/ui/book/BookRenderer';
 import { ShelfFront, ShelfImage } from '@/ui/shelf/ShelfPlank';
 import { ShelfShadows } from '@/ui/shelf/ShelfShadows';
@@ -146,9 +146,9 @@ export function softFace(pts: Point[], opt: { radii: number[]; wob: boolean[]; o
 function faceStyle(kind: Face['kind'], s: number) {
   switch (kind) {
     case 'top':
-      return { radii: [0, 4 * s, 4 * s, 5 * s], wob: [false, true, true, false], outer: [false, true, true, false] };
+      return { radii: [0, 1.6 * s, 1.8 * s, 1.8 * s], wob: [false, true, true, false], outer: [false, true, true, false] };
     case 'right':
-      return { radii: [1.5 * s, 0, 5 * s, 2.5 * s], wob: [false, false, true, false], outer: [false, false, true, true] };
+      return { radii: [1.2 * s, 0, 1.8 * s, 1.6 * s], wob: [false, false, true, false], outer: [false, false, true, true] };
     default:
       return { radii: [0, 0, 2 * s, 2 * s], wob: [false, true, true, true], outer: [false, true, true, true] };
   }
@@ -159,7 +159,7 @@ export function FaceShape({ face, book, pose, s, px, grain }: { face: Face; book
   const m = materialOf(pose, face.kind);
   let [A, B, Bb, Ab] = face.poly.map(px);
   // 세운 책의 볼록한 머리(앞면과 같은 곡선): 윗면은 양끝이 bow만큼 내려오고 가운데가 솟는다. 옆면 위 모서리도 같이 내려온다.
-  const bow = pose === 'spine' ? HEAD_BOW * s : 0;
+  const bow = pose === 'spine' ? BOX_HEAD_BOW * s : 0;
   let bulge: (Point | null)[] | undefined;
   if (bow && face.kind === 'top') {
     const d = unit(sub(B, A));

@@ -157,6 +157,7 @@ function wobble(seed: string, edge: number) {
 
 // 책등 머리가 볼록한 정도(DU). 시안 데미안·모순: 가운데가 양끝보다 1DU쯤 높다.
 export const HEAD_BOW = 0.9;
+export const BOX_HEAD_BOW = 0.3; // 상자 모델: 윗면이 곡선을 따라가므로 아주 살짝만
 
 // 세운 책 몸체 윤곽(px): 둥근 왼쪽 위, 살짝 볼록한 머리, 비스듬히 깎인 오른쪽 위, 평평한 바닥,
 // 손으로 그은 듯 부드럽게 흔들리는 가장자리.
@@ -165,11 +166,11 @@ export const HEAD_BOW = 0.9;
 // lyingFront: 누운 책의 앞면(상자 모델). 화면 왼쪽 위(몸체 오른쪽 위)는 바깥 모서리라 둥글게, 화면 오른쪽 위(몸체 오른쪽 아래)는 윗면·끝면과 이어져 곧게.
 export function bodyOutline(w: number, h: number, s: number, seed: string, side = SPINE_SIDE, chamfer?: number, topH = 0, lyingFront = false): Point[] {
   if (topH > 0) return topViewOutline(w, h, s, seed, side, topH);
-  const r = 4.6 * s;
+  const r = (side >= 0.999 && !lyingFront ? 2.4 : 4.6) * s; // 상자 모델 세운 책: 머리 모서리를 작게(시안: 거의 평평한 머리)
   const rb = 2 * s;
   const sideX = w * side;
   const ch = chamfer ?? w * Math.max(0.03, Math.min(CHAMFER, 1 - side)); // 옆면이 좁을수록 윗부분 깎임도 작다
-  const bow = HEAD_BOW * s;
+  const bow = (side >= 0.999 ? BOX_HEAD_BOW : HEAD_BOW) * s;
   const amp = WOBBLE * s;
   const step = 1.5 * s;
   const [wTop0, wRight0, wBottom0, wLeft] = [0, 1, 2, 3].map((e) => wobble(seed, e));
