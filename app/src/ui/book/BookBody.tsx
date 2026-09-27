@@ -96,8 +96,8 @@ export function frontProfile(face: string, lying: boolean): [number, number][] {
   const lum = luminance(face);
   const w = 0.35 + 0.75 * (1 - lum);
   const raw: [number, number][] = lying
-    ? [[0, 0.84], [0.05, 0.93], [0.5, 1.0], [0.94, 1.02], [1, 0.94]]
-    : [[0, 0.86], [0.02, 0.95], [0.06, 1.0], [0.4, 1.0], [0.9, 0.93], [0.97, 0.86], [1, 0.82]];
+    ? [[0, 0.84], [0.05, 0.93], [0.5, 1.0], [0.9, 1.03], [1, 1.06]]
+    : [[0, 0.86], [0.02, 0.95], [0.06, 1.0], [0.4, 1.0], [0.82, 0.95], [0.93, 0.87], [1, 0.8]];
   return raw.map(([p, k]) => [p, 1 - (1 - k) * w] as [number, number]);
 }
 
@@ -162,7 +162,8 @@ export const HEAD_BOW = 0.9;
 // 손으로 그은 듯 부드럽게 흔들리는 가장자리.
 // chamfer: 옆면 윗부분이 깎이는 높이(px). 주지 않으면 옆면 폭에서 정한다(누운 책은 윗면 폭 그대로 = 45도).
 // topH(px) > 0: 내려다보는 시점. 윗면(머리)이 앞면 위로 보이고, 옆면 위·아래 모서리가 뒤로 갈수록 올라간다.
-export function bodyOutline(w: number, h: number, s: number, seed: string, side = SPINE_SIDE, chamfer?: number, topH = 0): Point[] {
+// lyingFront: 누운 책의 앞면(상자 모델). 화면 왼쪽 위(몸체 오른쪽 위)는 바깥 모서리라 둥글게, 화면 오른쪽 위(몸체 오른쪽 아래)는 윗면·끝면과 이어져 곧게.
+export function bodyOutline(w: number, h: number, s: number, seed: string, side = SPINE_SIDE, chamfer?: number, topH = 0, lyingFront = false): Point[] {
   if (topH > 0) return topViewOutline(w, h, s, seed, side, topH);
   const r = 4.6 * s;
   const rb = 2 * s;
@@ -189,7 +190,8 @@ export function bodyOutline(w: number, h: number, s: number, seed: string, side 
   const frontOnly = side >= 0.999;
   // 옆면 바깥 윗모서리도 둥글게(시안: 머리 양쪽 모서리가 모두 둥글다)
   // 크게 깎일 때(올려다봄)는 모서리를 작게 해서 깎인 대각선이 살아 있게 한다
-  const rs = frontOnly ? Math.min(3 * s, w * 0.2) : ch > 2 * s ? Math.min(1.2 * s, (w - sideX) * 0.3) : Math.min(3 * s, (w - sideX) * 0.9);
+  // 앞면만(상자 모델)의 오른쪽 위는 옆면·윗면과 이어지는 모서리라 거의 곧게(둥글면 틈이 비어 보인다)
+  const rs = frontOnly ? (lyingFront ? Math.min(4 * s, w * 0.25) : 0.8 * s) : ch > 2 * s ? Math.min(1.2 * s, (w - sideX) * 0.3) : Math.min(3 * s, (w - sideX) * 0.9);
   for (let x = r + step; x < (frontOnly ? w - rs : sideX); x += step) pts.push({ x, y: headY(x) + amp * wTop(x / s) });
   if (!frontOnly) pts.push({ x: sideX, y: headY(sideX) });
   // 옆면 윗모서리는 앞면 모서리 높이(머리 곡선 끝)에서 시작해 ch만큼 내려간다(앞면보다 튀어 오르지 않게)
@@ -198,12 +200,13 @@ export function bodyOutline(w: number, h: number, s: number, seed: string, side 
     const a = -Math.PI / 2 + (Math.PI / 2) * (i / 5);
     pts.push({ x: w - rs + rs * Math.cos(a), y: sy + rs + rs * Math.sin(a) });
   }
-  for (let y = sy + rs + step; y < h - rb; y += step) pts.push({ x: w - amp * wRight(y / s), y });
+  const rbr = lyingFront ? 0.8 * s : rb; // 오른쪽 아래
+  for (let y = sy + rs + step; y < h - rbr; y += step) pts.push({ x: w - amp * wRight(y / s), y });
   for (let i = 0; i <= 4; i++) {
     const a = (Math.PI / 2) * (i / 4);
-    pts.push({ x: w - rb + rb * Math.cos(a), y: h - rb + rb * Math.sin(a) });
+    pts.push({ x: w - rbr + rbr * Math.cos(a), y: h - rbr + rbr * Math.sin(a) });
   }
-  for (let x = w - rb - step; x > rb; x -= step) pts.push({ x, y: h - 0.5 * amp * wBottom(x / s) });
+  for (let x = w - rbr - step; x > rb; x -= step) pts.push({ x, y: h - 0.5 * amp * wBottom(x / s) });
   for (let i = 0; i <= 4; i++) {
     const a = Math.PI / 2 + (Math.PI / 2) * (i / 4);
     pts.push({ x: rb + rb * Math.cos(a), y: h - rb + rb * Math.sin(a) });
@@ -362,8 +365,9 @@ function SpineSkin({
   topH?: number;
 }) {
   const mx = (p: Point) => (mirror ? { x: w - p.x, y: p.y } : p);
-  const outline = useMemo(() => poly(bodyOutline(w, h, s, id, side, chamfer, topH).map(mx)), [w, h, s, id, side, mirror, chamfer, topH]);
-  const outline2 = useMemo(() => poly(bodyOutline(w, h, s, `${id}~`, side, chamfer, topH).map(mx)), [w, h, s, id, side, mirror, chamfer, topH]);
+  const lf = lying && side >= 0.999;
+  const outline = useMemo(() => poly(bodyOutline(w, h, s, id, side, chamfer, topH, lf).map(mx)), [w, h, s, id, side, mirror, chamfer, topH, lf]);
+  const outline2 = useMemo(() => poly(bodyOutline(w, h, s, `${id}~`, side, chamfer, topH, lf).map(mx)), [w, h, s, id, side, mirror, chamfer, topH, lf]);
   // 내려다볼 때 보이는 윗면(머리): 앞 모서리 FL-FR, 뒤 모서리 BL-BR. 가운데는 아이보리 종이, 양옆은 표지 판.
   const head = useMemo(() => {
     if (topH <= 0) return null;
@@ -741,6 +745,12 @@ export const CoverBody = memo(function CoverBody({
           <Rect x={0} y={0} width={fw} height={ch}>
             <LinearGradient start={vec(0, 0)} end={vec(fw, ch)} colors={['rgba(255,255,255,0.08)', 'rgba(255,255,255,0)', 'rgba(0,0,0,0.08)']} positions={[0, 0.45, 1]} />
           </Rect>
+          {d <= 0 ? (
+            // 상자 모델: 오른쪽 끝이 옆면으로 둥글게 넘어가며 어두워진다
+            <Rect x={fw - 5 * s} y={0} width={5 * s} height={ch}>
+              <LinearGradient start={vec(fw - 5 * s, 0)} end={vec(fw, 0)} colors={['rgba(60,40,28,0)', 'rgba(60,40,28,0.16)']} />
+            </Rect>
+          ) : null}
           {/* 바닥 쪽 어둡게(선반에 닿는 곳) */}
           <Rect x={0} y={ch - 5 * s} width={fw} height={5 * s}>
             <LinearGradient start={vec(0, ch - 5 * s)} end={vec(0, ch)} colors={['rgba(60,40,28,0)', 'rgba(60,40,28,0.14)']} />

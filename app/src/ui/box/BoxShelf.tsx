@@ -31,11 +31,48 @@ const toneOf = (book: Book, pose: Pose) => (pose === 'front' ? book.cover?.edge 
 
 type Px = (p: Point) => Point;
 
+// 모서리마다 반지름을 준 둥근 다각형(각 꼭짓점을 양옆 변에서 r만큼 잘라 곡선으로 잇는다). r은 변 길이의 절반을 넘지 않는다.
+export function roundedPath(pts: Point[], radii: number[]) {
+  const path = Skia.Path.Make();
+  const n = pts.length;
+  const cut = (i: number, j: number, r: number) => {
+    const a = pts[i];
+    const b = pts[j];
+    const len = Math.hypot(b.x - a.x, b.y - a.y) || 1;
+    const t = Math.min(r, len / 2) / len;
+    return { x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t };
+  };
+  for (let i = 0; i < n; i++) {
+    const r = radii[i] ?? 0;
+    const prev = (i + n - 1) % n;
+    const next = (i + 1) % n;
+    const p0 = r > 0 ? cut(i, prev, r) : pts[i];
+    const p1 = r > 0 ? cut(i, next, r) : pts[i];
+    if (i === 0) path.moveTo(p0.x, p0.y);
+    else path.lineTo(p0.x, p0.y);
+    if (r > 0) path.quadTo(pts[i].x, pts[i].y, p1.x, p1.y);
+  }
+  path.close();
+  return path;
+}
+
+// 면 네 꼭짓점 [앞 A, 앞 B, 뒤 B, 뒤 A]의 둥글기. 다른 면과 이어지는 앞 모서리는 곧게, 바깥 모서리는 둥글게(시안: 베개처럼 둥근 책).
+function faceRadii(kind: Face['kind'], s: number) {
+  switch (kind) {
+    case 'top': // A = 앞 왼쪽 위(앞면의 둥근 모서리와 이어짐), B = 앞 오른쪽 위(옆면과 공유)
+      return [4 * s, 0, 5 * s, 4 * s];
+    case 'right': // A = 앞 오른쪽 아래(바닥), B = 앞 오른쪽 위(윗면과 공유)
+      return [1.5 * s, 0, 5 * s, 2.5 * s];
+    default:
+      return [0, 0, 2 * s, 2 * s];
+  }
+}
+
 function FaceShape({ face, book, pose, s, px, grain }: { face: Face; book: Book; pose: Pose; s: number; px: Px; grain: ReturnType<typeof useImage> }) {
   const tone = toneOf(book, pose);
   const m = materialOf(pose, face.kind);
   const [A, B, Bb, Ab] = face.poly.map(px);
-  const path = Skia.Path.Polygon([A, B, Bb, Ab], true);
+  const path = roundedPath([A, B, Bb, Ab], faceRadii(face.kind, s));
   // 평행사변형 위의 점: u = 앞 모서리 A→B, v = 깊이 A→Ab
   const P = (u: number, v: number) => ({ x: A.x + (B.x - A.x) * u + (Ab.x - A.x) * v, y: A.y + (B.y - A.y) * u + (Ab.y - A.y) * v });
   const len = Math.hypot(B.x - A.x, B.y - A.y) || 1;
@@ -71,23 +108,25 @@ function FaceShape({ face, book, pose, s, px, grain }: { face: Face; book: Book;
       <Group clip={path}>
         <Grain w={DESIGN_WIDTH * s} h={400 * s} s={s} image={grain} />
       </Group>
-      {/* 앞면에서 꺾여 들어가는 쪽 명암: 빛을 받는 윗면은 모서리 쪽이 밝고, 그늘진 옆면은 모서리 쪽이 어둡다 */}
+      {/* 둥근 모서리로 이어지는 명암: 앞면 끝과 같은 밝기에서 시작해 면 색으로 풀린다(꺾인 선이 보이지 않게) */}
       <Path path={path}>
         <LinearGradient
           start={vec(A.x, A.y)}
           end={vec(A.x + (Ab.x - A.x) * 0.45, A.y + (Ab.y - A.y) * 0.45)}
-          colors={lit ? ['rgba(255,250,240,0.22)', 'rgba(255,250,240,0)'] : ['rgba(50,35,25,0.2)', 'rgba(50,35,25,0)']}
+          colors={lit ? ['rgba(255,250,240,0.2)', 'rgba(255,250,240,0)'] : ['rgba(255,250,240,0.1)', 'rgba(255,250,240,0)']}
         />
       </Path>
       {/* 뒤로 갈수록 조금 어둡다(빛에서 멀어짐) */}
       <Path path={path}>
         <LinearGradient start={vec(A.x, A.y)} end={vec(Ab.x, Ab.y)} colors={['rgba(50,35,25,0)', 'rgba(50,35,25,0.08)']} />
       </Path>
-      {/* 꺾이는 모서리의 빛: 빛 쪽(윗면)은 또렷하게, 그늘 쪽(옆면)은 옅게 */}
-      <Path path={Skia.Path.Polygon([A, B], false)} style="stroke" strokeWidth={0.9 * s} strokeCap="round">
-        <LinearGradient start={vec(A.x, A.y)} end={vec(B.x, B.y)} colors={lit ? ['rgba(255,255,255,0.5)', 'rgba(255,255,255,0.3)'] : ['rgba(255,255,255,0.22)', 'rgba(255,255,255,0.08)']} />
-        <BlurMask blur={0.35 * s} style="normal" />
-      </Path>
+      {/* 빛을 받는 둥근 모서리의 부드러운 광택(그늘 쪽 모서리에는 없다) */}
+      {lit ? (
+        <Path path={Skia.Path.Polygon([A, B], false)} style="stroke" strokeWidth={1.6 * s} strokeCap="round">
+          <LinearGradient start={vec(A.x, A.y)} end={vec(B.x, B.y)} colors={['rgba(255,255,255,0.4)', 'rgba(255,255,255,0.2)']} />
+          <BlurMask blur={0.9 * s} style="normal" />
+        </Path>
+      ) : null}
     </>
   );
 }
@@ -108,7 +147,10 @@ const DepthFaces = memo(function DepthFaces({ entries, cam, s, clear, height }: 
             ))}
           {/* 상자 바깥 실루엣만 연한 같은 색 선 하나(면 사이에는 선을 긋지 않는다). 앞면 쪽은 앞면이 덮는다 */}
           <Path
-            path={Skia.Path.Polygon(silhouette(cam, placed).map(px), true)}
+            path={(() => {
+              const h = silhouette(cam, placed).map(px);
+              return roundedPath(h, h.map(() => 4 * s));
+            })()}
             style="stroke"
             strokeWidth={0.8 * s}
             strokeJoin="round"
