@@ -9,7 +9,9 @@ import type { BookFrame } from '@/domain/shelf-scene';
 import type { Book } from '@/domain/types';
 import { ko } from '@/i18n/ko';
 import { BookRenderer } from '@/ui/book/BookRenderer';
+import { SHELF_ASSET } from '@/domain/shelf-asset.generated';
 import { Plank } from '@/ui/shelf/Plank';
+import { ShelfShadow } from '@/ui/shelf/ShelfShadow';
 import { ShelfShadows } from '@/ui/shelf/ShelfShadows';
 import { colors, fonts, motion, shadow } from '@/ui/theme';
 
@@ -72,17 +74,26 @@ const BookSlot = memo(function BookSlot({ frame, clear, book, scale: s, placehol
   );
 });
 
-// 선반 한 칸 이미지(실제 자산 v3). 원본 비율 유지, 책 밑면 기준선(contactY)이 이 줄의 바닥에 오도록 놓는다.
-// 선반 고정 그림자는 이미지에 들어 있어 코드로 다시 그리지 않는다.
-const SHELF_PNG = require('../../../assets/bookshelf/shelf-single-v3.png');
+// 선반 한 칸 이미지(나무판만, 바깥 그림자 분리본). 원본 비율 유지, 책 밑면 기준선(contactY)이 이 줄의 바닥에 오도록 놓는다.
+// 바깥 그림자는 ShelfShadow(코드, 두 레이어)가 판 아래에 그린다.
+const SHELF_PNG = require('../../../assets/bookshelf/shelf-plank.png');
 
 function ShelfImage({ scale: s, clear }: { scale: number; clear: number }) {
+  const top = (clear - SHELF.contact) * s;
   return (
-    <Image
+    <>
+      <ShelfShadow
+        plankLeft={(SHELF_IMG_X + SHELF_ASSET.plankLeft * SHELF_IMG_W) * s}
+        plankRight={(SHELF_IMG_X + SHELF_ASSET.plankRight * SHELF_IMG_W) * s}
+        plankBottom={top + SHELF_ASSET.plankBottom * SHELF_IMG_H * s}
+        scale={s}
+      />
+      <Image
       source={SHELF_PNG}
-      style={{ position: 'absolute', left: SHELF_IMG_X * s, top: (clear - SHELF.contact) * s, width: SHELF_IMG_W * s, height: SHELF_IMG_H * s }}
+      style={{ position: 'absolute', left: SHELF_IMG_X * s, top, width: SHELF_IMG_W * s, height: SHELF_IMG_H * s }}
       resizeMode="stretch"
     />
+    </>
   );
 }
 

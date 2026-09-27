@@ -5,7 +5,7 @@ import type { Book, BookPlacement, HeightClass, ThicknessClass, Tilt } from './t
 export const DESIGN_WIDTH = 390;
 
 // 선반 표현 방식.
-// 'asset': assets/bookshelf/shelf-single-v3.png(윗면 전체 깊이를 복원한 수정본). 기본.
+// 'asset': assets/bookshelf/shelf-plank.png(받은 v4에서 바깥 그림자를 분리한 나무판만). 그림자는 ShelfShadow가 그린다. 기본.
 // 'drawn': 코드로 그리는 판(PNG가 없을 때의 대체).
 export const SHELF_STYLE = 'asset' as 'drawn' | 'asset';
 

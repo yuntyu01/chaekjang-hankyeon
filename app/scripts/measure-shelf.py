@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""선반 PNG(assets/bookshelf/shelf-single.png)를 실제로 측정해 정규화 메타데이터를 만든다.
+"""선반 PNG(assets/bookshelf/shelf-plank.png, 그림자 분리본)를 실제로 측정해 정규화 메타데이터를 만든다.
 그리고 종이 배경(paper-background.png)이 이음새 없이 반복 가능한지 검사한다.
 
 - plankTopY: 윗면(상판) 뒤쪽 모서리가 시작되는 줄
@@ -18,7 +18,7 @@ import numpy as np
 from PIL import Image
 
 ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
-SHELF = os.path.join(ROOT, "assets/bookshelf/shelf-single-v3.png")
+SHELF = os.path.join(ROOT, "assets/bookshelf/shelf-plank.png")  # 그림자 분리본(separate-shelf-shadow.py)
 PAPER = os.path.join(ROOT, "assets/bookshelf/paper-background.png")
 OUT = os.path.join(ROOT, "src/domain/shelf-asset.generated.ts")
 CONTACT_INSET = 0.3  # 윗면 깊이의 30%만큼 앞턱에서 안쪽에 책이 선다(시안: 책 앞에 상판이 얇게 보임)
@@ -40,10 +40,15 @@ def measure_shelf():
     bx, by, bw, bh = (int(v) for v in stats[body][:4])
     opaque = np.nonzero(a_row > 240)[0]
     plank_top, plank_bottom = int(opaque.min()), int(opaque.max())
-    # 윗면→앞면 경계: 불투명 구간에서 밝기가 가장 크게 떨어지는 줄
+    # 윗면→앞면 경계: 윗면(밝음)과 앞면(조금 짙음) 밝기의 중간을 처음 넘어 내려가는 줄.
+    # 앞면 아래 끝의 어두운 테두리 선에 속지 않도록 두 면의 대표 밝기(중앙값)로 판단한다.
     seg = l_row[plank_top : plank_bottom + 1]
-    diff = np.diff(seg)
-    front_top = plank_top + int(np.argmin(diff)) + 1
+    n_seg = len(seg)
+    top_l = np.median(seg[int(n_seg * 0.1) : int(n_seg * 0.35)])
+    front_l = np.median(seg[int(n_seg * 0.7) : int(n_seg * 0.9)])
+    mid_l = (top_l + front_l) / 2
+    below = np.nonzero(seg[int(n_seg * 0.3) :] < mid_l)[0]
+    front_top = plank_top + int(n_seg * 0.3) + int(below[0])
     contact = front_top - CONTACT_INSET * (front_top - plank_top)
     # 좌우: 앞면 가운데 줄에서 불투명한 범위
     mid = (front_top + plank_bottom) // 2
@@ -97,7 +102,7 @@ def main():
     print(json.dumps(meta, indent=1))
     print({k: (round(v, 2) if isinstance(v, float) else v) for k, v in seam.items()})
     lines = [
-        "// 자동 생성: app/scripts/measure-shelf.py 가 assets/bookshelf/shelf-single.png 를 실제로 측정한 값. 직접 고치지 말 것.",
+        "// 자동 생성: app/scripts/measure-shelf.py 가 assets/bookshelf/shelf-plank.png(그림자 분리본)를 실제로 측정한 값. 직접 고치지 말 것.",
         "// 모든 값은 이미지 전체 폭/높이 대비 비율(투명 여백 포함).",
         f"export const SHELF_ASSET = {json.dumps(meta, indent=2)} as const;",
         "",

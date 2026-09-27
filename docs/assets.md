@@ -5,17 +5,25 @@
 | 구분 | 위치 | 상태 |
 |---|---|---|
 | **최종** 종이 배경 | `app/assets/bookshelf/paper-background.png` (1254×1254 RGB) | 받은 자산. 이음새 검사 통과(`scripts/measure-shelf.py`) → 기기 픽셀 1:1로 반복, 화면 고정 |
-| **최종** 선반 한 칸 | `app/assets/bookshelf/shelf-single-v3.png` (2172×724 RGBA, 고정 그림자 포함, 윗면 전체 깊이) | 받은 자산. 측정 메타데이터 `src/domain/shelf-asset.generated.ts` |
+| **최종** 선반 한 칸 | `app/assets/bookshelf/shelf-plank.png` (2172×724 RGBA, 나무판만) | 받은 v4(`assets/bookshelf/source/shelf-single-v4-shadowed.png`, 원본명 exec-2b101ced-…png)에서 `scripts/separate-shelf-shadow.py`로 바깥 그림자를 분리. 본체 밖 알파 0 검사. 측정 메타데이터 `src/domain/shelf-asset.generated.ts` |
 | 최종(코드 생성) 종이 결 | `app/assets/texture/paper-grain@3x.png` | 시안의 결 세기(밝기 표준편차 2~6)에 맞춰 생성한 이음새 없는 타일. 책 몸체에 겹친다 |
 | **임시 TEMP** 예시 책 그림 | `app/assets/temp-reference/*` | 시안 이미지에서 잘라 제목을 지운 개발용 샘플. 최종 재장정 아트로 교체 대상 |
 | **임시 TEMP** 모티프 SVG | `app/src/ui/art/motifs.tsx`, `scenes.tsx` | 모티프 PNG가 없을 때의 대체 그림 |
 
-## 선반 PNG 측정값(v3, 정규화, 투명 여백 포함)
+## 선반 PNG 측정값(shelf-plank, 정규화, 투명 여백 포함)
 
-`scripts/measure-shelf.py`가 잰다. 나무판 본체는 불투명 픽셀의 가장 큰 연결 덩어리로 잡아 희미한 고립 알파를 무시한다.
-plankLeft 0.0235 · plankRight 0.977 · plankTopY 0.3978(윗면 뒤) · frontTopY 0.5014(앞턱 위) · frontBottomY 0.5856 · contactY 0.4703(책 밑면, 윗면 깊이의 30% 안쪽) · usableLeft 0.0433 · usableRight 0.9572(기준선 줄에서 잰 윗면 범위, 4px 안쪽).
-윗면(약 75px)과 앞면(약 61px)이 비슷한 깊이. 표시: 원본 비율 유지, 나무판이 화면 좌우 5DU 여백에 오도록 폭 398.5DU·오프셋 -4.4DU. 줄 간격 ROW_PITCH 약 225DU(모든 줄 공통: 책 영역 209 + 앞턱 아래 15.3 + 1).
-선반 고정 그림자는 PNG 그대로 쓰고 코드로 다시 그리지 않는다. 앞턱 가림: 책 밑면이 기준선에 서서 앞턱 아래로 내려가지 않아 전경 마스크는 쓰지 않았다.
+`scripts/measure-shelf.py`가 잰다. 나무판 본체는 불투명 픽셀의 가장 큰 연결 덩어리. 윗면/앞면 경계는 두 면 대표 밝기의 중간값으로 찾는다(앞면 아래 어두운 테두리에 속지 않게).
+plankLeft 0.0239 · plankRight 0.9761 · plankTopY 0.395 · frontTopY 0.5 · plankBottom 0.5829 · contactY 0.4685(윗면 깊이 30% 안쪽) · usableLeft 0.0433 · usableRight 0.9563.
+표시: 원본 비율 유지, 나무판이 화면 좌우 5DU에 오도록 폭·오프셋 계산. 줄 간격 ROW_PITCH는 모든 줄 공통.
+
+## 선반 그림자(코드)
+
+`src/ui/shelf/ShelfShadow.tsx`, 수치는 `src/ui/theme.ts`의 `shelfShadow` 한곳(색·불투명도·세로 길이·흐림·위치·감쇠 곡선).
+- 접촉: 판 전체 폭, 8DU, 불투명도 0.11
+- 퍼짐: 왼쪽 끝 12DU 비움·오른쪽 4DU 넓힘, 40DU, 0.1, 오른쪽으로 5DU
+
+SVG 필터 대신 그라데이션+마스크로 흐림을 만들어 플랫폼 차이를 없앴다. 캔버스는 흐림 폭만큼 넓게, 스크롤 끝에는 그림자 길이만큼 여백.
+에뮬레이터 측정(벽 밝기 차, 판 아래 1/3/6/10/15/20/30/40DU): 시안 가운데 28/25/23/17.7/13.3/7.9/0.6/1.3 ↔ 앱 27/27/23/14/12.6/9.7/4.1/0.3.
 
 ## 추가로 필요한 최종 자산
 

@@ -49,6 +49,7 @@ import { placementStore, usePlacementStore } from '@/store/placement-store';
 import { DragOverlay, frameBBox } from '@/ui/shelf/DragOverlay';
 import { CONTENT_TOP, computeRows, rowAt, toContent, toScene, useShelfMetrics } from '@/ui/shelf/metrics';
 import { ShelfRow, type DropHint } from '@/ui/shelf/ShelfRow';
+import { SHELF_SHADOW_EXTENT } from '@/ui/shelf/ShelfShadow';
 import { colors, fonts, motion } from '@/ui/theme';
 
 import { BookDetail, type MoveAction } from './BookDetail';
@@ -459,7 +460,7 @@ export function HomeScreen() {
   const count = Object.values(books).filter((b) => b.finishedAt?.startsWith(String(year))).length;
   const draggedBook = drag ? books[drag.bookId] : null;
   const showNewZone = (editing || !!drag) && !(drag && shownShelves.some((sh) => sh.id === drag.newShelfId));
-  const contentHeight = (rows.at(-1) ? rows.at(-1)!.top + rows.at(-1)!.height : CONTENT_TOP) + (showNewZone ? 120 : 40);
+  const contentHeight = (rows.at(-1) ? rows.at(-1)!.top + rows.at(-1)!.height : CONTENT_TOP) + (showNewZone ? 120 : 0) + (SHELF_SHADOW_EXTENT + 8) * m.scale;
 
   return (
     <View style={[styles.root, { paddingTop: insets.top }]}>

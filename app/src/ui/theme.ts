@@ -51,6 +51,35 @@ export const shadow = {
   plank: { opacity: 0.3, height: 20 }, // 선반 판 아래 벽 그림자
 };
 
+// 선반 바깥 그림자(선반 PNG에서 분리, ShelfShadow가 그린다). 단위 DU(폭 390 기준), 불투명도 0~1.
+// 시안 측정(벽 밝기 차, 판 아래 1/3/6/10/15/20/30/40DU): 가운데~오른쪽 26/24/21/17.5/13.5/9/3/2, 왼쪽 끝 20/17/8/0.
+// → 판 전체 폭의 짧고 진한 접촉 그림자 + 왼쪽 끝을 비운 채 40DU까지 서서히 사라지는 퍼짐 그림자.
+// blur: 좌우 끝 흐림 폭. offsetX/offsetY: 판 아래 끝 기준 이동. insetLeft/insetRight: 판 폭에서 줄이는 양(음수면 넓힘).
+// stops: 세로 감쇠 곡선 [위치(0=위,1=아래), 불투명도 배율].
+export const shelfShadow = {
+  color: '#5A3E26',
+  contact: {
+    opacity: 0.11,
+    height: 8,
+    blur: 4,
+    offsetX: 1,
+    offsetY: -0.5,
+    insetLeft: 0,
+    insetRight: 0,
+    stops: [[0, 1], [0.45, 0.5], [1, 0]] as [number, number][],
+  },
+  ambient: {
+    opacity: 0.1,
+    height: 40,
+    blur: 16,
+    offsetX: 5,
+    offsetY: -0.5,
+    insetLeft: 12,
+    insetRight: -4,
+    stops: [[0, 0.4], [0.15, 1], [0.5, 0.5], [0.75, 0.2], [1, 0]] as [number, number][],
+  },
+};
+
 export const motion = {
   shift: 180, // 옆 책이 비켜주는 시간(ms)
   settle: 220,
