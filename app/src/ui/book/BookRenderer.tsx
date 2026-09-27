@@ -136,19 +136,20 @@ function Horizontal({ book, scale: s }: { book: Book; scale: number }) {
   const H = t + topFace;
   const ink = inkOf(book);
   const faceT = t * 0.9;
-  // 제목은 모티프 앞까지. 한 줄에 들어가도록 줄이되 9DU 아래로는 줄이지 않는다(그 이하는 말줄임).
-  const availDU = (len * (1 - 0.08) - (t * 0.62 + len * 0.1)) / s;
+  // 제목은 모티프 앞까지(오른쪽 끝면 폭 topFace 제외). 한 줄에 들어가도록 줄이되 9DU 아래로는 줄이지 않는다(그 이하는 말줄임).
+  const titleRight = t * 0.62 + len * 0.1 + topFace;
+  const availDU = (len * (1 - 0.08) - titleRight) / s;
   const units = [...book.title].reduce((n, ch) => n + (ch === ' ' ? 0.35 : 1), 0);
   const fs = Math.max(9, Math.min(12.5, (faceT / s) * 0.3, availDU / (units * 1.02))) * s;
   return (
     <View style={{ width: len, height: H }}>
       <LyingBody id={book.id} width={len} height={H} scale={s} face={faceOf(book)} art={book.body} topFace={topFace} />
       {!book.body ? (
-        <View style={{ position: 'absolute', right: len * 0.07, top: topFace + t * 0.15, width: t * 0.6, height: t * 0.7 }}>
+        <View style={{ position: 'absolute', right: len * 0.07 + topFace, top: topFace + t * 0.15, width: t * 0.6, height: t * 0.7 }}>
           <MotifArt motif={book.art.motif} width={t * 0.6} height={t * 0.7} color={book.art.accentColor ?? ink} />
         </View>
       ) : null}
-      <View style={{ position: 'absolute', left: len * 0.08, right: t * 0.62 + len * 0.1, top: H - faceT, height: faceT, justifyContent: 'center' }}>
+      <View style={{ position: 'absolute', left: len * 0.08, right: titleRight, top: H - faceT, height: faceT, justifyContent: 'center' }}>
         <Text allowFontScaling={false} numberOfLines={1} style={{ fontFamily: fonts.bookTitle, fontSize: fs, color: ink, letterSpacing: 0.3 * s }}>
           {book.title}
         </Text>

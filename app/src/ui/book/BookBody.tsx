@@ -104,6 +104,15 @@ export function lyingProfile(side: number, face: string): [number, number][] {
   ].map(([p, k]) => [p, 1 - (1 - k) * w] as [number, number]);
 }
 
+// 두 색 섞기(a: 'rgb(...)' 또는 '#RRGGBB')
+function mix(a: string, b: string, t: number) {
+  const parse = (c: string) =>
+    c.startsWith('#') ? [1, 3, 5].map((i) => parseInt(c.slice(i, i + 2), 16)) : (c.match(/\d+/g) ?? []).slice(0, 3).map(Number);
+  const [x, y] = [parse(a), parse(b)];
+  const m = x.map((v, i) => Math.round(v + (y[i] - v) * t));
+  return `rgb(${m[0]}, ${m[1]}, ${m[2]})`;
+}
+
 export function luminance(hex: string) {
   const n = parseInt(hex.slice(1), 16);
   return (0.2126 * ((n >> 16) & 255) + 0.7152 * ((n >> 8) & 255) + 0.0722 * (n & 255)) / 255;
@@ -136,11 +145,12 @@ export const HEAD_BOW = 0.9;
 
 // 세운 책 몸체 윤곽(px): 둥근 왼쪽 위, 살짝 볼록한 머리, 비스듬히 깎인 오른쪽 위, 평평한 바닥,
 // 손으로 그은 듯 부드럽게 흔들리는 가장자리.
-export function bodyOutline(w: number, h: number, s: number, seed: string, side = SPINE_SIDE): Point[] {
+// chamfer: 옆면 윗부분이 깎이는 높이(px). 주지 않으면 옆면 폭에서 정한다(누운 책은 윗면 폭 그대로 = 45도).
+export function bodyOutline(w: number, h: number, s: number, seed: string, side = SPINE_SIDE, chamfer?: number): Point[] {
   const r = 4.6 * s;
   const rb = 2 * s;
   const sideX = w * side;
-  const ch = w * Math.max(0.03, Math.min(CHAMFER, 1 - side)); // 옆면이 좁을수록 윗부분 깎임도 작다
+  const ch = chamfer ?? w * Math.max(0.03, Math.min(CHAMFER, 1 - side)); // 옆면이 좁을수록 윗부분 깎임도 작다
   const bow = HEAD_BOW * s;
   const amp = WOBBLE * s;
   const step = 1.5 * s;
@@ -261,6 +271,7 @@ function SpineSkin({
   grain,
   mirror = false,
   lying = false,
+  chamfer,
 }: {
   id: string;
   w: number;
@@ -271,10 +282,11 @@ function SpineSkin({
   grain: SkImageType | null;
   mirror?: boolean;
   lying?: boolean;
+  chamfer?: number;
 }) {
   const mx = (p: Point) => (mirror ? { x: w - p.x, y: p.y } : p);
-  const outline = useMemo(() => poly(bodyOutline(w, h, s, id, side).map(mx)), [w, h, s, id, side, mirror]);
-  const outline2 = useMemo(() => poly(bodyOutline(w, h, s, `${id}~`, side).map(mx)), [w, h, s, id, side, mirror]);
+  const outline = useMemo(() => poly(bodyOutline(w, h, s, id, side, chamfer).map(mx)), [w, h, s, id, side, mirror, chamfer]);
+  const outline2 = useMemo(() => poly(bodyOutline(w, h, s, `${id}~`, side, chamfer).map(mx)), [w, h, s, id, side, mirror, chamfer]);
   const sideTop = useMemo(
     () => poly([{ x: w * side, y: 0 }, { x: w, y: w * (1 - side) }, { x: w, y: w * (1 - side) + 1.6 * s }, { x: w * side, y: 1.6 * s }].map(mx)),
     [w, s, side, mirror],
@@ -367,11 +379,15 @@ export const SpineBody = memo(function SpineBody({ id, width: w, height: h, scal
   );
 });
 
-// 누운 책: 세운 몸체를 반시계로 90도 눕힌다(책 머리가 왼쪽, 옆면이 위쪽 윗면). topFace = 위에서 보이는 윗면 두께(px).
-// 모티프는 눕히지 않고 오른쪽 끝에 바로 세워 그린다.
+// 누운 책: 사선 투영 상자(시안 좋은 문장·찰나의 마음). 세운 몸체를 반시계로 90도 눕혀 앞면(책등)과 윗면을 만들고
+// (책 머리가 왼쪽, 옆면이 위를 향한 윗면, 왼쪽 끝은 45도로 깎임), 오른쪽에 뒤로 물러나는 끝면(책 배 쪽 종이)을 붙인다.
+// 윗면 뒤쪽 모서리는 끝면 폭 e만큼 오른쪽으로 밀린 평행사변형이 된다. topFace = 위에서 보이는 윗면 두께(px).
+// 모티프는 눕히지 않고 앞면 오른쪽 끝에 바로 세워 그린다.
 export const LyingBody = memo(function LyingBody({ id, width: len, height: H, scale: s, face, art, topFace }: BodyProps & { topFace: number }) {
   const grain = useImage(BRUSH_DETAIL);
   const motif = useImage(art?.motif ?? null);
+  const e = topFace; // 끝면 폭 = 윗면 깊이(45도)
+  const L = len - e; // 앞면 길이
   const side = 1 - topFace / H;
   const fw = faceWidth(H, side); // 앞면 두께(px)
   let mh = fw * 0.6;
@@ -380,12 +396,56 @@ export const LyingBody = memo(function LyingBody({ id, width: len, height: H, sc
     mh = (mh * len * 0.22) / mw;
     mw = len * 0.22;
   }
+  const prof = lyingProfile(side, face);
+  const kAt = (p: number) => prof.find(([q]) => q >= p)?.[1] ?? 1;
+  const at = (u: number, v: number) => ({ x: L + u * e, y: topFace * (1 - u) + v * (H - topFace) }); // 끝면 위 점(u: 앞→뒤, v: 위→아래)
+  const shapes = useMemo(() => {
+    const T = H - topFace;
+    const b = Math.min(1.3 * s, T * 0.12); // 표지 판 두께
+    const pages = [at(0.1, b / T), at(1, b / T), at(1, 1 - b / T), at(0.1, 1 - b / T)];
+    const lines = [0.4, 0.65].map((v) => [at(0.1, v), at(1, v)]);
+    return {
+      topTri: poly([{ x: L - 0.5, y: 0 }, { x: L + e, y: 0 }, { x: L - 0.5, y: topFace }]),
+      end: poly([at(0, 0), at(1, 0), at(1, 1), at(0, 1)]),
+      pages: poly(pages),
+      lines: lines.map(([p, q]) => poly([p, q, { x: q.x, y: q.y + 0.5 }, { x: p.x, y: p.y + 0.5 }])),
+      rim: poly([{ x: L - 0.5, y: 0 }, { x: L + e, y: 0 }, at(1, 1), at(0, 1)]),
+    };
+  }, [L, e, H, topFace, s]);
+  const edge = scaleColor(face, edgeFactor(face));
   return (
     <Canvas style={{ width: len, height: H }}>
       <Group transform={[{ translateY: H }, { rotate: -Math.PI / 2 }]}>
-        <SpineSkin id={id} w={H} h={len} s={s} face={face} side={side} grain={grain} lying />
+        <SpineSkin id={id} w={H} h={L} s={s} face={face} side={side} grain={grain} lying chamfer={topFace} />
       </Group>
-      {motif ? <SkImage image={motif} x={len - mw - len * 0.06} y={H - fw / 2 - mh / 2} width={mw} height={mh} fit="contain" /> : null}
+      {/* 윗면 오른쪽 끝(뒤로 밀린 부분) */}
+      <Group clip={shapes.topTri}>
+        <Rect x={L - 1} y={0} width={e + 1} height={topFace}>
+          <LinearGradient start={vec(0, 0)} end={vec(0, topFace)} colors={[scaleColor(face, kAt(0.99)), scaleColor(face, kAt(side + 0.001))]} />
+        </Rect>
+        <Grain w={len} h={H} s={s} image={grain} />
+      </Group>
+      {/* 끝면: 앞표지 판 · 종이 · 뒤표지 판. 빛 반대쪽이라 어둡고, 뒤로 갈수록 조금 더 어둡다 */}
+      <Group clip={shapes.end}>
+        <Rect x={L} y={0} width={e} height={H}>
+          <LinearGradient start={vec(L, 0)} end={vec(L + e, 0)} colors={[scaleColor(face, 0.82), scaleColor(face, 0.72)]} />
+        </Rect>
+        {/* 종이: 시안은 흰 종이가 아니라 책 색에 가까운 한 톤 밝은 면(판 사이로 살짝 들어간 모양) */}
+        <Path path={shapes.pages}>
+          <LinearGradient start={vec(L, 0)} end={vec(L + e, 0)} colors={[mix(scaleColor(face, 0.86), PAGE, 0.35), mix(scaleColor(face, 0.78), PAGE, 0.3)]} />
+        </Path>
+        <Path path={shapes.pages} style="stroke" strokeWidth={0.8 * s} color={scaleColor(face, 0.66)} opacity={0.5} />
+        {shapes.lines.map((l, i) => (
+          <Path key={i} path={l} color={scaleColor(face, 0.7)} opacity={0.2} />
+        ))}
+        <Grain w={len} h={H} s={s} image={grain} />
+        {/* 앞면과 만나는 모서리 */}
+        <Rect x={L} y={0} width={1.2 * s} height={H} color={scaleColor(face, 0.7)} opacity={0.6} />
+      </Group>
+      {/* 윗면과 끝면이 만나는 모서리의 옅은 빛, 바깥 가장자리 선 */}
+      <Path path={poly([at(0, 0), at(1, 0), { x: L + e, y: 1.2 * s }, { x: L, y: topFace + 1.2 * s }])} color="rgba(255,255,255,0.18)" />
+      <Path path={shapes.rim} style="stroke" strokeWidth={1.3 * s} color={edge} antiAlias />
+      {motif ? <SkImage image={motif} x={L - mw - len * 0.05} y={H - fw / 2 - mh / 2} width={mw} height={mh} fit="contain" /> : null}
     </Canvas>
   );
 });
