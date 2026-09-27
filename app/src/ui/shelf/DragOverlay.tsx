@@ -2,7 +2,7 @@
 // 들린 느낌: 살짝 확대 + 접촉 그림자 없이 넓고 흐린 그림자.
 import { StyleSheet, View } from 'react-native';
 import Animated, { type SharedValue, useAnimatedStyle } from 'react-native-reanimated';
-import Svg, { Polygon } from 'react-native-svg';
+import Svg, { Defs, FeGaussianBlur, Filter, Polygon } from 'react-native-svg';
 
 import type { BookFrame } from '@/domain/shelf-scene';
 import type { Book } from '@/domain/types';
@@ -43,10 +43,12 @@ export function DragOverlay({ book, frame, scale: s, x, y, lift }: Props) {
       style={[styles.root, { width: box.width * s, height: box.height * s }, style]}>
       <Animated.View style={[{ position: 'absolute', left: -PAD, top: -PAD }, shadowStyle]}>
         <Svg width={box.width * s + PAD * 2 + shadow.lifted.dx * s} height={box.height * s + PAD * 2 + shadow.lifted.dy * s}>
-          {[26, 19, 13, 8, 4].map((w, i) => (
-            <Polygon key={i} points={pts} fill="none" stroke={colors.shadow} strokeOpacity={shadow.lifted.opacity / 5} strokeWidth={w * s} strokeLinejoin="round" />
-          ))}
-          <Polygon points={pts} fill={colors.shadow} fillOpacity={shadow.lifted.opacity * 0.8} />
+          <Defs>
+            <Filter id="lift" x={0} y={0} width={box.width * s + PAD * 2 + shadow.lifted.dx * s} height={box.height * s + PAD * 2 + shadow.lifted.dy * s} filterUnits="userSpaceOnUse">
+              <FeGaussianBlur stdDeviation={7 * s} />
+            </Filter>
+          </Defs>
+          <Polygon points={pts} fill={colors.shadow} fillOpacity={shadow.lifted.opacity * 1.4} filter="url(#lift)" />
         </Svg>
       </Animated.View>
       <View

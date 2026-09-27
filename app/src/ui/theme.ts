@@ -46,37 +46,47 @@ export const typeScale = {
 // 그림자 토큰. 빛은 화면 좌상단, 외부 그림자는 화면 좌표 기준 오른쪽 아래.
 export const shadow = {
   contact: { opacity: 0.34, height: 3.2, spread: 2.5 }, // 선반에 닿는 좁은 그림자
-  cast: { dx: 6, dy: 1.5, opacity: 0.24, blurSteps: [20, 13, 7, 3] }, // 뒤 벽에 떨어지는 넓고 흐린 그림자(바닥 쪽 최대)
+  // 책이 뒤 벽에 드리우는 그림자: 빛이 왼쪽 위에서 오므로 책 윤곽을 오른쪽으로 sweep만큼 끌어 늘리고(dx 이동) 가우시안 블러(blur=표준편차 DU).
+  // 시안 측정(마지막 책 오른쪽 벽, 바닥에서 위로 3/10/20/35/50/75/100DU): 29/28/27/24/23/16/1 → 화면 끝까지 거의 평평.
+  // fade: 바닥에서 위로 [높이 DU, 불투명도 배율].
+  cast: {
+    dx: 2,
+    dy: 0,
+    sweep: 20,
+    opacity: 0.17,
+    blur: 6,
+    fade: [[0, 1], [50, 0.8], [75, 0.55], [100, 0]] as [number, number][],
+  },
   lifted: { dx: 12, dy: 14, opacity: 0.16, scale: 1.06 }, // 드래그 중 들린 느낌
   plank: { opacity: 0.3, height: 20 }, // 선반 판 아래 벽 그림자
 };
 
 // 선반 바깥 그림자(선반 PNG에서 분리, ShelfShadow가 그린다). 단위 DU(폭 390 기준), 불투명도 0~1.
-// 시안 측정(벽 밝기 차, 판 아래 1/3/6/10/15/20/30/40DU): 가운데~오른쪽 26/24/21/17.5/13.5/9/3/2, 왼쪽 끝 20/17/8/0.
-// → 판 전체 폭의 짧고 진한 접촉 그림자 + 왼쪽 끝을 비운 채 40DU까지 서서히 사라지는 퍼짐 그림자.
+// 시안 측정(벽 밝기 차, 판 아래 0→25DU): 1·2번 선반 60→32, 3번 선반 30→11, 양 끝(왼쪽 20DU·오른쪽 7DU 안쪽)은 가늘어져 0.
+// → 짧고 진한 접촉 그림자 + 70DU까지 천천히 사라지는 퍼짐 그림자, 둘 다 양 끝을 넓게 흐린다.
 // blur: 좌우 끝 흐림 폭. offsetX/offsetY: 판 아래 끝 기준 이동. insetLeft/insetRight: 판 폭에서 줄이는 양(음수면 넓힘).
 // stops: 세로 감쇠 곡선 [위치(0=위,1=아래), 불투명도 배율].
 export const shelfShadow = {
   color: '#5A3E26',
   contact: {
-    opacity: 0.11,
-    height: 8,
-    blur: 4,
-    offsetX: 1,
+    opacity: 0.1,
+    height: 6,
+    blur: 10,
+    offsetX: 0,
     offsetY: -0.5,
-    insetLeft: 0,
-    insetRight: 0,
+    insetLeft: 2,
+    insetRight: 4,
     stops: [[0, 1], [0.45, 0.5], [1, 0]] as [number, number][],
   },
   ambient: {
-    opacity: 0.1,
-    height: 40,
-    blur: 16,
-    offsetX: 5,
+    opacity: 0.14,
+    height: 70,
+    blur: 24,
+    offsetX: 0,
     offsetY: -0.5,
-    insetLeft: 12,
-    insetRight: -4,
-    stops: [[0, 0.4], [0.15, 1], [0.5, 0.5], [0.75, 0.2], [1, 0]] as [number, number][],
+    insetLeft: 6,
+    insetRight: 8,
+    stops: [[0, 0.7], [0.1, 1], [0.35, 0.7], [0.6, 0.4], [0.8, 0.15], [1, 0]] as [number, number][],
   },
 };
 

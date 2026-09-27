@@ -45,3 +45,21 @@ describe('선반 장면', () => {
     expect(hitTest(frames, { x: 340, y: 10 })).toBeNull();
   });
 });
+
+import { castShape, hull } from '../../ui/shelf/ShelfShadows';
+
+describe('책 그림자 모양', () => {
+  it('책 윤곽을 오른쪽으로 끌어 늘린 볼록 껍질', () => {
+    const rect = [
+      { x: 0, y: 0 },
+      { x: 10, y: 0 },
+      { x: 10, y: 50 },
+      { x: 0, y: 50 },
+    ];
+    const s = castShape(rect, 2, 0, 20);
+    const xs = s.map((p) => p.x);
+    expect(Math.min(...xs)).toBe(2);
+    expect(Math.max(...xs)).toBe(32);
+    expect(hull([...rect, { x: 5, y: 25 }])).toHaveLength(4);
+  });
+});
