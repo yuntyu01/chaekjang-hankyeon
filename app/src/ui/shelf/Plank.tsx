@@ -1,4 +1,4 @@
-// 코드로 그리는 선반 판. 시안(정면 시점)에서 잰 치수: 윗면 3.5DU, 앞면 11.5DU, 직각 끝, 판 바로 아래 짧은 그림자.
+// 코드로 그리는 선반 판. 정면 시점, 윗면 6DU(책 앞으로 또렷하게), 앞면 11.5DU, 양 끝이 보이게 화면 안쪽으로 들인다.
 // floorY는 책 밑면이 닿는 선(윗면 뒤쪽). 너비·높이는 px.
 import { memo, useId } from 'react';
 import Svg, { Defs, LinearGradient, Rect, Stop } from 'react-native-svg';
@@ -33,8 +33,13 @@ export const Plank = memo(function Plank({ left, width: w, floorY, scale: s, hei
       <Rect x={left + 8 * s} y={floorY + pt + pf - 1 * s} width={w - 5 * s} height={shadow.plank.height * s} fill={`url(#${id}under)`} />
       <Rect x={left} y={floorY - 0.5 * s} width={w} height={pt + 2 * s} rx={2 * s} fill={`url(#${id}top)`} />
       <Rect x={left} y={floorY + pt} width={w} height={pf} rx={2.5 * s} fill={`url(#${id}front)`} />
-      <Rect x={left + 1 * s} y={floorY + pt} width={w - 2 * s} height={0.8 * s} fill="#FFFFFF" opacity={0.4} />
+      {/* 윗면 앞 모서리: 빛을 받는 밝은 선 + 그 아래 앞면 시작의 옅은 그늘 */}
+      <Rect x={left + 1 * s} y={floorY + pt - 0.8 * s} width={w - 2 * s} height={1 * s} fill="#FFF6EA" opacity={0.9} />
+      <Rect x={left + 1 * s} y={floorY + pt + 0.2 * s} width={w - 2 * s} height={1.2 * s} fill={colors.plankEdge} opacity={0.35} />
       <Rect x={left + 1 * s} y={floorY + pt + pf - 1.2 * s} width={w - 2 * s} height={1.2 * s} rx={0.6 * s} fill={colors.plankEdge} opacity={0.9} />
+      {/* 판 양 끝: 나뭇결 단면이 살짝 어둡게 보인다 */}
+      <Rect x={left} y={floorY - 0.5 * s} width={2.4 * s} height={pt + pf + 0.5 * s} rx={1.2 * s} fill={colors.plankEdge} opacity={0.45} />
+      <Rect x={left + w - 2.4 * s} y={floorY - 0.5 * s} width={2.4 * s} height={pt + pf + 0.5 * s} rx={1.2 * s} fill={colors.plankEdge} opacity={0.6} />
     </Svg>
   );
 });

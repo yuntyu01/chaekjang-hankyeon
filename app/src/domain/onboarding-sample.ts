@@ -4,20 +4,20 @@ import { FRONT_SIDE } from './geometry';
 import { SAMPLE_ART } from './onboarding-sample.generated';
 import type { Book, BookPlacement, HeightClass, ShelfLayout, ThicknessClass } from './types';
 
-type Meta = { id: string; title: string; author?: string; motif: string; finishedAt: string };
+type Meta = { id: string; title: string; author?: string; motif: string; finishedAt: string; quotes?: number; ribbon?: string };
 
 const META: Meta[] = [
   { id: 'b01', title: '모순', author: '양귀자', motif: 'leaf', finishedAt: '2026-01-12' },
-  { id: 'b02', title: '데미안', author: '헤르만 헤세', motif: 'leaf', finishedAt: '2026-01-28' },
-  { id: 'b03', title: '어린왕자', author: '생텍쥐페리', motif: 'star', finishedAt: '2026-02-09' },
-  { id: 'b04', title: '달과 나', motif: 'moon', finishedAt: '2026-02-22' },
-  { id: 'b05', title: '문장 수집', motif: 'sprig', finishedAt: '2026-03-15' },
+  { id: 'b02', quotes: 2, ribbon: '#98AC9E', title: '데미안', author: '헤르만 헤세', motif: 'leaf', finishedAt: '2026-01-28' },
+  { id: 'b03', quotes: 1, ribbon: '#E3AE6C', title: '어린왕자', author: '생텍쥐페리', motif: 'star', finishedAt: '2026-02-09' },
+  { id: 'b04', quotes: 2, ribbon: '#7D9CC4', title: '달과 나', motif: 'moon', finishedAt: '2026-02-22' },
+  { id: 'b05', quotes: 2, ribbon: '#D98A7C', title: '문장 수집', motif: 'sprig', finishedAt: '2026-03-15' },
   { id: 'b06', title: '흰', author: '한강', motif: 'cotton', finishedAt: '2026-03-30' },
   { id: 'b07', title: '여름의 숲', motif: 'leaf', finishedAt: '2026-04-18' },
-  { id: 'b08', title: '여행의 이유', author: '김영하', motif: 'wave', finishedAt: '2026-05-02' },
+  { id: 'b08', quotes: 2, ribbon: '#8EAAD0', title: '여행의 이유', author: '김영하', motif: 'wave', finishedAt: '2026-05-02' },
   { id: 'b09', title: '작은 것들의 깊이', motif: 'bud', finishedAt: '2026-05-21' },
   { id: 'b10', title: '사람의 마음이란', motif: 'crescent', finishedAt: '2026-06-10' },
-  { id: 'b11', title: '너라는 계절', motif: 'wildflower', finishedAt: '2026-06-29' },
+  { id: 'b11', quotes: 1, ribbon: '#E7A77C', title: '너라는 계절', motif: 'wildflower', finishedAt: '2026-06-29' },
   { id: 'b12', title: '찰나의 마음', motif: 'crescent', finishedAt: '2026-07-11' },
   { id: 'b13', title: '좋은 문장은 이렇게 온다', motif: 'leaf', finishedAt: '2026-07-30' },
   { id: 'b14', title: '고요한 우연', motif: 'sprig', finishedAt: '2026-08-14' },
@@ -27,18 +27,22 @@ const META: Meta[] = [
   { id: 'b18', title: '아주 보통의 하루', motif: 'wildflower', finishedAt: '2026-06-18' },
 ];
 
+// 폰 화면을 채우도록 책 키를 키운다. 폭은 그대로(1번 선반이 이미 가득 참). 늘어난 만큼은 그림 없는 빈 띠(band)만 늘린다.
+export const SPINE_GROW = 1.15;
+export const COVER_GROW = 1.12;
+
 const heightClass = (h: number): HeightClass => (h < 140 ? 'short' : h < 165 ? 'medium' : 'tall');
 const thicknessClass = (t: number): ThicknessClass => (t < 32 ? 'thin' : t < 40 ? 'medium' : 'thick');
 
 function toBook(m: Meta): Book {
   const s = SAMPLE_ART[m.id];
-  const base = { id: m.id, title: m.title, author: m.author, themeColor: s.color, art: { motif: m.motif }, finishedAt: m.finishedAt, motifImage: s.motif, sample: s };
+  const base = { id: m.id, title: m.title, author: m.author, themeColor: s.color, quotes: m.quotes, art: { motif: m.motif, ribbon: m.ribbon }, finishedAt: m.finishedAt, motifImage: s.motif, sample: s };
   if (s.kind === 'spine') {
-    return { ...base, heightClass: heightClass(s.h), thicknessClass: thicknessClass(s.w), coverAspectRatio: 0.7, dims: { height: s.h, thickness: s.w } };
+    return { ...base, heightClass: heightClass(s.h), thicknessClass: thicknessClass(s.w), coverAspectRatio: 0.7, dims: { height: s.h * (s.band ? SPINE_GROW : 1), thickness: s.w } };
   }
   if (s.kind === 'cover') {
     const coverWidth = s.w - FRONT_SIDE;
-    return { ...base, heightClass: heightClass(s.h), thicknessClass: 'medium', coverAspectRatio: coverWidth / s.h, dims: { height: s.h, coverWidth, thickness: 36 } };
+    return { ...base, heightClass: heightClass(s.h), thicknessClass: 'medium', coverAspectRatio: coverWidth / s.h, dims: { height: s.h * (s.band ? COVER_GROW : 1), coverWidth, thickness: 36 } };
   }
   return { ...base, heightClass: heightClass(s.w), thicknessClass: thicknessClass(s.h), coverAspectRatio: 0.7, dims: { height: s.w, thickness: s.h } };
 }

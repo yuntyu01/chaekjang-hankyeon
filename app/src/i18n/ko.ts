@@ -1,7 +1,8 @@
 // 화면 문자열(ko 우선). 영어는 자리만 둔다.
 export const ko = {
   title: '나의 책장',
-  summary: (year: number, count: number) => `${year}년 · ${count}권`,
+  year: (year: number) => `${year}년`,
+  yearA11y: (year: number, count: number) => `${year}년, 완독 ${count}권. 눌러서 다른 해 보기`,
   add: '책 추가',
   addSoon: '책 추가는 다음 단계에서 열려요',
   decorate: '꾸미기',
@@ -21,6 +22,7 @@ export const ko = {
   hint: {
     stack: '쌓기',
     swap: '자리 바꾸기',
+    self: '',
     end: '맨 끝으로',
     beside: '나란히 놓기',
     here: '여기에 놓기',

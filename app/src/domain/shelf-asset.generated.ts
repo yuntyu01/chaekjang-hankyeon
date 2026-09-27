@@ -3,15 +3,19 @@
 export const SHELF_ASSET = {
   "width": 2172,
   "height": 724,
-  "plankTopY": 0.3439,
-  "frontTopY": 0.4461,
-  "frontBottomY": 0.5249,
-  "contactY": 0.4155,
-  "shadowBottomY": 0.7887,
-  "usableLeft": 0.0493,
-  "usableRight": 0.9507,
-  "frontLeft": 0.0267,
-  "frontRight": 0.9728
+  "plankTopY": 0.3978,
+  "frontTopY": 0.5014,
+  "frontBottomY": 0.5856,
+  "contactY": 0.4703,
+  "shadowBottomY": 0.761,
+  "usableLeft": 0.0433,
+  "usableRight": 0.9572,
+  "frontLeft": 0.0235,
+  "frontRight": 0.9761,
+  "plankLeft": 0.0235,
+  "plankRight": 0.977,
+  "plankTop": 0.3964,
+  "plankBottom": 0.5939
 } as const;
 
 // 종이 배경 이음새 검사: 가장자리 차이 x=1.82/y=2.87, 내부 이웃 차이 x=1.32/y=1.90,

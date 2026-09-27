@@ -18,7 +18,7 @@ import numpy as np
 from PIL import Image
 
 ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
-SHELF = os.path.join(ROOT, "assets/bookshelf/shelf-single.png")
+SHELF = os.path.join(ROOT, "assets/bookshelf/shelf-single-v3.png")
 PAPER = os.path.join(ROOT, "assets/bookshelf/paper-background.png")
 OUT = os.path.join(ROOT, "src/domain/shelf-asset.generated.ts")
 CONTACT_INSET = 0.3  # 윗면 깊이의 30%만큼 앞턱에서 안쪽에 책이 선다(시안: 책 앞에 상판이 얇게 보임)
@@ -33,6 +33,11 @@ def measure_shelf():
     band = slice(int(W * 0.2), int(W * 0.8))
     a_row = np.median(a[:, band], axis=1)
     l_row = np.median(lum[:, band], axis=1)
+    # 나무판 본체: 불투명(>200) 픽셀 중 가장 큰 연결 덩어리. 희미한 고립 알파 픽셀은 경계로 보지 않는다.
+    import cv2
+    n, lab, stats, _ = cv2.connectedComponentsWithStats((a > 200).astype(np.uint8), connectivity=8)
+    body = 1 + int(np.argmax(stats[1:, cv2.CC_STAT_AREA]))
+    bx, by, bw, bh = (int(v) for v in stats[body][:4])
     opaque = np.nonzero(a_row > 240)[0]
     plank_top, plank_bottom = int(opaque.min()), int(opaque.max())
     # 윗면→앞면 경계: 불투명 구간에서 밝기가 가장 크게 떨어지는 줄
@@ -44,9 +49,10 @@ def measure_shelf():
     mid = (front_top + plank_bottom) // 2
     cols = np.nonzero(a[mid] > 240)[0]
     left, right = int(cols.min()), int(cols.max())
-    # 윗면 줄에서의 범위(책이 올라가는 곳)
-    top_mid = int((plank_top + front_top) / 2)
-    tcols = np.nonzero(a[top_mid] > 240)[0]
+    # 책 밑면 기준선 줄에서 윗면이 불투명한 범위(책이 서는 곳). 비스듬한 모서리 때문에 앞면보다 좁다.
+    crow = int(round(contact))
+    tcols = np.nonzero(a[crow] > 240)[0]
+    edge_pad = 4  # 모서리 끝에 책이 걸쳐 보이지 않게 몇 px 안쪽
     # 그림자 끝(알파 > 8)
     shadow = np.nonzero(a_row > 8)[0]
     meta = dict(
@@ -57,10 +63,15 @@ def measure_shelf():
         frontBottomY=round((plank_bottom + 1) / H, 4),
         contactY=round(contact / H, 4),
         shadowBottomY=round((shadow.max() + 1) / H, 4),
-        usableLeft=round(max(left, tcols.min()) / W, 4),
-        usableRight=round(min(right, tcols.max()) / W, 4),
+        usableLeft=round((max(left, tcols.min()) + edge_pad) / W, 4),
+        usableRight=round((min(right, tcols.max()) - edge_pad) / W, 4),
         frontLeft=round(left / W, 4),
         frontRight=round(right / W, 4),
+        # 나무판 바운딩 박스(투명 여백·그림자 제외). 화면 좌우 여백은 이 값으로 맞춘다.
+        plankLeft=round(bx / W, 4),
+        plankRight=round((bx + bw) / W, 4),
+        plankTop=round(by / H, 4),
+        plankBottom=round((by + bh) / H, 4),
     )
     return meta
 

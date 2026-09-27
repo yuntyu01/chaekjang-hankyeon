@@ -5,33 +5,36 @@ import type { Book, BookPlacement, HeightClass, ThicknessClass, Tilt } from './t
 export const DESIGN_WIDTH = 390;
 
 // 선반 표현 방식.
-// 'drawn': 시안(정면 시점, 얇은 윗면, 직각 끝, 짧은 그림자)을 잰 치수로 코드가 그린다. 현재 기본.
-// 'asset': assets/bookshelf/shelf-single.png. 받은 PNG가 위에서 내려다본 시점이라 시안과 맞지 않아 보류(시안 비율 PNG를 받으면 켠다).
-export const SHELF_STYLE = 'drawn' as 'drawn' | 'asset';
+// 'asset': assets/bookshelf/shelf-single-v3.png(윗면 전체 깊이를 복원한 수정본). 기본.
+// 'drawn': 코드로 그리는 판(PNG가 없을 때의 대체).
+export const SHELF_STYLE = 'asset' as 'drawn' | 'asset';
 
-// 선반 이미지(asset)는 원본 비율 그대로 SHELF_IMG_W 폭으로 설계 폭 가운데에 놓는다.
-export const SHELF_IMG_W = 400;
+// 선반 이미지는 원본 비율 그대로. 폭은 투명 여백이 아니라 나무판 바운딩 박스(plankLeft~plankRight)가
+// 화면 좌우 PLANK_INSET 여백에 맞도록 계산하고, 이미지 오프셋도 그에 맞춘다(양 끝이 보이게).
+export const PLANK_INSET = 5;
+export const SHELF_IMG_W = (DESIGN_WIDTH - PLANK_INSET * 2) / (SHELF_ASSET.plankRight - SHELF_ASSET.plankLeft);
 export const SHELF_IMG_H = (SHELF_IMG_W * SHELF_ASSET.height) / SHELF_ASSET.width;
-export const SHELF_IMG_X = (DESIGN_WIDTH - SHELF_IMG_W) / 2;
+export const SHELF_IMG_X = PLANK_INSET - SHELF_ASSET.plankLeft * SHELF_IMG_W;
 
 // 시안(941px → 390DU)에서 잰 선반 치수
-const PLANK_TOP = 3.5; // 윗면
+const PLANK_TOP = 6; // 윗면: 책 앞으로 또렷하게 보이게 시안보다 깊게
 const PLANK_FRONT = 11.5; // 앞면
 
 const asset = SHELF_STYLE === 'asset';
-const USABLE_LEFT = asset ? SHELF_IMG_X + SHELF_ASSET.usableLeft * SHELF_IMG_W : 2;
-const USABLE_W = asset ? (SHELF_ASSET.usableRight - SHELF_ASSET.usableLeft) * SHELF_IMG_W : DESIGN_WIDTH - 4;
+const USABLE_LEFT = asset ? SHELF_IMG_X + SHELF_ASSET.usableLeft * SHELF_IMG_W : PLANK_INSET + 3;
+const USABLE_W = asset ? (SHELF_ASSET.usableRight - SHELF_ASSET.usableLeft) * SHELF_IMG_W : DESIGN_WIDTH - PLANK_INSET * 2 - 6;
 
 export const SHELF = {
   sideMargin: USABLE_LEFT, // 장면 x=0의 화면 설계 좌표(drawn: 선반 판 왼쪽 끝)
-  innerLeft: asset ? 1.5 : 20, // 시안: 첫 책이 판 끝에서 약 20DU 안쪽
+  innerLeft: asset ? 1.5 : 10, // 첫 책 ~ 판 왼쪽 끝
   innerRight: asset ? 1.5 : 3,
   gap: 0, // 책 사이 기본 간격(시안: 서로 맞닿음)
   clearHeight: 178, // 장면 좌표의 바닥(y) 값
-  // 줄 높이는 시안처럼 줄마다 그 줄에서 가장 큰 책(갈피 포함)에 맞춘다
-  rowTopPad: 6, // 가장 큰 책 위 여백
-  minClear: 110, // 빈 선반
-  rowGap: 0, // 앞턱 아래 ~ 다음 줄
+  // 줄 간격은 모든 줄 공통: 가장 큰 책(키 큰 등급 196) + 갈피 돌출(8) + 위 여백(5)
+  rowClear: 209,
+  rowGap: 2, // 앞턱 아래 ~ 다음 줄
+  rowTopPad: 5,
+  minClear: 110,
   plankTop: PLANK_TOP,
   plankFront: PLANK_FRONT,
   contact: asset ? SHELF_ASSET.contactY * SHELF_IMG_H : 0,
@@ -40,8 +43,10 @@ export const SHELF = {
 };
 
 export const SHELF_USABLE_WIDTH = USABLE_W - SHELF.innerLeft - SHELF.innerRight;
+export const ROW_PITCH = SHELF.rowClear + SHELF.below + SHELF.rowGap;
 
-export const BOOK_HEIGHT: Record<HeightClass, number> = { short: 124, medium: 158, tall: 170 };
+// 폰 화면을 채우도록 시안보다 약 15% 크게
+export const BOOK_HEIGHT: Record<HeightClass, number> = { short: 142, medium: 182, tall: 196 };
 export const BOOK_THICKNESS: Record<ThicknessClass, number> = { thin: 28, medium: 36, thick: 42 };
 
 // 눕힌 책의 윗면(표지 면) 깊이, 표지 전시의 옆면 두께.

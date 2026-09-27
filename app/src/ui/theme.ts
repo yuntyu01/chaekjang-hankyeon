@@ -7,8 +7,8 @@ export const colors = {
   inkSoft: '#6E6B66',
   inkFaint: '#9A958C',
   line: '#ECE3D5',
-  plankTop: '#F8DFC5',
-  plankTopBack: '#F1D5B7',
+  plankTop: '#FBE8D2', // 윗면 앞쪽(빛을 받아 밝음)
+  plankTopBack: '#E9CBA8', // 윗면 뒤쪽(책 그늘)
   plankFront: '#EACBAC',
   plankFrontLow: '#E4C3A2',
   plankEdge: '#CFAB88',
@@ -46,9 +46,9 @@ export const typeScale = {
 // 그림자 토큰. 빛은 화면 좌상단, 외부 그림자는 화면 좌표 기준 오른쪽 아래.
 export const shadow = {
   contact: { opacity: 0.34, height: 3.2, spread: 2.5 }, // 선반에 닿는 좁은 그림자
-  cast: { dx: 5, dy: 1.5, opacity: 0.2, blurSteps: [28, 20, 13, 7, 3] }, // 뒤 벽에 떨어지는 넓고 흐린 그림자(바닥 쪽 최대)
+  cast: { dx: 6, dy: 1.5, opacity: 0.24, blurSteps: [20, 13, 7, 3] }, // 뒤 벽에 떨어지는 넓고 흐린 그림자(바닥 쪽 최대)
   lifted: { dx: 12, dy: 14, opacity: 0.16, scale: 1.06 }, // 드래그 중 들린 느낌
-  plank: { opacity: 0.24, height: 14 }, // 선반 판 아래 짧은 그림자(시안 약 15DU)
+  plank: { opacity: 0.3, height: 20 }, // 선반 판 아래 벽 그림자
 };
 
 export const motion = {

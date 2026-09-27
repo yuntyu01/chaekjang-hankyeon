@@ -1,5 +1,7 @@
 // 홈 책장. 선반 전체를 하나의 제스처로 받아 책 윤곽으로 터치를 판정한다(그림자는 판정에서 제외).
-// 짧게 누르기 → 상세, 350ms 길게 누르기 → 드래그. 드래그 전 세로 이동은 스크롤이 가져간다.
+// 짧게 누르기 → 정보 상자, 350ms 길게 누르기 → 드래그. 드래그 전 세로 이동은 스크롤이 가져간다.
+// 드래그: 같은 선반은 올라간 책과 자리 바꾸기, 다른 선반은 그 자리에 끼우기(눕힌 책 가운데면 쌓기),
+// 마지막 선반 아래는 새 선반. 화면 가장자리에서 자동 스크롤.
 import { useFocusEffect } from 'expo-router';
 import * as Haptics from 'expo-haptics';
 import { BookMarked, Check, Paintbrush, Plus } from 'lucide-react-native';
@@ -7,7 +9,9 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { AppState, Pressable, StyleSheet, Text, View } from 'react-native';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import Animated, {
+  scrollTo,
   useAnimatedRef,
+  useFrameCallback,
   useAnimatedScrollHandler,
   useReducedMotion,
   useSharedValue,
@@ -16,11 +20,14 @@ import Animated, {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { scheduleOnRN } from 'react-native-worklets';
 
-import { SHELF } from '@/domain/geometry';
+import { SHELF, SHELF_USABLE_WIDTH } from '@/domain/geometry';
 import {
   addShelf,
   applySwapTarget,
+  detach,
+  findDropTarget,
   findSwapTarget,
+  moveBook,
   moveBy,
   moveToDrawer,
   moveToShelf,
@@ -48,10 +55,12 @@ import { BookDetail, type MoveAction } from './BookDetail';
 import { BookPopover } from './BookPopover';
 import { DrawerSheet } from './DrawerSheet';
 
+type HintKind = SwapTarget['kind'] | 'beside' | 'newShelf';
+// key: 같은 목표면 다시 계산하지 않으려는 식별자. shelfId: 안내를 띄울 선반
 type Preview =
-  | { kind: 'ok'; layout: ShelfLayout; target: SwapTarget }
-  | { kind: 'same'; target: SwapTarget }
-  | { kind: 'bad'; reason: FailReason | 'outside'; target: SwapTarget | null };
+  | { kind: 'ok'; layout: ShelfLayout; key: string; shelfId: string; hint: HintKind }
+  | { kind: 'same'; key: string; shelfId: string; hint: HintKind }
+  | { kind: 'bad'; reason: FailReason | 'outside'; key: string; shelfId: string | null };
 
 type Drag = {
   bookId: string;
@@ -61,7 +70,8 @@ type Drag = {
   grabY: number;
   preview: Preview | null;
   settling: ShelfLayout | null; // 놓은 뒤 스냅 애니메이션 동안 보여줄 레이아웃
-  shelfId: string; // 꾹 누른 책의 선반(좌우로만 움직인다)
+  shelfId: string; // 꾹 누른 책의 원래 선반
+  newShelfId: string; // 마지막 선반 아래에 놓을 때 만들 선반 id
 };
 
 type Toast = { text: string; action?: 'undo' | 'retry' } | null;
@@ -111,6 +121,7 @@ export function HomeScreen() {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [detailId, setDetailId] = useState<string | null>(null); // 서랍 책(시트)
   const [popId, setPopId] = useState<string | null>(null); // 선반 책(떠오르는 상자)
+  const [selectedYear, setSelectedYear] = useState<number | null>(null); // 헤더 독서 연도
   const [vpH, setVpH] = useState(0);
   const [editing, setEditing] = useState(false);
   const [drawerOpen, setDrawerOpen] = useState(false);
@@ -163,16 +174,49 @@ export function HomeScreen() {
   );
 
   // ---------- 미리보기 ----------
-  // 꾹 눌러 좌우로 움직이면, 끌고 있는 책 가운데가 올라간 책과 자리를 바꾼다(눕힌 책끼리 가운데면 쌓기).
-  const computePreview = (d: Drag, vx: number): Preview => {
+  const rowIndexAt = (cy: number) => {
+    if (!rows.length || cy < rows[0].top) return -1;
+    const i = rowAt(rows, cy);
+    return i === -1 ? rows.length : i;
+  };
+
+  const computePreview = (d: Drag, vx: number, vy: number, scroll: number): Preview => {
+    const cy = vy + scroll;
+    const index = rowIndexAt(cy);
     const centerPx = vx - d.grabX + d.boxW / 2;
     const centerDU = (centerPx - m.originX) / m.scale - SHELF.sideMargin;
-    const target = findSwapTarget(layout, books, d.bookId, centerDU);
-    if (d.preview?.target && JSON.stringify(d.preview.target) === JSON.stringify(target)) return d.preview;
-    const r = applySwapTarget(layout, books, d.bookId, target);
-    if (r.ok) return { kind: 'ok', layout: r.layout, target };
-    if (r.reason === 'no-change') return { kind: 'same', target };
-    return { kind: 'bad', reason: r.reason, target };
+    const withinX = centerDU > -SHELF.sideMargin && centerDU < SHELF.innerLeft + SHELF_USABLE_WIDTH + SHELF.innerRight + SHELF.sideMargin;
+    const reuse = (key: string) => (d.preview && d.preview.key === key ? d.preview : null);
+    if (!withinX || index < 0) return reuse('outside') ?? { kind: 'bad', reason: 'outside', key: 'outside', shelfId: null };
+    if (index >= shelves.length) {
+      // 마지막 선반 아래: 새 선반
+      const key = 'new';
+      const hit = reuse(key);
+      if (hit) return hit;
+      const r = moveBook(addShelf(layout, d.newShelfId), books, d.bookId, { kind: 'insert', shelfId: d.newShelfId, index: 0 });
+      return r.ok
+        ? { kind: 'ok', layout: r.layout, key, shelfId: d.newShelfId, hint: 'newShelf' }
+        : { kind: 'bad', reason: r.reason, key, shelfId: null };
+    }
+    const shelfId = shelves[index].id;
+    if (shelfId === d.shelfId) {
+      const t = findSwapTarget(layout, books, d.bookId, centerDU);
+      const key = `same:${JSON.stringify(t)}`;
+      const hit = reuse(key);
+      if (hit) return hit;
+      const r = applySwapTarget(layout, books, d.bookId, t);
+      if (r.ok) return { kind: 'ok', layout: r.layout, key, shelfId, hint: t.kind };
+      if (r.reason === 'no-change') return { kind: 'same', key, shelfId, hint: 'self' };
+      return { kind: 'bad', reason: r.reason, key, shelfId };
+    }
+    const p = placementOf(layout, d.bookId)!;
+    const t = findDropTarget(detach(layout, d.bookId), books, shelfId, centerDU, p.pose);
+    const key = `other:${JSON.stringify(t)}`;
+    const hit = reuse(key);
+    if (hit) return hit;
+    const r = moveBook(layout, books, d.bookId, t);
+    if (r.ok) return { kind: 'ok', layout: r.layout, key, shelfId, hint: t.kind === 'stack' ? 'stack' : 'beside' };
+    return { kind: 'bad', reason: r.reason, key, shelfId };
   };
 
   // ---------- 제스처 콜백(JS) ----------
@@ -203,9 +247,10 @@ export function HomeScreen() {
       boxW: box.width * m.scale,
       grabX: x - tl.x,
       grabY: y - tl.y,
-      preview: { kind: 'same', target: { kind: 'self' } },
+      preview: { kind: 'same', key: `same:${JSON.stringify({ kind: 'self' })}`, shelfId: hit.shelfId, hint: 'self' },
       settling: null,
       shelfId: hit.shelfId,
+      newShelfId: `shelf-${Date.now().toString(36)}`,
     };
     grab.value = { x: d.grabX, y: d.grabY };
     vpOrigin.value = { x: absX - x, y: absY - (y - scroll) };
@@ -219,10 +264,10 @@ export function HomeScreen() {
     updateDrag(d);
   };
 
-  const moveDrag = (vx: number) => {
+  const moveDrag = (vx: number, vy: number, scroll: number) => {
     const d = dragRef.current;
     if (!d || d.settling) return;
-    const preview = computePreview(d, vx);
+    const preview = computePreview(d, vx, vy, scroll);
     if (preview === d.preview) return;
     updateDrag({ ...d, preview });
   };
@@ -290,10 +335,12 @@ export function HomeScreen() {
     })
     .onUpdate((e) => {
       if (!active.value) return;
-      // 좌우로만 움직인다(세로는 그 선반에 고정)
       const vx = e.absoluteX - vpOrigin.value.x;
+      const vy = e.absoluteY - vpOrigin.value.y;
+      pointer.value = { x: vx, y: vy };
       dragX.value = vx - grab.value.x;
-      scheduleOnRN(moveDrag, vx);
+      dragY.value = vy - grab.value.y;
+      scheduleOnRN(moveDrag, vx, vy, scrollY.value);
     })
     .onFinalize((_e, success) => {
       scheduleOnRN(endDrag, !success);
@@ -304,6 +351,23 @@ export function HomeScreen() {
       if (success) scheduleOnRN(onTap, e.x, e.y);
     });
   const gesture = Gesture.Race(pan, tap);
+
+  // 가장자리 자동 스크롤. 스크롤하면서도 최신 좌표로 놓을 자리를 다시 계산한다.
+  useFrameCallback(() => {
+    if (!active.value) return;
+    const y = pointer.value.y;
+    const edge = motion.autoScrollEdge;
+    let delta = 0;
+    if (y < edge) delta = -motion.autoScrollMaxSpeed * Math.min(1, (edge - y) / edge);
+    else if (y > viewportH.value - edge) delta = motion.autoScrollMaxSpeed * Math.min(1, (y - (viewportH.value - edge)) / edge);
+    if (delta === 0) return;
+    const max = Math.max(0, contentH.value - viewportH.value);
+    const next = Math.max(0, Math.min(max, scrollY.value + delta));
+    if (next === scrollY.value) return;
+    scrollY.value = next;
+    scrollTo(scrollRef, 0, next, false);
+    scheduleOnRN(moveDrag, pointer.value.x, pointer.value.y, next);
+  });
 
   const onScroll = useAnimatedScrollHandler((e) => {
     scrollY.value = e.contentOffset.y;
@@ -333,10 +397,10 @@ export function HomeScreen() {
 
   const hintFor = (shelfId: string): DropHint => {
     const p = drag?.preview;
-    if (!drag || drag.settling || !p || !p.target || drag.shelfId !== shelfId) return null;
+    if (!drag || drag.settling || !p || p.shelfId !== shelfId) return null;
     if (p.kind === 'bad') return { text: ko.fail[p.reason] || ko.fail.outside, bad: true };
-    if (p.target.kind === 'self') return null;
-    return { text: ko.hint[p.target.kind], bad: false };
+    if (p.hint === 'self') return null;
+    return { text: ko.hint[p.hint], bad: false };
   };
 
   // ---------- 메뉴 동작 ----------
@@ -388,10 +452,14 @@ export function HomeScreen() {
     if (r.ok) placementStore.commit(r.layout);
   }, []);
 
-  const year = new Date().getFullYear();
+  // 독서 연도: 완독 기록이 있는 해들(없으면 올해). 누르면 다음 해로 넘긴다(최근 → 과거 순환).
+  const years = [...new Set(Object.values(books).map((b) => Number(b.finishedAt?.slice(0, 4))).filter(Boolean))].sort((a, b) => b - a);
+  if (!years.length) years.push(new Date().getFullYear());
+  const year = selectedYear && years.includes(selectedYear) ? selectedYear : years[0];
   const count = Object.values(books).filter((b) => b.finishedAt?.startsWith(String(year))).length;
   const draggedBook = drag ? books[drag.bookId] : null;
-  const contentHeight = (rows.at(-1) ? rows.at(-1)!.top + rows.at(-1)!.height : CONTENT_TOP) + (editing ? 110 : 24);
+  const showNewZone = (editing || !!drag) && !(drag && shownShelves.some((sh) => sh.id === drag.newShelfId));
+  const contentHeight = (rows.at(-1) ? rows.at(-1)!.top + rows.at(-1)!.height : CONTENT_TOP) + (showNewZone ? 120 : 40);
 
   return (
     <View style={[styles.root, { paddingTop: insets.top }]}>
@@ -406,7 +474,18 @@ export function HomeScreen() {
             minimumFontScale={0.7}>
             {ko.title}
           </Text>
-          <Text style={[styles.summary, { fontSize: 12.5 * m.scale, marginTop: 7 * m.scale }]}>{ko.summary(year, count)}</Text>
+          <Pressable
+            onPress={() => setSelectedYear(years[(years.indexOf(year) + 1) % years.length])}
+            disabled={years.length < 2}
+            hitSlop={8}
+            accessibilityRole="button"
+            accessibilityLabel={ko.yearA11y(year, count)}
+            style={{ alignSelf: 'flex-start' }}>
+            <Text style={[styles.summary, { fontSize: 12.5 * m.scale, marginTop: 7 * m.scale }]}>
+              {ko.year(year)}
+              {years.length > 1 ? ' ▾' : ''}
+            </Text>
+          </Pressable>
         </View>
         <View style={[styles.actions, { gap: 8 * m.scale, marginTop: -14 * m.scale }]}>
           <HeaderButton size={28 * m.scale} on={editing} label={editing ? ko.done : ko.decorate} onPress={() => setEditing((e) => !e)}>
@@ -472,7 +551,7 @@ export function HomeScreen() {
                   onRemove={onRemoveShelf}
                 />
               ))}
-              {editing && !drag ? (
+              {showNewZone ? (
                 <View style={styles.addShelfWrap}>
                   <Pressable
                     style={[styles.addShelf, drag && styles.addShelfDrop]}

@@ -72,9 +72,9 @@ const BookSlot = memo(function BookSlot({ frame, clear, book, scale: s, placehol
   );
 });
 
-// 선반 한 칸 이미지(실제 자산). 원본 비율 유지, 책 밑면 기준선(contactY)이 이 줄의 바닥에 오도록 놓는다.
+// 선반 한 칸 이미지(실제 자산 v3). 원본 비율 유지, 책 밑면 기준선(contactY)이 이 줄의 바닥에 오도록 놓는다.
 // 선반 고정 그림자는 이미지에 들어 있어 코드로 다시 그리지 않는다.
-const SHELF_PNG = require('../../../assets/bookshelf/shelf-single.png');
+const SHELF_PNG = require('../../../assets/bookshelf/shelf-single-v3.png');
 
 function ShelfImage({ scale: s, clear }: { scale: number; clear: number }) {
   return (

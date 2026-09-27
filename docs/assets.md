@@ -5,16 +5,17 @@
 | 구분 | 위치 | 상태 |
 |---|---|---|
 | **최종** 종이 배경 | `app/assets/bookshelf/paper-background.png` (1254×1254 RGB) | 받은 자산. 이음새 검사 통과(`scripts/measure-shelf.py`) → 기기 픽셀 1:1로 반복, 화면 고정 |
-| **최종** 선반 한 칸 | `app/assets/bookshelf/shelf-single.png` (2172×724 RGBA, 고정 그림자 포함) | 받은 자산. 측정 메타데이터 `src/domain/shelf-asset.generated.ts` |
+| **최종** 선반 한 칸 | `app/assets/bookshelf/shelf-single-v3.png` (2172×724 RGBA, 고정 그림자 포함, 윗면 전체 깊이) | 받은 자산. 측정 메타데이터 `src/domain/shelf-asset.generated.ts` |
 | 최종(코드 생성) 종이 결 | `app/assets/texture/paper-grain@3x.png` | 시안의 결 세기(밝기 표준편차 2~6)에 맞춰 생성한 이음새 없는 타일. 책 몸체에 겹친다 |
 | **임시 TEMP** 예시 책 그림 | `app/assets/temp-reference/*` | 시안 이미지에서 잘라 제목을 지운 개발용 샘플. 최종 재장정 아트로 교체 대상 |
 | **임시 TEMP** 모티프 SVG | `app/src/ui/art/motifs.tsx`, `scenes.tsx` | 모티프 PNG가 없을 때의 대체 그림 |
 
-## 선반 PNG 측정값(정규화, 투명 여백 포함)
+## 선반 PNG 측정값(v3, 정규화, 투명 여백 포함)
 
-contactY 0.4155(책 밑면 기준선) · plankTopY 0.3439 · frontTopY 0.4461 · frontBottomY 0.5249 · shadowBottomY 0.7887 · usableLeft 0.0493 · usableRight 0.9507.
-표시: 원본 비율 유지, 설계 폭 390DU 가운데에 400DU 폭(좌우 투명 여백은 화면 밖, 보이는 판 양끝은 약 5.7DU 안쪽). 줄 간격 ROW_PITCH는 모든 줄 공통(책 영역 188DU + 앞턱 아래 + 4DU).
-앞턱 가림: 책 밑면이 기준선에 닿아 앞턱 아래로 내려가지 않으므로 전경 마스크는 쓰지 않았다(필요해지면 frontTopY~frontBottomY 구간을 같은 PNG로 잘라 책 위에 덮는다).
+`scripts/measure-shelf.py`가 잰다. 나무판 본체는 불투명 픽셀의 가장 큰 연결 덩어리로 잡아 희미한 고립 알파를 무시한다.
+plankLeft 0.0235 · plankRight 0.977 · plankTopY 0.3978(윗면 뒤) · frontTopY 0.5014(앞턱 위) · frontBottomY 0.5856 · contactY 0.4703(책 밑면, 윗면 깊이의 30% 안쪽) · usableLeft 0.0433 · usableRight 0.9572(기준선 줄에서 잰 윗면 범위, 4px 안쪽).
+윗면(약 75px)과 앞면(약 61px)이 비슷한 깊이. 표시: 원본 비율 유지, 나무판이 화면 좌우 5DU 여백에 오도록 폭 398.5DU·오프셋 -4.4DU. 줄 간격 ROW_PITCH 약 225DU(모든 줄 공통: 책 영역 209 + 앞턱 아래 15.3 + 1).
+선반 고정 그림자는 PNG 그대로 쓰고 코드로 다시 그리지 않는다. 앞턱 가림: 책 밑면이 기준선에 서서 앞턱 아래로 내려가지 않아 전경 마스크는 쓰지 않았다.
 
 ## 추가로 필요한 최종 자산
 

@@ -29,7 +29,7 @@ export type BookArt = {
   // 제목/모티프 색. 없으면 배경색 밝기로 자동.
   inkColor?: string;
   accentColor?: string;
-  // 갈피(가름끈) 색. 있으면 책 위로 살짝 돌출된다.
+  // 갈피(가름끈) 색. 저장된 문장이 있는 책(Book.quotes > 0)에만 표시된다.
   ribbon?: string;
 };
 
@@ -51,11 +51,14 @@ export type SampleArt = {
   titleCy?: number;
   topFace?: string;
   topFaceH?: number;
+  topImage?: ImageSource; // 가로 책 윗면 그림
   coverLines?: string;
   // 책등 그림 위쪽을 잘라낸 높이(DU)와 그 자리를 다시 그릴 색·폭(비율). 시안 윗면의 깎인 모서리에 벽이 섞여서.
   cap?: number;
   capColor?: string;
   capW?: number;
+  // 키를 늘릴 때 늘려도 되는 빈 바탕 띠(그림 높이 비율). 그림·모티프는 원래 비율을 유지한다.
+  band?: [number, number];
   image: ImageSource;
   motif?: ImageSource;
 };
@@ -73,6 +76,7 @@ export type Book = {
   coverAspectRatio: number; // 너비/높이
   art: BookArt;
   finishedAt?: string; // YYYY-MM-DD
+  quotes?: number; // 저장된 문장 수. 갈피 표시와 연결(0이면 갈피 없음)
   // 등급 대신 쓰는 정확한 치수(DU). 온보딩 샘플처럼 실제 판형을 아는 경우.
   dims?: { height?: number; thickness?: number; coverWidth?: number };
   // 모티프 그림 자산(투명 PNG). 없으면 art.motif 슬롯의 개발용 SVG.

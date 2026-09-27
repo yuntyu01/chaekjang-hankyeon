@@ -8,7 +8,7 @@ import Svg, { Defs, LinearGradient, Rect, Stop } from 'react-native-svg';
 import { inkFor, shade } from '@/domain/color';
 import { bookHeight, bookThickness, FRONT_SIDE, frontWidth, TOP_FACE } from '@/domain/geometry';
 import { layoutVerticalTitle } from '@/domain/title-layout';
-import type { Book, Pose } from '@/domain/types';
+import type { Book, Pose, SampleArt } from '@/domain/types';
 import { MotifArt } from '@/ui/art/motifs';
 import { SCENE_TITLE, SceneArt, spineCropViewBox } from '@/ui/art/scenes';
 import { PAPER_GRAIN } from '@/ui/art/texture';
@@ -67,6 +67,64 @@ function FadeTop({ color, top, width, height }: { color: string; top: number; wi
       </Defs>
       <Rect width={width} height={height} fill={`url(#${id}f)`} />
     </Svg>
+  );
+}
+
+// 그림을 세로로 3단으로 나눠 가운데 빈 띠(band)만 늘린다. 위(제목 자리)·아래(그림) 조각은 원래 비율.
+// natural: 그림 원래 높이(px), target: 그려야 할 높이(px)
+function BandImage({ source, width, natural, target, band, radius }: { source: SampleArt['image']; width: number; natural: number; target: number; band?: [number, number]; radius?: number }) {
+  const extra = target - natural;
+  if (!band || Math.abs(extra) < 0.5) {
+    return <Image source={source} style={{ width, height: target, borderRadius: radius }} resizeMode="stretch" />;
+  }
+  const b0 = band[0] * natural;
+  const b1 = band[1] * natural;
+  const mid = b1 - b0;
+  const k = (mid + extra) / mid;
+  return (
+    <View style={{ width, height: target, borderRadius: radius, overflow: 'hidden' }}>
+      <View style={{ position: 'absolute', left: 0, top: 0, width, height: b0 + 0.5, overflow: 'hidden' }}>
+        <Image source={source} style={{ width, height: natural }} resizeMode="stretch" />
+      </View>
+      <View style={{ position: 'absolute', left: 0, top: b0, width, height: mid + extra + 0.5, overflow: 'hidden' }}>
+        <Image source={source} style={{ position: 'absolute', top: -b0 * k, width, height: natural * k }} resizeMode="stretch" />
+      </View>
+      <View style={{ position: 'absolute', left: 0, top: b1 + extra, width, height: natural - b1, overflow: 'hidden' }}>
+        <Image source={source} style={{ position: 'absolute', top: -b1, width, height: natural }} resizeMode="stretch" />
+      </View>
+    </View>
+  );
+}
+
+// 갈피: 저장된 문장이 있는 책에만. 문장 수만큼(최대 2개) 책 위로 8DU 돌출된 끈. 책 몸체 뒤에 그려 아래쪽은 가려진다.
+export const RIBBON_OUT = 8;
+function Ribbons({ book, cx, scale: s }: { book: Book; cx: number; scale: number }) {
+  const n = Math.min(2, book.quotes ?? 0);
+  if (!n) return null;
+  const color = book.art.ribbon ?? shade(book.themeColor, 0.25);
+  const w = 5.4 * s;
+  const gap = 1.4 * s;
+  const total = n * w + (n - 1) * gap;
+  return (
+    <>
+      {Array.from({ length: n }, (_, i) => (
+        <View
+          key={i}
+          style={{
+            position: 'absolute',
+            left: cx - total / 2 + i * (w + gap),
+            top: -(RIBBON_OUT - (i ? 1.8 : 0)) * s,
+            width: w,
+            height: (RIBBON_OUT + 6) * s,
+            backgroundColor: i ? shade(color, 0.18) : color,
+            borderTopLeftRadius: 0.8 * s,
+            borderTopRightRadius: 0.8 * s,
+          }}
+        >
+          <Grain />
+        </View>
+      ))}
+    </>
   );
 }
 
@@ -156,14 +214,17 @@ function Spine({ book, scale: s }: { book: Book; scale: number }) {
     const capW = (sample.capW ?? 1) * w;
     return (
       <View style={{ width: w, height: h }}>
+        <Ribbons book={book} cx={w * 0.52} scale={s} />
         {/* 잘라낸 윗부분: 둥근 머리 + 얕은 윗면을 책 색으로 다시 그린다 */}
         <View style={[styles.body, { position: 'absolute', left: 0, top: 0, width: capW, height: cap + 2, backgroundColor: capColor, borderTopLeftRadius: 3.2 * s, borderTopRightRadius: 3.2 * s }]}>
           <View style={{ position: 'absolute', left: 0, right: 0, top: 0, height: Math.min(cap * 0.55, 2.6 * s), backgroundColor: shade(capColor, 0.1) }} />
           <View style={{ position: 'absolute', right: 0, top: 0, bottom: 0, width: capW * 0.1, backgroundColor: shade(capColor, -0.1) }} />
           <Grain />
         </View>
-        <Image source={sample.image} style={{ position: 'absolute', left: 0, top: cap, width: w, height: h - cap }} resizeMode="stretch" />
-        <View style={{ position: 'absolute', top: (sample.titleTop ?? 0.2) * h, left: (sample.titleCx ?? 0.5) * w - w, width: w * 2, flexDirection: 'row', justifyContent: 'center' }}>
+        <View style={{ position: 'absolute', left: 0, top: cap }}>
+          <BandImage source={sample.image} width={w} natural={(sample.h - (sample.cap ?? 0)) * s} target={h - cap} band={sample.band} />
+        </View>
+        <View style={{ position: 'absolute', top: (sample.titleTop ?? 0.2) * sample.h * s, left: (sample.titleCx ?? 0.5) * w - w, width: w * 2, flexDirection: 'row', justifyContent: 'center' }}>
           <VerticalText columns={[book.title]} fs={fs} color={sample.ink} />
         </View>
       </View>
@@ -185,9 +246,7 @@ function Spine({ book, scale: s }: { book: Book; scale: number }) {
   const coverW = sample?.kind === 'cover' ? (artH / 0.55) * (sample.w / sample.h) : 0;
   return (
     <View style={{ width: w, height: h }}>
-      {book.art.ribbon ? (
-        <View style={{ position: 'absolute', left: face * 0.64, top: -7 * s, width: 2.2 * s, height: 12 * s, backgroundColor: book.art.ribbon, borderBottomLeftRadius: 0.6 * s, borderBottomRightRadius: 0.6 * s }} />
-      ) : null}
+      <Ribbons book={book} cx={face * 0.55} scale={s} />
       <View
         style={[
           styles.body,
@@ -260,14 +319,16 @@ function Horizontal({ book, scale: s }: { book: Book; scale: number }) {
   return (
     <View style={{ width: len, height: t + face }}>
       {/* 윗면(표지 면)이 얕게 보인다 */}
-      <View
+      {sample?.topImage ? (
+        <Image source={sample.topImage} style={{ position: 'absolute', left: 3 * s, right: 2 * s, top: 1 * s, height: face + 3 * s, borderTopLeftRadius: 3 * s, borderTopRightRadius: 3 * s }} resizeMode="stretch" />
+      ) : <View
         style={[
           styles.body,
           { position: 'absolute', left: 2 * s, right: 1 * s, top: 0, height: face + 4 * s, backgroundColor: topColor, borderTopLeftRadius: 3 * s, borderTopRightRadius: 3 * s },
         ]}>
         <View style={{ position: 'absolute', right: 0, top: 0, bottom: 0, width: end, backgroundColor: shade(topColor, -0.08) }} />
         <Grain />
-      </View>
+      </View>}
       <View style={[styles.body, { position: 'absolute', top: face, width: len, height: t, backgroundColor: book.themeColor, borderRadius: 3 * s }]}>
         {sample ? (
           <Image source={sample.image} style={{ width: len, height: t, borderRadius: 3 * s }} resizeMode="stretch" />
@@ -321,8 +382,9 @@ function Front({ book, scale: s }: { book: Book; scale: number }) {
     const full = fw + side;
     return (
       <View style={{ width: full, height: h }}>
-        <Image source={sample.image} style={{ width: full, height: h, borderRadius: 3 * s }} resizeMode="stretch" />
-        <View style={{ position: 'absolute', top: (sample.titleTop ?? 0.2) * h - (lh - fs) / 2, left: (sample.titleCx ?? 0.5) * full - full, width: full * 2, alignItems: 'center' }}>
+        <Ribbons book={book} cx={full * 0.6} scale={s} />
+        <BandImage source={sample.image} width={full} natural={sample.h * s} target={h} band={sample.band} radius={3 * s} />
+        <View style={{ position: 'absolute', top: (sample.titleTop ?? 0.2) * sample.h * s - (lh - fs) / 2, left: (sample.titleCx ?? 0.5) * full - full, width: full * 2, alignItems: 'center' }}>
           {lines.map((l, i) => (
             <Text key={i} allowFontScaling={false} style={{ fontFamily: fonts.bookTitle, fontSize: fs, lineHeight: lh, color: sample.ink, letterSpacing: lines.length === 1 ? fs * 0.08 : 0 }}>
               {l}
@@ -340,6 +402,7 @@ function Front({ book, scale: s }: { book: Book; scale: number }) {
   const fs = Math.max(8, Math.min(14, (frontWidth(book) * 0.78) / (longest * 1.02))) * s;
   return (
     <View style={{ width: fw + side, height: h }}>
+      <Ribbons book={book} cx={fw * 0.6} scale={s} />
       {/* 얇은 옆면(오른쪽): 뒤표지판 + 속지 단면 */}
       <View
         style={{

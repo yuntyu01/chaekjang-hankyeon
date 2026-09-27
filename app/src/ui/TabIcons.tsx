@@ -12,25 +12,32 @@ export function ShelfIcon({ color, size = 26, filled }: { color: string; size?: 
   );
 }
 
-// 기록: 속이 찬 문서(줄은 배경색으로 뚫는다)
-export function RecordIcon({ color, size = 26, bg }: { color: string; size?: number; bg: string }) {
+// 기록: 선택되면 속이 찬 문서(줄은 배경색으로 뚫는다), 아니면 윤곽
+export function RecordIcon({ color, size = 26, bg, filled }: { color: string; size?: number; bg: string; filled?: boolean }) {
+  const line = filled ? bg : color;
   return (
     <Svg width={size} height={size} viewBox="0 0 26 26">
-      <Path d="M7 3.5 H16.5 L21 8 V21 A1.8 1.8 0 0 1 19.2 22.8 H7 A1.8 1.8 0 0 1 5.2 21 V5.3 A1.8 1.8 0 0 1 7 3.5 Z" fill={color} />
-      <Path d="M16.5 3.5 V8 H21" fill={bg} opacity={0.35} />
-      <Rect x={8.4} y={11} width={9} height={1.7} rx={0.85} fill={bg} />
-      <Rect x={8.4} y={14.6} width={9} height={1.7} rx={0.85} fill={bg} />
-      <Rect x={8.4} y={18.2} width={6} height={1.7} rx={0.85} fill={bg} />
+      <Path
+        d="M7 3.5 H16.5 L21 8 V21 A1.8 1.8 0 0 1 19.2 22.8 H7 A1.8 1.8 0 0 1 5.2 21 V5.3 A1.8 1.8 0 0 1 7 3.5 Z"
+        fill={filled ? color : 'none'}
+        stroke={color}
+        strokeWidth={1.6}
+        strokeLinejoin="round"
+      />
+      <Rect x={8.4} y={11} width={9} height={1.6} rx={0.8} fill={line} />
+      <Rect x={8.4} y={14.6} width={9} height={1.6} rx={0.8} fill={line} />
+      <Rect x={8.4} y={18.2} width={6} height={1.6} rx={0.8} fill={line} />
     </Svg>
   );
 }
 
-// 마이: 속이 찬 사람
-export function MyIcon({ color, size = 26 }: { color: string; size?: number }) {
+// 마이: 선택되면 속이 찬 사람, 아니면 윤곽
+export function MyIcon({ color, size = 26, filled }: { color: string; size?: number; filled?: boolean }) {
+  const f = filled ? color : 'none';
   return (
     <Svg width={size} height={size} viewBox="0 0 26 26">
-      <Path d="M13 3.6 A4.9 4.9 0 1 1 13 13.4 A4.9 4.9 0 1 1 13 3.6 Z" fill={color} />
-      <Path d="M4.4 22.6 C4.9 17.8 8.6 15.2 13 15.2 C17.4 15.2 21.1 17.8 21.6 22.6 Z" fill={color} />
+      <Path d="M13 3.9 A4.6 4.6 0 1 1 13 13.1 A4.6 4.6 0 1 1 13 3.9 Z" fill={f} stroke={color} strokeWidth={1.6} />
+      <Path d="M4.6 22.4 C5.1 17.9 8.7 15.4 13 15.4 C17.3 15.4 20.9 17.9 21.4 22.4 Z" fill={f} stroke={color} strokeWidth={1.6} strokeLinejoin="round" />
     </Svg>
   );
 }

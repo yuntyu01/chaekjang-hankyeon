@@ -44,8 +44,8 @@ BOOKS = [
     dict(id="b11", title="너라는 계절", kind="spine", box=(786, 738, 905, 1108), title_box=(800, 800, 890, 962), motif=(972, 1098), motif_xr=(822, 888),
          tilt=-7, pivot=(787, 1110), poly=[(786, 744), (873, 738), (905, 1104), (786, 1108)], shelf=2),
     # 3번 선반 (바닥 1459)
-    dict(id="b12", title="찰나의 마음", kind="horizontal", box=(42, 1360, 460, 1456), title_box=(80, 1382, 260, 1430), motif_x=(360, 405), stack=0, shelf=3),
-    dict(id="b13", title="좋은 문장은 이렇게 온다", kind="horizontal", box=(61, 1290, 449, 1361), title_box=(82, 1302, 305, 1345), motif_x=(330, 400), stack=1, shelf=3),
+    dict(id="b12", title="찰나의 마음", kind="horizontal", box=(42, 1338, 460, 1456), poly=[(62, 1338), (452, 1338), (460, 1350), (460, 1456), (42, 1456), (42, 1360)], title_box=(80, 1382, 260, 1430), motif_x=(360, 405), stack=0, shelf=3),
+    dict(id="b13", title="좋은 문장은 이렇게 온다", kind="horizontal", box=(61, 1264, 449, 1361), poly=[(112, 1265), (446, 1265), (449, 1272), (449, 1361), (61, 1361), (61, 1291)], title_box=(82, 1302, 305, 1345), motif_x=(330, 400), stack=1, shelf=3),
     dict(id="b14", title="고요한 우연", kind="spine", box=(479, 1161, 555, 1459), title_box=(484, 1198, 550, 1338), motif=(1350, 1444), motif_xr=(493, 537), shelf=3),
     dict(id="b15", title="아무튼, 독서", kind="spine", box=(555, 1165, 620, 1459), title_box=(560, 1208, 615, 1332), motif=(1350, 1446), motif_xr=(562, 613), shelf=3),
     dict(id="b16", title="우리가 빛의 속도로 갈 수 없다면", author="김초엽", kind="cover", box=(634, 1173, 891, 1459), title_box=(655, 1210, 875, 1275),
@@ -70,12 +70,17 @@ TITLES = {
     "b10": dict(top=0.317, cx=0.55, size=7.8, ink="#E8E2D6"),
     "b18": dict(top=0.162, cx=0.48, size=9.1, ink="#EFE6D2"),
     "b11": dict(top=0.18, cx=0.555, size=9.9, ink=DARK),
-    "b12": dict(left=0.121, cy=0.536, size=9.8, ink="#2A2530"),
-    "b13": dict(left=0.075, cy=0.49, size=7.9, ink="#2A2E38"),
+    "b12": dict(left=0.121, cy=0.66, size=9.8, ink="#2A2530"),
+    "b13": dict(left=0.075, cy=0.63, size=7.9, ink="#2A2E38"),
     "b14": dict(top=0.157, cx=0.5, size=8.5, ink="#F0E2DC"),
     "b15": dict(top=0.17, cx=0.54, size=8.4, ink=DARK),
     "b16": dict(top=0.164, cx=0.52, size=7.8, ink="#2B2B38", line=1.65),
 }
+
+# 키를 늘릴 때 늘려도 되는 빈 바탕 띠: 책등은 제목 끝~그림 시작 사이(자동), 그림 시작 줄을 모티프가 없는 책만 지정.
+ART_Y = {"b03": 548, "b08": 930, "b09": 985, "b10": 1012}
+# 표지 전시 책: 제목과 그림 사이의 하늘 띠(표지 높이 비율)
+COVER_BAND = {"b04": (0.43, 0.5), "b07": (0.37, 0.43), "b16": (0.29, 0.4)}
 
 # 가로 책의 보이는 윗면(표지 면) 높이(px)와 색 채취 영역
 TOP_FACE = {"b13": (1265, 1290), "b12": (1340, 1360)}
@@ -237,6 +242,32 @@ def texture_tile(_img):
     return Image.fromarray(np.dstack([rgb, a]).astype(np.uint8))
 
 
+def plain_band(crop, alpha):
+    """책등에서 그림이 없는(바탕만 있는) 가장 긴 줄 구간. 제목은 이미 지워서 바탕이다.
+    책 키를 늘릴 때 이 구간만 늘려 그림·모티프가 찌그러지지 않게 한다."""
+    H, W = crop.shape[:2]
+    x0, x1 = int(W * 0.25), int(W * 0.7)
+    lab = cv2.cvtColor(crop, cv2.COLOR_RGB2LAB).astype(np.float32)
+    bg = np.median(lab[int(H * 0.1) : int(H * 0.9), x0:x1].reshape(-1, 3), axis=0)
+    d = np.linalg.norm(lab[:, x0:x1] - bg, axis=2)
+    busy = (d > 16).mean(axis=1) + (alpha[:, x0:x1] < 128).mean(axis=1)
+    plain = busy < 0.07
+    best, cur, start = (0, 0), 0, 0
+    lo, hi = int(H * 0.12), int(H * 0.85)
+    for y in range(lo, hi):
+        if plain[y]:
+            if cur == 0:
+                start = y
+            cur += 1
+            if cur > best[1] - best[0]:
+                best = (start, y + 1)
+        else:
+            cur = 0
+    if best[1] - best[0] < 6:
+        return None
+    return (round(best[0] / H, 4), round(best[1] / H, 4))
+
+
 def main():
     os.makedirs(OUT, exist_ok=True)
     src = load()
@@ -281,10 +312,15 @@ def main():
         # 치수는 원래 칸 기준(윗면 cap 포함)
         if b["kind"] == "spine":
             w, h = cx1 - cx0, y1 - y0
+        band = None
+        if b["kind"] == "spine":
+            band = plain_band(crop, np.asarray(alpha))
+        elif b["kind"] == "cover":
+            band = COVER_BAND.get(b["id"])
         entry = dict(id=b["id"], title=b["title"], author=b.get("author"), kind=b["kind"], shelf=b["shelf"],
                      w=round(w * S, 1), h=round(h * S, 1), color=color, title_meta=tm,
                      tilt=b.get("tilt", 0), stack=b.get("stack"), cover_lines=b.get("cover_lines"),
-                     cap=round(cap, 2), cap_color=cap_color, cap_w=round(cap_w, 3))
+                     cap=round(cap, 2), cap_color=cap_color, cap_w=round(cap_w, 3), band=band)
         if b.get("motif"):
             mot = extract_motif(clean, b, color, b.get("motif_thr", 17))
             if mot:
@@ -292,7 +328,8 @@ def main():
                 entry["motif"] = True
         if b["kind"] == "horizontal":
             mx0, mx1 = b["motif_x"]
-            region = clean[y0 + 6 : y1 - 6, mx0:mx1]
+            body_top = y0 + (26 if b["id"] == "b13" else 22)
+            region = clean[body_top + 6 : y1 - 6, mx0:mx1]
             mot = extract_motif(region.copy(), dict(box=(0, 0, region.shape[1], 0), motif=(0, region.shape[0])), color)
             if mot:
                 mot.save(os.path.join(OUT, f"{b['id']}-motif.png"), optimize=True)
@@ -332,6 +369,8 @@ def write_ts(meta):
             parts.append(f"image: require('../../assets/temp-reference/{e['id']}-{'cover' if e['kind'] == 'cover' else 'spine'}.png')")
         if e.get("motif"):
             parts.append(f"motif: require('../../assets/temp-reference/{e['id']}-motif.png')")
+        if e.get("band"):
+            parts.append(f"band: [{e['band'][0]}, {e['band'][1]}]")
         if e.get("cover_lines"):
             parts.append("coverLines: " + json.dumps(e["cover_lines"], ensure_ascii=False))
         lines.append(f"  {e['id']}: {{ {', '.join(parts)} }},")

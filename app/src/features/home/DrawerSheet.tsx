@@ -2,7 +2,7 @@
 import { useMemo } from 'react';
 import { Image, Modal, Pressable, ScrollView, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 
-const SHELF_PNG = require('../../../assets/bookshelf/shelf-single.png');
+const SHELF_PNG = require('../../../assets/bookshelf/shelf-single-v3.png');
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { bookHeight, bookThickness, SHELF, SHELF_STYLE } from '@/domain/geometry';

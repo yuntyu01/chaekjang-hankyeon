@@ -20,6 +20,10 @@
   "cap": 5.8,
   "cap_color": "#F9EBDA",
   "cap_w": 1.0,
+  "band": [
+   0.1183,
+   0.457
+  ],
   "motif": true
  },
  {
@@ -43,6 +47,10 @@
   "cap": 6.22,
   "cap_color": "#3F5F59",
   "cap_w": 1.0,
+  "band": [
+   0.1191,
+   0.4739
+  ],
   "motif": true
  },
  {
@@ -65,7 +73,11 @@
   "cover_lines": null,
   "cap": 5.8,
   "cap_color": "#F7E6D2",
-  "cap_w": 1.0
+  "cap_w": 1.0,
+  "band": [
+   0.119,
+   0.5661
+  ]
  },
  {
   "id": "b04",
@@ -87,7 +99,11 @@
   "cover_lines": null,
   "cap": 0,
   "cap_color": "#234A6F",
-  "cap_w": 0
+  "cap_w": 0,
+  "band": [
+   0.43,
+   0.5
+  ]
  },
  {
   "id": "b05",
@@ -110,6 +126,10 @@
   "cap": 5.8,
   "cap_color": "#BD5F4B",
   "cap_w": 1.0,
+  "band": [
+   0.312,
+   0.4271
+  ],
   "motif": true
  },
  {
@@ -133,6 +153,10 @@
   "cap": 5.8,
   "cap_color": "#B3C6D3",
   "cap_w": 1.0,
+  "band": [
+   0.1194,
+   0.5199
+  ],
   "motif": true
  },
  {
@@ -156,6 +180,10 @@
   "cap": 4.97,
   "cap_color": "#F8ECDC",
   "cap_w": 1.0,
+  "band": [
+   0.1192,
+   0.4535
+  ],
   "motif": true
  },
  {
@@ -178,7 +206,11 @@
   "cover_lines": null,
   "cap": 0,
   "cap_color": "#7D896C",
-  "cap_w": 0
+  "cap_w": 0,
+  "band": [
+   0.37,
+   0.43
+  ]
  },
  {
   "id": "b08",
@@ -200,7 +232,11 @@
   "cover_lines": null,
   "cap": 5.39,
   "cap_color": "#A9BCCF",
-  "cap_w": 1.0
+  "cap_w": 1.0,
+  "band": [
+   0.1189,
+   0.4568
+  ]
  },
  {
   "id": "b09",
@@ -222,7 +258,11 @@
   "cover_lines": null,
   "cap": 5.39,
   "cap_color": "#F7E6D2",
-  "cap_w": 1.0
+  "cap_w": 1.0,
+  "band": [
+   0.1194,
+   0.6306
+  ]
  },
  {
   "id": "b10",
@@ -244,7 +284,11 @@
   "cover_lines": null,
   "cap": 5.39,
   "cap_color": "#1C3D61",
-  "cap_w": 1.0
+  "cap_w": 1.0,
+  "band": [
+   0.2337,
+   0.7989
+  ]
  },
  {
   "id": "b18",
@@ -267,6 +311,10 @@
   "cap": 5.8,
   "cap_color": "#526B60",
   "cap_w": 1.0,
+  "band": [
+   0.1187,
+   0.7414
+  ],
   "motif": true
  },
  {
@@ -290,6 +338,10 @@
   "cap": 5.39,
   "cap_color": "#F7C8A0",
   "cap_w": 0.744,
+  "band": [
+   0.1176,
+   0.6555
+  ],
   "motif": true
  },
  {
@@ -299,11 +351,11 @@
   "kind": "horizontal",
   "shelf": 3,
   "w": 172.0,
-  "h": 38.5,
-  "color": "#E09C88",
+  "h": 47.7,
+  "color": "#E19D89",
   "title_meta": {
    "left": 0.121,
-   "cy": 0.536,
+   "cy": 0.66,
    "size": 9.8,
    "ink": "#2A2530"
   },
@@ -311,8 +363,9 @@
   "stack": 0,
   "cover_lines": null,
   "cap": 0,
-  "cap_color": "#E09C88",
+  "cap_color": "#E19D89",
   "cap_w": 0,
+  "band": null,
   "motif": true,
   "top_face": "#F1DFCA",
   "top_face_h": 8.3
@@ -324,11 +377,11 @@
   "kind": "horizontal",
   "shelf": 3,
   "w": 159.6,
-  "h": 28.2,
-  "color": "#F6E5D1",
+  "h": 39.0,
+  "color": "#F7E7D3",
   "title_meta": {
    "left": 0.075,
-   "cy": 0.49,
+   "cy": 0.63,
    "size": 7.9,
    "ink": "#2A2E38"
   },
@@ -336,8 +389,9 @@
   "stack": 1,
   "cover_lines": null,
   "cap": 0,
-  "cap_color": "#F6E5D1",
+  "cap_color": "#F7E7D3",
   "cap_w": 0,
+  "band": null,
   "motif": true,
   "top_face": "#ECD9C3",
   "top_face_h": 10.4
@@ -363,6 +417,10 @@
   "cap": 4.14,
   "cap_color": "#833C3E",
   "cap_w": 1.0,
+  "band": [
+   0.1181,
+   0.6493
+  ],
   "motif": true
  },
  {
@@ -386,6 +444,10 @@
   "cap": 4.14,
   "cap_color": "#F4E1CB",
   "cap_w": 1.0,
+  "band": [
+   0.1197,
+   0.6232
+  ],
   "motif": true
  },
  {
@@ -409,6 +471,10 @@
   "cover_lines": "우리가\n빛의 속도로 갈 수 없다면",
   "cap": 0,
   "cap_color": "#FBCBAE",
-  "cap_w": 0
+  "cap_w": 0,
+  "band": [
+   0.29,
+   0.4
+  ]
  }
 ]
