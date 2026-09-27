@@ -16,14 +16,12 @@
 plankLeft 0.0239 · plankRight 0.9761 · plankTopY 0.395 · frontTopY 0.5 · plankBottom 0.5829 · contactY 0.4685(윗면 깊이 30% 안쪽) · usableLeft 0.0433 · usableRight 0.9563.
 표시: 원본 비율 유지, 나무판이 화면 좌우 5DU에 오도록 폭·오프셋 계산. 줄 간격 ROW_PITCH는 모든 줄 공통.
 
-## 선반 그림자(코드)
+## 그림자(코드)
 
-`src/ui/shelf/ShelfShadow.tsx`, 수치는 `src/ui/theme.ts`의 `shelfShadow` 한곳(색·불투명도·세로 길이·흐림·위치·감쇠 곡선).
-- 접촉: 판 전체 폭, 8DU, 불투명도 0.11
-- 퍼짐: 왼쪽 끝 12DU 비움·오른쪽 4DU 넓힘, 40DU, 0.1, 오른쪽으로 5DU
-
-SVG 필터 대신 그라데이션+마스크로 흐림을 만들어 플랫폼 차이를 없앴다. 캔버스는 흐림 폭만큼 넓게, 스크롤 끝에는 그림자 길이만큼 여백.
-에뮬레이터 측정(벽 밝기 차, 판 아래 1/3/6/10/15/20/30/40DU): 시안 가운데 28/25/23/17.7/13.3/7.9/0.6/1.3 ↔ 앱 27/27/23/14/12.6/9.7/4.1/0.3.
+빛은 왼쪽 위. 책·선반 모두 윤곽을 오른쪽 아래로 옮긴 모양과 원래 윤곽을 이은 볼록 껍질(비스듬히 가로지르는 그림자)을 SVG 가우시안 블러로 흐린다. 두 겹(가까운 선명한 그림자 + 멀리 퍼지는 옅은 그림자).
+- 책: `theme.ts`의 `shadow.cast.layers`(dx·dy·blur·opacity), `fade`(높이별 옅어짐) → `src/ui/shelf/ShelfShadows.tsx`
+- 선반: `theme.ts`의 `shelfShadow.layers` → `src/ui/shelf/ShelfShadow.tsx`(판 뒤에 그림, 판 위쪽으로는 번지지 않게 자름)
+- 선반 두께: `geometry.ts`의 `SHELF_THICKNESS`(나무판 세로 배율, 현재 1.3)
 
 ## 추가로 필요한 최종 자산
 

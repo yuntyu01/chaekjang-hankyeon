@@ -67,6 +67,7 @@ export function DrawerSheet({ visible, books, scale, onPick, onClose }: Props) {
                     <ShelfShadow
                       plankLeft={-imgW * SHELF_ASSET.usableLeft + 2 + SHELF_ASSET.plankLeft * imgW}
                       plankRight={-imgW * SHELF_ASSET.usableLeft + 2 + SHELF_ASSET.plankRight * imgW}
+                      plankTop={rowH(row) + (SHELF_ASSET.plankTop - SHELF_ASSET.contactY) * imgH}
                       plankBottom={rowH(row) + (SHELF_ASSET.plankBottom - SHELF_ASSET.contactY) * imgH}
                       scale={s}
                     />

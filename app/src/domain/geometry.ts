@@ -13,7 +13,9 @@ export const SHELF_STYLE = 'asset' as 'drawn' | 'asset';
 // 화면 좌우 PLANK_INSET 여백에 맞도록 계산하고, 이미지 오프셋도 그에 맞춘다(양 끝이 보이게).
 export const PLANK_INSET = 5;
 export const SHELF_IMG_W = (DESIGN_WIDTH - PLANK_INSET * 2) / (SHELF_ASSET.plankRight - SHELF_ASSET.plankLeft);
-export const SHELF_IMG_H = (SHELF_IMG_W * SHELF_ASSET.height) / SHELF_ASSET.width;
+// 선반 두께: 윗면·앞면을 세로로 THICKNESS배(나무판 PNG는 결이 가로라 세로로 늘려도 티가 나지 않는다)
+export const SHELF_THICKNESS = 1.3;
+export const SHELF_IMG_H = ((SHELF_IMG_W * SHELF_ASSET.height) / SHELF_ASSET.width) * SHELF_THICKNESS;
 export const SHELF_IMG_X = PLANK_INSET - SHELF_ASSET.plankLeft * SHELF_IMG_W;
 
 // 시안(941px → 390DU)에서 잰 선반 치수

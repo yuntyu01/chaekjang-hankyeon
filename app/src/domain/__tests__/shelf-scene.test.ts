@@ -49,17 +49,21 @@ describe('선반 장면', () => {
 import { castShape, hull } from '../../ui/shelf/ShelfShadows';
 
 describe('책 그림자 모양', () => {
-  it('책 윤곽을 오른쪽으로 끌어 늘린 볼록 껍질', () => {
+  it('책 윤곽과 오른쪽 아래로 옮긴 윤곽을 이은 볼록 껍질', () => {
     const rect = [
       { x: 0, y: 0 },
       { x: 10, y: 0 },
       { x: 10, y: 50 },
       { x: 0, y: 50 },
     ];
-    const s = castShape(rect, 2, 0, 20);
+    const s = castShape(rect, 18, 14);
     const xs = s.map((p) => p.x);
-    expect(Math.min(...xs)).toBe(2);
-    expect(Math.max(...xs)).toBe(32);
+    const ys = s.map((p) => p.y);
+    expect(Math.min(...xs)).toBe(0);
+    expect(Math.max(...xs)).toBe(28);
+    expect(Math.max(...ys)).toBe(64);
+    // 비스듬한 변: 책 오른쪽 위 모서리(10,0)와 옮긴 모서리(28,14)가 이어진다
+    expect(s).toEqual(expect.arrayContaining([{ x: 10, y: 0 }, { x: 28, y: 14 }]));
     expect(hull([...rect, { x: 5, y: 25 }])).toHaveLength(4);
   });
 });

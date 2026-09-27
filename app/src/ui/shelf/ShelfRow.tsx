@@ -85,6 +85,7 @@ function ShelfImage({ scale: s, clear }: { scale: number; clear: number }) {
       <ShelfShadow
         plankLeft={(SHELF_IMG_X + SHELF_ASSET.plankLeft * SHELF_IMG_W) * s}
         plankRight={(SHELF_IMG_X + SHELF_ASSET.plankRight * SHELF_IMG_W) * s}
+        plankTop={top + SHELF_ASSET.plankTop * SHELF_IMG_H * s}
         plankBottom={top + SHELF_ASSET.plankBottom * SHELF_IMG_H * s}
         scale={s}
       />

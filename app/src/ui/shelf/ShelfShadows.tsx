@@ -1,6 +1,6 @@
 // 외부 그림자. 책과 함께 회전하는 부모 밖(선반 좌표)에서 그려서, 기울어진 책도 그림자는 화면 기준 오른쪽 아래로 떨어진다.
 // 플랫폼 그림자 API 대신 SVG 도형을 써서 iOS/Android 모양을 맞춘다. 터치·점유 폭에는 포함하지 않는다.
-// 시안: 책 오른쪽 벽에 넓게 흐린 그림자. 바닥 쪽이 진하고(밝기 -20~30) 위로 사라진다. 색은 따뜻한 갈색. 가우시안 블러(SVG 필터).
+// 빛은 왼쪽 위: 책 그림자는 오른쪽 아래로 비스듬히, 두 겹 가우시안 블러(theme.shadow.cast).
 import { memo, useId } from 'react';
 import { StyleSheet } from 'react-native';
 import Svg, { ClipPath, Defs, Ellipse, FeGaussianBlur, Filter, G, LinearGradient, Polygon, RadialGradient, Rect, Stop } from 'react-native-svg';
@@ -41,9 +41,9 @@ export function hull(points: Point[]): Point[] {
   return [...lower.slice(0, -1), ...upper.slice(0, -1)];
 }
 
-export function castShape(poly: Point[], dx: number, dy: number, sweep: number) {
-  const moved = poly.map((p) => ({ x: p.x + dx, y: p.y + dy }));
-  return hull([...moved, ...moved.map((p) => ({ x: p.x + sweep, y: p.y }))]);
+// 빛 반대쪽(dx, dy)으로 옮긴 윤곽과 원래 윤곽을 이은 모양: 비스듬히 가로지르는 그림자.
+export function castShape(poly: Point[], dx: number, dy: number) {
+  return hull([...poly, ...poly.map((p) => ({ x: p.x + dx, y: p.y + dy }))]);
 }
 
 export const ShelfShadows = memo(function ShelfShadows({ frames, scale: s, hiddenId, height, clear }: Props) {
@@ -52,7 +52,7 @@ export const ShelfShadows = memo(function ShelfShadows({ frames, scale: s, hidde
   const Y = (y: number) => (clear + y - FLOOR) * s;
   const floorY = clear * s;
   const visible = frames.filter((f) => f.bookId !== hiddenId);
-  const { dx, dy, sweep, opacity, blur, fade } = shadow.cast;
+  const { layers, fade } = shadow.cast;
   const fadeTop = fade[fade.length - 1][0];
   return (
     <Svg style={StyleSheet.absoluteFill} width={DESIGN_WIDTH * s} height={height} pointerEvents="none">
@@ -64,23 +64,27 @@ export const ShelfShadows = memo(function ShelfShadows({ frames, scale: s, hidde
         {/* 바닥 쪽이 진하고 위로 옅어지는 그림자(theme.shadow.cast.fade) */}
         <LinearGradient id={`${id}cast`} x1="0" y1={floorY - fadeTop * s} x2="0" y2={floorY} gradientUnits="userSpaceOnUse">
           {[...fade].reverse().map(([h, k]) => (
-            <Stop key={h} offset={1 - h / fadeTop} stopColor={colors.shadow} stopOpacity={opacity * k} />
+            <Stop key={h} offset={1 - h / fadeTop} stopColor={colors.shadow} stopOpacity={k} />
           ))}
         </LinearGradient>
-        {/* 진짜 가우시안 블러. 영역을 캔버스 전체로 잡아 흐린 가장자리가 잘리지 않게 한다 */}
-        <Filter id={`${id}blur`} x={0} y={0} width={DESIGN_WIDTH * s} height={height} filterUnits="userSpaceOnUse">
-          <FeGaussianBlur stdDeviation={blur * s} />
-        </Filter>
+        {/* 겹마다 가우시안 블러. 영역을 캔버스 전체로 잡아 흐린 가장자리가 잘리지 않게 한다 */}
+        {layers.map((l, i) => (
+          <Filter key={i} id={`${id}blur${i}`} x={0} y={0} width={DESIGN_WIDTH * s} height={height} filterUnits="userSpaceOnUse">
+            <FeGaussianBlur stdDeviation={l.blur * s} />
+          </Filter>
+        ))}
         <ClipPath id={`${id}clip`}>
           <Rect x={0} y={0} width={DESIGN_WIDTH * s} height={floorY + SHELF.lip * s} />
         </ClipPath>
       </Defs>
       <G clipPath={`url(#${id}clip)`}>
-        <G filter={`url(#${id}blur)`}>
-          {visible.map((f) => (
-            <Polygon key={f.bookId} points={castShape(f.poly, dx, dy, sweep).map((p) => `${X(p.x)},${Y(p.y)}`).join(' ')} fill={`url(#${id}cast)`} />
-          ))}
-        </G>
+        {layers.map((l, i) => (
+          <G key={i} filter={`url(#${id}blur${i})`} opacity={l.opacity}>
+            {visible.map((f) => (
+              <Polygon key={f.bookId} points={castShape(f.poly, l.dx, l.dy).map((p) => `${X(p.x)},${Y(p.y)}`).join(' ')} fill={`url(#${id}cast)`} />
+            ))}
+          </G>
+        ))}
       </G>
       {visible.map((f) => {
         if (f.stackIndex > 0) return null;
