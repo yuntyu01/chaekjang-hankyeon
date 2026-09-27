@@ -558,67 +558,137 @@ export const LyingBody = memo(function LyingBody({ id, width: len, height: H, sc
 });
 
 // 표지 전시: 앞표지(그림 또는 책 색) + 오른쪽 얇은 속지 단면
+// 표지 전시 책의 윗면 높이(px): 내려다보는 줄에서만 보인다(세운 책과 같은 규칙)
+export const coverTopH = (viewY: number, s: number) => (viewY > 0 ? TOP_VIEW * viewY * s : 0);
+
+// 표지 전시: 앞표지 + 뒤로 물러나는 옆면(평행사변형) + 내려다볼 때 윗면. 책은 오른쪽으로 열리므로
+// 왼쪽 옆면 = 책등(책 색), 오른쪽 옆면 = 여는 쪽 종이 단면(앞뒤 표지 판 사이 아이보리).
+// 가운데보다 오른쪽 책(mirror)은 왼쪽 옆면(책등)이, 왼쪽 책은 오른쪽 옆면(종이)이 보인다.
 export const CoverBody = memo(function CoverBody({
   id,
   width: fw,
   height: h,
   scale: s,
   face,
-  side,
+  side: d,
   cover,
   art,
   mirror = false,
   edge,
-}: BodyProps & { side: number; cover?: ImageSource; mirror?: boolean; edge?: string }) {
+  viewY = 0,
+}: BodyProps & { side: number; cover?: ImageSource; mirror?: boolean; edge?: string; viewY?: number }) {
   const grain = useImage(BRUSH_DETAIL);
   const tone = edge ?? face; // 표지 그림이 있으면 그림 가장자리 색으로 테두리·옆면을 칠한다
   const image = useImage((cover as number) ?? null);
   const motif = useImage(art?.motif ?? null);
-  const outline = useMemo(() => poly(coverOutline(fw, h, s, id)), [fw, h, s, id]);
-  const outline2 = useMemo(() => poly(coverOutline(fw, h, s, `${id}~`)), [fw, h, s, id]);
-  let mh = h * 0.38;
+  const topH = coverTopH(viewY, s);
+  const ch = h - topH; // 앞표지 높이
+  const cx = mirror ? d : 0; // 앞표지 왼쪽
+  const outline = useMemo(() => poly(coverOutline(fw, ch, s, id)), [fw, ch, s, id]);
+  const outline2 = useMemo(() => poly(coverOutline(fw, ch, s, `${id}~`)), [fw, ch, s, id]);
+  // 옆면: 앞 모서리(표지 가장자리)와 뒤 모서리(d만큼 바깥). 뒤 모서리 위아래는 세로 시점에 따라 움직인다.
+  const faces = useMemo(() => {
+    const fx = mirror ? d : fw; // 앞 모서리 x
+    const bx = mirror ? 0 : fw + d; // 뒤 모서리 x
+    const bt = viewY > 0 ? 0 : topH + (viewY < 0 ? d * 1.3 * -viewY : 0.4 * s); // 뒤 모서리 위
+    const bb = viewY > 0 ? h - topH : h; // 뒤 모서리 아래
+    const P = (u: number, v: number) => {
+      // u: 앞(0)→뒤(1), v: 위(0)→아래(1)
+      const top = topH + (bt - topH) * u;
+      const bot = h + (bb - h) * u;
+      return { x: fx + (bx - fx) * u, y: top + (bot - top) * v };
+    };
+    const inset = 1.2 * s / ch;
+    const sideFace = poly([P(0, 0), P(1, 0), P(1, 1), P(0, 1)]);
+    const pages = poly([P(0.16, inset), P(0.86, inset), P(0.86, 1 - inset), P(0.16, 1 - inset)]);
+    const lines = [0.4, 0.62].map((u) => line([P(u, inset + 0.01), P(u, 1 - inset - 0.01)]));
+    // 윗면(내려다볼 때): 앞표지 윗변에서 옆면 쪽으로 d, 위로 topH 물러난 평행사변형
+    const sx = mirror ? -d : d;
+    const top = topH > 0 ? poly([{ x: cx, y: topH }, { x: cx + fw, y: topH }, { x: cx + fw + sx, y: 0 }, { x: cx + sx, y: 0 }]) : null;
+    const topPages =
+      topH > 0
+        ? poly([
+            { x: cx + fw * 0.03 + sx * 0.15, y: topH * 0.85 },
+            { x: cx + fw * 0.97 + sx * 0.15, y: topH * 0.85 },
+            { x: cx + fw * 0.97 + sx * 0.85, y: topH * 0.15 },
+            { x: cx + fw * 0.03 + sx * 0.85, y: topH * 0.15 },
+          ])
+        : null;
+    return { sideFace, pages, lines, top, topPages, front: line([P(0, 0), P(0, 1)]), a: P(0, 0), b: P(1, 0) };
+  }, [fw, h, d, s, mirror, viewY, topH, ch, cx]);
+  let mh = ch * 0.38;
   let mw = motif ? (mh * motif.width()) / motif.height() : 0;
   if (mw > fw * 0.5) {
     mh = (mh * fw * 0.5) / mw;
     mw = fw * 0.5;
   }
+  const edgeC = scaleColor(tone, edgeFactor(tone));
   return (
-    <Canvas style={{ width: fw + side, height: h }}>
-      {/* 옆면: 종이 단면 대신 책 색의 얇은 판(시안: 표지 책 옆으로 페이지가 보이지 않는다). 빛 반대쪽이라 한 톤 어둡다 */}
-      <Group clip={Skia.RRectXY(Skia.XYWHRect(mirror ? 0 : fw - 3 * s, 1.2 * s, side + 3 * s, h - 1.2 * s), 2 * s, 2 * s)}>
-        {/* 표지 가장자리 색의 판(그림을 다시 비추면 표지가 이중으로 보인다). 왼쪽 옆면은 빛을 받아 덜 어둡다 */}
-        <Rect x={mirror ? 0 : fw - 3 * s} y={0} width={side + 3 * s} height={h} color={scaleColor(tone, mirror ? 0.9 : 0.78)} />
+    <Canvas style={{ width: fw + d, height: h }}>
+      {/* 옆면 */}
+      <Group clip={faces.sideFace}>
+        {mirror ? (
+          // 책등: 빛(왼쪽 위)을 향해 밝고, 둥근 등이라 가운데가 조금 더 밝다
+          <Rect x={0} y={0} width={d} height={h}>
+            <LinearGradient start={vec(0, 0)} end={vec(d, 0)} colors={[scaleColor(tone, 0.86), scaleColor(tone, 0.97), scaleColor(tone, 0.9)]} />
+          </Rect>
+        ) : (
+          <>
+            {/* 여는 쪽: 앞뒤 표지 판(책 색) 사이로 종이 단면. 빛 반대쪽이라 어둡고 뒤로 갈수록 더 어둡다 */}
+            <Rect x={fw} y={0} width={d} height={h}>
+              <LinearGradient start={vec(fw, 0)} end={vec(fw + d, 0)} colors={[scaleColor(tone, 0.8), scaleColor(tone, 0.7)]} />
+            </Rect>
+            <Path path={faces.pages}>
+              <LinearGradient start={vec(fw, 0)} end={vec(fw + d, 0)} colors={[scaleColor(PAGE, 0.94), scaleColor(PAGE, 0.84)]} />
+            </Path>
+            {faces.lines.map((l, i) => (
+              <Path key={i} path={l} style="stroke" strokeWidth={0.5} color={PAGE_LINE} opacity={0.8} />
+            ))}
+          </>
+        )}
+        <Grain w={fw + d} h={h} s={s} image={grain} />
       </Group>
-      <Group transform={[{ translateX: mirror ? side : 0 }]}>
-      <Group clip={outline}>
-        <Rect x={0} y={0} width={fw} height={h} color={face} />
-        {image ? <SkImage image={image} x={0} y={0} width={fw} height={h} fit="cover" /> : null}
-        {!image && motif ? <SkImage image={motif} x={fw / 2 - mw / 2} y={h * 0.9 - mh} width={mw} height={mh} fit="contain" /> : null}
-        <Grain w={fw} h={h} s={s} image={grain} />
-        {/* 제본 쪽(왼쪽) 살짝 어둡게, 왼쪽 위에서 오는 빛 */}
-        {/* 제본선(시안: 왼쪽에서 조금 안쪽의 가는 홈 하나) */}
-        <Rect x={0} y={0} width={fw * 0.05} height={h}>
-          <LinearGradient start={vec(0, 0)} end={vec(fw * 0.05, 0)} colors={['rgba(0,0,0,0.07)', 'rgba(0,0,0,0)']} />
-        </Rect>
-        <Rect x={fw * 0.04} y={0} width={0.7 * s} height={h} color="rgba(40,30,20,0.16)">
-          <BlurMask blur={0.35 * s} style="normal" />
-        </Rect>
-        <Rect x={fw * 0.04 + 0.9 * s} y={0} width={0.6 * s} height={h} color="rgba(255,255,255,0.14)" />
-        <Rect x={0} y={0} width={fw} height={h}>
-          <LinearGradient start={vec(0, 0)} end={vec(fw, h)} colors={['rgba(255,255,255,0.08)', 'rgba(255,255,255,0)', 'rgba(0,0,0,0.08)']} positions={[0, 0.45, 1]} />
-        </Rect>
-        <RimLight outline={outline} w={fw} h={h} s={s} />
-        <EdgeLine outline={outline} outline2={outline2} s={s} face={tone} />
+      <Path path={faces.sideFace} style="stroke" strokeWidth={0.9 * s} strokeJoin="round" color={edgeC} antiAlias />
+      {/* 윗면(내려다볼 때): 앞뒤 표지 판 사이 종이 */}
+      {faces.top ? (
+        <>
+          <Path path={faces.top} color={scaleColor(tone, 1.04)} />
+          {faces.topPages ? (
+            <Path path={faces.topPages}>
+              <LinearGradient start={vec(0, topH)} end={vec(0, 0)} colors={[mix(scaleColor(PAGE, 0.92), tone, 0.1), mix(scaleColor(PAGE, 0.84), tone, 0.15)]} />
+            </Path>
+          ) : null}
+          <Path path={faces.top} style="stroke" strokeWidth={0.9 * s} strokeJoin="round" color={edgeC} antiAlias />
+        </>
+      ) : null}
+      {/* 앞표지 */}
+      <Group transform={[{ translateX: cx }, { translateY: topH }]}>
+        <Group clip={outline}>
+          <Rect x={0} y={0} width={fw} height={ch} color={face} />
+          {image ? <SkImage image={image} x={0} y={0} width={fw} height={ch} fit="cover" /> : null}
+          {!image && motif ? <SkImage image={motif} x={fw / 2 - mw / 2} y={ch * 0.9 - mh} width={mw} height={mh} fit="contain" /> : null}
+          <Grain w={fw} h={ch} s={s} image={grain} />
+          {/* 제본선(시안: 왼쪽에서 조금 안쪽의 가는 홈 하나) */}
+          <Rect x={0} y={0} width={fw * 0.05} height={ch}>
+            <LinearGradient start={vec(0, 0)} end={vec(fw * 0.05, 0)} colors={['rgba(0,0,0,0.07)', 'rgba(0,0,0,0)']} />
+          </Rect>
+          <Rect x={fw * 0.04} y={0} width={0.7 * s} height={ch} color="rgba(40,30,20,0.16)">
+            <BlurMask blur={0.35 * s} style="normal" />
+          </Rect>
+          <Rect x={fw * 0.04 + 0.9 * s} y={0} width={0.6 * s} height={ch} color="rgba(255,255,255,0.14)" />
+          <Rect x={0} y={0} width={fw} height={ch}>
+            <LinearGradient start={vec(0, 0)} end={vec(fw, ch)} colors={['rgba(255,255,255,0.08)', 'rgba(255,255,255,0)', 'rgba(0,0,0,0.08)']} positions={[0, 0.45, 1]} />
+          </Rect>
+          <RimLight outline={outline} w={fw} h={ch} s={s} />
+          <EdgeLine outline={outline} outline2={outline2} s={s} face={tone} />
+        </Group>
+        <Path path={outline} style="stroke" strokeWidth={0.9 * s} color={edgeC} antiAlias />
       </Group>
-      <Path path={outline} style="stroke" strokeWidth={0.9 * s} color={scaleColor(tone, edgeFactor(tone))} antiAlias />
-      </Group>
-      {/* 앞표지와 옆면이 만나는 모서리의 빛 반사(위가 밝고 아래로 사라진다). 왼쪽 옆면일 때는 테두리와 겹쳐 선이 여러 겹이 되므로 뺀다 */}
-      {mirror ? null : (
-      <Rect x={fw - 0.9 * s} y={2 * s} width={0.9 * s} height={h - 4 * s}>
-        <LinearGradient start={vec(0, 2 * s)} end={vec(0, h - 2 * s)} colors={GLINT} positions={GLINT_AT} />
+      {/* 앞표지와 옆면이 꺾이는 모서리의 빛 반사(위가 밝고 아래로 사라진다) */}
+      <Path path={faces.front} style="stroke" strokeWidth={0.9 * s}>
+        <LinearGradient start={vec(0, topH)} end={vec(0, h)} colors={GLINT} positions={GLINT_AT} />
         <BlurMask blur={0.3 * s} style="normal" />
-      </Rect>
-      )}
+      </Path>
     </Canvas>
   );
 });

@@ -11,7 +11,7 @@ import type { Book, Pose } from '@/domain/types';
 import { MotifArt } from '@/ui/art/motifs';
 import { fonts } from '@/ui/theme';
 
-import { CoverBody, faceWidth, LyingBody, SpineBody, spineView } from './BookBody';
+import { CoverBody, coverTopH, faceWidth, LyingBody, SpineBody, spineView } from './BookBody';
 
 // view: 가운데 시점(-1 왼쪽 끝 ~ 1 오른쪽 끝). 선반 밖(상세·서랍)에서는 0(정면).
 type Props = { book: Book; pose: Pose; scale: number; view?: number; viewY?: number };
@@ -181,7 +181,7 @@ function Horizontal({ book, scale: s }: { book: Book; scale: number }) {
 }
 
 // 표지 전시: 평평한 표지 그림(없으면 책 색 + 모티프) 위에 제목·저자를 가운데 조판.
-function Front({ book, scale: s, view }: { book: Book; scale: number; view: number }) {
+function Front({ book, scale: s, view, viewY }: { book: Book; scale: number; view: number; viewY: number }) {
   const fw = frontWidth(book) * s;
   const h = bookHeight(book) * s;
   const side = FRONT_SIDE * s;
@@ -189,6 +189,8 @@ function Front({ book, scale: s, view }: { book: Book; scale: number; view: numb
   const ink = cover?.ink ?? inkOf(book);
   const mirror = view > 0.02; // 가운데보다 오른쪽이면 왼쪽 옆면이 보인다
   const cx0 = mirror ? side : 0;
+  const topH = coverTopH(viewY, s); // 내려다보는 줄: 윗면만큼 앞표지가 아래로
+  const ch = h - topH;
   const long = book.title.length > 9;
   const text = long ? splitTwoLines(book.title) : book.title;
   const longest = Math.max(...text.split('\n').map((l) => l.length));
@@ -196,13 +198,13 @@ function Front({ book, scale: s, view }: { book: Book; scale: number; view: numb
   return (
     <View style={{ width: fw + side, height: h }}>
       <Ribbons book={book} cx={cx0 + fw * 0.6} scale={s} />
-      <CoverBody id={book.id} width={fw} height={h} scale={s} face={faceOf(book)} side={side} cover={cover?.image} art={book.body} mirror={mirror} edge={cover?.edge} />
+      <CoverBody id={book.id} width={fw} height={h} scale={s} face={faceOf(book)} side={side} cover={cover?.image} art={book.body} mirror={mirror} edge={cover?.edge} viewY={viewY} />
       {!cover && !book.body ? (
-        <View style={{ position: 'absolute', bottom: h * 0.1, left: cx0, width: fw, alignItems: 'center' }}>
+        <View style={{ position: 'absolute', bottom: ch * 0.1, left: cx0, width: fw, alignItems: 'center' }}>
           <MotifArt motif={book.art.motif} width={fw * 0.4} height={h * 0.4} color={book.art.accentColor ?? ink} />
         </View>
       ) : null}
-      <View style={{ position: 'absolute', top: (cover?.titleTop ?? 0.2) * h, left: cx0 + fw * 0.08, width: fw * 0.84, alignItems: 'center' }}>
+      <View style={{ position: 'absolute', top: topH + (cover?.titleTop ?? 0.2) * ch, left: cx0 + fw * 0.08, width: fw * 0.84, alignItems: 'center' }}>
         <Text allowFontScaling={false} style={{ fontFamily: fonts.bookTitle, fontSize: fs, lineHeight: fs * 1.45, color: ink, textAlign: 'center', letterSpacing: long ? 0 : fs * 0.06 }}>
           {text}
         </Text>
@@ -235,6 +237,6 @@ export function splitTwoLines(title: string) {
 export const BookRenderer = memo(function BookRenderer({ book, pose, scale, view = 0, viewY = 0 }: Props) {
   if (pose === 'spine') return <Spine book={book} scale={scale} view={view} viewY={viewY} />;
   if (pose === 'horizontal') return <Horizontal book={book} scale={scale} />;
-  return <Front book={book} scale={scale} view={view} />;
+  return <Front book={book} scale={scale} view={view} viewY={viewY} />;
 });
 
