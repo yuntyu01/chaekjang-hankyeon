@@ -22,6 +22,7 @@ export const ko = {
   hint: {
     stack: '쌓기',
     swap: '자리 바꾸기',
+    place: '여기에 놓기',
     self: '',
     end: '맨 끝으로',
     beside: '나란히 놓기',
@@ -50,6 +51,7 @@ export const ko = {
   dropNewShelf: '여기에 놓으면 새 선반',
   editHint: '책을 길게 눌러 옮겨 보세요',
   soon: '다음 단계에서 만들어요',
+  lean: { noSupport: '기댈 책이 없어 바로 세웠어요' },
   drawer: {
     title: '책 서랍',
     open: '책 서랍 열기',

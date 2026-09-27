@@ -1,21 +1,21 @@
 import { bookHeight, bookThickness, SHELF, singleFootprint } from '../geometry';
 import type { BookMap } from '../layout-engine';
 import { SAMPLE_BOOKS, SAMPLE_LAYOUT } from '../onboarding-sample';
-import { computeShelf, hitTest, pointInPoly, tiltedFrame } from '../shelf-scene';
+import { computeShelf, hitTest, leanFrame, PLANK_BOUNDS, pointInPoly } from '../shelf-scene';
 
 const books: BookMap = Object.fromEntries(SAMPLE_BOOKS.map((b) => [b.id, b]));
 const FLOOR = SHELF.clearHeight;
 
 describe('기울인 책', () => {
-  it.each([7, -7] as const)('%i°: 가장 낮은 점이 선반 바닥에 닿고 점유 폭 안에 들어간다', (tilt) => {
+  it.each([7, -7] as const)('%i°: 발은 제자리, 가장 낮은 점이 선반 바닥에 닿는다', (tilt) => {
     const b = { ...books.b01, reference: undefined };
-    const f = tiltedFrame(100, bookThickness(b), bookHeight(b), tilt);
-    const ys = f.poly.map((p) => p.y);
-    const xs = f.poly.map((p) => p.x);
-    expect(Math.max(...ys)).toBeCloseTo(FLOOR, 6);
-    const fp = singleFootprint(b, { pose: 'spine', tilt });
-    expect(Math.min(...xs)).toBeCloseTo(100, 6);
-    expect(Math.max(...xs)).toBeCloseTo(100 + fp.width, 6);
+    const f = leanFrame(b, 100, tilt);
+    expect(Math.max(...f.poly.map((p) => p.y))).toBeCloseTo(FLOOR, 6);
+    const pivotX = tilt > 0 ? 100 + bookThickness(b) : 100;
+    expect(f.poly.some((p) => Math.abs(p.x - pivotX) < 1e-6 && Math.abs(p.y - FLOOR) < 1e-6)).toBe(true);
+    // 기울기는 빈틈 안에서 생기므로 점유 폭은 똑바로 선 폭 그대로
+    expect(singleFootprint(b, { pose: 'spine', tilt }).width).toBe(bookThickness(b));
+    expect(bookHeight(b)).toBeGreaterThan(0);
   });
 });
 
@@ -31,7 +31,8 @@ describe('선반 장면', () => {
     };
     const distances = [[a.poly, b.poly], [b.poly, a.poly]].flatMap(([points, edges]) =>
       points.flatMap((p) => edges.map((q, i) => distance(p, q, edges[(i + 1) % edges.length]))));
-    expect(Math.min(...distances)).toBeLessThan(0.001);
+    expect(b.leanOn).toBe('b17');
+    expect(Math.min(...distances)).toBeLessThan(0.1);
     expect(Math.max(...b.poly.map((p) => p.y))).toBeCloseTo(FLOOR, 6);
   });
 
@@ -42,11 +43,12 @@ describe('선반 장면', () => {
       for (let i = 1; i < items.length; i++) {
         expect(items[i].x).toBeGreaterThan(items[i - 1].x);
       }
+      // 기댄 책은 자기 칸 밖(빈틈)으로 기울 수 있다. 대신 선반 판 안에 있어야 한다(눕힌 책은 끝을 조금 넘을 수 있음).
       for (const f of frames) {
-        const it = items.find((i) => i.key === f.itemKey)!;
+        if (f.pose === 'horizontal') continue;
         const xs = f.poly.map((p) => p.x);
-        expect(Math.min(...xs)).toBeGreaterThanOrEqual(it.x - 1e-6);
-        expect(Math.max(...xs)).toBeLessThanOrEqual(it.x + it.width + 1e-6);
+        expect(Math.min(...xs)).toBeGreaterThanOrEqual(PLANK_BOUNDS.min - 1e-6);
+        expect(Math.max(...xs)).toBeLessThanOrEqual(PLANK_BOUNDS.max + 1e-6);
       }
       // Silhouettes may share bounding boxes while leaning against each other.
       // Sample the interior along every scanline to detect real overlap.

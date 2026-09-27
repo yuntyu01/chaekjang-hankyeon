@@ -5,6 +5,7 @@ import Storage from 'expo-sqlite/kv-store';
 
 import { toShelfBook } from '@/domain/catalog';
 import { migrate, threeShelfLayout, validate, withNormalizedX, type BookMap } from '@/domain/layout-engine';
+import { withLeans } from '@/domain/shelf-scene';
 import { loadLibrary } from '@/db/local-db';
 import { SAMPLE_BOOKS, SAMPLE_LAYOUT } from '@/domain/onboarding-sample';
 import type { ShelfLayout, ShelfLayoutV1 } from '@/domain/types';
@@ -95,7 +96,8 @@ export const placementStore = {
 
   // 검증된 레이아웃만 받는다. 무결성이 깨졌으면 거절한다.
   commit(next: ShelfLayout) {
-    next = threeShelfLayout(next);
+    // 기대기 결과(최종 각도·상대)를 함께 저장하고, 기댈 곳이 없던 책은 바로 세운다.
+    next = withLeans(threeShelfLayout(next), state.books);
     const errors = validate(next, state.books, Object.keys(state.books));
     if (errors.length) return false;
     set({ undo: state.layout, layout: next });

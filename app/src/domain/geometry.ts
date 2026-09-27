@@ -59,7 +59,14 @@ export const STACK_OFFSETS = [0, 8, 3];
 export const MAX_STACK = 3;
 export const HOME_SHELF_COUNT = 3;
 
+// tilt 값의 부호 = 기대는 방향(-: 왼쪽, +: 오른쪽). 실제 각도는 빈틈과 옆 책 윤곽으로 계산한다(lean.ts).
 export const TILTS: Tilt[] = [-7, 0, 7];
+// 예전 저장본(빈틈 없음)의 기울인 책이 기댈 수 있게 만들어 주는 각도
+export const LEGACY_LEAN = 7;
+// 메뉴로 기울일 때 벌려 주는 각도(최대 기울기는 lean.ts MAX_LEAN)
+export const MENU_LEAN = 8;
+// 눕힌 책은 선반 끝을 이만큼 넘어도 된다(DU)
+export const H_OVERHANG = 20;
 
 export function bookHeight(book: Book) {
   return book.dims?.height ?? BOOK_HEIGHT[book.heightClass];
@@ -81,18 +88,17 @@ export function tiltedBounds(w: number, h: number, tilt: number) {
   return { width: w * Math.cos(t) + h * Math.sin(t), height: h * Math.cos(t) + w * Math.sin(t) };
 }
 
-// 한 권(쌓기 전)의 선반 점유 크기.
+// 한 권(쌓기 전)의 선반 점유 크기. 세운 책은 항상 똑바로 선 모양으로 잰다(기울기는 빈틈 안에서 생긴다).
 export function singleFootprint(book: Book, p: Pick<BookPlacement, 'pose' | 'tilt'>) {
   if (book.reference?.pose === p.pose && !book.coverArtUri && !book.spineArtUri) {
-    const poly = visibleBookOutline(book, p);
+    const poly = visibleBookOutline(book, { pose: p.pose, tilt: 0 });
     return { width: Math.max(...poly.map((q) => q.x)), height: -Math.min(...poly.map((q) => q.y)) };
   }
   const h = bookHeight(book);
   const w = bookThickness(book);
   switch (p.pose) {
     case 'spine':
-      if (p.tilt === 0) return { width: w, height: h };
-      return tiltedBounds(w, h, p.tilt);
+      return { width: w, height: h };
     case 'horizontal':
       return { width: h, height: w + TOP_FACE };
     case 'front':

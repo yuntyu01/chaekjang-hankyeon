@@ -1,7 +1,7 @@
 // 선반 한 칸: 벽 그림자 → 선반 → 접촉 그림자 → 책 → 앞턱.
 import { memo, useEffect } from 'react';
 import { Image, Pressable, StyleSheet, Text, View } from 'react-native';
-import Animated, { useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
+import Animated, { useAnimatedStyle, useSharedValue, withSpring, withTiming } from 'react-native-reanimated';
 
 import { DESIGN_WIDTH, SHELF, SHELF_IMG_H, SHELF_IMG_W, SHELF_IMG_X, SHELF_STYLE } from '@/domain/geometry';
 import type { BookFrame } from '@/domain/shelf-scene';
@@ -34,6 +34,11 @@ const BookSlot = memo(function BookSlot({ frame, clear, book, scale: s, placehol
   const x = useSharedValue(left);
   const y = useSharedValue(top);
   const lift = useSharedValue(0);
+  // 기울기: 부드럽게 따라가되 넘쳐 튕기지 않게(과진동 차단) — 튕기다 옆 책을 뚫고 지나가지 않도록.
+  const rot = useSharedValue(frame.rotate);
+  useEffect(() => {
+    rot.value = reduceMotion ? frame.rotate : withSpring(frame.rotate, { damping: 20, stiffness: 120, overshootClamping: true });
+  }, [frame.rotate, reduceMotion, rot]);
   useEffect(() => {
     const d = reduceMotion ? 0 : motion.shift;
     x.value = withTiming(left, { duration: d });
@@ -47,7 +52,7 @@ const BookSlot = memo(function BookSlot({ frame, clear, book, scale: s, placehol
     top: y.value,
     transform: [
       { translateY: -7 * s * lift.value },
-      { rotate: `${frame.rotate}deg` },
+      { rotate: `${rot.value}deg` },
       { scale: 1 + 0.03 * lift.value },
     ],
   }));

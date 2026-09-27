@@ -103,6 +103,11 @@ export type BookPlacement = {
   tilt: Tilt; // horizontal/front일 때 0
   stackId?: string; // 같은 그룹은 같은 shelfId와 order를 공유
   stackOrder?: number; // 아래에서 위 순서
+  // 기준 선반 좌표(DU, 선반 사용 범위 왼쪽 끝 = 0)에서의 자리 왼쪽 끝. 사용자가 둔 위치와 빈틈을 그대로 보존한다.
+  // 화면에서는 선반과 함께 같은 비율로 확대·축소된다. 쌓기 그룹은 모든 멤버가 같은 값.
+  pos?: number;
+  // 기대기 결과(최종 각도, 도, 부호=방향)와 기댄 상대. 상대가 바뀌거나 없어지면 다시 계산한다.
+  lean?: { angle: number; on: string };
   // 저장 시 기록하는 정규화 위치(선반 사용 폭 대비 왼쪽 끝, 0~1). 복원의 기준은 order이고 이 값은 참고·동기화용.
   x?: number;
 };

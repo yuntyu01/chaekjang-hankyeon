@@ -20,6 +20,7 @@ import {
   usedWidth,
   validate,
   withNormalizedX,
+  bookXs,
   swapWith,
   findSwapTarget,
   applySwapTarget,
@@ -104,7 +105,7 @@ describe('이동', () => {
     expect(moveBy(SAMPLE_LAYOUT, books, 'b01', -1)).toEqual({ ok: false, reason: 'no-change' });
     l = ok(moveToShelf(roomy(), books, 'b09', 'shelf-4'));
     expect(shelfItems(l, 'shelf-4').at(-1)!.key).toBe('b09');
-    expect(moveToShelf(SAMPLE_LAYOUT, books, 'b02', 'shelf-3')).toEqual({ ok: false, reason: 'no-space' });
+    expect(moveToShelf(SAMPLE_LAYOUT, books, 'b04', 'shelf-3')).toEqual({ ok: false, reason: 'no-space' });
   });
 });
 
@@ -178,9 +179,9 @@ describe('드롭 판정', () => {
       shelfId: 'shelf-3',
       itemKey: 'stack:b12',
     });
-    expect(findDropTarget(d, books, 'shelf-3', 12, 'horizontal')).toEqual({ kind: 'insert', shelfId: 'shelf-3', index: 0 });
+    expect(findDropTarget(d, books, 'shelf-3', 12, 'horizontal')).toMatchObject({ kind: 'insert', shelfId: 'shelf-3', index: 0 });
     expect(findDropTarget(d, books, 'shelf-3', middle, 'spine')).toEqual({ kind: 'insert', shelfId: 'shelf-3', index: 0 });
-    expect(findDropTarget(d, books, 'shelf-3', 999, 'spine')).toEqual({ kind: 'insert', shelfId: 'shelf-3', index: 2 });
+    expect(findDropTarget(d, books, 'shelf-3', 999, 'spine')).toMatchObject({ kind: 'insert', shelfId: 'shelf-3', index: 2 });
   });
 });
 
@@ -276,13 +277,19 @@ describe('자리 바꾸기', () => {
     expect(swapWith(SAMPLE_LAYOUT, books, 'b01', 'b01')).toEqual({ ok: false, reason: 'no-change' });
   });
 
-  it('책 위 판정: 다른 책 위면 바꾸기, 자기 자리면 그대로, 끝 너머면 맨 끝', () => {
-    expect(findSwapTarget(SAMPLE_LAYOUT, books, 'b01', 5)).toEqual({ kind: 'self' });
-    expect(findSwapTarget(SAMPLE_LAYOUT, books, 'b01', 60)).toEqual({ kind: 'swap', itemKey: 'b02' });
-    const l = ok(moveToDrawer(SAMPLE_LAYOUT, 'b06'));
-    expect(findSwapTarget(l, books, 'b01', 356)).toEqual({ kind: 'end' });
-    const r = ok(applySwapTarget(l, books, 'b01', { kind: 'end' }));
+  it('책 위 판정: 다른 책 위면 바꾸기, 자기 자리면 그대로, 빈 공간이면 그 자리에 놓기', () => {
+    const x = (id: string) => bookXs(SAMPLE_LAYOUT, books).get(id)!;
+    expect(findSwapTarget(SAMPLE_LAYOUT, books, 'b01', x('b01') + 5)).toEqual({ kind: 'self' });
+    expect(findSwapTarget(SAMPLE_LAYOUT, books, 'b01', x('b02') + 10)).toEqual({ kind: 'swap', itemKey: 'b02' });
+    const l = ok(moveToDrawer(SAMPLE_LAYOUT, 'b06', books));
+    const t = findSwapTarget(l, books, 'b01', 356);
+    expect(t.kind).toBe('place');
+    const r = ok(applySwapTarget(l, books, 'b01', t));
     expect(shelfItems(r, 'shelf-1').at(-1)!.key).toBe('b01');
+    // 다른 책은 제자리에 남는다(빼낸 자리는 빈틈으로 남음)
+    const before = bookXs(l, books);
+    const after = bookXs(r, books);
+    for (const id of ['b03', 'b04', 'b05']) expect(after.get(id)).toBeCloseTo(before.get(id)!, 1);
   });
 
   it('쌓인 책을 옮기면 그룹에서 빠져 그 자리로 간다', () => {

@@ -199,12 +199,12 @@ export function HomeScreen() {
       return { kind: 'bad', reason: r.reason, key, shelfId };
     }
     const p = placementOf(layout, d.bookId)!;
-    const t = findDropTarget(detach(layout, d.bookId), books, shelfId, centerDU, p.pose);
+    const t = findDropTarget(detach(layout, d.bookId, books), books, shelfId, centerDU, p.pose, d.boxW / m.scale);
     const key = `other:${JSON.stringify(t)}`;
     const hit = reuse(key);
     if (hit) return hit;
     const r = moveBook(layout, books, d.bookId, t);
-    if (r.ok) return { kind: 'ok', layout: r.layout, key, shelfId, hint: t.kind === 'stack' ? 'stack' : 'beside' };
+    if (r.ok) return { kind: 'ok', layout: r.layout, key, shelfId, hint: t.kind === 'stack' ? 'stack' : t.x !== undefined ? 'place' : 'beside' };
     return { kind: 'bad', reason: r.reason, key, shelfId };
   };
 
@@ -403,7 +403,14 @@ export function HomeScreen() {
   const activeId = popId ?? detailId;
   const detailPlacement = detailId ? placementOf(layout, detailId) ?? null : null;
   const menuPose = (pose: Pose) => (activeId ? commit(setPose(layout, books, activeId, pose)) : null);
-  const menuTilt = (t: Tilt) => (activeId ? commit(setTilt(layout, books, activeId, t)) : null);
+  // 메뉴로 기울이기: 기댈 곳이 없으면(withLeans가 바로 세움) 알려 준다.
+  const menuTilt = (t: Tilt) => {
+    if (!activeId) return null;
+    const err = commit(setTilt(layout, books, activeId, t));
+    if (err || t === 0) return err;
+    const now = placementOf(placementStore.get().layout, activeId);
+    return now && now.tilt === 0 ? ko.lean.noSupport : null;
+  };
   const menuMove = (mv: MoveAction, id = activeId): string | null => {
     if (!id) return null;
     if (mv === 'prev' || mv === 'next') return commit(moveBy(layout, books, id, mv === 'prev' ? -1 : 1));
@@ -552,7 +559,7 @@ export function HomeScreen() {
             onTilt={menuTilt}
             onMove={(mv) => menuMove(mv)}
             onToDrawer={() => {
-              commit(moveToDrawer(layout, popId), ko.drawer.stored);
+              commit(moveToDrawer(layout, popId, books), ko.drawer.stored);
               setPopId(null);
               setSelectedId(null);
             }}
@@ -592,7 +599,7 @@ export function HomeScreen() {
         onMove={(mv) => menuMove(mv)}
         onToDrawer={() => {
           if (!detailId) return;
-          commit(moveToDrawer(layout, detailId), ko.drawer.stored);
+          commit(moveToDrawer(layout, detailId, books), ko.drawer.stored);
           setDetailId(null);
           setSelectedId(null);
         }}
