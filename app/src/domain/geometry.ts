@@ -53,11 +53,11 @@ export const SHELF_USABLE_WIDTH = USABLE_W - SHELF.innerLeft - SHELF.innerRight;
 // 어느 기기에서든 한 선반에 들어가는 책 수가 같다.
 export const SHELF_LENGTH_MM = 480;
 export const DU_PER_MM = SHELF_USABLE_WIDTH / SHELF_LENGTH_MM;
-// 두께: 얇은 책(10mm 이하)도 세로 제목이 들어가게 최소 30DU로 두고,
-// 그보다 두꺼운 만큼은 실제 두께 차이에 비례해서 늘린다(실제 비율의 1.4배). 300쪽 ≈ 40DU, 450쪽 ≈ 50DU.
-export const MIN_SPINE_DU = 30;
+// 두께: 얇은 책(10mm 이하)도 세로 제목이 들어가게 최소 26DU로 두고,
+// 그보다 두꺼운 만큼은 실제 두께 차이에 비례해서 늘린다(실제 비율의 1.2배). 300쪽 ≈ 35DU, 450쪽 ≈ 43DU.
+export const MIN_SPINE_DU = 26;
 export const MIN_SPINE_MM = 10;
-export const THICKNESS_GROWTH = 1.4;
+export const THICKNESS_GROWTH = 1.2;
 // 종이 한 쪽 두께(mm, 일반 도서 용지 약 0.12mm/장)와 앞뒤 표지 두께
 export const MM_PER_PAGE = 0.06;
 export const COVER_MM = 1.5;
