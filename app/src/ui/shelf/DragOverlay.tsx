@@ -26,11 +26,12 @@ type Props = {
   x: SharedValue<number>;
   y: SharedValue<number>;
   lift: SharedValue<number>;
+  viewY?: number;
 };
 
 const PAD = 40;
 
-export function DragOverlay({ book, frame, scale: s, x, y, lift }: Props) {
+export function DragOverlay({ book, frame, scale: s, x, y, lift, viewY = 0 }: Props) {
   const box = frameBBox(frame);
   const liftPath = frame.poly.map((p) => ({ x: (p.x - box.minX + shadow.lifted.dx) * s + PAD, y: (p.y - box.minY + shadow.lifted.dy) * s + PAD }));
   const style = useAnimatedStyle(() => ({
@@ -56,7 +57,7 @@ export function DragOverlay({ book, frame, scale: s, x, y, lift }: Props) {
           transformOrigin: frame.origin,
           transform: [{ rotate: `${frame.rotate}deg` }],
         }}>
-        <BookRenderer book={book} pose={frame.pose} scale={s} view={viewOf(frame.left + frame.width / 2)} />
+        <BookRenderer book={book} pose={frame.pose} scale={s} view={viewOf(frame.left + frame.width / 2)} viewY={viewY} />
       </View>
     </Animated.View>
   );

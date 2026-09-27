@@ -7,6 +7,7 @@ import {
   frontWidth,
   SHELF,
   stackOffsets,
+  LYING_BACK,
   TOP_FACE,
 } from './geometry';
 import { itemPositions, placementOf, shelfItems, type BookMap } from './layout-engine';
@@ -94,7 +95,7 @@ export function computeShelf(layout: ShelfLayout, books: BookMap, shelfId: strin
   for (const { item, x, width } of positions) {
     items.push({ key: item.key, x, width, bookIds: item.bookIds });
     if (item.stacked) {
-      let bottom = FLOOR;
+      let bottom = FLOOR - LYING_BACK;
       const offs = stackOffsets(item.bookIds.map((id) => books[id]));
       item.bookIds.forEach((id, i) => {
         const b = books[id];
@@ -122,8 +123,8 @@ export function computeShelf(layout: ShelfLayout, books: BookMap, shelfId: strin
       const hh = bookThickness(b) + TOP_FACE;
       frames.push({
         bookId: id, itemKey: item.key, shelfId, pose: 'horizontal', tilt: 0,
-        left: x, top: FLOOR - hh, width: len, height: hh, rotate: 0, origin: 'left bottom',
-        poly: rectPoly(x, FLOOR - hh, len, hh), stackIndex: 0,
+        left: x, top: FLOOR - LYING_BACK - hh, width: len, height: hh, rotate: 0, origin: 'left bottom',
+        poly: rectPoly(x, FLOOR - LYING_BACK - hh, len, hh), stackIndex: 0,
       });
     } else {
       const w = frontWidth(b) + FRONT_SIDE;

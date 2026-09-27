@@ -1,4 +1,4 @@
-import { bookHeight, bookThickness, SHELF, singleFootprint } from '../geometry';
+import { bookHeight, bookThickness, LYING_BACK, SHELF, singleFootprint } from '../geometry';
 import type { BookMap } from '../layout-engine';
 import { SAMPLE_BOOKS, SAMPLE_LAYOUT } from '../onboarding-sample';
 import { computeShelf, hitTest, leanFrame, PLANK_BOUNDS, pointInPoly } from '../shelf-scene';
@@ -77,7 +77,7 @@ describe('선반 장면', () => {
       for (const shelf of layout.shelves) {
         const { frames } = computeShelf(layout, books, shelf.id);
         for (const f of frames.filter((frame) => frame.stackIndex === 0)) {
-          expect(Math.max(...f.poly.map((p) => p.y))).toBeCloseTo(FLOOR, 6);
+          expect(Math.max(...f.poly.map((p) => p.y))).toBeCloseTo(FLOOR - (f.pose === 'horizontal' ? LYING_BACK : 0), 6);
           const center = f.poly.reduce((p, q) => ({ x: p.x + q.x / f.poly.length, y: p.y + q.y / f.poly.length }), { x: 0, y: 0 });
           expect(hitTest([f], center, 0)?.bookId).toBe(f.bookId);
         }

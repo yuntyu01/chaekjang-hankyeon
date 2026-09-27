@@ -62,7 +62,6 @@ export const ShelfShadows = memo(function ShelfShadows({ frames, scale: s, hidde
 
 // 벽 그림자와 달리 접촉 그림자는 선반 윗면 위에 그린다.
 export const ShelfContacts = memo(function ShelfContacts({ frames, scale: s, hiddenId, height, clear }: Props) {
-  const floorY = clear * s;
   return (
     <View style={[StyleSheet.absoluteFill, { height }]} pointerEvents="none">
       <Canvas style={{ width: DESIGN_WIDTH * s, height }}>
@@ -70,11 +69,12 @@ export const ShelfContacts = memo(function ShelfContacts({ frames, scale: s, hid
         {frames.map((f) => {
           if (f.bookId === hiddenId || f.stackIndex > 0) return null;
           const c = contactOf(f.poly);
+          const y = (clear + Math.max(...f.poly.map((q) => q.y)) - FLOOR) * s; // 책 바닥(누운 책은 조금 뒤라 위에 있다)
           const cx = (SHELF.sideMargin + c.cx + shadow.contact.shift) * s;
           const rx = (c.half + shadow.contact.spread) * s;
           const ry = shadow.contact.height * s;
           return (
-            <Oval key={f.bookId} x={cx - rx} y={floorY + 0.5 * s - ry} width={rx * 2} height={ry * 2} color={rgba(colors.shadow, shadow.contact.opacity)}>
+            <Oval key={f.bookId} x={cx - rx} y={y + 0.5 * s - ry} width={rx * 2} height={ry * 2} color={rgba(colors.shadow, shadow.contact.opacity)}>
               <BlurMask blur={shadow.contact.blur * s} style="normal" />
             </Oval>
           );

@@ -2,7 +2,7 @@
 // [임시 자산] 시안 원본에서 뽑은 평평한 재료(색·모티프·책등 그림·표지 그림·붓결). 최종 재장정 아트로 교체한다.
 
 export type BodyArt = { face: string; motif: number; motifTop: number; motifBottom: number; motifCx: number; scene: boolean };
-export type CoverArt = { image: number; titleTop: number; ink: string };
+export type CoverArt = { image: number; titleTop: number; ink: string; edge: string };
 
 export const BRUSH_DETAIL = require('../../assets/body/brush-detail.png');
 export const BRUSH_TILE_PX = 256; // 원본 px(시안 941px 폭 기준)
@@ -26,7 +26,7 @@ export const BODY_ART: Record<string, BodyArt> = {
 };
 
 export const COVER_ART: Record<string, CoverArt> = {
-  b04: { image: require('../../assets/body/cover/b04.png'), titleTop: 0.2479, ink: '#69859D' },
-  b07: { image: require('../../assets/body/cover/b07.png'), titleTop: 0.2283, ink: '#58605F' },
-  b16: { image: require('../../assets/body/cover/b16.png'), titleTop: 0.0696, ink: '#80726E' },
+  b04: { image: require('../../assets/body/cover/b04.png'), titleTop: 0.2479, ink: '#69859D', edge: '#1E4260' },
+  b07: { image: require('../../assets/body/cover/b07.png'), titleTop: 0.2283, ink: '#58605F', edge: '#435650' },
+  b16: { image: require('../../assets/body/cover/b16.png'), titleTop: 0.0696, ink: '#80726E', edge: '#DDAFAF' },
 };

@@ -26,9 +26,10 @@ type SlotProps = {
   reduceMotion: boolean;
   a11yLabel: string;
   onA11y: (bookId: string, action: string) => void;
+  viewY: number;
 };
 
-const BookSlot = memo(function BookSlot({ frame, clear, book, scale: s, placeholder, lifted, reduceMotion, a11yLabel, onA11y }: SlotProps) {
+const BookSlot = memo(function BookSlot({ frame, clear, book, scale: s, placeholder, lifted, reduceMotion, a11yLabel, onA11y, viewY }: SlotProps) {
   const left = (SHELF.sideMargin + frame.left) * s;
   const top = (clear + frame.top - SHELF.clearHeight) * s;
   const x = useSharedValue(left);
@@ -72,7 +73,7 @@ const BookSlot = memo(function BookSlot({ frame, clear, book, scale: s, placehol
       {placeholder ? (
         <View style={[styles.placeholder, { borderRadius: 3 * s }]} />
       ) : (
-        <BookRenderer book={book} pose={frame.pose} scale={s} view={viewOf(frame.left + frame.width / 2)} />
+        <BookRenderer book={book} pose={frame.pose} scale={s} view={viewOf(frame.left + frame.width / 2)} viewY={viewY} />
       )}
     </Animated.View>
   );
@@ -116,6 +117,7 @@ function ShelfFront({ scale: s, clear }: { scale: number; clear: number }) {
 
 type Props = {
   shelfId: string;
+  viewY: number; // 세로 시점(viewYOf)
   frames: BookFrame[];
   clear: number; // DU: 이 줄의 선반 위 공간
   books: Record<string, Book>;
@@ -144,7 +146,8 @@ export const ShelfRow = memo(function ShelfRow(p: Props) {
         <Plank left={SHELF.sideMargin * s} width={(DESIGN_WIDTH - SHELF.sideMargin * 2) * s} floorY={p.clear * s} scale={s} height={p.height + 20 * s} canvasWidth={DESIGN_WIDTH * s} />
       )}
       <ShelfContacts frames={p.frames} scale={s} hiddenId={p.placeholderId} height={p.height} clear={p.clear} />
-      {p.frames.map((f) => (
+      {/* 누운 책은 선반 위에서 조금 뒤에 놓이므로 먼저(뒤에) 그린다 */}
+      {[...p.frames].sort((a, b) => Number(b.pose === 'horizontal') - Number(a.pose === 'horizontal')).map((f) => (
         <BookSlot
           key={f.bookId}
           frame={f}
@@ -156,6 +159,7 @@ export const ShelfRow = memo(function ShelfRow(p: Props) {
           reduceMotion={p.reduceMotion}
           a11yLabel={p.a11yLabelOf(f.bookId)}
           onA11y={p.onA11y}
+          viewY={p.viewY}
         />
       ))}
       {SHELF_STYLE === 'asset' ? <ShelfFront scale={s} clear={p.clear} /> : null}

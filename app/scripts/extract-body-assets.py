@@ -256,9 +256,12 @@ def cover_art(img, bid, b):
     crop = clean[y0:y1, x0:x1]
     Image.fromarray(crop).save(os.path.join(OUT, "cover", f"{bid}.png"), optimize=True)
     ink_c = np.median(region[ink > 0], axis=0) if ink.any() else np.array([30, 30, 40])
+    # 표지 가장자리 색(테두리·옆면에 쓴다): 바깥 둘레 띠의 중앙값
+    ring = np.concatenate([crop[:6].reshape(-1, 3), crop[-6:].reshape(-1, 3), crop[:, :6].reshape(-1, 3), crop[:, -6:].reshape(-1, 3)])
     return dict(
         titleTop=round((ty0 - y0) / (y1 - y0), 4),
         ink=hexc(ink_c),
+        edge=hexc(np.median(ring, axis=0)),
         dark=bool(np.mean(crop[: int(crop.shape[0] * 0.4)]) < 110),
     )
 
@@ -276,7 +279,7 @@ def main():
         "// [임시 자산] 시안 원본에서 뽑은 평평한 재료(색·모티프·책등 그림·표지 그림·붓결). 최종 재장정 아트로 교체한다.",
         "",
         "export type BodyArt = { face: string; motif: number; motifTop: number; motifBottom: number; motifCx: number; scene: boolean };",
-        "export type CoverArt = { image: number; titleTop: number; ink: string };",
+        "export type CoverArt = { image: number; titleTop: number; ink: string; edge: string };",
         "",
         "export const BRUSH_DETAIL = require('../../assets/body/brush-detail.png');",
         f"export const BRUSH_TILE_PX = {tile[1]}; // 원본 px(시안 941px 폭 기준)",
@@ -290,7 +293,7 @@ def main():
         )
     lines += ["};", "", "export const COVER_ART: Record<string, CoverArt> = {"]
     for bid, c in covers.items():
-        lines.append(f"  {bid}: {{ image: require('../../assets/body/cover/{bid}.png'), titleTop: {c['titleTop']}, ink: '{c['ink']}' }},")
+        lines.append(f"  {bid}: {{ image: require('../../assets/body/cover/{bid}.png'), titleTop: {c['titleTop']}, ink: '{c['ink']}', edge: '{c['edge']}' }},")
     lines += ["};", ""]
     with open(TS, "w") as f:
         f.write("\n".join(lines))

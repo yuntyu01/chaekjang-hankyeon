@@ -70,6 +70,13 @@ export function viewOf(centerX: number) {
   const mid = DESIGN_WIDTH / 2 - SHELF.sideMargin;
   return Math.max(-1, Math.min(1, (centerX - mid) / (SHELF_USABLE_WIDTH / 2)));
 }
+// 세로 시점: 2번째 선반이 눈높이(0). 위 선반은 올려다봐 윗면이 안 보이고 옆면 윗부분이 깎여 보이며(-1),
+// 아래 선반은 내려다봐 세운 책 윗면이 살짝 보인다(+1).
+export function viewYOf(rowIndex: number) {
+  return Math.max(-1, Math.min(1, rowIndex - 1));
+}
+export const TOP_VIEW = 4; // 내려다볼 때 보이는 세운 책 윗면 높이(DU)
+
 export function spineDU(thickMm: number) {
   return MIN_SPINE_DU + Math.max(0, thickMm - MIN_SPINE_MM) * DU_PER_MM * THICKNESS_GROWTH;
 }
@@ -82,6 +89,8 @@ export const BOOK_THICKNESS: Record<ThicknessClass, number> = { thin: 28, medium
 
 // 눕힌 책의 윗면(표지 면) 깊이, 표지 전시의 옆면 두께.
 export const TOP_FACE = 9;
+// 누운 책(더미)은 선반 위에서 세운 책보다 조금 뒤에 놓인다: 화면에서 바닥이 이만큼 위(DU). 시안 3번 줄 약 2DU.
+export const LYING_BACK = 2;
 export const FRONT_SIDE = 4;
 // 쌓을 때 위 책을 살짝 어긋나게 둔다(아래에서 위 순서).
 export const STACK_OFFSETS = [0, 8, 3];
