@@ -124,7 +124,7 @@ export function luminance(hex: string) {
 }
 
 // 실루엣 가장자리 선: 책 색을 어둡게 한 같은 색(회색 아님). 시안은 어두운 책일수록 선이 진하다.
-export const edgeFactor = (face: string) => 0.62 + 0.3 * luminance(face);
+export const edgeFactor = (face: string) => 0.74 + 0.2 * luminance(face); // 선은 구분만 될 만큼(진하면 틀처럼 보인다)
 
 // 결정적 잡음(책마다 같은 모양)
 function jitter(seed: string) {
@@ -282,17 +282,17 @@ function RimLight({ outline, w, h, s, lying = false }: { outline: SkPath; w: num
 }
 
 // 가장자리 선: 책 색을 어둡게 한 또렷한 선 + 조금 어긋난 두 번째 선(굵기가 고르지 않은 손그림 선)
-function EdgeLine({ outline, outline2, s, face }: { outline: SkPath; outline2: SkPath; s: number; face: string }) {
+function EdgeLine({ outline, outline2, s, face, opacity = 1 }: { outline: SkPath; outline2: SkPath; s: number; face: string; opacity?: number }) {
   const edge = scaleColor(face, edgeFactor(face));
   return (
-    <>
+    <Group opacity={opacity}>
       <Path path={outline} style="stroke" strokeWidth={2.2 * s} color={edge}>
         <BlurMask blur={0.3 * s} style="normal" />
       </Path>
       <Path path={outline2} style="stroke" strokeWidth={2.2 * s} color={edge} opacity={0.3}>
         <BlurMask blur={0.35 * s} style="normal" />
       </Path>
-    </>
+    </Group>
   );
 }
 
@@ -559,7 +559,7 @@ export const LyingBody = memo(function LyingBody({ id, width: len, height: H, sc
 
 // 표지 전시: 앞표지(그림 또는 책 색) + 오른쪽 얇은 속지 단면
 // 표지 전시 책의 윗면 높이(px): 내려다보는 줄에서만 보인다(세운 책과 같은 규칙)
-export const coverTopH = (viewY: number, s: number) => (viewY > 0 ? TOP_VIEW * viewY * s : 0);
+export const coverTopH = (viewY: number, s: number) => (viewY > 0 ? TOP_VIEW * 0.6 * viewY * s : 0); // 표지 책은 얇게(두께가 작다)
 
 // 표지 전시: 앞표지 + 뒤로 물러나는 옆면(평행사변형) + 내려다볼 때 윗면. 책은 오른쪽으로 열리므로
 // 왼쪽 옆면 = 책등(책 색), 오른쪽 옆면 = 여는 쪽 종이 단면(앞뒤 표지 판 사이 아이보리).
@@ -625,40 +625,39 @@ export const CoverBody = memo(function CoverBody({
   const edgeC = scaleColor(tone, edgeFactor(tone));
   return (
     <Canvas style={{ width: fw + d, height: h }}>
-      {/* 옆면 */}
-      <Group clip={faces.sideFace}>
+      {/* 옆면(채움은 Path로 해야 비스듬한 가장자리가 매끈하다) */}
+      <Path path={faces.sideFace}>
         {mirror ? (
           // 책등: 빛(왼쪽 위)을 향해 밝고, 둥근 등이라 가운데가 조금 더 밝다
-          <Rect x={0} y={0} width={d} height={h}>
-            <LinearGradient start={vec(0, 0)} end={vec(d, 0)} colors={[scaleColor(tone, 0.86), scaleColor(tone, 0.97), scaleColor(tone, 0.9)]} />
-          </Rect>
+          <LinearGradient start={vec(0, 0)} end={vec(d, 0)} colors={[scaleColor(tone, 0.9), scaleColor(tone, 0.97), scaleColor(tone, 0.93)]} />
         ) : (
-          <>
-            {/* 여는 쪽: 앞뒤 표지 판(책 색) 사이로 종이 단면. 빛 반대쪽이라 어둡고 뒤로 갈수록 더 어둡다 */}
-            <Rect x={fw} y={0} width={d} height={h}>
-              <LinearGradient start={vec(fw, 0)} end={vec(fw + d, 0)} colors={[scaleColor(tone, 0.8), scaleColor(tone, 0.7)]} />
-            </Rect>
-            <Path path={faces.pages}>
-              <LinearGradient start={vec(fw, 0)} end={vec(fw + d, 0)} colors={[scaleColor(PAGE, 0.94), scaleColor(PAGE, 0.84)]} />
-            </Path>
-            {faces.lines.map((l, i) => (
-              <Path key={i} path={l} style="stroke" strokeWidth={0.5} color={PAGE_LINE} opacity={0.8} />
-            ))}
-          </>
+          // 여는 쪽: 앞뒤 표지 판(책 색). 빛 반대쪽이라 조금 어둡다
+          <LinearGradient start={vec(fw, 0)} end={vec(fw + d, 0)} colors={[scaleColor(tone, 0.88), scaleColor(tone, 0.8)]} />
         )}
+      </Path>
+      {mirror ? null : (
+        <>
+          {/* 판 사이로 보이는 아이보리 종이 단면 */}
+          <Path path={faces.pages}>
+            <LinearGradient start={vec(fw, 0)} end={vec(fw + d, 0)} colors={[scaleColor(PAGE, 0.94), scaleColor(PAGE, 0.86)]} />
+          </Path>
+          {faces.lines.map((l, i) => (
+            <Path key={i} path={l} style="stroke" strokeWidth={0.5} color={PAGE_LINE} opacity={0.6} />
+          ))}
+        </>
+      )}
+      <Group clip={faces.sideFace}>
         <Grain w={fw + d} h={h} s={s} image={grain} />
       </Group>
-      <Path path={faces.sideFace} style="stroke" strokeWidth={0.9 * s} strokeJoin="round" color={edgeC} antiAlias />
       {/* 윗면(내려다볼 때): 앞뒤 표지 판 사이 종이 */}
       {faces.top ? (
         <>
-          <Path path={faces.top} color={scaleColor(tone, 1.04)} />
+          <Path path={faces.top} color={mix(scaleColor(tone, 1.02), PAGE, 0.35)} />
           {faces.topPages ? (
             <Path path={faces.topPages}>
               <LinearGradient start={vec(0, topH)} end={vec(0, 0)} colors={[mix(scaleColor(PAGE, 0.92), tone, 0.1), mix(scaleColor(PAGE, 0.84), tone, 0.15)]} />
             </Path>
           ) : null}
-          <Path path={faces.top} style="stroke" strokeWidth={0.9 * s} strokeJoin="round" color={edgeC} antiAlias />
         </>
       ) : null}
       {/* 앞표지 */}
@@ -680,9 +679,10 @@ export const CoverBody = memo(function CoverBody({
             <LinearGradient start={vec(0, 0)} end={vec(fw, ch)} colors={['rgba(255,255,255,0.08)', 'rgba(255,255,255,0)', 'rgba(0,0,0,0.08)']} positions={[0, 0.45, 1]} />
           </Rect>
           <RimLight outline={outline} w={fw} h={ch} s={s} />
-          <EdgeLine outline={outline} outline2={outline2} s={s} face={tone} />
+          {/* 표지 그림은 그 자체로 경계가 보이므로 선은 반만(진하면 액자처럼 보인다) */}
+          <EdgeLine outline={outline} outline2={outline2} s={s} face={tone} opacity={image ? 0.5 : 1} />
         </Group>
-        <Path path={outline} style="stroke" strokeWidth={0.9 * s} color={edgeC} antiAlias />
+        <Path path={outline} style="stroke" strokeWidth={0.6 * s} color={edgeC} opacity={0.8} antiAlias />
       </Group>
       {/* 앞표지와 옆면이 꺾이는 모서리의 빛 반사(위가 밝고 아래로 사라진다) */}
       <Path path={faces.front} style="stroke" strokeWidth={0.9 * s}>
