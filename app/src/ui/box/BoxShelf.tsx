@@ -10,7 +10,7 @@ import { BRUSH_DETAIL } from '@/domain/body-art.generated';
 import { DESIGN_WIDTH, SHELF } from '@/domain/geometry';
 import type { BookFrame, Point } from '@/domain/shelf-scene';
 import type { Book, Pose } from '@/domain/types';
-import { Grain, mix, PAGE, PAGE_LINE, scaleColor } from '@/ui/book/BookBody';
+import { edgeFactor, Grain, mix, PAGE, PAGE_LINE, scaleColor } from '@/ui/book/BookBody';
 import { BookRenderer } from '@/ui/book/BookRenderer';
 import { ShelfFront, ShelfImage } from '@/ui/shelf/ShelfRow';
 import { ShelfContacts, ShelfShadows } from '@/ui/shelf/ShelfShadows';
@@ -55,6 +55,7 @@ function FaceShape({ face, book, pose, s, px, grain }: { face: Face; book: Book;
         )
       : [];
   const board = scaleColor(tone, m.k);
+  const lit = face.kind === 'top' || face.kind === 'left';
   return (
     <>
       {/* 표지 판 색(종이면이면 판이 테두리로 조금 보인다). 선 대신 색 차이로만 구분 */}
@@ -70,10 +71,22 @@ function FaceShape({ face, book, pose, s, px, grain }: { face: Face; book: Book;
       <Group clip={path}>
         <Grain w={DESIGN_WIDTH * s} h={400 * s} s={s} image={grain} />
       </Group>
-      {/* 앞면과 꺾이는 모서리의 빛(가늘고 또렷하게, 빛 쪽이 밝다) */}
+      {/* 앞면에서 꺾여 들어가는 쪽 명암: 빛을 받는 윗면은 모서리 쪽이 밝고, 그늘진 옆면은 모서리 쪽이 어둡다 */}
+      <Path path={path}>
+        <LinearGradient
+          start={vec(A.x, A.y)}
+          end={vec(A.x + (Ab.x - A.x) * 0.45, A.y + (Ab.y - A.y) * 0.45)}
+          colors={lit ? ['rgba(255,250,240,0.22)', 'rgba(255,250,240,0)'] : ['rgba(50,35,25,0.2)', 'rgba(50,35,25,0)']}
+        />
+      </Path>
+      {/* 뒤로 갈수록 조금 어둡다(빛에서 멀어짐) */}
+      <Path path={path}>
+        <LinearGradient start={vec(A.x, A.y)} end={vec(Ab.x, Ab.y)} colors={['rgba(50,35,25,0)', 'rgba(50,35,25,0.08)']} />
+      </Path>
+      {/* 꺾이는 모서리의 빛: 빛 쪽(윗면)은 또렷하게, 그늘 쪽(옆면)은 옅게 */}
       <Path path={Skia.Path.Polygon([A, B], false)} style="stroke" strokeWidth={0.9 * s} strokeCap="round">
-        <LinearGradient start={vec(A.x, A.y)} end={vec(B.x, B.y)} colors={['rgba(255,255,255,0.45)', 'rgba(255,255,255,0.22)']} />
-        <BlurMask blur={0.3 * s} style="normal" />
+        <LinearGradient start={vec(A.x, A.y)} end={vec(B.x, B.y)} colors={lit ? ['rgba(255,255,255,0.5)', 'rgba(255,255,255,0.3)'] : ['rgba(255,255,255,0.22)', 'rgba(255,255,255,0.08)']} />
+        <BlurMask blur={0.35 * s} style="normal" />
       </Path>
     </>
   );
@@ -86,11 +99,24 @@ const DepthFaces = memo(function DepthFaces({ entries, cam, s, clear, height }: 
   const ordered = [...entries].sort((a, b) => b.placed.z - a.placed.z || a.placed.y - b.placed.y || a.placed.x - b.placed.x);
   return (
     <Canvas style={[StyleSheet.absoluteFill, { width: DESIGN_WIDTH * s, height }]} pointerEvents="none">
-      {ordered.map(({ book, placed }) =>
-        visibleFaces(cam, placed)
-          .sides.sort((a, b) => (a.kind === 'top' ? 1 : 0) - (b.kind === 'top' ? 1 : 0))
-          .map((f) => <FaceShape key={`${placed.bookId}${f.kind}`} face={f} book={book} pose={placed.pose} s={s} px={px} grain={grain} />),
-      )}
+      {ordered.map(({ book, placed }) => (
+        <Group key={placed.bookId}>
+          {visibleFaces(cam, placed)
+            .sides.sort((a, b) => (a.kind === 'top' ? 1 : 0) - (b.kind === 'top' ? 1 : 0))
+            .map((f) => (
+              <FaceShape key={f.kind} face={f} book={book} pose={placed.pose} s={s} px={px} grain={grain} />
+            ))}
+          {/* 상자 바깥 실루엣만 연한 같은 색 선 하나(면 사이에는 선을 긋지 않는다). 앞면 쪽은 앞면이 덮는다 */}
+          <Path
+            path={Skia.Path.Polygon(silhouette(cam, placed).map(px), true)}
+            style="stroke"
+            strokeWidth={0.8 * s}
+            strokeJoin="round"
+            color={scaleColor(toneOf(book, placed.pose), edgeFactor(toneOf(book, placed.pose)))}
+            opacity={0.7}
+          />
+        </Group>
+      ))}
     </Canvas>
   );
 });

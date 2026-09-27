@@ -19,7 +19,7 @@ import {
   type SkImage as SkImageType,
   type SkPath,
 } from '@shopify/react-native-skia';
-import { memo, useMemo } from 'react';
+import { memo, useMemo, type ReactNode } from 'react';
 
 import { BRUSH_DETAIL } from '@/domain/body-art.generated';
 import { TOP_VIEW } from '@/domain/geometry';
@@ -171,8 +171,13 @@ export function bodyOutline(w: number, h: number, s: number, seed: string, side 
   const bow = HEAD_BOW * s;
   const amp = WOBBLE * s;
   const step = 1.5 * s;
-  const [wTop, wRight, wBottom, wLeft] = [0, 1, 2, 3].map((e) => wobble(seed, e));
-  const headY = (x: number) => bow * (1 - Math.sin((Math.PI * Math.min(x, sideX)) / sideX)); // 머리 곡선
+  const [wTop0, wRight0, wBottom0, wLeft] = [0, 1, 2, 3].map((e) => wobble(seed, e));
+  // 상자 모델(앞면만): 옆면·윗면과 이어지는 변은 곧게(흔들리면 모서리 빛과 어긋나 점선처럼 보인다)
+  const flat = side >= 0.999 ? () => 0 : null;
+  const wTop = flat ?? wTop0;
+  const wRight = flat ?? wRight0;
+  const wBottom = flat ?? wBottom0;
+  const headY = (x: number) => (side >= 0.999 ? 0 : bow * (1 - Math.sin((Math.PI * Math.min(x, sideX)) / sideX))); // 머리 곡선
   const pts: Point[] = [];
   // 왼쪽 위 모서리(머리 곡선 높이에 맞춰 붙인다)
   const y0 = headY(r);
@@ -308,6 +313,18 @@ function EdgeLine({ outline, outline2, s, face, opacity = 1 }: { outline: SkPath
   );
 }
 
+// 다른 면과 이어지는 변(상자 모델)에서는 가장자리 선을 지운다: 그 변은 선이 아니라 빛·그늘로 구분한다.
+// 변 쪽 2DU를 잘라낸다(Mask는 뒤이어 그리는 그림을 깨뜨려 clip을 쓴다).
+export function JoinMask({ w, h, s, right, top, bottom, children }: { w: number; h: number; s: number; right?: boolean; top?: boolean; bottom?: boolean; children: ReactNode }) {
+  if (!right && !top && !bottom) return <>{children}</>;
+  const m = 10 * s;
+  const cut = 2 * s;
+  const x1 = right ? w - cut : w + m;
+  const y0 = top ? cut : -m;
+  const y1 = bottom ? h - cut : h + m;
+  return <Group clip={Skia.XYWHRect(-m, y0, x1 + m, y1 - y0)}>{children}</Group>;
+}
+
 export function Grain({ w, h, s, image }: { w: number; h: number; s: number; image: SkImageType | null }) {
   if (!image) return null;
   return (
@@ -369,6 +386,7 @@ function SpineSkin({
     },
     [w, s, side, mirror, ch],
   );
+  const joined = side >= 0.999; // 상자 모델: 앞면만 그리고 옆면·윗면은 따로
   const prof =
     side >= 0.999 ? frontProfile(face, lying) : lying ? lyingProfile(side, face) : shadeProfile(spineProfile(side), side, face, mirror);
   return (
@@ -418,11 +436,15 @@ function SpineSkin({
           <BlurMask blur={1.4 * s} style="normal" />
         </Path>
         <RimLight outline={outline} w={w} h={h} s={s} lying={lying} />
-        {/* 또렷한 같은 색 가장자리 선(안쪽 절반만 보인다: 약 1.1DU) */}
-        <EdgeLine outline={outline} outline2={outline2} s={s} face={face} />
+        {/* 또렷한 같은 색 가장자리 선(안쪽 절반만 보인다: 약 1.1DU). 상자 모델에서 옆면·윗면과 이어지는 변은 뺀다 */}
+        <JoinMask w={w} h={h} s={s} right={joined} top={joined && !lying} bottom={joined && lying}>
+          <EdgeLine outline={outline} outline2={outline2} s={s} face={face} />
+        </JoinMask>
       </Group>
       {/* 클립 경계는 계단처럼 깨지므로 실루엣 바깥을 부드러운 선으로 한 번 더 덮는다 */}
-      <Path path={outline} style="stroke" strokeWidth={0.9 * s} color={scaleColor(face, edgeFactor(face))} antiAlias />
+      <JoinMask w={w} h={h} s={s} right={joined} top={joined && !lying} bottom={joined && lying}>
+        <Path path={outline} style="stroke" strokeWidth={0.9 * s} color={scaleColor(face, edgeFactor(face))} antiAlias />
+      </JoinMask>
     </Group>
   );
 }
@@ -718,9 +740,13 @@ export const CoverBody = memo(function CoverBody({
           </Rect>
           <RimLight outline={outline} w={fw} h={ch} s={s} />
           {/* 표지 그림은 그 자체로 경계가 보이므로 선은 반만(진하면 액자처럼 보인다) */}
-          <EdgeLine outline={outline} outline2={outline2} s={s} face={tone} opacity={image ? 0.5 : 1} />
+          <JoinMask w={fw} h={ch} s={s} right={d <= 0} top={d <= 0}>
+            <EdgeLine outline={outline} outline2={outline2} s={s} face={tone} opacity={image ? 0.5 : 1} />
+          </JoinMask>
         </Group>
-        <Path path={outline} style="stroke" strokeWidth={0.6 * s} color={edgeC} opacity={0.8} antiAlias />
+        <JoinMask w={fw} h={ch} s={s} right={d <= 0} top={d <= 0}>
+          <Path path={outline} style="stroke" strokeWidth={0.6 * s} color={edgeC} opacity={0.8} antiAlias />
+        </JoinMask>
       </Group>
       {/* 앞표지와 옆면이 꺾이는 모서리의 빛 반사(위가 밝고 아래로 사라진다) */}
       <Path path={faces.front} style="stroke" strokeWidth={0.9 * s}>
