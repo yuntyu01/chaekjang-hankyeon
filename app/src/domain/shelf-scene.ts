@@ -6,7 +6,7 @@ import {
   FRONT_SIDE,
   frontWidth,
   SHELF,
-  STACK_OFFSETS,
+  stackOffsets,
   TOP_FACE,
 } from './geometry';
 import { itemPositions, placementOf, shelfItems, type BookMap } from './layout-engine';
@@ -95,11 +95,12 @@ export function computeShelf(layout: ShelfLayout, books: BookMap, shelfId: strin
     items.push({ key: item.key, x, width, bookIds: item.bookIds });
     if (item.stacked) {
       let bottom = FLOOR;
+      const offs = stackOffsets(item.bookIds.map((id) => books[id]));
       item.bookIds.forEach((id, i) => {
         const b = books[id];
         const len = bookHeight(b);
         const t = bookThickness(b);
-        const left = x + (STACK_OFFSETS[i] ?? 0);
+        const left = x + offs[i];
         const top = bottom - t - TOP_FACE;
         frames.push({
           bookId: id, itemKey: item.key, shelfId, pose: 'horizontal', tilt: 0,

@@ -31,37 +31,85 @@ export const SPINE_SIDE = 0.87; // 세운 책(시점 기본값): 옆면 시작(�
 
 // 가운데 시점: view(-1~1)에 따라 옆면 폭과 어느 쪽 옆면이 보이는지 정한다.
 export function spineView(view: number) {
-  const side = 1 - (0.035 + 0.12 * Math.abs(view));
+  const side = 1 - (0.05 + 0.1 * Math.abs(view)); // 가운데 책도 옆면이 조금은 보인다(시안: 깎인 윗모서리)
   return { side, mirror: view > 0.02 };
 }
 export const CHAMFER = 0.14; // 옆면 윗부분이 깎여 내려가는 정도(책 폭 비율)
 const PAGE = '#F4ECDD';
 const PAGE_LINE = '#DDCFB8';
 
+// 책 색을 k배로 어둡게. 시안의 그늘은 회색이 아니라 따뜻한 갈색 쪽으로 어두워진다
+// (모순 옆면: 앞면 대비 R 0.88, G 0.82, B 0.77) → 채널마다 지수를 달리한다. 밝게(k>1)는 그대로 곱한다.
+const WARM = [0.64, 1, 1.32];
 function scaleColor(hex: string, k: number) {
   const n = parseInt(hex.slice(1), 16);
-  const c = [(n >> 16) & 255, (n >> 8) & 255, n & 255].map((v) => Math.max(0, Math.min(255, Math.round(v * k))));
+  const c = [(n >> 16) & 255, (n >> 8) & 255, n & 255].map((v, i) =>
+    Math.max(0, Math.min(255, Math.round(v * (k < 1 ? Math.pow(k, WARM[i]) : k)))),
+  );
   return `rgb(${c[0]}, ${c[1]}, ${c[2]})`;
 }
 
-// 앞면·홈·옆면의 가로 명암(위치: 책 폭 비율, 값: 밝기 배율). side = 옆면 시작 비율.
+export const GROOVE = 0.06; // 앞면과 옆면 사이 홈 폭(책 폭 비율)
+
+// 앞면·홈·옆면의 가로 명암(위치: 책 폭 비율, 값: 어두운 책 기준 밝기 배율). side = 옆면 시작 비율.
+// 시안(데미안·모순)에서 잰 값: 앞면은 왼쪽 가까이가 가장 밝고 오른쪽 끝으로 0.86까지 어두워지며,
+// 좁은 홈(시안 0.5, 앱은 조금 연하게) 뒤에 한 톤 어두운 옆면(0.78 → 바깥 0.66)이 온다.
 export function spineProfile(side: number): [number, number][] {
-  const f = side - 0.095; // 앞면 끝
-  // 홈·옆면은 형태가 읽힐 만큼만 어둡게(너무 진하면 책마다 검은 띠처럼 보인다)
+  const f = side - GROOVE; // 앞면 끝
   return [
-    [0, 0.9],
-    [0.035, 1.0],
-    [0.08, 1.04],
-    [0.3 * f, 1.03],
-    [0.6 * f, 0.99],
-    [f, 0.97],
-    [f + 0.02, 0.86],
-    [side - 0.01, 0.85],
-    [side + 0.01, 0.93],
-    [0.975, 0.91],
-    [1, 0.84],
+    [0, 0.86],
+    [0.02, 0.95],
+    [0.06, 1.0],
+    [0.4 * f, 1.0],
+    [f, 0.86],
+    [f + 0.015, 0.68],
+    [side - 0.012, 0.68],
+    [side + 0.008, 0.78],
+    [0.97, 0.72],
+    [1, 0.66],
   ];
 }
+
+// 밝은 책일수록 명암 폭이 줄어든다(시안: 모순 앞면 0.95, 데미안 0.85). 옆면은 밝은 책도 꽤 어둡다.
+// mirror(왼쪽 옆면)는 빛을 향하므로 옆면이 덜 어둡다.
+export function shadeProfile(prof: [number, number][], side: number, face: string, mirror = false): [number, number][] {
+  const lum = luminance(face);
+  const f = side - GROOVE;
+  const wFront = 0.35 + 0.75 * (1 - lum);
+  const wSide = (0.8 + 0.3 * (1 - lum)) * (mirror ? 0.55 : 1);
+  // 홈은 어두운 책에서만 또렷하다(시안 모순은 앞면에서 옆면으로 바로 넘어간다)
+  return prof.map(([p, k]) => {
+    const groove = p > f + 1e-6 && p < side - 1e-6;
+    const kk = groove ? k + (0.78 - k) * lum : k;
+    return [p, 1 - (1 - kk) * (p <= f + 1e-6 ? wFront : wSide)];
+  });
+}
+
+// 누운 책: 옆면이 위를 향한 윗면이 되어 빛을 받는다(시안: 앞면보다 밝거나 같고, 사이에 옅은 홈).
+export function lyingProfile(side: number, face: string): [number, number][] {
+  const lum = luminance(face);
+  const w = 0.35 + 0.75 * (1 - lum);
+  const f = side - GROOVE;
+  return [
+    [0, 0.86],
+    [0.04, 0.97],
+    [0.5 * f, 1.0],
+    [f, 0.9],
+    [f + 0.015, 0.8],
+    [side - 0.012, 0.8],
+    [side + 0.008, 1.05],
+    [0.95, 1.03],
+    [1, 0.92],
+  ].map(([p, k]) => [p, 1 - (1 - k) * w] as [number, number]);
+}
+
+export function luminance(hex: string) {
+  const n = parseInt(hex.slice(1), 16);
+  return (0.2126 * ((n >> 16) & 255) + 0.7152 * ((n >> 8) & 255) + 0.0722 * (n & 255)) / 255;
+}
+
+// 실루엣 가장자리 선: 책 색을 어둡게 한 같은 색(회색 아님). 시안은 어두운 책일수록 선이 진하다.
+export const edgeFactor = (face: string) => 0.62 + 0.3 * luminance(face);
 
 // 결정적 잡음(책마다 같은 모양)
 function jitter(seed: string) {
@@ -143,6 +191,7 @@ function SpineSkin({
   side,
   grain,
   mirror = false,
+  lying = false,
 }: {
   id: string;
   w: number;
@@ -152,6 +201,7 @@ function SpineSkin({
   side: number;
   grain: SkImageType | null;
   mirror?: boolean;
+  lying?: boolean;
 }) {
   const mx = (p: Point) => (mirror ? { x: w - p.x, y: p.y } : p);
   const outline = useMemo(() => poly(bodyOutline(w, h, s, id, side).map(mx)), [w, h, s, id, side, mirror]);
@@ -159,7 +209,8 @@ function SpineSkin({
     () => poly([{ x: w * side, y: 0 }, { x: w, y: w * (1 - side) }, { x: w, y: w * (1 - side) + 1.6 * s }, { x: w * side, y: 1.6 * s }].map(mx)),
     [w, s, side, mirror],
   );
-  const prof = spineProfile(side);
+  const prof = lying ? lyingProfile(side, face) : shadeProfile(spineProfile(side), side, face, mirror);
+  const edge = scaleColor(face, edgeFactor(face));
   return (
     <Group>
       <Group clip={outline}>
@@ -181,9 +232,13 @@ function SpineSkin({
         <Rect x={0} y={h - 3 * s} width={w} height={3 * s}>
           <LinearGradient start={vec(0, h - 3 * s)} end={vec(0, h)} colors={['rgba(0,0,0,0)', 'rgba(0,0,0,0.1)']} />
         </Rect>
-        {/* 같은 색 테두리(안쪽으로 번지게) */}
-        <Path path={outline} style="stroke" strokeWidth={2.4 * s} color={scaleColor(face, 0.84)} opacity={0.7}>
-          <BlurMask blur={0.8 * s} style="normal" />
+        {/* 가장자리 안쪽 살짝 어둡게(둥글게 넘어가는 모서리) */}
+        <Path path={outline} style="stroke" strokeWidth={5 * s} color={scaleColor(face, 0.85)} opacity={0.1 + 0.45 * (1 - luminance(face))}>
+          <BlurMask blur={1.4 * s} style="normal" />
+        </Path>
+        {/* 또렷한 같은 색 가장자리 선(안쪽 절반만 보인다: 약 1.1DU) */}
+        <Path path={outline} style="stroke" strokeWidth={2.2 * s} color={edge}>
+          <BlurMask blur={0.3 * s} style="normal" />
         </Path>
       </Group>
     </Group>
@@ -224,7 +279,7 @@ function SpineArt({ h, art, motif, faceW, x0 = 0 }: { h: number; art: BodyArt; m
 
 type BodyProps = { id: string; width: number; height: number; scale: number; face: string; art?: BodyArt };
 
-export const faceWidth = (w: number, side = SPINE_SIDE) => w * (side - 0.095);
+export const faceWidth = (w: number, side = SPINE_SIDE) => w * (side - GROOVE);
 
 // 세운 책. view: 가운데 시점(-1~1)
 export const SpineBody = memo(function SpineBody({ id, width: w, height: h, scale: s, face, art, view = 0 }: BodyProps & { view?: number }) {
@@ -262,7 +317,7 @@ export const LyingBody = memo(function LyingBody({ id, width: len, height: H, sc
   return (
     <Canvas style={{ width: len, height: H }}>
       <Group transform={[{ translateY: H }, { rotate: -Math.PI / 2 }]}>
-        <SpineSkin id={id} w={H} h={len} s={s} face={face} side={side} grain={grain} />
+        <SpineSkin id={id} w={H} h={len} s={s} face={face} side={side} grain={grain} lying />
       </Group>
       {motif ? <SkImage image={motif} x={len - mw - len * 0.06} y={H - fw / 2 - mh / 2} width={mw} height={mh} fit="contain" /> : null}
     </Canvas>
@@ -324,8 +379,9 @@ export const CoverBody = memo(function CoverBody({
         <Rect x={0} y={0} width={fw} height={3 * s}>
           <LinearGradient start={vec(0, 0)} end={vec(0, 3 * s)} colors={['rgba(255,255,255,0.2)', 'rgba(255,255,255,0)']} />
         </Rect>
-        <Path path={outline} style="stroke" strokeWidth={2.4 * s} color={scaleColor(face, 0.8)} opacity={0.55}>
-          <BlurMask blur={0.8 * s} style="normal" />
+        {/* 또렷한 같은 색 가장자리 선(책등 몸체와 같은 규칙) */}
+        <Path path={outline} style="stroke" strokeWidth={2.2 * s} color={scaleColor(face, edgeFactor(face))}>
+          <BlurMask blur={0.3 * s} style="normal" />
         </Path>
       </Group>
       </Group>

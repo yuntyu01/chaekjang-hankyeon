@@ -150,11 +150,25 @@ export function visibleBookOutline(book: Book, p: Pick<BookPlacement, 'pose' | '
 }
 
 // 쌓기 그룹: 폭은 (어긋남 포함) 가장 긴 책, 높이는 두께의 합.
+// 쌓인 책의 왼쪽 어긋남(DU). 아래 책보다 짧은 책은 아래 책 안쪽(가운데보다 조금 오른쪽)에 올린다(시안).
+// 같거나 긴 책은 정해진 어긋남(STACK_OFFSETS)을 쓴다.
+export function stackOffsets(books: Book[]) {
+  const out: number[] = [];
+  books.forEach((b, i) => {
+    if (i === 0) return out.push(0);
+    const below = bookHeight(books[i - 1]);
+    const d = below - bookHeight(b);
+    out.push(d > 0 ? out[i - 1] + d * 0.6 : (STACK_OFFSETS[i] ?? 0));
+  });
+  return out;
+}
+
 export function stackFootprint(books: Book[]) {
   let width = 0;
   let height = TOP_FACE;
+  const offs = stackOffsets(books);
   books.forEach((b, i) => {
-    width = Math.max(width, bookHeight(b) + (STACK_OFFSETS[i] ?? 0));
+    width = Math.max(width, bookHeight(b) + offs[i]);
     height += bookThickness(b);
   });
   return { width, height };

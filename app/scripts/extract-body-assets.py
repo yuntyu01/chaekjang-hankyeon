@@ -82,49 +82,92 @@ def measure_grain(img):
     return stds
 
 
+def _bands(t, k=1.0):
+    """결을 굵기별로 나눈 세기: 미세(<0.5DU) / 중간(0.5~1.5DU) / 얼룩(1.5~4DU). k = 1DU의 px."""
+    g = lambda s: cv2.GaussianBlur(t, (0, 0), s * k, borderType=cv2.BORDER_REFLECT)
+    a, b, c = g(0.5), g(1.5), g(4)
+    return np.array([(t - a).std(), (a - b).std(), (b - c).std()])
+
+
 def brush_detail(img):
-    """시안의 과슈 붓결: 촘촘하고 짧은 붓자국(주로 '/' 방향, 일부 '\\')의 높이를 그린 뒤,
-    왼쪽 위 빛으로 음영을 내서 물감이 살짝 볼록한 느낌을 만든다. + 드문 밝은 점, 옅은 얼룩.
-    타일 경계 너머로 이어 그려 이음새 없이 반복된다."""
+    """시안의 과슈 질감: 요철(빛 방향 음영) 없이 평평한 물감 얼룩 + 약간 비스듬한 결 + 드문 밝은 점·잔 긁힘.
+    각 성분은 걸러 낸 잡음이라 타일 경계에서 이음새 없이 반복된다.
+    굵기별 세기는 시안 책 면(데미안)에서 잰 비율에 맞춘다."""
     n = GRAIN_SIZE
-    rng = np.random.default_rng(11)
-    height = np.zeros((n, n), np.float32)
-    yy, xx = np.mgrid[-12:13, -12:13].astype(np.float32)
+    k = 941 / 390  # 1DU = 시안 px
+    rng = np.random.default_rng(21)
+    fy = np.fft.fftfreq(n)[:, None]
+    fx = np.fft.fftfreq(n)[None, :]
 
-    def stamp(field, cx, cy, kernel):
-        k = kernel.shape[0] // 2
-        ys = (np.arange(-k, k + 1) + int(cy)) % n
-        xs = (np.arange(-k, k + 1) + int(cx)) % n
-        field[np.ix_(ys, xs)] += kernel
+    def noise(sig, stretch=1.0, ang=0.0):
+        # 가우시안으로 거른 흰 잡음(주파수 영역이라 둥글게 이어진다). stretch>1이면 ang 방향으로 길쭉.
+        u = fx * np.cos(ang) + fy * np.sin(ang)
+        v = -fx * np.sin(ang) + fy * np.cos(ang)
+        filt = np.exp(-2 * np.pi**2 * sig**2 * ((u * stretch) ** 2 + (v) ** 2))
+        out = np.real(np.fft.ifft2(np.fft.fft2(rng.standard_normal((n, n))) * filt))
+        return (out / out.std()).astype(np.float32)
 
-    for _ in range(3600):
-        main = rng.random() < 0.7
-        ang = np.radians(rng.normal(-55, 14) if main else rng.normal(50, 18))  # 화면 좌표: -55도 = '/'
-        length = rng.uniform(5, 12)
-        width = rng.uniform(1.1, 1.9)
-        bend = rng.normal(0, 0.03)
+    blot = noise(4.2) + 0.25 * noise(9.0)  # 물감 얼룩
+    streak = noise(1.3, stretch=1.8, ang=np.radians(-55))  # 비스듬한 붓결(짧고 옅게)
+    fine = noise(0.55)  # 종이 결
+    marks = np.zeros((n, n), np.float32)
+    yy, xx = np.mgrid[-10:11, -10:11].astype(np.float32)
+
+    def stamp(cx, cy, kern):
+        r = kern.shape[0] // 2
+        ys = (np.arange(-r, r + 1) + int(cy)) % n
+        xs = (np.arange(-r, r + 1) + int(cx)) % n
+        marks[np.ix_(ys, xs)] += kern
+
+    for _ in range(28):  # 밝은 점
+        r = rng.uniform(0.5, 0.9)
+        stamp(rng.uniform(0, n), rng.uniform(0, n), rng.uniform(0.6, 1.0) * np.exp(-(xx**2 + yy**2) / (r * r)))
+    for _ in range(10):  # 잔 긁힘(가늘고 밝은 짧은 선)
+        ang = np.radians(rng.normal(-55, 20))
         u = xx * np.cos(ang) + yy * np.sin(ang)
-        v = -xx * np.sin(ang) + yy * np.cos(ang) - bend * u * u
-        stamp(height, rng.uniform(0, n), rng.uniform(0, n), rng.uniform(0.4, 1.0) * np.exp(-((u / (length / 2)) ** 2) - (v / (width / 2)) ** 2))
-    # 왼쪽 위에서 오는 빛으로 음영(볼록한 붓자국)
-    gy, gx = np.gradient(height)
-    tex = -(gx + gy) / np.sqrt(2)
-    tex = tex / tex.std()
-    spots = np.zeros((n, n), np.float32)
-    for _ in range(35):  # 밝은 점
-        r = rng.uniform(0.6, 1.1)
-        stamp(spots, rng.uniform(0, n), rng.uniform(0, n), np.exp(-(xx**2 + yy**2) / (r * r)))
-    f = np.fft.fft2(rng.standard_normal((n, n)))
-    ky = np.fft.fftfreq(n)[:, None]
-    kx = np.fft.fftfreq(n)[None, :]
-    blot = np.real(np.fft.ifft2(f * np.exp(-2 * (np.pi**2) * (kx**2 + ky**2) * 18**2)))
-    tex = tex + 2.5 * spots + 0.3 * blot / blot.std()
-    tex = cv2.GaussianBlur(tex, (0, 0), 0.6)
-    stds = measure_grain(img)
-    tex = tex / tex.std() * float(np.median(stds))
+        v = -xx * np.sin(ang) + yy * np.cos(ang)
+        stamp(rng.uniform(0, n), rng.uniform(0, n), 0.5 * np.exp(-((u / rng.uniform(3, 7)) ** 2) - (v / 0.45) ** 2))
+    marks /= marks.std() + 1e-6
+    # 물결치는 가는 결(붓자국 가장자리·종이 섬유): 부드럽게 휘는 짧은 곡선, 밝은 것과 어두운 것
+    veins = np.zeros((n * 4, n * 4), np.uint8)
+    for i in range(70):
+        x, y = rng.uniform(0, n * 4), rng.uniform(0, n * 4)
+        a = np.radians(rng.normal(-40, 35))
+        pts = []
+        for _ in range(int(rng.uniform(25, 60))):
+            pts.append((x, y))
+            a += rng.normal(0, 0.12)
+            x += 4 * np.cos(a)
+            y += 4 * np.sin(a)
+        val = 200 if i % 3 else 60
+        for dx in (-n * 4, 0, n * 4):
+            for dy in (-n * 4, 0, n * 4):
+                cv2.polylines(veins, [np.int32([(px + dx, py + dy) for px, py in pts])], False, val, 2, cv2.LINE_AA)
+    vein = cv2.resize(veins.astype(np.float32), (n, n), interpolation=cv2.INTER_AREA)
+    vein = np.where(vein > 0, vein - 0, 0)
+    vein = (vein * (veins.reshape(n, 4, n, 4).max(axis=(1, 3)) >= 200) - vein * (veins.reshape(n, 4, n, 4).max(axis=(1, 3)) < 200))
+    vein = cv2.GaussianBlur(np.pad(vein, 4, mode="wrap"), (0, 0), 0.6)[4:-4, 4:-4]
+    vein /= vein.std() + 1e-6
+
+    # 굵기별 세기(%). 시안 데미안 면을 확대해 본 인상에 맞춘 값: 얼룩은 은은하게, 잔결·긁힘이 먼저 보인다.
+    # (시안 면을 그대로 재면 책등 명암·가장자리까지 섞여 얼룩 값이 부풀어서 쓰지 않는다)
+    target = np.array([1.6, 1.5, 1.7]) / 100
+    w = np.array([1.0, 1.0, 1.0, 0.6, 0.45])
+    comps = [fine, streak, blot, marks, vein]
+    for _ in range(8):
+        tex = sum(wi * c for wi, c in zip(w, comps))
+        got = _bands(tex, k)
+        w[0] *= target[0] / got[0]
+        w[1] *= target[1] / got[1]
+        w[2] *= target[2] / got[2]
+        w[3] = 0.6 * w[0]
+        w[4] = 0.45 * w[0]
+    tex = sum(wi * c for wi, c in zip(w, comps))
+    tex -= tex.mean()
+    print("grain bands(%)", np.round(_bands(tex, k) * 100, 2), "std", round(float(tex.std()), 4))
+    # 명암 차를 5배로 담는다(앱에서 GRAIN_STRENGTH로 줄인다)
     tile = np.clip(128 + tex * 128 * 5.0, 0, 255).astype(np.uint8)
     Image.fromarray(np.dstack([tile, tile, tile, np.full_like(tile, 255)])).save(os.path.join(OUT, "brush-detail.png"), optimize=True)
-    print("grain std(ratio)", [round(v, 4) for v in stds])
     return tile.shape
 
 

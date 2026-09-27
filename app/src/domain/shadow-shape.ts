@@ -19,8 +19,12 @@ export function hull(points: Point[]): Point[] {
 }
 
 // 빛 반대쪽(dx, dy)으로 옮긴 윤곽과 원래 윤곽을 이은 모양: 비스듬히 가로지르는 그림자
-export function castShape(poly: Point[], dx: number, dy: number) {
-  return hull([...poly, ...poly.map((p) => ({ x: p.x + dx, y: p.y + dy }))]);
+// blur(표준편차)를 주면 시작 윤곽도 빛 반대쪽으로 조금 민다. 흐림이 빛 쪽(왼쪽·위)으로 새어
+// 책 둘레에 후광처럼 번지지 않게 한다(시안: 그림자는 오른쪽 아래로만 떨어진다).
+export function castShape(poly: Point[], dx: number, dy: number, blur = 0) {
+  const lx = Math.min(dx, 2 * blur);
+  const ly = Math.min(dy, blur);
+  return hull([...poly.map((p) => ({ x: p.x + lx, y: p.y + ly })), ...poly.map((p) => ({ x: p.x + dx, y: p.y + dy }))]);
 }
 
 export function rgba(hex: string, alpha: number) {

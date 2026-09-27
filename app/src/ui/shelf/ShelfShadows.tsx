@@ -36,7 +36,7 @@ export const ShelfShadows = memo(function ShelfShadows({ frames, scale: s, hidde
   const paths = useMemo(() => {
     const X = (x: number) => (SHELF.sideMargin + x) * s;
     const Y = (y: number) => (clear + y - FLOOR) * s;
-    return layers.map((l) => visible.map((f) => toPath(castShape(f.poly, l.dx, l.dy).map((p) => ({ x: X(p.x), y: Y(p.y) })))));
+    return layers.map((l) => visible.map((f) => toPath(castShape(f.poly, l.dx, l.dy, l.blur).map((p) => ({ x: X(p.x), y: Y(p.y) })))));
   }, [visible, layers, s, clear]);
   // 바닥에서 위로 옅어지는 색(fade)
   const gradColors = fade.map(([, k]) => rgba(colors.shadow, k));
@@ -70,12 +70,12 @@ export const ShelfContacts = memo(function ShelfContacts({ frames, scale: s, hid
         {frames.map((f) => {
           if (f.bookId === hiddenId || f.stackIndex > 0) return null;
           const c = contactOf(f.poly);
-          const cx = (SHELF.sideMargin + c.cx + 1.5) * s;
+          const cx = (SHELF.sideMargin + c.cx + shadow.contact.shift) * s;
           const rx = (c.half + shadow.contact.spread) * s;
           const ry = shadow.contact.height * s;
           return (
             <Oval key={f.bookId} x={cx - rx} y={floorY + 0.5 * s - ry} width={rx * 2} height={ry * 2} color={rgba(colors.shadow, shadow.contact.opacity)}>
-              <BlurMask blur={1.6 * s} style="normal" />
+              <BlurMask blur={shadow.contact.blur * s} style="normal" />
             </Oval>
           );
         })}
