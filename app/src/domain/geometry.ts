@@ -27,7 +27,7 @@ const USABLE_LEFT = 12;
 const USABLE_W = DESIGN_WIDTH - USABLE_LEFT * 2;
 // 0 = rear edge of the top surface, 1 = front lip. Seat the book near the
 // back, leaving a visible strip of wood in front of its lowest corner.
-export const BOOK_SHELF_DEPTH = 0.28;
+export const BOOK_SHELF_DEPTH = 0.42; // 책을 선반 앞쪽으로 조금 당김(앞에 남는 나무 약 7.6DU)
 const CONTACT_Y = SHELF_ASSET.plankTopY + (SHELF_ASSET.frontTopY - SHELF_ASSET.plankTopY) * BOOK_SHELF_DEPTH;
 
 export const SHELF = {
@@ -53,14 +53,26 @@ export const SHELF_USABLE_WIDTH = USABLE_W - SHELF.innerLeft - SHELF.innerRight;
 // 어느 기기에서든 한 선반에 들어가는 책 수가 같다.
 export const SHELF_LENGTH_MM = 480;
 export const DU_PER_MM = SHELF_USABLE_WIDTH / SHELF_LENGTH_MM;
-// 두께는 실제의 2배로 과장한다(실제 비율이면 책등이 너무 얇아 세로 제목이 안 들어간다). 최소 30DU.
-export const THICKNESS_EXAGGERATION = 2;
+// 두께: 얇은 책(10mm 이하)도 세로 제목이 들어가게 최소 30DU로 두고,
+// 그보다 두꺼운 만큼은 실제 두께 차이에 비례해서 늘린다(실제 비율의 1.4배). 300쪽 ≈ 40DU, 450쪽 ≈ 50DU.
 export const MIN_SPINE_DU = 30;
+export const MIN_SPINE_MM = 10;
+export const THICKNESS_GROWTH = 1.4;
 // 종이 한 쪽 두께(mm, 일반 도서 용지 약 0.12mm/장)와 앞뒤 표지 두께
 export const MM_PER_PAGE = 0.06;
 export const COVER_MM = 1.5;
 
 export const mm = (v: number) => v * DU_PER_MM;
+
+// 가운데 시점: 책 가운데 x(장면 좌표)가 화면 가운데에서 얼마나 떨어졌나(-1 왼쪽 끝 ~ 1 오른쪽 끝).
+// 왼쪽 책은 오른쪽 옆면이, 오른쪽 책은 왼쪽 옆면이 보이고, 가운데에 가까울수록 옆면이 좁다.
+export function viewOf(centerX: number) {
+  const mid = DESIGN_WIDTH / 2 - SHELF.sideMargin;
+  return Math.max(-1, Math.min(1, (centerX - mid) / (SHELF_USABLE_WIDTH / 2)));
+}
+export function spineDU(thickMm: number) {
+  return MIN_SPINE_DU + Math.max(0, thickMm - MIN_SPINE_MM) * DU_PER_MM * THICKNESS_GROWTH;
+}
 export function thicknessMm(pages: number) {
   return pages * MM_PER_PAGE + COVER_MM;
 }
@@ -93,7 +105,7 @@ export function bookHeight(book: Book) {
 
 export function bookThickness(book: Book) {
   if (book.dims?.thickness) return book.dims.thickness;
-  if (book.physical) return Math.max(MIN_SPINE_DU, mm(thicknessMm(book.physical.pages)) * THICKNESS_EXAGGERATION);
+  if (book.physical) return spineDU(thicknessMm(book.physical.pages));
   return BOOK_THICKNESS[book.thicknessClass];
 }
 

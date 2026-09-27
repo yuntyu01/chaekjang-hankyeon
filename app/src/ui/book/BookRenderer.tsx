@@ -10,9 +10,10 @@ import type { Book, Pose } from '@/domain/types';
 import { MotifArt } from '@/ui/art/motifs';
 import { fonts } from '@/ui/theme';
 
-import { CoverBody, faceWidth, LyingBody, SpineBody } from './BookBody';
+import { CoverBody, faceWidth, LyingBody, SpineBody, spineView } from './BookBody';
 
-type Props = { book: Book; pose: Pose; scale: number };
+// view: 가운데 시점(-1 왼쪽 끝 ~ 1 오른쪽 끝). 선반 밖(상세·서랍)에서는 0(정면).
+type Props = { book: Book; pose: Pose; scale: number; view?: number };
 
 const DARK_INK = '#1F2533';
 const LIGHT_INK = '#F2EADB';
@@ -101,24 +102,26 @@ function Ribbons({ book, cx, scale: s }: { book: Book; cx: number; scale: number
 }
 
 // 세운 책: 제목은 앞면 가운데에 세로로, 그림 위에. 긴 제목은 그림을 밀어내고, 그래도 넘치면 두 열·말줄임(최소 9DU).
-function Spine({ book, scale: s }: { book: Book; scale: number }) {
+function Spine({ book, scale: s, view }: { book: Book; scale: number; view: number }) {
   const w = bookThickness(book) * s;
   const h = bookHeight(book) * s;
-  const fw = faceWidth(w);
+  const { side, mirror } = spineView(view);
+  const fw = faceWidth(w, side);
+  const x0 = mirror ? w - fw : 0;
   const ink = inkOf(book);
   const t = spineTitleLayout(book.title, h / s, fw / s, book.body?.motifTop ?? 0.58);
   const art = book.body && t.artTop !== book.body.motifTop ? { ...book.body, motifTop: t.artTop } : book.body;
   const artTop = t.artTop * h;
   return (
     <View style={{ width: w, height: h }}>
-      <Ribbons book={book} cx={fw * 0.55} scale={s} />
-      <SpineBody id={book.id} width={w} height={h} scale={s} face={faceOf(book)} art={art} />
+      <Ribbons book={book} cx={x0 + fw * 0.55} scale={s} />
+      <SpineBody id={book.id} width={w} height={h} scale={s} face={faceOf(book)} art={art} view={view} />
       {!book.body ? (
-        <View style={{ position: 'absolute', left: 0, width: fw, top: artTop, height: h * 0.93 - artTop, alignItems: 'center', justifyContent: 'flex-end' }}>
+        <View style={{ position: 'absolute', left: x0, width: fw, top: artTop, height: h * 0.93 - artTop, alignItems: 'center', justifyContent: 'flex-end' }}>
           <MotifArt motif={book.art.motif} width={fw * 0.8} height={(h * 0.93 - artTop) * 0.9} color={book.art.accentColor ?? ink} />
         </View>
       ) : null}
-      <View style={{ position: 'absolute', top: t.textTop * h, left: 0, width: fw, flexDirection: 'row', justifyContent: 'center' }}>
+      <View style={{ position: 'absolute', top: t.textTop * h, left: x0, width: fw, flexDirection: 'row', justifyContent: 'center' }}>
         <VerticalText columns={t.columns} fs={t.fontSize * s} color={ink} />
       </View>
     </View>
@@ -155,26 +158,28 @@ function Horizontal({ book, scale: s }: { book: Book; scale: number }) {
 }
 
 // 표지 전시: 평평한 표지 그림(없으면 책 색 + 모티프) 위에 제목·저자를 가운데 조판.
-function Front({ book, scale: s }: { book: Book; scale: number }) {
+function Front({ book, scale: s, view }: { book: Book; scale: number; view: number }) {
   const fw = frontWidth(book) * s;
   const h = bookHeight(book) * s;
   const side = FRONT_SIDE * s;
   const cover = book.cover;
   const ink = cover?.ink ?? inkOf(book);
+  const mirror = view > 0.02; // 가운데보다 오른쪽이면 왼쪽 옆면이 보인다
+  const cx0 = mirror ? side : 0;
   const long = book.title.length > 9;
   const text = long ? splitTwoLines(book.title) : book.title;
   const longest = Math.max(...text.split('\n').map((l) => l.length));
   const fs = Math.max(9, Math.min(15, (frontWidth(book) * 0.8) / (longest * 1.05))) * s;
   return (
     <View style={{ width: fw + side, height: h }}>
-      <Ribbons book={book} cx={fw * 0.6} scale={s} />
-      <CoverBody id={book.id} width={fw} height={h} scale={s} face={faceOf(book)} side={side} cover={cover?.image} art={book.body} />
+      <Ribbons book={book} cx={cx0 + fw * 0.6} scale={s} />
+      <CoverBody id={book.id} width={fw} height={h} scale={s} face={faceOf(book)} side={side} cover={cover?.image} art={book.body} mirror={mirror} />
       {!cover && !book.body ? (
-        <View style={{ position: 'absolute', bottom: h * 0.1, left: 0, width: fw, alignItems: 'center' }}>
+        <View style={{ position: 'absolute', bottom: h * 0.1, left: cx0, width: fw, alignItems: 'center' }}>
           <MotifArt motif={book.art.motif} width={fw * 0.4} height={h * 0.4} color={book.art.accentColor ?? ink} />
         </View>
       ) : null}
-      <View style={{ position: 'absolute', top: (cover?.titleTop ?? 0.2) * h, left: fw * 0.08, width: fw * 0.84, alignItems: 'center' }}>
+      <View style={{ position: 'absolute', top: (cover?.titleTop ?? 0.2) * h, left: cx0 + fw * 0.08, width: fw * 0.84, alignItems: 'center' }}>
         <Text allowFontScaling={false} style={{ fontFamily: fonts.bookTitle, fontSize: fs, lineHeight: fs * 1.45, color: ink, textAlign: 'center', letterSpacing: long ? 0 : fs * 0.06 }}>
           {text}
         </Text>
@@ -204,9 +209,9 @@ export function splitTwoLines(title: string) {
   return `${words.slice(0, best).join(' ')}\n${words.slice(best).join(' ')}`;
 }
 
-export const BookRenderer = memo(function BookRenderer({ book, pose, scale }: Props) {
-  if (pose === 'spine') return <Spine book={book} scale={scale} />;
+export const BookRenderer = memo(function BookRenderer({ book, pose, scale, view = 0 }: Props) {
+  if (pose === 'spine') return <Spine book={book} scale={scale} view={view} />;
   if (pose === 'horizontal') return <Horizontal book={book} scale={scale} />;
-  return <Front book={book} scale={scale} />;
+  return <Front book={book} scale={scale} view={view} />;
 });
 

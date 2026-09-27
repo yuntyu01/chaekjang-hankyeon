@@ -7,6 +7,7 @@ import { SoftShadow } from './SoftShadow';
 
 import type { BookFrame } from '@/domain/shelf-scene';
 import type { Book } from '@/domain/types';
+import { viewOf } from '@/domain/geometry';
 import { BookRenderer } from '@/ui/book/BookRenderer';
 import { colors, shadow } from '@/ui/theme';
 
@@ -55,7 +56,7 @@ export function DragOverlay({ book, frame, scale: s, x, y, lift }: Props) {
           transformOrigin: frame.origin,
           transform: [{ rotate: `${frame.rotate}deg` }],
         }}>
-        <BookRenderer book={book} pose={frame.pose} scale={s} />
+        <BookRenderer book={book} pose={frame.pose} scale={s} view={viewOf(frame.left + frame.width / 2)} />
       </View>
     </Animated.View>
   );

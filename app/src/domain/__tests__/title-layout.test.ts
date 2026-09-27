@@ -41,3 +41,9 @@ describe('책등 제목 자리', () => {
     expect(spineTitleLayout('모순', 143, 23, 0.5).artTop).toBe(0.5);
   });
 });
+
+describe('책등 제목 열', () => {
+  it('넓은 책등이어도 한 열에 들어가면 한 열로', () => {
+    expect(spineTitleLayout('쇼코의 미소', 143, 35, 0.5).columns).toHaveLength(1);
+  });
+});

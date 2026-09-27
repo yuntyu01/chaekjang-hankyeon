@@ -19,7 +19,7 @@ describe('예시 이미지가 없는 새 책의 공통 배치와 그림자', () 
     const f = computeShelf(layout, { [fresh.id]: fresh }, 's').frames[0];
     const bottom = Math.max(...f.poly.map((p) => p.y));
     expect(bottom).toBeCloseTo(SHELF.clearHeight, 6);
-    expect(bottom).toBeLessThan(SHELF.clearHeight + SHELF.lip - 8);
+    expect(bottom).toBeLessThan(SHELF.clearHeight + SHELF.lip - 6); // 책 앞에 나무판이 보인다
     const extent = singleFootprint(fresh, { pose, tilt });
     expect(Math.max(...f.poly.map((p) => p.x)) - Math.min(...f.poly.map((p) => p.x))).toBeCloseTo(extent.width, 6);
     const far = shadow.cast.layers.at(-1)!;

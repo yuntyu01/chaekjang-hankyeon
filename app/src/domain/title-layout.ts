@@ -27,6 +27,7 @@ export function layoutVerticalTitle(
   height: number,
   width: number,
   fontSizes: number[],
+  maxColumns = 2,
 ): VerticalTitle {
   const words = title.trim().split(/\s+/);
   for (const fontSize of fontSizes) {
@@ -34,7 +35,7 @@ export function layoutVerticalTitle(
     const maxCols = Math.max(1, Math.floor((width * 0.84) / (fontSize * 1.18)));
     const one = units(title) <= cap ? [title] : null;
     if (one) return { fontSize, columns: one };
-    if (maxCols >= 2) {
+    if (maxCols >= 2 && maxColumns >= 2) {
       const cols = pack(words, cap);
       if (cols && cols.length <= Math.min(2, maxCols)) return { fontSize, columns: cols };
     }
@@ -58,11 +59,13 @@ export function spineTitleLayout(title: string, hDU: number, faceDU: number, art
   const MAX_ART = 0.85;
   const base = faceDU < 26 ? 11 : 12.5;
   const sizes = [...new Set([base, base - 1, Math.max(9.5, base - 2), 9.5])];
-  // 큰 글자부터: 그 크기로 들어가는 가장 높은 그림 위치를 찾는다
-  for (const size of sizes) {
-    for (let top = artTop0; top <= MAX_ART + 1e-9; top += 0.02) {
-      const r = layoutVerticalTitle(title, (top - textTop) * hDU - 4, faceDU, [size]);
-      if (!r.columns.some((c) => c.endsWith('⋯'))) return { ...r, textTop, artTop: Math.round(top * 100) / 100 };
+  // 한 열을 먼저, 큰 글자부터: 그 조건으로 들어가는 가장 높은 그림 위치를 찾는다. 안 되면 두 열까지.
+  for (const cols of [1, 2]) {
+    for (const size of sizes) {
+      for (let top = artTop0; top <= MAX_ART + 1e-9; top += 0.02) {
+        const r = layoutVerticalTitle(title, (top - textTop) * hDU - 4, faceDU, [size], cols);
+        if (!r.columns.some((c) => c.endsWith('⋯'))) return { ...r, textTop, artTop: Math.round(top * 100) / 100 };
+      }
     }
   }
   return { ...layoutVerticalTitle(title, (MAX_ART - textTop) * hDU - 4, faceDU, [9]), textTop, artTop: MAX_ART };

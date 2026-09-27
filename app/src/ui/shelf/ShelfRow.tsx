@@ -3,7 +3,7 @@ import { memo, useEffect } from 'react';
 import { Image, Pressable, StyleSheet, Text, View } from 'react-native';
 import Animated, { useAnimatedStyle, useSharedValue, withSpring, withTiming } from 'react-native-reanimated';
 
-import { DESIGN_WIDTH, SHELF, SHELF_IMG_H, SHELF_IMG_W, SHELF_IMG_X, SHELF_STYLE } from '@/domain/geometry';
+import { DESIGN_WIDTH, SHELF, viewOf, SHELF_IMG_H, SHELF_IMG_W, SHELF_IMG_X, SHELF_STYLE } from '@/domain/geometry';
 import type { BookFrame } from '@/domain/shelf-scene';
 import type { Book } from '@/domain/types';
 import { ko } from '@/i18n/ko';
@@ -72,7 +72,7 @@ const BookSlot = memo(function BookSlot({ frame, clear, book, scale: s, placehol
       {placeholder ? (
         <View style={[styles.placeholder, { borderRadius: 3 * s }]} />
       ) : (
-        <BookRenderer book={book} pose={frame.pose} scale={s} />
+        <BookRenderer book={book} pose={frame.pose} scale={s} view={viewOf(frame.left + frame.width / 2)} />
       )}
     </Animated.View>
   );

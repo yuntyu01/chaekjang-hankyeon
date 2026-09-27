@@ -72,32 +72,58 @@ def seamless(tile):
     return tile * wgt + rolled * (1 - wgt)
 
 
-def brush_detail(img):
-    """여러 책 면의 결에서 주파수 분포(결의 방향·굵기)만 재서, 무작위 위상으로 같은 성질의 질감을 합성한다.
-    한 조각을 반복하지 않으므로 반복 무늬가 없고, 푸리에 합성이라 이음새 없이 반복된다."""
-    n = 48
-    spec = np.zeros((n, n))
+def measure_grain(img):
+    """시안 책 면의 결 세기(밝기 대비 표준편차)."""
     stds = []
-    win = np.outer(np.hanning(n), np.hanning(n))
     for (x0, y0, x1, y1) in GRAIN_PATCHES:
         patch = img[y0:y1, x0:x1].mean(axis=2)
         detail = (patch - cv2.GaussianBlur(patch, (0, 0), 5)) / (patch.mean() + 1e-6)
-        detail = np.clip(detail, -3 * detail.std(), 3 * detail.std())  # 튀는 점(반사광·먼지) 제외
-        stds.append(detail.std())
-        for yy in range(0, detail.shape[0] - n + 1, 12):
-            for xx in range(0, detail.shape[1] - n + 1, 12):
-                w = detail[yy:yy + n, xx:xx + n] * win
-                spec += np.abs(np.fft.fft2(w)) ** 2
-    amp = np.sqrt(np.fft.fftshift(spec))
-    amp = cv2.resize(amp, (GRAIN_SIZE, GRAIN_SIZE), interpolation=cv2.INTER_CUBIC)
-    amp = np.fft.ifftshift(amp)
-    rng = np.random.default_rng(7)
-    phase = np.exp(2j * np.pi * rng.random((GRAIN_SIZE, GRAIN_SIZE)))
-    tex = np.real(np.fft.ifft2(amp * phase))
+        stds.append(float(np.clip(detail, -3 * detail.std(), 3 * detail.std()).std()))
+    return stds
+
+
+def brush_detail(img):
+    """시안의 과슈 붓결: 촘촘하고 짧은 붓자국(주로 '/' 방향, 일부 '\\')의 높이를 그린 뒤,
+    왼쪽 위 빛으로 음영을 내서 물감이 살짝 볼록한 느낌을 만든다. + 드문 밝은 점, 옅은 얼룩.
+    타일 경계 너머로 이어 그려 이음새 없이 반복된다."""
+    n = GRAIN_SIZE
+    rng = np.random.default_rng(11)
+    height = np.zeros((n, n), np.float32)
+    yy, xx = np.mgrid[-12:13, -12:13].astype(np.float32)
+
+    def stamp(field, cx, cy, kernel):
+        k = kernel.shape[0] // 2
+        ys = (np.arange(-k, k + 1) + int(cy)) % n
+        xs = (np.arange(-k, k + 1) + int(cx)) % n
+        field[np.ix_(ys, xs)] += kernel
+
+    for _ in range(3600):
+        main = rng.random() < 0.7
+        ang = np.radians(rng.normal(-55, 14) if main else rng.normal(50, 18))  # 화면 좌표: -55도 = '/'
+        length = rng.uniform(5, 12)
+        width = rng.uniform(1.1, 1.9)
+        bend = rng.normal(0, 0.03)
+        u = xx * np.cos(ang) + yy * np.sin(ang)
+        v = -xx * np.sin(ang) + yy * np.cos(ang) - bend * u * u
+        stamp(height, rng.uniform(0, n), rng.uniform(0, n), rng.uniform(0.4, 1.0) * np.exp(-((u / (length / 2)) ** 2) - (v / (width / 2)) ** 2))
+    # 왼쪽 위에서 오는 빛으로 음영(볼록한 붓자국)
+    gy, gx = np.gradient(height)
+    tex = -(gx + gy) / np.sqrt(2)
+    tex = tex / tex.std()
+    spots = np.zeros((n, n), np.float32)
+    for _ in range(35):  # 밝은 점
+        r = rng.uniform(0.6, 1.1)
+        stamp(spots, rng.uniform(0, n), rng.uniform(0, n), np.exp(-(xx**2 + yy**2) / (r * r)))
+    f = np.fft.fft2(rng.standard_normal((n, n)))
+    ky = np.fft.fftfreq(n)[:, None]
+    kx = np.fft.fftfreq(n)[None, :]
+    blot = np.real(np.fft.ifft2(f * np.exp(-2 * (np.pi**2) * (kx**2 + ky**2) * 18**2)))
+    tex = tex + 2.5 * spots + 0.3 * blot / blot.std()
+    tex = cv2.GaussianBlur(tex, (0, 0), 0.6)
+    stds = measure_grain(img)
     tex = tex / tex.std() * float(np.median(stds))
     tile = np.clip(128 + tex * 128 * 5.0, 0, 255).astype(np.uint8)
-    rgba = np.dstack([tile, tile, tile, np.full_like(tile, 255)])
-    Image.fromarray(rgba).save(os.path.join(OUT, "brush-detail.png"), optimize=True)
+    Image.fromarray(np.dstack([tile, tile, tile, np.full_like(tile, 255)])).save(os.path.join(OUT, "brush-detail.png"), optimize=True)
     print("grain std(ratio)", [round(v, 4) for v in stds])
     return tile.shape
 
