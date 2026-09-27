@@ -33,7 +33,7 @@ export const SPINE_SIDE = 0.87; // 세운 책(시점 기본값): 옆면 시작(�
 
 // 가운데 시점: view(-1~1)에 따라 옆면 폭과 어느 쪽 옆면이 보이는지 정한다.
 export function spineView(view: number) {
-  const side = 1 - (0.05 + 0.1 * Math.abs(view)); // 가운데 책도 옆면이 조금은 보인다(시안: 깎인 윗모서리)
+  const side = 1 - (0.1 + 0.1 * Math.abs(view)); // 가운데 책도 옆면이 3DU쯤, 양끝은 책 폭의 20%(시안 데미안 19%)
   return { side, mirror: view > 0.02 };
 }
 // 모서리 빛 반사: 빛이 오는 끝에서 가장 밝고 반쯤에서 거의 사라진다(선 전체가 고르게 빛나지 않게)
@@ -82,7 +82,7 @@ export function shadeProfile(prof: [number, number][], side: number, face: strin
   const lum = luminance(face);
   const f = side - GROOVE;
   const wFront = 0.35 + 0.75 * (1 - lum);
-  const wSide = (0.8 + 0.3 * (1 - lum)) * (mirror ? 0.55 : 1);
+  const wSide = (0.8 + 0.3 * (1 - lum)) * (mirror ? 0.85 : 1); // 시안: 왼쪽 옆면도 꽤 어둡다(아주 보통의 하루)
   // 홈은 어두운 책에서만 또렷하다(시안 모순은 앞면에서 옆면으로 바로 넘어간다)
   return prof.map(([p, k]) => {
     const groove = p > f + 1e-6 && p < side - 1e-6;
@@ -174,9 +174,14 @@ export function bodyOutline(w: number, h: number, s: number, seed: string, side 
   pts.push({ x: sideX, y: headY(sideX) });
   // 옆면 윗모서리는 앞면 모서리 높이(머리 곡선 끝)에서 시작해 ch만큼 내려간다(앞면보다 튀어 오르지 않게)
   const sy = headY(sideX) + ch;
-  pts.push({ x: w - 0.6 * s, y: Math.max(headY(sideX), sy - 0.4 * s) });
-  pts.push({ x: w, y: sy + 0.6 * s });
-  for (let y = sy + step; y < h - rb; y += step) pts.push({ x: w - amp * wRight(y / s), y });
+  // 옆면 바깥 윗모서리도 둥글게(시안: 머리 양쪽 모서리가 모두 둥글다)
+  // 크게 깎일 때(올려다봄)는 모서리를 작게 해서 깎인 대각선이 살아 있게 한다
+  const rs = ch > 2 * s ? Math.min(1.2 * s, (w - sideX) * 0.3) : Math.min(3 * s, (w - sideX) * 0.9);
+  for (let i = 0; i <= 5; i++) {
+    const a = -Math.PI / 2 + (Math.PI / 2) * (i / 5);
+    pts.push({ x: w - rs + rs * Math.cos(a), y: sy + rs + rs * Math.sin(a) });
+  }
+  for (let y = sy + rs + step; y < h - rb; y += step) pts.push({ x: w - amp * wRight(y / s), y });
   for (let i = 0; i <= 4; i++) {
     const a = (Math.PI / 2) * (i / 4);
     pts.push({ x: w - rb + rb * Math.cos(a), y: h - rb + rb * Math.sin(a) });
@@ -369,7 +374,7 @@ function SpineSkin({
           <>
             <Path path={head.face} color={scaleColor(face, 1.05)} />
             <Path path={head.pages}>
-              <LinearGradient start={vec(0, topH)} end={vec(0, 0)} colors={[scaleColor(PAGE, 0.97), scaleColor(PAGE, 0.9)]} />
+              <LinearGradient start={vec(0, topH)} end={vec(0, 0)} colors={[mix(scaleColor(PAGE, 0.9), face, 0.15), mix(scaleColor(PAGE, 0.82), face, 0.2)]} />
             </Path>
             <Path path={head.ridge} style="stroke" strokeWidth={0.9 * s} strokeCap="round">
               <LinearGradient start={vec(head.a.x, head.a.y)} end={vec(head.b.x, head.b.y)} colors={['rgba(255,255,255,0.6)', 'rgba(255,255,255,0.3)']} />
@@ -454,7 +459,7 @@ export const SpineBody = memo(function SpineBody({ id, width: w, height: h, scal
   const x0 = mirror ? w - fw : 0;
   // 세로 시점: 올려다보면 옆면 윗부분이 깎여 보이고(깎임은 옆면 폭에 비례), 눈높이면 평평, 내려다보면 윗면이 보인다
   const topH = viewY > 0 ? TOP_VIEW * viewY * s : 0;
-  const chamfer = viewY < 0 ? w * Math.max(0.03, Math.min(CHAMFER, 1 - side)) * -viewY : 0.4 * s;
+  const chamfer = viewY < 0 ? w * (1 - side) * 1.3 * -viewY : 0.4 * s; // 시안 1줄: 옆면 폭보다 조금 더 깎인다
   const clip = useMemo(
     () => poly(bodyOutline(w, h, s, id, side, chamfer, topH).map((p) => (mirror ? { x: w - p.x, y: p.y } : p))),
     [w, h, s, id, side, mirror, chamfer, topH],
