@@ -206,6 +206,7 @@ function coverOutline(w: number, h: number, s: number, seed: string): Point[] {
 }
 
 const poly = (pts: Point[]) => Skia.Path.Polygon(pts.map((q) => ({ x: q.x, y: q.y })), true);
+const line = (pts: Point[]) => Skia.Path.Polygon(pts.map((q) => ({ x: q.x, y: q.y })), false);
 
 // 빛 받는 가장자리: 왼쪽 위에서 오는 빛에 둥근 모서리(머리·왼쪽 가장자리)가 밝게 빛난다(시안 모순·데미안).
 // 윤곽 선을 흰색으로 그리고 위쪽·왼쪽 띠로만 보이게 가린다. lying: 몸체가 눕혀져 그려지는 경우(화면 위 = 몸체 오른쪽).
@@ -305,6 +306,10 @@ function SpineSkin({
         </Rect>
         <Grain w={w} h={h} s={s} image={grain} />
         <Path path={sideTop} color="rgba(255,255,255,0.16)" />
+        {/* 면이 꺾이는 모서리의 빛 반사(시안: 앞면과 옆면 사이, 누운 책은 앞면과 윗면 사이) */}
+        <Rect x={mirror ? w * (1 - side) - 1.2 * s : w * side} y={0} width={1.2 * s} height={h} color="rgba(255,255,255,0.45)">
+          <BlurMask blur={0.45 * s} style="normal" />
+        </Rect>
         {/* 바닥 쪽 살짝 어둡게 */}
         <Rect x={0} y={h - 3 * s} width={w} height={3 * s}>
           <LinearGradient start={vec(0, h - 3 * s)} end={vec(0, h)} colors={['rgba(0,0,0,0)', 'rgba(0,0,0,0.1)']} />
@@ -402,49 +407,52 @@ export const LyingBody = memo(function LyingBody({ id, width: len, height: H, sc
   const shapes = useMemo(() => {
     const T = H - topFace;
     const b = Math.min(1.3 * s, T * 0.12); // 표지 판 두께
-    const pages = [at(0.1, b / T), at(1, b / T), at(1, 1 - b / T), at(0.1, 1 - b / T)];
-    const lines = [0.4, 0.65].map((v) => [at(0.1, v), at(1, v)]);
+    const pages = [at(0.06, b / T), at(1, b / T), at(1, 1 - b / T), at(0.06, 1 - b / T)];
+    const lines = [0.3, 0.5, 0.7].map((v) => [at(0.06, v), at(1, v)]);
+    const m = 6;
     return {
-      topTri: poly([{ x: L - 0.5, y: 0 }, { x: L + e, y: 0 }, { x: L - 0.5, y: topFace }]),
+      // 상자 실루엣: 끝면 아래(비스듬한 바닥 모서리) 바깥으로 몸체가 비어져 나오지 않게 자른다
+      box: poly([{ x: -m, y: -m }, { x: len + m, y: -m }, { x: len + m, y: T - m }, { x: L - m, y: H + m }, { x: -m, y: H + m }]),
       end: poly([at(0, 0), at(1, 0), at(1, 1), at(0, 1)]),
       pages: poly(pages),
-      lines: lines.map(([p, q]) => poly([p, q, { x: q.x, y: q.y + 0.5 }, { x: p.x, y: p.y + 0.5 }])),
-      rim: poly([{ x: L - 0.5, y: 0 }, { x: L + e, y: 0 }, at(1, 1), at(0, 1)]),
+      lines: lines.map(([p, q]) => poly([p, q, { x: q.x, y: q.y + 0.6 }, { x: p.x, y: p.y + 0.6 }])),
+      // 끝면 바깥 가장자리(오른쪽 끝과 비스듬한 바닥 모서리). 나머지 실루엣은 몸체가 그린다
+      rim: line([at(1, 0), at(1, 1), at(0, 1)]),
+      ridgeFront: line([at(0, 0.02), at(0, 1)]),
+      ridgeTop: line([at(0, 0), at(1, 0)]),
     };
-  }, [L, e, H, topFace, s]);
+  }, [L, e, H, topFace, s, len]);
   const edge = scaleColor(face, edgeFactor(face));
+  const ridge = (path: SkPath, a: number) => (
+    <Path path={path} style="stroke" strokeWidth={1.2 * s} color={`rgba(255,255,255,${a})`}>
+      <BlurMask blur={0.45 * s} style="normal" />
+    </Path>
+  );
   return (
     <Canvas style={{ width: len, height: H }}>
-      <Group transform={[{ translateY: H }, { rotate: -Math.PI / 2 }]}>
-        <SpineSkin id={id} w={H} h={L} s={s} face={face} side={side} grain={grain} lying chamfer={topFace} />
+      {/* 앞면·윗면은 끝까지 한 장으로(윗면 뒤쪽 모서리가 오른쪽 끝까지 이어진다). 끝면이 앞면 끝을 덮는다 */}
+      <Group clip={shapes.box}>
+        <Group transform={[{ translateY: H }, { rotate: -Math.PI / 2 }]}>
+          <SpineSkin id={id} w={H} h={len} s={s} face={face} side={side} grain={grain} lying chamfer={topFace} />
+        </Group>
       </Group>
-      {/* 윗면 오른쪽 끝(뒤로 밀린 부분) */}
-      <Group clip={shapes.topTri}>
-        <Rect x={L - 1} y={0} width={e + 1} height={topFace}>
-          <LinearGradient start={vec(0, 0)} end={vec(0, topFace)} colors={[scaleColor(face, kAt(0.99)), scaleColor(face, kAt(side + 0.001))]} />
-        </Rect>
-        <Grain w={len} h={H} s={s} image={grain} />
-      </Group>
-      {/* 끝면: 앞표지 판 · 종이 · 뒤표지 판. 빛 반대쪽이라 어둡고, 뒤로 갈수록 조금 더 어둡다 */}
+      {/* 끝면: 위아래 얇은 표지 판(책 색) 사이로 아이보리 종이 단면. 빛 반대쪽이라 뒤로 갈수록 조금 어둡다 */}
       <Group clip={shapes.end}>
         <Rect x={L} y={0} width={e} height={H}>
-          <LinearGradient start={vec(L, 0)} end={vec(L + e, 0)} colors={[scaleColor(face, 0.82), scaleColor(face, 0.72)]} />
+          <LinearGradient start={vec(L, 0)} end={vec(L + e, 0)} colors={[scaleColor(face, 0.86), scaleColor(face, 0.76)]} />
         </Rect>
-        {/* 종이: 시안은 흰 종이가 아니라 책 색에 가까운 한 톤 밝은 면(판 사이로 살짝 들어간 모양) */}
         <Path path={shapes.pages}>
-          <LinearGradient start={vec(L, 0)} end={vec(L + e, 0)} colors={[mix(scaleColor(face, 0.86), PAGE, 0.35), mix(scaleColor(face, 0.78), PAGE, 0.3)]} />
+          <LinearGradient start={vec(L, 0)} end={vec(L + e, 0)} colors={[scaleColor(PAGE, 0.97), scaleColor(PAGE, 0.88)]} />
         </Path>
-        <Path path={shapes.pages} style="stroke" strokeWidth={0.8 * s} color={scaleColor(face, 0.66)} opacity={0.5} />
         {shapes.lines.map((l, i) => (
-          <Path key={i} path={l} color={scaleColor(face, 0.7)} opacity={0.2} />
+          <Path key={i} path={l} color={PAGE_LINE} opacity={0.45} />
         ))}
         <Grain w={len} h={H} s={s} image={grain} />
-        {/* 앞면과 만나는 모서리 */}
-        <Rect x={L} y={0} width={1.2 * s} height={H} color={scaleColor(face, 0.7)} opacity={0.6} />
       </Group>
-      {/* 윗면과 끝면이 만나는 모서리의 옅은 빛, 바깥 가장자리 선 */}
-      <Path path={poly([at(0, 0), at(1, 0), { x: L + e, y: 1.2 * s }, { x: L, y: topFace + 1.2 * s }])} color="rgba(255,255,255,0.18)" />
-      <Path path={shapes.rim} style="stroke" strokeWidth={1.3 * s} color={edge} antiAlias />
+      {/* 면이 꺾이는 모서리의 빛 반사: 앞면과 끝면, 윗면과 끝면 사이 */}
+      {ridge(shapes.ridgeFront, 0.42)}
+      {ridge(shapes.ridgeTop, 0.5)}
+      <Path path={shapes.rim} style="stroke" strokeWidth={1.6 * s} color={edge} strokeJoin="round" antiAlias />
       {motif ? <SkImage image={motif} x={L - mw - len * 0.05} y={H - fw / 2 - mh / 2} width={mw} height={mh} fit="contain" /> : null}
     </Canvas>
   );
@@ -508,6 +516,10 @@ export const CoverBody = memo(function CoverBody({
       </Group>
       <Path path={outline} style="stroke" strokeWidth={1.3 * s} color={scaleColor(face, edgeFactor(face))} antiAlias />
       </Group>
+      {/* 앞표지와 옆면이 만나는 모서리의 빛 반사 */}
+      <Rect x={mirror ? side - 0.2 * s : fw - 0.2 * s} y={2.4 * s} width={1.2 * s} height={h - 4.8 * s} color="rgba(255,255,255,0.4)">
+        <BlurMask blur={0.45 * s} style="normal" />
+      </Rect>
     </Canvas>
   );
 });
