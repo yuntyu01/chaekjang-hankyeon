@@ -586,10 +586,8 @@ export const CoverBody = memo(function CoverBody({
     <Canvas style={{ width: fw + side, height: h }}>
       {/* 옆면: 종이 단면 대신 책 색의 얇은 판(시안: 표지 책 옆으로 페이지가 보이지 않는다). 빛 반대쪽이라 한 톤 어둡다 */}
       <Group clip={Skia.RRectXY(Skia.XYWHRect(mirror ? 0 : fw - 3 * s, 1.2 * s, side + 3 * s, h - 1.2 * s), 2 * s, 2 * s)}>
-        <Rect x={mirror ? 0 : fw - 3 * s} y={0} width={side + 3 * s} height={h} color={tone} />
-        {/* 표지 그림이 옆면까지 감싸 이어진다(그림 끝부분이 비친다) */}
-        {image ? <SkImage image={image} x={mirror ? 0 : side} y={0} width={fw} height={h} fit="cover" /> : null}
-        <Rect x={mirror ? 0 : fw - 3 * s} y={0} width={side + 3 * s} height={h} color={mirror ? 'rgba(40,30,20,0.12)' : 'rgba(40,30,20,0.24)'} />
+        {/* 표지 가장자리 색의 판(그림을 다시 비추면 표지가 이중으로 보인다). 왼쪽 옆면은 빛을 받아 덜 어둡다 */}
+        <Rect x={mirror ? 0 : fw - 3 * s} y={0} width={side + 3 * s} height={h} color={scaleColor(tone, mirror ? 0.9 : 0.78)} />
       </Group>
       <Group transform={[{ translateX: mirror ? side : 0 }]}>
       <Group clip={outline}>
@@ -598,10 +596,14 @@ export const CoverBody = memo(function CoverBody({
         {!image && motif ? <SkImage image={motif} x={fw / 2 - mw / 2} y={h * 0.9 - mh} width={mw} height={mh} fit="contain" /> : null}
         <Grain w={fw} h={h} s={s} image={grain} />
         {/* 제본 쪽(왼쪽) 살짝 어둡게, 왼쪽 위에서 오는 빛 */}
-        <Rect x={0} y={0} width={fw * 0.06} height={h}>
-          <LinearGradient start={vec(0, 0)} end={vec(fw * 0.06, 0)} colors={['rgba(0,0,0,0.14)', 'rgba(0,0,0,0)']} />
+        {/* 제본선(시안: 왼쪽에서 조금 안쪽의 가는 홈 하나) */}
+        <Rect x={0} y={0} width={fw * 0.05} height={h}>
+          <LinearGradient start={vec(0, 0)} end={vec(fw * 0.05, 0)} colors={['rgba(0,0,0,0.07)', 'rgba(0,0,0,0)']} />
         </Rect>
-        <Rect x={fw * 0.055} y={0} width={0.8 * s} height={h} color="rgba(255,255,255,0.12)" />
+        <Rect x={fw * 0.04} y={0} width={0.7 * s} height={h} color="rgba(40,30,20,0.16)">
+          <BlurMask blur={0.35 * s} style="normal" />
+        </Rect>
+        <Rect x={fw * 0.04 + 0.9 * s} y={0} width={0.6 * s} height={h} color="rgba(255,255,255,0.14)" />
         <Rect x={0} y={0} width={fw} height={h}>
           <LinearGradient start={vec(0, 0)} end={vec(fw, h)} colors={['rgba(255,255,255,0.08)', 'rgba(255,255,255,0)', 'rgba(0,0,0,0.08)']} positions={[0, 0.45, 1]} />
         </Rect>
@@ -610,11 +612,13 @@ export const CoverBody = memo(function CoverBody({
       </Group>
       <Path path={outline} style="stroke" strokeWidth={0.9 * s} color={scaleColor(tone, edgeFactor(tone))} antiAlias />
       </Group>
-      {/* 앞표지와 옆면이 만나는 모서리의 빛 반사(위가 밝고 아래로 사라진다) */}
-      <Rect x={mirror ? side : fw - 0.9 * s} y={2 * s} width={0.9 * s} height={h - 4 * s}>
+      {/* 앞표지와 옆면이 만나는 모서리의 빛 반사(위가 밝고 아래로 사라진다). 왼쪽 옆면일 때는 테두리와 겹쳐 선이 여러 겹이 되므로 뺀다 */}
+      {mirror ? null : (
+      <Rect x={fw - 0.9 * s} y={2 * s} width={0.9 * s} height={h - 4 * s}>
         <LinearGradient start={vec(0, 2 * s)} end={vec(0, h - 2 * s)} colors={GLINT} positions={GLINT_AT} />
         <BlurMask blur={0.3 * s} style="normal" />
       </Rect>
+      )}
     </Canvas>
   );
 });

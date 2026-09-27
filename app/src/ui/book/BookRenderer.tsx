@@ -2,6 +2,7 @@
 // 회전·외부 그림자는 부모(ShelfRow)가 맡는다. 같은 책의 모든 자세는 같은 색·모티프·그림을 공유한다.
 import { memo } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
+import Svg, { Defs, G, LinearGradient as SvgGradient, Polygon, Stop } from 'react-native-svg';
 
 import { inkFor, shade } from '@/domain/color';
 import { bookHeight, bookThickness, FRONT_SIDE, frontWidth, TOP_FACE } from '@/domain/geometry';
@@ -67,37 +68,58 @@ function VerticalText({ columns, fs, color, line = 1.14 }: { columns: string[]; 
 
 // 갈피: 저장된 문장이 있는 책에만. 문장 수만큼(최대 2개) 책 위로 8DU 돌출된 끈. 책 몸체 뒤에 그려 아래쪽은 가려진다.
 export const RIBBON_OUT = 12; // 시안: 갈피가 책 위로 약 13DU
+// 갈피(가름끈): 책 머리 뒤에서 나와 살짝 벌어진 두 가닥. 끝은 비스듬히 잘리고(시안 데미안·작별하지 않는다),
+// 결 방향 명암(왼쪽 밝음)과 가는 같은 색 테두리. 아랫부분은 책 몸체가 가린다.
 function Ribbons({ book, cx, scale: s }: { book: Book; cx: number; scale: number }) {
   const n = Math.min(2, book.quotes ?? 0);
   if (!n) return null;
   const color = book.art.ribbon ?? shade(book.themeColor, 0.25);
-  const w = 8 * s;
-  const gap = 2 * s;
+  const w = 6.8; // DU
+  const gap = 2.4;
+  const hidden = 6; // 몸체 뒤로 숨는 길이
+  const pad = 4; // 기울어져 삐져나갈 여유
   const total = n * w + (n - 1) * gap;
+  const H = RIBBON_OUT + hidden;
+  const W = total + pad * 2;
+  const strands = Array.from({ length: n }, (_, i) => {
+    const x = pad + i * (w + gap);
+    const out = RIBBON_OUT - (i ? 2 : 0); // 두 번째 가닥은 조금 짧다
+    const top = RIBBON_OUT - out;
+    const cut = i ? -2.2 : 2.4; // 끝을 비스듬히: 첫 가닥은 오른쪽이, 둘째는 왼쪽이 낮다
+    const pts = [
+      [x + 0.2, H],
+      [x, top + Math.max(0, cut) + 0.6],
+      [x + w, top + Math.max(0, -cut)],
+      [x + w - 0.2, H],
+    ];
+    const tone = i ? shade(color, 0.12) : color;
+    return { pts, tone, angle: i ? 4 : -6, pivot: [x + w / 2, H] };
+  });
   return (
-    <>
-      {Array.from({ length: n }, (_, i) => (
-        <View
-          key={i}
-          style={{
-            position: 'absolute',
-            left: cx - total / 2 + i * (w + gap),
-            top: -(RIBBON_OUT - (i ? 1.8 : 0)) * s,
-            width: w,
-            height: (RIBBON_OUT + 6) * s,
-            backgroundColor: i ? shade(color, 0.18) : color,
-            overflow: 'hidden',
-            borderTopLeftRadius: 0.8 * s,
-            borderTopRightRadius: 0.8 * s,
-            // 시안처럼 끈이 살짝 벌어져 있다
-            transformOrigin: 'center bottom',
-            transform: [{ rotate: i ? '3deg' : '-4deg' }],
-          }}
-        >
-          <View style={[StyleSheet.absoluteFill, { borderLeftWidth: 0.5 * s, borderLeftColor: 'rgba(255,255,255,0.22)' }]} />
-        </View>
-      ))}
-    </>
+    <View pointerEvents="none" style={{ position: 'absolute', left: cx - (total / 2 + pad) * s, top: -RIBBON_OUT * s, width: W * s, height: H * s }}>
+      <Svg width={W * s} height={H * s} viewBox={`0 0 ${W} ${H}`}>
+        <Defs>
+          {strands.map((st, i) => (
+            <SvgGradient key={i} id={`rb${book.id}${i}`} x1="0" y1="0" x2="1" y2="0">
+              <Stop offset="0" stopColor={shade(st.tone, 0.12)} />
+              <Stop offset="0.45" stopColor={st.tone} />
+              <Stop offset="1" stopColor={shade(st.tone, -0.1)} />
+            </SvgGradient>
+          ))}
+        </Defs>
+        {strands.map((st, i) => (
+          <G key={i} rotation={st.angle} origin={`${st.pivot[0]}, ${st.pivot[1]}`}>
+            <Polygon points={st.pts.map((p) => p.join(',')).join(' ')} fill={`url(#rb${book.id}${i})`} stroke={shade(st.tone, -0.25)} strokeWidth={0.45} strokeOpacity={0.55} strokeLinejoin="round" />
+            {/* 잘린 끝 바로 아래의 옅은 빛 */}
+            <Polygon
+              points={[st.pts[1], st.pts[2], [st.pts[2][0], st.pts[2][1] + 0.9], [st.pts[1][0], st.pts[1][1] + 0.9]].map((p) => p.join(',')).join(' ')}
+              fill="#FFFFFF"
+              opacity={0.18}
+            />
+          </G>
+        ))}
+      </Svg>
+    </View>
   );
 }
 
