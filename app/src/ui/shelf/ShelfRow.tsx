@@ -83,7 +83,7 @@ const BookSlot = memo(function BookSlot({ frame, clear, book, scale: s, placehol
 // 바깥 그림자는 ShelfShadow의 접촉층과 긴 감쇠층이 판 아래에 그린다.
 const SHELF_PNG = require('../../../assets/bookshelf/shelf-plank.png');
 
-function ShelfImage({ scale: s, clear }: { scale: number; clear: number }) {
+export function ShelfImage({ scale: s, clear }: { scale: number; clear: number }) {
   const top = (clear - SHELF.contact) * s;
   return (
     <>
@@ -105,7 +105,7 @@ function ShelfImage({ scale: s, clear }: { scale: number; clear: number }) {
 
 // The front face occludes everything behind the lip, including cast shadows.
 // Reuse the same image so the grain and lighting stay aligned with the top.
-function ShelfFront({ scale: s, clear }: { scale: number; clear: number }) {
+export function ShelfFront({ scale: s, clear }: { scale: number; clear: number }) {
   return (
     <View pointerEvents="none" style={{ position: 'absolute', left: 0, top: (clear + SHELF.lip) * s,
       width: DESIGN_WIDTH * s, height: (SHELF.below - SHELF.lip + 0.5) * s, overflow: 'hidden' }}>

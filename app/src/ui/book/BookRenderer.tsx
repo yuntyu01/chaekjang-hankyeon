@@ -14,7 +14,8 @@ import { fonts } from '@/ui/theme';
 import { CoverBody, coverTopH, faceWidth, LyingBody, SpineBody, spineView } from './BookBody';
 
 // view: 가운데 시점(-1 왼쪽 끝 ~ 1 오른쪽 끝). 선반 밖(상세·서랍)에서는 0(정면).
-type Props = { book: Book; pose: Pose; scale: number; view?: number; viewY?: number };
+// box: 상자 모델(앞면만 그린다. 옆면·윗면은 상자 투영으로 따로)
+type Props = { book: Book; pose: Pose; scale: number; view?: number; viewY?: number; box?: boolean };
 
 const DARK_INK = '#1F2533';
 const LIGHT_INK = '#F2EADB';
@@ -124,10 +125,10 @@ function Ribbons({ book, cx, scale: s }: { book: Book; cx: number; scale: number
 }
 
 // 세운 책: 제목은 앞면 가운데에 세로로, 그림 위에. 긴 제목은 그림을 밀어내고, 그래도 넘치면 두 열·말줄임(최소 9DU).
-function Spine({ book, scale: s, view, viewY }: { book: Book; scale: number; view: number; viewY: number }) {
+function Spine({ book, scale: s, view, viewY, box = false }: { book: Book; scale: number; view: number; viewY: number; box?: boolean }) {
   const w = bookThickness(book) * s;
   const h = bookHeight(book) * s;
-  const { side, mirror } = spineView(view);
+  const { side, mirror } = box ? { side: 1, mirror: false } : spineView(view);
   const fw = faceWidth(w, side);
   const x0 = mirror ? w - fw : 0;
   const ink = inkOf(book);
@@ -137,7 +138,7 @@ function Spine({ book, scale: s, view, viewY }: { book: Book; scale: number; vie
   return (
     <View style={{ width: w, height: h }}>
       <Ribbons book={book} cx={x0 + fw * 0.55} scale={s} />
-      <SpineBody id={book.id} width={w} height={h} scale={s} face={faceOf(book)} art={art} view={view} viewY={viewY} />
+      <SpineBody id={book.id} width={w} height={h} scale={s} face={faceOf(book)} art={art} view={view} viewY={viewY} frontOnly={box} />
       {!book.body ? (
         <View style={{ position: 'absolute', left: x0, width: fw, top: artTop, height: h * 0.93 - artTop, alignItems: 'center', justifyContent: 'flex-end' }}>
           <MotifArt motif={book.art.motif} width={fw * 0.8} height={(h * 0.93 - artTop) * 0.9} color={book.art.accentColor ?? ink} />
@@ -151,10 +152,10 @@ function Spine({ book, scale: s, view, viewY }: { book: Book; scale: number; vie
 }
 
 // 누운 책: 같은 몸체를 눕히고, 제목은 가로로 다시 조판(글자를 돌리지 않는다).
-function Horizontal({ book, scale: s }: { book: Book; scale: number }) {
+function Horizontal({ book, scale: s, box = false }: { book: Book; scale: number; box?: boolean }) {
   const len = bookHeight(book) * s;
   const t = bookThickness(book) * s;
-  const topFace = TOP_FACE * s;
+  const topFace = box ? 0 : TOP_FACE * s;
   const H = t + topFace;
   const ink = inkOf(book);
   const faceT = t * 0.9;
@@ -181,15 +182,15 @@ function Horizontal({ book, scale: s }: { book: Book; scale: number }) {
 }
 
 // 표지 전시: 평평한 표지 그림(없으면 책 색 + 모티프) 위에 제목·저자를 가운데 조판.
-function Front({ book, scale: s, view, viewY }: { book: Book; scale: number; view: number; viewY: number }) {
+function Front({ book, scale: s, view, viewY, box = false }: { book: Book; scale: number; view: number; viewY: number; box?: boolean }) {
   const fw = frontWidth(book) * s;
   const h = bookHeight(book) * s;
-  const side = FRONT_SIDE * s;
+  const side = box ? 0 : FRONT_SIDE * s;
   const cover = book.cover;
   const ink = cover?.ink ?? inkOf(book);
-  const mirror = view > 0.02; // 가운데보다 오른쪽이면 왼쪽 옆면이 보인다
+  const mirror = !box && view > 0.02; // 가운데보다 오른쪽이면 왼쪽 옆면이 보인다
   const cx0 = mirror ? side : 0;
-  const topH = coverTopH(viewY, s); // 내려다보는 줄: 윗면만큼 앞표지가 아래로
+  const topH = box ? 0 : coverTopH(viewY, s); // 내려다보는 줄: 윗면만큼 앞표지가 아래로
   const ch = h - topH;
   const long = book.title.length > 9;
   const text = long ? splitTwoLines(book.title) : book.title;
@@ -198,7 +199,7 @@ function Front({ book, scale: s, view, viewY }: { book: Book; scale: number; vie
   return (
     <View style={{ width: fw + side, height: h }}>
       <Ribbons book={book} cx={cx0 + fw * 0.6} scale={s} />
-      <CoverBody id={book.id} width={fw} height={h} scale={s} face={faceOf(book)} side={side} cover={cover?.image} art={book.body} mirror={mirror} edge={cover?.edge} viewY={viewY} />
+      <CoverBody id={book.id} width={fw} height={h} scale={s} face={faceOf(book)} side={side} cover={cover?.image} art={book.body} mirror={mirror} edge={cover?.edge} viewY={box ? 0 : viewY} />
       {!cover && !book.body ? (
         <View style={{ position: 'absolute', bottom: ch * 0.1, left: cx0, width: fw, alignItems: 'center' }}>
           <MotifArt motif={book.art.motif} width={fw * 0.4} height={h * 0.4} color={book.art.accentColor ?? ink} />
@@ -234,9 +235,9 @@ export function splitTwoLines(title: string) {
   return `${words.slice(0, best).join(' ')}\n${words.slice(best).join(' ')}`;
 }
 
-export const BookRenderer = memo(function BookRenderer({ book, pose, scale, view = 0, viewY = 0 }: Props) {
-  if (pose === 'spine') return <Spine book={book} scale={scale} view={view} viewY={viewY} />;
-  if (pose === 'horizontal') return <Horizontal book={book} scale={scale} />;
-  return <Front book={book} scale={scale} view={view} viewY={viewY} />;
+export const BookRenderer = memo(function BookRenderer({ book, pose, scale, view = 0, viewY = 0, box = false }: Props) {
+  if (pose === 'spine') return <Spine book={book} scale={scale} view={view} viewY={viewY} box={box} />;
+  if (pose === 'horizontal') return <Horizontal book={book} scale={scale} box={box} />;
+  return <Front book={book} scale={scale} view={view} viewY={viewY} box={box} />;
 });
 

@@ -41,13 +41,13 @@ export function spineView(view: number) {
 const GLINT = ['rgba(255,255,255,0.45)', 'rgba(255,255,255,0.3)', 'rgba(255,255,255,0.17)', 'rgba(255,255,255,0.08)'];
 const GLINT_AT = [0, 0.15, 0.5, 1];
 export const CHAMFER = 0.14; // 옆면 윗부분이 깎여 내려가는 정도(책 폭 비율)
-const PAGE = '#F4ECDD';
-const PAGE_LINE = '#DDCFB8';
+export const PAGE = '#F4ECDD';
+export const PAGE_LINE = '#DDCFB8';
 
 // 책 색을 k배로 어둡게. 시안의 그늘은 회색이 아니라 따뜻한 갈색 쪽으로 어두워진다
 // (모순 옆면: 앞면 대비 R 0.88, G 0.82, B 0.77) → 채널마다 지수를 달리한다. 밝게(k>1)는 그대로 곱한다.
 const WARM = [0.64, 1, 1.32];
-function scaleColor(hex: string, k: number) {
+export function scaleColor(hex: string, k: number) {
   const n = parseInt(hex.slice(1), 16);
   const c = [(n >> 16) & 255, (n >> 8) & 255, n & 255].map((v, i) =>
     Math.max(0, Math.min(255, Math.round(v * (k < 1 ? Math.pow(k, WARM[i]) : k)))),
@@ -91,6 +91,16 @@ export function shadeProfile(prof: [number, number][], side: number, face: strin
   });
 }
 
+// 상자 모델의 앞면만: 옆면으로 꺾이는 오른쪽 끝(누운 책은 아래쪽)이 조금 어둡다
+export function frontProfile(face: string, lying: boolean): [number, number][] {
+  const lum = luminance(face);
+  const w = 0.35 + 0.75 * (1 - lum);
+  const raw: [number, number][] = lying
+    ? [[0, 0.84], [0.05, 0.93], [0.5, 1.0], [0.94, 1.02], [1, 0.94]]
+    : [[0, 0.86], [0.02, 0.95], [0.06, 1.0], [0.4, 1.0], [0.9, 0.93], [0.97, 0.86], [1, 0.82]];
+  return raw.map(([p, k]) => [p, 1 - (1 - k) * w] as [number, number]);
+}
+
 // 누운 책: 옆면이 위를 향한 윗면이 되어 빛을 받는다(시안: 앞면보다 밝거나 같고, 사이에 옅은 홈).
 export function lyingProfile(side: number, face: string): [number, number][] {
   const lum = luminance(face);
@@ -110,7 +120,7 @@ export function lyingProfile(side: number, face: string): [number, number][] {
 }
 
 // 두 색 섞기(a: 'rgb(...)' 또는 '#RRGGBB')
-function mix(a: string, b: string, t: number) {
+export function mix(a: string, b: string, t: number) {
   const parse = (c: string) =>
     c.startsWith('#') ? [1, 3, 5].map((i) => parseInt(c.slice(i, i + 2), 16)) : (c.match(/\d+/g) ?? []).slice(0, 3).map(Number);
   const [x, y] = [parse(a), parse(b)];
@@ -170,13 +180,15 @@ export function bodyOutline(w: number, h: number, s: number, seed: string, side 
     const a = Math.PI + (Math.PI / 2) * (i / 6);
     pts.push({ x: r + r * Math.cos(a), y: y0 + r + r * Math.sin(a) });
   }
-  for (let x = r + step; x < sideX; x += step) pts.push({ x, y: headY(x) + amp * wTop(x / s) });
-  pts.push({ x: sideX, y: headY(sideX) });
-  // 옆면 윗모서리는 앞면 모서리 높이(머리 곡선 끝)에서 시작해 ch만큼 내려간다(앞면보다 튀어 오르지 않게)
-  const sy = headY(sideX) + ch;
+  // 앞면만(상자 모델: 옆면은 따로 그린다)이면 오른쪽 윗모서리도 왼쪽처럼 둥글게
+  const frontOnly = side >= 0.999;
   // 옆면 바깥 윗모서리도 둥글게(시안: 머리 양쪽 모서리가 모두 둥글다)
   // 크게 깎일 때(올려다봄)는 모서리를 작게 해서 깎인 대각선이 살아 있게 한다
-  const rs = ch > 2 * s ? Math.min(1.2 * s, (w - sideX) * 0.3) : Math.min(3 * s, (w - sideX) * 0.9);
+  const rs = frontOnly ? Math.min(3 * s, w * 0.2) : ch > 2 * s ? Math.min(1.2 * s, (w - sideX) * 0.3) : Math.min(3 * s, (w - sideX) * 0.9);
+  for (let x = r + step; x < (frontOnly ? w - rs : sideX); x += step) pts.push({ x, y: headY(x) + amp * wTop(x / s) });
+  if (!frontOnly) pts.push({ x: sideX, y: headY(sideX) });
+  // 옆면 윗모서리는 앞면 모서리 높이(머리 곡선 끝)에서 시작해 ch만큼 내려간다(앞면보다 튀어 오르지 않게)
+  const sy = frontOnly ? headY(w) : headY(sideX) + ch;
   for (let i = 0; i <= 5; i++) {
     const a = -Math.PI / 2 + (Math.PI / 2) * (i / 5);
     pts.push({ x: w - rs + rs * Math.cos(a), y: sy + rs + rs * Math.sin(a) });
@@ -296,7 +308,7 @@ function EdgeLine({ outline, outline2, s, face, opacity = 1 }: { outline: SkPath
   );
 }
 
-function Grain({ w, h, s, image }: { w: number; h: number; s: number; image: SkImageType | null }) {
+export function Grain({ w, h, s, image }: { w: number; h: number; s: number; image: SkImageType | null }) {
   if (!image) return null;
   return (
     <Rect x={0} y={0} width={w} height={h} blendMode="softLight" opacity={GRAIN_STRENGTH}>
@@ -357,7 +369,8 @@ function SpineSkin({
     },
     [w, s, side, mirror, ch],
   );
-  const prof = lying ? lyingProfile(side, face) : shadeProfile(spineProfile(side), side, face, mirror);
+  const prof =
+    side >= 0.999 ? frontProfile(face, lying) : lying ? lyingProfile(side, face) : shadeProfile(spineProfile(side), side, face, mirror);
   return (
     <Group>
       <Group clip={outline}>
@@ -386,7 +399,7 @@ function SpineSkin({
         )}
         {/* 면이 꺾이는 모서리의 빛 반사(앞면과 옆면 사이, 누운 책은 앞면과 윗면 사이).
             빛이 오는 머리 쪽(누운 책은 왼쪽)이 가장 밝고 멀어질수록 사라진다 */}
-        <Rect x={mirror ? w * (1 - side) - 0.9 * s : w * side} y={0} width={0.9 * s} height={h}>
+        <Rect x={mirror ? w * (1 - side) - 0.9 * s : Math.min(w * side, w - 0.9 * s)} y={0} width={0.9 * s} height={h}>
           <LinearGradient start={vec(0, 0)} end={vec(0, h)} colors={GLINT} positions={GLINT_AT} />
           <BlurMask blur={0.45 * s} style="normal" />
         </Rect>
@@ -451,15 +464,25 @@ type BodyProps = { id: string; width: number; height: number; scale: number; fac
 export const faceWidth = (w: number, side = SPINE_SIDE) => w * (side - GROOVE);
 
 // 세운 책. view: 가운데 시점(-1~1)
-export const SpineBody = memo(function SpineBody({ id, width: w, height: h, scale: s, face, art, view = 0, viewY = 0 }: BodyProps & { view?: number; viewY?: number }) {
+export const SpineBody = memo(function SpineBody({
+  id,
+  width: w,
+  height: h,
+  scale: s,
+  face,
+  art,
+  view = 0,
+  viewY = 0,
+  frontOnly = false,
+}: BodyProps & { view?: number; viewY?: number; frontOnly?: boolean }) {
   const grain = useImage(BRUSH_DETAIL);
   const motif = useImage(art?.motif ?? null);
-  const { side, mirror } = spineView(view);
+  const { side, mirror } = frontOnly ? { side: 1, mirror: false } : spineView(view);
   const fw = faceWidth(w, side);
   const x0 = mirror ? w - fw : 0;
   // 세로 시점: 올려다보면 옆면 윗부분이 깎여 보이고(깎임은 옆면 폭에 비례), 눈높이면 평평, 내려다보면 윗면이 보인다
-  const topH = viewY > 0 ? TOP_VIEW * viewY * s : 0;
-  const chamfer = viewY < 0 ? w * (1 - side) * 1.3 * -viewY : 0.4 * s; // 시안 1줄: 옆면 폭보다 조금 더 깎인다
+  const topH = !frontOnly && viewY > 0 ? TOP_VIEW * viewY * s : 0;
+  const chamfer = frontOnly ? 0 : viewY < 0 ? w * (1 - side) * 1.3 * -viewY : 0.4 * s; // 시안 1줄: 옆면 폭보다 조금 더 깎인다
   const clip = useMemo(
     () => poly(bodyOutline(w, h, s, id, side, chamfer, topH).map((p) => (mirror ? { x: w - p.x, y: p.y } : p))),
     [w, h, s, id, side, mirror, chamfer, topH],
@@ -522,6 +545,17 @@ export const LyingBody = memo(function LyingBody({ id, width: len, height: H, sc
       <BlurMask blur={0.3 * s} style="normal" />
     </Path>
   );
+  if (topFace <= 0) {
+    // 상자 모델: 앞면(누운 책등)만. 윗면·끝면은 상자 투영으로 따로 그린다
+    return (
+      <Canvas style={{ width: len, height: H }}>
+        <Group transform={[{ translateY: H }, { rotate: -Math.PI / 2 }]}>
+          <SpineSkin id={id} w={H} h={len} s={s} face={face} side={1} grain={grain} lying chamfer={0} />
+        </Group>
+        {motif ? <SkImage image={motif} x={len - mw - len * 0.06} y={H / 2 - mh / 2} width={mw} height={mh} fit="contain" /> : null}
+      </Canvas>
+    );
+  }
   return (
     <Canvas style={{ width: len, height: H }}>
       {/* 앞면·윗면은 끝까지 한 장으로(윗면 뒤쪽 모서리가 오른쪽 끝까지 이어진다). 끝면이 앞면 끝을 덮는다 */}
@@ -625,7 +659,9 @@ export const CoverBody = memo(function CoverBody({
   const edgeC = scaleColor(tone, edgeFactor(tone));
   return (
     <Canvas style={{ width: fw + d, height: h }}>
-      {/* 옆면(채움은 Path로 해야 비스듬한 가장자리가 매끈하다) */}
+      {/* 옆면(채움은 Path로 해야 비스듬한 가장자리가 매끈하다). 상자 모델(d = 0)에서는 따로 그린다 */}
+      {d > 0 ? (
+      <>
       <Path path={faces.sideFace}>
         {mirror ? (
           // 책등: 빛(왼쪽 위)을 향해 밝고, 둥근 등이라 가운데가 조금 더 밝다
@@ -649,6 +685,8 @@ export const CoverBody = memo(function CoverBody({
       <Group clip={faces.sideFace}>
         <Grain w={fw + d} h={h} s={s} image={grain} />
       </Group>
+      </>
+      ) : null}
       {/* 윗면(내려다볼 때): 앞뒤 표지 판 사이 종이 */}
       {faces.top ? (
         <>
