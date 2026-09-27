@@ -5,7 +5,7 @@ import { BlurMask, Canvas, Group, LinearGradient, Path, Skia, useImage, vec } fr
 import { memo, useMemo } from 'react';
 import { StyleSheet, View } from 'react-native';
 
-import { silhouette, visibleFaces, type Camera, type Face, type Placed } from '@/domain/box';
+import { frontPoly, project, silhouette, visibleFaces, type Camera, type Face, type Placed } from '@/domain/box';
 import { BRUSH_DETAIL } from '@/domain/body-art.generated';
 import { DESIGN_WIDTH, SHELF } from '@/domain/geometry';
 import type { BookFrame, Point } from '@/domain/shelf-scene';
@@ -13,7 +13,7 @@ import type { Book, Pose } from '@/domain/types';
 import { edgeFactor, Grain, mix, PAGE, PAGE_LINE, scaleColor } from '@/ui/book/BookBody';
 import { BookRenderer } from '@/ui/book/BookRenderer';
 import { ShelfFront, ShelfImage } from '@/ui/shelf/ShelfRow';
-import { ShelfContacts, ShelfShadows } from '@/ui/shelf/ShelfShadows';
+import { ShelfShadows } from '@/ui/shelf/ShelfShadows';
 
 export type BoxEntry = { book: Book; placed: Placed };
 
@@ -121,6 +121,63 @@ const DepthFaces = memo(function DepthFaces({ entries, cam, s, clear, height }: 
   );
 });
 
+// 바닥 접촉: 상자가 선반에 닿는 바닥면(앞면 윤곽에서 바닥 높이의 점 × 깊이)을 투영해 그린다.
+// 1) 닿는 곳 바로 밑의 진하고 좁은 접촉 그늘, 2) 빛(왼쪽 위) 반대쪽으로 선반 윗면에 짧게 번지는 그늘.
+// front = false: 책 밑·뒤로 번지는 그늘(책보다 먼저), true: 바닥 앞 그늘과 접촉선(책 위에)
+const Contacts = memo(function Contacts({ entries, cam, s, clear, height, front = false }: { entries: BoxEntry[]; cam: Camera; s: number; clear: number; height: number; front?: boolean }) {
+  const px: Px = (p) => ({ x: (SHELF.sideMargin + p.x) * s, y: (clear + p.y - FLOOR) * s });
+  const shapes = entries
+    .filter(({ placed }) => placed.y < 0.5)
+    .map(({ placed: p }) => {
+      const feet = frontPoly(p).filter((q) => q.y < p.y + 0.6);
+      let x0 = Math.min(...feet.map((q) => q.x));
+      let x1 = Math.max(...feet.map((q) => q.x));
+      if (x1 - x0 < 2) {
+        x0 -= 1;
+        x1 += 1;
+      }
+      const P = (x: number, z: number) => px(project(cam, { x, y: 0, z }));
+      const foot = [P(x0, p.z), P(x1, p.z), P(x1, p.z + p.size.d), P(x0, p.z + p.size.d)];
+      const hh = Math.max(...frontPoly(p).map((q) => q.y)); // 높이만큼 오른쪽으로 조금 더 번진다
+      const reach = Math.min(10, 2 + hh * 0.04);
+      const cast = [P(x0 + 1, p.z), P(x1 + reach, p.z), P(x1 + reach, p.z + p.size.d), P(x0 + 1, p.z + p.size.d)];
+      const e0 = P(x0 - 0.5, p.z);
+      const e1 = P(x1 + 1.5, p.z);
+      const band = [e0, e1, { x: e1.x, y: e1.y + 3 * s }, { x: e0.x, y: e0.y + 3 * s }];
+      return { key: p.bookId, foot, cast, band, edge: [P(x0, p.z), P(x1, p.z)] };
+    });
+  return (
+    <Canvas style={[StyleSheet.absoluteFill, { width: DESIGN_WIDTH * s, height }]} pointerEvents="none">
+      {shapes.map((c) => (
+        <Group key={c.key}>
+          {front ? null : (
+          <>
+          <Path path={Skia.Path.Polygon(c.cast, true)} color="rgba(116,90,64,0.2)">
+            <BlurMask blur={2.2 * s} style="normal" />
+          </Path>
+          <Path path={Skia.Path.Polygon(c.foot, true)} color="rgba(96,70,48,0.28)">
+            <BlurMask blur={0.9 * s} style="normal" />
+          </Path>
+          </>
+          )}
+          {front ? (
+          <>
+          {/* 바닥 바로 앞 선반 위의 짧은 그늘(시안: 책이 판에 눌려 앉은 느낌) */}
+          <Path path={Skia.Path.Polygon(c.band, true)}>
+            <LinearGradient start={vec(0, c.band[0].y)} end={vec(0, c.band[3].y)} colors={['rgba(96,68,44,0.38)', 'rgba(96,68,44,0)']} />
+            <BlurMask blur={0.5 * s} style="normal" />
+          </Path>
+          <Path path={Skia.Path.Polygon(c.edge, false)} style="stroke" strokeWidth={0.9 * s} strokeCap="round" color="rgba(80,56,38,0.45)">
+            <BlurMask blur={0.35 * s} style="normal" />
+          </Path>
+          </>
+          ) : null}
+        </Group>
+      ))}
+    </Canvas>
+  );
+});
+
 // 앞면: 기울기 전 앞면 사각형(투영 위치)에 기존 몸체를 놓고, 바닥 모서리를 축으로 돌린다.
 function FrontFace({ entry, cam, s, clear }: { entry: BoxEntry; cam: Camera; s: number; clear: number }) {
   const { book, placed: p } = entry;
@@ -158,11 +215,12 @@ export const BoxShelf = memo(function BoxShelf({ entries, cam, scale: s, originX
     <View style={{ height, width: DESIGN_WIDTH * s, marginLeft: originX }}>
       <ShelfShadows frames={frames} scale={s} hiddenId={null} height={height} clear={clear} />
       <ShelfImage scale={s} clear={clear} />
-      <ShelfContacts frames={frames} scale={s} hiddenId={null} height={height} clear={clear} />
+      <Contacts entries={entries} cam={cam} s={s} clear={clear} height={height} />
       <DepthFaces entries={entries} cam={cam} s={s} clear={clear} height={height} />
       {fronts.map((e) => (
         <FrontFace key={e.placed.bookId} entry={e} cam={cam} s={s} clear={clear} />
       ))}
+      <Contacts entries={entries} cam={cam} s={s} clear={clear} height={height} front />
       <ShelfFront scale={s} clear={clear} />
     </View>
   );

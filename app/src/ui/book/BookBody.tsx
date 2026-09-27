@@ -428,9 +428,12 @@ function SpineSkin({
           </Rect>
         ) : null}
         {/* 바닥 쪽 살짝 어둡게 */}
-        <Rect x={0} y={h - 3 * s} width={w} height={3 * s}>
-          <LinearGradient start={vec(0, h - 3 * s)} end={vec(0, h)} colors={['rgba(0,0,0,0)', 'rgba(0,0,0,0.1)']} />
-        </Rect>
+        {lying ? null : (
+          // 바닥 쪽 어둡게(선반에 닿는 곳, 상자 모델에서는 조금 더)
+          <Rect x={0} y={h - (joined ? 5 : 3) * s} width={w} height={(joined ? 5 : 3) * s}>
+            <LinearGradient start={vec(0, h - (joined ? 5 : 3) * s)} end={vec(0, h)} colors={['rgba(60,40,28,0)', joined ? 'rgba(60,40,28,0.16)' : 'rgba(0,0,0,0.1)']} />
+          </Rect>
+        )}
         {/* 가장자리 안쪽 살짝 어둡게(둥글게 넘어가는 모서리) */}
         <Path path={outline} style="stroke" strokeWidth={3.5 * s} color={scaleColor(face, 0.85)} opacity={0.1 + 0.45 * (1 - luminance(face))}>
           <BlurMask blur={1.4 * s} style="normal" />
@@ -737,6 +740,10 @@ export const CoverBody = memo(function CoverBody({
           <Rect x={fw * 0.04 + 0.9 * s} y={0} width={0.6 * s} height={ch} color="rgba(255,255,255,0.14)" />
           <Rect x={0} y={0} width={fw} height={ch}>
             <LinearGradient start={vec(0, 0)} end={vec(fw, ch)} colors={['rgba(255,255,255,0.08)', 'rgba(255,255,255,0)', 'rgba(0,0,0,0.08)']} positions={[0, 0.45, 1]} />
+          </Rect>
+          {/* 바닥 쪽 어둡게(선반에 닿는 곳) */}
+          <Rect x={0} y={ch - 5 * s} width={fw} height={5 * s}>
+            <LinearGradient start={vec(0, ch - 5 * s)} end={vec(0, ch)} colors={['rgba(60,40,28,0)', 'rgba(60,40,28,0.14)']} />
           </Rect>
           <RimLight outline={outline} w={fw} h={ch} s={s} />
           {/* 표지 그림은 그 자체로 경계가 보이므로 선은 반만(진하면 액자처럼 보인다) */}
