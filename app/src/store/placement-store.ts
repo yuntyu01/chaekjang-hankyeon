@@ -4,7 +4,7 @@ import { useSyncExternalStore } from 'react';
 import Storage from 'expo-sqlite/kv-store';
 
 import { toShelfBook } from '@/domain/catalog';
-import { migrate, normalize, validate, withNormalizedX, type BookMap } from '@/domain/layout-engine';
+import { migrate, threeShelfLayout, validate, withNormalizedX, type BookMap } from '@/domain/layout-engine';
 import { loadLibrary } from '@/db/local-db';
 import { SAMPLE_BOOKS, SAMPLE_LAYOUT } from '@/domain/onboarding-sample';
 import type { ShelfLayout, ShelfLayoutV1 } from '@/domain/types';
@@ -49,7 +49,7 @@ export function repair(saved: ShelfLayout | ShelfLayoutV1, bookMap: BookMap): Sh
   });
   for (const id of Object.keys(bookMap)) if (!seen.has(id)) drawer.push(id);
   const shelves = layout.shelves.length ? layout.shelves : [{ id: 'shelf-1', order: 0 }];
-  return normalize({ version: 2, shelves, placements, drawer });
+  return threeShelfLayout({ version: 2, shelves, placements, drawer });
 }
 
 async function persist(layout: ShelfLayout) {
@@ -95,6 +95,7 @@ export const placementStore = {
 
   // 검증된 레이아웃만 받는다. 무결성이 깨졌으면 거절한다.
   commit(next: ShelfLayout) {
+    next = threeShelfLayout(next);
     const errors = validate(next, state.books, Object.keys(state.books));
     if (errors.length) return false;
     set({ undo: state.layout, layout: next });

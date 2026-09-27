@@ -5,6 +5,8 @@ import {
   SHELF_USABLE_WIDTH,
   singleFootprint,
   stackFootprint,
+  visibleBookOutline,
+  HOME_SHELF_COUNT,
 } from './geometry';
 import type { Book, BookPlacement, Pose, ShelfLayout, ShelfLayoutV1, Tilt } from './types';
 
@@ -76,20 +78,60 @@ export function itemHeight(item: ShelfItem, layout: ShelfLayout, books: BookMap)
   return singleFootprint(books[p.bookId], p).height;
 }
 
-// 선반 안 자리들의 x(설계 단위, 선반 판 안쪽 기준). 빈 공간은 오른쪽에 남긴다.
-export function itemPositions(items: ShelfItem[], layout: ShelfLayout, books: BookMap) {
-  let x = SHELF.innerLeft;
-  return items.map((it) => {
-    const width = itemWidth(it, layout, books);
-    const pos = { item: it, x, width };
-    x += width + SHELF.gap;
-    return pos;
+type XY = { x: number; y: number };
+
+function intervalAt(poly: XY[], y: number) {
+  const xs: number[] = [];
+  poly.forEach((a, i) => {
+    const b = poly[(i + 1) % poly.length];
+    if (y < Math.min(a.y, b.y) - 1e-6 || y > Math.max(a.y, b.y) + 1e-6) return;
+    if (Math.abs(a.y - b.y) < 1e-6) xs.push(a.x, b.x);
+    else xs.push(a.x + (b.x - a.x) * (y - a.y) / (b.y - a.y));
   });
+  return xs.length ? { left: Math.min(...xs), right: Math.max(...xs) } : null;
+}
+
+function packedPositions(items: ShelfItem[], layout: ShelfLayout, books: BookMap) {
+  const packed: { item: ShelfItem; x: number; width: number; poly: XY[] }[] = [];
+  for (const item of items) {
+    const width = itemWidth(item, layout, books), height = itemHeight(item, layout, books);
+    const poly = item.stacked
+      ? [{ x: 0, y: -height }, { x: width, y: -height }, { x: width, y: 0 }, { x: 0, y: 0 }]
+      : visibleBookOutline(books[item.bookIds[0]], placementOf(layout, item.bookIds[0])!);
+    let x = 0;
+    for (const prev of packed) {
+      for (const y of [...prev.poly, ...poly].map((q) => q.y)) {
+        const a = intervalAt(prev.poly, y), b = intervalAt(poly, y);
+        if (a && b) x = Math.max(x, prev.x + a.right - b.left + SHELF.gap);
+      }
+    }
+    packed.push({ item, x, width, poly });
+  }
+  return packed;
+}
+
+// Pack actual silhouettes, then centre the whole group on the plank.
+export function itemPositions(items: ShelfItem[], layout: ShelfLayout, books: BookMap) {
+  const packed = packedPositions(items, layout, books);
+  const used = Math.max(0, ...packed.map((p) => p.x + p.width));
+  const inset = SHELF.innerLeft + Math.max(0, (SHELF_USABLE_WIDTH - used) / 2);
+  return packed.map(({ item, x, width }) => ({ item, x: x + inset, width }));
 }
 
 export function usedWidth(items: ShelfItem[], layout: ShelfLayout, books: BookMap) {
-  if (items.length === 0) return 0;
-  return items.reduce((s, it) => s + itemWidth(it, layout, books), 0) + SHELF.gap * (items.length - 1);
+  return Math.max(0, ...packedPositions(items, layout, books).map((p) => p.x + p.width));
+}
+
+// Keep three shelves. Books on removed shelves are preserved in the drawer.
+export function threeShelfLayout(layout: ShelfLayout): ShelfLayout {
+  const shelves = sortedShelves(layout).slice(0, HOME_SHELF_COUNT);
+  for (let n = 1; shelves.length < HOME_SHELF_COUNT; n++) {
+    const id = `shelf-${n}`;
+    if (!shelves.some((s) => s.id === id)) shelves.push({ id, order: shelves.length });
+  }
+  const kept = new Set(shelves.map((s) => s.id));
+  const overflow = layout.placements.filter((p) => !kept.has(p.shelfId)).map((p) => p.bookId);
+  return normalize({ ...layout, shelves, placements: layout.placements.filter((p) => kept.has(p.shelfId)), drawer: [...layout.drawer, ...overflow] });
 }
 
 export function isHorizontalItem(item: ShelfItem, layout: ShelfLayout) {

@@ -5,6 +5,7 @@ import { memo } from 'react';
 import { Image, PixelRatio, StyleSheet, useWindowDimensions, View } from 'react-native';
 
 import { PAPER_SEAMLESS } from '@/domain/shelf-asset.generated';
+import { colors } from '@/ui/theme';
 
 const PAPER = require('../../assets/bookshelf/paper-background.png');
 const PAPER_PX = 1254;
@@ -18,12 +19,12 @@ export const PaperBackground = memo(function PaperBackground() {
   const cols = Math.ceil(width / tile);
   const rows = Math.ceil(height / tile);
   return (
-    <View style={StyleSheet.absoluteFill} pointerEvents="none">
+    <View style={[StyleSheet.absoluteFill, { backgroundColor: colors.bg }]} pointerEvents="none">
       {Array.from({ length: rows * cols }, (_, i) => (
         <Image
           key={i}
           source={PAPER}
-          style={{ position: 'absolute', left: (i % cols) * tile, top: Math.floor(i / cols) * tile, width: tile, height: tile }}
+          style={{ position: 'absolute', left: (i % cols) * tile, top: Math.floor(i / cols) * tile, width: tile, height: tile, opacity: 0.38 }}
         />
       ))}
     </View>

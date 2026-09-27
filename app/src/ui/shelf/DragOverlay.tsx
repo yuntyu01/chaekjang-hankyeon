@@ -2,9 +2,8 @@
 // 들린 느낌: 살짝 확대 + 접촉 그림자 없이 넓고 흐린 그림자.
 import { StyleSheet, View } from 'react-native';
 import Animated, { type SharedValue, useAnimatedStyle } from 'react-native-reanimated';
-import { BlurMask, Canvas, Path, Skia } from '@shopify/react-native-skia';
-
-import { rgba } from '@/domain/shadow-shape';
+import Svg from 'react-native-svg';
+import { SoftShadow } from './SoftShadow';
 
 import type { BookFrame } from '@/domain/shelf-scene';
 import type { Book } from '@/domain/types';
@@ -32,10 +31,7 @@ const PAD = 40;
 
 export function DragOverlay({ book, frame, scale: s, x, y, lift }: Props) {
   const box = frameBBox(frame);
-  const liftPath = Skia.Path.Polygon(
-    frame.poly.map((p) => ({ x: (p.x - box.minX + shadow.lifted.dx) * s + PAD, y: (p.y - box.minY + shadow.lifted.dy) * s + PAD })),
-    true,
-  );
+  const liftPath = frame.poly.map((p) => ({ x: (p.x - box.minX + shadow.lifted.dx) * s + PAD, y: (p.y - box.minY + shadow.lifted.dy) * s + PAD }));
   const style = useAnimatedStyle(() => ({
     transform: [{ translateX: x.value }, { translateY: y.value }, { scale: 1 + (shadow.lifted.scale - 1) * lift.value }],
   }));
@@ -45,11 +41,9 @@ export function DragOverlay({ book, frame, scale: s, x, y, lift }: Props) {
       pointerEvents="none"
       style={[styles.root, { width: box.width * s, height: box.height * s }, style]}>
       <Animated.View style={[{ position: 'absolute', left: -PAD, top: -PAD }, shadowStyle]}>
-        <Canvas style={{ width: box.width * s + PAD * 2 + shadow.lifted.dx * s, height: box.height * s + PAD * 2 + shadow.lifted.dy * s }}>
-          <Path path={liftPath} color={rgba(colors.shadow, shadow.lifted.opacity * 1.4)}>
-            <BlurMask blur={8 * s} style="normal" />
-          </Path>
-        </Canvas>
+        <Svg width={box.width * s + PAD * 2 + shadow.lifted.dx * s} height={box.height * s + PAD * 2 + shadow.lifted.dy * s}>
+          <SoftShadow points={liftPath} fill={colors.shadow} opacity={shadow.lifted.opacity} blur={8 * s} />
+        </Svg>
       </Animated.View>
       <View
         style={{

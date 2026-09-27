@@ -36,6 +36,16 @@ export type BookArt = {
 // 이미지 자산: 앱 번들(require 결과 숫자) 또는 원격 URI
 export type ImageSource = number | { uri: string };
 
+// Development samples use individual, clipped regions of the reference artwork.
+// The transform removes the source lean; placement applies the live tilt again.
+export type ReferenceArt = {
+  pose: Pose;
+  width: number;
+  height: number;
+  outline: { x: number; y: number }[];
+  matrix: [number, number, number, number, number, number];
+};
+
 // 시안에서 뽑은 개발용 샘플 장정(scripts/extract-reference-assets.py). 제목은 지운 그림이고 앱이 다시 조판한다.
 export type SampleArt = {
   kind: 'spine' | 'cover' | 'horizontal';
@@ -82,6 +92,7 @@ export type Book = {
   // 모티프 그림 자산(투명 PNG). 없으면 art.motif 슬롯의 개발용 SVG.
   motifImage?: ImageSource;
   sample?: SampleArt;
+  reference?: ReferenceArt;
 };
 
 export type BookPlacement = {

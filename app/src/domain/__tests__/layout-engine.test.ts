@@ -16,6 +16,7 @@ import {
   setPose,
   setTilt,
   shelfItems,
+  itemPositions,
   usedWidth,
   validate,
   withNormalizedX,
@@ -170,13 +171,15 @@ describe('드롭 판정', () => {
   it('눕힌 책을 그룹 가운데에 가져가면 쌓기, 옆이면 나란히', () => {
     const l: ShelfLayout = ok(setPose(roomy(), books, 'b15', 'horizontal'));
     const d = detach(l, 'b15');
-    expect(findDropTarget(d, books, 'shelf-3', 80, 'horizontal')).toEqual({
+    const group = itemPositions(shelfItems(d, 'shelf-3'), d, books)[0];
+    const middle = group.x + group.width / 2;
+    expect(findDropTarget(d, books, 'shelf-3', middle, 'horizontal')).toEqual({
       kind: 'stack',
       shelfId: 'shelf-3',
       itemKey: 'stack:b12',
     });
     expect(findDropTarget(d, books, 'shelf-3', 12, 'horizontal')).toEqual({ kind: 'insert', shelfId: 'shelf-3', index: 0 });
-    expect(findDropTarget(d, books, 'shelf-3', 80, 'spine')).toEqual({ kind: 'insert', shelfId: 'shelf-3', index: 0 });
+    expect(findDropTarget(d, books, 'shelf-3', middle, 'spine')).toEqual({ kind: 'insert', shelfId: 'shelf-3', index: 0 });
     expect(findDropTarget(d, books, 'shelf-3', 999, 'spine')).toEqual({ kind: 'insert', shelfId: 'shelf-3', index: 2 });
   });
 });

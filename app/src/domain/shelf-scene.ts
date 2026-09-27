@@ -113,6 +113,28 @@ export function computeShelf(layout: ShelfLayout, books: BookMap, shelfId: strin
       });
     }
   }
+  // Use the same silhouette for painting, hit testing and shadows. Reference
+  // books have shaped shoulders and page edges, not rectangular silhouettes.
+  for (const f of frames) {
+    const book = books[f.bookId];
+    const art = book.reference;
+    if (!art || art.pose !== f.pose || book.coverArtUri || book.spineArtUri) continue;
+    const pivot = { x: f.left + (f.origin === 'right bottom' ? f.width : 0), y: f.top + f.height };
+    f.poly = art.outline.map((p) => rotateAround({ x: f.left + p.x, y: f.top + p.y }, pivot, f.rotate));
+    const item = items.find((it) => it.key === f.itemKey)!;
+    if (f.pose !== 'horizontal') {
+      const dx = item.x - Math.min(...f.poly.map((p) => p.x));
+      f.left += dx;
+      f.poly = f.poly.map((p) => ({ x: p.x + dx, y: p.y }));
+    }
+    // A shaped book's lowest corner can lie above its rectangular bounds after
+    // rotation. Seat the actual outline on the plank, including the painted node.
+    if (f.stackIndex === 0) {
+      const dy = FLOOR - Math.max(...f.poly.map((p) => p.y));
+      f.top += dy;
+      f.poly = f.poly.map((p) => ({ x: p.x, y: p.y + dy }));
+    }
+  }
   return { frames, items };
 }
 

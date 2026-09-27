@@ -1,12 +1,12 @@
 // 홈 책장. 선반 전체를 하나의 제스처로 받아 책 윤곽으로 터치를 판정한다(그림자는 판정에서 제외).
 // 짧게 누르기 → 정보 상자, 350ms 길게 누르기 → 드래그. 드래그 전 세로 이동은 스크롤이 가져간다.
 // 드래그: 같은 선반은 올라간 책과 자리 바꾸기, 다른 선반은 그 자리에 끼우기(눕힌 책 가운데면 쌓기),
-// 마지막 선반 아래는 새 선반. 화면 가장자리에서 자동 스크롤.
+// 세 선반 사이에서 이동한다. 화면 가장자리에서 자동 스크롤.
 import { useFocusEffect } from 'expo-router';
 import * as Haptics from 'expo-haptics';
 import { BookMarked, Check, Paintbrush, Plus } from 'lucide-react-native';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { AppState, Pressable, StyleSheet, Text, View } from 'react-native';
+import { AppState, Modal, Pressable, StyleSheet, Text, View } from 'react-native';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import Animated, {
   scrollTo,
@@ -22,7 +22,6 @@ import { scheduleOnRN } from 'react-native-worklets';
 
 import { SHELF, SHELF_USABLE_WIDTH } from '@/domain/geometry';
 import {
-  addShelf,
   applySwapTarget,
   detach,
   findDropTarget,
@@ -33,10 +32,8 @@ import {
   moveToShelf,
   placeFromDrawer,
   placementOf,
-  removeShelf,
   setPose,
   setTilt,
-  shelfItems,
   sortedShelves,
   type SwapTarget,
   type FailReason,
@@ -50,13 +47,13 @@ import { DragOverlay, frameBBox } from '@/ui/shelf/DragOverlay';
 import { CONTENT_TOP, computeRows, rowAt, toContent, toScene, useShelfMetrics } from '@/ui/shelf/metrics';
 import { ShelfRow, type DropHint } from '@/ui/shelf/ShelfRow';
 import { SHELF_SHADOW_EXTENT } from '@/ui/shelf/ShelfShadow';
-import { colors, fonts, motion } from '@/ui/theme';
+import { colors, fonts, motion, navigation } from '@/ui/theme';
 
 import { BookDetail, type MoveAction } from './BookDetail';
 import { BookPopover } from './BookPopover';
 import { DrawerSheet } from './DrawerSheet';
 
-type HintKind = SwapTarget['kind'] | 'beside' | 'newShelf';
+type HintKind = SwapTarget['kind'] | 'beside';
 // key: 같은 목표면 다시 계산하지 않으려는 식별자. shelfId: 안내를 띄울 선반
 type Preview =
   | { kind: 'ok'; layout: ShelfLayout; key: string; shelfId: string; hint: HintKind }
@@ -72,25 +69,24 @@ type Drag = {
   preview: Preview | null;
   settling: ShelfLayout | null; // 놓은 뒤 스냅 애니메이션 동안 보여줄 레이아웃
   shelfId: string; // 꾹 누른 책의 원래 선반
-  newShelfId: string; // 마지막 선반 아래에 놓을 때 만들 선반 id
 };
 
 type Toast = { text: string; action?: 'undo' | 'retry' } | null;
 
 // 선반별 프레임을 캐시해서 바뀐 선반만 다시 그린다.
 function useShelfScenes(layout: ShelfLayout, books: Parameters<typeof computeShelf>[1]) {
-  const cache = useRef(new Map<string, { sig: string; frames: BookFrame[] }>());
+  const cache = useRef(new Map<string, { sig: string; books: typeof books; frames: BookFrame[] }>());
   return useMemo(() => {
     const out = new Map<string, BookFrame[]>();
     for (const s of layout.shelves) {
       const sig = JSON.stringify(layout.placements.filter((p) => p.shelfId === s.id));
       const hit = cache.current.get(s.id);
-      if (hit && hit.sig === sig) {
+      if (hit && hit.sig === sig && hit.books === books) {
         out.set(s.id, hit.frames);
         continue;
       }
       const frames = computeShelf(layout, books, s.id).frames;
-      cache.current.set(s.id, { sig, frames });
+      cache.current.set(s.id, { sig, books, frames });
       out.set(s.id, frames);
     }
     return out;
@@ -126,6 +122,7 @@ export function HomeScreen() {
   const [vpH, setVpH] = useState(0);
   const [editing, setEditing] = useState(false);
   const [drawerOpen, setDrawerOpen] = useState(false);
+  const [shelfMenuOpen, setShelfMenuOpen] = useState(false);
   const [toast, setToast] = useState<Toast>(null);
   const dragRef = useRef<Drag | null>(null);
   const lastDragEnd = useRef(0);
@@ -189,16 +186,7 @@ export function HomeScreen() {
     const withinX = centerDU > -SHELF.sideMargin && centerDU < SHELF.innerLeft + SHELF_USABLE_WIDTH + SHELF.innerRight + SHELF.sideMargin;
     const reuse = (key: string) => (d.preview && d.preview.key === key ? d.preview : null);
     if (!withinX || index < 0) return reuse('outside') ?? { kind: 'bad', reason: 'outside', key: 'outside', shelfId: null };
-    if (index >= shelves.length) {
-      // 마지막 선반 아래: 새 선반
-      const key = 'new';
-      const hit = reuse(key);
-      if (hit) return hit;
-      const r = moveBook(addShelf(layout, d.newShelfId), books, d.bookId, { kind: 'insert', shelfId: d.newShelfId, index: 0 });
-      return r.ok
-        ? { kind: 'ok', layout: r.layout, key, shelfId: d.newShelfId, hint: 'newShelf' }
-        : { kind: 'bad', reason: r.reason, key, shelfId: null };
-    }
+    if (index >= shelves.length) return reuse('outside') ?? { kind: 'bad', reason: 'outside', key: 'outside', shelfId: null };
     const shelfId = shelves[index].id;
     if (shelfId === d.shelfId) {
       const t = findSwapTarget(layout, books, d.bookId, centerDU);
@@ -224,7 +212,11 @@ export function HomeScreen() {
   const onTap = (x: number, y: number) => {
     if (Date.now() - lastDragEnd.current < 350 || dragRef.current) return;
     const hit = hitAt(x, y);
-    if (!hit) return;
+    if (!hit) {
+      setPopId(null);
+      setSelectedId(null);
+      return;
+    }
     setSelectedId(hit.bookId);
     popScroll.current = scrollY.value;
     setTimeout(() => setPopId(hit.bookId), reduceMotion ? 0 : 120);
@@ -251,7 +243,6 @@ export function HomeScreen() {
       preview: { kind: 'same', key: `same:${JSON.stringify({ kind: 'self' })}`, shelfId: hit.shelfId, hint: 'self' },
       settling: null,
       shelfId: hit.shelfId,
-      newShelfId: `shelf-${Date.now().toString(36)}`,
     };
     grab.value = { x: d.grabX, y: d.grabY };
     vpOrigin.value = { x: absX - x, y: absY - (y - scroll) };
@@ -297,7 +288,7 @@ export function HomeScreen() {
     }
     // 스냅 목적지 계산
     const pl = placementOf(final, d.bookId)!;
-    const finalRows = computeRows(final, books, m.scale);
+    const finalRows = computeRows(final, books, m.scale, vpH, navigation.height + insets.bottom);
     const row = finalRows.find((r) => r.shelfId === pl.shelfId)!;
     const f = computeShelf(final, books, pl.shelfId).frames.find((fr) => fr.bookId === d.bookId)!;
     const box = frameBBox(f);
@@ -378,7 +369,11 @@ export function HomeScreen() {
   const shown = drag?.settling ?? (drag?.preview?.kind === 'ok' ? drag.preview.layout : layout);
   const shownShelves = useMemo(() => sortedShelves(shown), [shown]);
   const frames = useShelfScenes(shown, books);
-  const rows = useMemo(() => computeRows(shown, books, m.scale), [shown, books, m.scale]);
+  // Keep drop bands steady while a book travels between differently sized rows.
+  const rows = useMemo(() => {
+    const base = drag && !drag.settling ? layout : shown;
+    return computeRows(base, books, m.scale, vpH, navigation.height + insets.bottom);
+  }, [shown, layout, books, m.scale, vpH, insets.bottom, !!drag, drag?.settling]);
   const rowOf = useMemo(() => new Map(rows.map((r) => [r.shelfId, r])), [rows]);
 
   // 정보 상자 위치: 선택한 책의 윤곽(현재 배치 기준)을 뷰포트 좌표로
@@ -448,19 +443,13 @@ export function HomeScreen() {
     [books, layout],
   );
 
-  const onRemoveShelf = useCallback((id: string) => {
-    const r = removeShelf(placementStore.get().layout, id);
-    if (r.ok) placementStore.commit(r.layout);
-  }, []);
-
   // 독서 연도: 완독 기록이 있는 해들(없으면 올해). 누르면 다음 해로 넘긴다(최근 → 과거 순환).
   const years = [...new Set(Object.values(books).map((b) => Number(b.finishedAt?.slice(0, 4))).filter(Boolean))].sort((a, b) => b - a);
   if (!years.length) years.push(new Date().getFullYear());
   const year = selectedYear && years.includes(selectedYear) ? selectedYear : years[0];
   const count = Object.values(books).filter((b) => b.finishedAt?.startsWith(String(year))).length;
   const draggedBook = drag ? books[drag.bookId] : null;
-  const showNewZone = (editing || !!drag) && !(drag && shownShelves.some((sh) => sh.id === drag.newShelfId));
-  const contentHeight = (rows.at(-1) ? rows.at(-1)!.top + rows.at(-1)!.height : CONTENT_TOP) + (showNewZone ? 120 : 0) + (SHELF_SHADOW_EXTENT + 8) * m.scale;
+  const contentHeight = Math.max(vpH, (rows.at(-1) ? rows.at(-1)!.top + rows.at(-1)!.height : CONTENT_TOP) + (SHELF_SHADOW_EXTENT + 8) * m.scale);
 
   return (
     <View style={[styles.root, { paddingTop: insets.top }]}>
@@ -489,23 +478,11 @@ export function HomeScreen() {
           </Pressable>
         </View>
         <View style={[styles.actions, { gap: 8 * m.scale, marginTop: -14 * m.scale }]}>
-          <HeaderButton size={28 * m.scale} on={editing} label={editing ? ko.done : ko.decorate} onPress={() => setEditing((e) => !e)}>
-            {editing ? (
+          {editing ? <HeaderButton size={28 * m.scale} on label={ko.done} onPress={() => setEditing(false)}>
               <Check size={14 * m.scale} color={colors.sheet} strokeWidth={1.8} />
-            ) : (
-              <Paintbrush size={13 * m.scale} color={colors.ink} strokeWidth={1.5} />
-            )}
-          </HeaderButton>
-          <HeaderButton size={28 * m.scale} label={ko.add} onPress={() => showToast({ text: ko.addSoon })}>
+          </HeaderButton> : null}
+          <HeaderButton size={28 * m.scale} label="책 추가 및 책장 메뉴" onPress={() => setShelfMenuOpen(true)}>
             <Plus size={16 * m.scale} color={colors.ink} strokeWidth={1.4} />
-          </HeaderButton>
-          <HeaderButton size={28 * m.scale} label={`${ko.drawer.open}, ${ko.drawer.count(layout.drawer.length)}`} onPress={() => setDrawerOpen(true)}>
-            <BookMarked size={14 * m.scale} color={colors.ink} strokeWidth={1.5} />
-            {layout.drawer.length ? (
-              <View style={styles.badge}>
-                <Text style={styles.badgeText}>{layout.drawer.length}</Text>
-              </View>
-            ) : null}
           </HeaderButton>
         </View>
       </View>
@@ -530,7 +507,7 @@ export function HomeScreen() {
           }}
           showsVerticalScrollIndicator={false}>
           <GestureDetector gesture={gesture}>
-            <View style={{ height: contentHeight, paddingTop: CONTENT_TOP }} collapsable={false}>
+            <View style={{ height: contentHeight, paddingTop: rows[0]?.top ?? CONTENT_TOP }} collapsable={false}>
               {shownShelves.map((s) => (
                 <ShelfRow
                   key={s.id}
@@ -545,24 +522,13 @@ export function HomeScreen() {
                   selectedId={popId ?? detailId ?? selectedId}
                   hint={hintFor(s.id)}
                   editing={editing && !drag}
-                  canRemove={shelves.length > 1 && shelfItems(layout, s.id).length === 0}
+                  canRemove={false}
                   reduceMotion={reduceMotion}
                   a11yLabelOf={a11yLabelOf}
                   onA11y={onA11y}
-                  onRemove={onRemoveShelf}
+                  onRemove={() => {}}
                 />
               ))}
-              {showNewZone ? (
-                <View style={styles.addShelfWrap}>
-                  <Pressable
-                    style={[styles.addShelf, drag && styles.addShelfDrop]}
-                    onPress={() => placementStore.commit(addShelf(layout, `shelf-${Date.now().toString(36)}`))}
-                    accessibilityRole="button">
-                    <Text style={styles.addShelfText}>{drag ? ko.dropNewShelf : ko.addShelf}</Text>
-                  </Pressable>
-                  {!drag ? <Text style={styles.editHint}>{ko.editHint}</Text> : null}
-                </View>
-              ) : null}
             </View>
           </GestureDetector>
         </Animated.ScrollView>
@@ -594,7 +560,7 @@ export function HomeScreen() {
         ) : null}
 
         {toast ? (
-          <View style={styles.toast} accessibilityLiveRegion="polite">
+          <View style={[styles.toast, { bottom: navigation.height + insets.bottom + 8 }]} accessibilityLiveRegion="polite">
             <Text style={styles.toastText}>{toast.text}</Text>
             {toast.action ? (
               <Pressable
@@ -649,6 +615,21 @@ export function HomeScreen() {
           setTimeout(() => setDetailId(id), 280);
         }}
       />
+      <Modal visible={shelfMenuOpen} transparent statusBarTranslucent navigationBarTranslucent animationType={reduceMotion ? 'none' : 'fade'} onRequestClose={() => setShelfMenuOpen(false)}>
+        <Pressable style={styles.menuBackdrop} onPress={() => setShelfMenuOpen(false)} accessibilityLabel="닫기" />
+        <View style={[styles.menuSheet, { paddingBottom: insets.bottom + 24 }]}>
+          <Text style={styles.menuTitle}>{ko.title}</Text>
+          <Pressable accessibilityRole="button" style={styles.menuItem} onPress={() => { setShelfMenuOpen(false); showToast({ text: ko.addSoon }); }}>
+            <Plus size={20} color={colors.ink} /><Text style={styles.menuText}>{ko.add}</Text>
+          </Pressable>
+          <Pressable accessibilityRole="button" style={styles.menuItem} onPress={() => { setShelfMenuOpen(false); setEditing(true); }}>
+            <Paintbrush size={20} color={colors.ink} /><Text style={styles.menuText}>{ko.decorate}</Text>
+          </Pressable>
+          <Pressable accessibilityRole="button" style={styles.menuItem} onPress={() => { setShelfMenuOpen(false); setTimeout(() => setDrawerOpen(true), 280); }}>
+            <BookMarked size={20} color={colors.ink} /><Text style={styles.menuText}>{ko.drawer.title}{layout.drawer.length ? ` · ${layout.drawer.length}권` : ''}</Text>
+          </Pressable>
+        </View>
+      </Modal>
     </View>
   );
 }
@@ -656,7 +637,7 @@ export function HomeScreen() {
 const styles = StyleSheet.create({
   root: { flex: 1 },
   header: { flexDirection: 'row', alignItems: 'flex-start' },
-  title: { fontFamily: fonts.bookTitle, color: colors.title },
+  title: { fontFamily: fonts.serif, color: colors.title },
   summary: { color: colors.summary, letterSpacing: 0.3 },
   actions: { flexDirection: 'row', alignItems: 'center', alignSelf: 'center' },
   circle: { borderWidth: 1, borderColor: colors.circle, alignItems: 'center', justifyContent: 'center' },
@@ -674,20 +655,6 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   badgeText: { fontSize: 11, color: colors.sheet, fontWeight: '600' },
-  addShelfWrap: { alignItems: 'center', paddingTop: 10, gap: 10 },
-  addShelf: {
-    width: '86%',
-    height: 64,
-    borderRadius: 12,
-    borderWidth: 1.5,
-    borderStyle: 'dashed',
-    borderColor: colors.inkFaint,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  addShelfDrop: { backgroundColor: colors.dropOk },
-  addShelfText: { fontSize: 14, color: colors.inkSoft },
-  editHint: { fontSize: 12.5, color: colors.inkFaint },
   toast: {
     position: 'absolute',
     left: 16,
@@ -704,4 +671,9 @@ const styles = StyleSheet.create({
   },
   toastText: { color: colors.sheet, fontSize: 13.5, flexShrink: 1 },
   toastAction: { color: '#F2D9A6', fontSize: 13.5, fontWeight: '600' },
+  menuBackdrop: { flex: 1, backgroundColor: 'rgba(34,30,24,0.2)' },
+  menuSheet: { backgroundColor: colors.sheet, borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: 24 },
+  menuTitle: { fontFamily: fonts.serif, fontSize: 22, color: colors.ink, marginBottom: 12 },
+  menuItem: { flexDirection: 'row', alignItems: 'center', gap: 14, minHeight: 54 },
+  menuText: { fontSize: 16, color: colors.ink },
 });

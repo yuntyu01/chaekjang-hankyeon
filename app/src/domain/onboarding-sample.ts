@@ -1,7 +1,8 @@
 // 온보딩 예시 18권(첫 실행 때 보여주는 책장). 시안(docs/design/home-reference.png)과 같은 책·순서·배치.
-// 그림은 시안에서 뽑은 개발용 샘플 자산(onboarding-sample.generated.ts)이며, 실제 재장정 자산 슬롯은 비어 있다.
-import { FRONT_SIDE } from './geometry';
+// 기본 자세는 원본 시안의 개별 책 윤곽을 표시한다. 자세를 바꾸면 기존 샘플/모티프 렌더러를 쓴다.
+import { FRONT_SIDE, TOP_FACE } from './geometry';
 import { SAMPLE_ART } from './onboarding-sample.generated';
+import { REFERENCE_ART } from './reference-art';
 import type { Book, BookPlacement, HeightClass, ShelfLayout, ThicknessClass } from './types';
 
 type Meta = { id: string; title: string; author?: string; motif: string; finishedAt: string; quotes?: number; ribbon?: string };
@@ -10,7 +11,7 @@ const META: Meta[] = [
   { id: 'b01', title: '모순', author: '양귀자', motif: 'leaf', finishedAt: '2026-01-12' },
   { id: 'b02', quotes: 2, ribbon: '#98AC9E', title: '데미안', author: '헤르만 헤세', motif: 'leaf', finishedAt: '2026-01-28' },
   { id: 'b03', quotes: 1, ribbon: '#E3AE6C', title: '어린왕자', author: '생텍쥐페리', motif: 'star', finishedAt: '2026-02-09' },
-  { id: 'b04', quotes: 2, ribbon: '#7D9CC4', title: '달과 나', motif: 'moon', finishedAt: '2026-02-22' },
+  { id: 'b04', quotes: 2, ribbon: '#7D9CC4', title: '느린 계절', author: '한서윤', motif: 'moon', finishedAt: '2026-02-22' },
   { id: 'b05', quotes: 2, ribbon: '#D98A7C', title: '문장 수집', motif: 'sprig', finishedAt: '2026-03-15' },
   { id: 'b06', title: '흰', author: '한강', motif: 'cotton', finishedAt: '2026-03-30' },
   { id: 'b07', title: '여름의 숲', motif: 'leaf', finishedAt: '2026-04-18' },
@@ -27,24 +28,20 @@ const META: Meta[] = [
   { id: 'b18', title: '아주 보통의 하루', motif: 'wildflower', finishedAt: '2026-06-18' },
 ];
 
-// 폰 화면을 채우도록 책 키를 키운다. 폭은 그대로(1번 선반이 이미 가득 참). 늘어난 만큼은 그림 없는 빈 띠(band)만 늘린다.
-export const SPINE_GROW = 1.1;
-export const COVER_GROW = 1.08;
-
 const heightClass = (h: number): HeightClass => (h < 140 ? 'short' : h < 165 ? 'medium' : 'tall');
 const thicknessClass = (t: number): ThicknessClass => (t < 32 ? 'thin' : t < 40 ? 'medium' : 'thick');
 
 function toBook(m: Meta): Book {
   const s = SAMPLE_ART[m.id];
-  const base = { id: m.id, title: m.title, author: m.author, themeColor: s.color, quotes: m.quotes, art: { motif: m.motif, ribbon: m.ribbon }, finishedAt: m.finishedAt, motifImage: s.motif, sample: s };
-  if (s.kind === 'spine') {
-    return { ...base, heightClass: heightClass(s.h), thicknessClass: thicknessClass(s.w), coverAspectRatio: 0.7, dims: { height: s.h * (s.band ? SPINE_GROW : 1), thickness: s.w } };
+  const reference = REFERENCE_ART[m.id];
+  const base = { id: m.id, title: m.title, author: m.author, themeColor: s.color, quotes: m.quotes, art: { motif: m.motif, ribbon: m.ribbon }, finishedAt: m.finishedAt, motifImage: s.motif, sample: s, reference };
+  if (reference.pose === 'spine') {
+    return { ...base, heightClass: heightClass(reference.height), thicknessClass: thicknessClass(reference.width), coverAspectRatio: 0.7, dims: { height: reference.height, thickness: reference.width } };
   }
-  if (s.kind === 'cover') {
-    const coverWidth = s.w - FRONT_SIDE;
-    return { ...base, heightClass: heightClass(s.h), thicknessClass: 'medium', coverAspectRatio: coverWidth / s.h, dims: { height: s.h * (s.band ? COVER_GROW : 1), coverWidth, thickness: 36 } };
+  if (reference.pose === 'front') {
+    return { ...base, heightClass: heightClass(reference.height), thicknessClass: 'medium', coverAspectRatio: (reference.width - FRONT_SIDE) / reference.height, dims: { height: reference.height, coverWidth: reference.width - FRONT_SIDE, thickness: 36 } };
   }
-  return { ...base, heightClass: heightClass(s.w), thicknessClass: thicknessClass(s.h), coverAspectRatio: 0.7, dims: { height: s.w, thickness: s.h } };
+  return { ...base, heightClass: heightClass(reference.width), thicknessClass: thicknessClass(reference.height - TOP_FACE), coverAspectRatio: 0.7, dims: { height: reference.width, thickness: reference.height - TOP_FACE } };
 }
 
 export const SAMPLE_BOOKS: Book[] = META.map(toBook);

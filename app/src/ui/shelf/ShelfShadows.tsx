@@ -2,7 +2,7 @@
 // 빛은 왼쪽 위: 책 윤곽을 오른쪽 아래로 옮겨 이은 모양(castShape)을 Skia 블러로 흐린다.
 // react-native-svg의 안드로이드 블러는 반경이 25px로 잘려 넓은 그림자가 네모나게 나오므로 Skia를 쓴다.
 // 터치·점유 폭에는 포함하지 않는다. 수치는 theme.shadow.cast.
-import { BlurMask, Canvas, Group, LinearGradient, Oval, Path, Skia, rect, vec } from '@shopify/react-native-skia';
+import { BlurMask, Canvas, Group, LinearGradient, Oval, Path, Skia, vec } from '@shopify/react-native-skia';
 import { memo, useMemo } from 'react';
 import { StyleSheet, View } from 'react-native';
 
@@ -17,12 +17,10 @@ const FLOOR = SHELF.clearHeight;
 
 // 바닥에 닿는 변(가장 낮은 두 점)을 찾아 접촉 그림자 위치를 정한다.
 export function contactOf(poly: Point[]) {
-  const sorted = [...poly].sort((a, b) => b.y - a.y);
-  const [a, b] = sorted;
-  const lo = Math.min(a.x, b.x);
-  const hi = Math.max(a.x, b.x);
-  const flat = Math.abs(a.y - b.y) < 0.5;
-  return { cx: flat ? (lo + hi) / 2 : ((lo + hi) / 2) * 0.4 + a.x * 0.6, half: (hi - lo) / 2 };
+  const floor = Math.max(...poly.map((p) => p.y));
+  const feet = poly.filter((p) => p.y >= floor - 9);
+  const lo = Math.min(...feet.map((p) => p.x)), hi = Math.max(...feet.map((p) => p.x));
+  return { cx: (lo + hi) / 2, half: Math.max(3, (hi - lo) / 2) };
 }
 
 export function toPath(points: Point[]) {
@@ -46,21 +44,31 @@ export const ShelfShadows = memo(function ShelfShadows({ frames, scale: s, hidde
   return (
     <View style={[StyleSheet.absoluteFill, { height }]} pointerEvents="none">
       <Canvas style={{ width, height }}>
-        <Group clip={rect(0, 0, width, floorY + SHELF.lip * s)}>
-          {layers.map((l, i) => (
-            <Group key={i} opacity={l.opacity}>
-              {paths[i].map((p, j) => (
-                <Path key={j} path={p}>
-                  <LinearGradient start={vec(0, floorY)} end={vec(0, floorY - fadeTop * s)} colors={gradColors} positions={gradPos} />
-                  <BlurMask blur={l.blur * s} style="normal" />
-                </Path>
-              ))}
-            </Group>
-          ))}
-        </Group>
+        {/* 선반 이미지 뒤에 그려 윗면이 벽 그림자를 자연스럽게 가린다. */}
+        {layers.map((l, i) => (
+          <Group key={i} opacity={l.opacity}>
+            {paths[i].map((p, j) => (
+              <Path key={j} path={p}>
+                <LinearGradient start={vec(0, floorY)} end={vec(0, floorY - fadeTop * s)} colors={gradColors} positions={gradPos} />
+                <BlurMask blur={l.blur * s} style="normal" />
+              </Path>
+            ))}
+          </Group>
+        ))}
+      </Canvas>
+    </View>
+  );
+});
+
+// 벽 그림자와 달리 접촉 그림자는 선반 윗면 위에 그린다.
+export const ShelfContacts = memo(function ShelfContacts({ frames, scale: s, hiddenId, height, clear }: Props) {
+  const floorY = clear * s;
+  return (
+    <View style={[StyleSheet.absoluteFill, { height }]} pointerEvents="none">
+      <Canvas style={{ width: DESIGN_WIDTH * s, height }}>
         {/* 책이 선반에 닿는 곳의 좁은 접촉 그림자 */}
-        {visible.map((f) => {
-          if (f.stackIndex > 0) return null;
+        {frames.map((f) => {
+          if (f.bookId === hiddenId || f.stackIndex > 0) return null;
           const c = contactOf(f.poly);
           const cx = (SHELF.sideMargin + c.cx + 1.5) * s;
           const rx = (c.half + shadow.contact.spread) * s;

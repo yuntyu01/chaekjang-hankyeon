@@ -1,8 +1,7 @@
-// 선반 한 칸: 선반 판 → 외부 그림자 → 책. 책 위치가 바뀌면 옆 책이 부드럽게 비켜준다.
-import { memo, useEffect, useId } from 'react';
+// 선반 한 칸: 벽 그림자 → 선반 → 접촉 그림자 → 책 → 앞턱.
+import { memo, useEffect } from 'react';
 import { Image, Pressable, StyleSheet, Text, View } from 'react-native';
 import Animated, { useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
-import Svg, { Defs, LinearGradient, Rect, Stop } from 'react-native-svg';
 
 import { DESIGN_WIDTH, SHELF, SHELF_IMG_H, SHELF_IMG_W, SHELF_IMG_X, SHELF_STYLE } from '@/domain/geometry';
 import type { BookFrame } from '@/domain/shelf-scene';
@@ -12,8 +11,8 @@ import { BookRenderer } from '@/ui/book/BookRenderer';
 import { SHELF_ASSET } from '@/domain/shelf-asset.generated';
 import { Plank } from '@/ui/shelf/Plank';
 import { ShelfShadow } from '@/ui/shelf/ShelfShadow';
-import { ShelfShadows } from '@/ui/shelf/ShelfShadows';
-import { colors, fonts, motion, shadow } from '@/ui/theme';
+import { ShelfContacts, ShelfShadows } from '@/ui/shelf/ShelfShadows';
+import { colors, fonts, motion } from '@/ui/theme';
 
 export type DropHint = { text: string; bad: boolean } | null;
 
@@ -75,7 +74,7 @@ const BookSlot = memo(function BookSlot({ frame, clear, book, scale: s, placehol
 });
 
 // 선반 한 칸 이미지(나무판만, 바깥 그림자 분리본). 원본 비율 유지, 책 밑면 기준선(contactY)이 이 줄의 바닥에 오도록 놓는다.
-// 바깥 그림자는 ShelfShadow(코드, 두 레이어)가 판 아래에 그린다.
+// 바깥 그림자는 ShelfShadow의 접촉층과 긴 감쇠층이 판 아래에 그린다.
 const SHELF_PNG = require('../../../assets/bookshelf/shelf-plank.png');
 
 function ShelfImage({ scale: s, clear }: { scale: number; clear: number }) {
@@ -95,6 +94,18 @@ function ShelfImage({ scale: s, clear }: { scale: number; clear: number }) {
       resizeMode="stretch"
     />
     </>
+  );
+}
+
+// The front face occludes everything behind the lip, including cast shadows.
+// Reuse the same image so the grain and lighting stay aligned with the top.
+function ShelfFront({ scale: s, clear }: { scale: number; clear: number }) {
+  return (
+    <View pointerEvents="none" style={{ position: 'absolute', left: 0, top: (clear + SHELF.lip) * s,
+      width: DESIGN_WIDTH * s, height: (SHELF.below - SHELF.lip + 0.5) * s, overflow: 'hidden' }}>
+      <Image source={SHELF_PNG} resizeMode="stretch" style={{ position: 'absolute', left: SHELF_IMG_X * s,
+        top: -SHELF_ASSET.frontTopY * SHELF_IMG_H * s, width: SHELF_IMG_W * s, height: SHELF_IMG_H * s }} />
+    </View>
   );
 }
 
@@ -121,12 +132,13 @@ export const ShelfRow = memo(function ShelfRow(p: Props) {
   const s = p.scale;
   return (
     <View style={{ height: p.height, width: DESIGN_WIDTH * s, marginLeft: p.originX, overflow: 'visible' }}>
+      <ShelfShadows frames={p.frames} scale={s} hiddenId={p.placeholderId} height={p.height} clear={p.clear} />
       {SHELF_STYLE === 'asset' ? (
         <ShelfImage scale={s} clear={p.clear} />
       ) : (
         <Plank left={SHELF.sideMargin * s} width={(DESIGN_WIDTH - SHELF.sideMargin * 2) * s} floorY={p.clear * s} scale={s} height={p.height + 20 * s} canvasWidth={DESIGN_WIDTH * s} />
       )}
-      <ShelfShadows frames={p.frames} scale={s} hiddenId={p.placeholderId} height={p.height} clear={p.clear} />
+      <ShelfContacts frames={p.frames} scale={s} hiddenId={p.placeholderId} height={p.height} clear={p.clear} />
       {p.frames.map((f) => (
         <BookSlot
           key={f.bookId}
@@ -141,6 +153,7 @@ export const ShelfRow = memo(function ShelfRow(p: Props) {
           onA11y={p.onA11y}
         />
       ))}
+      {SHELF_STYLE === 'asset' ? <ShelfFront scale={s} clear={p.clear} /> : null}
       {p.hint ? (
         <View style={[styles.hint, { top: 2 * s }, p.hint.bad && styles.hintBad]} pointerEvents="none">
           <Text style={[styles.hintText, p.hint.bad && { color: colors.danger }]}>{p.hint.text}</Text>

@@ -1,6 +1,6 @@
 // 책 한 권 렌더링. 형태(책등/가로/정면)만 그리고 회전·외부 그림자는 부모(ShelfRow)가 맡는다.
 // 레이어: 기본 형태(얕은 옆면·윗면) → 일러스트 → 제목(앱 조판) → 내부 명암 → 종이 결.
-// 시안에서 뽑은 샘플 그림(book.sample)이 그 형태의 것이면 그림을 그대로 쓰고 제목만 얹는다.
+// 예시의 기본 자세는 book.reference의 원본 윤곽·질감을 쓰고, 나머지는 아래 동적 렌더러를 쓴다.
 import { memo, useId } from 'react';
 import { Image, StyleSheet, Text, View } from 'react-native';
 import Svg, { Defs, LinearGradient, Rect, Stop } from 'react-native-svg';
@@ -13,6 +13,7 @@ import { MotifArt } from '@/ui/art/motifs';
 import { SCENE_TITLE, SceneArt, spineCropViewBox } from '@/ui/art/scenes';
 import { PAPER_GRAIN } from '@/ui/art/texture';
 import { fonts } from '@/ui/theme';
+import { ReferenceBook } from './ReferenceBook';
 
 type Props = { book: Book; pose: Pose; scale: number };
 
@@ -117,11 +118,12 @@ function Ribbons({ book, cx, scale: s }: { book: Book; cx: number; scale: number
             width: w,
             height: (RIBBON_OUT + 6) * s,
             backgroundColor: i ? shade(color, 0.18) : color,
+            overflow: 'hidden',
             borderTopLeftRadius: 0.8 * s,
             borderTopRightRadius: 0.8 * s,
           }}
         >
-          <Grain />
+          <View style={[StyleSheet.absoluteFill, { borderLeftWidth: 0.5 * s, borderLeftColor: 'rgba(255,255,255,0.22)' }]} />
         </View>
       ))}
     </>
@@ -472,6 +474,14 @@ export function splitTwoLines(title: string) {
 }
 
 export const BookRenderer = memo(function BookRenderer({ book, pose, scale }: Props) {
+  if (book.reference?.pose === pose && !book.coverArtUri && !book.spineArtUri) {
+    return (
+      <View style={{ width: book.reference.width * scale, height: book.reference.height * scale }}>
+        {pose !== 'horizontal' ? <Ribbons book={book} cx={book.reference.width * 0.57 * scale} scale={scale} /> : null}
+        <ReferenceBook art={book.reference} scale={scale} color={book.themeColor} />
+      </View>
+    );
+  }
   if (pose === 'spine') return <Spine book={book} scale={scale} />;
   if (pose === 'horizontal') return <Horizontal book={book} scale={scale} />;
   return <Front book={book} scale={scale} />;

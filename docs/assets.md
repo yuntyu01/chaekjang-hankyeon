@@ -7,25 +7,27 @@
 | **최종** 종이 배경 | `app/assets/bookshelf/paper-background.png` (1254×1254 RGB) | 받은 자산. 이음새 검사 통과(`scripts/measure-shelf.py`) → 기기 픽셀 1:1로 반복, 화면 고정 |
 | **최종** 선반 한 칸 | `app/assets/bookshelf/shelf-plank.png` (2172×724 RGBA, 나무판만) | 받은 v4(`assets/bookshelf/source/shelf-single-v4-shadowed.png`, 원본명 exec-2b101ced-…png)에서 `scripts/separate-shelf-shadow.py`로 바깥 그림자를 분리. 본체 밖 알파 0 검사. 측정 메타데이터 `src/domain/shelf-asset.generated.ts` |
 | 최종(코드 생성) 종이 결 | `app/assets/texture/paper-grain@3x.png` | 시안의 결 세기(밝기 표준편차 2~6)에 맞춰 생성한 이음새 없는 타일. 책 몸체에 겹친다 |
-| **임시 TEMP** 예시 책 그림 | `app/assets/temp-reference/*` | 시안 이미지에서 잘라 제목을 지운 개발용 샘플. 최종 재장정 아트로 교체 대상 |
+| **임시** 예시 책 원본 | `app/assets/reference/books-source.png` (941×1672) | 사용자가 제공한 목표 이미지 원본. `reference-art.ts`의 개별 윤곽으로 SVG 안에서 표시. 기본 자세의 질감·글자는 원본 그대로 |
+| **임시 TEMP** 예시 대체 그림 | `app/assets/temp-reference/*` | 이전 추출 자산. 예시 책의 자세를 바꿀 때 대체 그림·모티프로 사용 |
 | **임시 TEMP** 모티프 SVG | `app/src/ui/art/motifs.tsx`, `scenes.tsx` | 모티프 PNG가 없을 때의 대체 그림 |
 
 ## 선반 PNG 측정값(shelf-plank, 정규화, 투명 여백 포함)
 
 `scripts/measure-shelf.py`가 잰다. 나무판 본체는 불투명 픽셀의 가장 큰 연결 덩어리. 윗면/앞면 경계는 두 면 대표 밝기의 중간값으로 찾는다(앞면 아래 어두운 테두리에 속지 않게).
-plankLeft 0.0239 · plankRight 0.9761 · plankTopY 0.395 · frontTopY 0.5 · plankBottom 0.5829 · contactY 0.4685(윗면 깊이 30% 안쪽) · usableLeft 0.0433 · usableRight 0.9563.
-표시: 원본 비율 유지, 나무판이 화면 좌우 5DU에 오도록 폭·오프셋 계산. 줄 간격 ROW_PITCH는 모든 줄 공통.
+plankLeft 0.0239 · plankRight 0.9761 · plankTopY 0.395 · frontTopY 0.5 · plankBottom 0.5829 · contactY 0.4685(기존 측정 기준선) · usableLeft 0.0433 · usableRight 0.9563.
+실제 책 접촉선은 `geometry.ts`의 `BOOK_SHELF_DEPTH=0.28`로 계산한다. 윗면 뒤쪽에서 28% 지점(이미지 정규화 y=0.4244)이며 책 앞에 약 9.6DU의 나무 면을 남긴다. 원본 측정 메타데이터는 유지한다.
+표시: 나무판이 화면 좌우 2DU에 오도록 폭·오프셋 계산, 세로 두께 배율 0.94. 모든 선반에 같은 줄 간격(전체 책·쌓기의 최대 높이 + 갈피 8DU + 위 여백 12DU + 선반 아래 영역)을 적용한다. 3개 선반을 헤더와 하단 아이콘 사이에 중앙 정렬한다.
 
 ## 그림자(코드)
 
-빛은 왼쪽 위. 책·선반 모두 윤곽을 오른쪽 아래로 옮긴 모양과 원래 윤곽을 이은 볼록 껍질을 **Skia**(`@shopify/react-native-skia`, Expo Go 포함) BlurMask로 흐린다.
-react-native-svg의 안드로이드 FeGaussianBlur는 반경을 25px로 잘라(`FeGaussianBlurView.java` maxRadius) 넓은 그림자가 네모나게 나오므로 그림자 층만 Skia로 그린다.
+빛은 왼쪽 위. 책·선반 모두 윤곽을 오른쪽 아래로 옮긴 모양과 원래 윤곽을 이은 볼록 껍질을 Skia `BlurMask`로 흐린다. SVG 블러 폭 제한 없이 접촉층과 넓은 확산층을 그린다. 책갈피는 작은 View 안에만 그려 반복 텍스처가 벽으로 새어 나오지 않게 한다. 드래그 중의 단일 그림자는 `SoftShadow.tsx`를 사용한다.
 - 책: `theme.ts` `shadow.cast.layers`(dx·dy·blur·opacity), `fade`(높이별) → `src/ui/shelf/ShelfShadows.tsx`
-- 선반: `theme.ts` `shelfShadow.layers`(접촉·중간·퍼짐 3겹) → `src/ui/shelf/ShelfShadow.tsx`
-- 선반 두께: `geometry.ts` `SHELF_THICKNESS`(1.2)
+- 선반: `theme.ts` `shelfShadow.layers`(짧은 접촉층 2개) + `tail`(82DU 연속 감쇠층) → `src/ui/shelf/ShelfShadow.tsx`. 꼬리 뒤에도 블러 3배의 캔버스 여백을 둔다.
+- 선반 두께: `geometry.ts` `SHELF_THICKNESS`(0.94)
+- 그리는 순서: 책의 벽 그림자 → 선반 그림자·본체 → 책 접촉 그림자 → 책 → 선반 앞턱. 벽 그림자가 나무 면 위에 칠해지거나 책이 앞턱을 덮지 않게 한다.
 
 시안 대조 도구: `app/scripts/qa/cmpshadow.py 시안.png 캡처.png`, `rightprof.py`(벽색→그림자색 방향으로 그림자 세기를 떼어 같은 지점 비교).
-에뮬레이터 측정: 판 밑 6/10/15/20/25/30DU 시안 81/70/56/46/33/28 ↔ 앱 81/72/58/46/35/27. 끝 책 오른쪽 벽(50DU 높이) 시안 28/26/20 ↔ 앱 37/36/24.
+그림자 길이·거리별 감쇠·책 깊이는 3차 수정에서 변경됐다. 현재 검증 내용은 `HOME_VISUAL_REVIEW.md` 참고.
 
 ## 추가로 필요한 최종 자산
 
@@ -85,7 +87,9 @@ react-native-svg의 안드로이드 FeGaussianBlur는 반경을 25px로 잘라(`
 
 ## 온보딩 예시 그림(임시)
 
-온보딩 예시 18권은 `app/scripts/extract-reference-assets.py`가 시안에서 잘라낸 임시 자산을 쓴다(제목은 inpaint로 지우고 앱이 다시 조판). 모티프는 바탕색을 빼 투명 PNG로 뽑아, 형태를 바꿔도 같은 그림이 나온다.
+온보딩 예시 18권은 원본 이미지와 `src/domain/reference-art.ts`의 개별 윤곽·역회전 행렬을 쓴다. `ReferenceBook.tsx`가 화면 전체를 배경으로 깔지 않고 책마다 별도 SVG 노드로 그리므로 터치·드래그·기울임이 유지된다. 그림을 여러 띠로 나눠 늘리거나 원본 윗면에 윗면을 덧붙이지 않는다. 기본 자세의 글자는 이미지에 포함되며 샘플 메타데이터 변경만으로 바뀌지 않는다.
+
+예시 자세를 바꾸면 이전 `temp-reference` 자산과 코드 렌더러를 사용한다. 실제 등록 책은 `coverArtUri`·`spineArtUri`와 앱 조판을 사용하며, 목표 이미지의 예시 윤곽을 공유하지 않는다. 사진 → AI 그림 생성 → URI 저장 연결은 별도 미구현 단계다.
 
 ## 서체
 
