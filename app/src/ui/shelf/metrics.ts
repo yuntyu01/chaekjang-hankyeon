@@ -37,8 +37,14 @@ export const RIBBON_OUT = 8;
 
 export function computeRows(layout: ShelfLayout, books: BookMap, scale: number, viewportHeight = 0, bottomInset = 0): RowGeom[] {
   const shelves = sortedShelves(layout);
-  const tallest = Math.max(SHELF.minClear, ...shelves.flatMap((s) => shelfItems(layout, s.id).map((it) => itemHeight(it, layout, books))));
-  const clear = tallest + RIBBON_OUT + SHELF.rowTopPad;
+  // 갈피는 갈피가 있는 책의 키에만 더한다(모든 줄에 일괄로 더하지 않음)
+  const tallest = Math.max(
+    SHELF.minClear,
+    ...shelves.flatMap((s) =>
+      shelfItems(layout, s.id).map((it) => itemHeight(it, layout, books) + (it.bookIds.some((id) => (books[id]?.quotes ?? 0) > 0) ? RIBBON_OUT : 0)),
+    ),
+  );
+  const clear = tallest + SHELF.rowTopPad;
   const height = (clear + SHELF.below + SHELF.rowGap) * scale;
   let top = Math.max(CONTENT_TOP, (viewportHeight - bottomInset - height * shelves.length) / 2);
   return shelves.map((s) => {

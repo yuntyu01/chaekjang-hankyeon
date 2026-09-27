@@ -37,7 +37,7 @@ export const SHELF = {
   gap: 0, // 책 사이 기본 간격(시안: 서로 맞닿음)
   clearHeight: 178, // 장면 좌표의 바닥(y) 값
   rowGap: 0, // 앞턱 아래 ~ 다음 줄
-  rowTopPad: 12,
+  rowTopPad: 2, // 가장 높은 책(갈피 포함) 위 여백: 시안처럼 위 선반 바로 밑까지
   minClear: 110,
   plankTop: PLANK_TOP,
   plankFront: PLANK_FRONT,
