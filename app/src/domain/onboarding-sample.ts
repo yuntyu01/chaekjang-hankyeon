@@ -1,56 +1,70 @@
-// 온보딩 예시 18권(첫 실행 때 보여주는 책장). 시안(docs/design/home-reference.png)과 같은 책·순서·배치.
-// 기본 자세는 원본 시안의 개별 책 윤곽을 표시한다. 자세를 바꾸면 기존 샘플/모티프 렌더러를 쓴다.
-import { FRONT_SIDE, TOP_FACE } from './geometry';
-import { SAMPLE_ART } from './onboarding-sample.generated';
-import { BODY_ART } from './body-art.generated';
-import { REFERENCE_ART } from './reference-art';
-import type { Book, BookPlacement, HeightClass, ShelfLayout, ThicknessClass } from './types';
+// 온보딩 예시 18권(첫 실행 때 보여주는 책장). 실제 책이며 크기는 판형·쪽수로 계산한다.
+// 판형·쪽수는 공개 서지 정보 기준 대략값이다. 국립중앙도서관 서지 API가 연결되면 그 값으로 바뀐다.
+// 몸체 색·모티프·표지 그림은 시안에서 뽑은 임시 재료(body-art.generated.ts)이며, 책 자체가 아니라 앱의 재장정이다.
+import { BODY_ART, COVER_ART } from './body-art.generated';
+import type { Book, BookPlacement, HeightClass, Physical, ShelfLayout, ThicknessClass } from './types';
 
-type Meta = { id: string; title: string; author?: string; motif: string; finishedAt: string; quotes?: number; ribbon?: string };
+type Meta = {
+  id: string; // 배치 자리(시안의 자리). 재료도 이 자리의 것을 쓴다.
+  title: string;
+  author: string;
+  publisher: string;
+  physical: Physical;
+  motif: string; // 재료가 없을 때 쓸 모티프 슬롯
+  finishedAt: string;
+  quotes?: number;
+  ribbon?: string;
+  coverInk?: string; // 표지 전시 책의 제목 색
+};
+
+const p = (widthMm: number, heightMm: number, pages: number): Physical => ({ widthMm, heightMm, pages });
 
 const META: Meta[] = [
-  { id: 'b01', title: '모순', author: '양귀자', motif: 'leaf', finishedAt: '2026-01-12' },
-  { id: 'b02', quotes: 2, ribbon: '#98AC9E', title: '데미안', author: '헤르만 헤세', motif: 'leaf', finishedAt: '2026-01-28' },
-  { id: 'b03', quotes: 1, ribbon: '#E3AE6C', title: '어린왕자', author: '생텍쥐페리', motif: 'star', finishedAt: '2026-02-09' },
-  { id: 'b04', quotes: 2, ribbon: '#7D9CC4', title: '느린 계절', author: '한서윤', motif: 'moon', finishedAt: '2026-02-22' },
-  { id: 'b05', quotes: 2, ribbon: '#D98A7C', title: '문장 수집', motif: 'sprig', finishedAt: '2026-03-15' },
-  { id: 'b06', title: '흰', author: '한강', motif: 'cotton', finishedAt: '2026-03-30' },
-  { id: 'b07', title: '여름의 숲', motif: 'leaf', finishedAt: '2026-04-18' },
-  { id: 'b08', quotes: 2, ribbon: '#8EAAD0', title: '여행의 이유', author: '김영하', motif: 'wave', finishedAt: '2026-05-02' },
-  { id: 'b09', title: '작은 것들의 깊이', motif: 'bud', finishedAt: '2026-05-21' },
-  { id: 'b10', title: '사람의 마음이란', motif: 'crescent', finishedAt: '2026-06-10' },
-  { id: 'b11', quotes: 1, ribbon: '#E7A77C', title: '너라는 계절', motif: 'wildflower', finishedAt: '2026-06-29' },
-  { id: 'b12', title: '찰나의 마음', motif: 'crescent', finishedAt: '2026-07-11' },
-  { id: 'b13', title: '좋은 문장은 이렇게 온다', motif: 'leaf', finishedAt: '2026-07-30' },
-  { id: 'b14', title: '고요한 우연', motif: 'sprig', finishedAt: '2026-08-14' },
-  { id: 'b15', title: '아무튼, 독서', motif: 'leaf', finishedAt: '2026-08-31' },
-  { id: 'b16', title: '우리가 빛의 속도로 갈 수 없다면', author: '김초엽', motif: 'sun', finishedAt: '2026-09-20' },
-  { id: 'b17', title: '느린 하루', motif: 'flower', finishedAt: '2026-03-22' },
-  { id: 'b18', title: '아주 보통의 하루', motif: 'wildflower', finishedAt: '2026-06-18' },
+  { id: 'b01', title: '모순', author: '양귀자', publisher: '쓰다', physical: p(128, 188, 304), motif: 'leaf', finishedAt: '2026-01-12' },
+  { id: 'b02', title: '데미안', author: '헤르만 헤세', publisher: '민음사', physical: p(132, 225, 232), motif: 'leaf', finishedAt: '2026-01-28', quotes: 2, ribbon: '#98AC9E' },
+  { id: 'b03', title: '어린 왕자', author: '앙투안 드 생텍쥐페리', publisher: '열린책들', physical: p(128, 188, 156), motif: 'star', finishedAt: '2026-02-09', quotes: 1, ribbon: '#E3AE6C' },
+  { id: 'b04', title: '작별하지 않는다', author: '한강', publisher: '문학동네', physical: p(135, 200, 332), motif: 'moon', finishedAt: '2026-02-22', quotes: 2, ribbon: '#7D9CC4', coverInk: '#F3EEE3' },
+  { id: 'b05', title: '소년이 온다', author: '한강', publisher: '창비', physical: p(128, 188, 216), motif: 'sprig', finishedAt: '2026-03-15', quotes: 2, ribbon: '#D98A7C' },
+  { id: 'b17', title: '82년생 김지영', author: '조남주', publisher: '민음사', physical: p(128, 188, 192), motif: 'flower', finishedAt: '2026-03-22' },
+  { id: 'b06', title: '흰', author: '한강', publisher: '문학동네', physical: p(125, 188, 196), motif: 'cotton', finishedAt: '2026-03-30' },
+  { id: 'b07', title: '월든', author: '헨리 데이비드 소로', publisher: '은행나무', physical: p(152, 225, 512), motif: 'leaf', finishedAt: '2026-04-18', coverInk: '#2A2E38' },
+  { id: 'b08', title: '여행의 이유', author: '김영하', publisher: '문학동네', physical: p(128, 188, 216), motif: 'wave', finishedAt: '2026-05-02', quotes: 2, ribbon: '#8EAAD0' },
+  { id: 'b09', title: '채식주의자', author: '한강', publisher: '창비', physical: p(128, 188, 247), motif: 'bud', finishedAt: '2026-05-21' },
+  { id: 'b10', title: '밝은 밤', author: '최은영', publisher: '문학동네', physical: p(140, 210, 344), motif: 'crescent', finishedAt: '2026-06-10' },
+  { id: 'b18', title: '아몬드', author: '손원평', publisher: '창비', physical: p(140, 205, 264), motif: 'wildflower', finishedAt: '2026-06-18' },
+  { id: 'b11', title: '달러구트 꿈 백화점', author: '이미예', publisher: '팩토리나인', physical: p(140, 210, 300), motif: 'wildflower', finishedAt: '2026-06-29', quotes: 1, ribbon: '#E7A77C' },
+  { id: 'b12', title: '나미야 잡화점의 기적', author: '히가시노 게이고', publisher: '현대문학', physical: p(145, 210, 456), motif: 'crescent', finishedAt: '2026-07-11' },
+  { id: 'b13', title: '불편한 편의점', author: '김호연', publisher: '나무옆의자', physical: p(140, 205, 268), motif: 'leaf', finishedAt: '2026-07-30' },
+  { id: 'b14', title: '쇼코의 미소', author: '최은영', publisher: '문학동네', physical: p(128, 188, 312), motif: 'sprig', finishedAt: '2026-08-14' },
+  { id: 'b15', title: '아무튼, 서재', author: '김윤관', publisher: '제철소', physical: p(110, 175, 144), motif: 'leaf', finishedAt: '2026-08-31' },
+  { id: 'b16', title: '우리가 빛의 속도로 갈 수 없다면', author: '김초엽', publisher: '허블', physical: p(135, 200, 344), motif: 'sun', finishedAt: '2026-09-20', coverInk: '#3A3440' },
 ];
 
-const heightClass = (h: number): HeightClass => (h < 140 ? 'short' : h < 165 ? 'medium' : 'tall');
-const thicknessClass = (t: number): ThicknessClass => (t < 32 ? 'thin' : t < 40 ? 'medium' : 'thick');
+const heightClass = (hMm: number): HeightClass => (hMm < 180 ? 'short' : hMm < 215 ? 'medium' : 'tall');
+const thicknessClass = (pages: number): ThicknessClass => (pages < 220 ? 'thin' : pages < 420 ? 'medium' : 'thick');
 
 function toBook(m: Meta): Book {
-  const s = SAMPLE_ART[m.id];
-  const reference = REFERENCE_ART[m.id];
   const body = BODY_ART[m.id];
-  const base = { id: m.id, title: m.title, author: m.author, themeColor: s.color, quotes: m.quotes, art: { motif: m.motif, ribbon: m.ribbon }, finishedAt: m.finishedAt, motifImage: s.motif, sample: s, reference };
-  if (reference.pose === 'spine' && body) {
-    // 코드 몸체로 옮긴 책: 잘라 붙인 윤곽은 쓰지 않고 크기만 가져온다
-    return { ...base, reference: undefined, body, themeColor: body.face, heightClass: heightClass(reference.height), thicknessClass: thicknessClass(reference.width), coverAspectRatio: 0.7, dims: { height: reference.height, thickness: reference.width } };
-  }
-  if (reference.pose === 'spine') {
-    return { ...base, heightClass: heightClass(reference.height), thicknessClass: thicknessClass(reference.width), coverAspectRatio: 0.7, dims: { height: reference.height, thickness: reference.width } };
-  }
-  if (reference.pose === 'front') {
-    return { ...base, heightClass: heightClass(reference.height), thicknessClass: 'medium', coverAspectRatio: (reference.width - FRONT_SIDE) / reference.height, dims: { height: reference.height, coverWidth: reference.width - FRONT_SIDE, thickness: 36 } };
-  }
-  return { ...base, heightClass: heightClass(reference.width), thicknessClass: thicknessClass(reference.height - TOP_FACE), coverAspectRatio: 0.7, dims: { height: reference.width, thickness: reference.height - TOP_FACE } };
+  const cover = COVER_ART[m.id] && m.coverInk ? { ...COVER_ART[m.id], ink: m.coverInk } : COVER_ART[m.id];
+  return {
+    id: m.id,
+    title: m.title,
+    author: m.author,
+    themeColor: body?.face ?? '#E9DCC8',
+    heightClass: heightClass(m.physical.heightMm),
+    thicknessClass: thicknessClass(m.physical.pages),
+    coverAspectRatio: m.physical.widthMm / m.physical.heightMm,
+    physical: m.physical,
+    art: { motif: m.motif, ribbon: m.ribbon },
+    finishedAt: m.finishedAt,
+    quotes: m.quotes,
+    body,
+    cover,
+  };
 }
 
 export const SAMPLE_BOOKS: Book[] = META.map(toBook);
+export const SAMPLE_PUBLISHERS: Record<string, string> = Object.fromEntries(META.map((m) => [m.id, m.publisher]));
 
 const place = (
   bookId: string,

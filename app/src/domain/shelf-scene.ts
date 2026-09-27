@@ -59,7 +59,6 @@ function rectPoly(left: number, top: number, w: number, h: number): Point[] {
 }
 
 // 세운 책 기울이기: 발(footX)은 제자리, 기대는 쪽 바닥 모서리를 축으로 angle(도, 부호=방향)만큼 돌린다.
-// 예시 책은 실제 윤곽으로, 가장 낮은 점이 선반 바닥에 닿게 앉힌다.
 export function leanFrame(book: Book, footX: number, angle: number) {
   const w = bookThickness(book);
   const h = bookHeight(book);
@@ -67,9 +66,7 @@ export function leanFrame(book: Book, footX: number, angle: number) {
   const top = FLOOR - h;
   const origin = angle > 0 ? ('right bottom' as const) : ('left bottom' as const);
   const pivot = { x: angle > 0 ? left + w : left, y: FLOOR };
-  const art = book.reference;
-  const useArt = art && art.pose === 'spine' && !book.coverArtUri && !book.spineArtUri;
-  const base = useArt ? art.outline.map((p) => ({ x: left + p.x, y: top + p.y })) : rectPoly(left, top, w, h);
+  const base = rectPoly(left, top, w, h);
   let poly = angle ? base.map((p) => rotateAround(p, pivot, angle)) : base;
   const dy = FLOOR - Math.max(...poly.map((p) => p.y));
   poly = poly.map((p) => ({ x: p.x, y: p.y + dy }));
@@ -135,28 +132,6 @@ export function computeShelf(layout: ShelfLayout, books: BookMap, shelfId: strin
         left: x, top: FLOOR - h, width: w, height: h, rotate: 0, origin: 'left bottom',
         poly: rectPoly(x, FLOOR - h, w, h), stackIndex: 0,
       });
-    }
-  }
-  // Use the same silhouette for painting, hit testing and shadows. Reference
-  // books have shaped shoulders and page edges, not rectangular silhouettes.
-  for (const f of frames) {
-    const book = books[f.bookId];
-    const art = book.reference;
-    if (!art || art.pose !== f.pose || book.coverArtUri || book.spineArtUri || f.pose === 'spine') continue;
-    const pivot = { x: f.left + (f.origin === 'right bottom' ? f.width : 0), y: f.top + f.height };
-    f.poly = art.outline.map((p) => rotateAround({ x: f.left + p.x, y: f.top + p.y }, pivot, f.rotate));
-    const item = items.find((it) => it.key === f.itemKey)!;
-    if (f.pose !== 'horizontal') {
-      const dx = item.x - Math.min(...f.poly.map((p) => p.x));
-      f.left += dx;
-      f.poly = f.poly.map((p) => ({ x: p.x + dx, y: p.y }));
-    }
-    // A shaped book's lowest corner can lie above its rectangular bounds after
-    // rotation. Seat the actual outline on the plank, including the painted node.
-    if (f.stackIndex === 0) {
-      const dy = FLOOR - Math.max(...f.poly.map((p) => p.y));
-      f.top += dy;
-      f.poly = f.poly.map((p) => ({ x: p.x, y: p.y + dy }));
     }
   }
   solveLeans(frames, books, layout);

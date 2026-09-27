@@ -7,7 +7,6 @@ export type ThicknessClass = 'thin' | 'medium' | 'thick';
 
 // 개발용 샘플 그림 식별자. 실제 자산(coverArtUri/spineArtUri)이 들어오면 그쪽이 우선한다.
 // MotifId는 개발용 SVG 9종, 책에는 모티프 슬롯 id(motif-slots.ts, 30종)를 저장한다.
-export type SceneId = 'moonlake' | 'forest' | 'sunset' | 'river' | 'nightpine' | 'meadow';
 export type MotifId =
   | 'sprig'
   | 'leaf'
@@ -20,12 +19,8 @@ export type MotifId =
   | 'bud';
 
 export type BookArt = {
-  // 앞표지 그림. 없으면 단색 표지 + 큰 모티프.
-  scene?: SceneId;
   // 책등·가로 책등에 쓰는 작은 모티프(모티프 슬롯 id).
   motif: string;
-  // 책등에 장면 그림을 크롭해서 쓸 때 가로 위치(0~1). 표지를 찌그러뜨리지 않는다.
-  spineCropX?: number;
   // 제목/모티프 색. 없으면 배경색 밝기로 자동.
   inkColor?: string;
   accentColor?: string;
@@ -36,42 +31,16 @@ export type BookArt = {
 // 이미지 자산: 앱 번들(require 결과 숫자) 또는 원격 URI
 export type ImageSource = number | { uri: string };
 
-// Development samples use individual, clipped regions of the reference artwork.
-// The transform removes the source lean; placement applies the live tilt again.
-export type ReferenceArt = {
-  pose: Pose;
-  width: number;
-  height: number;
-  outline: { x: number; y: number }[];
-  matrix: [number, number, number, number, number, number];
+// 실제 책의 물리 치수(판형·쪽수). 화면 크기는 여기서 계산한다(geometry.ts).
+export type Physical = {
+  heightMm: number; // 판형 세로
+  widthMm: number; // 판형 가로(앞표지 폭)
+  pages: number; // 쪽수 → 두께
 };
 
-// 시안에서 뽑은 개발용 샘플 장정(scripts/extract-reference-assets.py). 제목은 지운 그림이고 앱이 다시 조판한다.
-export type SampleArt = {
-  kind: 'spine' | 'cover' | 'horizontal';
-  w: number; // DU. spine=두께, cover=표지 폭(옆면 포함), horizontal=길이
-  h: number; // DU. spine/cover=높이, horizontal=두께
-  color: string;
-  ink: string;
-  titleSize: number;
-  titleLine?: number; // 줄 간격(배수)
-  titleTop?: number;
-  titleCx?: number;
-  titleLeft?: number;
-  titleCy?: number;
-  topFace?: string;
-  topFaceH?: number;
-  topImage?: ImageSource; // 가로 책 윗면 그림
-  coverLines?: string;
-  // 책등 그림 위쪽을 잘라낸 높이(DU)와 그 자리를 다시 그릴 색·폭(비율). 시안 윗면의 깎인 모서리에 벽이 섞여서.
-  cap?: number;
-  capColor?: string;
-  capW?: number;
-  // 키를 늘릴 때 늘려도 되는 빈 바탕 띠(그림 높이 비율). 그림·모티프는 원래 비율을 유지한다.
-  band?: [number, number];
-  image: ImageSource;
-  motif?: ImageSource;
-};
+// 코드로 그리는 몸체에 입힐 평평한 재료
+export type BodyArt = import('./body-art.generated').BodyArt;
+export type CoverArt = import('./body-art.generated').CoverArt;
 
 export type Book = {
   id: string;
@@ -87,14 +56,14 @@ export type Book = {
   art: BookArt;
   finishedAt?: string; // YYYY-MM-DD
   quotes?: number; // 저장된 문장 수. 갈피 표시와 연결(0이면 갈피 없음)
-  // 등급 대신 쓰는 정확한 치수(DU). 온보딩 샘플처럼 실제 판형을 아는 경우.
+  // 실제 판형·쪽수. 있으면 등급 대신 이걸로 크기를 정한다.
+  physical?: Physical;
+  // 등급·판형 대신 쓰는 직접 치수(DU). 테스트나 특수한 경우.
   dims?: { height?: number; thickness?: number; coverWidth?: number };
-  // 모티프 그림 자산(투명 PNG). 없으면 art.motif 슬롯의 개발용 SVG.
-  motifImage?: ImageSource;
-  sample?: SampleArt;
-  // 코드로 그리는 몸체에 입힐 재료(색·모티프). 있으면 잘라 붙인 예시 그림(reference·sample) 대신 쓴다.
-  body?: import('./body-art.generated').BodyArt;
-  reference?: ReferenceArt;
+  // 코드 몸체 재료: 책등 색·모티프(없으면 themeColor + art.motif 슬롯의 SVG)
+  body?: BodyArt;
+  // 표지 전시용 평평한 그림(없으면 themeColor + 모티프)
+  cover?: CoverArt;
 };
 
 export type BookPlacement = {

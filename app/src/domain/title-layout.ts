@@ -50,3 +50,20 @@ export function layoutVerticalTitle(
   }
   return { fontSize, columns: [out.trimEnd() + '⋯'] };
 }
+
+// 세운 책 제목 자리: 제목이 먼저다. 그림 위에 다 들어가지 않으면(9.5DU 이상으로) 그림을 아래로 밀고 줄인다(최대 책 높이의 85%까지).
+// 그래도 넘치는 아주 긴 제목은 9DU에서 말줄임(상세보기에는 전체 제목).
+export function spineTitleLayout(title: string, hDU: number, faceDU: number, artTop0: number) {
+  const textTop = 0.08;
+  const MAX_ART = 0.85;
+  const base = faceDU < 26 ? 11 : 12.5;
+  const sizes = [...new Set([base, base - 1, Math.max(9.5, base - 2), 9.5])];
+  // 큰 글자부터: 그 크기로 들어가는 가장 높은 그림 위치를 찾는다
+  for (const size of sizes) {
+    for (let top = artTop0; top <= MAX_ART + 1e-9; top += 0.02) {
+      const r = layoutVerticalTitle(title, (top - textTop) * hDU - 4, faceDU, [size]);
+      if (!r.columns.some((c) => c.endsWith('⋯'))) return { ...r, textTop, artTop: Math.round(top * 100) / 100 };
+    }
+  }
+  return { ...layoutVerticalTitle(title, (MAX_ART - textTop) * hDU - 4, faceDU, [9]), textTop, artTop: MAX_ART };
+}

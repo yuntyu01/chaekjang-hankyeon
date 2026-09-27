@@ -63,3 +63,11 @@ describe('Book 매핑', () => {
     expect(new Set(MOTIF_SLOTS.map((m) => m.id)).size).toBe(30);
   });
 });
+
+describe('실제 크기', () => {
+  it('판형·쪽수가 있으면 physical로 넘긴다', () => {
+    const b = toShelfBook({ ...c, format: '132*225mm', pageCount: 232 });
+    expect(b.physical).toEqual({ widthMm: 132, heightMm: 225, pages: 232 });
+    expect(toShelfBook(c).physical).toBeUndefined();
+  });
+});

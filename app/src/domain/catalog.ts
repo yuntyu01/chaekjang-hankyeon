@@ -56,12 +56,27 @@ export function heightFromFormat(format?: string): HeightClass {
   return 'tall';
 }
 
+// 판형 문자열 → 가로·세로(mm). "128*188mm", "152x225", "A5" 등. 모르면 null.
+export function formatMm(format?: string): { widthMm: number; heightMm: number } | null {
+  if (!format) return null;
+  const named: Record<string, [number, number]> = { A6: [105, 148], B6: [128, 182], A5: [148, 210], B5: [182, 257], A4: [210, 297] };
+  const nums = format.match(/(\d{2,3})\s*[*x×X]\s*(\d{2,3})/);
+  if (nums) {
+    const a = Number(nums[1]);
+    const b = Number(nums[2]);
+    return { widthMm: Math.min(a, b), heightMm: Math.max(a, b) };
+  }
+  const key = format.toUpperCase().match(/\b(A[4-6]|B[5-6])\b/)?.[1];
+  return key ? { widthMm: named[key][0], heightMm: named[key][1] } : null;
+}
+
 export function motifOf(c: CatalogBook, u?: UserBook): MotifSlotId {
   const pick = u?.customMotifId ?? c.defaultMotifId;
   return pick && isMotifSlot(pick) ? pick : defaultMotifFor(c.isbn13);
 }
 
 export function toShelfBook(c: CatalogBook, u?: UserBook): Book {
+  const size = formatMm(c.format);
   return {
     id: c.isbn13,
     title: c.title,
@@ -70,7 +85,9 @@ export function toShelfBook(c: CatalogBook, u?: UserBook): Book {
     themeColor: u?.customThemeColor ?? c.themeColor,
     heightClass: c.heightClass,
     thicknessClass: c.thicknessClass,
-    coverAspectRatio: 0.68,
+    coverAspectRatio: size ? size.widthMm / size.heightMm : 0.68,
+    // 판형과 쪽수를 알면 실제 크기로(모르면 등급으로)
+    physical: size && c.pageCount ? { ...size, pages: c.pageCount } : undefined,
     // coverArtUri/spineArtUri는 모티프 PNG가 생기면 슬롯에서 채운다.
     art: { motif: motifOf(c, u) },
     finishedAt: u?.status === 'read' ? u.finishedAt : undefined,

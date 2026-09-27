@@ -4,12 +4,19 @@
 
 | 구분 | 위치 | 상태 |
 |---|---|---|
-| **최종** 종이 배경 | `app/assets/bookshelf/paper-background.png` (1254×1254 RGB) | 받은 자산. 이음새 검사 통과(`scripts/measure-shelf.py`) → 기기 픽셀 1:1로 반복, 화면 고정 |
-| **최종** 선반 한 칸 | `app/assets/bookshelf/shelf-plank.png` (2172×724 RGBA, 나무판만) | 받은 v4(`assets/bookshelf/source/shelf-single-v4-shadowed.png`, 원본명 exec-2b101ced-…png)에서 `scripts/separate-shelf-shadow.py`로 바깥 그림자를 분리. 본체 밖 알파 0 검사. 측정 메타데이터 `src/domain/shelf-asset.generated.ts` |
-| 최종(코드 생성) 종이 결 | `app/assets/texture/paper-grain@3x.png` | 시안의 결 세기(밝기 표준편차 2~6)에 맞춰 생성한 이음새 없는 타일. 책 몸체에 겹친다 |
-| **임시** 예시 책 원본 | `app/assets/reference/books-source.png` (941×1672) | 사용자가 제공한 목표 이미지 원본. `reference-art.ts`의 개별 윤곽으로 SVG 안에서 표시. 기본 자세의 질감·글자는 원본 그대로 |
-| **임시 TEMP** 예시 대체 그림 | `app/assets/temp-reference/*` | 이전 추출 자산. 예시 책의 자세를 바꿀 때 대체 그림·모티프로 사용 |
-| **임시 TEMP** 모티프 SVG | `app/src/ui/art/motifs.tsx`, `scenes.tsx` | 모티프 PNG가 없을 때의 대체 그림 |
+| **최종** 종이 배경 | `app/assets/bookshelf/paper-background.png` | 받은 자산 |
+| **최종** 선반 | `app/assets/bookshelf/shelf-plank.png` | 받은 v4에서 그림자 분리 |
+| **임시** 책 재료 | `app/assets/body/` (`motif/`, `cover/`, `brush-detail.png`) | `scripts/extract-body-assets.py`가 시안 원본(`app/assets/source/books-source.png`, 앱 번들 제외)에서 평평한 재료만 추출: 책등 색·모티프·책등 장면, 제목 지운 표지 그림, 붓결 질감. 최종 재장정 아트로 교체 대상 |
+
+책 형태(크기·윤곽·옆면·윗면·명암)는 코드(`app/src/ui/book/BookBody.tsx`)가 그린다. 잘라 붙인 책 이미지는 쓰지 않는다.
+
+## 책 크기(실제 단위)
+
+- 선반 안쪽 길이 480mm = 선반 사용 폭. 화면에서는 비율만 바뀐다(`geometry.ts` `SHELF_LENGTH_MM`, `DU_PER_MM`).
+- 높이·표지 폭: 판형 그대로. 두께: (쪽수 × 0.06mm + 1.5mm) × 2, 최소 30DU(세로 제목용 과장).
+- 자세별 점유 폭: 세움 = 두께, 누움 = 책 높이, 표지 = 표지 폭 + 옆면, 쌓기 = 가장 긴 책.
+- 예: 300쪽 책은 한 선반에 세워서 12권.
+- 예시 18권은 실제 책(판형·쪽수는 공개 서지 기준 대략값, 서지 API 연동 시 교체).
 
 ## 선반 PNG 측정값(shelf-plank, 정규화, 투명 여백 포함)
 

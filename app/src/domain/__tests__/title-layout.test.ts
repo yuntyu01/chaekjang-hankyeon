@@ -1,5 +1,5 @@
 import { inkFor, shade } from '../color';
-import { layoutVerticalTitle } from '../title-layout';
+import { layoutVerticalTitle, spineTitleLayout } from '../title-layout';
 
 describe('세로 제목 조판', () => {
   it('짧은 제목은 한 열', () => {
@@ -24,5 +24,20 @@ describe('색', () => {
     expect(inkFor('#1F3557')).toBe('#F6EEDD');
     expect(inkFor('#F1E9DA')).toBe('#2A2A2C');
     expect(shade('#808080', -0.5)).toBe('#404040');
+  });
+});
+
+
+describe('책등 제목 자리', () => {
+  it('얇은 책의 긴 제목은 그림을 밀어내고 잘리지 않는다', () => {
+    for (const title of ['소년이 온다', '82년생 김지영', '여행의 이유', '달러구트 꿈 백화점']) {
+      const r = spineTitleLayout(title, 143, 23, 0.5);
+      expect(r.columns.some((c) => c.endsWith('⋯'))).toBe(false);
+      expect(r.fontSize).toBeGreaterThanOrEqual(9.5);
+      expect(r.artTop).toBeLessThanOrEqual(0.85);
+    }
+  });
+  it('짧은 제목은 그림 자리를 그대로 둔다', () => {
+    expect(spineTitleLayout('모순', 143, 23, 0.5).artTop).toBe(0.5);
   });
 });

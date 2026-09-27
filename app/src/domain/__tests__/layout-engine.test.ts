@@ -164,7 +164,10 @@ describe('형태·기울기', () => {
   });
 
   it('표지 전시로 바꿔 넘치면 적용하지 않는다', () => {
-    expect(setPose(SAMPLE_LAYOUT, books, 'b01', 'front')).toEqual({ ok: false, reason: 'no-space' });
+    // 480mm 선반: 표지(약 130mm) 한 권이 더 들어가고, 두 권째에서 넘친다
+    const first = setPose(SAMPLE_LAYOUT, books, 'b01', 'front');
+    if (!first.ok) throw new Error(first.reason);
+    expect(setPose(first.layout, books, 'b02', 'front')).toEqual({ ok: false, reason: 'no-space' });
   });
 });
 

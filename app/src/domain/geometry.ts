@@ -47,6 +47,23 @@ export const SHELF = {
 };
 
 export const SHELF_USABLE_WIDTH = USABLE_W - SHELF.innerLeft - SHELF.innerRight;
+
+// ---------- 실제 단위 ----------
+// 선반 안쪽 길이를 480mm로 고정하고, 화면에서는 이 길이가 사용 폭에 맞도록 비율만 바꾼다.
+// 어느 기기에서든 한 선반에 들어가는 책 수가 같다.
+export const SHELF_LENGTH_MM = 480;
+export const DU_PER_MM = SHELF_USABLE_WIDTH / SHELF_LENGTH_MM;
+// 두께는 실제의 2배로 과장한다(실제 비율이면 책등이 너무 얇아 세로 제목이 안 들어간다). 최소 30DU.
+export const THICKNESS_EXAGGERATION = 2;
+export const MIN_SPINE_DU = 30;
+// 종이 한 쪽 두께(mm, 일반 도서 용지 약 0.12mm/장)와 앞뒤 표지 두께
+export const MM_PER_PAGE = 0.06;
+export const COVER_MM = 1.5;
+
+export const mm = (v: number) => v * DU_PER_MM;
+export function thicknessMm(pages: number) {
+  return pages * MM_PER_PAGE + COVER_MM;
+}
 // 개별 치수가 없는 등록 도서의 기본 크기
 export const BOOK_HEIGHT: Record<HeightClass, number> = { short: 136, medium: 174, tall: 188 };
 export const BOOK_THICKNESS: Record<ThicknessClass, number> = { thin: 28, medium: 36, thick: 42 };
@@ -69,15 +86,21 @@ export const MENU_LEAN = 8;
 export const H_OVERHANG = 20;
 
 export function bookHeight(book: Book) {
-  return book.dims?.height ?? BOOK_HEIGHT[book.heightClass];
+  if (book.dims?.height) return book.dims.height;
+  if (book.physical) return mm(book.physical.heightMm);
+  return BOOK_HEIGHT[book.heightClass];
 }
 
 export function bookThickness(book: Book) {
-  return book.dims?.thickness ?? BOOK_THICKNESS[book.thicknessClass];
+  if (book.dims?.thickness) return book.dims.thickness;
+  if (book.physical) return Math.max(MIN_SPINE_DU, mm(thicknessMm(book.physical.pages)) * THICKNESS_EXAGGERATION);
+  return BOOK_THICKNESS[book.thicknessClass];
 }
 
 export function frontWidth(book: Book) {
-  return book.dims?.coverWidth ?? Math.round(bookHeight(book) * book.coverAspectRatio);
+  if (book.dims?.coverWidth) return book.dims.coverWidth;
+  if (book.physical) return mm(book.physical.widthMm);
+  return Math.round(bookHeight(book) * book.coverAspectRatio);
 }
 
 const rad = (deg: number) => (deg * Math.PI) / 180;
@@ -90,10 +113,6 @@ export function tiltedBounds(w: number, h: number, tilt: number) {
 
 // 한 권(쌓기 전)의 선반 점유 크기. 세운 책은 항상 똑바로 선 모양으로 잰다(기울기는 빈틈 안에서 생긴다).
 export function singleFootprint(book: Book, p: Pick<BookPlacement, 'pose' | 'tilt'>) {
-  if (book.reference?.pose === p.pose && !book.coverArtUri && !book.spineArtUri) {
-    const poly = visibleBookOutline(book, { pose: p.pose, tilt: 0 });
-    return { width: Math.max(...poly.map((q) => q.x)), height: -Math.min(...poly.map((q) => q.y)) };
-  }
   const h = bookHeight(book);
   const w = bookThickness(book);
   switch (p.pose) {
@@ -109,11 +128,9 @@ export function singleFootprint(book: Book, p: Pick<BookPlacement, 'pose' | 'til
 // Actual visible contour, normalized to left x=0 and floor y=0.
 // Shared by packing and painting so tilted books can lean against neighbours.
 export function visibleBookOutline(book: Book, p: Pick<BookPlacement, 'pose' | 'tilt'>) {
-  const art = book.reference;
   const h = p.pose === 'horizontal' ? bookThickness(book) + TOP_FACE : bookHeight(book);
   const w = p.pose === 'horizontal' ? bookHeight(book) : p.pose === 'front' ? frontWidth(book) + FRONT_SIDE : bookThickness(book);
-  const points = art?.pose === p.pose && !book.coverArtUri && !book.spineArtUri
-    ? art.outline : [{ x: 0, y: 0 }, { x: w, y: 0 }, { x: w, y: h }, { x: 0, y: h }];
+  const points = [{ x: 0, y: 0 }, { x: w, y: 0 }, { x: w, y: h }, { x: 0, y: h }];
   const t = rad(p.pose === 'spine' ? p.tilt : 0);
   const turned = points.map((q) => ({ x: q.x * Math.cos(t) - q.y * Math.sin(t), y: q.x * Math.sin(t) + q.y * Math.cos(t) }));
   const x0 = Math.min(...turned.map((q) => q.x)), floor = Math.max(...turned.map((q) => q.y));
