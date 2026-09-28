@@ -210,19 +210,19 @@ function shelfFacesPx(cam: Cam, s: number, clear: number) {
 // 선반을 다시 계산하면 프레임 객체는 새로 생기지만 상자가 같으면 그대로 둔다(면 워크릿을 다시 만들지 않게)
 const boxKey = (f: BookFrame) => JSON.stringify(f.box);
 const RowBook = memo(
-  function RowBook({ m, frame, book, cam, px, shared, recv, ranks }: { m: Motion; frame: BookFrame; book: Book; cam: Cam; px: Affine; shared: Shared; recv?: { ids: string[]; clear: number; plankAbove: boolean }; ranks?: Readonly<SharedValue<Record<string, number>>> }) {
+  function RowBook({ m, frame, book, cam, px, shared, recv, ranks }: { m: Motion; frame: BookFrame; book: Book; cam: Cam; px: Affine; shared: Shared; recv?: { ids: string[]; clear: number; plankAbove: boolean; debug?: boolean }; ranks?: Readonly<SharedValue<Record<string, number>>> }) {
   const key = boxKey(frame);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   const rest = useMemo(() => fromPlaced(frame.box!), [key]);
   const id = frame.bookId;
   const state = useDerivedValue(() => stateNow(m, id) ?? rest);
-  const under = recv ? <BookReceives m={m} id={id} ids={recv.ids} cam={cam} px={px} clear={recv.clear} plankAbove={recv.plankAbove} /> : null;
+  const under = recv ? <BookReceives m={m} id={id} ids={recv.ids} cam={cam} px={px} clear={recv.clear} plankAbove={recv.plankAbove} debug={recv.debug} /> : null;
   const order = useDerivedValue(() => (ranks ? (ranks.value[id] ?? 0) * 10 : 0));
   return <BookNode book={book} dims={rest.dims} state={state} cam={cam} px={px} shared={shared} under={under} order={ranks ? order : undefined} />;
   },
   (a, b) =>
     a.m === b.m && a.book === b.book && a.cam === b.cam && a.px === b.px && a.shared === b.shared && boxKey(a.frame) === boxKey(b.frame) &&
-    a.recv?.ids.join('|') === b.recv?.ids.join('|') && a.recv?.clear === b.recv?.clear && a.recv?.plankAbove === b.recv?.plankAbove && a.ranks === b.ranks,
+    a.recv?.ids.join('|') === b.recv?.ids.join('|') && a.recv?.clear === b.recv?.clear && a.recv?.plankAbove === b.recv?.plankAbove && a.recv?.debug === b.recv?.debug && a.ranks === b.ranks,
 );
 
 export const RowBooks = memo(function RowBooks({ m, frames, books, hiddenId, cam, s, clear, height, debug = false, plankAbove = false }: { m: Motion; frames: BookFrame[]; books: Record<string, Book>; hiddenId: string | null; cam: Cam; s: number; clear: number; height: number; debug?: boolean; plankAbove?: boolean }) {
@@ -230,7 +230,7 @@ export const RowBooks = memo(function RowBooks({ m, frames, books, hiddenId, cam
   const shared = useBookShared();
   // 책 면이 받는 그림자의 가리개 후보(끌고 있는 책 제외)
   const idKey = frames.filter((f) => f.box && f.bookId !== hiddenId).map((f) => f.bookId).join('|');
-  const recv = useMemo(() => (SHOW.cast ? { ids: idKey ? idKey.split('|') : [], clear, plankAbove } : undefined), [idKey, clear, plankAbove]);
+  const recv = useMemo(() => (SHOW.cast ? { ids: idKey ? idKey.split('|') : [], clear, plankAbove, debug } : undefined), [idKey, clear, plankAbove, debug]);
   // 가림 순서: 지금 프레임의 3D 상자들로 화면에서 겹치는 쌍의 앞뒤를 정해 위상 정렬(움직이는 동안에도 매 프레임)
   const allKey = frames.filter((f) => f.box).map((f) => f.bookId).join('|');
   const all = useMemo(() => (allKey ? allKey.split('|') : []), [allKey]);
@@ -499,12 +499,20 @@ function plankAboveBox(clear: number): Vec3[] {
   return out;
 }
 
-// 한 면이 받는 그림자: 가리개들의 그림자 모양을 한 경로로 합쳐 한 번 칠한다(겹쳐도 두 번 어두워지지 않는다, 별도 레이어 없이).
-// 진하기·흐림은 가장 가까운 가리개 기준, 그라데이션은 그 가리개의 가까운 점 → 먼 점.
-type Recv = { clip: SkPath; path: SkPath; blur: number; a: Point; b: Point; colors: string[] };
+// 한 면이 받는 그림자: 가리개(다른 책·윗 선반 판)마다 따로, 각자 가장 가까운 곳이 진한 그라데이션(가까운 점 → 먼 점).
+// 한 경로에 합쳐 한 그라데이션으로 칠하면 다른 가리개의 그림자가 엉뚱한 진하기를 받는다(띠·반쪽 가림). 가까운 순 최대 RECV_PARTS개.
+// 겹치는 곳이 두 번 어두워지지 않게 한 층(RECV_LAYER)에 모아 층 불투명도로 한 번 얹는다.
+type Part = { path: SkPath; blur: number; a: Point; b: Point; colors: string[] };
+type Recv = { clip: SkPath; parts: Part[] };
 const EMPTY_PATH = Skia.PathBuilder.Make().detach();
 const RECV_STOPS = [0, 0.2, 0.45, 1];
-const NO_RECV: Recv = { clip: EMPTY_PATH, path: EMPTY_PATH, blur: 0, a: { x: 0, y: 0 }, b: { x: 0, y: 1 }, colors: ['rgba(0,0,0,0)', 'rgba(0,0,0,0)', 'rgba(0,0,0,0)', 'rgba(0,0,0,0)'] };
+const CLEAR4 = ['rgba(0,0,0,0)', 'rgba(0,0,0,0)', 'rgba(0,0,0,0)', 'rgba(0,0,0,0)'];
+const NO_PART: Part = { path: EMPTY_PATH, blur: 0, a: { x: 0, y: 0 }, b: { x: 0, y: 1 }, colors: CLEAR4 };
+const RECV_OCC = 2; // 면마다 가까운 가리개 두 개까지
+const RECV_PARTS = RECV_OCC * 2;
+const NEAR_SPAN = 25; // 가까운 층: 가장 가까운 빛 길이에서 이만큼(DU)까지
+const NO_RECV: Recv = { clip: EMPTY_PATH, parts: [NO_PART, NO_PART, NO_PART, NO_PART] };
+const RECV_LAYER = Math.max(shadow.cast.onBook.opacity, shadow.cast.onBookPlank.opacity);
 
 // slot: 이 책의 보이는 면 중 k번째. 가리개 = 같은 줄의 다른 책 + 윗 선반 판.
 function receivedShadow(m: Motion, id: string, ids: string[], cam: Cam, px: Affine, clear: number, plankAbove: boolean, slot: number): Recv {
@@ -541,54 +549,81 @@ function receivedShadow(m: Motion, id: string, ids: string[], cam: Cam, px: Affi
   }
   const nb = occs.length;
   if (plankAbove) occs.push(plankAboveBox(clear));
-  const polys: Point[][] = [];
-  let best = Infinity;
-  let bestK = -1;
-  let near: Vec3 | null = null;
-  let far: Vec3 | null = null;
-  let tFar = 0;
+  // 가리개마다 두 층: 가까운 부분(빛 길이 d0 + NEAR_SPAN 이하, 또렷하고 진함) + 전체(멀수록 흐림). 두 층이 겹친 곳이 가장 진하다.
+  const found: { d: number; parts: Part[] }[] = [];
   for (let k = 0; k < occs.length; k++) {
-    const r = shadowOnPlane(occs[k], fc[0], n, LIGHT);
-    if (r.pts.length < 3 || !r.near || !r.far) continue;
-    polys.push(hull(r.pts.map(P)));
-    if (r.dist < best) {
-      best = r.dist;
-      bestK = k;
-      near = r.near;
-      far = r.far;
-      tFar = r.tFar;
-    }
+    const all = shadowOnPlane(occs[k], fc[0], n, LIGHT);
+    if (all.pts.length < 3 || !all.near || !all.far) continue;
+    const w = k >= nb ? shadow.cast.onBookPlank : shadow.cast.onBook;
+    const rel = w.opacity / RECV_LAYER / 2;
+    const mk = (r: typeof all): Part => ({
+      path: pathOf([hull(r.pts.map(P))]),
+      blur: Math.min(w.maxBlur, w.near + w.perDU * r.tFar) * px.s,
+      a: P(r.near!),
+      b: P(r.far!),
+      colors: RECV_STOPS.map((u) => rgba(shadow.color, rel * Math.exp(-(r.dist + (r.tFar - r.dist) * u) / w.fade))),
+    });
+    const close = shadowOnPlane(occs[k], fc[0], n, LIGHT, all.dist + NEAR_SPAN);
+    found.push({ d: all.dist, parts: [close.pts.length >= 3 && close.near ? mk(close) : NO_PART, mk(all)] });
   }
-  if (!polys.length || !near || !far) return NO_RECV;
-  const w = bestK >= nb ? shadow.cast.onBookPlank : shadow.cast.onBook;
-  const colors = RECV_STOPS.map((u) => rgba(shadow.color, w.opacity * Math.exp(-(best + (tFar - best) * u) / w.fade)));
-  return { clip: pathOf([fc.map(P)]), path: pathOf(polys), blur: Math.min(w.maxBlur, w.near + w.perDU * best) * px.s, a: P(near), b: P(far), colors };
+  if (!found.length) return NO_RECV;
+  found.sort((x, y) => x.d - y.d);
+  const parts: Part[] = [];
+  for (let k = 0; k < RECV_OCC; k++) for (let j = 0; j < 2; j++) parts.push(found[k] ? found[k].parts[j] : NO_PART);
+  return { clip: pathOf([fc.map(P)]), parts };
 }
 
-function ReceivedShadow({ m, id, ids, cam, px, clear, plankAbove, slot }: { m: Motion; id: string; ids: string[]; cam: Cam; px: Affine; clear: number; plankAbove: boolean; slot: number }) {
+function RecvPart({ r, k }: { r: Readonly<SharedValue<Recv>>; k: number }) {
+  const path = useDerivedValue(() => r.value.parts[k].path);
+  const blur = useDerivedValue(() => r.value.parts[k].blur / 2);
+  const a = useDerivedValue(() => vec(r.value.parts[k].a.x, r.value.parts[k].a.y));
+  const b = useDerivedValue(() => vec(r.value.parts[k].b.x, r.value.parts[k].b.y));
+  const colors = useDerivedValue(() => r.value.parts[k].colors);
+  return (
+    <Path path={path}>
+      <LinearGradient start={a} end={b} colors={colors} positions={RECV_STOPS} />
+      <BlurMask blur={blur} style="normal" />
+    </Path>
+  );
+}
+
+function ReceivedShadow({ m, id, ids, cam, px, clear, plankAbove, slot, debug }: { m: Motion; id: string; ids: string[]; cam: Cam; px: Affine; clear: number; plankAbove: boolean; slot: number; debug?: boolean }) {
   const r = useDerivedValue(() => receivedShadow(m, id, ids, cam, px, clear, plankAbove, slot));
   const clip = useDerivedValue(() => r.value.clip);
-  const path = useDerivedValue(() => r.value.path);
-  const blur = useDerivedValue(() => r.value.blur / 2);
-  const a = useDerivedValue(() => vec(r.value.a.x, r.value.a.y));
-  const b = useDerivedValue(() => vec(r.value.b.x, r.value.b.y));
-  const colors = useDerivedValue(() => r.value.colors);
+  const outline = useDerivedValue(() => {
+    const p = Skia.PathBuilder.Make();
+    for (const q of r.value.parts) p.addPath(q.path);
+    return p.detach();
+  });
+  const paint = useMemo(() => {
+    const p = Skia.Paint();
+    p.setAlphaf(RECV_LAYER);
+    return p;
+  }, []);
   return (
-    <Group clip={clip}>
-      <Path path={path}>
-        <LinearGradient start={a} end={b} colors={colors} positions={RECV_STOPS} />
-        <BlurMask blur={blur} style="normal" />
-      </Path>
-    </Group>
+    <>
+      <Group clip={clip} layer={paint}>
+        {Array.from({ length: RECV_PARTS }, (_, k) => (
+          <RecvPart key={k} r={r} k={k} />
+        ))}
+      </Group>
+      {debug ? (
+        <>
+          {/* 개발용: 계산된 그림자 외곽(빨강)과 받는 면(초록) */}
+          <Path path={outline} style="stroke" strokeWidth={1} color="rgba(220,40,40,0.9)" />
+          <Path path={clip} style="stroke" strokeWidth={1} color="rgba(30,160,60,0.9)" />
+        </>
+      ) : null}
+    </>
   );
 }
 
 // 한 책이 받는 그림자 전부(보이는 면마다, 다른 책·윗 선반 판을 합쳐서). 책 그룹 안, 면 다음·갈피 전에 그린다(BookNode의 under).
-export function BookReceives({ m, id, ids, cam, px, clear, plankAbove }: { m: Motion; id: string; ids: string[]; cam: Cam; px: Affine; clear: number; plankAbove: boolean }) {
+export function BookReceives({ m, id, ids, cam, px, clear, plankAbove, debug }: { m: Motion; id: string; ids: string[]; cam: Cam; px: Affine; clear: number; plankAbove: boolean; debug?: boolean }) {
   return (
     <Group>
       {[0, 1, 2].map((slot) => (
-        <ReceivedShadow key={slot} m={m} id={id} ids={ids} cam={cam} px={px} clear={clear} plankAbove={plankAbove} slot={slot} />
+        <ReceivedShadow key={slot} m={m} id={id} ids={ids} cam={cam} px={px} clear={clear} plankAbove={plankAbove} slot={slot} debug={debug} />
       ))}
     </Group>
   );
@@ -602,7 +637,10 @@ export const RowShadows = memo(function RowShadows({ m, ids, cam, s, clear, heig
   }, [cam, s, clear]);
   return (
     <Canvas style={[StyleSheet.absoluteFill, { width: DESIGN_WIDTH * s, height }]} pointerEvents="none">
-      {SHOW.wall ? shadow.cast.bookWall.layers.map((_, k) => <CastLayer key={k} m={m} ids={ids} of={of} k={k} opacity={shadow.cast.bookWall.opacity} />) : null}
+      {/* 선반 위 책이 벽에 드리우는 그림자는 판 윗면이 벽에 닿는 선 위에만: 그 아래 벽으로 가는 빛은 판 윗면을 지나야 해서 책이 가릴 수 없다 */}
+      <Group clip={Skia.XYWHRect(0, -1000, DESIGN_WIDTH * s, 1000 + (clear - SHELF_DEPTH * cam.ky) * s)}>
+        {SHOW.wall ? shadow.cast.bookWall.layers.map((_, k) => <CastLayer key={k} m={m} ids={ids} of={of} k={k} opacity={shadow.cast.bookWall.opacity} />) : null}
+      </Group>
       {SHOW.gap ? [0, 1, 2, 3].map((b) => <GapShade key={b} m={m} ids={ids} cam={cam} s={s} clear={clear} band={b} />) : null}
     </Canvas>
   );

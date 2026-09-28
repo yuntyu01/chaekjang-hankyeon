@@ -7,7 +7,7 @@ import { useMemo } from 'react';
 import { StyleSheet, View } from 'react-native';
 
 import { hull, rgba } from '@/domain/shadow-shape';
-import { onWall, travelOf } from '@/domain/cast-shadow';
+import { shadowOnPlane, travelOf } from '@/domain/cast-shadow';
 import { SHELF_DEPTH } from '@/domain/geometry';
 import { shelfVertices } from '@/domain/shelf-geom';
 import { light, shadow } from '@/ui/theme';
@@ -72,35 +72,36 @@ function grow(poly: Point[], i: number, j: number, dir: Point): Point[] {
 const LIGHT = travelOf(light.dir);
 const SW = shadow.cast.shelfWall;
 // 그림자가 판 앞면 아래로 보이는 최대 길이(DU): 진하기가 5% 아래로 떨어지는 곳까지
-export const SHELF_CAST_EXTENT = SW.fade * Math.log(20) * Math.abs(LIGHT.y) + SW.near + SW.perDU * SW.fade;
+export const SHELF_CAST_EXTENT = SW.layers[SW.layers.length - 1] * Math.abs(LIGHT.y) + SW.blurPad;
 
 function ShelfWallShadow({ cam, s, clear }: { cam: Camera; s: number; clear: number }) {
   const g = useMemo(() => {
     const t = shelfPx(s, clear);
     const px = (q: Point) => ({ x: q.x * s + t.tx, y: q.y * s + t.ty });
     const vs = Object.values(shelfVertices());
-    const pts = vs.map((v) => px(project(cam, onWall(v, LIGHT, SHELF_DEPTH))));
-    const attach = px(project(cam, shelfVertices().LBB)).y; // 판 뒤 아래 모서리(벽에 붙은 곳)
-    const far = Math.max(...pts.map((q) => q.y));
-    const blur = (SW.near + SW.perDU * SW.fade) * s;
-    // 벽에서 아래로 h(px) 내려간 곳의 진하기 = opacity × e^(-r/fade), r = h/(s·|D.y|) (빛 길이).
-    // 멈춤점은 빛 길이 기준으로 판 가까이 촘촘히 둔다(전체 높이에 고르게 두면 선형으로 길게 늘어진 띠가 된다).
-    const span = Math.max(1, far - attach);
-    const rs = [0, 2, 5, 9, 14, 20, 28, 40, 60, 90];
-    const stops = rs.map((r) => Math.min(1, (r * s * Math.abs(LIGHT.y)) / span));
-    const colors = rs.map((r) => rgba(shadow.color, SW.opacity * Math.exp(-r / SW.fade)));
-    const top = attach;
-    const h = far - attach + blur * 3;
-    const path = pathOf(hull(pts).map((q) => ({ x: q.x, y: q.y - top })));
-    return { path, colors, stops, top, h, blur, far: far - top };
+    const wall = { x: 0, y: 0, z: SHELF_DEPTH };
+    const n = { x: 0, y: 0, z: -1 }; // 벽 면(사용자 쪽을 향함)
+    const top = px(project(cam, shelfVertices().LBB)).y - 4 * s;
+    let bottom = top;
+    // 빛 길이로 판을 나눈 층: 벽에 가까운 층(짧은 빛 길이)만 또렷하고 진하며, 먼 층일수록 넓고 옅고 흐리다.
+    // 층마다 판의 그 부분이 벽에 떨어뜨린 모양이라, 오른쪽 끝 너머 벽에는 먼 층(옅은 것)만 닿는다.
+    const layers = SW.layers.map((tMax, k) => {
+      const r = shadowOnPlane(vs, wall, n, LIGHT, tMax);
+      const pts = hull(r.pts.map((q) => px(project(cam, q))));
+      for (const q of pts) bottom = Math.max(bottom, q.y);
+      return { path: pathOf(pts.map((q) => ({ x: q.x, y: q.y - top }))), color: rgba(shadow.color, SW.opacity[k]), blur: (SW.near + SW.perDU * tMax) * s };
+    });
+    const h = bottom - top + SW.blurPad * s;
+    return { layers, top, h };
   }, [cam, s, clear]);
   return (
     <View pointerEvents="none" style={{ position: 'absolute', left: 0, top: g.top, width: DESIGN_WIDTH * s, height: g.h }}>
       <Canvas style={{ width: DESIGN_WIDTH * s, height: g.h }}>
-        <Path path={g.path}>
-          <LinearGradient start={vec(0, 0)} end={vec(0, g.far)} colors={g.colors} positions={g.stops} />
-          <BlurMask blur={g.blur / 2} style="normal" />
-        </Path>
+        {g.layers.map((l, k) => (
+          <Path key={k} path={l.path} color={l.color}>
+            <BlurMask blur={l.blur / 2} style="normal" />
+          </Path>
+        ))}
       </Canvas>
     </View>
   );

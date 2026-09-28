@@ -66,7 +66,8 @@ export const shadow = {
     // 책 그림자는 가리는 책에서의 빛 길이로 층을 나눈다(layers, DU): 가까운 층일수록 선명하고, 겹쳐 그려져 진하다.
     // 한 층의 진하기 opacity, 흐림 = near + perDU × 층 길이(최대 maxBlur)
     bookWall: { layers: [10, 35, 1e9], opacity: 0.12, near: 1.2, perDU: 0.07, maxBlur: 12 }, // 책 → 벽
-    shelfWall: { opacity: 0.55, fade: 11, near: 3, perDU: 0.05 }, // 선반 판 → 벽(판 뒤 모서리가 벽에 붙어 있어 거기서 시작). 시안 밝기 분포: 판 바로 아래 또렷, 약 16DU 안에 벽 밝기로
+    // 선반 판 → 벽: 빛 길이 층(layers, DU)마다 진하기·흐림. 판 뒤쪽 약 13DU 빛 길이까지는 판 자신에 가려 보이지 않는다.
+    shelfWall: { layers: [16, 28, 52], opacity: [0.1, 0.1, 0.09], near: 1, perDU: 0.22, blurPad: 14 },
     bookShelf: { layers: [8, 30, 1e9], opacity: 0.1, near: 1, perDU: 0.1, maxBlur: 10 }, // 책 → 선반 윗면
     // 책 면이 받는 그림자: 다른 책(book) · 윗 선반 판(plank). 진하기 = opacity × e^(-거리/fade), 흐림 = near + perDU × 거리
     onBook: { opacity: 0.3, fade: 260, near: 0.8, perDU: 0.07, maxBlur: 8 },

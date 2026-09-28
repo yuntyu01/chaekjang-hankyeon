@@ -39,11 +39,17 @@ describe('예시 이미지가 없는 새 책의 공통 배치와 그림자', () 
     // 책 그림자 한 층은 옅게(층이 겹쳐 가까운 곳만 진해진다)
     expect(shadow.cast.bookWall.opacity).toBeLessThanOrEqual(0.2);
     expect(shadow.cast.bookShelf.opacity).toBeLessThanOrEqual(0.2);
-    // 선반 → 벽: 가장 진한 곳은 판 뒤(판에 가려짐). 판 앞면 아래로 보이기 시작하는 곳(벽에서 판 두께+윗면 깊이만큼 아래)은 0.3 이하
-    const D = travelOf(light.dir);
-    const drop = SHELF_THICK + (SHELF_DEPTH + SHELF_FRONT) * VIEW_KY; // 화면에서 판 뒤 아래 모서리 → 앞면 아래
+    // 선반 → 벽: 빛 길이 층이 멀수록 옅고(진하기 내림차순) 흐리다. 모두 겹친 가장 진한 곳도 0.3 이하
     const w = shadow.cast.shelfWall;
-    expect(w.opacity * Math.exp(-drop / Math.abs(D.y) / w.fade)).toBeLessThanOrEqual(0.3);
+    for (let k = 1; k < w.layers.length; k++) {
+      expect(w.layers[k]).toBeGreaterThan(w.layers[k - 1]);
+      expect(w.opacity[k]).toBeLessThanOrEqual(w.opacity[k - 1]);
+    }
+    expect(w.opacity.reduce((a, b) => a + b, 0)).toBeLessThanOrEqual(0.3);
+    void travelOf;
+    void SHELF_THICK;
+    void SHELF_FRONT;
+    void VIEW_KY;
     expect(shadow.ao.gap.max).toBeLessThanOrEqual(0.15);
   });
 });
