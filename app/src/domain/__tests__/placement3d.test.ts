@@ -1,7 +1,7 @@
 // 3D 배치(단계 2~4): 실제 깊이·수직축 회전·선반 경계, 회전된 책끼리의 충돌, 수평 쌓기 받침, 깊이가 다른 가짜 받침.
 import { corners, footprintXZ, fromPlaced, gap, lowest, topXZ, toWorld } from '../book3';
 import { boxSize, type Placed } from '../box';
-import { MAX_SPIN, SHELF_DEPTH, SHELF_USABLE_WIDTH } from '../geometry';
+import { MAX_SPIN, SHELF_DEPTH, SHELF_FRONT, SHELF_USABLE_WIDTH } from '../geometry';
 import { checkSpace, moveBook, placementOf, setPose, setSpin, type BookMap, type Result } from '../layout-engine';
 import { bodiesOf, computeShelf, PLANK_BOUNDS, withLeans } from '../shelf-scene';
 import { stackBoxes, stackSupported, supportedOn } from '../support';
@@ -33,7 +33,7 @@ function expectNoPenetration(l: ShelfLayout) {
   for (let i = 0; i < bs.length; i++) {
     expect(lowest(bs[i])).toBeGreaterThan(-0.05); // 선반을 뚫지 않는다
     for (const c of corners(bs[i])) {
-      expect(c.z).toBeGreaterThanOrEqual(-0.05); // 앞선
+      expect(c.z).toBeGreaterThanOrEqual(-SHELF_FRONT - 0.05); // 선반 앞 끝
       expect(c.z).toBeLessThanOrEqual(SHELF_DEPTH + 0.05); // 뒷벽
     }
     for (let j = i + 1; j < bs.length; j++) expect(gap(bs[i], bs[j])).toBeGreaterThan(-TOL);
@@ -75,8 +75,9 @@ describe('실제 깊이와 수직축 회전', () => {
 
   it('정면에서 겹쳐 보여도 깊이가 떨어진 책은 밀지 않는다', () => {
     // 얇은 표지 전시 책(앞)과 뒷벽 쪽 눕힌 책: 깊이가 겹치지 않는다
+    // 표지 전시 책은 책 기준선 앞(선반 앞 끝 쪽)에, 눕힌 책은 벽에 붙여 둔다
     const back = SHELF_DEPTH - 110 - 1;
-    const l = layoutOf(place('C', 0, 60, { pose: 'front' }), place('L', 1, 40, { pose: 'horizontal', depth: back }));
+    const l = layoutOf(place('C', 0, 60, { pose: 'front', depth: -SHELF_FRONT + 1 }), place('L', 1, 40, { pose: 'horizontal', depth: back }));
     expect(checkSpace(l, books)).toBeNull();
     const f = computeShelf(l, books, 's').frames;
     const cx = f.find((x) => x.bookId === 'C')!.box!.x;

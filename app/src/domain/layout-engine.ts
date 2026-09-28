@@ -4,6 +4,7 @@ import {
   placementDepth,
   spunExtent,
   SHELF_DEPTH,
+  SHELF_FRONT,
   MAX_SPIN,
   CAMERA,
   frontWidth,
@@ -361,7 +362,8 @@ export function checkSpace(layout: ShelfLayout, books: BookMap, only?: string): 
     for (const p of pos) if (p.x < lo - 0.01 || p.x + p.width > hi + 0.01) return 'no-space';
     for (const p of pos) {
       const z = itemDepth(p.item, layout, books);
-      if (z.z0 < -0.01 || z.z1 > SHELF_DEPTH + 0.01) return 'no-space';
+      // 선반 윗면 전체(앞 끝 ~ 벽) 안: 책 기준선(z=0)은 세운 책이 서는 기본 자리일 뿐 경계가 아니다
+      if (z.z0 < -SHELF_FRONT - 0.01 || z.z1 > SHELF_DEPTH + 0.01) return 'no-space';
       if (p.item.stacked) {
         const members = p.item.bookIds.map((id) => ({ bookId: id, book: books[id], spin: placementOf(layout, id)?.spin, depth: placementOf(layout, p.item.bookIds[0])?.depth }));
         if (!stackSupported(stackBoxes(members, p.x))) return 'unsupported';
@@ -504,7 +506,7 @@ export function setSpin(layout: ShelfLayout, books: BookMap, bookId: string, deg
   const tryAt = (a: number): ShelfLayout | null => {
     const spin = Math.round(a * 100) / 100 || undefined;
     const d = spunExtent(book, spin).d;
-    const depth = Math.round(Math.max(0, Math.min(SHELF_DEPTH - d, center - d / 2)) * 100) / 100;
+    const depth = Math.round(Math.max(-SHELF_FRONT, Math.min(SHELF_DEPTH - d, center - d / 2)) * 100) / 100;
     const placements = layout.placements.map((q) => (q.bookId === bookId ? { ...q, spin, depth: p.stackId ? q.depth : depth } : q));
     const next = settle({ ...layout, placements }, books, desired, p.shelfId);
     return checkSpace(next, books, p.shelfId) ? null : next;

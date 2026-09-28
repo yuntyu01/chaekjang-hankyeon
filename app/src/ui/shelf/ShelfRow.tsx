@@ -8,7 +8,7 @@ import { frameBBox, type BookFrame } from '@/domain/shelf-scene';
 import type { Book } from '@/domain/types';
 import { ko } from '@/i18n/ko';
 import { RowBooks, RowContacts, RowShadows, useShelfMotion } from '@/ui/shelf/ShelfMotion';
-import { ShelfFront, ShelfImage } from '@/ui/shelf/ShelfPlank';
+import { ShelfBoard } from '@/ui/shelf/ShelfPlank';
 import { Plank } from '@/ui/shelf/Plank';
 import { colors, fonts } from '@/ui/theme';
 
@@ -67,7 +67,6 @@ export const ShelfRow = memo(function ShelfRow(p: Props) {
   const s = p.scale;
   const m = useShelfMotion(p.shelfId, p.frames, p.reduceMotion, p.selectedId);
   const cam = p.frames[0]?.cam ?? CAMERA;
-  const shelfTop = p.clear - SHELF.back; // 선반 윗면 뒤 모서리(벽, DU)
   // 책 목록이 같으면 같은 배열(그림자 워크릿을 다시 만들지 않게)
   const idKey = p.frames.filter((f) => f.box && f.bookId !== p.placeholderId).map((f) => f.bookId).join('|');
   const ids = useMemo(() => (idKey ? idKey.split('|') : []), [idKey]);
@@ -75,11 +74,11 @@ export const ShelfRow = memo(function ShelfRow(p: Props) {
     <View style={{ height: p.height, width: DESIGN_WIDTH * s, marginLeft: p.originX, overflow: 'visible' }}>
       <RowShadows m={m} ids={ids} cam={cam} s={s} clear={p.clear} height={p.height} />
       {SHELF_STYLE === 'asset' ? (
-        <ShelfImage scale={s} clear={p.clear} />
+        <ShelfBoard scale={s} clear={p.clear} cam={cam} height={p.height} />
       ) : (
         <Plank left={SHELF.sideMargin * s} width={(DESIGN_WIDTH - SHELF.sideMargin * 2) * s} floorY={p.clear * s} scale={s} height={p.height + 20 * s} canvasWidth={DESIGN_WIDTH * s} />
       )}
-      <RowContacts m={m} ids={ids} cam={cam} s={s} clear={p.clear} height={p.height} shelfTop={shelfTop} />
+      <RowContacts m={m} ids={ids} cam={cam} s={s} clear={p.clear} height={p.height} />
       {/* 옆면·윗면은 모든 앞면 아래(앞에 있는 책의 앞면이 가린다) */}
       <RowBooks m={m} frames={p.frames} books={p.books} hiddenId={p.placeholderId} cam={cam} s={s} clear={p.clear} height={p.height} debug={p.debug} />
       {p.frames.map((f) => (
@@ -93,8 +92,7 @@ export const ShelfRow = memo(function ShelfRow(p: Props) {
           onA11y={p.onA11y}
         />
       ))}
-      <RowContacts m={m} ids={ids} cam={cam} s={s} clear={p.clear} height={p.height} shelfTop={shelfTop} front />
-      {SHELF_STYLE === 'asset' ? <ShelfFront scale={s} clear={p.clear} /> : null}
+      <RowContacts m={m} ids={ids} cam={cam} s={s} clear={p.clear} height={p.height} front />
       {p.hint ? (
         <View style={[styles.hint, { top: 2 * s }, p.hint.bad && styles.hintBad]} pointerEvents="none">
           <Text style={[styles.hintText, p.hint.bad && { color: colors.danger }]}>{p.hint.text}</Text>

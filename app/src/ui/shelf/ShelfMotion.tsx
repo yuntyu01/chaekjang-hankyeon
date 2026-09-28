@@ -10,8 +10,8 @@ import { scheduleOnUI } from 'react-native-worklets';
 
 import { corners, fromPlaced, lowest, viewCam, type Book3, type Cam } from '@/domain/book3';
 import { project } from '@/domain/box';
-import { DESIGN_WIDTH, SHELF, SHELF_DEPTH, SHELF_FRONT, SHELF_IMG_W, SHELF_IMG_X } from '@/domain/geometry';
-import { SHELF_ASSET } from '@/domain/shelf-asset.generated';
+import { DESIGN_WIDTH, SHELF, SHELF_X0, SHELF_X1 } from '@/domain/geometry';
+import { shelfFaces } from '@/domain/shelf-geom';
 import { castShape, hull, rgba } from '@/domain/shadow-shape';
 import { PLANK_BOUNDS, type BookFrame, type Point } from '@/domain/shelf-scene';
 import { bookAt, planTransition, type Track } from '@/domain/transition';
@@ -163,27 +163,32 @@ function DebugGeom({ m, id, cam, px }: { m: Motion; id: string; cam: Cam; px: Af
   );
 }
 
-// 계산상의 선반 윗면(y=0): 앞 모서리 z=-SHELF_FRONT, 책 줄 z=0(점선 대신 가는 선), 벽 z=SHELF_DEPTH. PNG와 겹쳐 맞는지 본다.
+// 계산상의 선반(shelf-geom): 윗면·앞면·옆면 외곽과 책 기준선(z=0). 그려진 판과 겹쳐 맞는지 본다.
 function DebugShelf({ cam, px }: { cam: Cam; px: Affine }) {
   const path = useMemo(() => {
+    const f = shelfFaces(cam);
+    const P = (q: Point) => ({ x: q.x * px.s + px.tx, y: q.y * px.s + px.ty });
     const p = Skia.PathBuilder.Make();
-    const L = SHELF_IMG_X + SHELF_ASSET.plankLeft * SHELF_IMG_W - SHELF.sideMargin;
-    const R = SHELF_IMG_X + SHELF_ASSET.plankRight * SHELF_IMG_W - SHELF.sideMargin;
-    const at = (x: number, z: number) => {
-      const q = project(cam, { x: x + SHELF_FRONT * cam.kx, y: 0, z }); // 앞 모서리가 PNG 판 앞면 좌우 끝에 오게
-      return { x: q.x * px.s + px.tx, y: q.y * px.s + px.ty };
-    };
-    const quad = [at(L, -SHELF_FRONT), at(R, -SHELF_FRONT), at(R, SHELF_DEPTH), at(L, SHELF_DEPTH)];
-    p.moveTo(quad[0].x, quad[0].y);
-    for (const q of quad.slice(1)) p.lineTo(q.x, q.y);
-    p.close();
-    const a = at(L, 0);
-    const b = at(R, 0);
+    for (const fc of [f.top, f.front, f.side]) {
+      if (!fc) continue;
+      const pts = fc.poly.map(P);
+      p.moveTo(pts[0].x, pts[0].y);
+      for (const q of pts.slice(1)) p.lineTo(q.x, q.y);
+      p.close();
+    }
+    const a = P(project(cam, { x: SHELF_X0, y: 0, z: 0 }));
+    const b = P(project(cam, { x: SHELF_X1, y: 0, z: 0 }));
     p.moveTo(a.x, a.y);
     p.lineTo(b.x, b.y);
     return p.detach();
   }, [cam, px]);
   return <Path path={path} style="stroke" strokeWidth={1.2} color="rgba(200,40,150,0.85)" />;
+}
+
+function shelfFacesPx(cam: Cam, s: number, clear: number) {
+  const f = shelfFaces(cam);
+  const px = (q: Point) => ({ x: (SHELF.sideMargin + q.x) * s, y: (clear + q.y - FLOOR) * s });
+  return { f, px };
 }
 
 // ---------- 책(한 캔버스에 줄 전체) ----------
@@ -417,7 +422,7 @@ function contactShapes(b: Book3, cam0: Cam, s: number, clear: number) {
   return { cast, band, foot: f.pts.map((q) => P(q.x, q.z)) };
 }
 
-export const RowContacts = memo(function RowContacts({ m, ids, cam, s, clear, height, front = false, shelfTop }: { m: Motion; ids: string[]; cam: Cam; s: number; clear: number; height: number; front?: boolean; shelfTop: number }) {
+export const RowContacts = memo(function RowContacts({ m, ids, cam, s, clear, height, front = false }: { m: Motion; ids: string[]; cam: Cam; s: number; clear: number; height: number; front?: boolean }) {
   // 선반에서 떨어진(들린·쌓인 위) 책은 접촉이 없다
   const shapes = useDerivedValue(() => {
     const cast: Point[][] = [];
@@ -436,8 +441,16 @@ export const RowContacts = memo(function RowContacts({ m, ids, cam, s, clear, he
   const cast = useDerivedValue(() => shapes.value.cast);
   const band = useDerivedValue(() => shapes.value.band);
   const foot = useDerivedValue(() => shapes.value.foot);
-  // 선반 윗면 안에만(받는 면 클리핑)
-  const clip = Skia.XYWHRect(0, shelfTop * s, DESIGN_WIDTH * s, (clear + SHELF.lip) * s - shelfTop * s);
+  // 선반 윗면(투영된 실제 윗면 다각형) 안에만(받는 면 클리핑)
+  const clip = useMemo(() => {
+    const { f, px } = shelfFacesPx(cam, s, clear);
+    const pts = f.top.poly.map(px);
+    const p = Skia.PathBuilder.Make();
+    p.moveTo(pts[0].x, pts[0].y);
+    for (const q of pts.slice(1)) p.lineTo(q.x, q.y);
+    p.close();
+    return p.detach();
+  }, [cam, s, clear]);
   return (
     <Canvas style={[StyleSheet.absoluteFill, { width: DESIGN_WIDTH * s, height }]} pointerEvents="none">
       <Group clip={clip}>

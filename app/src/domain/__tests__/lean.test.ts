@@ -14,7 +14,7 @@ const book = (id: string, height: number, thickness: number): Book => ({
   themeColor: '#CCBBAA',
   heightClass: 'medium',
   thicknessClass: 'medium',
-  coverAspectRatio: 0.7,
+  coverAspectRatio: 0.66, // 표지 폭이 책 기준선 뒤 깊이(160mm) 안에 들어가게(더 깊으면 기준선 앞으로 나와 선다)
   art: { motif: 'leaf' },
   dims: { height, thickness },
 });

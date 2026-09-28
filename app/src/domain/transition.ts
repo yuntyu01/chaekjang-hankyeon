@@ -191,7 +191,9 @@ function poseSegs(from: State, to: State, t0: number, t1: number, al: number, or
   }
   if (order === 'pull') {
     // 앞으로 빼내고(다른 책보다 앞, 깊이가 겹치지 않게) → 그 앞에서 돌며 옮기고 → 밀어 넣는다
-    const pulled = (x: State): State => ({ ...x, t: { ...x.t, z: x.t.z - (boxOf(x, 0).z + depthOf(x) + 1) } });
+    // 도는 동안 모서리가 더 나오는 만큼(면 대각선의 절반) 더 앞으로 뺀다
+    const sweep = Math.max(0, Math.hypot(b.dims.H, b.dims.W) / 2 - Math.min(depthOf(b), depthOf(to)) / 2);
+    const pulled = (x: State): State => ({ ...x, t: { ...x.t, z: x.t.z - (boxOf(x, 0).z + depthOf(x) + 1 + sweep) } });
     const A = pulled(b);
     const B = pulled(to);
     const ta = t + (t1 - t) * 0.22;
@@ -277,6 +279,8 @@ export function candidates(growing: boolean, posing: boolean): Candidate[] {
     for (const al of [0.5, 0, 1]) {
       out.push({ name: `pull-al${al}`, lean: 'sync', turn: g ? [0.1, 1] : [0, 0.85], others: g ? [0, 0.35] : [0.6, 1], al, order: 'pull', spread: 0 });
       out.push({ name: `pull-late-al${al}`, lean: 'sync', turn: g ? [0, 0.9] : [0, 0.6], others: g ? [0.1, 0.5] : [0.55, 1], al, order: 'pull', spread: 0 });
+      // 빼낸 동안 옆 책(쌓인 책 포함)이 먼저 자리를 옮기고, 그다음 밀어 넣는다
+      out.push({ name: `pull-mid-al${al}`, lean: 'sync', turn: [0, 1], others: [0.25, 0.7], al, order: 'pull', spread: 0 });
     }
   return out;
 }

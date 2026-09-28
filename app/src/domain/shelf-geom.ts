@@ -1,0 +1,52 @@
+// 선반 판 모양(순수): 3D 판 꼭짓점을 책과 같은 project()로 투영해 보이는 면을 만든다.
+// 선반 공간(책과 같음): x 오른쪽, y 위(판 윗면 y=0), z 벽 쪽(책 기준선 z=0, 판 앞 끝 -SHELF_FRONT, 벽 SHELF_DEPTH).
+// 직교 투영이라 각 면은 평행사변형이고, 면 = 원점 O + 가로 U + 세로 V(화면 좌표, 설계 단위)로 나타낸다.
+// 이웃한 면은 같은 꼭짓점을 쓴다(윗면 앞 변 = 앞면 위 변, 옆면 왼쪽 변 = 윗면 오른쪽 변·앞면 오른쪽 변).
+import { project, type Camera } from './box';
+import { SHELF_DEPTH, SHELF_FRONT, SHELF_THICK, SHELF_X0, SHELF_X1 } from './geometry';
+import type { Point } from './shelf-scene';
+
+export type ShelfFace = { O: Point; U: Point; V: Point; poly: Point[] };
+export type ShelfFaces = { top: ShelfFace; front: ShelfFace; side: ShelfFace | null; corners: Record<string, Point> };
+
+// 3D 꼭짓점 이름: [왼/오른][앞/뒤][위/아래]
+export function shelfVertices() {
+  const zf = -SHELF_FRONT;
+  const zb = SHELF_DEPTH;
+  const yb = -SHELF_THICK;
+  return {
+    LFT: { x: SHELF_X0, y: 0, z: zf },
+    RFT: { x: SHELF_X1, y: 0, z: zf },
+    RBT: { x: SHELF_X1, y: 0, z: zb },
+    LBT: { x: SHELF_X0, y: 0, z: zb },
+    LFB: { x: SHELF_X0, y: yb, z: zf },
+    RFB: { x: SHELF_X1, y: yb, z: zf },
+    RBB: { x: SHELF_X1, y: yb, z: zb },
+  };
+}
+
+const face = (a: Point, b: Point, c: Point, d: Point): ShelfFace => ({
+  O: a,
+  U: { x: b.x - a.x, y: b.y - a.y },
+  V: { x: d.x - a.x, y: d.y - a.y },
+  poly: [a, b, c, d],
+});
+
+export function shelfFaces(cam: Camera): ShelfFaces {
+  const v = shelfVertices();
+  const P = Object.fromEntries(Object.entries(v).map(([k, q]) => [k, project(cam, q)])) as Record<keyof typeof v, Point>;
+  return {
+    // 윗면: O = 뒤 왼쪽, U = 뒤 변(→오른쪽), V = 왼쪽 변(→앞). 질감 그림의 위쪽이 벽 쪽.
+    top: face(P.LBT, P.RBT, P.RFT, P.LFT),
+    // 앞면: O = 위 왼쪽, U = 위 변, V = 왼쪽 변(→아래)
+    front: face(P.LFT, P.RFT, P.RFB, P.LFB),
+    // 오른쪽 옆면: 사선이 오른쪽(kx > 0)이면 보인다. O = 앞 위, U = 위 변(→벽), V = 앞 변(→아래)
+    side: cam.kx > 0 ? face(P.RFT, P.RBT, P.RBB, P.RFB) : null,
+    corners: P,
+  };
+}
+
+// 텍스처 그림(w × h px) → 화면 px 행렬(3×3 행 우선): 그림 (0,0)=O, (w,0)=O+U, (0,h)=O+V. 화면 px = 설계 단위 × s + (tx, ty).
+export function faceTextureMatrix(f: ShelfFace, w: number, h: number, s: number, tx: number, ty: number) {
+  return [(f.U.x * s) / w, (f.V.x * s) / h, f.O.x * s + tx, (f.U.y * s) / w, (f.V.y * s) / h, f.O.y * s + ty, 0, 0, 1];
+}

@@ -37,14 +37,19 @@ export const VIEW_KY = Math.tan((VIEW_PITCH_DEG * Math.PI) / 180);
 export const VIEW_KX = 0.07;
 
 // ---------- 선반 판(3D) ----------
-// 깊이 방향: 판 앞 모서리 z = -SHELF_FRONT, 책 줄 앞선 z = 0, 뒷벽 z = SHELF_DEPTH.
-// 판형 중 가장 넓은 표지(약 152mm)를 눕혀 뒤로 물려도 들어가도록 책 줄 → 벽 230mm, 책 앞에 남는 판 70mm(판 전체 300mm).
-export const SHELF_DEPTH_MM = 230;
-export const SHELF_DEPTH = SHELF_DEPTH_MM * DU_MM;
+// 깊이(선반 공간 z, 책 줄 기준): 판 앞 끝 z = -SHELF_FRONT, 책 기준선 z = 0, 뒷벽 z = SHELF_DEPTH.
+// 판 전체 230mm = 앞 끝 → 책 기준선 70mm + 책 기준선 → 벽 160mm(앞 끝을 0으로 재면 기준선 70, 벽 230).
+export const SHELF_TOTAL_DEPTH_MM = 230;
 export const SHELF_FRONT_MM = 70;
+export const SHELF_DEPTH_MM = SHELF_TOTAL_DEPTH_MM - SHELF_FRONT_MM;
+export const SHELF_DEPTH = SHELF_DEPTH_MM * DU_MM;
 export const SHELF_FRONT = SHELF_FRONT_MM * DU_MM;
-// 판 앞면(두께) 높이: PNG 앞면 띠 그대로
-const FRONT_FACE_H = (SHELF_ASSET.frontBottomY - SHELF_ASSET.frontTopY) * SHELF_IMG_H;
+// 판 두께(앞면 높이, DU): 지금 화면의 앞면 두께 그대로
+export const SHELF_THICK = (SHELF_ASSET.frontBottomY - SHELF_ASSET.frontTopY) * SHELF_IMG_H;
+// 판 좌우 끝(선반 공간 x). 책 줄(0 ~ 사용 폭)을 덮고, 사선(kx)으로 투영했을 때
+// 앞 왼쪽 모서리와 뒤 오른쪽 모서리가 화면 양 끝에서 PLANK_INSET 안쪽에 오도록 정한다.
+export const SHELF_X0 = PLANK_INSET - USABLE_LEFT + SHELF_FRONT * VIEW_KX;
+export const SHELF_X1 = DESIGN_WIDTH - PLANK_INSET - USABLE_LEFT - SHELF_DEPTH * VIEW_KX;
 
 export const SHELF = {
   sideMargin: USABLE_LEFT, // 장면 x=0의 화면 설계 좌표(drawn: 선반 판 왼쪽 끝)
@@ -60,7 +65,7 @@ export const SHELF = {
   // 책 줄 바닥선(화면 y = 바닥) 기준 화면 거리(DU). 모두 위 카메라로 3D 판을 투영한 값.
   back: asset ? SHELF_DEPTH * VIEW_KY : 0, // 바닥선 → 윗면 뒤 모서리(벽)
   lip: asset ? SHELF_FRONT * VIEW_KY : PLANK_TOP, // 바닥선 → 윗면 앞 모서리
-  below: asset ? SHELF_FRONT * VIEW_KY + FRONT_FACE_H : PLANK_TOP + PLANK_FRONT, // 바닥선 → 판 앞면 아래
+  below: asset ? SHELF_FRONT * VIEW_KY + SHELF_THICK : PLANK_TOP + PLANK_FRONT, // 바닥선 → 판 앞면 아래
 };
 
 export const SHELF_USABLE_WIDTH = USABLE_W - SHELF.innerLeft - SHELF.innerRight;
@@ -161,10 +166,13 @@ export function tiltedBounds(w: number, h: number, tilt: number) {
 
 // 한 권(쌓기 전)의 선반 점유 크기(상자 모델). 폭은 앞면 가로(옆면은 옆 책 뒤로 숨는다),
 // 높이는 화면에서 보이는 높이(앞면 + 위로 밀린 윗면, 눕힌 책은 뒤에 놓인 만큼 더). 세운 책은 똑바로 선 모양으로 잰다.
-// 기본 깊이(선반 공간 z): 세운 책·표지 책은 앞선(0), 눕힌 책은 조금 뒤(선반 깊이를 넘지 않게)
+// 기본 깊이(선반 공간 z): 세운 책·표지 책은 책 기준선(0), 눕힌 책은 조금 뒤.
+// 기준선 뒤 공간(SHELF_DEPTH)보다 깊은 책은 벽에 붙고 그만큼 기준선 앞으로 나온다(선반 앞 끝까지).
 export function defaultDepth(book: Book, pose: BookPlacement['pose']) {
-  if (pose !== 'horizontal') return 0;
-  return Math.max(0, Math.min(LYING_BACK_Z, SHELF_DEPTH - frontWidth(book) - 2));
+  const W = frontWidth(book);
+  if (pose === 'front') return 0;
+  if (pose === 'spine') return Math.max(-SHELF_FRONT, Math.min(0, SHELF_DEPTH - W));
+  return Math.max(-SHELF_FRONT, Math.min(LYING_BACK_Z, SHELF_DEPTH - W - 2));
 }
 
 // 수직축으로 돌린 눕힌 책의 축 정렬 폭(x)·깊이(z)
