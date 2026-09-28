@@ -115,7 +115,8 @@ function Ribbons({ art, state, cam, px }: { art: BookArt; state: RO<Book3>; cam:
   const tf = useDerivedValue(() => {
     const b = state.value;
     const d = b.dims;
-    const p = project(cam, toWorld(b, { x: d.T * 0.55, y: d.H, z: d.W * 0.35 }));
+    // 책등 가까이 책장 사이에서 나온다(머리 면 앞쪽 18%)
+    const p = project(cam, toWorld(b, { x: d.T * 0.55, y: d.H, z: d.W * 0.18 }));
     return [{ translateX: p.x * px.s + px.tx }, { translateY: p.y * px.s + px.ty }, { rotate: (b.roll * Math.PI) / 180 }];
   });
   return (
@@ -149,7 +150,8 @@ export function BookNode({ book, dims, state, cam, px, shared }: { book: Book; d
   const ctone = toneOf(book, true);
   return (
     <Group zIndex={z}>
-      {art.ribbons ? <Ribbons art={art} state={state} cam={cam} px={px} /> : null}
+      {/* 올려다볼 때는 머리 면이 안 보이므로 책 뒤에서 나오는 것처럼(먼저), 정면·내려다볼 때는 머리 면 위에(나중) */}
+      {art.ribbons && cam.ky < 0.005 ? <Ribbons art={art} state={state} cam={cam} px={px} /> : null}
       <Side f="back" state={state} cam={cam} px={px} book={book} pages={false} tone={tone} grain={shared.grain} />
       <Side f="head" state={state} cam={cam} px={px} book={book} pages tone={tone} grain={shared.grain} />
       <Side f="tail" state={state} cam={cam} px={px} book={book} pages tone={tone} grain={shared.grain} />
@@ -158,6 +160,7 @@ export function BookNode({ book, dims, state, cam, px, shared }: { book: Book; d
       <ArtFace f="cover" art={art} state={state} cam={cam} px={px} d={dims} />
       <Side f="cover" state={state} cam={cam} px={px} book={book} pages={false} tone={ctone} grain={shared.grain} graze />
       <Side f="spine" state={state} cam={cam} px={px} book={book} pages={false} tone={tone} grain={shared.grain} graze />
+      {art.ribbons && cam.ky >= 0.005 ? <Ribbons art={art} state={state} cam={cam} px={px} /> : null}
     </Group>
   );
 }

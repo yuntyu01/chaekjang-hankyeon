@@ -1,7 +1,7 @@
 // 상자 옆면·윗면의 모양 계산(워클릿). 선반 줄·드래그·서랍 모두 이것 하나로 면을 만든다.
 // UI 스레드에서 매 프레임 지금 자세(Book3)로 다시 계산한다. 워클릿은 쓰는 함수를 먼저 정의한다(만들 때 붙잡는다).
 // 면 윤곽 순서 [A, B, Bb, Ab]: A→B = 지금 가장 앞을 향한 면(주 면)과 맞닿은 변(주 면의 반시계 순서), Ab·Bb = 뒤쪽 끝.
-import { corners, facing, faceCorners, FACE_IDS, type Book3, type Cam, type FaceId } from '@/domain/book3';
+import { corners, facing, faceCorners, faceNormal, FACE_IDS, rot, type Book3, type Cam, type FaceId } from '@/domain/book3';
 import { project } from '@/domain/box';
 import type { Point } from '@/domain/shelf-scene';
 
@@ -225,6 +225,8 @@ export function mainFace(cam: Cam, b: Book3): FaceId {
 export function sideFaceGeom(cam: Cam, b: Book3, f: FaceId, px: Affine, bowS: number, pages: boolean, seed: number): FaceGeom {
   'worklet';
   if (facing(cam, b, f) <= 0.002) return EMPTY_FACE;
+  // 아래를 향한 면(바닥·아래 책에 닿는 면)은 올려다볼 때도 그리지 않는다
+  if (rot(b.roll, b.yaw, faceNormal(f)).y < -0.5) return EMPTY_FACE;
   const main = mainFace(cam, b);
   if (main === f) return EMPTY_FACE;
   const cs = corners(b);

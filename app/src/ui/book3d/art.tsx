@@ -74,9 +74,8 @@ function Ribbons({ book, s }: { book: Book; s: number }) {
   const color = book.art.ribbon ?? shade(book.themeColor, 0.25);
   const w = 6.8 * s;
   const gap = 2.4 * s;
-  const hidden = 6 * s;
+  const hidden = 1.2 * s; // 뿌리: 머리 면에 살짝 묻힌다
   const total = n * w + (n - 1) * gap;
-  const H = RIBBON_OUT * s + hidden;
   return (
     <Group>
       {Array.from({ length: n }, (_, i) => {
@@ -103,7 +102,6 @@ function Ribbons({ book, s }: { book: Book; s: number }) {
           </Group>
         );
       })}
-      {H ? null : null}
     </Group>
   );
 }

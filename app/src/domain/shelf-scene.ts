@@ -1,9 +1,9 @@
 // 선반 한 칸의 책 프레임 계산(순수). 렌더링·터치 판정·그림자가 모두 이 결과를 쓴다.
 // 좌표: 설계 단위, x는 선반 판 안쪽 왼쪽 끝 기준, y는 아래로 증가하며 선반 바닥이 SHELF.clearHeight.
-import { boxSize, collide, frontPoly, silhouette, solveLean, type Placed } from './box';
+import { boxSize, collide, frontPoly, silhouette, solveLean, type Camera, type Placed } from './box';
 import { fromPlaced, type Book3 } from './book3';
-import { bookHeight, bookThickness, CAMERA, LYING_BACK_Z, SHELF, stackOffsets } from './geometry';
-import { itemPositions, placementOf, shelfItems, type BookMap } from './layout-engine';
+import { bookHeight, bookThickness, CAMERA, cameraFor, LYING_BACK_Z, SHELF, stackOffsets } from './geometry';
+import { itemPositions, placementOf, shelfItems, sortedShelves, type BookMap } from './layout-engine';
 import { firstContact, MAX_LEAN } from './lean';
 import type { Book, Pose, ShelfLayout, Tilt } from './types';
 
@@ -31,6 +31,7 @@ export type BookFrame = {
   leanOn?: string;
   // 선반 공간 상자(그리기·충돌의 원본)
   box?: Placed;
+  cam?: Camera; // 이 줄의 카메라(그리기·터치)
 };
 
 export type ItemFrame = { key: string; x: number; width: number; bookIds: string[] };
@@ -84,15 +85,16 @@ export function tiltedFrame(footX: number, w: number, h: number, tilt: Tilt) {
 export const PLANK_BOUNDS = { min: -SHELF.sideMargin + 2, max: 390 - SHELF.sideMargin - 2 };
 
 // 상자 하나에서 프레임을 만든다: 앞면 사각형(그리기 위치, 기울기 전), 회전, 투영 실루엣(터치·그림자)
-function frameOf(p: Placed, bookId: string, itemKey: string, shelfId: string, tilt: Tilt, stackIndex: number): BookFrame {
-  const left = p.x + p.z * CAMERA.kx;
-  const top = FLOOR - (p.y + p.size.h) - p.z * CAMERA.ky;
+function frameOf(p: Placed, bookId: string, itemKey: string, shelfId: string, tilt: Tilt, stackIndex: number, cam: Camera = CAMERA): BookFrame {
+  const left = p.x + p.z * cam.kx;
+  const top = FLOOR - (p.y + p.size.h) - p.z * Math.max(0, cam.ky);
   return {
     bookId, itemKey, shelfId, pose: p.pose, tilt,
     left, top, width: p.size.w, height: p.size.h,
     rotate: p.angle || 0,
     origin: p.angle > 0 ? 'right bottom' : 'left bottom',
-    poly: silhouette(CAMERA, p),
+    poly: silhouette(cam, p),
+    cam,
     stackIndex,
     box: p,
   };
@@ -101,6 +103,7 @@ function frameOf(p: Placed, bookId: string, itemKey: string, shelfId: string, ti
 // 선반 한 칸의 상자 배치와 프레임. 충돌·기대기는 선반 공간(가로·깊이·회전), 프레임은 투영 결과.
 export function computeShelf(layout: ShelfLayout, books: BookMap, shelfId: string) {
   const positions = itemPositions(shelfItems(layout, shelfId), layout, books);
+  const cam = cameraFor(sortedShelves(layout).findIndex((s) => s.id === shelfId));
   const frames: BookFrame[] = [];
   const items: ItemFrame[] = [];
   for (const { item, x, width } of positions) {
@@ -111,7 +114,7 @@ export function computeShelf(layout: ShelfLayout, books: BookMap, shelfId: strin
       item.bookIds.forEach((id, i) => {
         const b = books[id];
         const box: Placed = { bookId: id, pose: 'horizontal', size: boxSize(b, 'horizontal'), x: x + offs[i], y, z: LYING_BACK_Z, angle: 0 };
-        frames.push(frameOf(box, id, item.key, shelfId, 0, i));
+        frames.push(frameOf(box, id, item.key, shelfId, 0, i, cam));
         y += box.size.h;
       });
       continue;
@@ -120,7 +123,7 @@ export function computeShelf(layout: ShelfLayout, books: BookMap, shelfId: strin
     const b = books[id];
     const p = placementOf(layout, id)!;
     const box: Placed = { bookId: id, pose: p.pose, size: boxSize(b, p.pose), x, y: 0, z: p.pose === 'horizontal' ? LYING_BACK_Z : 0, angle: 0 };
-    frames.push(frameOf(box, id, item.key, shelfId, p.pose === 'spine' ? p.tilt : 0, 0));
+    frames.push(frameOf(box, id, item.key, shelfId, p.pose === 'spine' ? p.tilt : 0, 0, cam));
   }
   solveLeans(frames, layout);
   return { frames, items };
@@ -141,7 +144,7 @@ function solveLeans(frames: BookFrame[], layout: ShelfLayout) {
   const leaners = frames.filter((f) => f.pose === 'spine' && f.tilt !== 0);
   if (!leaners.length) return;
   const set = (f: BookFrame, angle: number, extra: Partial<BookFrame>) => {
-    Object.assign(f, frameOf({ ...f.box!, angle }, f.bookId, f.itemKey, f.shelfId, f.tilt, f.stackIndex), extra);
+    Object.assign(f, frameOf({ ...f.box!, angle }, f.bookId, f.itemKey, f.shelfId, f.tilt, f.stackIndex, f.cam), extra);
   };
   const ordered = [...leaners].sort((a, b) => a.box!.x - b.box!.x);
   // 마주 보고 기대는 두 권은 같은 각도로 함께 기울여 처음 닿는 곳에서 멈춘다(한 권씩 풀면 먼저 푼 책이 빈틈을 다 차지한다).
@@ -232,9 +235,9 @@ export function frameBBox(f: BookFrame) {
 }
 
 // 선반 밖에서 한 권만 그릴 때(서랍·상세): 똑바로 선 상자 하나의 프레임. 바닥 = FLOOR, 왼쪽 = 0.
-export function standaloneFrame(book: Book, pose: Pose): BookFrame {
+export function standaloneFrame(book: Book, pose: Pose, cam: Camera = cameraFor(1)): BookFrame {
   const box: Placed = { bookId: book.id, pose, size: boxSize(book, pose), x: 0, y: 0, z: 0, angle: 0 };
-  return frameOf(box, book.id, book.id, '', 0, 0);
+  return frameOf(box, book.id, book.id, '', 0, 0, cam);
 }
 
 // 선반 한 칸의 3D 자세(그리기·전환 경로의 입력)

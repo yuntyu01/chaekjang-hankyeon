@@ -87,9 +87,19 @@ export function thicknessMm(pages: number) {
 export const BOOK_HEIGHT: Record<HeightClass, number> = { short: 136, medium: 174, tall: 188 };
 export const BOOK_THICKNESS: Record<ThicknessClass, number> = { thin: 28, medium: 36, thick: 42 };
 
-// 상자 모델 카메라(앱 전체 하나): 직교 투영 + 살짝 내려다보는 고정 사선.
-// 선반 공간 깊이 1DU가 화면에서 오른쪽으로 kx, 위로 ky 밀린다. 줄·가로 위치로 바꾸지 않는다(모든 책이 같은 쪽 옆면·윗면).
-export const CAMERA = { kx: 0.07, ky: 0.045 };
+// 상자 모델 카메라: 직교 투영 + 사선. 선반 공간 깊이 1DU가 화면에서 오른쪽으로 kx, 위로 ky 밀린다.
+// 줄마다 눈높이가 다르다: 1번째 줄은 밑에서 올려다봐 윗면이 보이지 않고(ky < 0), 2번째 줄은 정면(0), 3번째 줄부터는 내려다봐 윗면이 보인다.
+// 배치·충돌은 카메라와 상관없는 선반 공간에서 하고, 카메라는 그리기·터치에만 쓴다.
+export const ROW_CAMERAS = [
+  { kx: 0.07, ky: -0.025 },
+  { kx: 0.07, ky: 0 },
+  { kx: 0.07, ky: 0.06 },
+];
+export function cameraFor(rowIndex: number) {
+  return ROW_CAMERAS[Math.max(0, Math.min(ROW_CAMERAS.length - 1, rowIndex))];
+}
+// 자리 계산(줄 높이·가로 틈)용: 가장 많이 보이는 카메라 기준(어느 줄에 놓여도 모자라지 않게)
+export const CAMERA = { kx: 0.07, ky: 0.06 };
 // 누운 책(더미)은 선반 위에서 세운 책보다 뒤에 놓인다(선반 공간 깊이 DU). 화면에서는 LYING_BACK_Z × ky만큼 올라간다.
 export const LYING_BACK_Z = 40;
 export const LYING_BACK = LYING_BACK_Z * CAMERA.ky;
