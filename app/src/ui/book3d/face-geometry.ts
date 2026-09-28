@@ -233,7 +233,7 @@ export function sideFaceGeom(cam: Cam, b: Book3, f: FaceId, px: Affine, bowS: nu
   'worklet';
   if (facing(cam, b, f) <= 0.002) return EMPTY_FACE;
   // 아래를 향한 면(바닥·아래 책에 닿는 면)은 올려다볼 때도 그리지 않는다
-  if (rot(b.roll, b.yaw, faceNormal(f), b.spin ?? 0).y < -0.5) return EMPTY_FACE;
+  if (rot(b.roll, b.yaw, faceNormal(f), b.spin ?? 0, b.pitch ?? 0).y < -0.5) return EMPTY_FACE;
   const main = mainFace(cam, b);
   if (main === f) return EMPTY_FACE;
   const cs = corners(b);
@@ -287,8 +287,8 @@ export function faceMatrix(b: Book3, f: 'spine' | 'cover', cam: Cam, px: Affine)
   'worklet';
   const fr = faceFrame(b.dims, f);
   const O = project(cam, toWorld(b, fr.O));
-  const U = rot(b.roll, b.yaw, fr.U, b.spin ?? 0);
-  const V = rot(b.roll, b.yaw, fr.V, b.spin ?? 0);
+  const U = rot(b.roll, b.yaw, fr.U, b.spin ?? 0, b.pitch ?? 0);
+  const V = rot(b.roll, b.yaw, fr.V, b.spin ?? 0, b.pitch ?? 0);
   const s = px.s;
   const ux = (U.x + U.z * cam.kx) / fr.w;
   const uy = -(U.y + U.z * cam.ky) / fr.w;

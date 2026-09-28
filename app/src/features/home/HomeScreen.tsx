@@ -138,6 +138,7 @@ export function HomeScreen() {
   const [vpH, setVpH] = useState(0);
   const [editing, setEditing] = useState(false);
   const [panelH, setPanelH] = useState(0);
+  const leanRef = useRef<boolean | undefined>(undefined); // 앞뒤 막대를 끄는 동안의 벽 기대기 상태
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [shelfMenuOpen, setShelfMenuOpen] = useState(false);
   const [toast, setToast] = useState<Toast>(null);
@@ -525,7 +526,9 @@ export function HomeScreen() {
     if (!editId) return 0;
     const shelfId = placementOf(layout, editId)?.shelfId;
     const cur = boxOf(layout, books, editId)?.z ?? 0;
-    const r = setDepth(layout, books, editId, z);
+    // 끄는 동안은 직전 미리보기의 벽 기대기 상태를 이어받는다(경계 여유가 한 번의 끌기 안에서도 작동하게)
+    const r = setDepth(layout, books, editId, z, leanRef.current);
+    leanRef.current = done ? undefined : r.ok ? !!placementOf(r.layout, editId)?.wallLean : leanRef.current;
     const got = r.ok ? boxOf(r.layout, books, editId)?.z ?? cur : cur;
     const limited = Math.abs(got - z) >= 1;
     const restore = () => shelfId && previewShelf(shelfId, frames.get(shelfId) ?? []);
@@ -863,6 +866,11 @@ export function HomeScreen() {
           {__DEV__ ? (
             <Pressable accessibilityRole="button" style={styles.menuItem} onPress={() => { setShelfMenuOpen(false); placementStore.resetOcclusionPilot(); }}>
               <Text style={styles.menuText}>앞뒤 가림 시험(개발)</Text>
+            </Pressable>
+          ) : null}
+          {__DEV__ ? (
+            <Pressable accessibilityRole="button" style={styles.menuItem} onPress={() => { setShelfMenuOpen(false); placementStore.resetWallPilot(); }}>
+              <Text style={styles.menuText}>벽 기대기 시험(개발)</Text>
             </Pressable>
           ) : null}
           <Pressable accessibilityRole="button" style={styles.menuItem} onPress={() => { setShelfMenuOpen(false); setTimeout(() => setDrawerOpen(true), 280); }}>

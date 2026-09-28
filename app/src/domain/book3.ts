@@ -10,16 +10,26 @@ import type { Pose } from './types';
 
 export type Vec3 = { x: number; y: number; z: number };
 export type Dims = { T: number; H: number; W: number };
-export type Book3 = { id: string; dims: Dims; roll: number; yaw: number; t: Vec3; spin?: number };
+export type Book3 = { id: string; dims: Dims; roll: number; yaw: number; t: Vec3; spin?: number; pitch?: number };
 
-export function rot(roll: number, yaw: number, v: Vec3, spin = 0): Vec3 {
+// ④ pitch: 선반 좌우축(월드 x)으로 뒤로 젖히기(+ = 윗부분이 벽 쪽으로). 표지 전시 책이 벽에 기댈 때. spin보다 먼저.
+export function rot(roll: number, yaw: number, v: Vec3, spin = 0, pitch = 0): Vec3 {
   'worklet';
-  if (spin) {
-    const r = rot(roll, yaw, v, 0);
-    const c = (spin * Math.PI) / 180;
-    const cs = Math.cos(c);
-    const sn = Math.sin(c);
-    return { x: r.x * cs - r.z * sn, y: r.y, z: r.x * sn + r.z * cs };
+  if (spin || pitch) {
+    let r = rot(roll, yaw, v, 0, 0);
+    if (pitch) {
+      const c = (pitch * Math.PI) / 180;
+      const cs = Math.cos(c);
+      const sn = Math.sin(c);
+      r = { x: r.x, y: r.y * cs - r.z * sn, z: r.z * cs + r.y * sn };
+    }
+    if (spin) {
+      const c = (spin * Math.PI) / 180;
+      const cs = Math.cos(c);
+      const sn = Math.sin(c);
+      r = { x: r.x * cs - r.z * sn, y: r.y, z: r.x * sn + r.z * cs };
+    }
+    return r;
   }
   const b = (yaw * Math.PI) / 180;
   const cb = Math.cos(b);
@@ -44,7 +54,7 @@ export function sub3(a: Vec3, b: Vec3): Vec3 {
 
 export function toWorld(b: Book3, v: Vec3): Vec3 {
   'worklet';
-  return add(rot(b.roll, b.yaw, v, b.spin ?? 0), b.t);
+  return add(rot(b.roll, b.yaw, v, b.spin ?? 0, b.pitch ?? 0), b.t);
 }
 
 // 꼭짓점 번호 = xi + 2*yi + 4*zi (xi: 0이면 x=0, 1이면 x=T …)
@@ -96,7 +106,7 @@ export type Cam = { kx: number; ky: number };
 
 export function facing(cam: Cam, b: Book3, f: FaceId) {
   'worklet';
-  const n = rot(b.roll, b.yaw, faceNormal(f), b.spin ?? 0);
+  const n = rot(b.roll, b.yaw, faceNormal(f), b.spin ?? 0, b.pitch ?? 0);
   const l = Math.hypot(cam.kx, cam.ky, 1);
   return (n.x * cam.kx + n.y * cam.ky - n.z) / l;
 }
@@ -106,7 +116,7 @@ export type Light = { dir: Vec3; ambient: number; diffuse: number; min: number; 
 
 export function brightness(light: Light, b: Book3, f: FaceId) {
   'worklet';
-  const n = rot(b.roll, b.yaw, faceNormal(f), b.spin ?? 0);
+  const n = rot(b.roll, b.yaw, faceNormal(f), b.spin ?? 0, b.pitch ?? 0);
   const d = light.dir;
   const l = Math.hypot(d.x, d.y, d.z) || 1;
   const k = light.ambient + light.diffuse * ((n.x * d.x + n.y * d.y + n.z * d.z) / l);
@@ -146,6 +156,12 @@ export function fromPlaced(p: Placed): Book3 {
   const o = orientOf(p.pose, p.angle);
   const spin = p.pose === 'horizontal' ? p.spin ?? 0 : 0;
   const b: Book3 = { id: p.bookId, dims, roll: o.roll, yaw: o.yaw, spin, t: { x: 0, y: 0, z: 0 } };
+  if (p.pose === 'front' && p.pitch) {
+    // 벽에 기대기: 뒤쪽 아래 모서리(책 좌표 원점 쪽 변)를 축으로 뒤로 젖힌다. 그 모서리는 똑바로 섰을 때 자리 그대로.
+    b.pitch = p.pitch;
+    b.t = { x: p.x, y: p.y, z: p.z + p.size.d };
+    return b;
+  }
   if (p.pose === 'spine' && p.angle) {
     const foot = { x: p.angle > 0 ? p.x + p.size.w : p.x, y: p.y, z: p.z };
     b.t = sub3(foot, rot(o.roll, o.yaw, pivotLocal(dims, o.roll)));
@@ -225,7 +241,7 @@ export function obb(b: Book3) {
   const c = toWorld(b, { x: d.T / 2, y: d.H / 2, z: d.W / 2 });
   return {
     c,
-    ax: [rot(b.roll, b.yaw, { x: 1, y: 0, z: 0 }, b.spin ?? 0), rot(b.roll, b.yaw, { x: 0, y: 1, z: 0 }, b.spin ?? 0), rot(b.roll, b.yaw, { x: 0, y: 0, z: 1 }, b.spin ?? 0)],
+    ax: [rot(b.roll, b.yaw, { x: 1, y: 0, z: 0 }, b.spin ?? 0, b.pitch ?? 0), rot(b.roll, b.yaw, { x: 0, y: 1, z: 0 }, b.spin ?? 0, b.pitch ?? 0), rot(b.roll, b.yaw, { x: 0, y: 0, z: 1 }, b.spin ?? 0, b.pitch ?? 0)],
     h: [d.T / 2, d.H / 2, d.W / 2],
   };
 }

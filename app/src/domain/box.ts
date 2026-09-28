@@ -72,6 +72,7 @@ export type Placed = {
   z: number; // 앞면
   angle: number;
   spin?: number; // 눕힌 책의 수직축 회전(도). size는 돌리기 전 치수, x·z는 돌린 뒤 축 정렬 상자의 최솟값
+  pitch?: number; // 표지 책이 벽에 기댄 각도(도). z는 똑바로 섰을 때의 앞면(뒤쪽 아래 모서리 = z + 두께)
 };
 
 function rad(d: number) {

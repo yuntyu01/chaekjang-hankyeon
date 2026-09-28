@@ -2,7 +2,7 @@
 // 좌표: 설계 단위, x는 선반 판 안쪽 왼쪽 끝 기준, y는 아래로 증가하며 선반 바닥이 SHELF.clearHeight.
 import { boxSize, collide, CONTACT, frontPoly, hull, project, solveLean, type Camera, type Placed } from './box';
 import { corners, fromPlaced, VIEW_BY_POSITION, VIEW_MID, type Book3 } from './book3';
-import { bookHeight, bookThickness, CAMERA, cameraFor, defaultDepth, SHELF } from './geometry';
+import { bookHeight, bookThickness, CAMERA, cameraFor, defaultDepth, SHELF, wallPitch } from './geometry';
 import { stackBoxes } from './support';
 import { itemPositions, placementOf, shelfItems, sortedShelves, stackMembers, type BookMap } from './layout-engine';
 import { firstContact, MAX_LEAN } from './lean';
@@ -121,7 +121,9 @@ export function computeShelf(layout: ShelfLayout, books: BookMap, shelfId: strin
     const b = books[id];
     const p = placementOf(layout, id)!;
     const spin = p.pose === 'horizontal' ? p.spin ?? 0 : 0;
-    const box: Placed = { bookId: id, pose: p.pose, size: boxSize(b, p.pose), x, y: 0, z: p.depth ?? defaultDepth(b, p.pose), angle: 0, spin };
+    const z = p.depth ?? defaultDepth(b, p.pose);
+    const pitch = p.pose === 'front' ? wallPitch(b, z, p.wallLean) || undefined : undefined;
+    const box: Placed = { bookId: id, pose: p.pose, size: boxSize(b, p.pose), x, y: 0, z, angle: 0, spin, pitch };
     frames.push(frameOf(box, id, item.key, shelfId, p.pose === 'spine' ? p.tilt : 0, 0, cam));
   }
   solveLeans(frames, layout);

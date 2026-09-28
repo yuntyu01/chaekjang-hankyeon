@@ -41,7 +41,7 @@ export const holdTrack = (b: Book3): Track => ({
   id: b.id,
   dims: b.dims,
   moving: false,
-  segs: [{ kind: 0, t0: 0, t1: 1, r0: b.roll, r1: b.roll, y0: b.yaw, y1: b.yaw, sp0: b.spin ?? 0, sp1: b.spin ?? 0, a: { x: 0, y: 0, z: 0 }, w0: b.t, w1: b.t, al: 0, x0: 0, x1: 0, b0: 0, b1: 0, z0: 0, z1: 0 }],
+  segs: [{ kind: 0, t0: 0, t1: 1, r0: b.roll, r1: b.roll, y0: b.yaw, y1: b.yaw, sp0: b.spin ?? 0, sp1: b.spin ?? 0, pi0: b.pitch ?? 0, pi1: b.pitch ?? 0, a: { x: 0, y: 0, z: 0 }, w0: b.t, w1: b.t, al: 0, x0: 0, x1: 0, b0: 0, b1: 0, z0: 0, z1: 0 }],
 });
 
 // 진행률 t에서 이 책의 자세(들림 포함). 경로가 없으면 null.
@@ -106,18 +106,29 @@ export function useShelfMotion(shelfId: string, frames: BookFrame[], reduceMotio
 
   useEffect(() => {
     previewers.set(shelfId, (fr) => {
-      const rec: Tracks = Object.fromEntries(fr.filter((f) => f.box).map((f) => [f.bookId, holdTrack(fromPlaced(f.box!))]));
+      const next = fr.filter((f) => f.box).map((f) => fromPlaced(f.box!));
+      // 벽에 기대거나 떨어지는 순간처럼 자세가 한 번에 크게 바뀌면(젖힘 2° 이상) 짧게 이어 준다. 그 밖에는 손을 그대로 따라간다.
+      const now = t.value;
+      const prev = Object.values(current.current).map((tr) => bookAt(tr, now));
+      // 이어 주는 중(t < 1)에 다음 미리보기가 오면 그 중간 모습에서 다시 이어 준다(중간에 끊겨 튀지 않게)
+      const jump = now < 0.999 || next.some((b) => {
+        const a = prev.find((q) => q.id === b.id);
+        return !!a && Math.abs((a.pitch ?? 0) - (b.pitch ?? 0)) > 2;
+      });
+      const plan = jump && !reduceMotion ? planTransition(prev, next, PLANK_BOUNDS) : null;
+      const rec: Tracks = plan ? Object.fromEntries(plan.tracks.map((tr) => [tr.id, tr])) : Object.fromEntries(next.map((b) => [b.id, holdTrack(b)]));
       current.current = rec;
       scheduleOnUI(() => {
         'worklet';
         tracks.value = rec;
-        t.value = 1;
+        t.value = plan ? 0 : 1;
+        if (plan) t.value = withTiming(1, { duration: MOTION_MS, easing: Easing.inOut(Easing.cubic) });
       });
     });
     return () => {
       previewers.delete(shelfId);
     };
-  }, [shelfId, tracks, t]);
+  }, [shelfId, tracks, t, reduceMotion]);
 
   useLayoutEffect(() => {
     const id = selectedId;
@@ -511,7 +522,7 @@ function receivedShadow(m: Motion, id: string, ids: string[], cam: Cam, px: Affi
   for (const fid of FACE_IDS) {
     const fv = facing(cb, b, fid);
     if (fv <= 0.002) continue;
-    if (rot(b.roll, b.yaw, faceNormal(fid), b.spin ?? 0).y < -0.5) continue;
+    if (rot(b.roll, b.yaw, faceNormal(fid), b.spin ?? 0, b.pitch ?? 0).y < -0.5) continue;
     let k = 0;
     while (k < faces.length && score[k] >= fv) k++;
     faces.splice(k, 0, fid);
@@ -519,7 +530,7 @@ function receivedShadow(m: Motion, id: string, ids: string[], cam: Cam, px: Affi
   }
   const f = faces[slot];
   if (!f) return NO_RECV;
-  const n = rot(b.roll, b.yaw, faceNormal(f), b.spin ?? 0);
+  const n = rot(b.roll, b.yaw, faceNormal(f), b.spin ?? 0, b.pitch ?? 0);
   const cs = corners(b);
   const fc = faceCorners(f).map((i) => cs[i]);
   const P = (q: Vec3) => {
@@ -753,7 +764,7 @@ export function StackShade({ m, id, lowerId, cam, px, ranks }: { m: Motion; id: 
     let upF: FaceId = 'cover';
     let best = -Infinity;
     for (const fid of FACE_IDS) {
-      const ny = rot(lo.roll, lo.yaw, faceNormal(fid), lo.spin ?? 0).y;
+      const ny = rot(lo.roll, lo.yaw, faceNormal(fid), lo.spin ?? 0, lo.pitch ?? 0).y;
       if (ny > best) {
         best = ny;
         upF = fid;

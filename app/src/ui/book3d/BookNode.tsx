@@ -63,8 +63,8 @@ const LN = (() => {
 
 function litDelta(b: Book3, n: { x: number; y: number; z: number }) {
   'worklet';
-  const w = rot(b.roll, b.yaw, n, b.spin ?? 0);
-  const w0 = rot(b.roll, b.yaw, { x: 0, y: 0, z: -1 }, b.spin ?? 0);
+  const w = rot(b.roll, b.yaw, n, b.spin ?? 0, b.pitch ?? 0);
+  const w0 = rot(b.roll, b.yaw, { x: 0, y: 0, z: -1 }, b.spin ?? 0, b.pitch ?? 0);
   return w.x * LN.x + w.y * LN.y + w.z * LN.z - (w0.x * LN.x + w0.y * LN.y + w0.z * LN.z);
 }
 

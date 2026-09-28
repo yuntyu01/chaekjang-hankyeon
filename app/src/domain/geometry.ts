@@ -182,6 +182,25 @@ export function spunExtent(book: Book, spin = 0) {
   return { w: Math.abs(L * Math.cos(r)) + Math.abs(W * Math.sin(r)), d: Math.abs(L * Math.sin(r)) + Math.abs(W * Math.cos(r)) };
 }
 
+// ---------- 표지 전시 책의 벽 기대기 ----------
+// 뒤쪽 아래 모서리(z = depth + 두께)는 사용자가 둔 자리 그대로 선반에, 뒤쪽 윗모서리는 벽(z = SHELF_DEPTH)에 닿는다:
+//   sin(각) = 벽까지 틈 / 책 높이. 벽에서 멀어질수록 더 기운다. 틈이 커서 각이 WALL_LEAN_MAX를 넘으면 벽에서 떨어져 똑바로 선다.
+// 선 책은 틈이 WALL_LEAN_ENTER 각에 해당하는 거리 안으로 들어와야 기대기 시작한다(두 경계 사이에서는 지금 상태 유지).
+export const WALL_LEAN_ENTER = 16;
+export const WALL_LEAN_MAX = 20;
+export function wallGap(book: Book, depth: number) {
+  return SHELF_DEPTH - (depth + bookThickness(book));
+}
+export function nextWallLean(book: Book, depth: number, prev?: boolean) {
+  const lim = bookHeight(book) * Math.sin(((prev ? WALL_LEAN_MAX : WALL_LEAN_ENTER) * Math.PI) / 180);
+  return wallGap(book, depth) <= lim + 1e-6;
+}
+export function wallPitch(book: Book, depth: number, lean?: boolean) {
+  if (!lean) return 0;
+  const g = Math.max(0, wallGap(book, depth));
+  return (Math.asin(Math.min(1, g / bookHeight(book))) * 180) / Math.PI;
+}
+
 export function placementDepth(book: Book, p: Pick<BookPlacement, 'pose' | 'depth' | 'spin'>) {
   const d = p.pose === 'horizontal' ? spunExtent(book, p.spin).d : p.pose === 'front' ? bookThickness(book) : frontWidth(book);
   const z = p.depth ?? defaultDepth(book, p.pose);

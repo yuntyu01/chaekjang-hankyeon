@@ -171,6 +171,21 @@ export const placementStore = {
     void persist(next);
   },
 
+  // 개발용: 3번째 선반 가운데에 표지 전시 책 한 권(우리가 빛의 속도로)만, 벽에서 떨어져 선 상태
+  resetWallPilot() {
+    const p = SAMPLE_LAYOUT.placements.find((q) => q.bookId === 'b16')!;
+    const next = withLeans(
+      normalize({
+        ...SAMPLE_LAYOUT,
+        placements: [...SAMPLE_LAYOUT.placements.filter((q) => q.shelfId !== p.shelfId), { ...p, pos: 130, depth: 0 }],
+        drawer: [...SAMPLE_LAYOUT.drawer, ...SAMPLE_LAYOUT.placements.filter((q) => q.shelfId === p.shelfId && q.bookId !== 'b16').map((q) => q.bookId)],
+      }),
+      state.books,
+    );
+    set({ undo: state.layout, layout: next });
+    void persist(next);
+  },
+
   retrySave() {
     void persist(state.layout);
   },
