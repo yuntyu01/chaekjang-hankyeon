@@ -10,7 +10,8 @@ import { scheduleOnUI } from 'react-native-worklets';
 
 import { corners, fromPlaced, lowest, viewCam, type Book3, type Cam } from '@/domain/book3';
 import { project } from '@/domain/box';
-import { DESIGN_WIDTH, SHELF } from '@/domain/geometry';
+import { DESIGN_WIDTH, SHELF, SHELF_DEPTH, SHELF_FRONT, SHELF_IMG_W, SHELF_IMG_X } from '@/domain/geometry';
+import { SHELF_ASSET } from '@/domain/shelf-asset.generated';
 import { castShape, hull, rgba } from '@/domain/shadow-shape';
 import { PLANK_BOUNDS, type BookFrame, type Point } from '@/domain/shelf-scene';
 import { bookAt, planTransition, type Track } from '@/domain/transition';
@@ -162,6 +163,29 @@ function DebugGeom({ m, id, cam, px }: { m: Motion; id: string; cam: Cam; px: Af
   );
 }
 
+// 계산상의 선반 윗면(y=0): 앞 모서리 z=-SHELF_FRONT, 책 줄 z=0(점선 대신 가는 선), 벽 z=SHELF_DEPTH. PNG와 겹쳐 맞는지 본다.
+function DebugShelf({ cam, px }: { cam: Cam; px: Affine }) {
+  const path = useMemo(() => {
+    const p = Skia.PathBuilder.Make();
+    const L = SHELF_IMG_X + SHELF_ASSET.plankLeft * SHELF_IMG_W - SHELF.sideMargin;
+    const R = SHELF_IMG_X + SHELF_ASSET.plankRight * SHELF_IMG_W - SHELF.sideMargin;
+    const at = (x: number, z: number) => {
+      const q = project(cam, { x: x + SHELF_FRONT * cam.kx, y: 0, z }); // 앞 모서리가 PNG 판 앞면 좌우 끝에 오게
+      return { x: q.x * px.s + px.tx, y: q.y * px.s + px.ty };
+    };
+    const quad = [at(L, -SHELF_FRONT), at(R, -SHELF_FRONT), at(R, SHELF_DEPTH), at(L, SHELF_DEPTH)];
+    p.moveTo(quad[0].x, quad[0].y);
+    for (const q of quad.slice(1)) p.lineTo(q.x, q.y);
+    p.close();
+    const a = at(L, 0);
+    const b = at(R, 0);
+    p.moveTo(a.x, a.y);
+    p.lineTo(b.x, b.y);
+    return p.detach();
+  }, [cam, px]);
+  return <Path path={path} style="stroke" strokeWidth={1.2} color="rgba(200,40,150,0.85)" />;
+}
+
 // ---------- 책(한 캔버스에 줄 전체) ----------
 
 // 선반을 다시 계산하면 프레임 객체는 새로 생기지만 상자가 같으면 그대로 둔다(면 워크릿을 다시 만들지 않게)
@@ -197,6 +221,7 @@ export const RowBooks = memo(function RowBooks({ m, frames, books, hiddenId, cam
             ),
           )}
         {debug ? frames.filter((f) => f.box).map((f) => <DebugGeom key={`dbg${f.bookId}`} m={m} id={f.bookId} cam={cam} px={px} />) : null}
+        {debug ? <DebugShelf cam={cam} px={px} /> : null}
         {frames
           .filter((f) => f.box && f.bookId !== hiddenId && f.stackIndex > 0)
           .map((f) => (
@@ -335,23 +360,61 @@ function footOf(b: Book3) {
   return { x0, x1, z0, z1, y: lo, top };
 }
 
+// 바닥 면(받치는 면에 닿는 모서리들)을 선반 위 실제 모양 그대로: 돌린 책이면 돌린 사각형. 모서리만 닿으면(기댄 책) 좁은 띠.
+function footPoly(b: Book3): { pts: { x: number; z: number }[]; y: number } {
+  'worklet';
+  const cs = corners(b);
+  const lo = lowest(b);
+  const pts: { x: number; z: number }[] = [];
+  for (const c of cs) if (c.y < lo + 0.6) pts.push({ x: c.x, z: c.z });
+  if (pts.length < 3) {
+    const f = footOf(b);
+    return { pts: [{ x: f.x0, z: f.z0 }, { x: f.x1, z: f.z0 }, { x: f.x1, z: f.z1 }, { x: f.x0, z: f.z1 }], y: lo };
+  }
+  let cx = 0;
+  let cz = 0;
+  for (const q of pts) {
+    cx += q.x / pts.length;
+    cz += q.z / pts.length;
+  }
+  // 위에서 보아 앞(z 작은 쪽) 왼쪽부터 시계 반대 방향: 앞 → 오른쪽 → 뒤 → 왼쪽
+  pts.sort((a, c) => Math.atan2(a.z - cz, a.x - cx) - Math.atan2(c.z - cz, c.x - cx));
+  return { pts, y: lo };
+}
+
 function contactShapes(b: Book3, cam0: Cam, s: number, clear: number) {
   'worklet';
   const cam = viewCam(cam0, b);
-  const f = footOf(b);
+  const f = footPoly(b);
   const P = (x: number, z: number, dy = 0, dx = 0) => {
     const q = project(cam, { x, y: f.y, z });
     return { x: (SHELF.sideMargin + q.x) * s + dx * s, y: (clear + q.y - FLOOR) * s + dy * s };
   };
   const c = shadow.contact;
   const d = shadow.bookShelf;
-  return {
-    // 책이 선반 윗면에 드리우는 그림자: 바닥 면을 빛 반대쪽(오른쪽 아래)으로
-    cast: [P(f.x0, f.z0, d.dy, d.dy / 2), P(f.x1, f.z0, d.dy, d.dy / 2), P(f.x1, f.z1, 0, d.dy / 2), P(f.x0, f.z1)],
-    // 닿는 곳: 바닥 앞 모서리 바로 앞 좁고 진한 띠
-    band: [P(f.x0 - 0.3, f.z0), P(f.x1 + 0.6, f.z0), P(f.x1 + 0.6, f.z0, c.height * 0.5), P(f.x0 - 0.3, f.z0, c.height * 0.5)],
-    foot: [P(f.x0, f.z0), P(f.x1, f.z0), P(f.x1, f.z1), P(f.x0, f.z1)],
-  };
+  let z0 = Infinity;
+  let z1 = -Infinity;
+  for (const q of f.pts) {
+    z0 = Math.min(z0, q.z);
+    z1 = Math.max(z1, q.z);
+  }
+  const zr = Math.max(1e-6, z1 - z0);
+  // 책이 선반 윗면에 드리우는 그림자: 바닥 면을 빛 반대쪽(오른쪽 아래)으로, 앞쪽 꼭짓점일수록 더 아래로
+  const cast = f.pts.map((q) => P(q.x, q.z, (d.dy * (z1 - q.z)) / zr, d.dy / 2));
+  // 닿는 곳: 앞을 향한 바닥 모서리(바깥 법선이 사용자 쪽)마다 바로 앞 좁고 진한 띠
+  const band: Point[][] = [];
+  const n = f.pts.length;
+  for (let i = 0; i < n; i++) {
+    const a = f.pts[i];
+    const e = f.pts[(i + 1) % n];
+    // 시계 반대 순서의 바깥 법선(x-z 평면): (dz, -dx)
+    const nx = e.z - a.z;
+    const nz = -(e.x - a.x);
+    const l = Math.hypot(nx, nz) || 1;
+    if (nz / l > -0.3) continue;
+    band.push([P(a.x - 0.3, a.z), P(e.x + 0.6, e.z), P(e.x + 0.6, e.z, c.height * 0.5), P(a.x - 0.3, a.z, c.height * 0.5)]);
+  }
+  return { cast, band, foot: f.pts.map((q) => P(q.x, q.z)) };
 }
 
 export const RowContacts = memo(function RowContacts({ m, ids, cam, s, clear, height, front = false, shelfTop }: { m: Motion; ids: string[]; cam: Cam; s: number; clear: number; height: number; front?: boolean; shelfTop: number }) {
@@ -365,7 +428,7 @@ export const RowContacts = memo(function RowContacts({ m, ids, cam, s, clear, he
       if (!b || lowest(b) > 0.5) continue;
       const c = contactShapes(b, cam, s, clear);
       cast.push(c.cast);
-      band.push(c.band);
+      for (const q of c.band) band.push(q);
       foot.push(c.foot);
     }
     return { cast: pathOf(cast), band: pathOf(band), foot: pathOf(foot) };
@@ -406,13 +469,23 @@ export function StackShade({ m, id, cam, px }: { m: Motion; id: string; cam: Cam
   const path = useDerivedValue(() => {
     const b = stateNow(m, id);
     if (!b || lowest(b) < 0.5) return pathOf([]);
-    const f = footOf(b);
+    const f = footPoly(b);
     const cb = viewCam(cam, b);
-    const P = (x: number, zz: number, dy = 0) => {
-      const q = project(cb, { x, y: f.y, z: zz });
-      return { x: q.x * px.s + px.tx, y: q.y * px.s + px.ty + dy * px.s };
-    };
-    return pathOf([[P(f.x0, f.z0), P(f.x1 + 2, f.z0, 2), P(f.x1 + 2, f.z1, 1), P(f.x0, f.z1)]]);
+    let z0 = Infinity;
+    let z1 = -Infinity;
+    for (const q of f.pts) {
+      z0 = Math.min(z0, q.z);
+      z1 = Math.max(z1, q.z);
+    }
+    const zr = Math.max(1e-6, z1 - z0);
+    // 아래 책 윗면에: 바닥 모양을 오른쪽 아래로(앞쪽일수록 조금 더 아래)
+    return pathOf([
+      f.pts.map((q) => {
+        const p = project(cb, { x: q.x, y: f.y, z: q.z });
+        const t = (z1 - q.z) / zr;
+        return { x: (p.x + 2 * (q.x > (f.pts[0].x + f.pts[2].x) / 2 ? 1 : 0)) * px.s + px.tx, y: (p.y + 1 + t) * px.s + px.ty };
+      }),
+    ]);
   });
   return (
     <Group zIndex={z}>

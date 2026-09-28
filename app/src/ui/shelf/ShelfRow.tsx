@@ -3,8 +3,7 @@
 import { memo, useMemo } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
-import { CAMERA, DESIGN_WIDTH, SHELF, SHELF_IMG_H, SHELF_STYLE } from '@/domain/geometry';
-import { SHELF_ASSET } from '@/domain/shelf-asset.generated';
+import { CAMERA, DESIGN_WIDTH, SHELF, SHELF_STYLE } from '@/domain/geometry';
 import { frameBBox, type BookFrame } from '@/domain/shelf-scene';
 import type { Book } from '@/domain/types';
 import { ko } from '@/i18n/ko';
@@ -68,7 +67,7 @@ export const ShelfRow = memo(function ShelfRow(p: Props) {
   const s = p.scale;
   const m = useShelfMotion(p.shelfId, p.frames, p.reduceMotion, p.selectedId);
   const cam = p.frames[0]?.cam ?? CAMERA;
-  const shelfTop = p.clear - SHELF.contact + SHELF_ASSET.plankTopY * SHELF_IMG_H; // 선반 윗면 뒤 모서리(DU)
+  const shelfTop = p.clear - SHELF.back; // 선반 윗면 뒤 모서리(벽, DU)
   // 책 목록이 같으면 같은 배열(그림자 워크릿을 다시 만들지 않게)
   const idKey = p.frames.filter((f) => f.box && f.bookId !== p.placeholderId).map((f) => f.bookId).join('|');
   const ids = useMemo(() => (idKey ? idKey.split('|') : []), [idKey]);

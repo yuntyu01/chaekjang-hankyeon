@@ -817,6 +817,11 @@ export function HomeScreen() {
               <Text style={styles.menuText}>예시 배치로 초기화(개발)</Text>
             </Pressable>
           ) : null}
+          {__DEV__ ? (
+            <Pressable accessibilityRole="button" style={styles.menuItem} onPress={() => { setShelfMenuOpen(false); placementStore.resetPilot(); }}>
+              <Text style={styles.menuText}>눕힌 책 한 권 시험(개발)</Text>
+            </Pressable>
+          ) : null}
           <Pressable accessibilityRole="button" style={styles.menuItem} onPress={() => { setShelfMenuOpen(false); setTimeout(() => setDrawerOpen(true), 280); }}>
             <BookMarked size={20} color={colors.ink} /><Text style={styles.menuText}>{ko.drawer.title}{layout.drawer.length ? ` · ${layout.drawer.length}권` : ''}</Text>
           </Pressable>

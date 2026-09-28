@@ -7,7 +7,7 @@ import { Group, Image as SkImg, ImageSVG, Picture, Rect, Text } from '@shopify/r
 import type React from 'react';
 import { useDerivedValue, type SharedValue } from 'react-native-reanimated';
 
-import { brightness, corners, faceFrame, facing, rot, toWorld, viewCam, VIEW_BY_POSITION, VIEW_MID, type Book3, type Cam, type FaceId } from '@/domain/book3';
+import { brightness, corners, facing, toWorld, viewCam, VIEW_BY_POSITION, VIEW_MID, type Book3, type Cam, type FaceId } from '@/domain/book3';
 import { project } from '@/domain/box';
 import type { Book } from '@/domain/types';
 import { BOX_HEAD_BOW } from '@/ui/book/BookBody';
@@ -15,24 +15,9 @@ import { light } from '@/ui/theme';
 
 import { useBookArt, toneOf, type BookArt, type Shared } from './art';
 import { FaceShape } from './FaceShape';
-import { sideFaceGeom, seedOf, type Affine } from './face-geometry';
+import { faceMatrix, sideFaceGeom, seedOf, type Affine } from './face-geometry';
 
 type RO<T> = Readonly<SharedValue<T>>;
-
-// 면 그림 px → 캔버스 px 행렬(3×3, 행 우선)
-function faceMatrix(b: Book3, f: 'spine' | 'cover', cam: Cam, px: Affine) {
-  'worklet';
-  const fr = faceFrame(b.dims, f);
-  const O = project(cam, toWorld(b, fr.O));
-  const U = rot(b.roll, b.yaw, fr.U, b.spin ?? 0);
-  const V = rot(b.roll, b.yaw, fr.V, b.spin ?? 0);
-  const s = px.s;
-  const ux = (U.x + U.z * cam.kx) / fr.w;
-  const uy = -(U.y + U.z * cam.ky) / fr.w;
-  const vx = (V.x + V.z * cam.kx) / fr.h;
-  const vy = -(V.y + V.z * cam.ky) / fr.h;
-  return [ux, vx, O.x * s + px.tx, uy, vy, O.y * s + px.ty, 0, 0, 1];
-}
 
 function smooth(a: number, b: number, v: number) {
   'worklet';

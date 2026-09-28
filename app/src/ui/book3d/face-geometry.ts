@@ -1,7 +1,7 @@
 // 상자 옆면·윗면의 모양 계산(워클릿). 선반 줄·드래그·서랍 모두 이것 하나로 면을 만든다.
 // UI 스레드에서 매 프레임 지금 자세(Book3)로 다시 계산한다. 워클릿은 쓰는 함수를 먼저 정의한다(만들 때 붙잡는다).
 // 면 윤곽 순서 [A, B, Bb, Ab]: A→B = 지금 가장 앞을 향한 면(주 면)과 맞닿은 변(주 면의 반시계 순서), Ab·Bb = 뒤쪽 끝.
-import { corners, facing, faceCorners, faceNormal, FACE_IDS, rot, type Book3, type Cam, type FaceId } from '@/domain/book3';
+import { corners, faceFrame, facing, faceCorners, faceNormal, FACE_IDS, rot, toWorld, type Book3, type Cam, type FaceId } from '@/domain/book3';
 import { project } from '@/domain/box';
 import type { Point } from '@/domain/shelf-scene';
 
@@ -275,10 +275,26 @@ export function sideFaceGeom(cam: Cam, b: Book3, f: FaceId, px: Affine, bowS: nu
   const kind: FaceKind = Math.abs(mx) > Math.abs(my) ? (mx > 0 ? 'right' : 'left') : my < 0 ? 'top' : 'bottom';
   // 종이 단면에서 표지 판은 두께 방향 양끝: A→B가 두께(x) 방향이면 u, 아니면 깊이 쪽 v
   const boards = pages ? ((A ^ B) === 1 ? 'u' : 'v') : null;
-  const bow = main === 'spine' && (kind === 'top' || kind === 'right') ? bowS : 0;
+  // 볼록한 머리는 세운 책만(누운 책 모서리는 곧은 직선)
+  const bow = main === 'spine' && Math.abs(b.roll) < 45 && (kind === 'top' || kind === 'right') ? bowS : 0;
   // 책등·앞표지가 옆면이 될 때(비스듬히)는 그림 위에 그려지므로 밀어 넣지 않는다
   const under = f === 'spine' || f === 'cover' ? 0 : 2.4 * px.s;
   return computeFace({ poly: [pa, pb, P(nb), P(na)] }, kind, px, bow, boards, seed, under);
+}
+
+// 면 그림 px → 캔버스 px 행렬(3×3, 행 우선). 투영이 선형(직교)이라 면의 세 모서리로 정해지는 affine이 곧 면 전체의 투영이다.
+export function faceMatrix(b: Book3, f: 'spine' | 'cover', cam: Cam, px: Affine) {
+  'worklet';
+  const fr = faceFrame(b.dims, f);
+  const O = project(cam, toWorld(b, fr.O));
+  const U = rot(b.roll, b.yaw, fr.U, b.spin ?? 0);
+  const V = rot(b.roll, b.yaw, fr.V, b.spin ?? 0);
+  const s = px.s;
+  const ux = (U.x + U.z * cam.kx) / fr.w;
+  const uy = -(U.y + U.z * cam.ky) / fr.w;
+  const vx = (V.x + V.z * cam.kx) / fr.h;
+  const vy = -(V.y + V.z * cam.ky) / fr.h;
+  return [ux, vx, O.x * s + px.tx, uy, vy, O.y * s + px.ty, 0, 0, 1];
 }
 
 export const seedOf = (id: string, f: string) => [...id].reduce((h, c) => h + c.charCodeAt(0), 0) * 0.37 + f.length;

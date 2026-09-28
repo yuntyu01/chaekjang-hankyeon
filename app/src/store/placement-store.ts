@@ -4,7 +4,7 @@ import { useSyncExternalStore } from 'react';
 import Storage from 'expo-sqlite/kv-store';
 
 import { toShelfBook } from '@/domain/catalog';
-import { migrate, threeShelfLayout, validate, withNormalizedX, type BookMap } from '@/domain/layout-engine';
+import { migrate, normalize, threeShelfLayout, validate, withNormalizedX, type BookMap } from '@/domain/layout-engine';
 import { withLeans } from '@/domain/shelf-scene';
 import { loadLibrary } from '@/db/local-db';
 import { SAMPLE_BOOKS, SAMPLE_LAYOUT } from '@/domain/onboarding-sample';
@@ -116,6 +116,22 @@ export const placementStore = {
   // 개발용: 예시 18권 배치로 되돌린다(비교 캡처용). 되돌리기 한 번으로 복구할 수 있다.
   resetSample() {
     const next = withLeans(SAMPLE_LAYOUT, state.books);
+    set({ undo: state.layout, layout: next });
+    void persist(next);
+  },
+
+  // 개발용: 3번째 선반에 눕힌 책 한 권(나미야)만 두고 그 선반의 다른 책은 서랍으로(투영·돌리기 확인용)
+  resetPilot() {
+    const keep = SAMPLE_LAYOUT.placements.find((p) => p.bookId === 'b12')!;
+    const others = SAMPLE_LAYOUT.placements.filter((p) => p.shelfId === keep.shelfId && p.bookId !== 'b12');
+    const next = withLeans(
+      normalize({
+        ...SAMPLE_LAYOUT,
+        placements: [...SAMPLE_LAYOUT.placements.filter((p) => p.shelfId !== keep.shelfId), { ...keep, stackId: undefined, stackOrder: undefined, pos: 110 }],
+        drawer: [...SAMPLE_LAYOUT.drawer, ...others.map((p) => p.bookId)],
+      }),
+      state.books,
+    );
     set({ undo: state.layout, layout: next });
     void persist(next);
   },

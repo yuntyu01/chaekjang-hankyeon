@@ -21,7 +21,7 @@ describe('예시 이미지가 없는 새 책의 공통 배치와 그림자', () 
     const f = computeShelf(layout, { [fresh.id]: fresh }, 's').frames[0];
     const bottom = Math.max(...frontOutline(f).map((p) => p.y));
     expect(bottom).toBeCloseTo(SHELF.clearHeight, 6); // 선반 공간 바닥(누운 책은 뒤에 놓일 뿐 같은 바닥)
-    expect(bottom).toBeLessThan(SHELF.clearHeight + SHELF.lip - 6); // 책 앞에 나무판이 보인다
+    expect(bottom).toBeLessThan(SHELF.clearHeight + SHELF.lip - 4); // 책 앞에 나무판이 보인다(판 앞 70mm를 공통 카메라로 본 높이)
     const extent = singleFootprint(fresh, { pose, tilt });
     const o = frontOutline(f);
     expect(Math.max(...o.map((p) => p.x)) - Math.min(...o.map((p) => p.x))).toBeCloseTo(extent.width, 6); // 점유 폭 = 앞면 폭

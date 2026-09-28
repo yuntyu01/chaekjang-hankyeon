@@ -25,10 +25,26 @@ const PLANK_FRONT = 11.5; // 앞면
 const asset = SHELF_STYLE === 'asset';
 const USABLE_LEFT = 12;
 const USABLE_W = DESIGN_WIDTH - USABLE_LEFT * 2;
-// 0 = rear edge of the top surface, 1 = front lip. Seat the book near the
-// back, leaving a visible strip of wood in front of its lowest corner.
-export const BOOK_SHELF_DEPTH = 0.42; // 책을 선반 앞쪽으로 조금 당김(앞에 남는 나무 약 7.6DU)
-const CONTACT_Y = SHELF_ASSET.plankTopY + (SHELF_ASSET.frontTopY - SHELF_ASSET.plankTopY) * BOOK_SHELF_DEPTH;
+const DU_MM = USABLE_W / 480; // 선반 안쪽 480mm = 사용 폭(SHELF_LENGTH_MM과 같은 비율)
+
+// ---------- 공통 카메라(선반과 책이 같은 것을 쓴다) ----------
+// 직교 투영으로 살짝 내려다본다. 선반 공간(x 오른쪽, y 위, z 벽 쪽)의 점이 화면(설계 단위, 아래가 +)으로:
+//   화면 x = x + z·kx,  화면 y = 바닥 - (y + z·tanφ)
+// 정확한 직교식 -(y·cosφ + z·sinφ)과는 화면 전체 세로 배율(1/cosφ, 6°에서 0.6%)만 다르다.
+// 같은 높이라도 깊이가 다르면 화면 높이가 달라진다(벽 쪽일수록 위). kx는 옆면을 조금 보이게 하는 사선이다(카메라 좌우 회전 아님).
+export const VIEW_PITCH_DEG = 6;
+export const VIEW_KY = Math.tan((VIEW_PITCH_DEG * Math.PI) / 180);
+export const VIEW_KX = 0.07;
+
+// ---------- 선반 판(3D) ----------
+// 깊이 방향: 판 앞 모서리 z = -SHELF_FRONT, 책 줄 앞선 z = 0, 뒷벽 z = SHELF_DEPTH.
+// 판형 중 가장 넓은 표지(약 152mm)를 눕혀 뒤로 물려도 들어가도록 책 줄 → 벽 230mm, 책 앞에 남는 판 70mm(판 전체 300mm).
+export const SHELF_DEPTH_MM = 230;
+export const SHELF_DEPTH = SHELF_DEPTH_MM * DU_MM;
+export const SHELF_FRONT_MM = 70;
+export const SHELF_FRONT = SHELF_FRONT_MM * DU_MM;
+// 판 앞면(두께) 높이: PNG 앞면 띠 그대로
+const FRONT_FACE_H = (SHELF_ASSET.frontBottomY - SHELF_ASSET.frontTopY) * SHELF_IMG_H;
 
 export const SHELF = {
   sideMargin: USABLE_LEFT, // 장면 x=0의 화면 설계 좌표(drawn: 선반 판 왼쪽 끝)
@@ -41,9 +57,10 @@ export const SHELF = {
   minClear: 110,
   plankTop: PLANK_TOP,
   plankFront: PLANK_FRONT,
-  contact: asset ? CONTACT_Y * SHELF_IMG_H : 0,
-  lip: asset ? (SHELF_ASSET.frontTopY - CONTACT_Y) * SHELF_IMG_H : PLANK_TOP,
-  below: asset ? (SHELF_ASSET.frontBottomY - CONTACT_Y) * SHELF_IMG_H : PLANK_TOP + PLANK_FRONT,
+  // 책 줄 바닥선(화면 y = 바닥) 기준 화면 거리(DU). 모두 위 카메라로 3D 판을 투영한 값.
+  back: asset ? SHELF_DEPTH * VIEW_KY : 0, // 바닥선 → 윗면 뒤 모서리(벽)
+  lip: asset ? SHELF_FRONT * VIEW_KY : PLANK_TOP, // 바닥선 → 윗면 앞 모서리
+  below: asset ? SHELF_FRONT * VIEW_KY + FRONT_FACE_H : PLANK_TOP + PLANK_FRONT, // 바닥선 → 판 앞면 아래
 };
 
 export const SHELF_USABLE_WIDTH = USABLE_W - SHELF.innerLeft - SHELF.innerRight;
@@ -87,20 +104,12 @@ export function thicknessMm(pages: number) {
 export const BOOK_HEIGHT: Record<HeightClass, number> = { short: 136, medium: 174, tall: 188 };
 export const BOOK_THICKNESS: Record<ThicknessClass, number> = { thin: 28, medium: 36, thick: 42 };
 
-// 상자 모델 카메라: 직교 투영 + 사선. 선반 공간 깊이 1DU가 화면에서 오른쪽으로 kx, 위로 ky 밀린다.
-// 세로 시점은 모든 줄이 같다(살짝 내려다봐 윗면이 조금 보인다). 가로 시점은 책 위치에 따라 바뀐다(book3 viewCam).
-// 배치·충돌은 카메라와 상관없는 선반 공간에서 하고, 카메라는 그리기·터치에만 쓴다.
-export const VIEW_KY = 0.035;
-export const ROW_CAMERAS = [{ kx: 0.07, ky: VIEW_KY }];
+// 줄마다 같은 카메라(위 공통 카메라). 배치·충돌은 카메라와 상관없는 선반 공간에서 하고, 카메라는 그리기·터치에만 쓴다.
+export const ROW_CAMERAS = [{ kx: VIEW_KX, ky: VIEW_KY }];
 export function cameraFor(_rowIndex: number) {
   return ROW_CAMERAS[0];
 }
-// 자리 계산(줄 높이·가로 틈)용: 가장 많이 보이는 카메라 기준(어느 줄에 놓여도 모자라지 않게)
-export const CAMERA = { kx: 0.07, ky: VIEW_KY };
-// 선반 깊이(책 줄 앞선 z=0 → 뒷벽). 판형 중 가장 넓은 표지(약 152mm)를 눕혀 뒤로 물려도 들어가도록 230mm.
-// 선반 PNG에 보이는 윗면 픽셀 두께와는 별개인 물리 값이다.
-export const SHELF_DEPTH_MM = 230;
-export const SHELF_DEPTH = SHELF_DEPTH_MM * (SHELF_USABLE_WIDTH / SHELF_LENGTH_MM);
+export const CAMERA = ROW_CAMERAS[0];
 // 눕힌 책의 수직축 회전 범위(도). 미적·조작상의 제한(선반 깊이·충돌·받침에 따라 더 좁아질 수 있다).
 export const MAX_SPIN = 12;
 
