@@ -55,41 +55,24 @@ export const camera = CAMERA;
 // 참고값: 책등(앞) 1.00, 광원 반대 옆면 0.88, 윗면 1.04.
 export const light = { dir: { x: -0.115, y: 0.808, z: -0.577 }, ambient: 0.9, diffuse: 0.1732, min: 0.85, max: 1.05 };
 
+// 그림자(받는 면마다). 전부 따뜻한 회색(순검정 금지), 옅게 시작해 시안과 비교하며 올린다. 단위 DU(설계 px), blur는 반경.
 export const shadow = {
-  contact: { opacity: 0.42, height: 1.4, spread: -1, shift: 2, blur: 1 }, // 선반에 닿는 좁은 그림자(책 밑에만, 빛 반대쪽으로 조금)
-  // 책이 뒤 벽에 드리우는 그림자. 빛이 왼쪽 위에서 비스듬히 오므로, 책 윤곽을 오른쪽 아래로 옮긴 모양과
-  // 원래 윤곽을 이은 볼록 껍질(비스듬히 가로지르는 그림자)을 가우시안 블러로 흐린다.
-  // 책에 붙은 짧은 그림자와 거리별 두 확산층(멀수록 흐려지는 반그림자).
-  // dx/dy: 오른쪽·아래 이동(DU), blur: 표준편차(DU), opacity: 최대 불투명도.
-  // fade: 바닥에서 위로 [높이 DU, 배율] — 위쪽은 조금 옅게.
-  cast: {
-    // 가까운 접촉층과 넓은 확산층을 분리해 책의 외곽만 부드럽게 드러낸다.
-    layers: [
-      { dx: 2.5, dy: 3, blur: 1.6, opacity: 0.18 },
-      { dx: 27, dy: 24, blur: 9, opacity: 0.2 },
-      { dx: 39, dy: 35, blur: 16, opacity: 0.065 },
-    ],
-    fade: [[0, 1], [65, 0.96], [125, 0.8], [190, 0.45]] as [number, number][],
-  },
+  color: '#3B3330',
+  // 벽 뒤(선반 공간 깊이 z). 책→벽 그림자의 어긋남은 책 뒷면과 벽 사이 거리에 비례한다(벽에서 먼 표지 책은 더 떨어져 보인다).
+  wallZ: 150,
+  shelfWall: { dy: 12, blur: 20, opacity: 0.16 }, // 선반 판이 벽에 드리우는 넓고 옅은 그림자
+  shelfLip: { dy: 2, blur: 3, opacity: 0.08 }, // 판 바로 아래 짧은 그림자
+  bookWall: { dx: 6, dy: 8, blur: 12, opacity: 0.2, near: 0.5, perDU: 0.01 }, // 거리 배율 = near + perDU × 거리
+  contact: { height: 5, blur: 4, opacity: 0.22 }, // 책이 선반에 닿는 곳(좁고 진하게)
+  bookShelf: { dy: 4, blur: 8, opacity: 0.1 }, // 책이 선반 윗면에 드리우는 그림자
+  stack: { blur: 4, opacity: 0.15 }, // 위 책이 아래 책 윗면에
+  gap: { max: 0.1, fadeAt: 8 }, // 책 사이 틈 어둠: 틈이 좁을수록 진하고 fadeAt 이상이면 없음
   lifted: { dx: 12, dy: 14, opacity: 0.16, scale: 1.06 }, // 드래그 중 들린 느낌
-  plank: { opacity: 0.3, height: 20 }, // 선반 판 아래 벽 그림자
+  plank: { opacity: 0.3, height: 20 }, // (코드로 그리는 판) 아래 벽 그림자
 };
 
-// 선반 바깥 그림자(선반 PNG에서 분리, ShelfShadow가 그린다). 단위 DU(폭 390 기준).
-// 책 그림자와 같은 빛(왼쪽 위): 나무판 모양을 오른쪽 아래로 옮겨 이은 모양을 가우시안 블러.
-// 짧은 접촉층과 아래로 길게 옅어지는 층을 겹친다. 여기 값만 바꾸면 된다.
-export const shelfShadow = {
-  color: '#946940',
-  // Short contact shadows plus one long, continuously fading wall projection.
-  layers: [
-    { dx: 1, dy: 2, blur: 1.4, opacity: 0.08 },
-    { dx: 4, dy: 7, blur: 4, opacity: 0.045 },
-  ],
-  tail: {
-    dx: 34, length: 82, blur: 7,
-    fade: [[0, 0.28], [10, 0.245], [20, 0.18], [35, 0.12], [52, 0.055], [68, 0.018], [82, 0]] as [number, number][],
-  },
-};
+// 선반 판 명암: 윗면 살짝 밝게, 앞면 살짝 어둡게
+export const plankLight = { top: 0.07, front: 0.05 };
 
 export const motion = {
   shift: 180, // 옆 책이 비켜주는 시간(ms)

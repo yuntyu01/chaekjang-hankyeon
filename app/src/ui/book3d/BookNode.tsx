@@ -66,8 +66,8 @@ function Upright({ cx, cy, cyLie, state, fit, children }: { cx: number; cy: numb
 
 function ArtFace({ f, art, state, cam, px, d }: { f: 'spine' | 'cover'; art: BookArt; state: RO<Book3>; cam: Cam; px: Affine; d: Book3['dims'] }) {
   const s = px.s;
-  const m = useDerivedValue(() => faceMatrix(state.value, f, cam, px));
-  const vis = useDerivedValue(() => (facing(cam, state.value, f) > 0.002 ? 1 : 0));
+  // 보이지 않는 면은 행렬을 0으로(그룹 불투명도만으로는 기록된 그림이 얇은 선으로 남는다)
+  const m = useDerivedValue(() => (facing(cam, state.value, f) > 0.002 ? faceMatrix(state.value, f, cam, px) : [0, 0, -1e4, 0, 0, -1e4, 0, 0, 1]));
   const shade = useDerivedValue(() => shadeColor(brightness(light, state.value, f)));
   const w = (f === 'spine' ? d.T : d.W) * s;
   const h = d.H * s;
@@ -75,7 +75,7 @@ function ArtFace({ f, art, state, cam, px, d }: { f: 'spine' | 'cover'; art: Boo
   const fitG = Math.min(1, (0.42 * d.T) / Math.max(1, art.fontDU));
   const fitM = art.motif ? Math.min(1, (0.62 * d.T * s) / art.motif.h, (0.22 * d.H * s) / art.motif.w) : 1;
   return (
-    <Group matrix={m} opacity={vis}>
+    <Group matrix={m}>
       <Picture picture={f === 'spine' ? art.spine : art.cover} />
       <Rect x={0} y={0} width={w} height={h} color={shade} />
       {f === 'spine' ? (

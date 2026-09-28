@@ -3,7 +3,9 @@ import { LYING_BACK, SHELF, singleFootprint } from '../geometry';
 import { computeShelf, frontOutline } from '../shelf-scene';
 import { castShape } from '../shadow-shape';
 import type { Pose, ShelfLayout, Tilt } from '../types';
-import { shadow, shelfShadow } from '@/ui/theme';
+import { shadow } from '@/ui/theme';
+
+const shelfShadow = shadow.shelfWall;
 
 const fresh = toShelfBook({
   isbn13: '9780000000001', title: '새로 추가한 책', authors: ['저자'],
@@ -23,15 +25,15 @@ describe('예시 이미지가 없는 새 책의 공통 배치와 그림자', () 
     const extent = singleFootprint(fresh, { pose, tilt });
     const o = frontOutline(f);
     expect(Math.max(...o.map((p) => p.x)) - Math.min(...o.map((p) => p.x))).toBeCloseTo(extent.width, 6); // 점유 폭 = 앞면 폭
-    const far = shadow.cast.layers.at(-1)!;
-    const projected = castShape(f.poly, far.dx, far.dy);
+    const far = shadow.bookWall;
+    const projected = castShape(f.poly, far.dx * 6, far.dy * 6);
     expect(Math.max(...projected.map((p) => p.y)) - bottom).toBeGreaterThan(30);
     expect(Math.max(...projected.map((p) => p.x))).toBeGreaterThan(Math.max(...f.poly.map((p) => p.x)) + 30);
   });
 
-  it('선반 그림자는 50DU 이후에도 이어지고 끝은 투명해진다', () => {
-    expect(shelfShadow.tail.fade.find(([distance]) => distance >= 50)![1]).toBeGreaterThan(0.04);
-    expect(shelfShadow.tail.fade.at(-1)).toEqual([shelfShadow.tail.length, 0]);
-    expect(shelfShadow.tail.length).toBeGreaterThanOrEqual(80);
+  it('선반→벽 그림자는 넓고 옅다(따뜻한 회색)', () => {
+    expect(shelfShadow.blur).toBeGreaterThanOrEqual(16);
+    expect(shelfShadow.opacity).toBeLessThanOrEqual(0.2);
+    expect(shadow.color).not.toBe('#000000');
   });
 });

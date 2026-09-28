@@ -4,6 +4,7 @@ import { Image, View } from 'react-native';
 import { DESIGN_WIDTH, SHELF, SHELF_IMG_H, SHELF_IMG_W, SHELF_IMG_X } from '@/domain/geometry';
 import { SHELF_ASSET } from '@/domain/shelf-asset.generated';
 import { ShelfShadow } from '@/ui/shelf/ShelfShadow';
+import { plankLight } from '@/ui/theme';
 
 // 선반 한 칸 이미지(나무판만, 바깥 그림자 분리본). 원본 비율 유지, 책 밑면 기준선(contactY)이 이 줄의 바닥에 오도록 놓는다.
 // 바깥 그림자는 ShelfShadow의 접촉층과 긴 감쇠층이 판 아래에 그린다.
@@ -21,10 +22,23 @@ export function ShelfImage({ scale: s, clear }: { scale: number; clear: number }
         scale={s}
       />
       <Image
-      source={SHELF_PNG}
-      style={{ position: 'absolute', left: SHELF_IMG_X * s, top, width: SHELF_IMG_W * s, height: SHELF_IMG_H * s }}
-      resizeMode="stretch"
-    />
+        source={SHELF_PNG}
+        style={{ position: 'absolute', left: SHELF_IMG_X * s, top, width: SHELF_IMG_W * s, height: SHELF_IMG_H * s }}
+        resizeMode="stretch"
+      />
+      {/* 윗면 살짝 밝게 */}
+      <View
+        pointerEvents="none"
+        style={{
+          position: 'absolute',
+          left: (SHELF_IMG_X + SHELF_ASSET.plankLeft * SHELF_IMG_W) * s,
+          width: (SHELF_ASSET.plankRight - SHELF_ASSET.plankLeft) * SHELF_IMG_W * s,
+          top: top + SHELF_ASSET.plankTopY * SHELF_IMG_H * s,
+          height: (SHELF_ASSET.frontTopY - SHELF_ASSET.plankTopY) * SHELF_IMG_H * s,
+          backgroundColor: `rgba(255,255,255,${plankLight.top})`,
+          borderRadius: 2 * s,
+        }}
+      />
     </>
   );
 }
@@ -37,6 +51,9 @@ export function ShelfFront({ scale: s, clear }: { scale: number; clear: number }
       width: DESIGN_WIDTH * s, height: (SHELF.below - SHELF.lip + 0.5) * s, overflow: 'hidden' }}>
       <Image source={SHELF_PNG} resizeMode="stretch" style={{ position: 'absolute', left: SHELF_IMG_X * s,
         top: -SHELF_ASSET.frontTopY * SHELF_IMG_H * s, width: SHELF_IMG_W * s, height: SHELF_IMG_H * s }} />
+      {/* 앞면 살짝 어둡게 */}
+      <View style={{ position: 'absolute', left: (SHELF_IMG_X + SHELF_ASSET.plankLeft * SHELF_IMG_W) * s, right: 0, top: 0, bottom: 0,
+        width: (SHELF_ASSET.plankRight - SHELF_ASSET.plankLeft) * SHELF_IMG_W * s, backgroundColor: `rgba(59,51,48,${plankLight.front})` }} />
     </View>
   );
 }

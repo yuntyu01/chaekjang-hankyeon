@@ -3,7 +3,8 @@
 import { memo, useMemo } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
-import { CAMERA, DESIGN_WIDTH, SHELF, SHELF_STYLE } from '@/domain/geometry';
+import { CAMERA, DESIGN_WIDTH, SHELF, SHELF_IMG_H, SHELF_STYLE } from '@/domain/geometry';
+import { SHELF_ASSET } from '@/domain/shelf-asset.generated';
 import { frameBBox, type BookFrame } from '@/domain/shelf-scene';
 import type { Book } from '@/domain/types';
 import { ko } from '@/i18n/ko';
@@ -66,6 +67,7 @@ type Props = {
 export const ShelfRow = memo(function ShelfRow(p: Props) {
   const s = p.scale;
   const m = useShelfMotion(p.shelfId, p.frames, p.reduceMotion, p.selectedId);
+  const shelfTop = p.clear - SHELF.contact + SHELF_ASSET.plankTopY * SHELF_IMG_H; // 선반 윗면 뒤 모서리(DU)
   const ids = useMemo(() => p.frames.filter((f) => f.box && f.bookId !== p.placeholderId).map((f) => f.bookId), [p.frames, p.placeholderId]);
   return (
     <View style={{ height: p.height, width: DESIGN_WIDTH * s, marginLeft: p.originX, overflow: 'visible' }}>
@@ -75,7 +77,7 @@ export const ShelfRow = memo(function ShelfRow(p: Props) {
       ) : (
         <Plank left={SHELF.sideMargin * s} width={(DESIGN_WIDTH - SHELF.sideMargin * 2) * s} floorY={p.clear * s} scale={s} height={p.height + 20 * s} canvasWidth={DESIGN_WIDTH * s} />
       )}
-      <RowContacts m={m} ids={ids} cam={CAMERA} s={s} clear={p.clear} height={p.height} />
+      <RowContacts m={m} ids={ids} cam={CAMERA} s={s} clear={p.clear} height={p.height} shelfTop={shelfTop} />
       {/* 옆면·윗면은 모든 앞면 아래(앞에 있는 책의 앞면이 가린다) */}
       <RowBooks m={m} frames={p.frames} books={p.books} hiddenId={p.placeholderId} cam={CAMERA} s={s} clear={p.clear} height={p.height} />
       {p.frames.map((f) => (
@@ -89,7 +91,7 @@ export const ShelfRow = memo(function ShelfRow(p: Props) {
           onA11y={p.onA11y}
         />
       ))}
-      <RowContacts m={m} ids={ids} cam={CAMERA} s={s} clear={p.clear} height={p.height} front />
+      <RowContacts m={m} ids={ids} cam={CAMERA} s={s} clear={p.clear} height={p.height} shelfTop={shelfTop} front />
       {SHELF_STYLE === 'asset' ? <ShelfFront scale={s} clear={p.clear} /> : null}
       {p.hint ? (
         <View style={[styles.hint, { top: 2 * s }, p.hint.bad && styles.hintBad]} pointerEvents="none">
