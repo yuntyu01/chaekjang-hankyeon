@@ -62,8 +62,9 @@ describe('눕힌 책 한 권 돌리기(-12 / 0 / +12)', () => {
       return r.s.y - l.s.y; // 오른쪽 끝이 아래(+)면 오른쪽이 앞으로 나온 것
     };
     expect(dy(0)).toBeCloseTo(0, 9);
-    expect(dy(-12)).toBeGreaterThan(3); // -12: 오른쪽 끝이 앞으로 → 화면에서 더 아래
-    expect(dy(12)).toBeLessThan(-3);
+    // 양 끝 깊이 차(약 33DU) × ky만큼: -12면 오른쪽 끝이 앞으로 → 화면에서 더 아래
+    expect(dy(-12)).toBeGreaterThan(30 * CAMERA.ky);
+    expect(dy(12)).toBeLessThan(-30 * CAMERA.ky);
     expect(dy(12)).toBeCloseTo(-dy(-12), 6);
   });
 

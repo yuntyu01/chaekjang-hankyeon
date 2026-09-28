@@ -30,11 +30,12 @@ const DU_MM = USABLE_W / 480; // 선반 안쪽 480mm = 사용 폭(SHELF_LENGTH_M
 // ---------- 공통 카메라(선반과 책이 같은 것을 쓴다) ----------
 // 직교 투영으로 살짝 내려다본다. 선반 공간(x 오른쪽, y 위, z 벽 쪽)의 점이 화면(설계 단위, 아래가 +)으로:
 //   화면 x = x + z·kx,  화면 y = 바닥 - (y + z·tanφ)
-// 정확한 직교식 -(y·cosφ + z·sinφ)과는 화면 전체 세로 배율(1/cosφ, 6°에서 0.6%)만 다르다.
+// 정확한 직교식 -(y·cosφ + z·sinφ)과는 화면 전체 세로 배율(1/cosφ, 3°에서 0.14%)만 다르다.
+// 3°·kx 0.035: 시안(거의 눈높이)에 가깝게 윗면·옆면을 줄이면서 돌린 눕힌 책의 기울기는 남기는 값(6°·2°와 비교해 정함).
 // 같은 높이라도 깊이가 다르면 화면 높이가 달라진다(벽 쪽일수록 위). kx는 옆면을 조금 보이게 하는 사선이다(카메라 좌우 회전 아님).
-export const VIEW_PITCH_DEG = 6;
+export const VIEW_PITCH_DEG = 3;
 export const VIEW_KY = Math.tan((VIEW_PITCH_DEG * Math.PI) / 180);
-export const VIEW_KX = 0.07;
+export const VIEW_KX = 0.035;
 
 // ---------- 선반 판(3D) ----------
 // 깊이(선반 공간 z, 책 줄 기준): 판 앞 끝 z = -SHELF_FRONT, 책 기준선 z = 0, 뒷벽 z = SHELF_DEPTH.

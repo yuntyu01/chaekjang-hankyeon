@@ -18,6 +18,7 @@ const books: BookMap = {
   C: book('C', 120, 34, 90),
   L: book('L', 160, 26, 110),
   S: book('S', 120, 20, 80), // L 위에 올릴 작은 책
+  N: book('N', 150, 22, 50), // 표지 폭이 좁은 책(선반 앞쪽에 세우면 벽 쪽 눕힌 책과 깊이가 겹치지 않는다)
 };
 const place = (bookId: string, order: number, pos: number, extra: Partial<BookPlacement> = {}): BookPlacement => ({ bookId, shelfId: 's', order, pose: 'spine', tilt: 0 as Tilt, pos, ...extra });
 const layoutOf = (...placements: BookPlacement[]): ShelfLayout => ({ version: 2, shelves: [{ id: 's', order: 0 }], placements, drawer: [] });
@@ -143,10 +144,12 @@ describe('높이·깊이가 다른 책의 기대기', () => {
   });
 
   it('화면에서 나란해도 깊이가 다른 책은 받침이 되지 않는다', () => {
-    // 뒷벽 쪽 눕힌 책(깊이 겹침 없음) 옆에서 기대려 하면 받칠 곳이 없어 바로 선다
+    // 벽 쪽 눕힌 책과 앞쪽에 세운 좁은 책: 깊이가 겹치지 않아 기대려 해도 받칠 곳이 없어 바로 선다
     const back = SHELF_DEPTH - 110 - 1;
-    const l = withLeans(layoutOf(place('L', 0, 0, { pose: 'horizontal', depth: back }), place('B', 1, 120, { tilt: -7 })), books);
-    expect(placementOf(l, 'B')!.tilt).toBe(0);
+    const front = -SHELF_FRONT + 1;
+    expect(front + 50).toBeLessThan(back); // 깊이가 떨어져 있다
+    const l = withLeans(layoutOf(place('L', 0, 0, { pose: 'horizontal', depth: back }), place('N', 1, 120, { tilt: -7, depth: front })), books);
+    expect(placementOf(l, 'N')!.tilt).toBe(0);
   });
 
   it('선반 끝·빈 공간에서는 무리하게 기대지 않는다', () => {
