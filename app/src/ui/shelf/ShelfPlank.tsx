@@ -1,16 +1,21 @@
 // 선반 판. ShelfRow가 쓴다.
 // 모양: 3D 판 꼭짓점을 책과 같은 카메라로 투영한 면(domain/shelf-geom). 화면에 보이는 선반 외곽 = 이 면들의 외곽.
 // 재질: 받은 선반 PNG에서 잘라 낸 나무 질감(윗면·앞면 안쪽만, scripts/extract-shelf-texture.py)을 각 면에 affine으로 붙인다.
-// PNG의 외곽·투명 여백·원근 끝·바깥 그림자는 쓰지 않는다. 판이 벽에 드리우는 그림자는 ShelfShadow가 코드로 그린다.
+// PNG의 외곽·투명 여백·원근 끝·바깥 그림자는 쓰지 않는다. 판이 벽에 드리우는 그림자는 광원으로 계산한다(ShelfWallShadow).
 import { BlurMask, Canvas, Group, ImageShader, LinearGradient, Path, Skia, useImage, vec } from '@shopify/react-native-skia';
 import { useMemo } from 'react';
-import { StyleSheet } from 'react-native';
+import { StyleSheet, View } from 'react-native';
 
-import type { Camera } from '@/domain/box';
+import { hull, rgba } from '@/domain/shadow-shape';
+import { onWall, travelOf } from '@/domain/cast-shadow';
+import { SHELF_DEPTH } from '@/domain/geometry';
+import { shelfVertices } from '@/domain/shelf-geom';
+import { light, shadow } from '@/ui/theme';
+
+import { project, type Camera } from '@/domain/box';
 import { DESIGN_WIDTH, SHELF } from '@/domain/geometry';
 import type { Point } from '@/domain/shelf-scene';
 import { faceTextureMatrix, shelfFaces, type ShelfFace } from '@/domain/shelf-geom';
-import { ShelfShadow } from '@/ui/shelf/ShelfShadow';
 import { plankLight } from '@/ui/theme';
 
 const TOP_TEX = require('../../../assets/bookshelf/shelf-top.png');
@@ -59,6 +64,44 @@ function grow(poly: Point[], i: number, j: number, dir: Point): Point[] {
   return poly.map((q, k) => (k === i || k === j ? { x: q.x + dir.x * SEAM_PX, y: q.y + dir.y * SEAM_PX } : q));
 }
 
+// ---------- 판 → 벽 실제 그림자 ----------
+// 판 여덟 꼭짓점을 광원 방향으로 벽(z = SHELF_DEPTH)에 떨어뜨린 볼록 외곽. 판 뒤 모서리는 벽에 붙어 있어 거기서 시작한다.
+// 면광원: 벽 위 한 점의 진하기는 그 점을 가리는 판까지의 빛 길이 r로 정한다(r = 벽에서 아래로 내려간 거리 / |D.y|).
+// 벽 중 판 뒤에 가려지는 부분은 판을 나중에 그려 덮는다. 아래 줄 책은 아래 줄이 나중에 그려 덮는다(책에 지는 그림자는 아직 없음).
+const LIGHT = travelOf(light.dir);
+const SW = shadow.cast.shelfWall;
+// 그림자가 판 앞면 아래로 보이는 최대 길이(DU): 진하기가 5% 아래로 떨어지는 곳까지
+export const SHELF_CAST_EXTENT = SW.fade * Math.log(20) * Math.abs(LIGHT.y) + SW.near + SW.perDU * SW.fade;
+
+function ShelfWallShadow({ cam, s, clear }: { cam: Camera; s: number; clear: number }) {
+  const g = useMemo(() => {
+    const t = shelfPx(s, clear);
+    const px = (q: Point) => ({ x: q.x * s + t.tx, y: q.y * s + t.ty });
+    const vs = Object.values(shelfVertices());
+    const pts = vs.map((v) => px(project(cam, onWall(v, LIGHT, SHELF_DEPTH))));
+    const attach = px(project(cam, shelfVertices().LBB)).y; // 판 뒤 아래 모서리(벽에 붙은 곳)
+    const far = Math.max(...pts.map((q) => q.y));
+    const blur = (SW.near + SW.perDU * SW.fade) * s;
+    // 벽에서 아래로 h(px) 내려간 곳의 진하기 = opacity × e^(-r/fade), r = h/(s·|D.y|)
+    const stops = [0, 0.25, 0.5, 0.75, 1];
+    const colors = stops.map((k) => rgba(shadow.color, SW.opacity * Math.exp(-((far - attach) * k) / (s * Math.abs(LIGHT.y)) / SW.fade)));
+    const top = attach;
+    const h = far - attach + blur * 3;
+    const path = pathOf(hull(pts).map((q) => ({ x: q.x, y: q.y - top })));
+    return { path, colors, stops, top, h, blur, far: far - top };
+  }, [cam, s, clear]);
+  return (
+    <View pointerEvents="none" style={{ position: 'absolute', left: 0, top: g.top, width: DESIGN_WIDTH * s, height: g.h }}>
+      <Canvas style={{ width: DESIGN_WIDTH * s, height: g.h }}>
+        <Path path={g.path}>
+          <LinearGradient start={vec(0, 0)} end={vec(0, g.far)} colors={g.colors} positions={g.stops} />
+          <BlurMask blur={g.blur / 2} style="normal" />
+        </Path>
+      </Canvas>
+    </View>
+  );
+}
+
 export function ShelfBoard({ scale: s, clear, cam, height }: { scale: number; clear: number; cam: Camera; height: number }) {
   const { f, t, px } = useShelfFaces(cam, s, clear);
   const top = useImage(TOP_TEX);
@@ -91,9 +134,13 @@ export function ShelfBoard({ scale: s, clear, cam, height }: { scale: number; cl
   const fh = front?.height() ?? 1;
   return (
     <>
-      {/* 벽 그림자는 판 앞면(위 ~ 아래) 기준: 윗면 뒤쪽 벽으로는 번지지 않게 */}
-      <ShelfShadow plankLeft={px(f.corners.LFB).x} plankRight={px(f.corners.RFB).x} plankTop={fTop} plankBottom={fBot} scale={s} />
-      <Canvas style={[StyleSheet.absoluteFill, { width: DESIGN_WIDTH * s, height }]} pointerEvents="none">
+      {/* 실제 그림자: 판 → 벽 */}
+      <ShelfWallShadow cam={cam} s={s} clear={clear} />
+      <Canvas style={[StyleSheet.absoluteFill, { width: DESIGN_WIDTH * s, height: height + SHELF_CAST_EXTENT * s }]} pointerEvents="none">
+        {/* 주변광 차폐: 판 앞면 바로 아래 좁은 어둠(광원과 무관한 분위기 층) */}
+        <Path path={pathOf([px(f.corners.LFB), px(f.corners.RFB), { x: px(f.corners.RFB).x, y: fBot + shadow.ao.shelfLip.dy * s * 2 }, { x: px(f.corners.LFB).x, y: fBot + shadow.ao.shelfLip.dy * s * 2 }])} color={rgba(shadow.color, shadow.ao.shelfLip.opacity)}>
+          <BlurMask blur={(shadow.ao.shelfLip.blur / 2) * s} style="normal" />
+        </Path>
         {/* 윗면: 빛을 받아 살짝 밝게(질감 명암 위에 한 번만) */}
         <Face face={f.top} image={top} w={tw} h={th} s={s} t={t} poly={topPoly}>
           <Path path={pathOf(topPoly)} color={`rgba(255,255,255,${plankLight.top})`} />

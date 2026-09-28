@@ -1,7 +1,7 @@
 // 선반 판 모양: 3D 꼭짓점을 책과 같은 project()로 투영한 면이고, 이웃 면은 꼭짓점을 공유한다. 책은 어디에 놓여도 윗면 위에 있다.
 import { corners, fromPlaced } from '../book3';
 import { project } from '../box';
-import { CAMERA, H_OVERHANG, SHELF, SHELF_DEPTH, SHELF_DEPTH_MM, SHELF_FRONT, SHELF_FRONT_MM, SHELF_TOTAL_DEPTH_MM, SHELF_USABLE_WIDTH, SHELF_X0, SHELF_X1 } from '../geometry';
+import { CAMERA, SHELF, SHELF_DEPTH, SHELF_DEPTH_MM, SHELF_FRONT, SHELF_FRONT_MM, SHELF_TOTAL_DEPTH_MM, SHELF_USABLE_WIDTH, SHELF_X0, SHELF_X1 } from '../geometry';
 import { normalize, setSpin, type BookMap } from '../layout-engine';
 import { SAMPLE_BOOKS, SAMPLE_LAYOUT } from '../onboarding-sample';
 import { computeShelf } from '../shelf-scene';
@@ -67,9 +67,9 @@ it.each([
       expect(c.y).toBeCloseTo(0, 9); // 윗면에 닿음(뜨거나 파고들지 않음)
       expect(c.z).toBeGreaterThanOrEqual(-SHELF_FRONT - 1e-6);
       expect(c.z).toBeLessThanOrEqual(SHELF_DEPTH + 1e-6);
-      // 눕힌 책은 선반 끝을 H_OVERHANG까지 넘을 수 있다(기존 배치 규칙)
-      expect(c.x).toBeGreaterThanOrEqual(-H_OVERHANG - 1e-6);
-      expect(c.x).toBeLessThanOrEqual(SHELF_USABLE_WIDTH + H_OVERHANG + 1e-6);
+      // 선반 좌우 경계 안(돌출 없음)
+      expect(c.x).toBeGreaterThanOrEqual(-1e-6);
+      expect(c.x).toBeLessThanOrEqual(SHELF_USABLE_WIDTH + 1e-6);
     }
     // 무게 중심은 판 위
     const cx = base.reduce((a, c) => a + c.x, 0) / 4;

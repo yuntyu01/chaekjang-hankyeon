@@ -135,8 +135,6 @@ export const TILTS: Tilt[] = [-7, 0, 7];
 export const LEGACY_LEAN = 7;
 // 메뉴로 기울일 때 벌려 주는 각도(최대 기울기는 lean.ts MAX_LEAN)
 export const MENU_LEAN = 8;
-// 눕힌 책은 선반 끝을 이만큼 넘어도 된다(DU)
-export const H_OVERHANG = 20;
 
 export function bookHeight(book: Book) {
   if (book.dims?.height) return book.dims.height;

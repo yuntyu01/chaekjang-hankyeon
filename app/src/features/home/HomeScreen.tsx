@@ -51,7 +51,7 @@ import { DragOverlay, frameBBox } from '@/ui/shelf/DragOverlay';
 import { CONTENT_TOP, computeRows, rowAt, toContent, toScene, useShelfMetrics } from '@/ui/shelf/metrics';
 import { currentStates, motionOf, previewShelf } from '@/ui/shelf/ShelfMotion';
 import { ShelfRow, type DropHint } from '@/ui/shelf/ShelfRow';
-import { SHELF_SHADOW_EXTENT } from '@/ui/shelf/ShelfShadow';
+import { SHELF_CAST_EXTENT } from '@/ui/shelf/ShelfPlank';
 import { colors, fonts, motion, navigation } from '@/ui/theme';
 
 import { BookDetail, type MoveAction } from './BookDetail';
@@ -186,6 +186,11 @@ export function HomeScreen() {
   useEffect(() => {
     if (store.save === 'error') setToast({ text: ko.saveError, action: 'retry' });
   }, [store.save]);
+  useEffect(() => {
+    if (!store.notice) return;
+    setToast({ text: ko.refitMoved(store.notice) });
+    placementStore.clearNotice();
+  }, [store.notice]);
 
   const commit = useCallback(
     (r: Result, text: string = ko.moved): string | null => {
@@ -591,7 +596,7 @@ export function HomeScreen() {
   const count = Object.values(books).filter((b) => b.finishedAt?.startsWith(String(year))).length;
   const draggedBook = drag ? books[drag.bookId] : null;
   // 꾸미기 중엔 아래 조작부가 맨 아래 선반을 가리지 않도록 그 높이만큼 더 내릴 수 있게 한다
-  const contentHeight = Math.max(vpH, (rows.at(-1) ? rows.at(-1)!.top + rows.at(-1)!.height : CONTENT_TOP) + (SHELF_SHADOW_EXTENT + 8) * m.scale + (editing ? panelH : 0));
+  const contentHeight = Math.max(vpH, (rows.at(-1) ? rows.at(-1)!.top + rows.at(-1)!.height : CONTENT_TOP) + (SHELF_CAST_EXTENT + 8) * m.scale + (editing ? panelH : 0));
 
   return (
     <View style={[styles.root, { paddingTop: insets.top }]}>

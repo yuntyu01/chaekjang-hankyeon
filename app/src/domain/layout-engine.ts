@@ -9,7 +9,7 @@ import {
   CAMERA,
   frontWidth,
   LYING_BACK_Z,
-  H_OVERHANG,
+  defaultDepth,
   LEGACY_LEAN,
   MAX_STACK,
   MENU_LEAN,
@@ -20,6 +20,8 @@ import {
   visibleBookOutline,
   HOME_SHELF_COUNT,
 } from './geometry';
+import { corners, fromPlaced, lowest } from './book3';
+import { boxSize, type Placed } from './box';
 import { stackBoxes, stackSupported } from './support';
 import type { Book, BookPlacement, Pose, ShelfLayout, ShelfLayoutV1, Tilt } from './types';
 
@@ -114,17 +116,44 @@ function lyingEndGap(item: ShelfItem, books: BookMap) {
   return (LYING_BACK_Z + depth) * CAMERA.kx;
 }
 
-// 한 항목(책 또는 쌓기 더미)이 차지하는 깊이 구간(선반 공간 z)
+// 한 항목(책 또는 쌓기 더미)의 실제 상자들: 화면에 그리는 것과 같은 상자(쌓인 책은 아래 책 위 가운데).
+// x는 항목 왼쪽 끝. 세운 책은 기대기 전(똑바로 선) 상자.
+export function itemBoxes(item: ShelfItem, layout: ShelfLayout, books: BookMap, x = 0): Placed[] {
+  if (item.stacked) {
+    const base = placementOf(layout, item.bookIds[0]);
+    return stackBoxes(
+      item.bookIds.map((id) => ({ bookId: id, book: books[id], spin: placementOf(layout, id)?.spin, depth: base?.depth })),
+      x,
+    );
+  }
+  const p = placementOf(layout, item.bookIds[0])!;
+  const b = books[p.bookId];
+  const spin = p.pose === 'horizontal' ? p.spin : undefined;
+  return [{ bookId: p.bookId, pose: p.pose, size: boxSize(b, p.pose), x, y: 0, z: p.depth ?? defaultDepth(b, p.pose), angle: 0, spin }];
+}
+
+// 한 항목이 차지하는 깊이 구간(선반 공간 z): 실제 상자 꼭짓점에서
 export function itemDepth(item: ShelfItem, layout: ShelfLayout, books: BookMap) {
   let z0 = Infinity;
   let z1 = -Infinity;
-  for (const id of item.bookIds) {
-    const p = placementOf(layout, id)!;
-    const d = placementDepth(books[id], p);
-    z0 = Math.min(z0, d.z0);
-    z1 = Math.max(z1, d.z1);
+  for (const box of itemBoxes(item, layout, books)) {
+    for (const c of corners(fromPlaced(box))) {
+      z0 = Math.min(z0, c.z);
+      z1 = Math.max(z1, c.z);
+    }
   }
   return { z0, z1 };
+}
+
+// 각 책 바닥 면 네 모서리(선반 공간). 경계 판정용.
+export function itemBottomCorners(item: ShelfItem, layout: ShelfLayout, books: BookMap, x: number) {
+  const out: { x: number; z: number }[] = [];
+  for (const box of itemBoxes(item, layout, books, x)) {
+    const b = fromPlaced(box);
+    const lo = lowest(b);
+    for (const c of corners(b)) if (c.y < lo + 0.01) out.push({ x: c.x, z: c.z });
+  }
+  return out;
 }
 
 function packedPositions(items: ShelfItem[], layout: ShelfLayout, books: BookMap) {
@@ -216,11 +245,9 @@ export function itemPositions(items: ShelfItem[], layout: ShelfLayout, books: Bo
   return packed.map(({ item, width }, i) => ({ item, x: xs[i], width }));
 }
 
-// 선반 끝 한계: 눕힌 책(쌓기 포함)은 끝을 조금 넘어도 된다.
-function bounds(items: ShelfItem[], layout: ShelfLayout) {
-  const lo = items.length && isHorizontalItem(items[0], layout) ? -H_OVERHANG : 0;
-  const hi = SHELF_USABLE_WIDTH + (items.length && isHorizontalItem(items[items.length - 1], layout) ? H_OVERHANG : 0);
-  return { lo: SHELF.innerLeft + lo, hi: SHELF.innerLeft + hi };
+// 선반 좌우 경계(책 줄의 사용 폭). 모든 자세 공통: 돌출 허용 없음.
+function bounds(_items: ShelfItem[], _layout: ShelfLayout) {
+  return { lo: SHELF.innerLeft, hi: SHELF.innerLeft + SHELF_USABLE_WIDTH };
 }
 
 // 오른쪽 끝(점유 끝)
@@ -350,8 +377,9 @@ function insertItem(
   return settle(next, books, desired);
 }
 
-// 여러 선반의 공간·무결성을 한 번에 확인한다: 좌우 끝, 앞뒤 깊이(선반 앞선~뒷벽), 쌓기 받침.
-// 첫 구현은 선반 밖으로 튀어나오는 배치를 허용하지 않는다(눕힌 책의 좌우 H_OVERHANG만 예외, 기존 규칙).
+// 여러 선반의 공간·무결성을 한 번에 확인한다: 좌우 끝, 앞뒤 깊이(선반 앞 끝~뒷벽), 쌓기 받침.
+// 선반 밖으로 튀어나오는 배치는 허용하지 않는다: 모든 책(돌린 책·쌓인 책 포함)의 실제 바닥 네 모서리가
+// 좌우 경계(0 ~ 사용 폭)와 깊이(앞 끝 -SHELF_FRONT ~ 벽 SHELF_DEPTH) 안에 있어야 한다.
 export function checkSpace(layout: ShelfLayout, books: BookMap, only?: string): FailReason | null {
   for (const shelf of layout.shelves) {
     if (only && shelf.id !== only) continue;
@@ -359,14 +387,17 @@ export function checkSpace(layout: ShelfLayout, books: BookMap, only?: string): 
     if (!items.length) continue;
     const pos = itemPositions(items, layout, books);
     const { lo, hi } = bounds(items, layout);
-    for (const p of pos) if (p.x < lo - 0.01 || p.x + p.width > hi + 0.01) return 'no-space';
     for (const p of pos) {
-      const z = itemDepth(p.item, layout, books);
-      // 선반 윗면 전체(앞 끝 ~ 벽) 안: 책 기준선(z=0)은 세운 책이 서는 기본 자리일 뿐 경계가 아니다
-      if (z.z0 < -SHELF_FRONT - 0.01 || z.z1 > SHELF_DEPTH + 0.01) return 'no-space';
+      // 받침부터: 큰 책을 작은 책 위에 올린 경우는 자리 부족이 아니라 받침 문제로 알린다
       if (p.item.stacked) {
         const members = p.item.bookIds.map((id) => ({ bookId: id, book: books[id], spin: placementOf(layout, id)?.spin, depth: placementOf(layout, p.item.bookIds[0])?.depth }));
         if (!stackSupported(stackBoxes(members, p.x))) return 'unsupported';
+      }
+      if (p.x < lo - 0.01 || p.x + p.width > hi + 0.01) return 'no-space';
+      // 선반 윗면 전체(앞 끝 ~ 벽) 안: 책 기준선(z=0)은 세운 책이 서는 기본 자리일 뿐 경계가 아니다
+      for (const c of itemBottomCorners(p.item, layout, books, p.x)) {
+        if (c.x < lo - 0.01 || c.x > hi + 0.01) return 'no-space';
+        if (c.z < -SHELF_FRONT - 0.01 || c.z > SHELF_DEPTH + 0.01) return 'no-space';
       }
     }
   }
@@ -624,6 +655,68 @@ export function moveToDrawer(layout: ShelfLayout, bookId: string, books?: BookMa
   if (!placementOf(layout, bookId)) return { ok: false, reason: layout.drawer.includes(bookId) ? 'no-change' : 'unknown-book' };
   const base = detach(layout, bookId, books);
   return { ok: true, layout: normalize({ ...base, drawer: [bookId, ...base.drawer] }) };
+}
+
+// 저장본을 지금 선반 경계에 맞춘다(예: 깊이 300mm·눕힌 책 20DU 돌출을 허용하던 시절 저장본).
+// 필요한 책만 최소로 옮긴다: ① 깊이가 벗어난 항목만 안쪽으로 당기고 ② 좌우는 지금 자리를 원하는 위치로 두고 다시 맞추고
+// ③ 그래도 안 되면 그 선반 눕힌 책의 회전만 줄이고 ④ 마지막으로 선반에 들어가지 않는 오른쪽 끝 책부터 서랍에 넣는다(moved로 알린다).
+// 책 정보·독서 기록은 건드리지 않는다(배치만).
+export function fitToShelf(layout: ShelfLayout, books: BookMap): { layout: ShelfLayout; moved: string[]; changed: boolean } {
+  let l = layout;
+  const moved: string[] = [];
+  for (const shelf of sortedShelves(layout)) {
+    const items = shelfItems(l, shelf.id);
+    if (!items.length || !checkSpace(l, books, shelf.id)) continue; // 이미 맞는 선반은 그대로(저장본을 다시 쓰지 않는다)
+    // ① 깊이
+    const shifts = new Map<string, number>();
+    for (const item of items) {
+      const z = itemDepth(item, l, books);
+      const dz = z.z1 > SHELF_DEPTH ? SHELF_DEPTH - z.z1 : z.z0 < -SHELF_FRONT ? -SHELF_FRONT - z.z0 : 0;
+      if (Math.abs(dz) > 1e-6) shifts.set(item.bookIds[0], dz);
+    }
+    if (shifts.size) {
+      l = {
+        ...l,
+        placements: l.placements.map((p) => {
+          const dz = shifts.get(p.bookId);
+          if (dz === undefined) return p;
+          const b = books[p.bookId];
+          return { ...p, depth: Math.round(((p.depth ?? defaultDepth(b, p.pose)) + dz) * 100) / 100 };
+        }),
+      };
+    }
+    // ② 좌우: 지금 보이는 자리를 원하는 위치로 다시 맞춘다(경계 안으로, 겹치면 최소로 민다)
+    l = settle(l, books, bookXs(l, books), shelf.id);
+    if (!checkSpace(l, books, shelf.id)) continue;
+    // ③ 회전 줄이기: 먼저 전부 0으로 해 보고, 되면 책마다 가능한 만큼 다시 돌린다
+    const spun = l.placements.filter((p) => p.shelfId === shelf.id && p.spin);
+    if (spun.length) {
+      const flat = settle({ ...l, placements: l.placements.map((p) => (p.shelfId === shelf.id && p.spin ? { ...p, spin: undefined } : p)) }, books, bookXs(l, books), shelf.id);
+      if (!checkSpace(flat, books, shelf.id)) {
+        l = flat;
+        for (const p of spun) {
+          const r = setSpin(l, books, p.bookId, p.spin!);
+          if (r.ok) l = r.layout;
+        }
+        continue;
+      }
+      l = flat;
+    }
+    // ④ 오른쪽 끝부터 서랍으로
+    while (checkSpace(l, books, shelf.id)) {
+      const its = shelfItems(l, shelf.id);
+      if (!its.length) break;
+      const last = its[its.length - 1];
+      for (const id of [...last.bookIds].reverse()) {
+        const r = moveToDrawer(l, id, books);
+        if (r.ok) l = r.layout;
+        moved.push(id);
+      }
+      l = settle(l, books, bookXs(l, books), shelf.id);
+    }
+  }
+  const changed = JSON.stringify(l.placements) !== JSON.stringify(layout.placements) || l.drawer.length !== layout.drawer.length;
+  return { layout: changed ? normalize(l) : layout, moved, changed };
 }
 
 // 서랍 또는 새 책을 선반 끝 빈 자리에 세워 꽂는다. 위 선반부터 찾고, 자리가 없으면 no-space.

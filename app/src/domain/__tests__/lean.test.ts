@@ -1,4 +1,5 @@
 // 기대기: 먼저 "똑바로 선 책 + 기대는 책 한 권", 그다음 연쇄·마주 기대기, 마지막으로 높이·두께가 다른 세 권의 이동·저장·복원.
+import { corners, fromPlaced, lowest } from '../book3';
 import { bookHeight, bookThickness, SHELF } from '../geometry';
 import { bookXs, moveBook, normalize, setTilt, shelfItems, type BookMap } from '../layout-engine';
 import { MAX_LEAN, overlaps } from '../lean';
@@ -14,7 +15,7 @@ const book = (id: string, height: number, thickness: number): Book => ({
   themeColor: '#CCBBAA',
   heightClass: 'medium',
   thicknessClass: 'medium',
-  coverAspectRatio: 0.66, // 표지 폭이 책 기준선 뒤 깊이(160mm) 안에 들어가게(더 깊으면 기준선 앞으로 나와 선다)
+  coverAspectRatio: 0.7, // A는 표지 폭이 기준선 뒤 깊이보다 커서 기준선 앞으로 조금 나와 선다(크기는 그대로)
   art: { motif: 'leaf' },
   dims: { height, thickness },
 });
@@ -31,12 +32,14 @@ const frameOf = (l: ShelfLayout, id: string) => computeShelf(l, books, 's').fram
 const allFrames = (l: ShelfLayout) => computeShelf(l, books, 's').frames;
 
 function expectSeated(f: BookFrame) {
-  // 가장 낮은 점이 선반 바닥에 닿고, 축 모서리가 바닥에 있다
-  const o = frontOutline(f);
-  expect(Math.max(...o.map((p) => p.y))).toBeCloseTo(FLOOR, 6);
+  // 3D에서: 가장 낮은 점이 선반 윗면(y=0)에 닿고, 기울었으면 축 모서리(발)가 윗면에 있다.
+  // (앞으로 나온 책은 화면에서 조금 아래에 보이므로 화면 바닥선으로 재지 않는다)
+  const b = fromPlaced(f.box!);
+  const cs = corners(b);
+  expect(lowest(b)).toBeCloseTo(0, 6);
   if (f.rotate) {
-    const pivotX = f.rotate > 0 ? f.left + f.width : f.left;
-    expect(o.some((p) => Math.abs(p.x - pivotX) < 1e-6 && Math.abs(p.y - FLOOR) < 1e-6)).toBe(true);
+    const footX = f.rotate > 0 ? f.box!.x + f.box!.size.w : f.box!.x;
+    expect(cs.some((c) => Math.abs(c.x - footX) < 1e-6 && Math.abs(c.y) < 1e-6)).toBe(true);
   }
 }
 function expectNoOverlap(frames: BookFrame[]) {

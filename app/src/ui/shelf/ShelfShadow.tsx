@@ -1,4 +1,4 @@
-// 선반 판이 벽에 드리우는 그림자(벽 단계에서 판보다 먼저 그린다). 빛은 왼쪽 위.
+// 서랍 화면의 평면 선반 아래 분위기 그림자(3D 광원 계산이 아님). 홈 선반은 ShelfPlank의 실제 그림자를 쓴다.
 // 판 바로 아래의 짧은 그림자 + 아래로 넓고 옅게 번지는 그림자. 판 윗면 위쪽(뒤 벽)으로는 번지지 않게 자른다.
 import { BlurMask, Canvas, Group, Path, rect, Skia } from '@shopify/react-native-skia';
 import { memo, useMemo } from 'react';
@@ -16,10 +16,11 @@ type Props = {
 };
 
 // 그림자가 판 아래로 내려가는 최대 거리(DU). 부모 여백 계산용.
-export const SHELF_SHADOW_EXTENT = shadow.shelfWall.dy + shadow.shelfWall.blur * 1.5;
+export const SHELF_SHADOW_EXTENT = shadow.drawerShelf.dy + shadow.drawerShelf.blur * 1.5;
 
 export const ShelfShadow = memo(function ShelfShadow({ plankLeft, plankRight, plankTop, plankBottom, scale: s }: Props) {
-  const { shelfWall, shelfLip } = shadow;
+  const shelfWall = shadow.drawerShelf;
+  const shelfLip = shadow.ao.shelfLip;
   const pad = shelfWall.blur * 2 * s;
   const left = plankLeft - pad;
   const width = plankRight - plankLeft + pad * 2;

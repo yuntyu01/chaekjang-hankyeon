@@ -30,6 +30,7 @@ export function castShape(poly: Point[], dx: number, dy: number, blur = 0) {
 }
 
 export function rgba(hex: string, alpha: number) {
+  'worklet';
   const n = parseInt(hex.replace('#', ''), 16);
   return `rgba(${(n >> 16) & 255}, ${(n >> 8) & 255}, ${n & 255}, ${Math.max(0, Math.min(1, alpha))})`;
 }

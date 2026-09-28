@@ -55,20 +55,28 @@ export const camera = CAMERA;
 // 참고값: 책등(앞) 1.00, 광원 반대 옆면 0.88, 윗면 1.04.
 export const light = { dir: { x: -0.115, y: 0.808, z: -0.577 }, ambient: 0.9, diffuse: 0.1732, min: 0.85, max: 1.05 };
 
-// 그림자(받는 면마다). 전부 따뜻한 회색(순검정 금지), 옅게 시작해 시안과 비교하며 올린다. 단위 DU(설계 px), blur는 반경.
+// 그림자. 두 종류를 구분한다(전부 따뜻한 회색, 순검정 금지, 단위 DU).
+// ① 실제 그림자(cast): 광원(light.dir과 같은 방향)으로 물체를 받는 면(벽 z=230mm, 선반 윗면 y=0)에 투영한 모양.
+//    면광원이라 가리는 물체에서 멀수록 옅어지고(fade: e배로 옅어지는 거리) 흐려진다(blur = near + perDU × 거리).
+// ② 주변광 차폐(ao): 빛 방향과 상관없이 좁은 틈·맞닿은 곳이 어두워지는 분위기 층. 실제 그림자와 겹쳐 두 번 어두워지지 않게 옅게.
 export const shadow = {
   color: '#3B3330',
-  // 벽 뒤(선반 공간 깊이 z). 책→벽 그림자의 어긋남은 책 뒷면과 벽 사이 거리에 비례한다(벽에서 먼 표지 책은 더 떨어져 보인다).
-  wallZ: 150,
-  shelfWall: { dy: 12, blur: 20, opacity: 0.16 }, // 선반 판이 벽에 드리우는 넓고 옅은 그림자
-  shelfLip: { dy: 2, blur: 3, opacity: 0.08 }, // 판 바로 아래 짧은 그림자
-  bookWall: { dx: 8, dy: 6, blur: 12, opacity: 0.26, near: 0.5, perDU: 0.01 }, // 거리 배율 = near + perDU × 거리
-  contact: { height: 5, blur: 4, opacity: 0.26 }, // 책이 선반에 닿는 곳(좁고 진하게)
-  bookShelf: { dy: 4, blur: 8, opacity: 0.1 }, // 책이 선반 윗면에 드리우는 그림자
-  stack: { blur: 4, opacity: 0.15 }, // 위 책이 아래 책 윗면에
-  gap: { max: 0.1, fadeAt: 8 }, // 책 사이 틈 어둠: 틈이 좁을수록 진하고 fadeAt 이상이면 없음
-  lifted: { dx: 12, dy: 14, opacity: 0.16, scale: 1.06 }, // 드래그 중 들린 느낌
-  plank: { opacity: 0.3, height: 20 }, // (코드로 그리는 판) 아래 벽 그림자
+  cast: {
+    bookWall: { opacity: 0.3, fade: 60, near: 2, perDU: 0.12 }, // 책 → 벽
+    shelfWall: { opacity: 0.34, fade: 28, near: 4, perDU: 0.05 }, // 선반 판 → 벽(판 뒤 모서리가 벽에 붙어 있어 거기서 시작)
+    bookShelf: { opacity: 0.2, fade: 90, near: 2, perDU: 0.05 }, // 책 → 선반 윗면
+  },
+  ao: {
+    contact: { height: 5, blur: 4, opacity: 0.26 }, // 책이 선반에 닿는 곳(좁고 진하게)
+    foot: { opacity: 0.26 }, // 책 바닥 자리
+    stack: { blur: 4, opacity: 0.15 }, // 위 책이 아래 책 윗면에 닿는 곳
+    gap: { max: 0.1, fadeAt: 8 }, // 책 사이 좁은 틈: 틈이 좁을수록 진하고 fadeAt 이상이면 없음
+    shelfLip: { dy: 2, blur: 3, opacity: 0.08 }, // 판 앞면 바로 아래 좁은 어둠
+  },
+  // 서랍 화면의 평면 선반(3D 판이 아님)에만 쓰는 분위기 그림자
+  drawerShelf: { dy: 12, blur: 20, opacity: 0.16 },
+  lifted: { dx: 12, dy: 14, opacity: 0.16, scale: 1.06 }, // 드래그 중 들린 느낌(분위기)
+  plank: { opacity: 0.3, height: 20 }, // (코드로 그리는 평면 판) 아래 벽 그림자
 };
 
 // 선반 판 명암: 윗면 살짝 밝게, 앞면 살짝 어둡게

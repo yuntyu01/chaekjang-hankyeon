@@ -17,6 +17,7 @@ export const ko = {
     poses: { spine: '책등', front: '표지', horizontal: '눕힘' },
     leans: { '-1': '왼쪽', '0': '바로', '1': '오른쪽' },
   },
+  refitMoved: (n: number) => `선반 크기가 바뀌어 들어가지 않는 책 ${n}권을 서랍으로 옮겼어요.`,
   done: '완료',
   tabs: { shelf: '책장', record: '기록', my: '마이' },
   pose: { spine: '세우기', horizontal: '눕히기', front: '표지 보기' },

@@ -22,6 +22,7 @@ export function shelfVertices() {
     LFB: { x: SHELF_X0, y: yb, z: zf },
     RFB: { x: SHELF_X1, y: yb, z: zf },
     RBB: { x: SHELF_X1, y: yb, z: zb },
+    LBB: { x: SHELF_X0, y: yb, z: zb },
   };
 }
 

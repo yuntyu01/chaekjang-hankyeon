@@ -4,7 +4,7 @@ import { useSyncExternalStore } from 'react';
 import Storage from 'expo-sqlite/kv-store';
 
 import { toShelfBook } from '@/domain/catalog';
-import { migrate, normalize, threeShelfLayout, validate, withNormalizedX, type BookMap } from '@/domain/layout-engine';
+import { fitToShelf, migrate, normalize, threeShelfLayout, validate, withNormalizedX, type BookMap } from '@/domain/layout-engine';
 import { withLeans } from '@/domain/shelf-scene';
 import { loadLibrary } from '@/db/local-db';
 import { SAMPLE_BOOKS, SAMPLE_LAYOUT } from '@/domain/onboarding-sample';
@@ -21,12 +21,13 @@ type State = {
   undo: ShelfLayout | null;
   save: SaveStatus;
   loaded: boolean;
+  notice: number | null; // 복원하면서 선반에 들어가지 않아 서랍으로 옮긴 책 수(한 번 알리고 지운다)
 };
 
 // 온보딩 예시 16권 + 로컬 DB의 내 책(읽음만 선반/서랍 대상, Phase 1에서 추가 흐름 연결)
 const books: BookMap = Object.fromEntries(SAMPLE_BOOKS.map((b) => [b.id, b]));
 
-let state: State = { books, layout: SAMPLE_LAYOUT, undo: null, save: 'idle', loaded: false };
+let state: State = { books, layout: SAMPLE_LAYOUT, undo: null, save: 'idle', loaded: false, notice: null };
 const listeners = new Set<() => void>();
 
 function set(patch: Partial<State>) {
@@ -51,6 +52,13 @@ export function repair(saved: ShelfLayout | ShelfLayoutV1, bookMap: BookMap): Sh
   for (const id of Object.keys(bookMap)) if (!seen.has(id)) drawer.push(id);
   const shelves = layout.shelves.length ? layout.shelves : [{ id: 'shelf-1', order: 0 }];
   return threeShelfLayout({ version: 2, shelves, placements, drawer });
+}
+
+// 복원 + 지금 선반 경계(좌우 끝·깊이 0~230mm)에 맞추기. 맞지 않던 책만 최소로 옮기고 서랍으로 간 책을 알려 준다.
+export function restore(saved: ShelfLayout | ShelfLayoutV1, bookMap: BookMap) {
+  const base = repair(saved, bookMap);
+  const fit = fitToShelf(base, bookMap);
+  return { layout: withLeans(fit.layout, bookMap), moved: fit.moved, changed: fit.changed };
 }
 
 async function persist(layout: ShelfLayout) {
@@ -84,7 +92,9 @@ export const placementStore = {
       if (raw) {
         const saved = JSON.parse(raw) as ShelfLayout | ShelfLayoutV1;
         if (saved.version === 1 || saved.version === 2) {
-          set({ layout: repair(saved, state.books), loaded: true });
+          const r = restore(saved, state.books);
+          set({ layout: r.layout, loaded: true, notice: r.moved.length ? r.moved.length : null });
+          if (r.changed) void persist(r.layout);
           return;
         }
       }
@@ -134,6 +144,10 @@ export const placementStore = {
     );
     set({ undo: state.layout, layout: next });
     void persist(next);
+  },
+
+  clearNotice() {
+    set({ notice: null });
   },
 
   retrySave() {

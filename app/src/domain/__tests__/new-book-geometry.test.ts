@@ -1,11 +1,10 @@
 import { toShelfBook } from '../catalog';
-import { LYING_BACK, SHELF, singleFootprint } from '../geometry';
+import { LYING_BACK, SHELF, SHELF_DEPTH, singleFootprint } from '../geometry';
 import { computeShelf, frontOutline } from '../shelf-scene';
-import { castShape } from '../shadow-shape';
+import { corners, fromPlaced } from '../book3';
+import { onWall, travelOf } from '../cast-shadow';
 import type { Pose, ShelfLayout, Tilt } from '../types';
-import { shadow } from '@/ui/theme';
-
-const shelfShadow = shadow.shelfWall;
+import { light, shadow } from '@/ui/theme';
 
 const fresh = toShelfBook({
   isbn13: '9780000000001', title: '새로 추가한 책', authors: ['저자'],
@@ -25,15 +24,19 @@ describe('예시 이미지가 없는 새 책의 공통 배치와 그림자', () 
     const extent = singleFootprint(fresh, { pose, tilt });
     const o = frontOutline(f);
     expect(Math.max(...o.map((p) => p.x)) - Math.min(...o.map((p) => p.x))).toBeCloseTo(extent.width, 6); // 점유 폭 = 앞면 폭
-    const far = shadow.bookWall;
-    const projected = castShape(f.poly, far.dx * 6, far.dy * 6);
-    expect(Math.max(...projected.map((p) => p.y)) - bottom).toBeGreaterThan(30);
-    expect(Math.max(...projected.map((p) => p.x))).toBeGreaterThan(Math.max(...f.poly.map((p) => p.x)) + 30);
+    // 벽 그림자 = 책 모서리를 광원 방향으로 벽(z = SHELF_DEPTH)에 떨어뜨린 점: 벽 위에 있고, 빛 반대쪽(아래·오른쪽)으로 간다
+    const D = travelOf(light.dir);
+    for (const c of corners(fromPlaced(f.box!))) {
+      const q = onWall(c, D, SHELF_DEPTH);
+      expect(q.z).toBeCloseTo(SHELF_DEPTH, 9);
+      expect(q.y).toBeLessThanOrEqual(c.y + 1e-9);
+      expect(q.x).toBeGreaterThanOrEqual(c.x - 1e-9);
+    }
   });
 
-  it('선반→벽 그림자는 넓고 옅다(따뜻한 회색)', () => {
-    expect(shelfShadow.blur).toBeGreaterThanOrEqual(16);
-    expect(shelfShadow.opacity).toBeLessThanOrEqual(0.2);
+  it('그림자는 따뜻한 회색이고 실제 그림자·주변광 차폐가 나뉘어 있다', () => {
     expect(shadow.color).not.toBe('#000000');
+    for (const c of Object.values(shadow.cast)) expect(c.opacity).toBeLessThanOrEqual(0.4);
+    expect(shadow.ao.gap.max).toBeLessThanOrEqual(0.15);
   });
 });
