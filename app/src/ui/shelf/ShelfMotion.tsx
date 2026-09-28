@@ -2,17 +2,17 @@
 // 매 프레임(UI 스레드) 같은 3D 자세에서 책 면(BookNode), 벽 그림자, 바닥 접촉을 함께 계산한다.
 // 경로 계획의 입력은 "지금 화면에 보이는 자세"(움직이는 도중이면 그 보간값)라 도중에 다시 조작해도 튀지 않는다.
 // React 상태는 배치가 바뀔 때만 건드리고, 프레임마다는 SharedValue만 바뀐다. 동작 줄이기 설정이면 즉시 적용.
-import { BlurMask, Canvas, Group, Path, Skia, type SkPath } from '@shopify/react-native-skia';
+import { BlurMask, Canvas, Group, LinearGradient, Path, Skia, vec, type SkPath } from '@shopify/react-native-skia';
 import { memo, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { StyleSheet } from 'react-native';
 import { Easing, useDerivedValue, useSharedValue, withTiming, type SharedValue } from 'react-native-reanimated';
 import { scheduleOnUI } from 'react-native-worklets';
 
-import { corners, fromPlaced, lowest, viewCam, type Book3, type Cam } from '@/domain/book3';
+import { corners, fromPlaced, lowest, viewCam, type Book3, type Cam, type Vec3 } from '@/domain/book3';
 import { project } from '@/domain/box';
 import { DESIGN_WIDTH, SHELF, SHELF_DEPTH, SHELF_X0, SHELF_X1 } from '@/domain/geometry';
 import { shelfFaces } from '@/domain/shelf-geom';
-import { fadeOf, onFloor, onWall, rayLength, travelOf } from '@/domain/cast-shadow';
+import { onFloor, onWall, rayLength, travelOf } from '@/domain/cast-shadow';
 import { hull, rgba } from '@/domain/shadow-shape';
 import { PLANK_BOUNDS, type BookFrame, type Point } from '@/domain/shelf-scene';
 import { bookAt, planTransition, type Track } from '@/domain/transition';
@@ -263,43 +263,46 @@ const LIGHT = travelOf(light.dir); // 빛이 나아가는 방향(면 밝기와 �
 type Cast = { path: SkPath; color: string; blur: number };
 const NO_CAST: Cast = { path: Skia.PathBuilder.Make().detach(), color: 'rgba(0,0,0,0)', blur: 0 };
 
-// 책 → 벽(z = SHELF_DEPTH): 여덟 모서리를 빛 방향으로 벽에 떨어뜨린 볼록 외곽.
-// 벽 중 선반 윗면 아래로 떨어지는 부분은 판이 가리므로(판을 나중에 그린다) 따로 자르지 않는다.
-function bookWallCast(cam: Cam, b: Book3, s: number, clear: number): Cast {
+// 책 상자에서 빛 길이 f(v)(받는 면까지 빛이 가는 거리)가 L 이하인 부분의 꼭짓점: 모서리 + 12개 변이 f = L을 지나는 점.
+// 이 부분이 받는 면에 만드는 그림자가 "가까운 층"이다(가리는 물체에 가까워 선명하고 진하다).
+function nearPart(cs: Vec3[], f: number[], L: number): Vec3[] {
   'worklet';
-  const w = shadow.cast.bookWall;
+  const out: Vec3[] = [];
+  for (let i = 0; i < 8; i++) if (f[i] <= L) out.push(cs[i]);
+  for (const [i, j] of EDGES) {
+    if ((f[i] - L) * (f[j] - L) >= 0) continue;
+    const t = (L - f[i]) / (f[j] - f[i]);
+    out.push({ x: cs[i].x + (cs[j].x - cs[i].x) * t, y: cs[i].y + (cs[j].y - cs[i].y) * t, z: cs[i].z + (cs[j].z - cs[i].z) * t });
+  }
+  return out;
+}
+
+type Layered = { layers: number[]; opacity: number; near: number; perDU: number; maxBlur: number };
+
+// k번째 층: 빛 길이 layers[k] 이하 부분을 받는 면에 떨어뜨린 볼록 외곽
+function layerCast(cam: Cam, b: Book3, s: number, clear: number, k: number, wall: boolean): Cast {
+  'worklet';
+  const w: Layered = wall ? shadow.cast.bookWall : shadow.cast.bookShelf;
   const cs = corners(b);
-  let d = 0;
+  const f = cs.map((c) => (wall ? Math.max(0, (SHELF_DEPTH - c.z) / LIGHT.z) : Math.max(0, c.y / -LIGHT.y)));
+  const L = w.layers[k];
+  const part = nearPart(cs, f, L);
+  if (part.length < 3) return NO_CAST;
+  let far = 0;
   const pts: Point[] = [];
-  for (const c of cs) {
-    const q = onWall(c, LIGHT, SHELF_DEPTH);
-    d += rayLength(c, q) / cs.length;
+  for (const c of part) {
+    const q = wall ? onWall(c, LIGHT, SHELF_DEPTH) : onFloor(c, LIGHT, 0);
+    far = Math.max(far, rayLength(c, q));
     const p = project(cam, q);
     pts.push({ x: (SHELF.sideMargin + p.x) * s, y: (clear + p.y - FLOOR) * s });
   }
-  return { path: pathOf([hull(pts)]), color: rgba(shadow.color, w.opacity * fadeOf(d, w.fade)), blur: (w.near + w.perDU * d) * s };
+  return { path: pathOf([hull(pts)]), color: rgba(shadow.color, w.opacity), blur: Math.min(w.maxBlur, w.near + w.perDU * far) * s };
 }
 
-// 책 → 선반 윗면(y = 0): 여덟 모서리를 빛 방향으로 윗면에 떨어뜨린 볼록 외곽. 벽 너머는 윗면 다각형 클리핑이 자른다.
-function bookShelfCast(cam: Cam, b: Book3, s: number, clear: number): Cast {
-  'worklet';
-  const w = shadow.cast.bookShelf;
-  const cs = corners(b);
-  let d = 0;
-  const pts: Point[] = [];
-  for (const c of cs) {
-    const q = onFloor(c, LIGHT, 0);
-    d += rayLength(c, q) / cs.length;
-    const p = project(cam, q);
-    pts.push({ x: (SHELF.sideMargin + p.x) * s, y: (clear + p.y - FLOOR) * s });
-  }
-  return { path: pathOf([hull(pts)]), color: rgba(shadow.color, w.opacity * fadeOf(d, w.fade)), blur: (w.near + w.perDU * d) * s };
-}
-
-function CastShadow({ m, id, of }: { m: Motion; id: string; of: (b: Book3) => Cast }) {
+function CastShadow({ m, id, of, k }: { m: Motion; id: string; of: (b: Book3, k: number) => Cast; k: number }) {
   const c = useDerivedValue(() => {
     const b = stateNow(m, id);
-    return b ? of(b) : NO_CAST;
+    return b ? of(b, k) : NO_CAST;
   });
   const path = useDerivedValue(() => c.value.path);
   const color = useDerivedValue(() => c.value.color);
@@ -360,17 +363,66 @@ function GapShade({ m, ids, cam, s, clear, band }: { m: Motion; ids: string[]; c
   return <Path path={path} color={rgba(shadow.color, shadow.ao.gap.max * ((band + 0.5) / 4))} />;
 }
 
+// 기댄 책과 받치는 책 사이 쐐기 틈(주변광 차폐): 기댄 책이 닿는 윗모서리 쪽이 좁아 진하고, 바닥 쪽으로 넓어지며 옅어진다.
+// 책 기준선(z=0) 평면에서의 쐐기 = [닿는 점, 받치는 책 바닥 모서리, 기댄 책 바닥 모서리].
+function leanWedges(m: Motion, ids: string[], s: number, clear: number, cam: Cam) {
+  'worklet';
+  const out: { tri: Point[]; top: Point; base: Point }[] = [];
+  const P = (x: number, y: number) => {
+    const q = project(cam, { x, y, z: 0 });
+    return { x: (SHELF.sideMargin + q.x) * s, y: (clear + q.y - FLOOR) * s };
+  };
+  for (const id of ids) {
+    const b = stateNow(m, id);
+    if (!b || Math.abs(b.roll) < 1 || Math.abs(b.roll) > 45 || lowest(b) > 0.5) continue;
+    const dir = b.roll > 0 ? 1 : -1; // 기우는 쪽
+    const cs = corners(b);
+    // 기우는 쪽 가장 먼 윗모서리(닿는 점)와 그쪽 바닥 모서리
+    let top = cs[0];
+    let foot = cs[0];
+    for (const c of cs) {
+      if (c.x * dir > top.x * dir) top = c;
+      if (c.y < 0.5 && c.x * dir > foot.x * dir) foot = c;
+    }
+    // 받치는 면: 닿는 점의 x에서 수직으로 바닥까지
+    out.push({ tri: [P(top.x, top.y), P(top.x, 0), P(foot.x, 0)], top: P(top.x, top.y), base: P(top.x, 0) });
+  }
+  return out;
+}
+
+function LeanWedges({ m, ids, cam, s, clear }: { m: Motion; ids: string[]; cam: Cam; s: number; clear: number }) {
+  const w = useDerivedValue(() => leanWedges(m, ids, s, clear, cam));
+  return (
+    <>
+      {[0, 1, 2, 3].map((i) => (
+        <LeanWedge key={i} w={w} i={i} s={s} />
+      ))}
+    </>
+  );
+}
+
+function LeanWedge({ w, i, s }: { w: Readonly<SharedValue<{ tri: Point[]; top: Point; base: Point }[]>>; i: number; s: number }) {
+  const path = useDerivedValue(() => pathOf(w.value[i] ? [w.value[i].tri] : []));
+  const a = useDerivedValue(() => vec(w.value[i]?.top.x ?? 0, w.value[i]?.top.y ?? 0));
+  const b = useDerivedValue(() => vec(w.value[i]?.base.x ?? 0, w.value[i]?.base.y ?? 1));
+  return (
+    <Path path={path}>
+      <LinearGradient start={a} end={b} colors={[rgba(shadow.color, shadow.ao.lean.near), rgba(shadow.color, shadow.ao.lean.far)]} />
+      <BlurMask blur={0.8 * s} style="normal" />
+    </Path>
+  );
+}
+
 // 벽 단계(판보다 먼저): 책 → 벽 실제 그림자 + 책 사이 틈 어둠(주변광 차폐)
 export const RowShadows = memo(function RowShadows({ m, ids, cam, s, clear, height }: { m: Motion; ids: string[]; cam: Cam; s: number; clear: number; height: number }) {
-  const of = useMemo(() => (b: Book3) => {
+  const of = useMemo(() => (b: Book3, k: number) => {
     'worklet';
-    return bookWallCast(cam, b, s, clear);
+    return layerCast(cam, b, s, clear, k, true);
   }, [cam, s, clear]);
   return (
     <Canvas style={[StyleSheet.absoluteFill, { width: DESIGN_WIDTH * s, height }]} pointerEvents="none">
-      {ids.map((id) => (
-        <CastShadow key={id} m={m} id={id} of={of} />
-      ))}
+      {ids.flatMap((id) => shadow.cast.bookWall.layers.map((_, k) => <CastShadow key={`${id}:${k}`} m={m} id={id} of={of} k={k} />))}
+      <LeanWedges m={m} ids={ids} cam={cam} s={s} clear={clear} />
       {[0, 1, 2, 3].map((b) => (
         <GapShade key={b} m={m} ids={ids} cam={cam} s={s} clear={clear} band={b} />
       ))}
@@ -464,10 +516,10 @@ export const RowContacts = memo(function RowContacts({ m, ids, cam, s, clear, he
     }
     return { band: pathOf(band), foot: pathOf(foot) };
   });
-  const of = useMemo(() => (b: Book3) => {
+  const of = useMemo(() => (b: Book3, k: number) => {
     'worklet';
     // 선반에서 떨어진 책(들린 책)은 윗면 그림자를 그리지 않는다(쌓인 위 책은 아래 책이 받는다)
-    return lowest(b) > 0.5 ? NO_CAST : bookShelfCast(cam, b, s, clear);
+    return lowest(b) > 0.5 ? NO_CAST : layerCast(cam, b, s, clear, k, false);
   }, [cam, s, clear]);
   const band = useDerivedValue(() => shapes.value.band);
   const foot = useDerivedValue(() => shapes.value.foot);
@@ -491,9 +543,7 @@ export const RowContacts = memo(function RowContacts({ m, ids, cam, s, clear, he
         ) : (
           <>
             {/* 실제 그림자: 책 → 선반 윗면 */}
-            {ids.map((id) => (
-              <CastShadow key={id} m={m} id={id} of={of} />
-            ))}
+            {ids.flatMap((id) => shadow.cast.bookShelf.layers.map((_, k) => <CastShadow key={`${id}:${k}`} m={m} id={id} of={of} k={k} />))}
             {/* 주변광 차폐: 바닥 자리 */}
             <Path path={foot} color={rgba(shadow.color, shadow.ao.foot.opacity)}>
               <BlurMask blur={(shadow.ao.contact.blur / 4) * s} style="normal" />
@@ -532,11 +582,40 @@ export function StackShade({ m, id, cam, px }: { m: Motion; id: string; cam: Cam
       }),
     ]);
   });
+  // 닿는 곳: 위 책 앞쪽 바닥 모서리 바로 앞(아래 책 윗면·앞 모서리)에 좁고 진한 띠. 위 책보다 나중에 그린다.
+  const zBand = useDerivedValue(() => z.value + 0.001);
+  const band = useDerivedValue(() => {
+    const b = stateNow(m, id);
+    if (!b || lowest(b) < 0.5) return pathOf([]);
+    const f = footPoly(b);
+    const cb = viewCam(cam, b);
+    const P = (x: number, zz: number, dy = 0) => {
+      const q = project(cb, { x, y: f.y, z: zz });
+      return { x: q.x * px.s + px.tx, y: (q.y + dy) * px.s + px.ty };
+    };
+    const out: Point[][] = [];
+    const n = f.pts.length;
+    for (let i = 0; i < n; i++) {
+      const a = f.pts[i];
+      const e = f.pts[(i + 1) % n];
+      const nz = -(e.x - a.x) / (Math.hypot(e.z - a.z, e.x - a.x) || 1);
+      if (nz > -0.3) continue;
+      out.push([P(a.x, a.z), P(e.x, e.z), P(e.x, e.z, 1.6), P(a.x, a.z, 1.6)]);
+    }
+    return pathOf(out);
+  });
   return (
-    <Group zIndex={z}>
-      <Path path={path} color={rgba(shadow.color, shadow.ao.stack.opacity)}>
-        <BlurMask blur={(shadow.ao.stack.blur / 2) * px.s} style="normal" />
-      </Path>
-    </Group>
+    <>
+      <Group zIndex={z}>
+        <Path path={path} color={rgba(shadow.color, shadow.ao.stack.opacity)}>
+          <BlurMask blur={(shadow.ao.stack.blur / 2) * px.s} style="normal" />
+        </Path>
+      </Group>
+      <Group zIndex={zBand}>
+        <Path path={band} color={rgba(shadow.color, shadow.ao.stack.band)}>
+          <BlurMask blur={0.6 * px.s} style="normal" />
+        </Path>
+      </Group>
+    </>
   );
 }

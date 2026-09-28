@@ -11,6 +11,9 @@ import type { FaceGeom } from './face-geometry';
 
 type RO<T> = Readonly<SharedValue<T>>;
 
+// 종이 단면 면의 표지 판 둘레를 종이 색 쪽으로 섞는 비율(짙은 책에서 윗면 테두리 대비 낮추기)
+const RIM_TO_PAGE = 0.35;
+
 export function polyPath(pts: Point[], close: boolean): SkPath {
   'worklet';
   const p = Skia.PathBuilder.Make();
@@ -43,10 +46,15 @@ export function FaceShape({ geom, pages, tone, k, s, grain, opacity }: { geom: R
   const b = useDerivedValue(() => vec(geom.value.B.x, geom.value.B.y));
   const ab = useDerivedValue(() => vec(geom.value.Ab.x, geom.value.Ab.y));
   const mid = useDerivedValue(() => vec(geom.value.mid.x, geom.value.mid.y));
-  const fill = useDerivedValue(() => scaleColor(tone, Math.min(1.06, k.value)));
-  const paper = useDerivedValue(() => [mix(scaleColor(PAGE, k.value), tone, 0.08), mix(scaleColor(PAGE, k.value * 0.93), tone, 0.12)]);
+  // 종이 단면이 있는 면(머리·꼬리·책배): 종이는 밝혀도 크림색을 넘지 않게(k ≤ 1), 둘레 표지 판은 종이 쪽으로 조금 섞어
+  // 짙은 책에서 윗면 테두리가 튀지 않게 한다. 표지·책등 면(pages=false)은 그대로.
+  const fill = useDerivedValue(() => {
+    const f = scaleColor(tone, Math.min(1.06, k.value));
+    return pages ? mix(f, scaleColor(PAGE, Math.min(1, k.value)), RIM_TO_PAGE) : f;
+  });
+  const paper = useDerivedValue(() => [mix(scaleColor(PAGE, Math.min(1, k.value)), tone, 0.08), mix(scaleColor(PAGE, Math.min(1, k.value) * 0.93), tone, 0.12)]);
   const soft = useDerivedValue(() => (geom.value.lit ? ['rgba(255,250,240,0.26)', 'rgba(255,250,240,0)'] : ['rgba(255,250,240,0.18)', 'rgba(255,250,240,0)']));
-  const edge = scaleColor(tone, edgeFactor(tone));
+  const edge = pages ? mix(scaleColor(tone, edgeFactor(tone)), PAGE, RIM_TO_PAGE) : scaleColor(tone, edgeFactor(tone));
   return (
     <Group opacity={opacity}>
       {/* 표지 판 색(종이면이면 판이 테두리로 조금 보인다). 선 대신 색 차이로만 구분 */}
@@ -71,11 +79,11 @@ export function FaceShape({ geom, pages, tone, k, s, grain, opacity }: { geom: R
       </Path>
       {/* 빛 받는 윗면 모서리만 은은하게 */}
       <Path path={hi} style="stroke" strokeWidth={2.4 * s} strokeCap="round">
-        <LinearGradient start={a} end={b} colors={['rgba(255,255,255,0.22)', 'rgba(255,255,255,0.08)']} />
+        <LinearGradient start={a} end={b} colors={pages ? ['rgba(255,250,238,0.12)', 'rgba(255,250,238,0.04)'] : ['rgba(255,255,255,0.22)', 'rgba(255,255,255,0.08)']} />
         <BlurMask blur={1.4 * s} style="normal" />
       </Path>
       {/* 바깥 실루엣은 아주 연하게 */}
-      <Path path={runs} style="stroke" strokeWidth={0.7 * s} strokeJoin="round" strokeCap="round" color={edge} opacity={0.35} />
+      <Path path={runs} style="stroke" strokeWidth={0.7 * s} strokeJoin="round" strokeCap="round" color={edge} opacity={pages ? 0.18 : 0.35} />
     </Group>
   );
 }

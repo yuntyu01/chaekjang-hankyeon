@@ -23,7 +23,8 @@ import type { BodyArt } from '@/domain/types';
 const SRC_DU = 390 / 941; // 시안 원본 1px = DU(붓결 크기를 시안과 맞춘다)
 // 붓결 세기(시안: 은은함). 질감 이미지는 명암 차를 5배로 담아 두었으므로 여기서 줄인다.
 export const GRAIN_STRENGTH = 0.22;
-export const PAGE = '#F4ECDD';
+// 속지(종이 단면): 새하얀색이 아니라 따뜻한 크림색
+export const PAGE = '#EFE2C8';
 export const PAGE_LINE = '#DDCFB8';
 
 // 책 색을 k배로 어둡게. 시안의 그늘은 회색이 아니라 따뜻한 갈색 쪽으로 어두워진다
