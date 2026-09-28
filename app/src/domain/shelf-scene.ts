@@ -1,7 +1,7 @@
 // 선반 한 칸의 책 프레임 계산(순수). 렌더링·터치 판정·그림자가 모두 이 결과를 쓴다.
 // 좌표: 설계 단위, x는 선반 판 안쪽 왼쪽 끝 기준, y는 아래로 증가하며 선반 바닥이 SHELF.clearHeight.
 import { boxSize, collide, frontPoly, silhouette, solveLean, type Camera, type Placed } from './box';
-import { fromPlaced, type Book3 } from './book3';
+import { fromPlaced, VIEW_MID, type Book3 } from './book3';
 import { bookHeight, bookThickness, CAMERA, cameraFor, LYING_BACK_Z, SHELF, stackOffsets } from './geometry';
 import { itemPositions, placementOf, shelfItems, sortedShelves, type BookMap } from './layout-engine';
 import { firstContact, MAX_LEAN } from './lean';
@@ -86,7 +86,11 @@ export const PLANK_BOUNDS = { min: -SHELF.sideMargin + 2, max: 390 - SHELF.sideM
 
 // 상자 하나에서 프레임을 만든다: 앞면 사각형(그리기 위치, 기울기 전), 회전, 투영 실루엣(터치·그림자)
 function frameOf(p: Placed, bookId: string, itemKey: string, shelfId: string, tilt: Tilt, stackIndex: number, cam: Camera = CAMERA): BookFrame {
-  const left = p.x + p.z * cam.kx;
+  // 가로 시점은 책 가운데 위치에 따라(가운데보다 왼쪽이면 오른쪽 옆면, 오른쪽이면 왼쪽 옆면)
+  const v = Math.max(-1, Math.min(1, (p.x + p.size.w / 2 - VIEW_MID) / VIEW_MID));
+  const rowCam = cam;
+  cam = { kx: -Math.abs(rowCam.kx) * v, ky: rowCam.ky };
+  const left = p.x + p.z * Math.max(0, cam.kx);
   const top = FLOOR - (p.y + p.size.h) - p.z * Math.max(0, cam.ky);
   return {
     bookId, itemKey, shelfId, pose: p.pose, tilt,
@@ -94,7 +98,7 @@ function frameOf(p: Placed, bookId: string, itemKey: string, shelfId: string, ti
     rotate: p.angle || 0,
     origin: p.angle > 0 ? 'right bottom' : 'left bottom',
     poly: silhouette(cam, p),
-    cam,
+    cam: rowCam,
     stackIndex,
     box: p,
   };

@@ -139,13 +139,20 @@ function faceStyle(kind: FaceKind, s: number) {
 }
 
 // 면 하나의 그릴 모양. bow: 세운 책 머리의 볼록함(px), boards: 종이 단면의 판 방향(null = 표지 판 면)
-export function computeFace(face: { poly: Point[] } | null, kind: FaceKind, px: Affine, bow: number, boards: 'u' | 'v' | null, seed: number): FaceGeom {
+// under > 0: 앞면과 맞닿은 변을 앞면 쪽으로 그만큼(px) 밀어 넣는다(앞면 둥근 모서리 틈이 비어 보이지 않게, 앞면이 덮는다)
+export function computeFace(face: { poly: Point[] } | null, kind: FaceKind, px: Affine, bow: number, boards: 'u' | 'v' | null, seed: number, under = 0): FaceGeom {
   'worklet';
   if (!face) return EMPTY_FACE;
   const s = px.s;
   const P0 = (q: Point) => ({ x: q.x * s + px.tx, y: q.y * s + px.ty });
   let A = P0(face.poly[0]);
   let B = P0(face.poly[1]);
+  if (under > 0) {
+    const Ab0 = P0(face.poly[3]);
+    const d = unit(sub(A, Ab0));
+    A = { x: A.x + d.x * under, y: A.y + d.y * under };
+    B = { x: B.x + d.x * under, y: B.y + d.y * under };
+  }
   let Bb = P0(face.poly[2]);
   let Ab = P0(face.poly[3]);
   // 세운 책의 볼록한 머리(앞면과 같은 곡선): 윗면은 양끝이 bow만큼 내려오고 가운데가 솟는다. 옆면 위 모서리도 같이 내려온다.
@@ -269,7 +276,9 @@ export function sideFaceGeom(cam: Cam, b: Book3, f: FaceId, px: Affine, bowS: nu
   // 종이 단면에서 표지 판은 두께 방향 양끝: A→B가 두께(x) 방향이면 u, 아니면 깊이 쪽 v
   const boards = pages ? ((A ^ B) === 1 ? 'u' : 'v') : null;
   const bow = main === 'spine' && (kind === 'top' || kind === 'right') ? bowS : 0;
-  return computeFace({ poly: [pa, pb, P(nb), P(na)] }, kind, px, bow, boards, seed);
+  // 책등·앞표지가 옆면이 될 때(비스듬히)는 그림 위에 그려지므로 밀어 넣지 않는다
+  const under = f === 'spine' || f === 'cover' ? 0 : 2.4 * px.s;
+  return computeFace({ poly: [pa, pb, P(nb), P(na)] }, kind, px, bow, boards, seed, under);
 }
 
 export const seedOf = (id: string, f: string) => [...id].reduce((h, c) => h + c.charCodeAt(0), 0) * 0.37 + f.length;

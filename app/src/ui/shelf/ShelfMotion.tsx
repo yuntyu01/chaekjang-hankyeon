@@ -8,7 +8,7 @@ import { StyleSheet } from 'react-native';
 import { Easing, useDerivedValue, useSharedValue, withTiming, type SharedValue } from 'react-native-reanimated';
 import { scheduleOnUI } from 'react-native-worklets';
 
-import { corners, fromPlaced, lowest, type Book3, type Cam } from '@/domain/book3';
+import { corners, fromPlaced, lowest, viewCam, type Book3, type Cam } from '@/domain/book3';
 import { project } from '@/domain/box';
 import { DESIGN_WIDTH, SHELF } from '@/domain/geometry';
 import { castShape, hull, rgba } from '@/domain/shadow-shape';
@@ -163,7 +163,8 @@ function pathOf(polys: Point[][]): SkPath {
 
 function outlineOf(cam: Cam, b: Book3): Point[] {
   'worklet';
-  return hull(corners(b).map((c) => project(cam, c)));
+  const c0 = viewCam(cam, b);
+  return hull(corners(b).map((c) => project(c0, c)));
 }
 
 // 벽 그림자 한 층: 책마다 투영 외곽을 빛 반대쪽(오른쪽 아래)으로, 벽에서 먼 책일수록 더 멀리 옮긴 모양
@@ -274,8 +275,9 @@ function footOf(b: Book3) {
   return { x0, x1, z0, z1, y: lo, top };
 }
 
-function contactShapes(b: Book3, cam: Cam, s: number, clear: number) {
+function contactShapes(b: Book3, cam0: Cam, s: number, clear: number) {
   'worklet';
+  const cam = viewCam(cam0, b);
   const f = footOf(b);
   const P = (x: number, z: number, dy = 0, dx = 0) => {
     const q = project(cam, { x, y: f.y, z });
@@ -345,8 +347,9 @@ export function StackShade({ m, id, cam, px }: { m: Motion; id: string; cam: Cam
     const b = stateNow(m, id);
     if (!b || lowest(b) < 0.5) return pathOf([]);
     const f = footOf(b);
+    const cb = viewCam(cam, b);
     const P = (x: number, zz: number, dy = 0) => {
-      const q = project(cam, { x, y: f.y, z: zz });
+      const q = project(cb, { x, y: f.y, z: zz });
       return { x: q.x * px.s + px.tx, y: q.y * px.s + px.ty + dy * px.s };
     };
     return pathOf([[P(f.x0, f.z0), P(f.x1 + 2, f.z0, 2), P(f.x1 + 2, f.z1, 1), P(f.x0, f.z1)]]);

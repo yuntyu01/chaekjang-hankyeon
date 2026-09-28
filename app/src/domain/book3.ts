@@ -214,3 +214,13 @@ export function xRange(b: Book3) {
   }
   return { lo, hi };
 }
+
+// 가로 시점: 선반 가운데보다 왼쪽 책은 오른쪽 옆면이, 오른쪽 책은 왼쪽 옆면이, 가운데 책은 거의 정면만 보인다.
+// 책 가운데 x(선반 공간)에 따라 카메라 kx를 바꾼다(줄의 ky는 그대로). 책이 움직이면 보이는 옆면도 따라 바뀐다.
+export const VIEW_MID = 183; // 선반 사용 폭의 가운데(DU)
+export function viewCam(base: Cam, b: Book3): Cam {
+  'worklet';
+  const c = toWorld(b, { x: b.dims.T / 2, y: b.dims.H / 2, z: b.dims.W / 2 });
+  const v = Math.max(-1, Math.min(1, (c.x - VIEW_MID) / VIEW_MID));
+  return { kx: -Math.abs(base.kx) * v, ky: base.ky };
+}

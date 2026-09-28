@@ -7,7 +7,7 @@ import { Group, Image as SkImg, ImageSVG, Picture, Rect, Text } from '@shopify/r
 import type React from 'react';
 import { useDerivedValue, type SharedValue } from 'react-native-reanimated';
 
-import { brightness, corners, faceFrame, facing, rot, toWorld, type Book3, type Cam, type FaceId } from '@/domain/book3';
+import { brightness, corners, faceFrame, facing, rot, toWorld, viewCam, VIEW_MID, type Book3, type Cam, type FaceId } from '@/domain/book3';
 import { project } from '@/domain/box';
 import type { Book } from '@/domain/types';
 import { BOX_HEAD_BOW } from '@/ui/book/BookBody';
@@ -67,7 +67,10 @@ function Upright({ cx, cy, cyLie, state, fit, children }: { cx: number; cy: numb
 function ArtFace({ f, art, state, cam, px, d }: { f: 'spine' | 'cover'; art: BookArt; state: RO<Book3>; cam: Cam; px: Affine; d: Book3['dims'] }) {
   const s = px.s;
   // 보이지 않는 면은 행렬을 0으로(그룹 불투명도만으로는 기록된 그림이 얇은 선으로 남는다)
-  const m = useDerivedValue(() => (facing(cam, state.value, f) > 0.002 ? faceMatrix(state.value, f, cam, px) : [0, 0, -1e4, 0, 0, -1e4, 0, 0, 1]));
+  const m = useDerivedValue(() => {
+    const c = viewCam(cam, state.value);
+    return facing(c, state.value, f) > 0.002 ? faceMatrix(state.value, f, c, px) : [0, 0, -1e4, 0, 0, -1e4, 0, 0, 1];
+  });
   const shade = useDerivedValue(() => shadeColor(brightness(light, state.value, f)));
   const w = (f === 'spine' ? d.T : d.W) * s;
   const h = d.H * s;
@@ -104,10 +107,10 @@ function ArtFace({ f, art, state, cam, px, d }: { f: 'spine' | 'cover'; art: Boo
 function Side({ f, state, cam, px, book, pages, tone, grain, graze }: { f: FaceId; state: RO<Book3>; cam: Cam; px: Affine; book: Book; pages: boolean; tone: string; grain: Shared['grain']; graze?: boolean }) {
   const seed = seedOf(book.id, f);
   const bow = BOX_HEAD_BOW * px.s;
-  const geom = useDerivedValue(() => sideFaceGeom(cam, state.value, f, px, bow, pages, seed));
+  const geom = useDerivedValue(() => sideFaceGeom(viewCam(cam, state.value), state.value, f, px, bow, pages, seed));
   const k = useDerivedValue(() => brightness(light, state.value, f));
   // 앞표지·책등이 옆면이 되면(비스듬히) 판 색으로 덮는다: 정면에 가까울수록 그림이 드러난다
-  const op = useDerivedValue(() => (graze ? Math.max(0, Math.min(1, (0.5 - facing(cam, state.value, f)) / 0.4)) : 1));
+  const op = useDerivedValue(() => (graze ? Math.max(0, Math.min(1, (0.5 - facing(viewCam(cam, state.value), state.value, f)) / 0.4)) : 1));
   return <FaceShape geom={geom} pages={pages} tone={tone} k={k} s={px.s} grain={grain} opacity={op} />;
 }
 
@@ -116,7 +119,7 @@ function Ribbons({ art, state, cam, px }: { art: BookArt; state: RO<Book3>; cam:
     const b = state.value;
     const d = b.dims;
     // 책등 가까이 책장 사이에서 나온다(머리 면 앞쪽 18%)
-    const p = project(cam, toWorld(b, { x: d.T * 0.55, y: d.H, z: d.W * 0.18 }));
+    const p = project(viewCam(cam, b), toWorld(b, { x: d.T * 0.55, y: d.H, z: d.W * 0.18 }));
     return [{ translateX: p.x * px.s + px.tx }, { translateY: p.y * px.s + px.ty }, { rotate: (b.roll * Math.PI) / 180 }];
   });
   return (
@@ -132,13 +135,17 @@ export function depthKey(b: Book3) {
   const c = corners(b);
   let z = Infinity;
   let y = Infinity;
-  let x = Infinity;
+  let x0 = Infinity;
+  let x1 = -Infinity;
   for (const q of c) {
     z = Math.min(z, q.z);
     y = Math.min(y, q.y);
-    x = Math.min(x, q.x);
+    x0 = Math.min(x0, q.x);
+    x1 = Math.max(x1, q.x);
   }
-  return -z * 10 + y * 0.05 + x * 0.0001;
+  const x = (x0 + x1) / 2;
+  // 가운데에서 먼 책부터(왼쪽 책의 오른쪽 옆면·오른쪽 책의 왼쪽 옆면을 가운데 쪽 이웃 앞면이 가린다)
+  return -z * 10 + y * 0.05 - Math.abs(x - VIEW_MID) * 0.0001;
 }
 
 // shared: 캔버스 밖에서 useBookShared()로 읽어 넘긴다

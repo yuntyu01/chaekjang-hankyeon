@@ -38,7 +38,7 @@ const META: Meta[] = [
   { id: 'b12', title: '나미야 잡화점의 기적', author: '히가시노 게이고', publisher: '현대문학', physical: p(145, 210, 456), motif: 'crescent', publishedAt: '2012-12', startedAt: '2026-06-30', finishedAt: '2026-07-11' },
   { id: 'b13', title: '불편한 편의점', author: '김호연', publisher: '나무옆의자', physical: p(140, 205, 268), motif: 'leaf', publishedAt: '2021-04', startedAt: '2026-07-22', finishedAt: '2026-07-30' },
   { id: 'b14', title: '쇼코의 미소', author: '최은영', publisher: '문학동네', physical: p(128, 188, 312), motif: 'sprig', publishedAt: '2016-07', startedAt: '2026-08-05', finishedAt: '2026-08-14' },
-  { id: 'b15', title: '아무튼, 서재', author: '김윤관', publisher: '제철소', physical: p(110, 175, 144), motif: 'leaf', publishedAt: '2020-06', startedAt: '2026-08-28', finishedAt: '2026-08-31' },
+  { id: 'b15', title: '아무튼, 서재', author: '김윤관', publisher: '제철소', physical: p(110, 175, 144), motif: 'leaf', publishedAt: '2020-06', startedAt: '2026-08-28', finishedAt: '2026-08-31', quotes: 1, ribbon: '#C9A46A' },
   { id: 'b16', title: '우리가 빛의 속도로 갈 수 없다면', author: '김초엽', publisher: '허블', physical: p(135, 200, 344), motif: 'sun', publishedAt: '2019-06', startedAt: '2026-09-08', coverInk: '#3A3440' },
 ];
 
