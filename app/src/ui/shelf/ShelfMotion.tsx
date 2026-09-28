@@ -499,16 +499,12 @@ function plankAboveBox(clear: number): Vec3[] {
   return out;
 }
 
-// 한 면이 받는 그림자: 가리개마다 따로(각자 가까운 곳이 진한 그라데이션), 최대 RECV_PARTS개(가까운 순).
-// 한 층(RECV_LAYER)에 불투명도 비율로 그려 겹친 곳도 가장 진한 그림자 이상으로 어두워지지 않게 한다.
-type Part = { path: SkPath; blur: number; a: Point; b: Point; colors: string[] };
-type Recv = { clip: SkPath; parts: Part[] };
+// 한 면이 받는 그림자: 가리개들의 그림자 모양을 한 경로로 합쳐 한 번 칠한다(겹쳐도 두 번 어두워지지 않는다, 별도 레이어 없이).
+// 진하기·흐림은 가장 가까운 가리개 기준, 그라데이션은 그 가리개의 가까운 점 → 먼 점.
+type Recv = { clip: SkPath; path: SkPath; blur: number; a: Point; b: Point; colors: string[] };
 const EMPTY_PATH = Skia.PathBuilder.Make().detach();
 const RECV_STOPS = [0, 0.2, 0.45, 1];
-const NO_PART: Part = { path: EMPTY_PATH, blur: 0, a: { x: 0, y: 0 }, b: { x: 0, y: 1 }, colors: ['rgba(0,0,0,0)', 'rgba(0,0,0,0)', 'rgba(0,0,0,0)', 'rgba(0,0,0,0)'] };
-const RECV_PARTS = 3;
-const NO_RECV: Recv = { clip: EMPTY_PATH, parts: [NO_PART, NO_PART, NO_PART] };
-const RECV_LAYER = Math.max(shadow.cast.onBook.opacity, shadow.cast.onBookPlank.opacity);
+const NO_RECV: Recv = { clip: EMPTY_PATH, path: EMPTY_PATH, blur: 0, a: { x: 0, y: 0 }, b: { x: 0, y: 1 }, colors: ['rgba(0,0,0,0)', 'rgba(0,0,0,0)', 'rgba(0,0,0,0)', 'rgba(0,0,0,0)'] };
 
 // slot: 이 책의 보이는 면 중 k번째. 가리개 = 같은 줄의 다른 책 + 윗 선반 판.
 function receivedShadow(m: Motion, id: string, ids: string[], cam: Cam, px: Affine, clear: number, plankAbove: boolean, slot: number): Recv {
@@ -545,52 +541,44 @@ function receivedShadow(m: Motion, id: string, ids: string[], cam: Cam, px: Affi
   }
   const nb = occs.length;
   if (plankAbove) occs.push(plankAboveBox(clear));
-  const found: { d: number; part: Part }[] = [];
+  const polys: Point[][] = [];
+  let best = Infinity;
+  let bestK = -1;
+  let near: Vec3 | null = null;
+  let far: Vec3 | null = null;
+  let tFar = 0;
   for (let k = 0; k < occs.length; k++) {
     const r = shadowOnPlane(occs[k], fc[0], n, LIGHT);
     if (r.pts.length < 3 || !r.near || !r.far) continue;
-    const w = k >= nb ? shadow.cast.onBookPlank : shadow.cast.onBook;
-    const rel = w.opacity / RECV_LAYER;
-    const colors = RECV_STOPS.map((u) => rgba(shadow.color, rel * Math.exp(-(r.dist + (r.tFar - r.dist) * u) / w.fade)));
-    found.push({
-      d: r.dist,
-      part: { path: pathOf([hull(r.pts.map(P))]), blur: Math.min(w.maxBlur, w.near + w.perDU * r.dist) * px.s, a: P(r.near), b: P(r.far), colors },
-    });
+    polys.push(hull(r.pts.map(P)));
+    if (r.dist < best) {
+      best = r.dist;
+      bestK = k;
+      near = r.near;
+      far = r.far;
+      tFar = r.tFar;
+    }
   }
-  if (!found.length) return NO_RECV;
-  found.sort((x, y) => x.d - y.d);
-  const parts: Part[] = [];
-  for (let k = 0; k < RECV_PARTS; k++) parts.push(found[k] ? found[k].part : NO_PART);
-  return { clip: pathOf([fc.map(P)]), parts };
-}
-
-function RecvPart({ r, k }: { r: Readonly<SharedValue<Recv>>; k: number }) {
-  const path = useDerivedValue(() => r.value.parts[k].path);
-  const blur = useDerivedValue(() => r.value.parts[k].blur / 2);
-  const a = useDerivedValue(() => vec(r.value.parts[k].a.x, r.value.parts[k].a.y));
-  const b = useDerivedValue(() => vec(r.value.parts[k].b.x, r.value.parts[k].b.y));
-  const colors = useDerivedValue(() => r.value.parts[k].colors);
-  return (
-    <Path path={path}>
-      <LinearGradient start={a} end={b} colors={colors} positions={RECV_STOPS} />
-      <BlurMask blur={blur} style="normal" />
-    </Path>
-  );
+  if (!polys.length || !near || !far) return NO_RECV;
+  const w = bestK >= nb ? shadow.cast.onBookPlank : shadow.cast.onBook;
+  const colors = RECV_STOPS.map((u) => rgba(shadow.color, w.opacity * Math.exp(-(best + (tFar - best) * u) / w.fade)));
+  return { clip: pathOf([fc.map(P)]), path: pathOf(polys), blur: Math.min(w.maxBlur, w.near + w.perDU * best) * px.s, a: P(near), b: P(far), colors };
 }
 
 function ReceivedShadow({ m, id, ids, cam, px, clear, plankAbove, slot }: { m: Motion; id: string; ids: string[]; cam: Cam; px: Affine; clear: number; plankAbove: boolean; slot: number }) {
   const r = useDerivedValue(() => receivedShadow(m, id, ids, cam, px, clear, plankAbove, slot));
   const clip = useDerivedValue(() => r.value.clip);
-  const paint = useMemo(() => {
-    const p = Skia.Paint();
-    p.setAlphaf(RECV_LAYER);
-    return p;
-  }, []);
+  const path = useDerivedValue(() => r.value.path);
+  const blur = useDerivedValue(() => r.value.blur / 2);
+  const a = useDerivedValue(() => vec(r.value.a.x, r.value.a.y));
+  const b = useDerivedValue(() => vec(r.value.b.x, r.value.b.y));
+  const colors = useDerivedValue(() => r.value.colors);
   return (
-    <Group clip={clip} layer={paint}>
-      {Array.from({ length: RECV_PARTS }, (_, k) => (
-        <RecvPart key={k} r={r} k={k} />
-      ))}
+    <Group clip={clip}>
+      <Path path={path}>
+        <LinearGradient start={a} end={b} colors={colors} positions={RECV_STOPS} />
+        <BlurMask blur={blur} style="normal" />
+      </Path>
     </Group>
   );
 }
