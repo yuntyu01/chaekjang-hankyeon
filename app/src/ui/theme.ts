@@ -69,7 +69,7 @@ export const shadow = {
     shelfWall: { opacity: 0.55, fade: 11, near: 3, perDU: 0.05 }, // 선반 판 → 벽(판 뒤 모서리가 벽에 붙어 있어 거기서 시작). 시안 밝기 분포: 판 바로 아래 또렷, 약 16DU 안에 벽 밝기로
     bookShelf: { layers: [8, 30, 1e9], opacity: 0.1, near: 1, perDU: 0.1, maxBlur: 10 }, // 책 → 선반 윗면
     // 책 면이 받는 그림자: 다른 책(book) · 윗 선반 판(plank). 진하기 = opacity × e^(-거리/fade), 흐림 = near + perDU × 거리
-    onBook: { opacity: 0.24, fade: 40, near: 0.8, perDU: 0.09, maxBlur: 9 },
+    onBook: { opacity: 0.3, fade: 260, near: 0.8, perDU: 0.07, maxBlur: 8 },
     onBookPlank: { opacity: 0.16, fade: 28, near: 1.5, perDU: 0.06, maxBlur: 8 },
   },
   ao: {

@@ -7,7 +7,7 @@ import { Group, Image as SkImg, ImageSVG, LinearGradient, Picture, Rect, Text, v
 import type React from 'react';
 import { useDerivedValue, type SharedValue } from 'react-native-reanimated';
 
-import { brightness, corners, facing, rot, toWorld, viewCam, VIEW_BY_POSITION, VIEW_MID, type Book3, type Cam, type FaceId } from '@/domain/book3';
+import { brightness, depthKey, facing, rot, toWorld, viewCam, type Book3, type Cam, type FaceId } from '@/domain/book3';
 import { project } from '@/domain/box';
 import type { Book } from '@/domain/types';
 import { BOX_HEAD_BOW } from '@/ui/book/BookBody';
@@ -176,31 +176,14 @@ function Ribbons({ art, state, cam, px }: { art: BookArt; state: RO<Book3>; cam:
   );
 }
 
-// 앞뒤 순서: 뒤(깊이 큰) → 앞, 아래 → 위, 왼쪽 → 오른쪽
-export function depthKey(b: Book3) {
-  'worklet';
-  const c = corners(b);
-  let z = Infinity;
-  let y = Infinity;
-  let x0 = Infinity;
-  let x1 = -Infinity;
-  for (const q of c) {
-    z = Math.min(z, q.z);
-    y = Math.min(y, q.y);
-    x0 = Math.min(x0, q.x);
-    x1 = Math.max(x1, q.x);
-  }
-  const x = (x0 + x1) / 2;
-  // 뒤(깊이 큰) → 앞, 아래 → 위, 옆면이 보이는 쪽 반대편부터(오른쪽 옆면이 보이면 왼쪽 책부터: 오른쪽 이웃 앞면이 가린다)
-  // 쌓인 책(y > 0)은 받침 책보다 깊이가 조금 뒤여도 위에 얹혀 있으므로 나중에 그린다(y 가중이 깊이보다 크다)
-  return -z * 10 + y * 20 + (VIEW_BY_POSITION ? -Math.abs(x - VIEW_MID) : x) * 0.0001;
-}
+export { depthKey } from '@/domain/book3';
 
 // shared: 캔버스 밖에서 useBookShared()로 읽어 넘긴다
 // under: 면 위·갈피 아래에 그릴 것(이 책이 받는 그림자)
-export function BookNode({ book, dims, state, cam, px, shared, under }: { book: Book; dims: Book3['dims']; state: RO<Book3>; cam: Cam; px: Affine; shared: Shared; under?: React.ReactNode }) {
+// order: 줄 전체의 그리는 순서(가림 순서, ShelfMotion의 drawOrder). 없으면(서랍·단독) 깊이 키.
+export function BookNode({ book, dims, state, cam, px, shared, under, order }: { book: Book; dims: Book3['dims']; state: RO<Book3>; cam: Cam; px: Affine; shared: Shared; under?: React.ReactNode; order?: RO<number> }) {
   const art = useBookArt(book, px.s, dims, shared);
-  const z = useDerivedValue(() => depthKey(state.value));
+  const z = useDerivedValue(() => (order ? order.value : depthKey(state.value)));
   if (!art) return null;
   const tone = toneOf(book, false);
   const ctone = toneOf(book, true);

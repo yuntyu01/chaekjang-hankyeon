@@ -253,6 +253,120 @@ export function gap(a: Book3, b: Book3) {
   return best;
 }
 
+// 깊이 키(예전 그리는 순서, 지금은 순환일 때만 쓴다):  뒤(깊이 큰) → 앞, 아래 → 위, 왼쪽 → 오른쪽
+export function depthKey(b: Book3) {
+  'worklet';
+  const c = corners(b);
+  let z = Infinity;
+  let y = Infinity;
+  let x0 = Infinity;
+  let x1 = -Infinity;
+  for (const q of c) {
+    z = Math.min(z, q.z);
+    y = Math.min(y, q.y);
+    x0 = Math.min(x0, q.x);
+    x1 = Math.max(x1, q.x);
+  }
+  const x = (x0 + x1) / 2;
+  // 뒤(깊이 큰) → 앞, 아래 → 위, 옆면이 보이는 쪽 반대편부터(오른쪽 옆면이 보이면 왼쪽 책부터: 오른쪽 이웃 앞면이 가린다)
+  // 쌓인 책(y > 0)은 받침 책보다 깊이가 조금 뒤여도 위에 얹혀 있으므로 나중에 그린다(y 가중이 깊이보다 크다)
+  return -z * 10 + y * 20 + (VIEW_BY_POSITION ? -Math.abs(x - VIEW_MID) : x) * 0.0001;
+}
+
+// ---------- 가림 순서(그리는 순서) ----------
+// 직교 카메라의 시선 방향(화면의 한 점으로 모이는 3D 방향, 사용자 → 벽): 화면 x = x + z·kx, 화면 y ∝ -(y + z·ky)이므로 (-kx, -ky, 1).
+// 서로 파고들지 않는 두 볼록 상자는 분리 평면으로 나뉘고, 시선이 먼저 지나는 쪽(카메라 쪽)이 앞이다.
+// 반환: -1 = a가 앞, 1 = b가 앞, 0 = 화면에서 겹칠 수 없어 상관없음. 살짝 파고든(맞닿은) 경우는 가장 덜 파고든 축으로 판단한다.
+export function frontOf(a: Book3, b: Book3, cam: Cam): number {
+  'worklet';
+  const A = obb(a);
+  const B = obb(b);
+  const axes: Vec3[] = [A.ax[0], A.ax[1], A.ax[2], B.ax[0], B.ax[1], B.ax[2]];
+  for (let i = 0; i < 3; i++)
+    for (let j = 0; j < 3; j++) {
+      const c = cross(A.ax[i], B.ax[j]);
+      const l = Math.hypot(c.x, c.y, c.z);
+      if (l > 1e-6) axes.push({ x: c.x / l, y: c.y / l, z: c.z / l });
+    }
+  const v = { x: -cam.kx, y: -cam.ky, z: 1 };
+  const d = sub3(B.c, A.c);
+  // 나누는 축 가운데 시선과 가장 덜 나란한 것(판단이 가장 안정적)을 고른다. 나누는 축이 없으면 가장 덜 파고든 축.
+  let best = -Infinity;
+  let pick = 0;
+  let bestSep = -Infinity;
+  let pickSep = 0;
+  for (const n of axes) {
+    const ra = A.h[0] * Math.abs(dot(A.ax[0], n)) + A.h[1] * Math.abs(dot(A.ax[1], n)) + A.h[2] * Math.abs(dot(A.ax[2], n));
+    const rb = B.h[0] * Math.abs(dot(B.ax[0], n)) + B.h[1] * Math.abs(dot(B.ax[1], n)) + B.h[2] * Math.abs(dot(B.ax[2], n));
+    const dn = dot(d, n);
+    const g = Math.abs(dn) - ra - rb;
+    const nv = dot(n, v);
+    const side = Math.sign(dn) * nv; // > 0: 시선을 따라가면 a를 먼저 지난다
+    if (g > -0.3 && Math.abs(nv) > bestSep) {
+      bestSep = Math.abs(nv);
+      pickSep = side;
+    }
+    if (g > best) {
+      best = g;
+      pick = side;
+    }
+  }
+  const s = bestSep > 1e-6 ? pickSep : pick;
+  if (Math.abs(s) < 1e-9) return 0;
+  return s > 0 ? -1 : 1;
+}
+
+// 한 줄 책들의 그리는 순서(작을수록 먼저 = 뒤). 화면에서 겹칠 수 있는 쌍만 앞뒤를 정하고(위상 정렬),
+// 순환이 생기면(세 권 이상이 서로 걸친 드문 경우) 그 안에서는 깊이 키로 정한다.
+export function drawOrder(bs: Book3[], cam: Cam, key: (b: Book3) => number): number[] {
+  'worklet';
+  const n = bs.length;
+  const box = bs.map((b) => {
+    let x0 = Infinity;
+    let x1 = -Infinity;
+    let y0 = Infinity;
+    let y1 = -Infinity;
+    for (const c of corners(b)) {
+      const px = c.x + c.z * cam.kx;
+      const py = c.y + c.z * cam.ky;
+      x0 = Math.min(x0, px);
+      x1 = Math.max(x1, px);
+      y0 = Math.min(y0, py);
+      y1 = Math.max(y1, py);
+    }
+    return { x0, x1, y0, y1 };
+  });
+  const after: number[][] = bs.map(() => []); // i 다음에 그려야 하는 것들
+  const indeg = bs.map(() => 0);
+  for (let i = 0; i < n; i++)
+    for (let j = i + 1; j < n; j++) {
+      const a = box[i];
+      const b = box[j];
+      if (a.x1 < b.x0 - 0.5 || b.x1 < a.x0 - 0.5 || a.y1 < b.y0 - 0.5 || b.y1 < a.y0 - 0.5) continue;
+      const f = frontOf(bs[i], bs[j], cam);
+      if (f < 0) {
+        after[j].push(i);
+        indeg[i]++;
+      } else if (f > 0) {
+        after[i].push(j);
+        indeg[j]++;
+      }
+    }
+  const keys = bs.map(key);
+  const rank = bs.map(() => -1);
+  const done = bs.map(() => false);
+  for (let r = 0; r < n; r++) {
+    // 들어오는 간선이 없는 것 중 깊이 키가 가장 작은 것(순환이면 남은 것 중 키가 가장 작은 것)
+    let pick = -1;
+    for (let i = 0; i < n; i++) if (!done[i] && indeg[i] === 0 && (pick < 0 || keys[i] < keys[pick])) pick = i;
+    if (pick < 0) for (let i = 0; i < n; i++) if (!done[i] && (pick < 0 || keys[i] < keys[pick])) pick = i;
+    done[pick] = true;
+    rank[pick] = r;
+    for (const k of after[pick]) indeg[k]--;
+  }
+  return rank;
+}
+
 // 선반 판 위(y ≥ 0)에 있는지, 가장 낮은 점
 export function lowest(b: Book3) {
   'worklet';

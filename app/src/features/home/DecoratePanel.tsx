@@ -6,7 +6,7 @@ import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import Animated, { FadeInDown, FadeOutDown } from 'react-native-reanimated';
 import Svg, { Path, Rect } from 'react-native-svg';
 
-import { MAX_SPIN } from '@/domain/geometry';
+import { DU_PER_MM, MAX_SPIN, SHELF_DEPTH, SHELF_FRONT } from '@/domain/geometry';
 import type { Pose } from '@/domain/types';
 import { ko } from '@/i18n/ko';
 import { colors, fonts } from '@/ui/theme';
@@ -24,6 +24,8 @@ type Props = {
   onPose: (p: Pose) => void;
   onLean: (d: LeanDir) => void;
   spin: number; // 눕힌 책의 수직축 각도(도)
+  depth: { lo: number; hi: number; z: number } | null; // 앞뒤: 상자 앞면 깊이(선반 공간 DU)와 갈 수 있는 범위
+  onDepth: (z: number, done: boolean) => number; // 끄는 동안 미리보기, 놓으면 확정. 실제로 된 깊이를 돌려준다
   onSpin: (deg: number, done: boolean) => number; // 끄는 동안 미리보기, 놓으면 확정. 실제로 된 각도를 돌려준다
   onHeight?: (h: number) => void;
 };
@@ -89,6 +91,70 @@ function SpinSlider({ value, onChange }: { value: number; onChange: (deg: number
   );
 }
 
+// 앞뒤(깊이): 끈 거리만큼 상대로 옮긴다(누른 곳으로 바로 뛰지 않게). 막대 전체 = 선반 앞 끝 ~ 벽.
+// 표시는 선반 앞 끝에서 책 앞면까지의 거리(mm).
+function DepthSlider({ lo, hi, value, onChange }: { lo: number; hi: number; value: number; onChange: (z: number, done: boolean) => number }) {
+  const [w, setW] = useState(1);
+  const [live, setLive] = useState<number | null>(null);
+  const start = useRef(value);
+  const pending = useRef<number | null>(null);
+  const last = useRef<number | null>(null);
+  const frame = useRef(0);
+  const full = SHELF_FRONT + SHELF_DEPTH; // 막대 한 폭이 선반 깊이 전체
+  const toZ = (dx: number) => Math.round(Math.max(lo, Math.min(hi, start.current + (dx / w) * full)) * 2) / 2;
+  const send = (z: number, done: boolean) => {
+    if (done) {
+      cancelAnimationFrame(frame.current);
+      frame.current = 0;
+      last.current = null;
+      onChange(z, true);
+      setLive(null);
+      return;
+    }
+    pending.current = z;
+    if (frame.current) return;
+    frame.current = requestAnimationFrame(() => {
+      frame.current = 0;
+      const v = pending.current;
+      if (v === null || v === last.current) return;
+      last.current = v;
+      setLive(onChange(v, false));
+    });
+  };
+  const pan = Gesture.Pan()
+    .minDistance(2)
+    .runOnJS(true)
+    .onBegin(() => {
+      start.current = value;
+    })
+    .onUpdate((e) => send(toZ(e.translationX), false))
+    .onEnd((e) => send(toZ(e.translationX), true));
+  const shown = live ?? value;
+  const pos = ((shown + SHELF_FRONT) / full) * w;
+  const mmOf = (z: number) => Math.round((z + SHELF_FRONT) / DU_PER_MM);
+  return (
+    <>
+      <GestureDetector gesture={pan}>
+        <View
+          style={styles.slider}
+          collapsable={false}
+          onLayout={(e) => setW(e.nativeEvent.layout.width)}
+          accessibilityRole="adjustable"
+          accessibilityLabel={ko.decoratePanel.depth}
+          accessibilityValue={{ min: mmOf(lo), max: mmOf(hi), now: mmOf(value) }}
+          accessibilityActions={[{ name: 'increment' }, { name: 'decrement' }]}
+          onAccessibilityAction={(e) => onChange(Math.max(lo, Math.min(hi, value + (e.nativeEvent.actionName === 'increment' ? 10 : -10) * DU_PER_MM)), true)}>
+          <View style={styles.track} />
+          {/* 갈 수 있는 구간 */}
+          <View style={[styles.range, { left: ((lo + SHELF_FRONT) / full) * w, width: Math.max(0, ((hi - lo) / full) * w) }]} />
+          <View style={[styles.thumb, { left: pos - 11 }]} />
+        </View>
+      </GestureDetector>
+      <Text style={styles.deg}>{`${mmOf(shown)}mm`}</Text>
+    </>
+  );
+}
+
 function PoseIcon({ pose, color }: { pose: Pose; color: string }) {
   return (
     <Svg width={26} height={26} viewBox="0 0 26 26">
@@ -140,7 +206,7 @@ function Choice({ label, on, disabled, onPress, children }: { label: string; on:
   );
 }
 
-export function DecoratePanel({ title, pose, lean, canLean, msg, bottomInset, reduceMotion, onPose, onLean, spin, onSpin, onHeight }: Props) {
+export function DecoratePanel({ title, pose, lean, canLean, msg, bottomInset, reduceMotion, onPose, onLean, spin, onSpin, depth, onDepth, onHeight }: Props) {
   const ink = colors.ink;
   return (
     <Animated.View
@@ -163,6 +229,13 @@ export function DecoratePanel({ title, pose, lean, canLean, msg, bottomInset, re
           </Choice>
         ))}
       </View>
+      {depth ? (
+        <View style={styles.row}>
+          <Text style={styles.label}>{ko.decoratePanel.depth}</Text>
+          <Text style={styles.end}>{ko.decoratePanel.front}</Text>
+          <DepthSlider lo={depth.lo} hi={depth.hi} value={depth.z} onChange={onDepth} />
+        </View>
+      ) : null}
       {pose === 'horizontal' ? (
         <View style={[styles.row, styles.rowLast]}>
           <Text style={styles.label}>{ko.decoratePanel.spin}</Text>
@@ -216,5 +289,7 @@ const styles = StyleSheet.create({
   track: { height: 3, borderRadius: 2, backgroundColor: colors.line },
   tick: { position: 'absolute', width: 1, height: 10, top: 17, backgroundColor: colors.inkFaint },
   thumb: { position: 'absolute', width: 22, height: 22, borderRadius: 11, top: 11, backgroundColor: colors.sheet, borderWidth: 1.5, borderColor: colors.ink },
-  deg: { width: 40, textAlign: 'right', fontSize: 13, color: colors.inkSoft },
+  deg: { width: 48, textAlign: 'right', fontSize: 13, color: colors.inkSoft },
+  range: { position: 'absolute', height: 3, top: 20.5, borderRadius: 2, backgroundColor: colors.inkFaint, opacity: 0.45 },
+  end: { fontSize: 11.5, color: colors.inkFaint },
 });

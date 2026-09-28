@@ -85,8 +85,22 @@ export function placementOf(layout: ShelfLayout, bookId: string) {
 
 const spinsOf = (item: ShelfItem, layout: ShelfLayout) => item.bookIds.map((id) => placementOf(layout, id)?.spin ?? 0);
 
+// 쌓기 더미 구성원(아래 → 위): 받침 깊이는 맨 아래 책 것, 위 책은 사용자가 옮긴 어긋남(stackDx/Dz)을 함께
+export function stackMembers(item: ShelfItem, layout: ShelfLayout, books: BookMap) {
+  const base = placementOf(layout, item.bookIds[0]);
+  return item.bookIds.map((id) => {
+    const p = placementOf(layout, id);
+    return { bookId: id, book: books[id], spin: p?.spin, depth: base?.depth, dx: p?.stackDx, dz: p?.stackDz };
+  });
+}
+
 export function itemWidth(item: ShelfItem, layout: ShelfLayout, books: BookMap) {
-  if (item.stacked) return stackFootprint(item.bookIds.map((id) => books[id]), spinsOf(item, layout)).width;
+  if (item.stacked) {
+    // 실제 상자의 오른쪽 끝(더미 왼쪽 끝 = 0)
+    let hi = 0;
+    for (const box of stackBoxes(stackMembers(item, layout, books), 0)) for (const c of corners(fromPlaced(box))) hi = Math.max(hi, c.x);
+    return hi;
+  }
   const p = placementOf(layout, item.bookIds[0])!;
   return singleFootprint(books[p.bookId], p).width;
 }
@@ -119,13 +133,7 @@ function lyingEndGap(item: ShelfItem, books: BookMap) {
 // 한 항목(책 또는 쌓기 더미)의 실제 상자들: 화면에 그리는 것과 같은 상자(쌓인 책은 아래 책 위 가운데).
 // x는 항목 왼쪽 끝. 세운 책은 기대기 전(똑바로 선) 상자.
 export function itemBoxes(item: ShelfItem, layout: ShelfLayout, books: BookMap, x = 0): Placed[] {
-  if (item.stacked) {
-    const base = placementOf(layout, item.bookIds[0]);
-    return stackBoxes(
-      item.bookIds.map((id) => ({ bookId: id, book: books[id], spin: placementOf(layout, id)?.spin, depth: base?.depth })),
-      x,
-    );
-  }
+  if (item.stacked) return stackBoxes(stackMembers(item, layout, books), x);
   const p = placementOf(layout, item.bookIds[0])!;
   const b = books[p.bookId];
   const spin = p.pose === 'horizontal' ? p.spin : undefined;
@@ -176,7 +184,8 @@ function packedPositions(items: ShelfItem[], layout: ShelfLayout, books: BookMap
       }
     });
     // 눕힌 책(더미) 바로 뒤에는 오른쪽 끝면이 보일 만큼 띄운다(뒤에 놓여 옆 책 앞면에 가려지지 않게, 시안처럼)
-    if (last >= 0 && isHorizontalItem(packed[last].item, layout)) sep[last] = Math.max(sep[last], packed[last].width + lyingEndGap(packed[last].item, books));
+    // (깊이가 겹치는 경우만: 앞뒤로 떨어져 있으면 끝면을 가릴 일이 없다)
+    if (last >= 0 && sep[last] > -Infinity && isHorizontalItem(packed[last].item, layout)) sep[last] = Math.max(sep[last], packed[last].width + lyingEndGap(packed[last].item, books));
     let x = 0;
     packed.forEach((prev, j) => {
       if (sep[j] > -Infinity) x = Math.max(x, prev.x + sep[j]);
@@ -325,6 +334,10 @@ export function normalize(layout: ShelfLayout): ShelfLayout {
         // 선반 공간 깊이·수직축 회전(눕힌 책만)은 그대로 보존
         if (p.depth !== undefined) next.depth = p.depth;
         if (p.spin && p.pose === 'horizontal') next.spin = p.spin;
+        if (stackId && stackOrder > 0) {
+          if (p.stackDx) next.stackDx = p.stackDx;
+          if (p.stackDz) next.stackDz = p.stackDz;
+        }
         placements.push(next);
       });
     });
@@ -367,7 +380,11 @@ function insertItem(
   const newItem: ShelfItem = { key: placement.bookId, shelfId, order: at, bookIds: [placement.bookId], stacked: false };
   items.splice(at, 0, newItem);
   const placements = withOrders(layout, shelfId, items);
-  placements.push({ bookId: placement.bookId, pose: placement.pose, tilt: placement.tilt, shelfId, order: at });
+  // 깊이·수직축 회전은 옮겨도 그대로(자리만 바뀐다)
+  const kept: BookPlacement = { bookId: placement.bookId, pose: placement.pose, tilt: placement.tilt, shelfId, order: at };
+  if (placement.depth !== undefined) kept.depth = placement.depth;
+  if (placement.spin && placement.pose === 'horizontal') kept.spin = placement.spin;
+  placements.push(kept);
   const next = normalize({ ...layout, placements });
   if (!books) return next;
   // 다른 책은 제자리, 새 책은 x(없으면 앞 책 바로 뒤)에 두고 겹치면 민다.
@@ -390,8 +407,7 @@ export function checkSpace(layout: ShelfLayout, books: BookMap, only?: string): 
     for (const p of pos) {
       // 받침부터: 큰 책을 작은 책 위에 올린 경우는 자리 부족이 아니라 받침 문제로 알린다
       if (p.item.stacked) {
-        const members = p.item.bookIds.map((id) => ({ bookId: id, book: books[id], spin: placementOf(layout, id)?.spin, depth: placementOf(layout, p.item.bookIds[0])?.depth }));
-        if (!stackSupported(stackBoxes(members, p.x))) return 'unsupported';
+        if (!stackSupported(stackBoxes(stackMembers(p.item, layout, books), p.x))) return 'unsupported';
       }
       if (p.x < lo - 0.01 || p.x + p.width > hi + 0.01) return 'no-space';
       // 선반 윗면 전체(앞 끝 ~ 벽) 안: 책 기준선(z=0)은 세운 책이 서는 기본 자리일 뿐 경계가 아니다
@@ -465,9 +481,12 @@ export function moveBook(layout: ShelfLayout, books: BookMap, bookId: string, ta
   const p = placementOf(layout, bookId);
   if (!p) return { ok: false, reason: layout.drawer.includes(bookId) ? 'in-drawer' : 'unknown-book' };
   if (!layout.shelves.some((s) => s.id === target.shelfId)) return { ok: false, reason: 'unknown-shelf' };
+  if (target.kind === 'insert' && isStackBase(layout, bookId)) return moveStack(layout, books, bookId, target.shelfId, target.index, target.x);
   const base = detach(layout, bookId, books);
   if (target.kind === 'insert') {
-    return finish(layout, insertItem(base, { ...p, stackId: undefined }, target.shelfId, target.index, books, target.x), books);
+    // 더미에서 빠져나오는 위 책: 지금 놓인 깊이 그대로 바닥에 내린다
+    const depth = p.stackId ? boxOf(layout, books, bookId)?.z ?? p.depth : p.depth;
+    return finish(layout, insertItem(base, { ...p, stackId: undefined, depth }, target.shelfId, target.index, books, target.x), books);
   }
   const item = shelfItems(base, target.shelfId).find((it) => it.key === target.itemKey);
   if (!item || !isHorizontalItem(item, base)) return { ok: false, reason: 'not-stackable' };
@@ -499,14 +518,141 @@ export function setPose(layout: ShelfLayout, books: BookMap, bookId: string, pos
   if (!found) return { ok: false, reason: 'unknown-book' };
   if (found.pose === pose) return { ok: false, reason: 'no-change' };
   const { p, index } = itemIndexOf(layout, bookId);
-  if (p.stackId) {
-    // 그룹에서 빠져 바로 오른쪽 자리로 나온다.
-    const base = detach(layout, bookId, books);
-    return finish(layout, insertItem(base, { bookId, pose, tilt: 0 }, p.shelfId, index + 1, books), books);
+  const book = books[bookId];
+  // 새 자세의 깊이: 사용자가 둔 깊이(더미에서 나오면 지금 놓인 깊이)는 자세를 바꿔도 지키고 선반 안으로만 맞춘다.
+  // 처음 표지 전시하는 책(깊이 기록 없음)은 뒤쪽(벽 앞)에 세워 본다.
+  const kept = p.stackId ? boxOf(layout, books, bookId)?.z : p.depth;
+  const d = placementDepth(book, { pose, depth: 0 }).z1;
+  const fit = (z: number) => round2(Math.max(-SHELF_FRONT, Math.min(SHELF_DEPTH - d, z)));
+  const tries: (number | undefined)[] = kept !== undefined ? [fit(kept)] : pose === 'front' ? [fit(SHELF_DEPTH - d - 1), undefined] : [undefined];
+  let last: Result = { ok: false, reason: 'no-space' };
+  for (const depth of tries) {
+    if (p.stackId) {
+      // 그룹에서 빠져 바로 오른쪽 자리로 나온다.
+      const base = detach(layout, bookId, books);
+      last = finish(layout, insertItem(base, { bookId, pose, tilt: 0, depth }, p.shelfId, index + 1, books), books);
+    } else {
+      const placements = layout.placements.map((q) => (q.bookId === bookId ? { ...q, pose, tilt: 0 as Tilt, depth, spin: undefined } : q));
+      last = finish(layout, settle(normalize({ ...layout, placements }), books, bookXs(layout, books)), books);
+    }
+    if (last.ok) return last;
   }
-  // 자세가 바뀌면 깊이·수직축 회전은 새 자세의 기본값으로(원본 치수는 그대로, 방향만 바뀐다)
-  const placements = layout.placements.map((q) => (q.bookId === bookId ? { ...q, pose, tilt: 0 as Tilt, depth: undefined, spin: undefined } : q));
-  return finish(layout, settle(normalize({ ...layout, placements }), books, bookXs(layout, books)), books);
+  return last;
+}
+
+
+// ---------- 쌓기 더미 통째로 옮기기·위 책 어긋남 ----------
+
+export function isStackBase(layout: ShelfLayout, bookId: string) {
+  const p = placementOf(layout, bookId);
+  return !!p?.stackId && (p.stackOrder ?? 0) === 0 && layout.placements.some((q) => q.stackId === p.stackId && q.bookId !== bookId);
+}
+
+// 이 책의 지금 상자(선반 공간, 기대기 전)
+export function boxOf(layout: ShelfLayout, books: BookMap, bookId: string): Placed | undefined {
+  const p = placementOf(layout, bookId);
+  if (!p) return undefined;
+  const items = shelfItems(layout, p.shelfId);
+  const pos = itemPositions(items, layout, books).find((q) => q.item.bookIds.includes(bookId));
+  if (!pos) return undefined;
+  return itemBoxes(pos.item, layout, books, pos.x).find((b) => b.bookId === bookId);
+}
+
+// 받치는 책을 옮기면 위 책들도 함께(순서·어긋남·회전 그대로). 다른 선반으로도.
+function moveStack(layout: ShelfLayout, books: BookMap, baseId: string, shelfId: string, index: number, x?: number): Result {
+  const p = placementOf(layout, baseId)!;
+  const members = layout.placements.filter((q) => q.stackId === p.stackId).sort((a, b) => (a.stackOrder ?? 0) - (b.stackOrder ?? 0));
+  const ids = new Set(members.map((q) => q.bookId));
+  const removed = settle(normalize({ ...layout, placements: layout.placements.filter((q) => !ids.has(q.bookId)) }), books, bookXs(layout, books));
+  const withBase = insertItem(removed, { ...p, stackId: undefined }, shelfId, index);
+  const baseP = placementOf(withBase, baseId)!;
+  const stackId = stackIdFor(baseId);
+  const placements = withBase.placements.map((q) => (q.bookId === baseId ? { ...q, stackId, stackOrder: 0 } : q));
+  members.slice(1).forEach((m, i) => placements.push({ ...m, shelfId, order: baseP.order, stackId, stackOrder: i + 1 }));
+  const desired = bookXs(removed, books);
+  if (x !== undefined) for (const m of members) desired.set(m.bookId, x);
+  return finish(layout, settle(normalize({ ...removed, placements }), books, desired), books);
+}
+
+// 둘 중 가능한 쪽으로 좁혀 가는 이분 탐색: f(1)이 되면 그대로, 안 되면 f(0)(지금)에서 가장 멀리 되는 곳
+function farthest(tryAt: (k: number) => ShelfLayout | null): { layout: ShelfLayout; k: number } | null {
+  const full = tryAt(1);
+  if (full) return { layout: full, k: 1 };
+  let ok = 0;
+  let bad = 1;
+  let best: ShelfLayout | null = null;
+  for (let i = 0; i < 10; i++) {
+    const mid = (ok + bad) / 2;
+    const r = tryAt(mid);
+    if (r) {
+      ok = mid;
+      best = r;
+    } else bad = mid;
+  }
+  return best ? { layout: best, k: ok } : null;
+}
+
+const round2 = (v: number) => Math.round(v * 100) / 100;
+
+// 쌓인 위 책을 아래 책 위에서 옆으로(dx) 옮긴다. 받침(바닥이 아래 책 윗면 안)을 벗어나면 가능한 데까지만.
+export function shiftOnStack(layout: ShelfLayout, books: BookMap, bookId: string, dx: number): Result {
+  const p = placementOf(layout, bookId);
+  if (!p?.stackId || !(p.stackOrder ?? 0)) return { ok: false, reason: 'no-change' };
+  const from = p.stackDx ?? 0;
+  const r = farthest((k) => {
+    const v = round2(from + dx * k);
+    const next = { ...layout, placements: layout.placements.map((q) => (q.bookId === bookId ? { ...q, stackDx: v || undefined } : q)) };
+    return checkSpace(next, books, p.shelfId) || !sameXs(layout, next, books, p.shelfId) ? null : next;
+  });
+  if (!r || r.k === 0) return { ok: false, reason: 'no-change' };
+  return finish(layout, r.layout, books);
+}
+
+// 이 선반 책들의 가로 자리가 그대로인지(앞뒤로 옮기다 옆 책을 밀었는지)
+function sameXs(a: ShelfLayout, b: ShelfLayout, books: BookMap, shelfId: string) {
+  const xa = bookXs(a, books);
+  const xb = bookXs(b, books);
+  return b.placements.filter((q) => q.shelfId === shelfId).every((q) => Math.abs((xa.get(q.bookId) ?? 0) - (xb.get(q.bookId) ?? 0)) < 0.05);
+}
+
+// 앞뒤(깊이) 옮기기: z = 책 상자의 앞면 깊이(선반 공간, 앞 끝 -SHELF_FRONT ~ 벽 SHELF_DEPTH).
+// 다른 책은 밀지 않는다: 옆 책·벽·받침에 닿으면 가능한 데까지만 간다. 받치는 책이면 위 책들도 함께, 위 책이면 아래 책 위에서만.
+export function setDepth(layout: ShelfLayout, books: BookMap, bookId: string, z: number): Result {
+  const p = placementOf(layout, bookId);
+  const box = boxOf(layout, books, bookId);
+  if (!p || !box) return { ok: false, reason: 'unknown-book' };
+  const upper = !!p.stackId && (p.stackOrder ?? 0) > 0;
+  const base = p.stackId ? placementOf(layout, layout.placements.find((q) => q.stackId === p.stackId && !q.stackOrder)!.bookId)! : p;
+  const baseBox = boxOf(layout, books, base.bookId)!;
+  // 선반 앞 끝·벽까지는 바로 자르고(계산 없이), 옆 책·받침에 막히는 것만 찾아 좁힌다
+  const range = depthRange(layout, books, upper ? bookId : base.bookId);
+  const dz = Math.max(range.lo, Math.min(range.hi, z + (upper ? 0 : baseBox.z - box.z))) - (upper ? box.z : baseBox.z);
+  if (Math.abs(dz) < 0.01) return { ok: false, reason: 'no-change' };
+  const desired = bookXs(layout, books);
+  const r = farthest((k) => {
+    const placements = layout.placements.map((q) => {
+      if (upper && q.bookId === bookId) return { ...q, stackDz: round2((q.stackDz ?? 0) + dz * k) || undefined };
+      if (!upper && q.bookId === base.bookId) return { ...q, depth: round2(baseBox.z + dz * k) };
+      return q;
+    });
+    const next = settle({ ...layout, placements }, books, desired, p.shelfId);
+    return checkSpace(next, books, p.shelfId) || !sameXs(layout, next, books, p.shelfId) ? null : next;
+  });
+  if (!r || r.k === 0) return { ok: false, reason: 'no-space' };
+  return finish(layout, r.layout, books);
+}
+
+// 앞뒤로 갈 수 있는 범위(상자 앞면 z): 선반 앞 끝 ~ 벽(상자 깊이만큼 뺀 곳)
+export function depthRange(layout: ShelfLayout, books: BookMap, bookId: string) {
+  const box = boxOf(layout, books, bookId);
+  if (!box) return { lo: -SHELF_FRONT, hi: SHELF_DEPTH, z: 0 };
+  let lo = Infinity;
+  let hi = -Infinity;
+  for (const c of corners(fromPlaced(box))) {
+    lo = Math.min(lo, c.z);
+    hi = Math.max(hi, c.z);
+  }
+  return { lo: -SHELF_FRONT + (box.z - lo), hi: SHELF_DEPTH - (hi - box.z), z: box.z };
 }
 
 // 좌우 돌리기 한 단계(다이얼처럼): 눕힘 ← 왼쪽 기울임 ← 똑바로 → 오른쪽 기울임.
@@ -785,34 +931,53 @@ export function swapWith(layout: ShelfLayout, books: BookMap, bookId: string, ta
 export type SwapTarget =
   | { kind: 'swap'; itemKey: string }
   | { kind: 'stack'; itemKey: string }
-  | { kind: 'place'; x: number } // 빈 공간에 놓기(x: 책 왼쪽 끝)
+  | { kind: 'place'; x: number } // 그 자리에 놓기(x: 책 왼쪽 끝). 제자리에서 조금 옮기는 것도 이것
+  | { kind: 'shift'; dx: number } // 쌓인 위 책을 아래 책 위에서 옆으로
   | { kind: 'self' };
 
 export function findSwapTarget(layout: ShelfLayout, books: BookMap, bookId: string, centerX: number): SwapTarget {
   const p = placementOf(layout, bookId)!;
   const positions = itemPositions(shelfItems(layout, p.shelfId), layout, books);
+  const mine = positions.find((pos) => pos.item.bookIds.includes(bookId))!;
+  const box = itemBoxes(mine.item, layout, books, mine.x).find((b) => b.bookId === bookId)!;
+  let lo = Infinity;
+  let hi = -Infinity;
+  for (const c of corners(fromPlaced(box))) {
+    lo = Math.min(lo, c.x);
+    hi = Math.max(hi, c.x);
+  }
+  const cur = (lo + hi) / 2;
+  const upper = !!p.stackId && (p.stackOrder ?? 0) > 0;
+  const base = isStackBase(layout, bookId);
   for (const pos of positions) {
     if (centerX < pos.x || centerX > pos.x + pos.width) continue;
-    if (pos.item.bookIds.includes(bookId)) return { kind: 'self' };
+    if (pos === mine) {
+      // 제자리 위: 끈 만큼 그대로 옮긴다(위 책은 아래 책 위에서만)
+      if (Math.abs(centerX - cur) < 0.5) return { kind: 'self' };
+      if (upper) return { kind: 'shift', dx: Math.round((centerX - cur) * 2) / 2 };
+      return { kind: 'place', x: Math.round(lo + (centerX - cur)) };
+    }
     const middle = centerX >= pos.x + pos.width * 0.25 && centerX <= pos.x + pos.width * 0.75;
-    if (middle && isHorizontalItem(pos.item, layout)) return { kind: 'stack', itemKey: pos.item.key };
-    break; // 다른 책 위: 그 자리에 끼워 넣고 옆 책들을 민다(자리 바꾸기 대신)
+    if (!base && middle && isHorizontalItem(pos.item, layout)) return { kind: 'stack', itemKey: pos.item.key };
+    break; // 다른 책 위: 그 자리에 끼워 넣고 옆 책들을 민다(자리 바꾸기 대신). 깊이가 떨어져 있으면 겹쳐 놓인다
   }
-  const mine = positions.find((pos) => pos.item.bookIds.includes(bookId));
-  const w = mine?.width ?? 0;
-  return { kind: 'place', x: Math.round((centerX - w / 2) / 2) * 2 };
+  // 빈 곳·다른 책 위: 끄는 책이 지금 자리에서 옮겨 간 만큼(더미째 옮기면 더미 왼쪽 끝 기준)
+  return { kind: 'place', x: Math.round(lo + (centerX - cur)) };
 }
 
 export function applySwapTarget(layout: ShelfLayout, books: BookMap, bookId: string, t: SwapTarget): Result {
   const p = placementOf(layout, bookId);
   if (!p) return { ok: false, reason: 'unknown-book' };
   if (t.kind === 'self') return { ok: false, reason: 'no-change' };
+  if (t.kind === 'shift') return shiftOnStack(layout, books, bookId, t.dx);
   if (t.kind === 'stack') return moveBook(layout, books, bookId, { kind: 'stack', shelfId: p.shelfId, itemKey: t.itemKey });
   if (t.kind === 'place') {
-    // 끼울 순서: 지금 화면의 위치(빼기 전)에서 끄는 책의 가운데보다 가운데가 왼쪽인 책 수
+    // 끼울 순서: 지금 화면의 위치(빼기 전)에서 끄는 책(더미)의 가운데보다 가운데가 왼쪽인 책 수
     const all = itemPositions(shelfItems(layout, p.shelfId), layout, books);
     const mine = all.find((pos) => pos.item.bookIds.includes(bookId));
-    const center = t.x + (mine?.width ?? 0) / 2;
+    // 위 책이 더미를 떠날 때는 그 책 폭, 아니면 자리 폭
+    const w = mine && p.stackId && !isStackBase(layout, bookId) ? boxOf(layout, books, bookId)?.size.w ?? mine.width : mine?.width ?? 0;
+    const center = t.x + w / 2;
     const index = all.filter((pos) => pos !== mine && pos.x + pos.width / 2 < center).length;
     return moveBook(layout, books, bookId, { kind: 'insert', shelfId: p.shelfId, index, x: t.x });
   }

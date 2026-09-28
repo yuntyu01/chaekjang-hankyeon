@@ -25,8 +25,11 @@ import {
   swapWith,
   findSwapTarget,
   applySwapTarget,
+  checkSpace,
   type BookMap,
 } from '../layout-engine';
+import { gap } from '../book3';
+import { bodiesOf } from '../shelf-scene';
 import { SAMPLE_BOOKS, SAMPLE_LAYOUT } from '../onboarding-sample';
 import type { ShelfLayout } from '../types';
 
@@ -138,11 +141,15 @@ describe('쌓기', () => {
 
     let l = ok(setPose(roomy(), books, 'b15', 'horizontal'));
     l = ok(moveBook(l, books, 'b15', { kind: 'stack', shelfId: 'shelf-3', itemKey: 'stack:b12' }));
-    const l2 = ok(moveBook(l, books, 'b12', { kind: 'insert', shelfId: 'shelf-4', index: 0 }));
+    // 위 책을 빼면 나머지가 내려앉는다
+    const l2 = ok(moveBook(l, books, 'b13', { kind: 'insert', shelfId: 'shelf-4', index: 0 }));
     const stack = shelfItems(l2, 'shelf-3')[0];
-    expect(stack.bookIds).toEqual(['b13', 'b15']);
-    expect(stack.key).toBe('stack:b13');
+    expect(stack.bookIds).toEqual(['b12', 'b15']);
     expect(stack.bookIds.map((id) => placementOf(l2, id)!.stackOrder)).toEqual([0, 1]);
+    // 받치는 책을 옮기면 위 책들도 함께 간다(순서 그대로)
+    const l3 = ok(moveBook(l, books, 'b12', { kind: 'insert', shelfId: 'shelf-4', index: 0 }));
+    expect(shelfItems(l3, 'shelf-4')[0].bookIds).toEqual(['b12', 'b13', 'b15']);
+    expect(shelfItems(l3, 'shelf-3').some((it) => it.bookIds.includes('b13'))).toBe(false);
   });
 
   it('쌓인 책의 형태를 바꾸면 그룹에서 빠져 옆자리로 나온다', () => {
@@ -164,25 +171,25 @@ describe('형태·기울기', () => {
     expect(placementOf(l3, 'b11')).toMatchObject({ pose: 'horizontal', tilt: 0 });
   });
 
-  it('표지 전시로 바꿔 넘치면 적용하지 않는다', () => {
-    // 1번 선반의 세운 책을 하나씩 표지로 바꾸다 보면 넘치는 순간이 오고, 그때는 바뀌지 않는다
+  it('표지 전시로 바꾸면 뒤쪽부터 놓고, 넘치면 적용하지 않는다(겹쳐 놓여도 서로 파고들지 않음)', () => {
     let l = SAMPLE_LAYOUT;
-    let refused = false;
     for (const id of ['b01', 'b02', 'b03', 'b05']) {
       const r = setPose(l, books, id, 'front');
       if (!r.ok) {
         expect(r.reason).toBe('no-space');
         expect(placementOf(l, id)?.pose).toBe('spine');
-        refused = true;
         break;
       }
       l = r.layout;
+      expect(checkSpace(l, books)).toBeNull();
+      const bs = bodiesOf(l, books, 'shelf-1');
+      for (let i = 0; i < bs.length; i++) for (let j = i + 1; j < bs.length; j++) expect(gap(bs[i], bs[j])).toBeGreaterThan(-0.3);
     }
-    expect(refused).toBe(true);
+    // 처음 표지로 바꾼 책은 뒤쪽(벽 앞)에 선다
+    const first = ok(setPose(SAMPLE_LAYOUT, books, 'b01', 'front'));
+    expect(placementOf(first, 'b01')!.depth!).toBeGreaterThan(80);
   });
-});
 
-describe('드롭 판정', () => {
   it('눕힌 책 그룹 가운데에 가져가면(세운 책도) 쌓기, 옆이면 나란히', () => {
     const l: ShelfLayout = ok(setPose(roomy(), books, 'b15', 'horizontal'));
     const d = detach(l, 'b15');
@@ -293,7 +300,12 @@ describe('자리 바꾸기', () => {
 
   it('책 위 판정: 다른 책 위면 끼워 넣고 밀기, 자기 자리면 그대로, 빈 공간이면 그 자리에 놓기', () => {
     const x = (id: string) => bookXs(SAMPLE_LAYOUT, books).get(id)!;
-    expect(findSwapTarget(SAMPLE_LAYOUT, books, 'b01', x('b01') + 5)).toEqual({ kind: 'self' });
+    // 제자리에서 조금 끌면 그만큼 옮겨 놓는다(원위치로 돌아가지 않음)
+    const w01 = itemPositions(shelfItems(SAMPLE_LAYOUT, 'shelf-1'), SAMPLE_LAYOUT, books)[0].width;
+    const nudge = findSwapTarget(SAMPLE_LAYOUT, books, 'b01', x('b01') + w01 / 2 + 5);
+    expect(nudge).toEqual({ kind: 'place', x: Math.round(x('b01') + 5) });
+    expect(bookXs(ok(applySwapTarget(SAMPLE_LAYOUT, books, 'b01', nudge)), books).get('b01')).toBeCloseTo(Math.round(x('b01') + 5), 1);
+    expect(findSwapTarget(SAMPLE_LAYOUT, books, 'b01', x('b01') + w01 / 2)).toEqual({ kind: 'self' });
     // 데미안 위로 끌면 그 자리에 끼워지고 데미안은 옆으로 밀린다
     const over = findSwapTarget(SAMPLE_LAYOUT, books, 'b03', x('b02') + 4);
     expect(over.kind).toBe('place');

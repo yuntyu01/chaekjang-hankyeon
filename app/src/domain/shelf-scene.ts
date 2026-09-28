@@ -4,7 +4,7 @@ import { boxSize, collide, CONTACT, frontPoly, hull, project, solveLean, type Ca
 import { corners, fromPlaced, VIEW_BY_POSITION, VIEW_MID, type Book3 } from './book3';
 import { bookHeight, bookThickness, CAMERA, cameraFor, defaultDepth, SHELF } from './geometry';
 import { stackBoxes } from './support';
-import { itemPositions, placementOf, shelfItems, sortedShelves, type BookMap } from './layout-engine';
+import { itemPositions, placementOf, shelfItems, sortedShelves, stackMembers, type BookMap } from './layout-engine';
 import { firstContact, MAX_LEAN } from './lean';
 import type { Book, Pose, ShelfLayout, Tilt } from './types';
 
@@ -114,11 +114,7 @@ export function computeShelf(layout: ShelfLayout, books: BookMap, shelfId: strin
   for (const { item, x, width } of positions) {
     items.push({ key: item.key, x, width, bookIds: item.bookIds });
     if (item.stacked) {
-      const members = item.bookIds.map((id) => {
-        const p = placementOf(layout, id)!;
-        return { bookId: id, book: books[id], spin: p.spin, depth: placementOf(layout, item.bookIds[0])!.depth };
-      });
-      stackBoxes(members, x).forEach((box, i) => frames.push(frameOf(box, box.bookId, item.key, shelfId, 0, i, cam)));
+      stackBoxes(stackMembers(item, layout, books), x).forEach((box, i) => frames.push(frameOf(box, box.bookId, item.key, shelfId, 0, i, cam)));
       continue;
     }
     const id = item.bookIds[0];

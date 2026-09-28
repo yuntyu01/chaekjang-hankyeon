@@ -86,6 +86,9 @@ export type BookPlacement = {
   depth?: number;
   // 눕힌 책의 수직축 회전(도, + = 오른쪽 끝이 벽 쪽으로). 비스듬히 놓기. 세운 책·표지 책은 0.
   spin?: number;
+  // 쌓인 위 책: 자동 자리(아래 책 위 가운데 쪽)에서 사용자가 옮긴 가로·깊이 어긋남(DU). 받침 안에서만. 아래 책을 옮겨도 그대로 따라간다.
+  stackDx?: number;
+  stackDz?: number;
   // 저장 시 기록하는 정규화 위치(선반 사용 폭 대비 왼쪽 끝, 0~1). 복원의 기준은 order이고 이 값은 참고·동기화용.
   x?: number;
 };

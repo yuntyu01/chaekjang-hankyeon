@@ -35,6 +35,9 @@ import {
   rotateStep,
   setPose,
   setSpin,
+  setDepth,
+  boxOf,
+  depthRange,
   setTilt,
   sortedShelves,
   type SwapTarget,
@@ -517,7 +520,34 @@ export function HomeScreen() {
     if (!editId || !editPlacement || Math.sign(editPlacement.tilt) === d) return;
     setEditMsg(commitPath(setTilt(layout, books, editId, (d * 7) as Tilt), editId));
   };
-  // 눕힌 책 돌리기: 끄는 동안은 미리보기(가능한 각도까지만), 놓으면 확정
+  // 앞뒤: 끄는 동안은 그 선반 경로만 바로 바꾸고(미리보기) 놓으면 확정한다. 옆 책·벽에 닿으면 가능한 데까지. 실제로 된 깊이를 돌려준다.
+  const editDepth = (z: number, done: boolean): number => {
+    if (!editId) return 0;
+    const shelfId = placementOf(layout, editId)?.shelfId;
+    const cur = boxOf(layout, books, editId)?.z ?? 0;
+    const r = setDepth(layout, books, editId, z);
+    const got = r.ok ? boxOf(r.layout, books, editId)?.z ?? cur : cur;
+    const limited = Math.abs(got - z) >= 1;
+    const restore = () => shelfId && previewShelf(shelfId, frames.get(shelfId) ?? []);
+    if (!done) {
+      if (shelfId) {
+        if (r.ok) previewShelf(shelfId, computeShelf(withLeans(r.layout, books, shelfId), books, shelfId).frames);
+        else restore();
+      }
+      setEditMsg(limited ? ko.decoratePanel.depthLimit : null);
+      return got;
+    }
+    if (!r.ok) {
+      restore();
+      setEditMsg(r.reason === 'no-change' ? null : ko.decoratePanel.depthLimit);
+      return cur;
+    }
+    const err = commitPath(r, editId);
+    if (err) restore();
+    setEditMsg(err ?? (limited ? ko.decoratePanel.depthLimit : null));
+    return err ? cur : got;
+  };
+  const depthInfo = useMemo(() => (editId && placementOf(layout, editId) ? depthRange(layout, books, editId) : null), [editId, layout, books]);
   // 돌리기: 끄는 동안은 그 선반 경로만 바로 바꾸고(미리보기) 놓으면 확정한다. 실제로 된 각도를 돌려준다.
   const editSpin = (deg: number, done: boolean): number => {
     if (!editId) return 0;
@@ -764,6 +794,8 @@ export function HomeScreen() {
           onLean={editLean}
           spin={editPlacement?.spin ?? 0}
           onSpin={editSpin}
+          depth={depthInfo}
+          onDepth={editDepth}
           onHeight={setPanelH}
         />
       ) : null}
@@ -826,6 +858,11 @@ export function HomeScreen() {
           {__DEV__ ? (
             <Pressable accessibilityRole="button" style={styles.menuItem} onPress={() => { setShelfMenuOpen(false); placementStore.resetPilot(); }}>
               <Text style={styles.menuText}>눕힌 책 한 권 시험(개발)</Text>
+            </Pressable>
+          ) : null}
+          {__DEV__ ? (
+            <Pressable accessibilityRole="button" style={styles.menuItem} onPress={() => { setShelfMenuOpen(false); placementStore.resetOcclusionPilot(); }}>
+              <Text style={styles.menuText}>앞뒤 가림 시험(개발)</Text>
             </Pressable>
           ) : null}
           <Pressable accessibilityRole="button" style={styles.menuItem} onPress={() => { setShelfMenuOpen(false); setTimeout(() => setDrawerOpen(true), 280); }}>

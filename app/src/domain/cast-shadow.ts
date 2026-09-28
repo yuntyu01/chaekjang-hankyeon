@@ -34,3 +34,45 @@ export function fadeOf(d: number, len: number) {
   'worklet';
   return Math.exp(-Math.max(0, d) / len);
 }
+
+// 상자 꼭짓점 번호(xi + 2*yi + 4*zi)의 12개 변
+export const BOX_EDGES = [
+  [0, 1], [2, 3], [4, 5], [6, 7], [0, 2], [1, 3], [4, 6], [5, 7], [0, 4], [1, 5], [2, 6], [3, 7],
+];
+
+// 가리는 상자(occ, 꼭짓점 8개)가 받는 면(점 p0, 바깥 법선 n)에 드리우는 그림자: 면보다 빛 쪽에 있는 부분만
+// 빛 방향 LIGHT로 면 평면에 떨어뜨린 점들(볼록 외곽을 취하면 그림자 모양). dist/tFar = 가장 가까운·먼 빛 길이, near/far = 그 점.
+
+export function shadowOnPlane(occ: Vec3[], p0: Vec3, n: Vec3, LIGHT: Vec3): { pts: Vec3[]; dist: number; near: Vec3 | null; far: Vec3 | null; tFar: number } {
+  'worklet';
+  const nd = n.x * LIGHT.x + n.y * LIGHT.y + n.z * LIGHT.z;
+  const out: Vec3[] = [];
+  let dist = Infinity;
+  let tFar = -Infinity;
+  let near: Vec3 | null = null;
+  let far: Vec3 | null = null;
+  if (nd > -1e-4) return { pts: out, dist: 0, near, far, tFar: 0 };
+  const h = occ.map((c) => n.x * (c.x - p0.x) + n.y * (c.y - p0.y) + n.z * (c.z - p0.z)); // 면 바깥(빛 쪽) 거리
+  const put = (c: Vec3, hc: number) => {
+    const t = hc / -nd;
+    const q = { x: c.x + LIGHT.x * t, y: c.y + LIGHT.y * t, z: c.z + LIGHT.z * t };
+    if (t < dist) {
+      dist = t;
+      near = q;
+    }
+    if (t > tFar) {
+      tFar = t;
+      far = q;
+    }
+    out.push(q);
+  };
+  for (let i = 0; i < 8; i++) if (h[i] > 0.05) put(occ[i], h[i]);
+  if (!out.length) return { pts: out, dist: 0, near, far, tFar: 0 };
+  for (const [i, j] of BOX_EDGES) {
+    if ((h[i] - 0.05) * (h[j] - 0.05) >= 0) continue;
+    const u = (0.05 - h[i]) / (h[j] - h[i]);
+    put({ x: occ[i].x + (occ[j].x - occ[i].x) * u, y: occ[i].y + (occ[j].y - occ[i].y) * u, z: occ[i].z + (occ[j].z - occ[i].z) * u }, 0.05);
+  }
+  return { pts: out, dist, near, far, tFar };
+}
+

@@ -4,8 +4,9 @@ import { useSyncExternalStore } from 'react';
 import Storage from 'expo-sqlite/kv-store';
 
 import { toShelfBook } from '@/domain/catalog';
-import { fitToShelf, migrate, normalize, threeShelfLayout, validate, withNormalizedX, type BookMap } from '@/domain/layout-engine';
+import { applySwapTarget, bookXs, findSwapTarget, fitToShelf, migrate, normalize, setDepth, threeShelfLayout, validate, withNormalizedX, type BookMap } from '@/domain/layout-engine';
 import { withLeans } from '@/domain/shelf-scene';
+import { SHELF_DEPTH, SHELF_FRONT } from '@/domain/geometry';
 import { loadLibrary } from '@/db/local-db';
 import { SAMPLE_BOOKS, SAMPLE_LAYOUT } from '@/domain/onboarding-sample';
 import type { ShelfLayout, ShelfLayoutV1 } from '@/domain/types';
@@ -148,6 +149,26 @@ export const placementStore = {
 
   clearNotice() {
     set({ notice: null });
+  },
+
+  // 개발용: 3번째 선반에 두 권만. 뒤쪽 벽 앞에 표지 전시(우리가 빛의 속도로), 앞쪽 선반 앞 끝에 세운 책(쇼코의 미소)이 표지 일부를 가린다.
+  resetOcclusionPilot() {
+    const keep = ['b16', 'b14'];
+    let l = normalize({
+      ...SAMPLE_LAYOUT,
+      placements: SAMPLE_LAYOUT.placements
+        .filter((p) => p.shelfId !== 'shelf-3' || keep.includes(p.bookId))
+        .map((p) => (p.bookId === 'b16' ? { ...p, pos: 140, depth: undefined } : p.bookId === 'b14' ? { ...p, pos: 30, depth: undefined } : p)),
+      drawer: [...SAMPLE_LAYOUT.drawer, ...SAMPLE_LAYOUT.placements.filter((p) => p.shelfId === 'shelf-3' && !keep.includes(p.bookId)).map((p) => p.bookId)],
+    });
+    const step = (r: ReturnType<typeof setDepth>) => (r.ok ? r.layout : l);
+    l = step(setDepth(l, state.books, 'b16', SHELF_DEPTH));
+    l = step(setDepth(l, state.books, 'b14', -SHELF_FRONT + 2));
+    const x16 = bookXs(l, state.books).get('b16')!;
+    l = step(applySwapTarget(l, state.books, 'b14', findSwapTarget(l, state.books, 'b14', x16 + 24)));
+    const next = withLeans(l, state.books);
+    set({ undo: state.layout, layout: next });
+    void persist(next);
   },
 
   retrySave() {

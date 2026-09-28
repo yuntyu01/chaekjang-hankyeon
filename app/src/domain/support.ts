@@ -18,7 +18,7 @@ export function supportedOn(upper: Placed, lower: Placed) {
 
 // 쌓기 더미의 상자들(아래 → 위). x: 더미 자리 왼쪽 끝. 위 책은 아래 책의 실제 윗면 높이에, 깊이는 아래 책 가운데에 맞춘다.
 export function stackBoxes(
-  members: { bookId: string; book: Book; spin?: number; depth?: number }[],
+  members: { bookId: string; book: Book; spin?: number; depth?: number; dx?: number; dz?: number }[],
   x: number,
 ): Placed[] {
   const offs = stackOffsets(members.map((m) => m.book));
@@ -33,9 +33,9 @@ export function stackBoxes(
       const lower = out[i - 1];
       y = topY(fromPlaced(lower));
       const dl = spunExtent(members[i - 1].book, members[i - 1].spin ?? 0).d;
-      z = lower.z + (dl - d) / 2;
+      z = lower.z + (dl - d) / 2 + (m.dz ?? 0);
     }
-    out.push({ bookId: m.bookId, pose: 'horizontal', size, x: x + offs[i], y, z, angle: 0, spin });
+    out.push({ bookId: m.bookId, pose: 'horizontal', size, x: x + offs[i] + (i > 0 ? m.dx ?? 0 : 0), y, z, angle: 0, spin });
   });
   return out;
 }
