@@ -706,6 +706,7 @@ export function HomeScreen() {
                   onA11y={onA11y}
                   onRemove={() => {}}
                   debug={debugGeom}
+                  topRow={s.id === shownShelves[0]?.id}
                 />
               ))}
             </View>

@@ -51,9 +51,10 @@ export const typeScale = {
 // 상자 모델 카메라(앱 전체 하나). 값은 domain/geometry CAMERA(배치·충돌도 같은 값을 쓴다).
 export const camera = CAMERA;
 
-// 광원(앱 전체 하나): 왼쪽 위, 살짝 앞. 책 면 밝기 = ambient + diffuse·(법선·광원), [min, max]로 제한(램버트).
-// 참고값: 책등(앞) 1.00, 광원 반대 옆면 0.88, 윗면 1.04.
-export const light = { dir: { x: -0.115, y: 0.808, z: -0.577 }, ambient: 0.9, diffuse: 0.1732, min: 0.85, max: 1.05 };
+// 광원(앱 전체 하나). 책 면 밝기 = ambient + diffuse·(법선·광원), [min, max]로 제한(램버트).
+// 공통 광원(물체 → 광원 방향). 왼쪽 위 앞. 책 몸체 밝기·베벨·모든 드리운 그림자가 같은 방향을 쓴다.
+// 왼쪽 성분을 키워 그림자가 책 오른쪽으로 드러나게 했다(예전 x -0.115: 그림자가 대부분 책 뒤로 숨었다).
+export const light = { dir: { x: -0.42, y: 0.72, z: -0.55 }, ambient: 0.9, diffuse: 0.1732, min: 0.85, max: 1.05 };
 
 // 그림자. 두 종류를 구분한다(전부 따뜻한 회색, 순검정 금지, 단위 DU).
 // ① 실제 그림자(cast): 광원(light.dir과 같은 방향)으로 물체를 받는 면(벽 z=230mm, 선반 윗면 y=0)에 투영한 모양.
@@ -67,11 +68,14 @@ export const shadow = {
     bookWall: { layers: [10, 35, 1e9], opacity: 0.12, near: 1.2, perDU: 0.07, maxBlur: 12 }, // 책 → 벽
     shelfWall: { opacity: 0.55, fade: 11, near: 3, perDU: 0.05 }, // 선반 판 → 벽(판 뒤 모서리가 벽에 붙어 있어 거기서 시작). 시안 밝기 분포: 판 바로 아래 또렷, 약 16DU 안에 벽 밝기로
     bookShelf: { layers: [8, 30, 1e9], opacity: 0.1, near: 1, perDU: 0.1, maxBlur: 10 }, // 책 → 선반 윗면
+    // 책 면이 받는 그림자: 다른 책(book) · 윗 선반 판(plank). 진하기 = opacity × e^(-거리/fade), 흐림 = near + perDU × 거리
+    onBook: { opacity: 0.24, fade: 40, near: 0.8, perDU: 0.09, maxBlur: 9 },
+    onBookPlank: { opacity: 0.16, fade: 28, near: 1.5, perDU: 0.06, maxBlur: 8 },
   },
   ao: {
     contact: { height: 4, blur: 3, opacity: 0.34 }, // 책이 선반에 닿는 곳(좁고 진하게)
     foot: { opacity: 0.26 }, // 책 바닥 자리
-    stack: { blur: 4, opacity: 0.15, band: 0.22 }, // 위 책이 아래 책 윗면에 닿는 곳, band: 아래 책 앞면 윗부분이 가려지는 어둠(위 → 아래로 풀림)
+    stack: { blur: 3, opacity: 0.22 }, // 위 책이 아래 책 윗면에 닿은 자리 둘레(좁게)
     lean: { touch: 0.3, near: 0.2, far: 0.04 }, // 기댄 책 ↔ 받치는 책: 닿는 점(touch), 벌어진 틈(닿는 쪽 near → 바닥 쪽 far)
     gap: { max: 0.1, fadeAt: 8 }, // 책 사이 좁은 틈: 틈이 좁을수록 진하고 fadeAt 이상이면 없음
     shelfLip: { dy: 2, blur: 3, opacity: 0.08 }, // 판 앞면 바로 아래 좁은 어둠

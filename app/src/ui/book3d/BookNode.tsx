@@ -3,15 +3,16 @@
 //   누울 때만 책등 글자·작은 모티프를 바로 세워(돌리면서) 가로로 읽히게 한다.
 // - 나머지 면(뒤표지·머리·꼬리·책배): 표지 판·종이 단면 재질. 앞표지·책등이 비스듬히 옆으로 갈수록 판 색으로 덮인다.
 // - 밝기: 면 법선과 광원(램버트). 책끼리 앞뒤는 매 프레임 깊이로(zIndex).
-import { Group, Image as SkImg, ImageSVG, Picture, Rect, Text } from '@shopify/react-native-skia';
+import { Group, Image as SkImg, ImageSVG, LinearGradient, Picture, Rect, Text, vec } from '@shopify/react-native-skia';
 import type React from 'react';
 import { useDerivedValue, type SharedValue } from 'react-native-reanimated';
 
-import { brightness, corners, facing, toWorld, viewCam, VIEW_BY_POSITION, VIEW_MID, type Book3, type Cam, type FaceId } from '@/domain/book3';
+import { brightness, corners, facing, rot, toWorld, viewCam, VIEW_BY_POSITION, VIEW_MID, type Book3, type Cam, type FaceId } from '@/domain/book3';
 import { project } from '@/domain/box';
 import type { Book } from '@/domain/types';
 import { BOX_HEAD_BOW } from '@/ui/book/BookBody';
 import { light } from '@/ui/theme';
+import { SHOW } from '@/ui/shelf/shadow-debug';
 
 import { useBookArt, toneOf, type BookArt, type Shared } from './art';
 import { FaceShape } from './FaceShape';
@@ -49,6 +50,66 @@ function Upright({ cx, cy, cyLie, state, fit, children }: { cx: number; cy: numb
   return <Group transform={tf}>{children}</Group>;
 }
 
+// ---------- 둥근 책등(얕은 베벨)의 빛 ----------
+// 책등 양쪽 가장자리와 머리 쪽 가장자리는 둥글게 넘어간다: 그 좁은 띠의 법선을 바깥쪽으로 기울여(가상 법선)
+// 공통 광원과의 각도로 밝기를 매 프레임 계산한다. 빛을 향하면 따뜻한 무광 하이라이트, 반대면 원래 색을 거의 유지하는 옅은 그늘.
+// 책을 눕히거나 돌리면 밝은 모서리도 따라 바뀐다(세우면 왼쪽·머리, 눕히면 위쪽 모서리가 밝다).
+const BEVEL_DEG = 62;
+const LN = (() => {
+  const d = light.dir;
+  const l = Math.hypot(d.x, d.y, d.z) || 1;
+  return { x: d.x / l, y: d.y / l, z: d.z / l };
+})();
+
+function litDelta(b: Book3, n: { x: number; y: number; z: number }) {
+  'worklet';
+  const w = rot(b.roll, b.yaw, n, b.spin ?? 0);
+  const w0 = rot(b.roll, b.yaw, { x: 0, y: 0, z: -1 }, b.spin ?? 0);
+  return w.x * LN.x + w.y * LN.y + w.z * LN.z - (w0.x * LN.x + w0.y * LN.y + w0.z * LN.z);
+}
+
+function bevelColor(delta: number) {
+  'worklet';
+  if (delta >= 0) return `rgba(255, 246, 230, ${Math.min(0.4, delta * 2.2)})`;
+  return `rgba(84, 60, 44, ${Math.min(0.16, -delta * 0.28)})`;
+}
+
+// 가장자리에서 안쪽으로: 기울기 1(가장자리) → 0.45 → 0(평평)
+const PROFILE = [1, 0.45, 0];
+
+function edgeColors(b: Book3, axis: 'x' | 'y', sign: number) {
+  'worklet';
+  const out: string[] = [];
+  for (const k of PROFILE) {
+    const a = (BEVEL_DEG * k * Math.PI) / 180;
+    const n = axis === 'x' ? { x: sign * Math.sin(a), y: 0, z: -Math.cos(a) } : { x: 0, y: Math.sin(a), z: -Math.cos(a) };
+    out.push(bevelColor(litDelta(b, n)));
+  }
+  return out;
+}
+
+function SpineBevel({ state, w, h, s, T }: { state: RO<Book3>; w: number; h: number; s: number; T: number }) {
+  const bx = Math.max(2.5, Math.min(5, 0.2 * T)) * s;
+  const bh = 2.6 * s;
+  const left = useDerivedValue(() => edgeColors(state.value, 'x', -1));
+  const right = useDerivedValue(() => edgeColors(state.value, 'x', 1));
+  const head = useDerivedValue(() => edgeColors(state.value, 'y', 1));
+  const pos = [0, 0.45, 1];
+  return (
+    <>
+      <Rect x={0} y={0} width={bx} height={h}>
+        <LinearGradient start={vec(0, 0)} end={vec(bx, 0)} colors={left} positions={pos} />
+      </Rect>
+      <Rect x={w - bx} y={0} width={bx} height={h}>
+        <LinearGradient start={vec(w, 0)} end={vec(w - bx, 0)} colors={right} positions={pos} />
+      </Rect>
+      <Rect x={0} y={0} width={w} height={bh}>
+        <LinearGradient start={vec(0, 0)} end={vec(0, bh)} colors={head} positions={pos} />
+      </Rect>
+    </>
+  );
+}
+
 function ArtFace({ f, art, state, cam, px, d }: { f: 'spine' | 'cover'; art: BookArt; state: RO<Book3>; cam: Cam; px: Affine; d: Book3['dims'] }) {
   const s = px.s;
   // 보이지 않는 면은 행렬을 0으로(그룹 불투명도만으로는 기록된 그림이 얇은 선으로 남는다)
@@ -66,6 +127,7 @@ function ArtFace({ f, art, state, cam, px, d }: { f: 'spine' | 'cover'; art: Boo
     <Group matrix={m}>
       <Picture picture={f === 'spine' ? art.spine : art.cover} />
       <Rect x={0} y={0} width={w} height={h} color={shade} />
+      {f === 'spine' && SHOW.body ? <SpineBevel state={state} w={w} h={h} s={s} T={d.T} /> : null}
       {f === 'spine' ? (
         <>
           {art.motif ? (
@@ -135,7 +197,8 @@ export function depthKey(b: Book3) {
 }
 
 // shared: 캔버스 밖에서 useBookShared()로 읽어 넘긴다
-export function BookNode({ book, dims, state, cam, px, shared }: { book: Book; dims: Book3['dims']; state: RO<Book3>; cam: Cam; px: Affine; shared: Shared }) {
+// under: 면 위·갈피 아래에 그릴 것(이 책이 받는 그림자)
+export function BookNode({ book, dims, state, cam, px, shared, under }: { book: Book; dims: Book3['dims']; state: RO<Book3>; cam: Cam; px: Affine; shared: Shared; under?: React.ReactNode }) {
   const art = useBookArt(book, px.s, dims, shared);
   const z = useDerivedValue(() => depthKey(state.value));
   if (!art) return null;
@@ -153,6 +216,7 @@ export function BookNode({ book, dims, state, cam, px, shared }: { book: Book; d
       <ArtFace f="cover" art={art} state={state} cam={cam} px={px} d={dims} />
       <Side f="cover" state={state} cam={cam} px={px} book={book} pages={false} tone={ctone} grain={shared.grain} graze />
       <Side f="spine" state={state} cam={cam} px={px} book={book} pages={false} tone={tone} grain={shared.grain} graze />
+      {under}
       {art.ribbons && cam.ky >= 0.005 ? <Ribbons art={art} state={state} cam={cam} px={px} /> : null}
     </Group>
   );

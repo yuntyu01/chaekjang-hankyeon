@@ -7,5 +7,6 @@ export const SHOW = {
   stack: true, // 쌓인 책 접촉
   gap: true, // 좁은 틈 어둠
   body: true, // 책 몸체 명암(둥근 책등·가장자리)
+  cast: true, // 책 면이 받는 그림자(다른 책·윗 선반 판)
   shelf: true, // 선반 아래 그림자
 };

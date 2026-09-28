@@ -1,7 +1,6 @@
 // 책 면 그림(캔버스 없이, 면 그림 좌표 0..w, 0..h). 상자 렌더러(ui/book3d)가 Skia Picture로 기록해 면 변환에 태워 그린다.
 // 책등 면: 둥근 책등 명암 + 붓결 + 가장자리(손으로 그은 선, 빛 받는 테). 옆면·윗면과 이어지는 변(오른쪽·위)은 선 없이.
 // 표지 면: 표지 그림(없으면 책 색 + 모티프) + 제본선 + 가장자리. 제목·작은 모티프는 따로 그린다(누울 때 바로 세우려고).
-import { SHOW } from '@/ui/shelf/shadow-debug';
 import {
   BlurMask,
   Group,
@@ -207,46 +206,19 @@ export function Grain({ w, h, s, image }: { w: number; h: number; s: number; ima
 
 // 책등 면(제목·작은 모티프 제외). 장면(scene) 그림은 면에 그대로 붙인다.
 export function SpineFaceArt({ id, w, h, s, face, art, grain, motif }: { id: string; w: number; h: number; s: number; face: string; art?: BodyArt; grain: SkImageType | null; motif: SkImageType | null }) {
+  // 책등 그림은 색·결·모티프만 기록한다. 둥근 가장자리·빛 받는 모서리 명암은 3D 렌더러가 지금 자세와 공통 광원으로
+  // 매 프레임 계산해 덧그린다(BookNode 베벨). 여기에 고정된 가장자리 명암을 넣으면 책을 돌려도 같은 쪽이 어두워 테두리처럼 보인다.
   const outline = poly(spineOutline(w, h, s, id));
-  const outline2 = poly(spineOutline(w, h, s, `${id}~`));
-  const prof = spineProfile(face);
   return (
     <Group>
       <Group clip={outline}>
-        <Rect x={0} y={0} width={w} height={h} color={face}>
-          {SHOW.body ? <LinearGradient start={vec(0, 0)} end={vec(w, 0)} colors={prof.map(([, k]) => scaleColor(face, k))} positions={prof.map(([p]) => p)} /> : null}
-        </Rect>
+        <Rect x={0} y={0} width={w} height={h} color={face} />
         <Grain w={w} h={h} s={s} image={grain} />
         {art?.scene && motif ? <SceneArt h={h} art={art} motif={motif} faceW={w * 0.94} /> : null}
-        {SHOW.body ? <>
-        {/* 머리 쪽 윗가장자리가 둥글게 빛을 받는다 */}
-        <Rect x={0} y={0} width={w} height={4 * s}>
-          <LinearGradient start={vec(0, 0)} end={vec(0, 4 * s)} colors={['rgba(255,252,244,0.22)', 'rgba(255,252,244,0)']} />
-        </Rect>
-        {/* 바닥 쪽 어둡게(선반에 닿는 곳) */}
-        <Rect x={0} y={h - 5 * s} width={w} height={5 * s}>
-          <LinearGradient start={vec(0, h - 5 * s)} end={vec(0, h)} colors={['rgba(60,40,28,0)', 'rgba(60,40,28,0.16)']} />
-        </Rect>
-        {/* 가장자리 안쪽 살짝 어둡게(둥글게 넘어가는 모서리) */}
-        <Path path={outline} style="stroke" strokeWidth={3.5 * s} color={scaleColor(face, 0.85)} opacity={0.1 + 0.45 * (1 - luminance(face))}>
-          <BlurMask blur={1.4 * s} style="normal" />
-        </Path>
-        <RimLight outline={outline} w={w} h={h} s={s} />
-        {/* 얇은 표지 경계: 책등이 표지 판으로 넘어가는 양쪽 가장자리 안쪽의 가는 그늘(선이 아니라 좁은 명암) */}
-        <Rect x={0} y={0} width={2 * s} height={h} opacity={0.55}>
-          <LinearGradient start={vec(0, 0)} end={vec(2 * s, 0)} colors={[scaleColor(face, 0.82), 'rgba(0,0,0,0)']} />
-        </Rect>
-        <Rect x={w - 2.2 * s} y={0} width={2.2 * s} height={h} opacity={0.6}>
-          <LinearGradient start={vec(w - 2.2 * s, 0)} end={vec(w, 0)} colors={['rgba(0,0,0,0)', scaleColor(face, 0.8)]} />
-        </Rect>
-        <Joined w={w} h={h} s={s}>
-          <EdgeLine outline={outline} outline2={outline2} s={s} face={face} />
-        </Joined>
-        </> : null}
       </Group>
-      {/* 클립 경계는 계단처럼 깨지므로 실루엣 바깥을 부드러운 선으로 한 번 더 덮는다 */}
+      {/* 클립 경계는 계단처럼 깨지므로 같은 색으로 한 번 더 덮는다(어두운 윤곽선이 아니라 가장자리 안티앨리어싱용) */}
       <Joined w={w} h={h} s={s}>
-        <Path path={outline} style="stroke" strokeWidth={0.7 * s} color={scaleColor(face, edgeFactor(face))} opacity={0.55} antiAlias />
+        <Path path={outline} style="stroke" strokeWidth={0.6 * s} color={face} antiAlias />
       </Joined>
     </Group>
   );
