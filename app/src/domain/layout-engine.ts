@@ -240,9 +240,11 @@ export function bookXs(layout: ShelfLayout, books: BookMap) {
 }
 
 // 연산 뒤 위치 확정: desired(연산 전 위치 + 옮긴 책의 목표 위치)를 지키며 겹치면 민다. 결과를 pos로 저장한다.
-export function settle(layout: ShelfLayout, books: BookMap, desired: Map<string, number>): ShelfLayout {
+// only: 그 선반만 다시 맞춘다(다른 선반은 그대로라 끄는 동안 미리보기가 가볍다)
+export function settle(layout: ShelfLayout, books: BookMap, desired: Map<string, number>, only?: string): ShelfLayout {
   const posByBook = new Map<string, number>();
   for (const shelf of layout.shelves) {
+    if (only && shelf.id !== only) continue;
     const items = shelfItems(layout, shelf.id);
     if (!items.length) continue;
     const packed = packedPositions(items, layout, books);
@@ -349,8 +351,9 @@ function insertItem(
 
 // 여러 선반의 공간·무결성을 한 번에 확인한다: 좌우 끝, 앞뒤 깊이(선반 앞선~뒷벽), 쌓기 받침.
 // 첫 구현은 선반 밖으로 튀어나오는 배치를 허용하지 않는다(눕힌 책의 좌우 H_OVERHANG만 예외, 기존 규칙).
-export function checkSpace(layout: ShelfLayout, books: BookMap): FailReason | null {
+export function checkSpace(layout: ShelfLayout, books: BookMap, only?: string): FailReason | null {
   for (const shelf of layout.shelves) {
+    if (only && shelf.id !== only) continue;
     const items = shelfItems(layout, shelf.id);
     if (!items.length) continue;
     const pos = itemPositions(items, layout, books);
@@ -433,7 +436,6 @@ export function moveBook(layout: ShelfLayout, books: BookMap, bookId: string, ta
   if (target.kind === 'insert') {
     return finish(layout, insertItem(base, { ...p, stackId: undefined }, target.shelfId, target.index, books, target.x), books);
   }
-  if (p.pose !== 'horizontal') return { ok: false, reason: 'not-stackable' };
   const item = shelfItems(base, target.shelfId).find((it) => it.key === target.itemKey);
   if (!item || !isHorizontalItem(item, base)) return { ok: false, reason: 'not-stackable' };
   if (item.bookIds.length >= MAX_STACK) return { ok: false, reason: 'stack-full' };
@@ -504,15 +506,15 @@ export function setSpin(layout: ShelfLayout, books: BookMap, bookId: string, deg
     const d = spunExtent(book, spin).d;
     const depth = Math.round(Math.max(0, Math.min(SHELF_DEPTH - d, center - d / 2)) * 100) / 100;
     const placements = layout.placements.map((q) => (q.bookId === bookId ? { ...q, spin, depth: p.stackId ? q.depth : depth } : q));
-    const next = settle({ ...layout, placements }, books, desired);
-    return checkSpace(next, books) ? null : next;
+    const next = settle({ ...layout, placements }, books, desired, p.shelfId);
+    return checkSpace(next, books, p.shelfId) ? null : next;
   };
   let best = tryAt(want);
   if (!best) {
-    // 0 쪽으로 이분 탐색
+    // 0 쪽으로 이분 탐색(12° 기준 0.2° 안쪽까지)
     let ok = 0;
     let bad = want;
-    for (let i = 0; i < 10; i++) {
+    for (let i = 0; i < 6; i++) {
       const mid = (ok + bad) / 2;
       if (tryAt(mid)) ok = mid;
       else bad = mid;
@@ -583,7 +585,7 @@ export function removeShelf(layout: ShelfLayout, shelfId: string): Result {
 }
 
 // 드래그 중 삽입 자리 판정. centerX는 선반 판 안쪽 기준 설계 단위.
-// 눕힌 책을 눕힌 책/그룹의 가운데 절반 위에 가져가면 쌓기, 그 밖은 나란히 놓기.
+// 눕힌 책/그룹의 가운데 절반 위에 가져가면 쌓기(세운 책은 눕혀서), 그 밖은 나란히 놓기.
 export function findDropTarget(
   detached: ShelfLayout,
   books: BookMap,
@@ -593,12 +595,12 @@ export function findDropTarget(
   draggedWidth = 0,
 ): DropTarget {
   const positions = itemPositions(shelfItems(detached, shelfId), detached, books);
-  if (draggedPose === 'horizontal') {
-    for (const pos of positions) {
-      const inMiddle = centerX >= pos.x + pos.width * 0.25 && centerX <= pos.x + pos.width * 0.75;
-      if (inMiddle && isHorizontalItem(pos.item, detached)) {
-        return { kind: 'stack', shelfId, itemKey: pos.item.key };
-      }
+  // 세운 책도 눕힌 책 가운데 위에 놓으면 그 위에 눕혀 쌓는다(바닥 자리가 없어도 쌓을 수 있게)
+  void draggedPose;
+  for (const pos of positions) {
+    const inMiddle = centerX >= pos.x + pos.width * 0.25 && centerX <= pos.x + pos.width * 0.75;
+    if (inMiddle && isHorizontalItem(pos.item, detached)) {
+      return { kind: 'stack', shelfId, itemKey: pos.item.key };
     }
   }
   const index = positions.filter((pos) => pos.x + pos.width / 2 < centerX).length;
@@ -684,7 +686,7 @@ export function swapWith(layout: ShelfLayout, books: BookMap, bookId: string, ta
 }
 
 // 끌고 있는 책 가운데(centerX, 설계 단위)가 어느 자리 위에 있는지. 확정 배치 기준으로 판정해 미리보기가 출렁이지 않게 한다.
-// 눕힌 책을 눕힌 책/그룹의 가운데 절반 위에 놓으면 쌓기.
+// 눕힌 책/그룹의 가운데 절반 위에 놓으면 쌓기(세운 책은 눕혀서).
 export type SwapTarget =
   | { kind: 'swap'; itemKey: string }
   | { kind: 'stack'; itemKey: string }
@@ -698,7 +700,7 @@ export function findSwapTarget(layout: ShelfLayout, books: BookMap, bookId: stri
     if (centerX < pos.x || centerX > pos.x + pos.width) continue;
     if (pos.item.bookIds.includes(bookId)) return { kind: 'self' };
     const middle = centerX >= pos.x + pos.width * 0.25 && centerX <= pos.x + pos.width * 0.75;
-    if (p.pose === 'horizontal' && middle && isHorizontalItem(pos.item, layout)) return { kind: 'stack', itemKey: pos.item.key };
+    if (middle && isHorizontalItem(pos.item, layout)) return { kind: 'stack', itemKey: pos.item.key };
     break; // 다른 책 위: 그 자리에 끼워 넣고 옆 책들을 민다(자리 바꾸기 대신)
   }
   const mine = positions.find((pos) => pos.item.bookIds.includes(bookId));

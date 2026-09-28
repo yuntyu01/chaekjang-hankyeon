@@ -69,7 +69,9 @@ export const ShelfRow = memo(function ShelfRow(p: Props) {
   const m = useShelfMotion(p.shelfId, p.frames, p.reduceMotion, p.selectedId);
   const cam = p.frames[0]?.cam ?? CAMERA;
   const shelfTop = p.clear - SHELF.contact + SHELF_ASSET.plankTopY * SHELF_IMG_H; // 선반 윗면 뒤 모서리(DU)
-  const ids = useMemo(() => p.frames.filter((f) => f.box && f.bookId !== p.placeholderId).map((f) => f.bookId), [p.frames, p.placeholderId]);
+  // 책 목록이 같으면 같은 배열(그림자 워크릿을 다시 만들지 않게)
+  const idKey = p.frames.filter((f) => f.box && f.bookId !== p.placeholderId).map((f) => f.bookId).join('|');
+  const ids = useMemo(() => (idKey ? idKey.split('|') : []), [idKey]);
   return (
     <View style={{ height: p.height, width: DESIGN_WIDTH * s, marginLeft: p.originX, overflow: 'visible' }}>
       <RowShadows m={m} ids={ids} cam={cam} s={s} clear={p.clear} height={p.height} />

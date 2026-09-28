@@ -1,6 +1,6 @@
 // 꾸미기 모드에서 하단 탭 바 자리에 뜨는 조작부: 고른 책의 자세(책등·표지·눕힘)와 기대기(왼쪽·바로·오른쪽).
 // 기대기는 방향만 고르고 각도는 옆 책과의 틈으로 계산한다. 기댈 책이 없는 방향은 처음부터 누를 수 없게 표시한다.
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import Animated, { FadeInDown, FadeOutDown } from 'react-native-reanimated';
@@ -24,31 +24,68 @@ type Props = {
   onPose: (p: Pose) => void;
   onLean: (d: LeanDir) => void;
   spin: number; // 눕힌 책의 수직축 각도(도)
-  onSpin: (deg: number, done: boolean) => void; // 끄는 동안 미리보기, 놓으면 확정
+  onSpin: (deg: number, done: boolean) => number; // 끄는 동안 미리보기, 놓으면 확정. 실제로 된 각도를 돌려준다
+  onHeight?: (h: number) => void;
 };
 
 // 눕힌 책 돌리기: 연속 조절 막대(-MAX ~ +MAX). 0 근처에서는 살짝 붙는다. 가능한 각도는 부모가 되돌려 준 값(spin)으로 표시.
-function SpinSlider({ value, onChange }: { value: number; onChange: (deg: number, done: boolean) => void }) {
+function SpinSlider({ value, onChange }: { value: number; onChange: (deg: number, done: boolean) => number }) {
   const [w, setW] = useState(1);
+  const [live, setLive] = useState<number | null>(null); // 끄는 동안 실제로 된 각도
+  const last = useRef<number | null>(null);
+  const pending = useRef<number | null>(null);
+  const frame = useRef(0);
   const toDeg = (x: number) => {
-    const d = ((x / w) * 2 - 1) * MAX_SPIN;
+    const d = Math.max(-1, Math.min(1, (x / w) * 2 - 1)) * MAX_SPIN;
     return Math.abs(d) < 1.5 ? 0 : Math.round(d * 2) / 2;
+  };
+  // 계산은 한 프레임에 한 번, 마지막 각도만(밀린 중간 값은 버린다)
+  const send = (deg: number, done: boolean) => {
+    if (done) {
+      cancelAnimationFrame(frame.current);
+      frame.current = 0;
+      last.current = null;
+      onChange(deg, true);
+      setLive(null);
+      return;
+    }
+    pending.current = deg;
+    if (frame.current) return;
+    frame.current = requestAnimationFrame(() => {
+      frame.current = 0;
+      const d = pending.current;
+      if (d === null || d === last.current) return;
+      last.current = d;
+      setLive(onChange(d, false));
+    });
   };
   const pan = Gesture.Pan()
     .minDistance(0)
     .runOnJS(true)
-    .onBegin((e) => onChange(toDeg(e.x), false))
-    .onUpdate((e) => onChange(toDeg(e.x), false))
-    .onEnd((e) => onChange(toDeg(e.x), true));
-  const pos = ((value / MAX_SPIN + 1) / 2) * w;
+    .onBegin((e) => send(toDeg(e.x), false))
+    .onUpdate((e) => send(toDeg(e.x), false))
+    .onEnd((e) => send(toDeg(e.x), true));
+  const shown = live ?? value;
+  const pos = ((shown / MAX_SPIN + 1) / 2) * w;
   return (
-    <GestureDetector gesture={pan}>
-      <View style={styles.slider} onLayout={(e) => setW(e.nativeEvent.layout.width)} accessibilityRole="adjustable" accessibilityLabel={ko.decoratePanel.spin} accessibilityValue={{ min: -MAX_SPIN, max: MAX_SPIN, now: Math.round(value) }}>
-        <View style={styles.track} />
-        <View style={[styles.tick, { left: w / 2 - 0.5 }]} />
-        <View style={[styles.thumb, { left: pos - 11 }]} />
-      </View>
-    </GestureDetector>
+    <>
+      <GestureDetector gesture={pan}>
+        <View
+          style={styles.slider}
+          collapsable={false}
+          onLayout={(e) => setW(e.nativeEvent.layout.width)}
+          accessibilityRole="adjustable"
+          accessibilityLabel={ko.decoratePanel.spin}
+          accessibilityValue={{ min: -MAX_SPIN, max: MAX_SPIN, now: Math.round(value) }}
+          accessibilityActions={[{ name: 'increment' }, { name: 'decrement' }]}
+          onAccessibilityAction={(e) => onChange(Math.max(-MAX_SPIN, Math.min(MAX_SPIN, Math.round(value) + (e.nativeEvent.actionName === 'increment' ? 2 : -2))), true)}>
+          <View style={styles.track} />
+          <View style={[styles.tick, { left: w / 2 - 0.5 }]} />
+          <View style={[styles.thumb, { left: pos - 11 }]} />
+        </View>
+      </GestureDetector>
+      <Text style={styles.deg}>{`${shown > 0 ? '+' : ''}${Math.round(shown)}°`}</Text>
+    </>
   );
 }
 
@@ -103,12 +140,13 @@ function Choice({ label, on, disabled, onPress, children }: { label: string; on:
   );
 }
 
-export function DecoratePanel({ title, pose, lean, canLean, msg, bottomInset, reduceMotion, onPose, onLean, spin, onSpin }: Props) {
+export function DecoratePanel({ title, pose, lean, canLean, msg, bottomInset, reduceMotion, onPose, onLean, spin, onSpin, onHeight }: Props) {
   const ink = colors.ink;
   return (
     <Animated.View
       entering={reduceMotion ? undefined : FadeInDown.duration(160)}
       exiting={reduceMotion ? undefined : FadeOutDown.duration(120)}
+      onLayout={(e) => onHeight?.(e.nativeEvent.layout.height)}
       style={[styles.panel, { paddingBottom: bottomInset + 10 }]}>
       <View style={styles.head}>
         <Text style={styles.title} numberOfLines={1}>
@@ -129,7 +167,6 @@ export function DecoratePanel({ title, pose, lean, canLean, msg, bottomInset, re
         <View style={[styles.row, styles.rowLast]}>
           <Text style={styles.label}>{ko.decoratePanel.spin}</Text>
           <SpinSlider value={spin} onChange={onSpin} />
-          <Text style={styles.deg}>{`${spin > 0 ? '+' : ''}${Math.round(spin)}°`}</Text>
         </View>
       ) : (
         <View style={[styles.row, styles.rowLast]}>

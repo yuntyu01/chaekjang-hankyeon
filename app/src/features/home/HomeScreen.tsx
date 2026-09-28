@@ -49,7 +49,7 @@ import { ko } from '@/i18n/ko';
 import { placementStore, usePlacementStore } from '@/store/placement-store';
 import { DragOverlay, frameBBox } from '@/ui/shelf/DragOverlay';
 import { CONTENT_TOP, computeRows, rowAt, toContent, toScene, useShelfMetrics } from '@/ui/shelf/metrics';
-import { currentStates, motionOf } from '@/ui/shelf/ShelfMotion';
+import { currentStates, motionOf, previewShelf } from '@/ui/shelf/ShelfMotion';
 import { ShelfRow, type DropHint } from '@/ui/shelf/ShelfRow';
 import { SHELF_SHADOW_EXTENT } from '@/ui/shelf/ShelfShadow';
 import { colors, fonts, motion, navigation } from '@/ui/theme';
@@ -131,10 +131,10 @@ export function HomeScreen() {
   const [editId, setEditId] = useState<string | null>(null); // 꾸미기 모드에서 고른 책(하단 조작부)
   const [editMsg, setEditMsg] = useState<string | null>(null);
   const [debugGeom, setDebugGeom] = useState(false); // 개발용 형상 보기
-  const [spinPreview, setSpinPreview] = useState<ShelfLayout | null>(null); // 돌리기 막대를 끄는 동안의 미리보기
   const [selectedYear, setSelectedYear] = useState<number | null>(null); // 헤더 독서 연도
   const [vpH, setVpH] = useState(0);
   const [editing, setEditing] = useState(false);
+  const [panelH, setPanelH] = useState(0);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [shelfMenuOpen, setShelfMenuOpen] = useState(false);
   const [toast, setToast] = useState<Toast>(null);
@@ -409,7 +409,7 @@ export function HomeScreen() {
   });
 
   // ---------- 표시할 레이아웃 ----------
-  const shown = drag?.settling ?? (drag?.preview?.kind === 'ok' ? drag.preview.layout : spinPreview ?? layout);
+  const shown = drag?.settling ?? (drag?.preview?.kind === 'ok' ? drag.preview.layout : layout);
   const shownShelves = useMemo(() => sortedShelves(shown), [shown]);
   const frames = useShelfScenes(shown, books);
   // Keep drop bands steady while a book travels between differently sized rows.
@@ -513,19 +513,33 @@ export function HomeScreen() {
     setEditMsg(commitPath(setTilt(layout, books, editId, (d * 7) as Tilt), editId));
   };
   // 눕힌 책 돌리기: 끄는 동안은 미리보기(가능한 각도까지만), 놓으면 확정
-  const editSpin = (deg: number, done: boolean) => {
-    if (!editId) return;
+  // 돌리기: 끄는 동안은 그 선반 경로만 바로 바꾸고(미리보기) 놓으면 확정한다. 실제로 된 각도를 돌려준다.
+  const editSpin = (deg: number, done: boolean): number => {
+    if (!editId) return 0;
+    const shelfId = placementOf(layout, editId)?.shelfId;
+    const cur = placementOf(layout, editId)?.spin ?? 0;
     const r = setSpin(layout, books, editId, deg);
+    const got = r.ok ? placementOf(r.layout, editId)?.spin ?? 0 : cur;
+    // 원한 만큼 못 돌면(옆 책·쌓인 책·선반 깊이에 막힘) 어디까지 되는지 알려 준다
+    const limited = Math.abs(deg) >= 1 && Math.abs(got - deg) >= 1;
+    const limitMsg = limited ? ko.decoratePanel.spinLimit(Math.round(got)) : null;
+    const restore = () => shelfId && previewShelf(shelfId, frames.get(shelfId) ?? []);
     if (!done) {
-      setSpinPreview(r.ok ? withLeans(r.layout, books) : null);
-      return;
+      if (!shelfId) return got;
+      if (r.ok) previewShelf(shelfId, computeShelf(withLeans(r.layout, books, shelfId), books, shelfId).frames);
+      else restore();
+      setEditMsg(limitMsg);
+      return got;
     }
-    setSpinPreview(null);
     if (!r.ok) {
-      if (r.reason !== 'no-change') setEditMsg(ko.fail[r.reason] || null);
-      return;
+      restore();
+      setEditMsg(r.reason === 'no-change' ? limitMsg : ko.fail[r.reason] || null);
+      return cur;
     }
-    setEditMsg(commitPath(r, editId));
+    const err = commitPath(r, editId);
+    if (err) restore();
+    setEditMsg(err ?? limitMsg);
+    return err ? cur : got;
   };
   const finishEditing = () => {
     setEditing(false);
@@ -576,7 +590,8 @@ export function HomeScreen() {
   const year = selectedYear && years.includes(selectedYear) ? selectedYear : years[0];
   const count = Object.values(books).filter((b) => b.finishedAt?.startsWith(String(year))).length;
   const draggedBook = drag ? books[drag.bookId] : null;
-  const contentHeight = Math.max(vpH, (rows.at(-1) ? rows.at(-1)!.top + rows.at(-1)!.height : CONTENT_TOP) + (SHELF_SHADOW_EXTENT + 8) * m.scale);
+  // 꾸미기 중엔 아래 조작부가 맨 아래 선반을 가리지 않도록 그 높이만큼 더 내릴 수 있게 한다
+  const contentHeight = Math.max(vpH, (rows.at(-1) ? rows.at(-1)!.top + rows.at(-1)!.height : CONTENT_TOP) + (SHELF_SHADOW_EXTENT + 8) * m.scale + (editing ? panelH : 0));
 
   return (
     <View style={[styles.root, { paddingTop: insets.top }]}>
@@ -741,8 +756,9 @@ export function HomeScreen() {
           reduceMotion={reduceMotion}
           onPose={editPose}
           onLean={editLean}
-          spin={(spinPreview && editId ? placementOf(spinPreview, editId)?.spin : editPlacement?.spin) ?? 0}
+          spin={editPlacement?.spin ?? 0}
           onSpin={editSpin}
+          onHeight={setPanelH}
         />
       ) : null}
 

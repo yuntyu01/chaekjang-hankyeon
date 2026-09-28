@@ -3,7 +3,7 @@
 // 경로 계획의 입력은 "지금 화면에 보이는 자세"(움직이는 도중이면 그 보간값)라 도중에 다시 조작해도 튀지 않는다.
 // React 상태는 배치가 바뀔 때만 건드리고, 프레임마다는 SharedValue만 바뀐다. 동작 줄이기 설정이면 즉시 적용.
 import { BlurMask, Canvas, Group, Path, Skia, type SkPath } from '@shopify/react-native-skia';
-import { memo, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { memo, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { StyleSheet } from 'react-native';
 import { Easing, useDerivedValue, useSharedValue, withTiming, type SharedValue } from 'react-native-reanimated';
 import { scheduleOnUI } from 'react-native-worklets';
@@ -61,6 +61,11 @@ export function currentStates(m: Motion): Record<string, Book3> {
 const registry = new Map<string, Motion>();
 export const motionOf = (shelfId: string) => registry.get(shelfId);
 
+// 끄는 동안 미리보기: React 상태를 거치지 않고 이 선반의 경로만 바로 바꾼다.
+// 놓아서 확정되면 같은 모습에서 이어받고, 확정되지 않으면 원래 프레임으로 다시 부른다.
+const previewers = new Map<string, (frames: BookFrame[]) => void>();
+export const previewShelf = (shelfId: string, frames: BookFrame[]) => previewers.get(shelfId)?.(frames);
+
 export function useShelfMotion(shelfId: string, frames: BookFrame[], reduceMotion: boolean, selectedId: string | null): Motion {
   const [init] = useState<Tracks>(() => Object.fromEntries(frames.filter((f) => f.box).map((f) => [f.bookId, holdTrack(fromPlaced(f.box!))])));
   const tracks = useSharedValue<Tracks>(init);
@@ -94,6 +99,21 @@ export function useShelfMotion(shelfId: string, frames: BookFrame[], reduceMotio
       if (animate) t.value = withTiming(1, { duration: dur, easing: Easing.inOut(Easing.cubic) });
     });
   }, [frames, reduceMotion, tracks, t]);
+
+  useEffect(() => {
+    previewers.set(shelfId, (fr) => {
+      const rec: Tracks = Object.fromEntries(fr.filter((f) => f.box).map((f) => [f.bookId, holdTrack(fromPlaced(f.box!))]));
+      current.current = rec;
+      scheduleOnUI(() => {
+        'worklet';
+        tracks.value = rec;
+        t.value = 1;
+      });
+    });
+    return () => {
+      previewers.delete(shelfId);
+    };
+  }, [shelfId, tracks, t]);
 
   useLayoutEffect(() => {
     const id = selectedId;
@@ -144,12 +164,19 @@ function DebugGeom({ m, id, cam, px }: { m: Motion; id: string; cam: Cam; px: Af
 
 // ---------- 책(한 캔버스에 줄 전체) ----------
 
-function RowBook({ m, frame, book, cam, px, shared }: { m: Motion; frame: BookFrame; book: Book; cam: Cam; px: Affine; shared: Shared }) {
-  const rest = useMemo(() => fromPlaced(frame.box!), [frame]);
+// 선반을 다시 계산하면 프레임 객체는 새로 생기지만 상자가 같으면 그대로 둔다(면 워크릿을 다시 만들지 않게)
+const boxKey = (f: BookFrame) => JSON.stringify(f.box);
+const RowBook = memo(
+  function RowBook({ m, frame, book, cam, px, shared }: { m: Motion; frame: BookFrame; book: Book; cam: Cam; px: Affine; shared: Shared }) {
+  const key = boxKey(frame);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const rest = useMemo(() => fromPlaced(frame.box!), [key]);
   const id = frame.bookId;
   const state = useDerivedValue(() => stateNow(m, id) ?? rest);
   return <BookNode book={book} dims={rest.dims} state={state} cam={cam} px={px} shared={shared} />;
-}
+  },
+  (a, b) => a.m === b.m && a.book === b.book && a.cam === b.cam && a.px === b.px && a.shared === b.shared && boxKey(a.frame) === boxKey(b.frame),
+);
 
 export const RowBooks = memo(function RowBooks({ m, frames, books, hiddenId, cam, s, clear, height, debug = false }: { m: Motion; frames: BookFrame[]; books: Record<string, Book>; hiddenId: string | null; cam: Cam; s: number; clear: number; height: number; debug?: boolean }) {
   const px = useMemo(() => ({ s, tx: SHELF.sideMargin * s, ty: (clear - FLOOR) * s }), [s, clear]);

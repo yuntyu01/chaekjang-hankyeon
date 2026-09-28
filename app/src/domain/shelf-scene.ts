@@ -190,12 +190,14 @@ function solveLeans(frames: BookFrame[], layout: ShelfLayout) {
 }
 
 // 확정할 때 기대기 결과를 저장한다. 기댈 곳이 없던 책은 놓은 자리에서 바로 선다(tilt 0).
-export function withLeans(layout: ShelfLayout, books: BookMap): ShelfLayout {
+// only: 그 선반의 기대기만 다시 푼다(나머지 선반은 그대로 둔다)
+export function withLeans(layout: ShelfLayout, books: BookMap, only?: string): ShelfLayout {
   const result = new Map<string, BookFrame>();
-  for (const shelf of layout.shelves) for (const f of computeShelf(layout, books, shelf.id).frames) result.set(f.bookId, f);
+  for (const shelf of layout.shelves) if (!only || shelf.id === only) for (const f of computeShelf(layout, books, shelf.id).frames) result.set(f.bookId, f);
   return {
     ...layout,
     placements: layout.placements.map((p) => {
+      if (only && p.shelfId !== only) return p;
       const f = result.get(p.bookId);
       if (!f || p.pose !== 'spine' || p.tilt === 0) return p.lean ? { ...p, lean: undefined } : p;
       if (f.leanFailed) return { ...p, tilt: 0 as Tilt, lean: undefined };

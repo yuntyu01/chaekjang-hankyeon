@@ -13,6 +13,7 @@ export const ko = {
     pose: '자세',
     lean: '기대기',
     spin: '돌리기',
+    spinLimit: (deg: number) => `옆 책이나 쌓인 책에 막혀 ${deg}°까지만 돌아가요.`,
     poses: { spine: '책등', front: '표지', horizontal: '눕힘' },
     leans: { '-1': '왼쪽', '0': '바로', '1': '오른쪽' },
   },

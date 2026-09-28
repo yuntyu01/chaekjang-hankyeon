@@ -125,9 +125,9 @@ describe('쌓기', () => {
     });
   });
 
-  it('세운 책은 쌓을 수 없다', () => {
+  it('세운 책을 눕힌 책 위에 놓으면 눕혀서 쌓는다', () => {
     const r = moveBook(SAMPLE_LAYOUT, books, 'b14', { kind: 'stack', shelfId: 'shelf-3', itemKey: 'stack:b12' });
-    expect(r).toEqual({ ok: false, reason: 'not-stackable' });
+    expect(r.ok && placementOf(r.layout, 'b14')).toMatchObject({ pose: 'horizontal', tilt: 0, stackId: 'stack:b12', stackOrder: 2 });
   });
 
   it('아래 책을 빼면 나머지가 내려앉고, 한 권만 남으면 일반 가로 책이 된다', () => {
@@ -183,7 +183,7 @@ describe('형태·기울기', () => {
 });
 
 describe('드롭 판정', () => {
-  it('눕힌 책을 그룹 가운데에 가져가면 쌓기, 옆이면 나란히', () => {
+  it('눕힌 책 그룹 가운데에 가져가면(세운 책도) 쌓기, 옆이면 나란히', () => {
     const l: ShelfLayout = ok(setPose(roomy(), books, 'b15', 'horizontal'));
     const d = detach(l, 'b15');
     const group = itemPositions(shelfItems(d, 'shelf-3'), d, books)[0];
@@ -194,7 +194,7 @@ describe('드롭 판정', () => {
       itemKey: 'stack:b12',
     });
     expect(findDropTarget(d, books, 'shelf-3', 12, 'horizontal')).toMatchObject({ kind: 'insert', shelfId: 'shelf-3', index: 0 });
-    expect(findDropTarget(d, books, 'shelf-3', middle, 'spine')).toEqual({ kind: 'insert', shelfId: 'shelf-3', index: 0 });
+    expect(findDropTarget(d, books, 'shelf-3', middle, 'spine')).toEqual({ kind: 'stack', shelfId: 'shelf-3', itemKey: 'stack:b12' });
     expect(findDropTarget(d, books, 'shelf-3', 999, 'spine')).toMatchObject({ kind: 'insert', shelfId: 'shelf-3', index: 2 });
   });
 });
