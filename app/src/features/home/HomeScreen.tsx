@@ -9,6 +9,9 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { AppState, Modal, Pressable, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import Animated, {
+  cancelAnimation,
+  Easing,
+  useDerivedValue,
   scrollTo,
   useAnimatedRef,
   useFrameCallback,
@@ -18,9 +21,10 @@ import Animated, {
   withTiming,
 } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { scheduleOnRN } from 'react-native-worklets';
+import { scheduleOnRN, scheduleOnUI } from 'react-native-worklets';
 
-import { DESIGN_WIDTH, PLANK_INSET, SHELF, SHELF_USABLE_WIDTH } from '@/domain/geometry';
+import { DESIGN_WIDTH, PLANK_INSET, SHELF, SHELF_USABLE_WIDTH, kyOf, VIEW_DEG_PER_DP, VIEW_KX, VIEW_PITCH_MAX, VIEW_PITCH_MIN, viewSettle } from '@/domain/geometry';
+import { useViewStore, viewStore } from '@/store/view-store';
 import {
   applySwapTarget,
   detach,
@@ -91,12 +95,13 @@ type Drag = {
 type Toast = { text: string; action?: 'undo' | 'retry' } | null;
 
 // 선반별 프레임을 캐시해서 바뀐 선반만 다시 그린다.
-function useShelfScenes(layout: ShelfLayout, books: Parameters<typeof computeShelf>[1]) {
+function useShelfScenes(layout: ShelfLayout, books: Parameters<typeof computeShelf>[1], pitch: number) {
   const cache = useRef(new Map<string, { sig: string; books: typeof books; frames: BookFrame[] }>());
   return useMemo(() => {
     const out = new Map<string, BookFrame[]>();
     for (const s of layout.shelves) {
-      const sig = JSON.stringify(layout.placements.filter((p) => p.shelfId === s.id));
+      // 보기 각이 바뀌면 투영(터치 영역)도 다시
+      const sig = pitch + JSON.stringify(layout.placements.filter((p) => p.shelfId === s.id));
       const hit = cache.current.get(s.id);
       if (hit && hit.sig === sig && hit.books === books) {
         out.set(s.id, hit.frames);
@@ -107,7 +112,7 @@ function useShelfScenes(layout: ShelfLayout, books: Parameters<typeof computeShe
       out.set(s.id, frames);
     }
     return out;
-  }, [layout, books]);
+  }, [layout, books, pitch]);
 }
 
 function HeaderButton({ size, on, label, onPress, children }: { size: number; on?: boolean; label: string; onPress: () => void; children: React.ReactNode }) {
@@ -165,7 +170,27 @@ export function HomeScreen() {
 
   useEffect(() => {
     void placementStore.load();
+    void viewStore.load();
   }, []);
+
+  // ---------- 보기 각(내려다보기 3°~8°): 꾸미기에서 빈 벽·선반을 위아래로 끌어 바꾼다 ----------
+  // 화면 카메라는 공유 값(UI 스레드, 끄는 동안 매 프레임). 확정된 각은 보기 설정으로 저장하고 터치 영역·줄 높이에 쓴다.
+  const view = useViewStore();
+  const pitchSV = useSharedValue(view.pitch);
+  const viewGoal = useSharedValue(view.pitch);
+  const camSV = useDerivedValue(() => ({ kx: VIEW_KX, ky: Math.tan((pitchSV.value * Math.PI) / 180) }));
+  useEffect(() => {
+    if (view.loaded) {
+      pitchSV.value = view.pitch;
+      viewGoal.value = view.pitch;
+    }
+    // 불러온 뒤 한 번만(끄고 놓을 때는 애니메이션이 직접 맞춘다)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [view.loaded]);
+  const savePitch = useCallback((deg: number) => viewStore.setPitch(deg), []);
+  // 줄 높이: 꾸미기 중에는 가장 내려다보는 각 기준(시점을 끌고 놓아도 줄이 튀지 않게), 평소에는 지금 보기 각
+  const rowKy = editing ? kyOf(VIEW_PITCH_MAX) : undefined;
+
 
   const shelves = useMemo(() => sortedShelves(layout), [layout]);
   // 저장본을 불러와 처음 그릴 때는 움직이지 않는다(예시 배치에서 저장된 배치로 날아가지 않게)
@@ -344,7 +369,7 @@ export function HomeScreen() {
     }
     // 스냅 목적지 계산
     const pl = placementOf(final, d.bookId)!;
-    const finalRows = computeRows(final, books, m.scale, vpH, navigation.height + insets.bottom);
+    const finalRows = computeRows(final, books, m.scale, vpH, navigation.height + insets.bottom, rowKy);
     const row = finalRows.find((r) => r.shelfId === pl.shelfId)!;
     const f = computeShelf(final, books, pl.shelfId).frames.find((fr) => fr.bookId === d.bookId)!;
     const box = frameBBox(f);
@@ -378,31 +403,44 @@ export function HomeScreen() {
   }, [cancelDrag]);
 
   // ---------- 제스처 ----------
-  const pan = Gesture.Pan()
-    .activateAfterLongPress(motion.longPress)
-    .onStart((e) => {
-      scheduleOnRN(beginDrag, e.x, e.y, e.absoluteX, e.absoluteY, scrollY.value);
-    })
-    .onUpdate((e) => {
-      if (!active.value) return;
-      const vx = e.absoluteX - vpOrigin.value.x;
-      const vy = e.absoluteY - vpOrigin.value.y;
-      pointer.value = { x: vx, y: vy };
-      dragX.value = vx - grab.value.x;
-      dragY.value = vy - grab.value.y;
-      scheduleOnRN(moveDrag, vx, vy, scrollY.value);
-    })
-    .onFinalize((_e, success) => {
-      scheduleOnRN(endDrag, !success);
-    });
-  const tap = Gesture.Tap()
-    .maxDuration(300)
-    .onEnd((e, success) => {
-      if (success) scheduleOnRN(onTap, e.x, e.y);
-    });
-  // 표지 책 머리 손잡이: 한 개의 제스처 객체를 손잡이 칸(ShelfRow)에 붙이고, 책 끌기·탭은 이것이 실패할 때만(손잡이를 잡으면 끼어들지 않게)
+  // 제스처 객체는 한 번만 만든다(다시 그릴 때마다 새로 만들면 끄는 도중 다시 붙으며 제스처가 끊긴다). JS 쪽 동작은 ref로 최신 것을 부른다.
+  const jsRef = useRef({ beginDrag, moveDrag, endDrag, onTap });
+  jsRef.current = { beginDrag, moveDrag, endDrag, onTap };
+  const jsBegin = useCallback((x: number, y: number, ax: number, ay: number, sc: number) => jsRef.current.beginDrag(x, y, ax, ay, sc), []);
+  const jsMove = useCallback((x: number, y: number, sc: number) => jsRef.current.moveDrag(x, y, sc), []);
+  const jsEnd = useCallback((cancel: boolean) => jsRef.current.endDrag(cancel), []);
+  const jsTap = useCallback((x: number, y: number) => jsRef.current.onTap(x, y), []);
+  const pan = useMemo(
+    () =>
+      Gesture.Pan()
+        .activateAfterLongPress(motion.longPress)
+        .onStart((e) => {
+          scheduleOnRN(jsBegin, e.x, e.y, e.absoluteX, e.absoluteY, scrollY.value);
+        })
+        .onUpdate((e) => {
+          if (!active.value) return;
+          const vx = e.absoluteX - vpOrigin.value.x;
+          const vy = e.absoluteY - vpOrigin.value.y;
+          pointer.value = { x: vx, y: vy };
+          dragX.value = vx - grab.value.x;
+          dragY.value = vy - grab.value.y;
+          scheduleOnRN(jsMove, vx, vy, scrollY.value);
+        })
+        .onFinalize((_e, success) => {
+          scheduleOnRN(jsEnd, !success);
+        }),
+    [jsBegin, jsMove, jsEnd, scrollY, active, vpOrigin, pointer, dragX, dragY, grab],
+  );
+  const tap = useMemo(
+    () =>
+      Gesture.Tap()
+        .maxDuration(300)
+        .onEnd((e, success) => {
+          if (success) scheduleOnRN(jsTap, e.x, e.y);
+        }),
+    [jsTap],
+  );
   const onHandleRef = useRef<(phase: 'begin' | 'move' | 'end', dx: number, dy: number) => void>(() => {});
-  const scrollNative = useMemo(() => Gesture.Native(), []); // 목록 스크롤(손잡이가 막을 수 있게)
   const handleJS = useCallback((phase: 'begin' | 'move' | 'end', dx: number, dy: number) => onHandleRef.current(phase, dx, dy), []);
   const headPan = useMemo(
     () =>
@@ -421,13 +459,77 @@ export function HomeScreen() {
         .onFinalize(() => {
           scheduleOnRN(handleJS, 'end', 0, 0);
         })
-        // 위아래로 끌어도 목록이 스크롤되지 않게
-        .blocksExternalGesture(scrollNative),
-    [scrollNative, handleJS],
+        ,
+    [handleJS],
   );
-  pan.requireExternalGestureToFail(headPan);
-  tap.requireExternalGestureToFail(headPan);
-  const gesture = Gesture.Race(pan, tap);
+  useMemo(() => {
+    pan.requireExternalGestureToFail(headPan);
+    tap.requireExternalGestureToFail(headPan);
+  }, [pan, tap, headPan]);
+  // 꾸미기 모드 시점 끌기: 시작할 때 대상을 정한다. 책 위에서 시작하면 곧바로 포기(책 조작 우선),
+  // 빈 벽·선반에서 위아래로 움직이면 시점 조절로 잡고 놓을 때까지 유지(손가락이 책 위를 지나가도 바뀌지 않는다).
+  // 책 영역(제스처 뷰 = 스크롤 내용 좌표의 사각형): 시점 끌기가 책 위에서 시작하지 않게
+  const bookBoxes = useSharedValue<{ x0: number; y0: number; x1: number; y1: number }[]>([]);
+  // 시작 판정은 UI 스레드에서: 누른 곳이 책이면 포기, 빈 곳이면 위아래로 움직일 때 잡는다.
+  // 책 영역은 JS에서 줄마다 미리 계산한 화면 사각형(콘텐츠 좌표)으로 넘겨 둔다.
+  const viewStart = useSharedValue({ x: 0, y: 0, p0: VIEW_PITCH_MIN, on: false, started: false });
+  const reduceMotionSV = useSharedValue(reduceMotion);
+  const editingSV = useSharedValue(editing);
+  useEffect(() => {
+    reduceMotionSV.value = reduceMotion;
+    editingSV.value = editing;
+  }, [reduceMotion, editing, reduceMotionSV, editingSV]);
+  const viewPan = useMemo(
+    () =>
+      Gesture.Pan()
+        .manualActivation(true)
+        .onTouchesDown((e, mgr) => {
+          const t = e.allTouches[0];
+          if (!t || !editingSV.value) {
+            mgr.fail();
+            return;
+          }
+          const boxes = bookBoxes.value;
+          for (const r of boxes) {
+            if (t.x >= r.x0 && t.x <= r.x1 && t.y >= r.y0 && t.y <= r.y1) {
+              mgr.fail();
+              return;
+            }
+          }
+          viewStart.value = { x: t.absoluteX, y: t.absoluteY, p0: pitchSV.value, on: true, started: false };
+        })
+        .onTouchesMove((e, mgr) => {
+          const d = viewStart.value;
+          const t = e.allTouches[0];
+          if (!d.on || d.started || !t) return;
+          const dx = t.absoluteX - d.x;
+          const dy = t.absoluteY - d.y;
+          if (Math.abs(dy) > 8 && Math.abs(dy) > Math.abs(dx) * 1.2) mgr.activate();
+          else if (Math.abs(dx) > 14) mgr.fail();
+        })
+        .onStart(() => {
+          // 정착 중에 다시 잡으면 지금 각에서 이어서
+          cancelAnimation(pitchSV);
+          viewStart.value = { ...viewStart.value, p0: pitchSV.value, started: true };
+        })
+        .onUpdate((e) => {
+          pitchSV.value = Math.max(VIEW_PITCH_MIN, Math.min(VIEW_PITCH_MAX, viewStart.value.p0 + e.translationY * VIEW_DEG_PER_DP));
+        })
+        // 끝나거나 다른 제스처에 넘어가도(손을 뗀 것과 같게) 한 시점에 정착
+        .onFinalize((e) => {
+          const d = viewStart.value;
+          viewStart.value = { ...d, on: false, started: false };
+          if (!d.started) return;
+          // 마지막 손가락 위치·속도는 끝 이벤트에서(프레임이 밀려 onUpdate가 덜 불렸어도 실제로 끈 만큼)
+          const now = Math.max(VIEW_PITCH_MIN, Math.min(VIEW_PITCH_MAX, d.p0 + e.translationY * VIEW_DEG_PER_DP));
+          const target = viewSettle(viewGoal.value, d.p0, now, e.velocityY);
+          viewGoal.value = target;
+          pitchSV.value = withTiming(target, { duration: reduceMotionSV.value ? 0 : 260, easing: Easing.out(Easing.cubic) });
+          scheduleOnRN(savePitch, target);
+        }),
+    [editingSV, bookBoxes, viewStart, pitchSV, viewGoal, reduceMotionSV, savePitch],
+  );
+  const gesture = useMemo(() => Gesture.Simultaneous(viewPan, Gesture.Race(pan, tap)), [viewPan, pan, tap]);
 
   // 가장자리 자동 스크롤. 스크롤하면서도 최신 좌표로 놓을 자리를 다시 계산한다.
   useFrameCallback(() => {
@@ -453,13 +555,25 @@ export function HomeScreen() {
   // ---------- 표시할 레이아웃 ----------
   const shown = drag?.settling ?? (drag?.preview?.kind === 'ok' ? drag.preview.layout : layout);
   const shownShelves = useMemo(() => sortedShelves(shown), [shown]);
-  const frames = useShelfScenes(shown, books);
+  const frames = useShelfScenes(shown, books, view.pitch);
   // Keep drop bands steady while a book travels between differently sized rows.
   const rows = useMemo(() => {
     const base = drag && !drag.settling ? layout : shown;
-    return computeRows(base, books, m.scale, vpH, navigation.height + insets.bottom);
-  }, [shown, layout, books, m.scale, vpH, insets.bottom, !!drag, drag?.settling]);
+    return computeRows(base, books, m.scale, vpH, navigation.height + insets.bottom, rowKy);
+  }, [shown, layout, books, m.scale, vpH, insets.bottom, !!drag, drag?.settling, view.pitch, rowKy]);
   const rowOf = useMemo(() => new Map(rows.map((r) => [r.shelfId, r])), [rows]);
+  useEffect(() => {
+    const out: { x0: number; y0: number; x1: number; y1: number }[] = [];
+    for (const row of rows) {
+      for (const f of frames.get(row.shelfId) ?? []) {
+        const bb = frameBBox(f);
+        const a = toContent(m, row, { x: bb.minX, y: bb.minY });
+        const b = toContent(m, row, { x: bb.minX + bb.width, y: bb.minY + bb.height });
+        out.push({ x0: a.x - 4, y0: a.y - 4, x1: b.x + 4, y1: b.y + 4 });
+      }
+    }
+    bookBoxes.value = out;
+  }, [rows, frames, m, bookBoxes]);
 
   // 정보 상자 위치: 위 선반 칸(화면 밖이면 아래 칸)을 덮는 선반 크기 상자. 한 줄뿐이면 책 위 빈 곳.
   const popAnchor = useMemo(() => {
@@ -724,6 +838,29 @@ export function HomeScreen() {
   const count = Object.values(books).filter((b) => b.finishedAt?.startsWith(String(year))).length;
   const draggedBook = drag ? books[drag.bookId] : null;
   // 꾸미기 중엔 아래 조작부가 맨 아래 선반을 가리지 않도록 그 높이만큼 더 내릴 수 있게 한다
+  // 꾸미기에서는 목록을 손으로 스크롤하지 않으므로(빈 곳 끌기 = 시점), 고른 책 줄이 조작부에 가리지 않게 맞춰 준다.
+  // 고른 책이 없으면 맨 아래 줄까지 보이게 끝으로.
+  useEffect(() => {
+    if (!editing || !panelH) return;
+    const row = editId ? rowOf.get(placementOf(layout, editId)?.shelfId ?? '') : rows.at(-1);
+    if (!row) return;
+    const visible = vpH - panelH;
+    const cur = scrollY.value;
+    let next = cur;
+    if (row.top + row.height > cur + visible) next = row.top + row.height - visible;
+    if (row.top < next) next = Math.max(0, row.top);
+    const animated = !reduceMotion;
+    // 조작부만큼 늘어난 목록 높이가 먼저 자리 잡은 뒤 스크롤한다
+    const id = setTimeout(() => {
+      scheduleOnUI(() => {
+        'worklet';
+        scrollTo(scrollRef, 0, next, animated);
+      });
+    }, 120);
+    return () => clearTimeout(id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [editing, editId, panelH]);
+
   const contentHeight = Math.max(vpH, (rows.at(-1) ? rows.at(-1)!.top + rows.at(-1)!.height : CONTENT_TOP) + (SHELF_CAST_EXTENT + 8) * m.scale + (editing ? panelH : 0));
 
   return (
@@ -799,7 +936,6 @@ export function HomeScreen() {
           viewportH.value = e.nativeEvent.layout.height;
           setVpH(e.nativeEvent.layout.height);
         }}>
-        <GestureDetector gesture={scrollNative}>
         <Animated.ScrollView
           ref={scrollRef}
           onScroll={onScroll}
@@ -808,7 +944,8 @@ export function HomeScreen() {
             setSelectedId(null);
           }}
           scrollEventThrottle={16}
-          scrollEnabled={!drag}
+          // 꾸미기에서는 손으로 스크롤하지 않는다(빈 곳 위아래 끌기 = 시점). 고른 책 줄은 위 효과가 보이게 맞춘다.
+          scrollEnabled={!drag && !editing}
           onContentSizeChange={(_w, h) => {
             contentH.value = h;
           }}
@@ -837,12 +974,12 @@ export function HomeScreen() {
                   debug={debugGeom}
                   topRow={s.id === shownShelves[0]?.id}
                   handle={editing && !drag && editId && placementOf(layout, editId)?.shelfId === s.id ? headPan : undefined}
+                  cam={camSV}
                 />
               ))}
             </View>
           </GestureDetector>
         </Animated.ScrollView>
-        </GestureDetector>
 
         {drag && draggedBook ? (
           <DragOverlay book={draggedBook} frame={drag.frame} from={drag.from} scale={m.scale} x={dragX} y={dragY} lift={lift} />

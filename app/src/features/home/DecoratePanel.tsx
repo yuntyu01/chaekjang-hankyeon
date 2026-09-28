@@ -84,7 +84,7 @@ function SpinSlider({ value, onChange }: { value: number; onChange: (deg: number
           onAccessibilityAction={(e) => onChange(Math.max(-MAX_SPIN, Math.min(MAX_SPIN, Math.round(value) + (e.nativeEvent.actionName === 'increment' ? 2 : -2))), true)}>
           <View style={styles.track} />
           <View style={[styles.tick, { left: w / 2 - 0.5 }]} />
-          <View style={[styles.thumb, { left: pos - 11 }]} />
+          <View style={[styles.thumb, { left: pos - 11, opacity: w > 1 ? 1 : 0 /* 폭을 재기 전에는 0 위치에 잠깐 보이지 않게 */ }]} />
         </View>
       </GestureDetector>
       <Text style={styles.deg}>{`${shown > 0 ? '+' : ''}${Math.round(shown)}°`}</Text>
@@ -148,7 +148,7 @@ function DepthSlider({ lo, hi, value, onChange }: { lo: number; hi: number; valu
           <View style={styles.track} />
           {/* 갈 수 있는 구간 */}
           <View style={[styles.range, { left: ((lo + SHELF_FRONT) / full) * w, width: Math.max(0, ((hi - lo) / full) * w) }]} />
-          <View style={[styles.thumb, { left: pos - 11 }]} />
+          <View style={[styles.thumb, { left: pos - 11, opacity: w > 1 ? 1 : 0 /* 폭을 재기 전에는 0 위치에 잠깐 보이지 않게 */ }]} />
         </View>
       </GestureDetector>
       <Text style={styles.deg}>{`${mmOf(shown)}mm`}</Text>

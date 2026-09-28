@@ -117,6 +117,33 @@ export function cameraFor(_rowIndex: number) {
   return ROW_CAMERAS[0];
 }
 export const CAMERA = ROW_CAMERAS[0];
+
+// ---------- 보기 설정: 내려다보는 각 ----------
+// 기본 3°, 꾸미기에서 위아래로 끌어 8°까지(책 배치·광원은 그대로, 같은 장면을 다르게 보는 것).
+// 확정된 각은 공통 카메라(CAMERA, 배치 계산·터치·줄 높이용)에 반영한다. 끄는 동안의 각은 화면(UI 스레드) 카메라만 바꾼다.
+export const VIEW_PITCH_MIN = 3;
+export const VIEW_PITCH_MAX = 8;
+export const kyOf = (deg: number) => Math.tan((deg * Math.PI) / 180);
+export function setViewPitch(deg: number) {
+  const d = Math.max(VIEW_PITCH_MIN, Math.min(VIEW_PITCH_MAX, deg));
+  CAMERA.ky = kyOf(d);
+  return d;
+}
+
+// 시점 끌기를 놓았을 때 정착할 각(3° 또는 8°). home = 잡기 전에 있던(정착 중이었으면 향하던) 시점,
+// now = 손가락이 끈 만큼의 각, vy = 놓을 때 세로 속도(dp/s, + = 아래로 = 더 내려다보기).
+// 조금만 움직였으면 원래 시점(아주 세게 튕긴 경우만 예외), 빠르게 놓으면 그 방향, 아니면 가까운 쪽.
+export const VIEW_DEG_PER_DP = 0.03; // 약 170dp 끌면 3° → 8°
+export const VIEW_SMALL_DEG = 0.8;
+export function viewSettle(home: number, p0: number, now: number, vy: number) {
+  'worklet';
+  const moved = Math.abs(now - p0);
+  const flick = moved < VIEW_SMALL_DEG ? 1500 : 500;
+  if (vy > flick) return VIEW_PITCH_MAX;
+  if (vy < -flick) return VIEW_PITCH_MIN;
+  if (moved < VIEW_SMALL_DEG) return home;
+  return now - VIEW_PITCH_MIN < VIEW_PITCH_MAX - now ? VIEW_PITCH_MIN : VIEW_PITCH_MAX;
+}
 // 눕힌 책의 수직축 회전 범위(도). 미적·조작상의 제한(선반 깊이·충돌·받침에 따라 더 좁아질 수 있다).
 export const MAX_SPIN = 12;
 
@@ -220,21 +247,22 @@ export function frontExt(book: Book, p: { pitch?: number; spin?: number }) {
   return frontExtent(frontDims(book), p.pitch ?? 0, p.spin ?? 0);
 }
 
-export function singleFootprint(book: Book, p: Pick<BookPlacement, 'pose' | 'tilt'> & { spin?: number; depth?: number; pitch?: number }) {
+// ky: 화면 높이를 잴 카메라(기본은 지금 보기 각). 줄 높이는 가장 내려다보는 각으로 재서 보기 각을 바꿔도 줄이 움직이지 않게 한다.
+export function singleFootprint(book: Book, p: Pick<BookPlacement, 'pose' | 'tilt'> & { spin?: number; depth?: number; pitch?: number }, ky = CAMERA.ky) {
   const h = bookHeight(book);
   const t = bookThickness(book);
   const w = frontWidth(book);
   switch (p.pose) {
     case 'spine':
-      return { width: t, height: h + w * CAMERA.ky };
+      return { width: t, height: h + w * ky };
     case 'horizontal': {
       const e = spunExtent(book, p.spin);
-      return { width: e.w, height: t + ((p.depth ?? defaultDepth(book, 'horizontal')) + e.d) * CAMERA.ky };
+      return { width: e.w, height: t + ((p.depth ?? defaultDepth(book, 'horizontal')) + e.d) * ky };
     }
     case 'front': {
-      if (!p.pitch && !p.spin) return { width: w, height: h + t * CAMERA.ky };
+      if (!p.pitch && !p.spin) return { width: w, height: h + t * ky };
       const e = frontExt(book, p);
-      return { width: e.x1 - e.x0, height: e.y1 + (e.z1 - e.z0) * CAMERA.ky };
+      return { width: e.x1 - e.x0, height: e.y1 + (e.z1 - e.z0) * ky };
     }
   }
 }
@@ -265,9 +293,9 @@ export function stackOffsets(books: Book[]) {
   return out;
 }
 
-export function stackFootprint(books: Book[], spins: number[] = []) {
+export function stackFootprint(books: Book[], spins: number[] = [], ky = CAMERA.ky) {
   let width = 0;
-  let height = LYING_BACK_Z * CAMERA.ky;
+  let height = LYING_BACK_Z * ky;
   let depth = 0;
   const offs = stackOffsets(books);
   books.forEach((b, i) => {
@@ -275,5 +303,5 @@ export function stackFootprint(books: Book[], spins: number[] = []) {
     height += bookThickness(b);
     depth = Math.max(depth, frontWidth(b));
   });
-  return { width, height: height + depth * CAMERA.ky };
+  return { width, height: height + depth * ky };
 }

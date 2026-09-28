@@ -35,13 +35,14 @@ export function useShelfMetrics() {
 
 export const RIBBON_OUT = 12;
 
-export function computeRows(layout: ShelfLayout, books: BookMap, scale: number, viewportHeight = 0, bottomInset = 0): RowGeom[] {
+// ky: 줄 높이를 잴 카메라(없으면 지금 보기 각). 꾸미기에서는 가장 내려다보는 각으로 재 두어 시점을 끌어도 줄이 움직이지 않는다.
+export function computeRows(layout: ShelfLayout, books: BookMap, scale: number, viewportHeight = 0, bottomInset = 0, ky?: number): RowGeom[] {
   const shelves = sortedShelves(layout);
   // 갈피는 갈피가 있는 책의 키에만 더한다(모든 줄에 일괄로 더하지 않음)
   const tallest = Math.max(
     SHELF.minClear,
     ...shelves.flatMap((s) =>
-      shelfItems(layout, s.id).map((it) => itemHeight(it, layout, books) + (it.bookIds.some((id) => (books[id]?.quotes ?? 0) > 0) ? RIBBON_OUT : 0)),
+      shelfItems(layout, s.id).map((it) => itemHeight(it, layout, books, ky) + (it.bookIds.some((id) => (books[id]?.quotes ?? 0) > 0) ? RIBBON_OUT : 0)),
     ),
   );
   const clear = tallest + SHELF.rowTopPad;

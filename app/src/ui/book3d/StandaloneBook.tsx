@@ -34,10 +34,11 @@ export function FrameBook({ book, frame, scale: s, from }: { book: Book; frame: 
   }, [from, t]);
   const state = useDerivedValue(() => bookAt(track, t.value));
   const shared = useBookShared();
+  const camSV = useSharedValue(frame.cam ?? CAMERA);
   return (
     <View style={{ width: (bb.width + BOOK_PAD * 2) * s, height: (bb.height + top + BOOK_PAD) * s }} pointerEvents="none">
       <Canvas style={{ flex: 1 }}>
-        <BookNode book={book} dims={rest.dims} state={state} cam={frame.cam ?? CAMERA} px={px} shared={shared} />
+        <BookNode book={book} dims={rest.dims} state={state} cam={camSV} px={px} shared={shared} />
       </Canvas>
     </View>
   );

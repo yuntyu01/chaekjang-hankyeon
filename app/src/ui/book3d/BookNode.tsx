@@ -110,11 +110,11 @@ function SpineBevel({ state, w, h, s, T }: { state: RO<Book3>; w: number; h: num
   );
 }
 
-function ArtFace({ f, art, state, cam, px, d }: { f: 'spine' | 'cover'; art: BookArt; state: RO<Book3>; cam: Cam; px: Affine; d: Book3['dims'] }) {
+function ArtFace({ f, art, state, cam, px, d }: { f: 'spine' | 'cover'; art: BookArt; state: RO<Book3>; cam: RO<Cam>; px: Affine; d: Book3['dims'] }) {
   const s = px.s;
   // 보이지 않는 면은 행렬을 0으로(그룹 불투명도만으로는 기록된 그림이 얇은 선으로 남는다)
   const m = useDerivedValue(() => {
-    const c = viewCam(cam, state.value);
+    const c = viewCam(cam.value, state.value);
     return facing(c, state.value, f) > 0.002 ? faceMatrix(state.value, f, c, px) : [0, 0, -1e4, 0, 0, -1e4, 0, 0, 1];
   });
   const shade = useDerivedValue(() => shadeColor(brightness(light, state.value, f)));
@@ -151,22 +151,22 @@ function ArtFace({ f, art, state, cam, px, d }: { f: 'spine' | 'cover'; art: Boo
   );
 }
 
-function Side({ f, state, cam, px, book, pages, tone, grain, graze }: { f: FaceId; state: RO<Book3>; cam: Cam; px: Affine; book: Book; pages: boolean; tone: string; grain: Shared['grain']; graze?: boolean }) {
+function Side({ f, state, cam, px, book, pages, tone, grain, graze }: { f: FaceId; state: RO<Book3>; cam: RO<Cam>; px: Affine; book: Book; pages: boolean; tone: string; grain: Shared['grain']; graze?: boolean }) {
   const seed = seedOf(book.id, f);
   const bow = BOX_HEAD_BOW * px.s;
-  const geom = useDerivedValue(() => sideFaceGeom(viewCam(cam, state.value), state.value, f, px, bow, pages, seed));
+  const geom = useDerivedValue(() => sideFaceGeom(viewCam(cam.value, state.value), state.value, f, px, bow, pages, seed));
   const k = useDerivedValue(() => brightness(light, state.value, f));
   // 앞표지·책등이 옆면이 되면(비스듬히) 판 색으로 덮는다: 정면에 가까울수록 그림이 드러난다
-  const op = useDerivedValue(() => (graze ? Math.max(0, Math.min(1, (0.5 - facing(viewCam(cam, state.value), state.value, f)) / 0.4)) : 1));
+  const op = useDerivedValue(() => (graze ? Math.max(0, Math.min(1, (0.5 - facing(viewCam(cam.value, state.value), state.value, f)) / 0.4)) : 1));
   return <FaceShape geom={geom} pages={pages} tone={tone} k={k} s={px.s} grain={grain} opacity={op} />;
 }
 
-function Ribbons({ art, state, cam, px }: { art: BookArt; state: RO<Book3>; cam: Cam; px: Affine }) {
+function Ribbons({ art, state, cam, px }: { art: BookArt; state: RO<Book3>; cam: RO<Cam>; px: Affine }) {
   const tf = useDerivedValue(() => {
     const b = state.value;
     const d = b.dims;
     // 책등 가까이 책장 사이에서 나온다(머리 면 앞쪽 18%)
-    const p = project(viewCam(cam, b), toWorld(b, { x: d.T * 0.55, y: d.H, z: d.W * 0.18 }));
+    const p = project(viewCam(cam.value, b), toWorld(b, { x: d.T * 0.55, y: d.H, z: d.W * 0.18 }));
     return [{ translateX: p.x * px.s + px.tx }, { translateY: p.y * px.s + px.ty }, { rotate: (b.roll * Math.PI) / 180 }];
   });
   return (
@@ -181,7 +181,7 @@ export { depthKey } from '@/domain/book3';
 // shared: 캔버스 밖에서 useBookShared()로 읽어 넘긴다
 // under: 면 위·갈피 아래에 그릴 것(이 책이 받는 그림자)
 // order: 줄 전체의 그리는 순서(가림 순서, ShelfMotion의 drawOrder). 없으면(서랍·단독) 깊이 키.
-export function BookNode({ book, dims, state, cam, px, shared, under, order }: { book: Book; dims: Book3['dims']; state: RO<Book3>; cam: Cam; px: Affine; shared: Shared; under?: React.ReactNode; order?: RO<number> }) {
+export function BookNode({ book, dims, state, cam, px, shared, under, order }: { book: Book; dims: Book3['dims']; state: RO<Book3>; cam: RO<Cam>; px: Affine; shared: Shared; under?: React.ReactNode; order?: RO<number> }) {
   const art = useBookArt(book, px.s, dims, shared);
   const z = useDerivedValue(() => (order ? order.value : depthKey(state.value)));
   if (!art) return null;
@@ -190,7 +190,6 @@ export function BookNode({ book, dims, state, cam, px, shared, under, order }: {
   return (
     <Group zIndex={z}>
       {/* 올려다볼 때는 머리 면이 안 보이므로 책 뒤에서 나오는 것처럼(먼저), 정면·내려다볼 때는 머리 면 위에(나중) */}
-      {art.ribbons && cam.ky < 0.005 ? <Ribbons art={art} state={state} cam={cam} px={px} /> : null}
       <Side f="back" state={state} cam={cam} px={px} book={book} pages={false} tone={tone} grain={shared.grain} />
       <Side f="head" state={state} cam={cam} px={px} book={book} pages tone={tone} grain={shared.grain} />
       <Side f="tail" state={state} cam={cam} px={px} book={book} pages tone={tone} grain={shared.grain} />
@@ -200,7 +199,8 @@ export function BookNode({ book, dims, state, cam, px, shared, under, order }: {
       <Side f="cover" state={state} cam={cam} px={px} book={book} pages={false} tone={ctone} grain={shared.grain} graze />
       <Side f="spine" state={state} cam={cam} px={px} book={book} pages={false} tone={tone} grain={shared.grain} graze />
       {under}
-      {art.ribbons && cam.ky >= 0.005 ? <Ribbons art={art} state={state} cam={cam} px={px} /> : null}
+      {/* 갈피: 내려다보는 시점(3°~8°)이라 머리 면 위에 그린다 */}
+      {art.ribbons ? <Ribbons art={art} state={state} cam={cam} px={px} /> : null}
     </Group>
   );
 }

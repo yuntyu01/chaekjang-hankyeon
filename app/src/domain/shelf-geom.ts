@@ -11,6 +11,7 @@ export type ShelfFaces = { top: ShelfFace; front: ShelfFace; side: ShelfFace | n
 
 // 3D 꼭짓점 이름: [왼/오른][앞/뒤][위/아래]
 export function shelfVertices() {
+  'worklet';
   const zf = -SHELF_FRONT;
   const zb = SHELF_DEPTH;
   const yb = -SHELF_THICK;
@@ -26,16 +27,29 @@ export function shelfVertices() {
   };
 }
 
-const face = (a: Point, b: Point, c: Point, d: Point): ShelfFace => ({
+function face(a: Point, b: Point, c: Point, d: Point): ShelfFace {
+  'worklet';
+  return {
   O: a,
   U: { x: b.x - a.x, y: b.y - a.y },
   V: { x: d.x - a.x, y: d.y - a.y },
   poly: [a, b, c, d],
-});
+  };
+}
 
 export function shelfFaces(cam: Camera): ShelfFaces {
+  'worklet';
   const v = shelfVertices();
-  const P = Object.fromEntries(Object.entries(v).map(([k, q]) => [k, project(cam, q)])) as Record<keyof typeof v, Point>;
+  const P = {
+    LFT: project(cam, v.LFT),
+    RFT: project(cam, v.RFT),
+    RBT: project(cam, v.RBT),
+    LBT: project(cam, v.LBT),
+    LFB: project(cam, v.LFB),
+    RFB: project(cam, v.RFB),
+    RBB: project(cam, v.RBB),
+    LBB: project(cam, v.LBB),
+  };
   return {
     // 윗면: O = 뒤 왼쪽, U = 뒤 변(→오른쪽), V = 왼쪽 변(→앞). 질감 그림의 위쪽이 벽 쪽.
     top: face(P.LBT, P.RBT, P.RFT, P.LFT),
@@ -49,5 +63,6 @@ export function shelfFaces(cam: Camera): ShelfFaces {
 
 // 텍스처 그림(w × h px) → 화면 px 행렬(3×3 행 우선): 그림 (0,0)=O, (w,0)=O+U, (0,h)=O+V. 화면 px = 설계 단위 × s + (tx, ty).
 export function faceTextureMatrix(f: ShelfFace, w: number, h: number, s: number, tx: number, ty: number) {
+  'worklet';
   return [(f.U.x * s) / w, (f.V.x * s) / h, f.O.x * s + tx, (f.U.y * s) / w, (f.V.y * s) / h, f.O.y * s + ty, 0, 0, 1];
 }

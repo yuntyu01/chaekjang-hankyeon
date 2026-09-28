@@ -111,10 +111,10 @@ export function itemWidth(item: ShelfItem, layout: ShelfLayout, books: BookMap) 
   return singleFootprint(books[p.bookId], p).width;
 }
 
-export function itemHeight(item: ShelfItem, layout: ShelfLayout, books: BookMap) {
-  if (item.stacked) return stackFootprint(item.bookIds.map((id) => books[id]), spinsOf(item, layout)).height;
+export function itemHeight(item: ShelfItem, layout: ShelfLayout, books: BookMap, ky?: number) {
+  if (item.stacked) return stackFootprint(item.bookIds.map((id) => books[id]), spinsOf(item, layout), ky).height;
   const p = placementOf(layout, item.bookIds[0])!;
-  return singleFootprint(books[p.bookId], p).height;
+  return singleFootprint(books[p.bookId], p, ky).height;
 }
 
 type XY = { x: number; y: number };

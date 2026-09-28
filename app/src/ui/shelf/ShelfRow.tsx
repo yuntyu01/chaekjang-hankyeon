@@ -7,7 +7,7 @@ import { CAMERA, DESIGN_WIDTH, SHELF, SHELF_STYLE } from '@/domain/geometry';
 import { frameBBox, type BookFrame } from '@/domain/shelf-scene';
 import type { Book } from '@/domain/types';
 import { ko } from '@/i18n/ko';
-import { RowBooks, RowContacts, RowShadows, stateNow, useShelfMotion, type Motion } from '@/ui/shelf/ShelfMotion';
+import { RowBooks, RowContacts, RowShadows, stateNow, useShelfMotion, type CamSV, type Motion } from '@/ui/shelf/ShelfMotion';
 import { project } from '@/domain/box';
 import { toWorld, type Book3, type Cam } from '@/domain/book3';
 import { GestureDetector, type PanGesture } from 'react-native-gesture-handler';
@@ -67,6 +67,7 @@ type Props = {
   debug?: boolean; // 개발용 형상 보기
   topRow?: boolean; // 맨 위 줄(위에 선반 판이 없다)
   handle?: PanGesture; // 표지 책 머리 손잡이 제스처(HomeScreen이 만들고 책 끌기·탭보다 먼저 받는다)
+  cam: CamSV; // 화면 카메라(시점을 끄는 동안 매 프레임 바뀐다)
 };
 
 // 지금 자세(UI 스레드)에서 책 좌표의 한 점을 이 줄의 px로
@@ -79,11 +80,11 @@ function pointOf(m: Motion, id: string, cam: Cam, s: number, clear: number, loca
 }
 
 // 은은한 선택 표시: 책 앞 바닥 가운데 아래 선반 앞턱에 짧은 막대
-function SelectMark({ m, id, cam, s, clear }: { m: Motion; id: string; cam: Cam; s: number; clear: number }) {
+function SelectMark({ m, id, cam, s, clear }: { m: Motion; id: string; cam: CamSV; s: number; clear: number }) {
   const st = useAnimatedStyle(() => {
     const b = stateNow(m, id);
     // 앞을 향한 면의 아래 가운데: 표지 책은 표지(x = T), 그 밖은 책등(z = 0)
-    const p = pointOf(m, id, cam, s, clear, (d) => (b && b.yaw > 45 ? { x: d.T, y: 0, z: d.W / 2 } : { x: d.T / 2, y: 0, z: 0 }));
+    const p = pointOf(m, id, cam.value, s, clear, (d) => (b && b.yaw > 45 ? { x: d.T, y: 0, z: d.W / 2 } : { x: d.T / 2, y: 0, z: 0 }));
     return { transform: [{ translateX: p.x - 11 * s }, { translateY: p.y + SHELF.lip * s + 3 * s }] };
   });
   return <Animated.View pointerEvents="none" style={[styles.mark, { width: 22 * s, height: 2.6 * s, borderRadius: 1.3 * s }, st]} />;
@@ -91,10 +92,10 @@ function SelectMark({ m, id, cam, s, clear }: { m: Motion; id: string; cam: Cam;
 
 // 표지 책 머리 손잡이: 보이는 점은 작게, 잡는 칸은 넓게. 책이 움직이면 따라간다.
 // 끄는 방향 판별(위아래 = 젖히기, 좌우 = 돌리기)은 부모(HomeScreen)가 조금 움직인 뒤 한 번만 한다.
-function HeadHandle({ m, id, cam, s, clear, gesture }: { m: Motion; id: string; cam: Cam; s: number; clear: number; gesture: PanGesture }) {
+function HeadHandle({ m, id, cam, s, clear, gesture }: { m: Motion; id: string; cam: CamSV; s: number; clear: number; gesture: PanGesture }) {
   const HIT = 48;
   const st = useAnimatedStyle(() => {
-    const p = pointOf(m, id, cam, s, clear, (d) => ({ x: d.T, y: d.H, z: d.W / 2 }));
+    const p = pointOf(m, id, cam.value, s, clear, (d) => ({ x: d.T, y: d.H, z: d.W / 2 }));
     return { transform: [{ translateX: p.x - HIT / 2 }, { translateY: p.y - HIT / 2 - 7 * s }] };
   });
   return (
@@ -116,7 +117,7 @@ export const ShelfRow = memo(function ShelfRow(p: Props) {
   const s = p.scale;
   // 꾸미기에서 고르기만 했을 때는 책을 들어 올리지 않는다(자리·가림·그림자 그대로)
   const m = useShelfMotion(p.shelfId, p.frames, p.reduceMotion, p.editing ? null : p.selectedId);
-  const cam = p.frames[0]?.cam ?? CAMERA;
+  const cam = p.cam;
   // 책 목록이 같으면 같은 배열(그림자 워크릿을 다시 만들지 않게)
   const idKey = p.frames.filter((f) => f.box && f.bookId !== p.placeholderId).map((f) => f.bookId).join('|');
   const ids = useMemo(() => (idKey ? idKey.split('|') : []), [idKey]);
