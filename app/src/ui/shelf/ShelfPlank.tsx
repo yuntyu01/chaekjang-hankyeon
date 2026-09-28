@@ -89,10 +89,10 @@ export function ShelfBoard({ scale: s, clear, cam, height }: { scale: number; cl
   const th = top?.height() ?? 1;
   const fw = front?.width() ?? 1;
   const fh = front?.height() ?? 1;
-  const back = px(f.corners.LBT).y;
   return (
     <>
-      <ShelfShadow plankLeft={px(f.corners.LFB).x} plankRight={px(f.corners.RBB).x} plankTop={back} plankBottom={fBot} scale={s} />
+      {/* 벽 그림자는 판 앞면(위 ~ 아래) 기준: 윗면 뒤쪽 벽으로는 번지지 않게 */}
+      <ShelfShadow plankLeft={px(f.corners.LFB).x} plankRight={px(f.corners.RFB).x} plankTop={fTop} plankBottom={fBot} scale={s} />
       <Canvas style={[StyleSheet.absoluteFill, { width: DESIGN_WIDTH * s, height }]} pointerEvents="none">
         {/* 윗면: 빛을 받아 살짝 밝게(질감 명암 위에 한 번만) */}
         <Face face={f.top} image={top} w={tw} h={th} s={s} t={t} poly={topPoly}>
