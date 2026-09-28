@@ -8,7 +8,7 @@ import { StyleSheet } from 'react-native';
 import { Easing, useDerivedValue, useSharedValue, withTiming, type SharedValue } from 'react-native-reanimated';
 import { scheduleOnUI } from 'react-native-worklets';
 
-import { corners, fromPlaced, lowest, viewCam, type Book3, type Cam, type Vec3 } from '@/domain/book3';
+import { corners, faceCorners, faceNormal, FACE_IDS, fromPlaced, lowest, rot, viewCam, type Book3, type Cam, type FaceId, type Vec3 } from '@/domain/book3';
 import { project } from '@/domain/box';
 import { DESIGN_WIDTH, SHELF, SHELF_DEPTH, SHELF_X0, SHELF_X1 } from '@/domain/geometry';
 import { shelfFaces } from '@/domain/shelf-geom';
@@ -19,8 +19,10 @@ import { bookAt, planTransition, type Track } from '@/domain/transition';
 import type { Book } from '@/domain/types';
 import { useBookShared, type Shared } from '@/ui/book3d/art';
 import { BookNode, depthKey } from '@/ui/book3d/BookNode';
+import { mainFace } from '@/ui/book3d/face-geometry';
 import type { Affine } from '@/ui/book3d/face-geometry';
 import { colors, light, shadow } from '@/ui/theme';
+import { SHOW } from '@/ui/shelf/shadow-debug';
 
 const FLOOR = SHELF.clearHeight;
 export const MOTION_MS = 230; // 기울이기·밀림
@@ -230,9 +232,11 @@ export const RowBooks = memo(function RowBooks({ m, frames, books, hiddenId, cam
         {debug ? <DebugShelf cam={cam} px={px} /> : null}
         {frames
           .filter((f) => f.box && f.bookId !== hiddenId && f.stackIndex > 0)
-          .map((f) => (
-            <StackShade key={`sh${f.bookId}`} m={m} id={f.bookId} cam={cam} px={px} />
-          ))}
+          .map((f) => {
+            const lower = frames.find((g) => g.itemKey === f.itemKey && g.stackIndex === f.stackIndex - 1);
+            return SHOW.stack && lower ? <StackShade key={`sh${f.bookId}`} m={m} id={f.bookId} lowerId={lower.bookId} cam={cam} px={px} /> : null;
+          })}
+        {SHOW.lean ? <LeanContacts m={m} ids={frames.filter((f) => f.box && f.bookId !== hiddenId).map((f) => f.bookId)} cam={cam} px={px} /> : null}
       </Group>
     </Canvas>
   );
@@ -285,7 +289,10 @@ function layerCast(cam: Cam, b: Book3, s: number, clear: number, k: number, wall
   const w: Layered = wall ? shadow.cast.bookWall : shadow.cast.bookShelf;
   const cs = corners(b);
   const f = cs.map((c) => (wall ? Math.max(0, (SHELF_DEPTH - c.z) / LIGHT.z) : Math.max(0, c.y / -LIGHT.y)));
-  const L = w.layers[k];
+  // 층은 책에서 가장 가까운 면(벽이면 책 뒷면, 선반이면 바닥)부터 잰다: 책과 벽 사이가 떨어져 있어도 가장 가까운 층이 비지 않게
+  let f0 = Infinity;
+  for (const v of f) f0 = Math.min(f0, v);
+  const L = f0 + w.layers[k];
   const part = nearPart(cs, f, L);
   if (part.length < 3) return NO_CAST;
   let far = 0;
@@ -363,53 +370,67 @@ function GapShade({ m, ids, cam, s, clear, band }: { m: Motion; ids: string[]; c
   return <Path path={path} color={rgba(shadow.color, shadow.ao.gap.max * ((band + 0.5) / 4))} />;
 }
 
-// 기댄 책과 받치는 책 사이 쐐기 틈(주변광 차폐): 기댄 책이 닿는 윗모서리 쪽이 좁아 진하고, 바닥 쪽으로 넓어지며 옅어진다.
-// 책 기준선(z=0) 평면에서의 쐐기 = [닿는 점, 받치는 책 바닥 모서리, 기댄 책 바닥 모서리].
-function leanWedges(m: Motion, ids: string[], s: number, clear: number, cam: Cam) {
+// 기댄 책이 받치는 책에 닿는 곳(책 위에 그린다): 닿는 점에 좁고 진한 어둠, 그 아래 벌어진 틈은 넓어지며 부드럽게 옅어진다.
+// 쐐기 = [닿는 점, 받치는 책 쪽 바닥, 기댄 책 바닥 모서리]. 받치는 책의 옆면·틈 너머 벽이 받는 면이다.
+function leanContactShapes(m: Motion, ids: string[], cam: Cam, px: Affine) {
   'worklet';
-  const out: { tri: Point[]; top: Point; base: Point }[] = [];
-  const P = (x: number, y: number) => {
-    const q = project(cam, { x, y, z: 0 });
-    return { x: (SHELF.sideMargin + q.x) * s, y: (clear + q.y - FLOOR) * s };
-  };
+  const out: { tri: Point[]; top: Point; mid: Point }[] = [];
   for (const id of ids) {
     const b = stateNow(m, id);
     if (!b || Math.abs(b.roll) < 1 || Math.abs(b.roll) > 45 || lowest(b) > 0.5) continue;
-    const dir = b.roll > 0 ? 1 : -1; // 기우는 쪽
+    const dir = b.roll > 0 ? 1 : -1;
     const cs = corners(b);
-    // 기우는 쪽 가장 먼 윗모서리(닿는 점)와 그쪽 바닥 모서리
     let top = cs[0];
     let foot = cs[0];
     for (const c of cs) {
-      if (c.x * dir > top.x * dir) top = c;
-      if (c.y < 0.5 && c.x * dir > foot.x * dir) foot = c;
+      if (c.x * dir > top.x * dir + 1e-6 || (Math.abs(c.x - top.x) < 1e-6 && c.z < top.z)) top = c;
+      if (c.y < 0.5 && (c.x * dir > foot.x * dir + 1e-6 || foot.y >= 0.5)) foot = c;
     }
-    // 받치는 면: 닿는 점의 x에서 수직으로 바닥까지
-    out.push({ tri: [P(top.x, top.y), P(top.x, 0), P(foot.x, 0)], top: P(top.x, top.y), base: P(top.x, 0) });
+    const cb = viewCam(cam, b);
+    const P = (x: number, y: number, z: number) => {
+      const q = project(cb, { x, y, z });
+      return { x: q.x * px.s + px.tx, y: q.y * px.s + px.ty };
+    };
+    const A = P(top.x, top.y, top.z);
+    const B = P(top.x, 0, top.z);
+    const C = P(foot.x, 0, top.z);
+    out.push({ tri: [A, B, C], top: A, mid: { x: (B.x + C.x) / 2, y: (B.y + C.y) / 2 } });
   }
   return out;
 }
 
-function LeanWedges({ m, ids, cam, s, clear }: { m: Motion; ids: string[]; cam: Cam; s: number; clear: number }) {
-  const w = useDerivedValue(() => leanWedges(m, ids, s, clear, cam));
+function LeanContacts({ m, ids, cam, px }: { m: Motion; ids: string[]; cam: Cam; px: Affine }) {
+  const w = useDerivedValue(() => leanContactShapes(m, ids, cam, px));
   return (
-    <>
+    <Group zIndex={1e5}>
       {[0, 1, 2, 3].map((i) => (
-        <LeanWedge key={i} w={w} i={i} s={s} />
+        <LeanContact key={i} w={w} i={i} s={px.s} />
       ))}
-    </>
+    </Group>
   );
 }
 
-function LeanWedge({ w, i, s }: { w: Readonly<SharedValue<{ tri: Point[]; top: Point; base: Point }[]>>; i: number; s: number }) {
-  const path = useDerivedValue(() => pathOf(w.value[i] ? [w.value[i].tri] : []));
+function LeanContact({ w, i, s }: { w: Readonly<SharedValue<{ tri: Point[]; top: Point; mid: Point }[]>>; i: number; s: number }) {
+  const tri = useDerivedValue(() => pathOf(w.value[i] ? [w.value[i].tri] : []));
   const a = useDerivedValue(() => vec(w.value[i]?.top.x ?? 0, w.value[i]?.top.y ?? 0));
-  const b = useDerivedValue(() => vec(w.value[i]?.base.x ?? 0, w.value[i]?.base.y ?? 1));
+  const b = useDerivedValue(() => vec(w.value[i]?.mid.x ?? 0, w.value[i]?.mid.y ?? 1));
+  const dot = useDerivedValue(() => {
+    const p = Skia.PathBuilder.Make();
+    const t = w.value[i]?.top;
+    if (t) p.addOval(Skia.XYWHRect(t.x - 1.6 * s, t.y - 0.6 * s, 3.2 * s, 5 * s));
+    return p.detach();
+  });
+  const L = shadow.ao.lean;
   return (
-    <Path path={path}>
-      <LinearGradient start={a} end={b} colors={[rgba(shadow.color, shadow.ao.lean.near), rgba(shadow.color, shadow.ao.lean.far)]} />
-      <BlurMask blur={0.8 * s} style="normal" />
-    </Path>
+    <Group>
+      <Path path={tri}>
+        <LinearGradient start={a} end={b} colors={[rgba(shadow.color, L.near), rgba(shadow.color, L.far)]} />
+        <BlurMask blur={1.2 * s} style="normal" />
+      </Path>
+      <Path path={dot} color={rgba(shadow.color, L.touch)}>
+        <BlurMask blur={1 * s} style="normal" />
+      </Path>
+    </Group>
   );
 }
 
@@ -421,11 +442,8 @@ export const RowShadows = memo(function RowShadows({ m, ids, cam, s, clear, heig
   }, [cam, s, clear]);
   return (
     <Canvas style={[StyleSheet.absoluteFill, { width: DESIGN_WIDTH * s, height }]} pointerEvents="none">
-      {ids.flatMap((id) => shadow.cast.bookWall.layers.map((_, k) => <CastShadow key={`${id}:${k}`} m={m} id={id} of={of} k={k} />))}
-      <LeanWedges m={m} ids={ids} cam={cam} s={s} clear={clear} />
-      {[0, 1, 2, 3].map((b) => (
-        <GapShade key={b} m={m} ids={ids} cam={cam} s={s} clear={clear} band={b} />
-      ))}
+      {SHOW.wall ? ids.flatMap((id) => shadow.cast.bookWall.layers.map((_, k) => <CastShadow key={`${id}:${k}`} m={m} id={id} of={of} k={k} />)) : null}
+      {SHOW.gap ? [0, 1, 2, 3].map((b) => <GapShade key={b} m={m} ids={ids} cam={cam} s={s} clear={clear} band={b} />) : null}
     </Canvas>
   );
 });
@@ -536,16 +554,16 @@ export const RowContacts = memo(function RowContacts({ m, ids, cam, s, clear, he
   return (
     <Canvas style={[StyleSheet.absoluteFill, { width: DESIGN_WIDTH * s, height }]} pointerEvents="none">
       <Group clip={clip}>
-        {front ? (
+        {!SHOW.contact && front ? null : front ? (
           <Path path={band} color={rgba(shadow.color, shadow.ao.contact.opacity)}>
             <BlurMask blur={(shadow.ao.contact.blur / 2) * s} style="normal" />
           </Path>
         ) : (
           <>
             {/* 실제 그림자: 책 → 선반 윗면 */}
-            {ids.flatMap((id) => shadow.cast.bookShelf.layers.map((_, k) => <CastShadow key={`${id}:${k}`} m={m} id={id} of={of} k={k} />))}
+            {SHOW.shelfCast ? ids.flatMap((id) => shadow.cast.bookShelf.layers.map((_, k) => <CastShadow key={`${id}:${k}`} m={m} id={id} of={of} k={k} />)) : null}
             {/* 주변광 차폐: 바닥 자리 */}
-            <Path path={foot} color={rgba(shadow.color, shadow.ao.foot.opacity)}>
+            <Path path={foot} opacity={SHOW.contact ? 1 : 0} color={rgba(shadow.color, shadow.ao.foot.opacity)}>
               <BlurMask blur={(shadow.ao.contact.blur / 4) * s} style="normal" />
             </Path>
           </>
@@ -556,7 +574,7 @@ export const RowContacts = memo(function RowContacts({ m, ids, cam, s, clear, he
 });
 
 // 쌓인 책: 위 책이 아래 책 윗면에 드리우는 접촉·그림자(책 사이 앞뒤 순서에 끼워 그린다)
-export function StackShade({ m, id, cam, px }: { m: Motion; id: string; cam: Cam; px: Affine }) {
+export function StackShade({ m, id, lowerId, cam, px }: { m: Motion; id: string; lowerId: string; cam: Cam; px: Affine }) {
   const z = useDerivedValue(() => {
     const b = stateNow(m, id);
     return b ? depthKey(b) - 0.0005 : 0;
@@ -582,38 +600,68 @@ export function StackShade({ m, id, cam, px }: { m: Motion; id: string; cam: Cam
       }),
     ]);
   });
-  // 닿는 곳: 위 책 앞쪽 바닥 모서리 바로 앞(아래 책 윗면·앞 모서리)에 좁고 진한 띠. 위 책보다 나중에 그린다.
-  const zBand = useDerivedValue(() => z.value + 0.001);
-  const band = useDerivedValue(() => {
-    const b = stateNow(m, id);
-    if (!b || lowest(b) < 0.5) return pathOf([]);
-    const f = footPoly(b);
-    const cb = viewCam(cam, b);
-    const P = (x: number, zz: number, dy = 0) => {
-      const q = project(cb, { x, y: f.y, z: zz });
-      return { x: q.x * px.s + px.tx, y: (q.y + dy) * px.s + px.ty };
+  // 얹힌 곳: 아래 책 앞면 윗부분이 위 책에 가려 조금 어둡다(주변광 차폐). 받는 면(아래 책 앞면) 안에만,
+  // 위 책이 닿은 가로 구간에서 가장 진하고 아래로 부드럽게 풀린다. 위 책보다 먼저 그린다(위 책 앞면이 덮는다).
+  const ao = useDerivedValue(() => {
+    const up = stateNow(m, id);
+    const lo = stateNow(m, lowerId);
+    if (!up || !lo || lowest(up) < 0.5) return { clip: pathOf([]), top: pathOf([]), strip: pathOf([]), y0: 0, y1: 1 };
+    const cl = viewCam(cam, lo);
+    const P = (q: Vec3) => {
+      const p = project(cl, q);
+      return { x: p.x * px.s + px.tx, y: p.y * px.s + px.ty };
     };
-    const out: Point[][] = [];
-    const n = f.pts.length;
-    for (let i = 0; i < n; i++) {
-      const a = f.pts[i];
-      const e = f.pts[(i + 1) % n];
-      const nz = -(e.x - a.x) / (Math.hypot(e.z - a.z, e.x - a.x) || 1);
-      if (nz > -0.3) continue;
-      out.push([P(a.x, a.z), P(e.x, e.z), P(e.x, e.z, 1.6), P(a.x, a.z, 1.6)]);
+    const lc = corners(lo);
+    const face = faceCorners(mainFace(cl, lo)).map((i) => P(lc[i]));
+    // 아래 책 윗면(법선이 가장 위를 향한 면)
+    let upF: FaceId = 'cover';
+    let best = -Infinity;
+    for (const fid of FACE_IDS) {
+      const ny = rot(lo.roll, lo.yaw, faceNormal(fid), lo.spin ?? 0).y;
+      if (ny > best) {
+        best = ny;
+        upF = fid;
+      }
     }
-    return pathOf(out);
+    const topFace = faceCorners(upF).map((i) => P(lc[i]));
+    const f = footPoly(up);
+    let x0 = Infinity;
+    let x1 = -Infinity;
+    let zf = Infinity;
+    for (const q of f.pts) {
+      x0 = Math.min(x0, q.x);
+      x1 = Math.max(x1, q.x);
+      zf = Math.min(zf, q.z);
+    }
+    let zl = Infinity;
+    for (const c of lc) zl = Math.min(zl, c.z);
+    const a = P({ x: x0, y: f.y, z: zl });
+    const b = P({ x: x1, y: f.y, z: zl });
+    const h = 4 * px.s;
+    const strip = [
+      { x: a.x - px.s, y: a.y },
+      { x: b.x + px.s, y: b.y },
+      { x: b.x + px.s, y: b.y + h },
+      { x: a.x - px.s, y: a.y + h },
+    ];
+    return { clip: pathOf([face]), top: pathOf([topFace]), strip: pathOf([strip]), y0: Math.min(a.y, b.y), y1: Math.min(a.y, b.y) + h };
   });
+  const aoClip = useDerivedValue(() => ao.value.clip);
+  const topClip = useDerivedValue(() => ao.value.top);
+  const aoStrip = useDerivedValue(() => ao.value.strip);
+  const g0 = useDerivedValue(() => vec(0, ao.value.y0));
+  const g1 = useDerivedValue(() => vec(0, ao.value.y1));
   return (
     <>
-      <Group zIndex={z}>
+      <Group zIndex={z} clip={topClip}>
         <Path path={path} color={rgba(shadow.color, shadow.ao.stack.opacity)}>
           <BlurMask blur={(shadow.ao.stack.blur / 2) * px.s} style="normal" />
         </Path>
       </Group>
-      <Group zIndex={zBand}>
-        <Path path={band} color={rgba(shadow.color, shadow.ao.stack.band)}>
-          <BlurMask blur={0.6 * px.s} style="normal" />
+      <Group zIndex={z} clip={aoClip}>
+        <Path path={aoStrip}>
+          <LinearGradient start={g0} end={g1} colors={[rgba(shadow.color, shadow.ao.stack.band), rgba(shadow.color, 0)]} />
+          <BlurMask blur={0.8 * px.s} style="normal" />
         </Path>
       </Group>
     </>

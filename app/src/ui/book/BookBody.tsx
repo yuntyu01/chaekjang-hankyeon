@@ -1,6 +1,7 @@
 // 책 면 그림(캔버스 없이, 면 그림 좌표 0..w, 0..h). 상자 렌더러(ui/book3d)가 Skia Picture로 기록해 면 변환에 태워 그린다.
 // 책등 면: 둥근 책등 명암 + 붓결 + 가장자리(손으로 그은 선, 빛 받는 테). 옆면·윗면과 이어지는 변(오른쪽·위)은 선 없이.
 // 표지 면: 표지 그림(없으면 책 색 + 모티프) + 제본선 + 가장자리. 제목·작은 모티프는 따로 그린다(누울 때 바로 세우려고).
+import { SHOW } from '@/ui/shelf/shadow-debug';
 import {
   BlurMask,
   Group,
@@ -59,9 +60,9 @@ export const edgeFactor = (face: string) => 0.74 + 0.2 * luminance(face);
 // 책등 앞면의 가로 명암: 옆면으로 꺾이는 오른쪽 끝이 조금 어둡다(밝은 책일수록 명암 폭이 작다)
 function spineProfile(face: string): [number, number][] {
   const lum = luminance(face);
-  const w = 0.35 + 0.75 * (1 - lum);
+  const w = 0.45 + 0.75 * (1 - lum);
   // 둥근 책등(베개처럼): 왼쪽 가장자리 바로 안쪽이 가장 밝은 띠, 가운데 평평, 오른쪽으로 둥글게 넘어가며 어두워진다
-  const raw: [number, number][] = [[0, 0.9], [0.04, 1.02], [0.1, 1.07], [0.2, 1.03], [0.45, 1.0], [0.75, 0.97], [0.9, 0.92], [1, 0.86]];
+  const raw: [number, number][] = [[0, 0.88], [0.035, 1.0], [0.09, 1.07], [0.2, 1.04], [0.45, 1.0], [0.72, 0.96], [0.88, 0.91], [1, 0.84]];
   return raw.map(([p, k]) => [p, 1 - (1 - k) * w] as [number, number]);
 }
 
@@ -212,11 +213,12 @@ export function SpineFaceArt({ id, w, h, s, face, art, grain, motif }: { id: str
   return (
     <Group>
       <Group clip={outline}>
-        <Rect x={0} y={0} width={w} height={h}>
-          <LinearGradient start={vec(0, 0)} end={vec(w, 0)} colors={prof.map(([, k]) => scaleColor(face, k))} positions={prof.map(([p]) => p)} />
+        <Rect x={0} y={0} width={w} height={h} color={face}>
+          {SHOW.body ? <LinearGradient start={vec(0, 0)} end={vec(w, 0)} colors={prof.map(([, k]) => scaleColor(face, k))} positions={prof.map(([p]) => p)} /> : null}
         </Rect>
         <Grain w={w} h={h} s={s} image={grain} />
         {art?.scene && motif ? <SceneArt h={h} art={art} motif={motif} faceW={w * 0.94} /> : null}
+        {SHOW.body ? <>
         {/* 머리 쪽 윗가장자리가 둥글게 빛을 받는다 */}
         <Rect x={0} y={0} width={w} height={4 * s}>
           <LinearGradient start={vec(0, 0)} end={vec(0, 4 * s)} colors={['rgba(255,252,244,0.22)', 'rgba(255,252,244,0)']} />
@@ -230,9 +232,17 @@ export function SpineFaceArt({ id, w, h, s, face, art, grain, motif }: { id: str
           <BlurMask blur={1.4 * s} style="normal" />
         </Path>
         <RimLight outline={outline} w={w} h={h} s={s} />
+        {/* 얇은 표지 경계: 책등이 표지 판으로 넘어가는 양쪽 가장자리 안쪽의 가는 그늘(선이 아니라 좁은 명암) */}
+        <Rect x={0} y={0} width={2 * s} height={h} opacity={0.55}>
+          <LinearGradient start={vec(0, 0)} end={vec(2 * s, 0)} colors={[scaleColor(face, 0.82), 'rgba(0,0,0,0)']} />
+        </Rect>
+        <Rect x={w - 2.2 * s} y={0} width={2.2 * s} height={h} opacity={0.6}>
+          <LinearGradient start={vec(w - 2.2 * s, 0)} end={vec(w, 0)} colors={['rgba(0,0,0,0)', scaleColor(face, 0.8)]} />
+        </Rect>
         <Joined w={w} h={h} s={s}>
           <EdgeLine outline={outline} outline2={outline2} s={s} face={face} />
         </Joined>
+        </> : null}
       </Group>
       {/* 클립 경계는 계단처럼 깨지므로 실루엣 바깥을 부드러운 선으로 한 번 더 덮는다 */}
       <Joined w={w} h={h} s={s}>

@@ -64,15 +64,15 @@ export const shadow = {
   cast: {
     // 책 그림자는 가리는 책에서의 빛 길이로 층을 나눈다(layers, DU): 가까운 층일수록 선명하고, 겹쳐 그려져 진하다.
     // 한 층의 진하기 opacity, 흐림 = near + perDU × 층 길이(최대 maxBlur)
-    bookWall: { layers: [10, 35, 1e9], opacity: 0.12, near: 1.2, perDU: 0.1, maxBlur: 12 }, // 책 → 벽
-    shelfWall: { opacity: 0.2, fade: 28, near: 4, perDU: 0.05 }, // 선반 판 → 벽(판 뒤 모서리가 벽에 붙어 있어 거기서 시작). 0.34의 0.6배
+    bookWall: { layers: [10, 35, 1e9], opacity: 0.12, near: 1.2, perDU: 0.07, maxBlur: 12 }, // 책 → 벽
+    shelfWall: { opacity: 0.55, fade: 11, near: 3, perDU: 0.05 }, // 선반 판 → 벽(판 뒤 모서리가 벽에 붙어 있어 거기서 시작). 시안 밝기 분포: 판 바로 아래 또렷, 약 16DU 안에 벽 밝기로
     bookShelf: { layers: [8, 30, 1e9], opacity: 0.1, near: 1, perDU: 0.1, maxBlur: 10 }, // 책 → 선반 윗면
   },
   ao: {
     contact: { height: 4, blur: 3, opacity: 0.34 }, // 책이 선반에 닿는 곳(좁고 진하게)
     foot: { opacity: 0.26 }, // 책 바닥 자리
-    stack: { blur: 4, opacity: 0.15, band: 0.3 }, // 위 책이 아래 책 윗면에 닿는 곳(band: 위 책 앞 아래 모서리 바로 앞 좁은 띠)
-    lean: { near: 0.22, far: 0.12 }, // 기댄 책과 받치는 책 사이 쐐기 틈(닿는 곳 쪽이 진하다)
+    stack: { blur: 4, opacity: 0.15, band: 0.22 }, // 위 책이 아래 책 윗면에 닿는 곳, band: 아래 책 앞면 윗부분이 가려지는 어둠(위 → 아래로 풀림)
+    lean: { touch: 0.3, near: 0.2, far: 0.04 }, // 기댄 책 ↔ 받치는 책: 닿는 점(touch), 벌어진 틈(닿는 쪽 near → 바닥 쪽 far)
     gap: { max: 0.1, fadeAt: 8 }, // 책 사이 좁은 틈: 틈이 좁을수록 진하고 fadeAt 이상이면 없음
     shelfLip: { dy: 2, blur: 3, opacity: 0.08 }, // 판 앞면 바로 아래 좁은 어둠
   },

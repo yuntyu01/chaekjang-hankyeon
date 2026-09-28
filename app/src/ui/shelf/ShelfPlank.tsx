@@ -17,6 +17,7 @@ import { DESIGN_WIDTH, SHELF } from '@/domain/geometry';
 import type { Point } from '@/domain/shelf-scene';
 import { faceTextureMatrix, shelfFaces, type ShelfFace } from '@/domain/shelf-geom';
 import { plankLight } from '@/ui/theme';
+import { SHOW } from '@/ui/shelf/shadow-debug';
 
 const TOP_TEX = require('../../../assets/bookshelf/shelf-top.png');
 const FRONT_TEX = require('../../../assets/bookshelf/shelf-front.png');
@@ -82,9 +83,12 @@ function ShelfWallShadow({ cam, s, clear }: { cam: Camera; s: number; clear: num
     const attach = px(project(cam, shelfVertices().LBB)).y; // 판 뒤 아래 모서리(벽에 붙은 곳)
     const far = Math.max(...pts.map((q) => q.y));
     const blur = (SW.near + SW.perDU * SW.fade) * s;
-    // 벽에서 아래로 h(px) 내려간 곳의 진하기 = opacity × e^(-r/fade), r = h/(s·|D.y|)
-    const stops = [0, 0.25, 0.5, 0.75, 1];
-    const colors = stops.map((k) => rgba(shadow.color, SW.opacity * Math.exp(-((far - attach) * k) / (s * Math.abs(LIGHT.y)) / SW.fade)));
+    // 벽에서 아래로 h(px) 내려간 곳의 진하기 = opacity × e^(-r/fade), r = h/(s·|D.y|) (빛 길이).
+    // 멈춤점은 빛 길이 기준으로 판 가까이 촘촘히 둔다(전체 높이에 고르게 두면 선형으로 길게 늘어진 띠가 된다).
+    const span = Math.max(1, far - attach);
+    const rs = [0, 2, 5, 9, 14, 20, 28, 40, 60, 90];
+    const stops = rs.map((r) => Math.min(1, (r * s * Math.abs(LIGHT.y)) / span));
+    const colors = rs.map((r) => rgba(shadow.color, SW.opacity * Math.exp(-r / SW.fade)));
     const top = attach;
     const h = far - attach + blur * 3;
     const path = pathOf(hull(pts).map((q) => ({ x: q.x, y: q.y - top })));
@@ -135,7 +139,7 @@ export function ShelfBoard({ scale: s, clear, cam, height }: { scale: number; cl
   return (
     <>
       {/* 실제 그림자: 판 → 벽 */}
-      <ShelfWallShadow cam={cam} s={s} clear={clear} />
+      {SHOW.shelf ? <ShelfWallShadow cam={cam} s={s} clear={clear} /> : null}
       <Canvas style={[StyleSheet.absoluteFill, { width: DESIGN_WIDTH * s, height: height + SHELF_CAST_EXTENT * s }]} pointerEvents="none">
         {/* 주변광 차폐: 판 앞면 바로 아래 좁은 어둠(광원과 무관한 분위기 층) */}
         <Path path={pathOf([px(f.corners.LFB), px(f.corners.RFB), { x: px(f.corners.RFB).x, y: fBot + shadow.ao.shelfLip.dy * s * 2 }, { x: px(f.corners.LFB).x, y: fBot + shadow.ao.shelfLip.dy * s * 2 }])} color={rgba(shadow.color, shadow.ao.shelfLip.opacity)}>
