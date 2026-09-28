@@ -40,7 +40,6 @@ const BookSlot = memo(function BookSlot({ frame, clear, scale: s, placeholder, a
         { name: 'next', label: ko.place.next },
       ]}
       onAccessibilityAction={(e) => onA11y(frame.bookId, e.nativeEvent.actionName)}>
-      {placeholder ? <View style={[styles.placeholder, { borderRadius: 3 * s }]} /> : null}
     </View>
   );
 });

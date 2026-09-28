@@ -1,0 +1,140 @@
+// 꾸미기 모드에서 하단 탭 바 자리에 뜨는 조작부: 고른 책의 자세(책등·표지·눕힘)와 기대기(왼쪽·바로·오른쪽).
+// 기대기는 방향만 고르고 각도는 옆 책과의 틈으로 계산한다. 기댈 책이 없는 방향은 처음부터 누를 수 없게 표시한다.
+import { Pressable, StyleSheet, Text, View } from 'react-native';
+import Animated, { FadeInDown, FadeOutDown } from 'react-native-reanimated';
+import Svg, { Path, Rect } from 'react-native-svg';
+
+import type { Pose } from '@/domain/types';
+import { ko } from '@/i18n/ko';
+import { colors, fonts } from '@/ui/theme';
+
+export type LeanDir = -1 | 0 | 1;
+
+type Props = {
+  title: string | null; // 고른 책이 없으면 안내만
+  pose: Pose | null;
+  lean: LeanDir;
+  canLean: { [-1]: boolean; 1: boolean };
+  msg: string | null;
+  bottomInset: number;
+  reduceMotion: boolean;
+  onPose: (p: Pose) => void;
+  onLean: (d: LeanDir) => void;
+};
+
+function PoseIcon({ pose, color }: { pose: Pose; color: string }) {
+  return (
+    <Svg width={26} height={26} viewBox="0 0 26 26">
+      {pose === 'spine' ? <Rect x={10} y={3} width={6} height={20} rx={1.4} fill="none" stroke={color} strokeWidth={1.5} /> : null}
+      {pose === 'front' ? <Rect x={6} y={4} width={14} height={18} rx={1.4} fill="none" stroke={color} strokeWidth={1.5} /> : null}
+      {pose === 'horizontal' ? (
+        <>
+          <Rect x={3} y={12} width={20} height={6} rx={1.4} fill="none" stroke={color} strokeWidth={1.5} />
+          <Path d="M3 14 L7 10 H23 V14" fill="none" stroke={color} strokeWidth={1.3} strokeLinejoin="round" />
+        </>
+      ) : null}
+    </Svg>
+  );
+}
+
+function LeanIcon({ dir, color }: { dir: LeanDir; color: string }) {
+  const lean = dir === 0 ? 0 : dir * 16;
+  return (
+    <Svg width={26} height={26} viewBox="0 0 26 26">
+      {/* 기대는 쪽 옆 책 */}
+      <Rect x={dir < 0 ? 5 : dir > 0 ? 15 : 7} y={4} width={6} height={19} rx={1.2} fill="none" stroke={color} strokeWidth={1.3} opacity={0.55} />
+      <Rect
+        x={dir < 0 ? 13 : dir > 0 ? 7 : 14}
+        y={4}
+        width={6}
+        height={19}
+        rx={1.2}
+        fill="none"
+        stroke={color}
+        strokeWidth={1.5}
+        transform={lean ? `rotate(${lean} ${dir < 0 ? 13 : 13} 23)` : undefined}
+      />
+    </Svg>
+  );
+}
+
+function Choice({ label, on, disabled, onPress, children }: { label: string; on: boolean; disabled?: boolean; onPress: () => void; children: React.ReactNode }) {
+  return (
+    <Pressable
+      onPress={onPress}
+      disabled={disabled}
+      accessibilityRole="button"
+      accessibilityLabel={label}
+      accessibilityState={{ selected: on, disabled }}
+      style={({ pressed }) => [styles.choice, on && styles.choiceOn, pressed && !on && styles.pressed, disabled && { opacity: 0.3 }]}>
+      {children}
+      <Text style={styles.choiceText}>{label}</Text>
+    </Pressable>
+  );
+}
+
+export function DecoratePanel({ title, pose, lean, canLean, msg, bottomInset, reduceMotion, onPose, onLean }: Props) {
+  const ink = colors.ink;
+  return (
+    <Animated.View
+      entering={reduceMotion ? undefined : FadeInDown.duration(160)}
+      exiting={reduceMotion ? undefined : FadeOutDown.duration(120)}
+      style={[styles.panel, { paddingBottom: bottomInset + 10 }]}>
+      <View style={styles.head}>
+        <Text style={styles.title} numberOfLines={1}>
+          {title ?? ko.decoratePanel.pick}
+        </Text>
+        <Text style={styles.caption}>{msg ? '' : ko.decoratePanel.caption}</Text>
+      </View>
+      {msg ? <Text style={styles.msg}>{msg}</Text> : null}
+      <View style={styles.row}>
+        <Text style={styles.label}>{ko.decoratePanel.pose}</Text>
+        {(['spine', 'front', 'horizontal'] as Pose[]).map((p) => (
+          <Choice key={p} label={ko.decoratePanel.poses[p]} on={pose === p} disabled={!title} onPress={() => onPose(p)}>
+            <PoseIcon pose={p} color={ink} />
+          </Choice>
+        ))}
+      </View>
+      <View style={[styles.row, styles.rowLast]}>
+        <Text style={styles.label}>{ko.decoratePanel.lean}</Text>
+        {([-1, 0, 1] as LeanDir[]).map((d) => (
+          <Choice
+            key={d}
+            label={ko.decoratePanel.leans[String(d) as '-1' | '0' | '1']}
+            on={pose === 'spine' && lean === d}
+            disabled={!title || pose !== 'spine' || (d !== 0 && !canLean[d])}
+            onPress={() => onLean(d)}>
+            <LeanIcon dir={d} color={ink} />
+          </Choice>
+        ))}
+      </View>
+    </Animated.View>
+  );
+}
+
+const styles = StyleSheet.create({
+  panel: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: colors.sheet,
+    borderTopLeftRadius: 18,
+    borderTopRightRadius: 18,
+    paddingHorizontal: 22,
+    paddingTop: 16,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.line,
+  },
+  head: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingBottom: 10, borderBottomWidth: StyleSheet.hairlineWidth, borderColor: colors.line },
+  title: { flex: 1, fontFamily: fonts.bookTitle, fontSize: 17, color: colors.ink },
+  caption: { fontSize: 12.5, color: colors.inkFaint },
+  msg: { fontSize: 12, color: colors.danger, marginTop: 8 },
+  row: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingVertical: 8, borderBottomWidth: StyleSheet.hairlineWidth, borderColor: colors.line },
+  rowLast: { borderBottomWidth: 0 },
+  label: { width: 52, fontSize: 13.5, color: colors.inkSoft },
+  choice: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, height: 44, borderRadius: 12 },
+  choiceOn: { backgroundColor: '#F1E7D8' },
+  pressed: { backgroundColor: colors.line },
+  choiceText: { fontSize: 13, color: colors.ink },
+});

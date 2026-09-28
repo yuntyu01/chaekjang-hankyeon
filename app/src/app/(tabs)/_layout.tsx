@@ -3,9 +3,11 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { ko } from '@/i18n/ko';
 import { MyIcon, RecordIcon, ShelfIcon } from '@/ui/TabIcons';
+import { tabBarStyle } from '@/ui/tabBar';
 import { colors, navigation } from '@/ui/theme';
 
 // Icons float over the same paper and shadows as the shelf scene.
+
 export default function TabsLayout() {
   const insets = useSafeAreaInsets();
   return (
@@ -14,11 +16,7 @@ export default function TabsLayout() {
       tabBarShowLabel: false,
       tabBarActiveTintColor: colors.tabActive,
       tabBarInactiveTintColor: colors.tabInactive,
-      tabBarStyle: {
-        position: 'absolute', backgroundColor: 'transparent', borderTopWidth: 0,
-        elevation: 0, shadowOpacity: 0, height: navigation.height + insets.bottom,
-        paddingBottom: insets.bottom, paddingTop: 0,
-      },
+      tabBarStyle: tabBarStyle(insets.bottom),
       sceneStyle: { backgroundColor: 'transparent' },
     }}>
       <Tabs.Screen name="index" options={{

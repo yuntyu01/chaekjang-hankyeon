@@ -126,10 +126,17 @@ export const RowBooks = memo(function RowBooks({ m, frames, books, hiddenId, cam
     <Canvas style={[StyleSheet.absoluteFill, { width: DESIGN_WIDTH * s, height }]} pointerEvents="none">
       <Group>
         {frames
-          .filter((f) => f.box && f.bookId !== hiddenId)
-          .map((f) => (
-            <RowBook key={f.bookId} m={m} frame={f} book={books[f.bookId]} cam={cam} px={px} shared={shared} />
-          ))}
+          .filter((f) => f.box)
+          .map((f) =>
+            f.bookId === hiddenId ? (
+              // 끌고 있는 책이 놓일 자리: 옅은 실루엣(손가락에 가려도 최종 위치가 보이게)
+              <Group key={f.bookId} opacity={0.32} zIndex={-1e6}>
+                <RowBook m={m} frame={f} book={books[f.bookId]} cam={cam} px={px} shared={shared} />
+              </Group>
+            ) : (
+              <RowBook key={f.bookId} m={m} frame={f} book={books[f.bookId]} cam={cam} px={px} shared={shared} />
+            ),
+          )}
         {frames
           .filter((f) => f.box && f.bookId !== hiddenId && f.stackIndex > 0)
           .map((f) => (

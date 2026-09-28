@@ -2,9 +2,9 @@
 // 짧게 누르기 → 정보 상자, 350ms 길게 누르기 → 드래그. 드래그 전 세로 이동은 스크롤이 가져간다.
 // 드래그: 같은 선반은 올라간 책과 자리 바꾸기, 다른 선반은 그 자리에 끼우기(눕힌 책 가운데면 쌓기),
 // 세 선반 사이에서 이동한다. 화면 가장자리에서 자동 스크롤.
-import { useFocusEffect } from 'expo-router';
+import { useFocusEffect, useNavigation } from 'expo-router';
 import * as Haptics from 'expo-haptics';
-import { BookMarked, Check, Paintbrush, Plus } from 'lucide-react-native';
+import { BookMarked, Paintbrush, Plus, Undo2 } from 'lucide-react-native';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { AppState, Modal, Pressable, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
@@ -55,7 +55,9 @@ import { colors, fonts, motion, navigation } from '@/ui/theme';
 
 import { BookDetail, type MoveAction } from './BookDetail';
 import { BookPopover } from './BookPopover';
-import { BookTools } from './BookTools';
+import { tabBarStyle } from '@/ui/tabBar';
+
+import { DecoratePanel } from './DecoratePanel';
 import { DrawerSheet } from './DrawerSheet';
 
 type HintKind = SwapTarget['kind'] | 'beside';
@@ -125,8 +127,8 @@ export function HomeScreen() {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [detailId, setDetailId] = useState<string | null>(null); // 서랍 책(시트)
   const [popId, setPopId] = useState<string | null>(null); // 선반 책(떠오르는 상자)
-  const [toolsId, setToolsId] = useState<string | null>(null); // 꾹 눌렀다 뗀 책(도구 막대)
-  const [toolsMsg, setToolsMsg] = useState<string | null>(null);
+  const [editId, setEditId] = useState<string | null>(null); // 꾸미기 모드에서 고른 책(하단 조작부)
+  const [editMsg, setEditMsg] = useState<string | null>(null);
   const [selectedYear, setSelectedYear] = useState<number | null>(null); // 헤더 독서 연도
   const [vpH, setVpH] = useState(0);
   const [editing, setEditing] = useState(false);
@@ -167,7 +169,12 @@ export function HomeScreen() {
     setDrag(d);
   };
 
-  const showToast = useCallback((t: Toast) => setToast(t), []);
+  // 꾸미는 중에는 되돌리기가 상단에 있으므로 '옮겼어요 · 되돌리기' 알림은 띄우지 않는다
+  const editingRef = useRef(false);
+  const showToast = useCallback((t: Toast) => {
+    if (editingRef.current && t?.action === 'undo') return;
+    setToast(t);
+  }, []);
   useEffect(() => {
     if (!toast || toast.action === 'retry') return;
     const id = setTimeout(() => setToast(null), 3600);
@@ -227,11 +234,13 @@ export function HomeScreen() {
   // ---------- 제스처 콜백(JS) ----------
   const onTap = (x: number, y: number) => {
     if (Date.now() - lastDragEnd.current < 350 || dragRef.current) return;
-    if (toolsId) {
-      closeTools();
+    const hit = hitAt(x, y);
+    if (editing) {
+      // 꾸미는 중: 짧게 누르면 그 책을 고른다(정보 상자는 띄우지 않는다)
+      setEditMsg(null);
+      setEditId(hit ? hit.bookId : null);
       return;
     }
-    const hit = hitAt(x, y);
     if (!hit) {
       setPopId(null);
       setSelectedId(null);
@@ -251,6 +260,11 @@ export function HomeScreen() {
   const beginDrag = (x: number, y: number, absX: number, absY: number, scroll: number) => {
     const hit = hitAt(x, y);
     if (!hit) return;
+    // 꾹 눌러 책을 집으면 꾸미기 모드가 시작된다
+    setEditing(true);
+    setPopId(null);
+    setEditMsg(null);
+    setEditId(hit.bookId);
     const row = rows.find((r) => r.shelfId === hit.shelfId)!;
     const box = frameBBox(hit);
     const tl = toContent(m, row, { x: box.minX, y: box.minY });
@@ -325,13 +339,8 @@ export function HomeScreen() {
       scheduleOnRN(finishDrag);
     });
     if (!committed && d.preview?.kind !== 'ok') void Haptics.selectionAsync().catch(() => {});
-    // 움직이지 않고 뗐으면 책 밑에 도구 막대(돌리기·표지·서랍)
-    if (!cancelled && d.preview?.kind === 'same') {
-      popScroll.current = scrollY.value;
-      setToolsMsg(null);
-      setToolsId(d.bookId);
-      setSelectedId(d.bookId);
-    }
+    // 놓은 뒤에도 꾸미기 모드는 유지하고, 놓은 책을 고른 상태로 둔다
+    setEditId(d.bookId);
   };
 
   // 화면 이탈·앱 비활성화: 임시 배치를 버리고 확정 상태 유지
@@ -477,38 +486,41 @@ export function HomeScreen() {
     return commit(r);
   };
 
-  const closeTools = () => {
-    setToolsId(null);
-    setToolsMsg(null);
-    setSelectedId(null);
+  // 꾸미기 조작부: 자세와 기대기(방향만 고르고 각도는 옆 책과의 틈으로)
+  const editPlacement = editId ? placementOf(layout, editId) ?? null : null;
+  const canLean = useMemo(() => {
+    const out = { [-1]: false, 1: false } as { [-1]: boolean; 1: boolean };
+    if (!editId || editPlacement?.pose !== 'spine') return out;
+    for (const d of [-1, 1] as const) {
+      if (Math.sign(editPlacement.tilt) === d) {
+        out[d] = true;
+        continue;
+      }
+      const r = setTilt(layout, books, editId, (d * 7) as Tilt);
+      out[d] = r.ok && placementOf(withLeans(r.layout, books), editId)?.tilt !== 0;
+    }
+    return out;
+  }, [editId, editPlacement, layout, books]);
+  const editPose = (pose: Pose) => {
+    if (!editId || editPlacement?.pose === pose) return;
+    setEditMsg(commitPath(setPose(layout, books, editId, pose), editId));
   };
-  // 좌우 돌리기 한 단계. 기댈 곳이 없어 바로 선 경우 알려 준다.
-  // 좌우 돌리기 한 단계. 기댈 곳이 없어 기울 수 없으면: 왼쪽은 바로 눕히고, 오른쪽은 안내한다.
-  const toolRotate = (id: string, dir: -1 | 1): string | null => {
-    let r = rotateStep(layout, books, id, dir);
-    if (!r.ok && r.reason === 'no-change') return null;
-    const wantTilt = r.ok ? placementOf(r.layout, id) : undefined;
-    const cannotLean = r.ok && wantTilt?.pose === 'spine' && wantTilt.tilt !== 0 && placementOf(withLeans(r.layout, books), id)?.tilt === 0;
-    if (cannotLean && dir < 0) r = setPose(layout, books, id, 'horizontal');
-    else if (cannotLean) return ko.lean.noSupport;
-    return commitPath(r, id);
+  const editLean = (d: -1 | 0 | 1) => {
+    if (!editId || !editPlacement || Math.sign(editPlacement.tilt) === d) return;
+    setEditMsg(commitPath(setTilt(layout, books, editId, (d * 7) as Tilt), editId));
+  };
+  const finishEditing = () => {
+    setEditing(false);
+    setEditId(null);
+    setEditMsg(null);
   };
 
-  // 도구 막대 위치: 책 밑(선반 앞턱 아래), 화면 밖이면 책 위
-  const toolsAnchor = useMemo(() => {
-    if (!toolsId) return null;
-    const p = placementOf(shown, toolsId);
-    const row = p && rows.find((r) => r.shelfId === p.shelfId);
-    const f = row && frames.get(p!.shelfId)?.find((fr) => fr.bookId === toolsId);
-    if (!row || !f) return null;
-    const sy = popScroll.current;
-    const box = frameBBox(f);
-    const cx = toContent(m, row, { x: box.minX + box.width / 2, y: 0 }).x;
-    const under = row.top + (row.clear + SHELF.below) * m.scale + 6 - sy;
-    if (under + 60 <= vpH - navigation.height - insets.bottom) return { cx, y: under, below: true };
-    return { cx, y: toContent(m, row, { x: 0, y: box.minY }).y - sy - 8, below: false };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [toolsId, shown, rows, frames, m, vpH, insets.bottom]);
+  // 꾸미는 동안은 탭 바를 숨기고 그 자리에 조작부를 둔다
+  editingRef.current = editing;
+  const navigation_ = useNavigation();
+  useEffect(() => {
+    navigation_.setOptions({ tabBarStyle: editing ? { display: 'none' } : tabBarStyle(insets.bottom) });
+  }, [editing, navigation_, insets.bottom]);
 
   const onA11y = useCallback(
     (bookId: string, action: string) => {
@@ -571,16 +583,47 @@ export function HomeScreen() {
             <Text style={[styles.summary, { fontSize: 12.5 * m.scale, marginTop: 7 * m.scale }]}>
               {ko.year(year)}
               {years.length > 1 ? ' ▾' : ''}
+              {editing ? ` · ${ko.decorating}` : ''}
             </Text>
           </Pressable>
         </View>
         <View style={[styles.actions, { gap: 8 * m.scale, marginTop: -14 * m.scale }]}>
-          {editing ? <HeaderButton size={28 * m.scale} on label={ko.done} onPress={() => setEditing(false)}>
-              <Check size={14 * m.scale} color={colors.sheet} strokeWidth={1.8} />
-          </HeaderButton> : null}
-          <HeaderButton size={28 * m.scale} label="책 추가 및 책장 메뉴" onPress={() => setShelfMenuOpen(true)}>
-            <Plus size={16 * m.scale} color={colors.ink} strokeWidth={1.4} />
-          </HeaderButton>
+          {editing ? (
+            <>
+              <Pressable
+                onPress={() => {
+                  if (placementStore.undo()) setEditMsg(null);
+                }}
+                disabled={!store.undo}
+                hitSlop={10}
+                accessibilityRole="button"
+                accessibilityLabel={ko.undo}
+                style={{ opacity: store.undo ? 1 : 0.35, padding: 4 }}>
+                <Undo2 size={20 * m.scale} color={colors.ink} strokeWidth={1.6} />
+              </Pressable>
+              <Pressable onPress={finishEditing} accessibilityRole="button" accessibilityLabel={ko.done} style={[styles.pill, { height: 30 * m.scale, paddingHorizontal: 16 * m.scale }]}>
+                <Text style={[styles.pillText, { fontSize: 13.5 * m.scale }]}>{ko.done}</Text>
+              </Pressable>
+            </>
+          ) : (
+            <>
+              <Pressable
+                onPress={() => {
+                  setPopId(null);
+                  setSelectedId(null);
+                  setEditing(true);
+                }}
+                accessibilityRole="button"
+                accessibilityLabel={ko.decorate}
+                style={[styles.pill, { height: 28 * m.scale, paddingHorizontal: 11 * m.scale, flexDirection: 'row', gap: 4 * m.scale }]}>
+                <Paintbrush size={13 * m.scale} color={colors.ink} strokeWidth={1.6} />
+                <Text style={[styles.pillText, { fontSize: 12.5 * m.scale }]}>{ko.decorate}</Text>
+              </Pressable>
+              <HeaderButton size={28 * m.scale} label="책 추가 및 책장 메뉴" onPress={() => setShelfMenuOpen(true)}>
+                <Plus size={16 * m.scale} color={colors.ink} strokeWidth={1.4} />
+              </HeaderButton>
+            </>
+          )}
         </View>
       </View>
 
@@ -616,7 +659,7 @@ export function HomeScreen() {
                   height={rowOf.get(s.id)?.height ?? 0}
                   clear={rowOf.get(s.id)?.clear ?? SHELF.minClear}
                   placeholderId={drag?.bookId ?? null}
-                  selectedId={popId ?? detailId ?? selectedId}
+                  selectedId={editing ? (drag ? null : editId) : (popId ?? detailId ?? selectedId)}
                   hint={hintFor(s.id)}
                   editing={editing && !drag}
                   canRemove={false}
@@ -646,28 +689,9 @@ export function HomeScreen() {
           />
         ) : null}
 
-        {toolsId && toolsAnchor && placementOf(layout, toolsId) ? (
-          <BookTools
-            anchor={toolsAnchor}
-            pose={placementOf(layout, toolsId)!.pose}
-            width={winW}
-            msg={toolsMsg}
-            reduceMotion={reduceMotion}
-            onRotate={(dir) => setToolsMsg(toolRotate(toolsId, dir))}
-            onCover={() => {
-              const p = placementOf(layout, toolsId)!;
-              setToolsMsg(commitPath(setPose(layout, books, toolsId, p.pose === 'front' ? 'spine' : 'front'), toolsId));
-            }}
-            onDrawer={() => {
-              commit(moveToDrawer(layout, toolsId, books), ko.drawer.stored);
-              closeTools();
-            }}
-            onClose={closeTools}
-          />
-        ) : null}
 
         {toast ? (
-          <View style={[styles.toast, { bottom: navigation.height + insets.bottom + 8 }]} accessibilityLiveRegion="polite">
+          <View style={[styles.toast, { bottom: (editing ? 205 : navigation.height) + insets.bottom + 8 }]} accessibilityLiveRegion="polite">
             <Text style={styles.toastText}>{toast.text}</Text>
             {toast.action ? (
               <Pressable
@@ -686,6 +710,20 @@ export function HomeScreen() {
           </View>
         ) : null}
       </View>
+
+      {editing ? (
+        <DecoratePanel
+          title={editId ? books[editId]?.title ?? null : null}
+          pose={editPlacement?.pose ?? null}
+          lean={(Math.sign(editPlacement?.tilt ?? 0) as -1 | 0 | 1)}
+          canLean={canLean}
+          msg={editMsg}
+          bottomInset={insets.bottom}
+          reduceMotion={reduceMotion}
+          onPose={editPose}
+          onLean={editLean}
+        />
+      ) : null}
 
       <BookDetail
         book={detailId ? books[detailId] : null}
@@ -749,6 +787,8 @@ const styles = StyleSheet.create({
   actions: { flexDirection: 'row', alignItems: 'center', alignSelf: 'center' },
   circle: { borderWidth: 1, borderColor: colors.circle, alignItems: 'center', justifyContent: 'center' },
   circleOn: { backgroundColor: colors.ink, borderColor: colors.ink },
+  pill: { borderWidth: 1, borderColor: colors.circle, borderRadius: 999, alignItems: 'center', justifyContent: 'center' },
+  pillText: { color: colors.ink },
   badge: {
     position: 'absolute',
     top: -2,
