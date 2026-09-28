@@ -36,6 +36,10 @@ import {
   setPose,
   setSpin,
   setDepth,
+  frontStateOf,
+  frontTilt,
+  frontSpin,
+  frontRelease,
   boxOf,
   depthRange,
   setTilt,
@@ -53,6 +57,7 @@ import { placementStore, usePlacementStore } from '@/store/placement-store';
 import { DragOverlay, frameBBox } from '@/ui/shelf/DragOverlay';
 import { CONTENT_TOP, computeRows, rowAt, toContent, toScene, useShelfMetrics } from '@/ui/shelf/metrics';
 import { currentStates, motionOf, previewShelf } from '@/ui/shelf/ShelfMotion';
+import type { FrontState } from '@/domain/front-pose';
 import { ShelfRow, type DropHint } from '@/ui/shelf/ShelfRow';
 import { SHELF_CAST_EXTENT } from '@/ui/shelf/ShelfPlank';
 import { colors, fonts, motion, navigation } from '@/ui/theme';
@@ -246,6 +251,7 @@ export function HomeScreen() {
   // ---------- 제스처 콜백(JS) ----------
   const onTap = (x: number, y: number) => {
     if (Date.now() - lastDragEnd.current < 350 || dragRef.current) return;
+    if (Date.now() - handleAt.current < 400) return; // 머리 손잡이를 누른 탭은 책 고르기가 아니다
     const hit = hitAt(x, y);
     if (editing) {
       // 꾸미는 중: 짧게 누르면 그 책을 고른다(정보 상자는 띄우지 않는다)
@@ -394,6 +400,33 @@ export function HomeScreen() {
     .onEnd((e, success) => {
       if (success) scheduleOnRN(onTap, e.x, e.y);
     });
+  // 표지 책 머리 손잡이: 한 개의 제스처 객체를 손잡이 칸(ShelfRow)에 붙이고, 책 끌기·탭은 이것이 실패할 때만(손잡이를 잡으면 끼어들지 않게)
+  const onHandleRef = useRef<(phase: 'begin' | 'move' | 'end', dx: number, dy: number) => void>(() => {});
+  const scrollNative = useMemo(() => Gesture.Native(), []); // 목록 스크롤(손잡이가 막을 수 있게)
+  const handleJS = useCallback((phase: 'begin' | 'move' | 'end', dx: number, dy: number) => onHandleRef.current(phase, dx, dy), []);
+  const headPan = useMemo(
+    () =>
+      Gesture.Pan()
+        // 손잡이에 닿는 순간 바로 잡는다(누르고 잠깐 멈춰도 책 끌기 길게 누르기가 끼어들지 않게)
+        .manualActivation(true)
+        .onTouchesDown((_e, manager) => {
+          manager.activate();
+        })
+        .onBegin(() => {
+          scheduleOnRN(handleJS, 'begin', 0, 0);
+        })
+        .onUpdate((e) => {
+          scheduleOnRN(handleJS, 'move', e.translationX, e.translationY);
+        })
+        .onFinalize(() => {
+          scheduleOnRN(handleJS, 'end', 0, 0);
+        })
+        // 위아래로 끌어도 목록이 스크롤되지 않게
+        .blocksExternalGesture(scrollNative),
+    [scrollNative, handleJS],
+  );
+  pan.requireExternalGestureToFail(headPan);
+  tap.requireExternalGestureToFail(headPan);
   const gesture = Gesture.Race(pan, tap);
 
   // 가장자리 자동 스크롤. 스크롤하면서도 최신 좌표로 놓을 자리를 다시 계산한다.
@@ -521,6 +554,66 @@ export function HomeScreen() {
     if (!editId || !editPlacement || Math.sign(editPlacement.tilt) === d) return;
     setEditMsg(commitPath(setTilt(layout, books, editId, (d * 7) as Tilt), editId));
   };
+  // ---------- 표지 책 머리 손잡이: 위아래 = 뒤로 젖히기, 좌우 = 돌리기 ----------
+  // 조금(10px) 움직인 뒤 주된 방향으로 조작을 정하고 놓을 때까지 고정한다. 시작 자세·포인터 위치 기준 변화량이라 잡는 순간 튀지 않는다.
+  // 끄는 동안은 그 선반 경로만 바로 바꾸고(미리보기), 놓으면 한 번에 확정(되돌리기 한 번).
+  const handleAt = useRef(0);
+  const headRef = useRef<{ id: string; shelfId: string; qx: number; start: FrontState; cur: FrontState; axis: 'tilt' | 'spin' | null; last: ShelfLayout | null; dx: number; dy: number; raf: number } | null>(null);
+  const [headLive, setHeadLive] = useState<FrontState | null>(null);
+  const TILT_PER_DU = 0.35; // 머리를 1DU 밀면 0.35° 젖힘(20°에 약 57DU)
+  const SPIN_PER_DU = 0.3; // 좌우 1DU에 0.3°(12°에 40DU)
+  const headStep = () => {
+    const h = headRef.current;
+    if (!h) return;
+    h.raf = 0;
+    if (!h.axis) {
+      if (Math.hypot(h.dx, h.dy) < 10) return;
+      h.axis = Math.abs(h.dx) > Math.abs(h.dy) ? 'spin' : 'tilt';
+    }
+    const r =
+      h.axis === 'tilt'
+        ? frontTilt(layout, books, h.id, h.cur, h.qx, h.start.pitch + (-h.dy / m.scale) * TILT_PER_DU)
+        : frontSpin(layout, books, h.id, h.cur, h.qx, h.start.spin + (h.dx / m.scale) * SPIN_PER_DU);
+    if (!r) return;
+    h.cur = r.state;
+    h.last = r.layout;
+    previewShelf(h.shelfId, computeShelf(withLeans(r.layout, books, h.shelfId), books, h.shelfId).frames);
+    setHeadLive(r.state);
+  };
+  const onHandle = (phase: 'begin' | 'move' | 'end', dx: number, dy: number) => {
+    handleAt.current = Date.now();
+    if (phase === 'begin') {
+      const f = editId ? frontStateOf(layout, books, editId) : null;
+      const shelfId = editId ? placementOf(layout, editId)?.shelfId : undefined;
+      headRef.current = f && editId && shelfId ? { id: editId, shelfId, qx: f.qx, start: f.state, cur: f.state, axis: null, last: null, dx: 0, dy: 0, raf: 0 } : null;
+      setEditMsg(null);
+      return;
+    }
+    const h = headRef.current;
+    if (!h) return;
+    if (phase === 'move') {
+      h.dx = dx;
+      h.dy = dy;
+      if (!h.raf) h.raf = requestAnimationFrame(headStep);
+      return;
+    }
+    cancelAnimationFrame(h.raf);
+    headRef.current = null;
+    setHeadLive(null);
+    if (!h.last) return;
+    // 벽에 기대 있으면 그대로, 받침 없이 기울었으면 제자리에서 선다. 설 수 없으면 조작 전으로.
+    const fin = frontRelease(layout, books, h.id, h.cur, h.qx);
+    if (!fin) {
+      previewShelf(h.shelfId, frames.get(h.shelfId) ?? []);
+      setEditMsg(ko.fail['no-space']);
+      return;
+    }
+    setEditMsg(commitPath({ ok: true, layout: fin }, h.id));
+  };
+  onHandleRef.current = onHandle;
+  const frontInfo = editId ? frontStateOf(layout, books, editId) : null;
+  const anglesText = frontInfo ? ko.decoratePanel.angles((headLive ?? frontInfo.state).spin, (headLive ?? frontInfo.state).pitch) : null;
+
   // 앞뒤: 끄는 동안은 그 선반 경로만 바로 바꾸고(미리보기) 놓으면 확정한다. 옆 책·벽에 닿으면 가능한 데까지. 실제로 된 깊이를 돌려준다.
   const editDepth = (z: number, done: boolean): number => {
     if (!editId) return 0;
@@ -556,7 +649,9 @@ export function HomeScreen() {
     if (!editId) return 0;
     const shelfId = placementOf(layout, editId)?.shelfId;
     const cur = placementOf(layout, editId)?.spin ?? 0;
-    const r = setSpin(layout, books, editId, deg);
+    const fs = frontStateOf(layout, books, editId);
+    const fr = fs ? frontSpin(layout, books, editId, fs.state, fs.qx, deg) : null;
+    const r: Result = fs ? (fr && Math.abs(fr.state.spin - cur) > 0.01 ? { ok: true, layout: fr.layout } : { ok: false, reason: fr ? 'no-change' : 'no-space' }) : setSpin(layout, books, editId, deg);
     const got = r.ok ? placementOf(r.layout, editId)?.spin ?? 0 : cur;
     // 원한 만큼 못 돌면(옆 책·쌓인 책·선반 깊이에 막힘) 어디까지 되는지 알려 준다
     const limited = Math.abs(deg) >= 1 && Math.abs(got - deg) >= 1;
@@ -704,6 +799,7 @@ export function HomeScreen() {
           viewportH.value = e.nativeEvent.layout.height;
           setVpH(e.nativeEvent.layout.height);
         }}>
+        <GestureDetector gesture={scrollNative}>
         <Animated.ScrollView
           ref={scrollRef}
           onScroll={onScroll}
@@ -740,11 +836,13 @@ export function HomeScreen() {
                   onRemove={() => {}}
                   debug={debugGeom}
                   topRow={s.id === shownShelves[0]?.id}
+                  handle={editing && !drag && editId && placementOf(layout, editId)?.shelfId === s.id ? headPan : undefined}
                 />
               ))}
             </View>
           </GestureDetector>
         </Animated.ScrollView>
+        </GestureDetector>
 
         {drag && draggedBook ? (
           <DragOverlay book={draggedBook} frame={drag.frame} from={drag.from} scale={m.scale} x={dragX} y={dragY} lift={lift} />
@@ -799,6 +897,7 @@ export function HomeScreen() {
           onSpin={editSpin}
           depth={depthInfo}
           onDepth={editDepth}
+          angles={anglesText}
           onHeight={setPanelH}
         />
       ) : null}

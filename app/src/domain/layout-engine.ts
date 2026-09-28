@@ -10,8 +10,11 @@ import {
   frontWidth,
   LYING_BACK_Z,
   defaultDepth,
-  nextWallLean,
   wallPitch,
+  frontDims,
+  frontExt,
+  WALL_LEAN_ENTER,
+  WALL_LEAN_MAX,
   LEGACY_LEAN,
   MAX_STACK,
   MENU_LEAN,
@@ -24,6 +27,7 @@ import {
 } from './geometry';
 import { corners, fromPlaced, lowest } from './book3';
 import { boxSize, type Placed } from './box';
+import { pitchForWall, spinStep, tiltStep, unsupported, type FrontState } from './front-pose';
 import { stackBoxes, stackSupported } from './support';
 import type { Book, BookPlacement, Pose, ShelfLayout, ShelfLayoutV1, Tilt } from './types';
 
@@ -138,9 +142,9 @@ export function itemBoxes(item: ShelfItem, layout: ShelfLayout, books: BookMap, 
   if (item.stacked) return stackBoxes(stackMembers(item, layout, books), x);
   const p = placementOf(layout, item.bookIds[0])!;
   const b = books[p.bookId];
-  const spin = p.pose === 'horizontal' ? p.spin : undefined;
+  const spin = p.pose === 'horizontal' || p.pose === 'front' ? p.spin : undefined;
   const z = p.depth ?? defaultDepth(b, p.pose);
-  const pitch = p.pose === 'front' ? wallPitch(b, z, p.wallLean) || undefined : undefined;
+  const pitch = p.pose === 'front' ? frontPitchOf(b, p, z) || undefined : undefined;
   return [{ bookId: p.bookId, pose: p.pose, size: boxSize(b, p.pose), x, y: 0, z, angle: 0, spin, pitch }];
 }
 
@@ -337,8 +341,11 @@ export function normalize(layout: ShelfLayout): ShelfLayout {
         if (p.lean && p.pose === 'spine' && p.tilt !== 0) next.lean = p.lean;
         // 선반 공간 깊이·수직축 회전(눕힌 책만)은 그대로 보존
         if (p.depth !== undefined) next.depth = p.depth;
-        if (p.spin && p.pose === 'horizontal') next.spin = p.spin;
-        if (p.wallLean && p.pose === 'front' && !stackId) next.wallLean = true;
+        if (p.spin && (p.pose === 'horizontal' || p.pose === 'front')) next.spin = p.spin;
+        if (p.pose === 'front' && !stackId) {
+          if (p.pitch) next.pitch = p.pitch;
+          else if (p.wallLean && p.pitch === undefined) next.wallLean = true; // 예전 저장본
+        }
         if (stackId && stackOrder > 0) {
           if (p.stackDx) next.stackDx = p.stackDx;
           if (p.stackDz) next.stackDz = p.stackDz;
@@ -388,8 +395,8 @@ function insertItem(
   // 깊이·수직축 회전은 옮겨도 그대로(자리만 바뀐다)
   const kept: BookPlacement = { bookId: placement.bookId, pose: placement.pose, tilt: placement.tilt, shelfId, order: at };
   if (placement.depth !== undefined) kept.depth = placement.depth;
-  if (placement.spin && placement.pose === 'horizontal') kept.spin = placement.spin;
-  if (placement.pose === 'front' && placement.depth !== undefined && books && nextWallLean(books[placement.bookId], placement.depth, placement.wallLean)) kept.wallLean = true;
+  if (placement.spin && (placement.pose === 'horizontal' || placement.pose === 'front')) kept.spin = placement.spin;
+  if (placement.pose === 'front' && placement.pitch) kept.pitch = placement.pitch;
   placements.push(kept);
   const next = normalize({ ...layout, placements });
   if (!books) return next;
@@ -538,8 +545,7 @@ export function setPose(layout: ShelfLayout, books: BookMap, bookId: string, pos
       const base = detach(layout, bookId, books);
       last = finish(layout, insertItem(base, { bookId, pose, tilt: 0, depth }, p.shelfId, index + 1, books), books);
     } else {
-      const wallLean = pose === 'front' ? nextWallLean(book, depth ?? defaultDepth(book, pose)) || undefined : undefined;
-      const placements = layout.placements.map((q) => (q.bookId === bookId ? { ...q, pose, tilt: 0 as Tilt, depth, spin: undefined, wallLean } : q));
+      const placements = layout.placements.map((q) => (q.bookId === bookId ? { ...q, pose, tilt: 0 as Tilt, depth, spin: undefined, pitch: undefined, wallLean: undefined } : q));
       last = finish(layout, settle(normalize({ ...layout, placements }), books, bookXs(layout, books)), books);
     }
     if (last.ok) return last;
@@ -629,6 +635,7 @@ export function setDepth(layout: ShelfLayout, books: BookMap, bookId: string, z:
   const p = placementOf(layout, bookId);
   const box = boxOf(layout, books, bookId);
   if (!p || !box) return { ok: false, reason: 'unknown-book' };
+  if (p.pose === 'front' && !p.stackId) return setFrontDepth(layout, books, bookId, z, prevLean);
   const upper = !!p.stackId && (p.stackOrder ?? 0) > 0;
   const base = p.stackId ? placementOf(layout, layout.placements.find((q) => q.stackId === p.stackId && !q.stackOrder)!.bookId)! : p;
   const baseBox = boxOf(layout, books, base.bookId)!;
@@ -641,9 +648,7 @@ export function setDepth(layout: ShelfLayout, books: BookMap, bookId: string, z:
     const placements = layout.placements.map((q) => {
       if (upper && q.bookId === bookId) return { ...q, stackDz: round2((q.stackDz ?? 0) + dz * k) || undefined };
       if (!upper && q.bookId === base.bookId) {
-        const depth = round2(baseBox.z + dz * k);
-        if (q.pose !== 'front' || q.stackId) return { ...q, depth };
-        return { ...q, depth, wallLean: nextWallLean(books[q.bookId], depth, prevLean ?? q.wallLean) || undefined };
+        return { ...q, depth: round2(baseBox.z + dz * k) };
       }
       return q;
     });
@@ -659,7 +664,10 @@ export function depthRange(layout: ShelfLayout, books: BookMap, bookId: string) 
   const box = boxOf(layout, books, bookId);
   if (!box) return { lo: -SHELF_FRONT, hi: SHELF_DEPTH, z: 0 };
   // 표지 책: 기대도 바닥 자리(뒤쪽 아래 모서리)는 그대로이므로, 똑바로 섰을 때 기준(앞 끝 ~ 벽에 뒷면이 닿을 때)
-  if (box.pose === 'front' && !placementOf(layout, bookId)?.stackId) return { lo: -SHELF_FRONT, hi: SHELF_DEPTH - box.size.d, z: box.z };
+  if (box.pose === 'front' && !placementOf(layout, bookId)?.stackId) {
+    const e = frontExt(books[bookId], { spin: box.spin });
+    return { lo: -SHELF_FRONT - e.z0, hi: SHELF_DEPTH - e.z1, z: box.z };
+  }
   let lo = Infinity;
   let hi = -Infinity;
   for (const c of corners(fromPlaced(box))) {
@@ -667,6 +675,92 @@ export function depthRange(layout: ShelfLayout, books: BookMap, bookId: string) 
     hi = Math.max(hi, c.z);
   }
   return { lo: -SHELF_FRONT + (box.z - lo), hi: SHELF_DEPTH - (hi - box.z), z: box.z };
+}
+
+
+// ---------- 표지 전시 책: 뒤로 젖힘·좌우 돌리기·앞뒤(domain/front-pose) ----------
+
+// 저장된 젖힘(예전 저장본의 wallLean은 거리로 계산)
+function frontPitchOf(b: Book, p: BookPlacement, depth: number) {
+  if (p.pitch !== undefined) return p.pitch;
+  return p.wallLean ? wallPitch(b, depth, true) : 0;
+}
+
+// 지금 자세와 돌리기 축의 x
+export function frontStateOf(layout: ShelfLayout, books: BookMap, bookId: string): { state: FrontState; qx: number } | null {
+  const p = placementOf(layout, bookId);
+  const box = boxOf(layout, books, bookId);
+  if (!p || !box || p.pose !== 'front' || p.stackId) return null;
+  const state = { depth: box.z, pitch: box.pitch ?? 0, spin: box.spin ?? 0 };
+  return { state, qx: box.x - frontExt(books[bookId], state).x0 };
+}
+
+// 이 자세로 놓는다: 돌리기 축(qx)은 그대로, 다른 책은 밀지 않는다. 안 되면 null.
+export function applyFront(layout: ShelfLayout, books: BookMap, bookId: string, qx: number, st: FrontState): ShelfLayout | null {
+  const p = placementOf(layout, bookId)!;
+  const e = frontExt(books[bookId], st);
+  const pos = round2(qx + e.x0);
+  const placements = layout.placements.map((q) =>
+    q.bookId === bookId ? { ...q, depth: round2(st.depth), pitch: round2(st.pitch) || undefined, spin: round2(st.spin) || undefined, wallLean: undefined, pos } : q,
+  );
+  const desired = bookXs(layout, books);
+  desired.set(bookId, pos);
+  const next = settle({ ...layout, placements }, books, desired, p.shelfId);
+  if (checkSpace(next, books, p.shelfId)) return null;
+  const xa = bookXs(layout, books);
+  const xb = bookXs(next, books);
+  for (const q of next.placements) {
+    if (q.shelfId !== p.shelfId) continue;
+    const want = q.bookId === bookId ? pos : xa.get(q.bookId) ?? 0;
+    if (Math.abs((xb.get(q.bookId) ?? 0) - want) > 0.05) return null;
+  }
+  return next;
+}
+
+// from → to 사이에서 되는 곳까지(막히면 그 직전, 큰 점프 없이)
+function reach(layout: ShelfLayout, books: BookMap, bookId: string, qx: number, at: (k: number) => FrontState) {
+  const r = farthest((k) => applyFront(layout, books, bookId, qx, at(k)));
+  return r ? { layout: r.layout, state: at(r.k) } : null;
+}
+
+// 머리를 잡고 젖히기(끄는 동안 한 걸음씩): cur에서 목표 각까지. 결과 레이아웃과 실제로 된 자세.
+export function frontTilt(layout: ShelfLayout, books: BookMap, bookId: string, cur: FrontState, qx: number, pitch: number) {
+  const dims = frontDims(books[bookId]);
+  return reach(layout, books, bookId, qx, (k) => tiltStep(dims, cur, cur.pitch + (pitch - cur.pitch) * k, SHELF_DEPTH));
+}
+
+// 머리를 잡고 좌우로 돌리기(0 근처는 살짝 붙는다)
+export function frontSpin(layout: ShelfLayout, books: BookMap, bookId: string, cur: FrontState, qx: number, spin: number) {
+  const dims = frontDims(books[bookId]);
+  const want = Math.abs(spin) < 0.8 ? 0 : spin;
+  return reach(layout, books, bookId, qx, (k) => spinStep(dims, cur, cur.spin + (want - cur.spin) * k, SHELF_DEPTH, MAX_SPIN));
+}
+
+// 손을 놓을 때: 벽에 기대 있으면 그대로, 받침 없이 기울어 있으면 제자리에서 세운다(안 되면 null = 조작 전으로).
+export function frontRelease(layout: ShelfLayout, books: BookMap, bookId: string, cur: FrontState, qx: number): ShelfLayout | null {
+  const dims = frontDims(books[bookId]);
+  if (!unsupported(dims, cur, SHELF_DEPTH)) return applyFront(layout, books, bookId, qx, cur);
+  return applyFront(layout, books, bookId, qx, { ...cur, pitch: 0 });
+}
+
+// 앞뒤 막대(보조): 바닥 자리를 옮긴다. 벽 가까이면 머리가 벽에 닿는 각으로 기대고(회전한 상자로 계산),
+// 기대기 시작은 WALL_LEAN_ENTER 안쪽, 풀림은 WALL_LEAN_MAX 바깥(끄는 동안은 prevLean을 이어받는다).
+function setFrontDepth(layout: ShelfLayout, books: BookMap, bookId: string, z: number, prevLean?: boolean): Result {
+  const f = frontStateOf(layout, books, bookId)!;
+  const dims = frontDims(books[bookId]);
+  const range = depthRange(layout, books, bookId);
+  const target = Math.max(range.lo, Math.min(range.hi, z));
+  if (Math.abs(target - f.state.depth) < 0.01) return { ok: false, reason: 'no-change' };
+  const was = prevLean ?? f.state.pitch > 0;
+  const at = (k: number): FrontState => {
+    const depth = f.state.depth + (target - f.state.depth) * k;
+    const need = pitchForWall(dims, depth, f.state.spin, SHELF_DEPTH);
+    const lean = need !== null && need <= (was ? WALL_LEAN_MAX : WALL_LEAN_ENTER);
+    return { depth, pitch: lean ? need! : 0, spin: f.state.spin };
+  };
+  const r = reach(layout, books, bookId, f.qx, at);
+  if (!r) return { ok: false, reason: 'no-space' };
+  return finish(layout, r.layout, books);
 }
 
 // 좌우 돌리기 한 단계(다이얼처럼): 눕힘 ← 왼쪽 기울임 ← 똑바로 → 오른쪽 기울임.

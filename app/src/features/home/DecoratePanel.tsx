@@ -28,6 +28,7 @@ type Props = {
   onDepth: (z: number, done: boolean) => number; // 끄는 동안 미리보기, 놓으면 확정. 실제로 된 깊이를 돌려준다
   onSpin: (deg: number, done: boolean) => number; // 끄는 동안 미리보기, 놓으면 확정. 실제로 된 각도를 돌려준다
   onHeight?: (h: number) => void;
+  angles?: string | null; // 표지 책: 지금 좌우·뒤로 각도
 };
 
 // 눕힌 책 돌리기: 연속 조절 막대(-MAX ~ +MAX). 0 근처에서는 살짝 붙는다. 가능한 각도는 부모가 되돌려 준 값(spin)으로 표시.
@@ -206,7 +207,7 @@ function Choice({ label, on, disabled, onPress, children }: { label: string; on:
   );
 }
 
-export function DecoratePanel({ title, pose, lean, canLean, msg, bottomInset, reduceMotion, onPose, onLean, spin, onSpin, depth, onDepth, onHeight }: Props) {
+export function DecoratePanel({ title, pose, lean, canLean, msg, bottomInset, reduceMotion, onPose, onLean, spin, onSpin, depth, onDepth, onHeight, angles }: Props) {
   const ink = colors.ink;
   return (
     <Animated.View
@@ -218,7 +219,7 @@ export function DecoratePanel({ title, pose, lean, canLean, msg, bottomInset, re
         <Text style={styles.title} numberOfLines={1}>
           {title ?? ko.decoratePanel.pick}
         </Text>
-        <Text style={styles.caption}>{msg ? '' : ko.decoratePanel.caption}</Text>
+        <Text style={styles.caption}>{msg ? '' : angles ?? ko.decoratePanel.caption}</Text>
       </View>
       {msg ? <Text style={styles.msg}>{msg}</Text> : null}
       <View style={styles.row}>
@@ -236,7 +237,7 @@ export function DecoratePanel({ title, pose, lean, canLean, msg, bottomInset, re
           <DepthSlider lo={depth.lo} hi={depth.hi} value={depth.z} onChange={onDepth} />
         </View>
       ) : null}
-      {pose === 'horizontal' ? (
+      {pose === 'horizontal' || pose === 'front' ? (
         <View style={[styles.row, styles.rowLast]}>
           <Text style={styles.label}>{ko.decoratePanel.spin}</Text>
           <SpinSlider value={spin} onChange={onSpin} />

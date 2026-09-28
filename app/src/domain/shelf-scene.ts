@@ -120,9 +120,9 @@ export function computeShelf(layout: ShelfLayout, books: BookMap, shelfId: strin
     const id = item.bookIds[0];
     const b = books[id];
     const p = placementOf(layout, id)!;
-    const spin = p.pose === 'horizontal' ? p.spin ?? 0 : 0;
+    const spin = p.pose === 'horizontal' || p.pose === 'front' ? p.spin ?? 0 : 0;
     const z = p.depth ?? defaultDepth(b, p.pose);
-    const pitch = p.pose === 'front' ? wallPitch(b, z, p.wallLean) || undefined : undefined;
+    const pitch = p.pose === 'front' ? (p.pitch ?? (p.wallLean ? wallPitch(b, z, true) : 0)) || undefined : undefined;
     const box: Placed = { bookId: id, pose: p.pose, size: boxSize(b, p.pose), x, y: 0, z, angle: 0, spin, pitch };
     frames.push(frameOf(box, id, item.key, shelfId, p.pose === 'spine' ? p.tilt : 0, 0, cam));
   }

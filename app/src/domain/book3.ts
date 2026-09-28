@@ -151,16 +151,30 @@ export const axisLocal = (d: Dims): Vec3 => {
 
 // 놓인 상자의 원점 정의: (x, y, z) = 선반 공간에서 책이 차지하는 축 정렬 상자(AABB)의 최솟값 모서리.
 // 예외: 기댄 세운 책은 x가 "똑바로 섰을 때 왼쪽 면"이고, 기우는 쪽 바닥 모서리(발)가 제자리에 있다.
+// 표지 전시 책(뒤로 젖힘 + 좌우 돌리기). 자리·축 설명은 domain/front-pose.
+export function frontBook3(id: string, dims: Dims, qx: number, depth: number, pitch = 0, spin = 0): Book3 {
+  // 표지 전시: yaw 90(책 좌표 x = 두께 → 월드 -z, z = 표지 폭 → 월드 x)
+  const F = { x: qx, y: 0, z: depth + dims.T }; // 뒤쪽 아래 모서리 가운데(젖힘 축 위)
+  const Q = { x: qx, y: 0, z: depth + dims.T / 2 }; // 바닥 가운데(돌리기 축 위)
+  const c = (spin * Math.PI) / 180;
+  const d = { x: F.x - Q.x, z: F.z - Q.z };
+  const spun = { x: d.x * Math.cos(c) - d.z * Math.sin(c), y: 0, z: d.x * Math.sin(c) + d.z * Math.cos(c) };
+  const r = rot(0, 90, { x: 0, y: 0, z: dims.W / 2 }, spin, pitch);
+  return { id, dims, roll: 0, yaw: 90, pitch, spin, t: { x: Q.x + spun.x - r.x, y: -r.y, z: Q.z + spun.z - r.z } };
+}
+
 export function fromPlaced(p: Placed): Book3 {
   const dims = dimsOf(p);
   const o = orientOf(p.pose, p.angle);
   const spin = p.pose === 'horizontal' ? p.spin ?? 0 : 0;
   const b: Book3 = { id: p.bookId, dims, roll: o.roll, yaw: o.yaw, spin, t: { x: 0, y: 0, z: 0 } };
-  if (p.pose === 'front' && p.pitch) {
-    // 벽에 기대기: 뒤쪽 아래 모서리(책 좌표 원점 쪽 변)를 축으로 뒤로 젖힌다. 그 모서리는 똑바로 섰을 때 자리 그대로.
-    b.pitch = p.pitch;
-    b.t = { x: p.x, y: p.y, z: p.z + p.size.d };
-    return b;
+  if (p.pose === 'front' && (p.pitch || p.spin)) {
+    // 뒤로 젖힘·좌우 돌리기(domain/front-pose): z = 똑바로 섰을 때 앞면, x = 상자의 왼쪽 끝(축 정렬)
+    const f = frontBook3(p.bookId, dims, 0, p.z, p.pitch ?? 0, p.spin ?? 0);
+    let minX = Infinity;
+    for (const c of corners(f)) minX = Math.min(minX, c.x);
+    f.t = { x: f.t.x + p.x - minX, y: f.t.y + p.y, z: f.t.z };
+    return f;
   }
   if (p.pose === 'spine' && p.angle) {
     const foot = { x: p.angle > 0 ? p.x + p.size.w : p.x, y: p.y, z: p.z };

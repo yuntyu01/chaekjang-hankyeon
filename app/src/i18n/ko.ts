@@ -14,6 +14,8 @@ export const ko = {
     lean: '기대기',
     spin: '돌리기',
     depth: '앞뒤',
+    head: '머리 손잡이: 위아래로 끌면 뒤로 젖히기, 좌우로 끌면 돌리기',
+    angles: (spin: number, pitch: number) => `좌우 ${spin > 0 ? '+' : ''}${Math.round(spin)}° · 뒤로 ${Math.round(pitch)}°`,
     front: '앞',
     depthLimit: '옆 책이나 벽에 닿아 여기까지만 가요.',
     spinLimit: (deg: number) => `옆 책이나 쌓인 책에 막혀 ${deg}°까지만 돌아가요.`,

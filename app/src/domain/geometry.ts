@@ -1,4 +1,5 @@
 // 책 형상 계산. 모든 값은 설계 단위(DU, 기준 폭 390)이며 화면에서는 scale을 곱한다.
+import { frontExtent } from './front-pose';
 import { SHELF_ASSET } from './shelf-asset.generated';
 import type { Book, BookPlacement, HeightClass, ThicknessClass, Tilt } from './types';
 
@@ -201,13 +202,25 @@ export function wallPitch(book: Book, depth: number, lean?: boolean) {
   return (Math.asin(Math.min(1, g / bookHeight(book))) * 180) / Math.PI;
 }
 
-export function placementDepth(book: Book, p: Pick<BookPlacement, 'pose' | 'depth' | 'spin'>) {
-  const d = p.pose === 'horizontal' ? spunExtent(book, p.spin).d : p.pose === 'front' ? bookThickness(book) : frontWidth(book);
+export function placementDepth(book: Book, p: Pick<BookPlacement, 'pose' | 'depth' | 'spin'> & { pitch?: number }) {
   const z = p.depth ?? defaultDepth(book, p.pose);
+  if (p.pose === 'front' && (p.pitch || p.spin)) {
+    const e = frontExt(book, p);
+    return { z0: z + e.z0, z1: z + e.z1 };
+  }
+  const d = p.pose === 'horizontal' ? spunExtent(book, p.spin).d : p.pose === 'front' ? bookThickness(book) : frontWidth(book);
   return { z0: z, z1: z + d };
 }
 
-export function singleFootprint(book: Book, p: Pick<BookPlacement, 'pose' | 'tilt'> & { spin?: number; depth?: number }) {
+// 표지 전시 책의 상자 치수(책 좌표 T·H·W)와 두 회전의 축 정렬 범위
+export function frontDims(book: Book) {
+  return { T: bookThickness(book), H: bookHeight(book), W: frontWidth(book) };
+}
+export function frontExt(book: Book, p: { pitch?: number; spin?: number }) {
+  return frontExtent(frontDims(book), p.pitch ?? 0, p.spin ?? 0);
+}
+
+export function singleFootprint(book: Book, p: Pick<BookPlacement, 'pose' | 'tilt'> & { spin?: number; depth?: number; pitch?: number }) {
   const h = bookHeight(book);
   const t = bookThickness(book);
   const w = frontWidth(book);
@@ -218,15 +231,19 @@ export function singleFootprint(book: Book, p: Pick<BookPlacement, 'pose' | 'til
       const e = spunExtent(book, p.spin);
       return { width: e.w, height: t + ((p.depth ?? defaultDepth(book, 'horizontal')) + e.d) * CAMERA.ky };
     }
-    case 'front':
-      return { width: w, height: h + t * CAMERA.ky };
+    case 'front': {
+      if (!p.pitch && !p.spin) return { width: w, height: h + t * CAMERA.ky };
+      const e = frontExt(book, p);
+      return { width: e.x1 - e.x0, height: e.y1 + (e.z1 - e.z0) * CAMERA.ky };
+    }
   }
 }
 
 // 앞면 윤곽(왼쪽 x=0, 바닥 y=0, 위로 음수). 배치(packing)가 쓴다.
-export function visibleBookOutline(book: Book, p: Pick<BookPlacement, 'pose' | 'tilt'> & { spin?: number }) {
-  const h = p.pose === 'horizontal' ? bookThickness(book) : bookHeight(book);
-  const w = p.pose === 'horizontal' ? spunExtent(book, p.spin).w : p.pose === 'front' ? frontWidth(book) : bookThickness(book);
+export function visibleBookOutline(book: Book, p: Pick<BookPlacement, 'pose' | 'tilt'> & { spin?: number; pitch?: number }) {
+  const fe = p.pose === 'front' && (p.pitch || p.spin) ? frontExt(book, p) : null;
+  const h = p.pose === 'horizontal' ? bookThickness(book) : fe ? fe.y1 : bookHeight(book);
+  const w = p.pose === 'horizontal' ? spunExtent(book, p.spin).w : fe ? fe.x1 - fe.x0 : p.pose === 'front' ? frontWidth(book) : bookThickness(book);
   const points = [{ x: 0, y: 0 }, { x: w, y: 0 }, { x: w, y: h }, { x: 0, y: h }];
   const t = rad(p.pose === 'spine' ? p.tilt : 0);
   const turned = points.map((q) => ({ x: q.x * Math.cos(t) - q.y * Math.sin(t), y: q.x * Math.sin(t) + q.y * Math.cos(t) }));
