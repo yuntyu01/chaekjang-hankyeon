@@ -1,4 +1,4 @@
-import { boxSize, collide, frontPoly, project, silhouette, solveLean, visibleFaces, type Placed } from '../box';
+import { boxSize, collide, CONTACT, frontPoly, project, silhouette, solveLean, visibleFaces, type Placed } from '../box';
 import { LYING_BACK_Z, SHELF } from '../geometry';
 import { SAMPLE_BOOKS } from '../onboarding-sample';
 import { PLANK_BOUNDS } from '../shelf-scene';
@@ -55,7 +55,7 @@ describe('책 상자', () => {
     expect(r.on).toBe('b12');
     expect(r.angle).toBeLessThan(0);
     expect(collide({ ...spine, angle: r.angle }, lying)).toBe(false);
-    expect(collide({ ...spine, angle: r.angle - 0.05 }, lying)).toBe(true); // 이분 탐색: 0.05도만 더 가도 닿는다
+    expect(collide({ ...spine, angle: r.angle - 0.05 }, lying, CONTACT)).toBe(true); // 이분 탐색: 0.05도만 더 가도 닿는다
     // 밑면은 선반에 그대로
     expect(Math.min(...frontPoly({ ...spine, angle: r.angle }).map((q) => q.y))).toBeCloseTo(0);
   });

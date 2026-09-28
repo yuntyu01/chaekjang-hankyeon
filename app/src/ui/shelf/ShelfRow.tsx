@@ -61,6 +61,7 @@ type Props = {
   a11yLabelOf: (bookId: string) => string;
   onA11y: (bookId: string, action: string) => void;
   onRemove: (shelfId: string) => void;
+  debug?: boolean; // 개발용 형상 보기
 };
 
 export const ShelfRow = memo(function ShelfRow(p: Props) {
@@ -79,7 +80,7 @@ export const ShelfRow = memo(function ShelfRow(p: Props) {
       )}
       <RowContacts m={m} ids={ids} cam={cam} s={s} clear={p.clear} height={p.height} shelfTop={shelfTop} />
       {/* 옆면·윗면은 모든 앞면 아래(앞에 있는 책의 앞면이 가린다) */}
-      <RowBooks m={m} frames={p.frames} books={p.books} hiddenId={p.placeholderId} cam={cam} s={s} clear={p.clear} height={p.height} />
+      <RowBooks m={m} frames={p.frames} books={p.books} hiddenId={p.placeholderId} cam={cam} s={s} clear={p.clear} height={p.height} debug={p.debug} />
       {p.frames.map((f) => (
         <BookSlot
           key={f.bookId}

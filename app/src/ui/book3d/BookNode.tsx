@@ -7,7 +7,7 @@ import { Group, Image as SkImg, ImageSVG, Picture, Rect, Text } from '@shopify/r
 import type React from 'react';
 import { useDerivedValue, type SharedValue } from 'react-native-reanimated';
 
-import { brightness, corners, faceFrame, facing, rot, toWorld, viewCam, VIEW_MID, type Book3, type Cam, type FaceId } from '@/domain/book3';
+import { brightness, corners, faceFrame, facing, rot, toWorld, viewCam, VIEW_BY_POSITION, VIEW_MID, type Book3, type Cam, type FaceId } from '@/domain/book3';
 import { project } from '@/domain/box';
 import type { Book } from '@/domain/types';
 import { BOX_HEAD_BOW } from '@/ui/book/BookBody';
@@ -24,8 +24,8 @@ function faceMatrix(b: Book3, f: 'spine' | 'cover', cam: Cam, px: Affine) {
   'worklet';
   const fr = faceFrame(b.dims, f);
   const O = project(cam, toWorld(b, fr.O));
-  const U = rot(b.roll, b.yaw, fr.U);
-  const V = rot(b.roll, b.yaw, fr.V);
+  const U = rot(b.roll, b.yaw, fr.U, b.spin ?? 0);
+  const V = rot(b.roll, b.yaw, fr.V, b.spin ?? 0);
   const s = px.s;
   const ux = (U.x + U.z * cam.kx) / fr.w;
   const uy = -(U.y + U.z * cam.ky) / fr.w;
@@ -144,8 +144,9 @@ export function depthKey(b: Book3) {
     x1 = Math.max(x1, q.x);
   }
   const x = (x0 + x1) / 2;
-  // 가운데에서 먼 책부터(왼쪽 책의 오른쪽 옆면·오른쪽 책의 왼쪽 옆면을 가운데 쪽 이웃 앞면이 가린다)
-  return -z * 10 + y * 0.05 - Math.abs(x - VIEW_MID) * 0.0001;
+  // 뒤(깊이 큰) → 앞, 아래 → 위, 옆면이 보이는 쪽 반대편부터(오른쪽 옆면이 보이면 왼쪽 책부터: 오른쪽 이웃 앞면이 가린다)
+  // 쌓인 책(y > 0)은 받침 책보다 깊이가 조금 뒤여도 위에 얹혀 있으므로 나중에 그린다(y 가중이 깊이보다 크다)
+  return -z * 10 + y * 20 + (VIEW_BY_POSITION ? -Math.abs(x - VIEW_MID) : x) * 0.0001;
 }
 
 // shared: 캔버스 밖에서 useBookShared()로 읽어 넘긴다

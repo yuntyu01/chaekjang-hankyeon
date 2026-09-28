@@ -37,7 +37,7 @@ export const holdTrack = (b: Book3): Track => ({
   id: b.id,
   dims: b.dims,
   moving: false,
-  segs: [{ kind: 0, t0: 0, t1: 1, r0: b.roll, r1: b.roll, y0: b.yaw, y1: b.yaw, a: { x: 0, y: 0, z: 0 }, w0: b.t, w1: b.t, al: 0, x0: 0, x1: 0, b0: 0, b1: 0, z0: 0, z1: 0 }],
+  segs: [{ kind: 0, t0: 0, t1: 1, r0: b.roll, r1: b.roll, y0: b.yaw, y1: b.yaw, sp0: b.spin ?? 0, sp1: b.spin ?? 0, a: { x: 0, y: 0, z: 0 }, w0: b.t, w1: b.t, al: 0, x0: 0, x1: 0, b0: 0, b1: 0, z0: 0, z1: 0 }],
 });
 
 // 진행률 t에서 이 책의 자세(들림 포함). 경로가 없으면 null.
@@ -110,6 +110,38 @@ export function useShelfMotion(shelfId: string, frames: BookFrame[], reduceMotio
   return m;
 }
 
+// ---------- 개발용 형상 보기: 상자 모서리 12개, 바닥 지지 영역(선반 위 투영). 일반 화면에는 나오지 않는다 ----------
+const EDGES = [
+  [0, 1], [2, 3], [4, 5], [6, 7], [0, 2], [1, 3], [4, 6], [5, 7], [0, 4], [1, 5], [2, 6], [3, 7],
+];
+function DebugGeom({ m, id, cam, px }: { m: Motion; id: string; cam: Cam; px: Affine }) {
+  const edges = useDerivedValue(() => {
+    const p = Skia.PathBuilder.Make();
+    const b = stateNow(m, id);
+    if (!b) return p.detach();
+    const c = corners(b).map((q) => project(cam, q));
+    for (const [i, j] of EDGES) {
+      p.moveTo(c[i].x * px.s + px.tx, c[i].y * px.s + px.ty);
+      p.lineTo(c[j].x * px.s + px.tx, c[j].y * px.s + px.ty);
+    }
+    return p.detach();
+  });
+  const support = useDerivedValue(() => {
+    const b = stateNow(m, id);
+    if (!b) return pathOf([]);
+    const cs = corners(b);
+    const lo = lowest(b);
+    const base = cs.filter((q) => q.y < lo + 0.6).map((q) => project(cam, q)).map((q) => ({ x: q.x * px.s + px.tx, y: q.y * px.s + px.ty }));
+    return pathOf([hull(base)]);
+  });
+  return (
+    <Group zIndex={1e6}>
+      <Path path={edges} style="stroke" strokeWidth={1} color="rgba(30,90,200,0.8)" />
+      <Path path={support} color="rgba(40,170,90,0.35)" />
+    </Group>
+  );
+}
+
 // ---------- 책(한 캔버스에 줄 전체) ----------
 
 function RowBook({ m, frame, book, cam, px, shared }: { m: Motion; frame: BookFrame; book: Book; cam: Cam; px: Affine; shared: Shared }) {
@@ -119,7 +151,7 @@ function RowBook({ m, frame, book, cam, px, shared }: { m: Motion; frame: BookFr
   return <BookNode book={book} dims={rest.dims} state={state} cam={cam} px={px} shared={shared} />;
 }
 
-export const RowBooks = memo(function RowBooks({ m, frames, books, hiddenId, cam, s, clear, height }: { m: Motion; frames: BookFrame[]; books: Record<string, Book>; hiddenId: string | null; cam: Cam; s: number; clear: number; height: number }) {
+export const RowBooks = memo(function RowBooks({ m, frames, books, hiddenId, cam, s, clear, height, debug = false }: { m: Motion; frames: BookFrame[]; books: Record<string, Book>; hiddenId: string | null; cam: Cam; s: number; clear: number; height: number; debug?: boolean }) {
   const px = useMemo(() => ({ s, tx: SHELF.sideMargin * s, ty: (clear - FLOOR) * s }), [s, clear]);
   const shared = useBookShared();
   return (
@@ -137,6 +169,7 @@ export const RowBooks = memo(function RowBooks({ m, frames, books, hiddenId, cam
               <RowBook key={f.bookId} m={m} frame={f} book={books[f.bookId]} cam={cam} px={px} shared={shared} />
             ),
           )}
+        {debug ? frames.filter((f) => f.box).map((f) => <DebugGeom key={`dbg${f.bookId}`} m={m} id={f.bookId} cam={cam} px={px} />) : null}
         {frames
           .filter((f) => f.box && f.bookId !== hiddenId && f.stackIndex > 0)
           .map((f) => (

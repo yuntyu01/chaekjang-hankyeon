@@ -12,6 +12,7 @@ export const ko = {
     caption: '책 꾸미기',
     pose: '자세',
     lean: '기대기',
+    spin: '돌리기',
     poses: { spine: '책등', front: '표지', horizontal: '눕힘' },
     leans: { '-1': '왼쪽', '0': '바로', '1': '오른쪽' },
   },
@@ -52,6 +53,8 @@ export const ko = {
   },
   fail: {
     'no-space': '공간이 부족해요. 다른 자리로 옮겨 주세요.',
+    unsupported: '아래 책 위에 다 올라가지 않아요. 더 큰 책 위에 쌓아 주세요.',
+    'spin-only-lying': '눕힌 책만 돌릴 수 있어요.',
     'stack-full': '쌓기는 3권까지예요.',
     'not-stackable': '눕힌 책끼리만 쌓을 수 있어요.',
     'tilt-only-spine': '세운 책만 기울일 수 있어요.',

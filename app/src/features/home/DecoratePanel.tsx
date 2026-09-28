@@ -1,9 +1,12 @@
 // 꾸미기 모드에서 하단 탭 바 자리에 뜨는 조작부: 고른 책의 자세(책등·표지·눕힘)와 기대기(왼쪽·바로·오른쪽).
 // 기대기는 방향만 고르고 각도는 옆 책과의 틈으로 계산한다. 기댈 책이 없는 방향은 처음부터 누를 수 없게 표시한다.
+import { useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import Animated, { FadeInDown, FadeOutDown } from 'react-native-reanimated';
 import Svg, { Path, Rect } from 'react-native-svg';
 
+import { MAX_SPIN } from '@/domain/geometry';
 import type { Pose } from '@/domain/types';
 import { ko } from '@/i18n/ko';
 import { colors, fonts } from '@/ui/theme';
@@ -20,7 +23,34 @@ type Props = {
   reduceMotion: boolean;
   onPose: (p: Pose) => void;
   onLean: (d: LeanDir) => void;
+  spin: number; // 눕힌 책의 수직축 각도(도)
+  onSpin: (deg: number, done: boolean) => void; // 끄는 동안 미리보기, 놓으면 확정
 };
+
+// 눕힌 책 돌리기: 연속 조절 막대(-MAX ~ +MAX). 0 근처에서는 살짝 붙는다. 가능한 각도는 부모가 되돌려 준 값(spin)으로 표시.
+function SpinSlider({ value, onChange }: { value: number; onChange: (deg: number, done: boolean) => void }) {
+  const [w, setW] = useState(1);
+  const toDeg = (x: number) => {
+    const d = ((x / w) * 2 - 1) * MAX_SPIN;
+    return Math.abs(d) < 1.5 ? 0 : Math.round(d * 2) / 2;
+  };
+  const pan = Gesture.Pan()
+    .minDistance(0)
+    .runOnJS(true)
+    .onBegin((e) => onChange(toDeg(e.x), false))
+    .onUpdate((e) => onChange(toDeg(e.x), false))
+    .onEnd((e) => onChange(toDeg(e.x), true));
+  const pos = ((value / MAX_SPIN + 1) / 2) * w;
+  return (
+    <GestureDetector gesture={pan}>
+      <View style={styles.slider} onLayout={(e) => setW(e.nativeEvent.layout.width)} accessibilityRole="adjustable" accessibilityLabel={ko.decoratePanel.spin} accessibilityValue={{ min: -MAX_SPIN, max: MAX_SPIN, now: Math.round(value) }}>
+        <View style={styles.track} />
+        <View style={[styles.tick, { left: w / 2 - 0.5 }]} />
+        <View style={[styles.thumb, { left: pos - 11 }]} />
+      </View>
+    </GestureDetector>
+  );
+}
 
 function PoseIcon({ pose, color }: { pose: Pose; color: string }) {
   return (
@@ -73,7 +103,7 @@ function Choice({ label, on, disabled, onPress, children }: { label: string; on:
   );
 }
 
-export function DecoratePanel({ title, pose, lean, canLean, msg, bottomInset, reduceMotion, onPose, onLean }: Props) {
+export function DecoratePanel({ title, pose, lean, canLean, msg, bottomInset, reduceMotion, onPose, onLean, spin, onSpin }: Props) {
   const ink = colors.ink;
   return (
     <Animated.View
@@ -95,7 +125,14 @@ export function DecoratePanel({ title, pose, lean, canLean, msg, bottomInset, re
           </Choice>
         ))}
       </View>
-      <View style={[styles.row, styles.rowLast]}>
+      {pose === 'horizontal' ? (
+        <View style={[styles.row, styles.rowLast]}>
+          <Text style={styles.label}>{ko.decoratePanel.spin}</Text>
+          <SpinSlider value={spin} onChange={onSpin} />
+          <Text style={styles.deg}>{`${spin > 0 ? '+' : ''}${Math.round(spin)}°`}</Text>
+        </View>
+      ) : (
+        <View style={[styles.row, styles.rowLast]}>
         <Text style={styles.label}>{ko.decoratePanel.lean}</Text>
         {([-1, 0, 1] as LeanDir[]).map((d) => (
           <Choice
@@ -108,6 +145,7 @@ export function DecoratePanel({ title, pose, lean, canLean, msg, bottomInset, re
           </Choice>
         ))}
       </View>
+      )}
     </Animated.View>
   );
 }
@@ -137,4 +175,9 @@ const styles = StyleSheet.create({
   choiceOn: { backgroundColor: '#F1E7D8' },
   pressed: { backgroundColor: colors.line },
   choiceText: { fontSize: 13, color: colors.ink },
+  slider: { flex: 1, height: 44, justifyContent: 'center', marginHorizontal: 8 },
+  track: { height: 3, borderRadius: 2, backgroundColor: colors.line },
+  tick: { position: 'absolute', width: 1, height: 10, top: 17, backgroundColor: colors.inkFaint },
+  thumb: { position: 'absolute', width: 22, height: 22, borderRadius: 11, top: 11, backgroundColor: colors.sheet, borderWidth: 1.5, borderColor: colors.ink },
+  deg: { width: 40, textAlign: 'right', fontSize: 13, color: colors.inkSoft },
 });

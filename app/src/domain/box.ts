@@ -3,7 +3,8 @@
 // 카메라는 앱 전체에 하나: 직교 투영 + 고정 사선(깊이 1DU가 화면에서 오른쪽 kx, 위로 ky). 줄·가로 위치로 바뀌지 않는다.
 // 역할: 그리기는 투영(project/faces), 충돌·기대기는 선반 공간(collide/solveLean), 터치는 투영 외곽(silhouette).
 import { bookHeight, bookThickness, frontWidth, SHELF } from './geometry';
-import { contactAngle, overlaps } from './lean';
+import { fromPlaced, gap } from './book3';
+import { firstContact } from './lean';
 import type { Point } from './shelf-scene';
 import type { Book, Pose } from './types';
 
@@ -25,6 +26,20 @@ export function boxSize(book: Book, pose: Pose): BoxSize {
     case 'horizontal':
       return { w: H, h: T, d: W };
   }
+}
+
+// 수직축으로 돌린 눕힌 책의 축 정렬 폭·깊이
+export function aabbW(p: Placed) {
+  'worklet';
+  if (!p.spin) return p.size.w;
+  const r = (p.spin * Math.PI) / 180;
+  return Math.abs(p.size.w * Math.cos(r)) + Math.abs(p.size.d * Math.sin(r));
+}
+export function aabbD(p: Placed) {
+  'worklet';
+  if (!p.spin) return p.size.d;
+  const r = (p.spin * Math.PI) / 180;
+  return Math.abs(p.size.w * Math.sin(r)) + Math.abs(p.size.d * Math.cos(r));
 }
 
 // 볼록 껍질(모노톤 체인)
@@ -56,6 +71,7 @@ export type Placed = {
   y: number; // 밑면
   z: number; // 앞면
   angle: number;
+  spin?: number; // 눕힌 책의 수직축 회전(도). size는 돌리기 전 치수, x·z는 돌린 뒤 축 정렬 상자의 최솟값
 };
 
 function rad(d: number) {
@@ -66,7 +82,8 @@ function rad(d: number) {
 // 앞면 윤곽(선반 공간 x-y, y 위로). 반시계 순서: 왼아래 → 오른아래 → 오른위 → 왼위.
 export function frontPoly(p: Placed): Point[] {
   'worklet';
-  const { w, h } = p.size;
+  const { h } = p.size;
+  const w = aabbW(p);
   const base: Point[] = [
     { x: p.x, y: p.y },
     { x: p.x + w, y: p.y },
@@ -96,7 +113,8 @@ function at(q: Point, z: number): Vec3 {
 export function silhouette(cam: Camera, p: Placed): Point[] {
   'worklet';
   const f = frontPoly(p);
-  const pts = [...f.map((q) => project(cam, at(q, p.z))), ...f.map((q) => project(cam, at(q, p.z + p.size.d)))];
+  const d = aabbD(p);
+  const pts = [...f.map((q) => project(cam, at(q, p.z))), ...f.map((q) => project(cam, at(q, p.z + d)))];
   return hull(pts);
 }
 
@@ -129,23 +147,35 @@ export function visibleFaces(cam: Camera, p: Placed): { front: Point[]; sides: F
 const EPS = 0.05;
 export function zOverlap(a: Placed, b: Placed) {
   'worklet';
-  return a.z < b.z + b.size.d - EPS && b.z < a.z + a.size.d - EPS;
+  return a.z < b.z + aabbD(b) - EPS && b.z < a.z + aabbD(a) - EPS;
 }
-export function collide(a: Placed, b: Placed, margin = 0.05) {
-  'worklet';
-  return zOverlap(a, b) && overlaps(frontPoly(a), frontPoly(b), margin);
+// 공통 허용 오차(DU ≈ 1.3mm × 값): 이보다 얕게 파고드는 것은 맞닿음·계산 오차로 본다.
+export const TOLERANCE = 0.25;
+// 접촉 탐색(기대기 각도를 찾을 때)의 기준: 더 얕게 잡아 멈춘 자리가 허용 오차 안에 들어오게 한다
+export const CONTACT = 0.05;
+
+// 선반 공간 충돌: 두 책의 실제 회전 상자(OBB) 분리축 검사. 정면에서 겹쳐 보여도 깊이가 떨어져 있으면 충돌이 아니다.
+export function collide(a: Placed, b: Placed, margin = TOLERANCE) {
+  return gap(fromPlaced(a), fromPlaced(b)) < -margin;
 }
 
 // 기대기: 선반 공간에서 옆 상자에 처음 닿는 각도(0.5도 탐색 + 이분 탐색, lean.ts). 깊이가 겹치는 상자만 장애물.
 // bounds: 선반 판 좌우 끝(x). 닿을 곳이 없거나 판 밖이면 바로 선다.
+// 기대기: 기우는 쪽 바닥 모서리를 축으로 돌리며(0.5도 탐색 → 첫 접촉 주변 이분 탐색) 주변 책의 실제 3D 상자와 처음 닿는 각도.
+// 화면에서 나란해도 깊이가 달라 실제로 닿지 않는 책은 받침이 되지 못한다. 받칠 곳이 없거나 선반 밖이면 바로 선다.
+// (정역학 안정성 해석이 아니라, 바닥 접촉 + 이웃 접촉이 모두 있는 배치만 허용하는 정적 배치 규칙)
 export function solveLean(p: Placed, dir: -1 | 1, others: Placed[], bounds: { min: number; max: number }) {
-  const obstacles = others.filter((o) => o.bookId !== p.bookId && zOverlap(p, o));
-  const polyAt = (deg: number) => frontPoly({ ...p, angle: dir * deg });
-  const r = contactAngle(
-    polyAt,
-    obstacles.map((o) => frontPoly(o)),
-    bounds,
-  );
-  const on = r.supported && r.angle > 0 ? obstacles.find((o) => overlaps(polyAt(r.angle + 0.6), frontPoly(o)))?.bookId : undefined;
-  return { angle: dir * r.angle, supported: r.supported, on };
+  const obstacles = others.filter((o) => o.bookId !== p.bookId).map((o) => ({ id: o.bookId, b: fromPlaced(o) }));
+  const at = (deg: number) => fromPlaced({ ...p, angle: dir * deg });
+  const hits = (deg: number) => {
+    const me = at(deg);
+    return obstacles.some((o) => gap(me, o.b) < -CONTACT);
+  };
+  const c = firstContact(hits);
+  if (!c.found) return { angle: 0, supported: false, on: undefined };
+  const poly = frontPoly({ ...p, angle: dir * c.angle });
+  if (poly.some((q) => q.x < bounds.min - 0.01 || q.x > bounds.max + 0.01)) return { angle: 0, supported: false, on: undefined };
+  const more = at(c.angle + 0.6);
+  const on = c.angle > 0 ? obstacles.find((o) => gap(more, o.b) < -CONTACT)?.id : undefined;
+  return { angle: dir * c.angle, supported: true, on };
 }

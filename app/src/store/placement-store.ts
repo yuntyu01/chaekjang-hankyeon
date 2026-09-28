@@ -113,6 +113,13 @@ export const placementStore = {
     return true;
   },
 
+  // 개발용: 예시 18권 배치로 되돌린다(비교 캡처용). 되돌리기 한 번으로 복구할 수 있다.
+  resetSample() {
+    const next = withLeans(SAMPLE_LAYOUT, state.books);
+    set({ undo: state.layout, layout: next });
+    void persist(next);
+  },
+
   retrySave() {
     void persist(state.layout);
   },

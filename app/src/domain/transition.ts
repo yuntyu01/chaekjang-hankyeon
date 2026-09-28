@@ -16,6 +16,8 @@ export type Seg = {
   r1: number;
   y0: number;
   y1: number;
+  sp0: number; // 수직축 회전(눕힌 책을 비스듬히)
+  sp1: number;
   a: Vec3;
   w0: Vec3;
   w1: Vec3;
@@ -38,14 +40,14 @@ function clamp01(v: number) {
 }
 
 // 방향(roll, yaw)으로 돌린 상자(이동 전)의 범위
-export function extent(dims: Book3['dims'], roll: number, yaw: number) {
+export function extent(dims: Book3['dims'], roll: number, yaw: number, spin = 0) {
   'worklet';
   let x0 = Infinity;
   let x1 = -Infinity;
   let y0 = Infinity;
   let z0 = Infinity;
   for (let i = 0; i < 8; i++) {
-    const p = rot(roll, yaw, cornerLocal(dims, i));
+    const p = rot(roll, yaw, cornerLocal(dims, i), spin);
     if (p.x < x0) x0 = p.x;
     if (p.x > x1) x1 = p.x;
     if (p.y < y0) y0 = p.y;
@@ -65,19 +67,21 @@ export function bookAt(tr: Track, t: number): Book3 {
   const u = s.t1 > s.t0 ? clamp01((t - s.t0) / (s.t1 - s.t0)) : t >= s.t1 ? 1 : 0;
   const roll = s.r0 + (s.r1 - s.r0) * u;
   const yaw = s.y0 + (s.y1 - s.y0) * u;
+  const spin = s.sp0 + (s.sp1 - s.sp0) * u;
   if (s.kind === 1) {
-    const e = extent(tr.dims, roll, yaw);
+    const e = extent(tr.dims, roll, yaw, spin);
     const ax = s.x0 + (s.x1 - s.x0) * u;
     return {
       id: tr.id,
       dims: tr.dims,
       roll,
       yaw,
+      spin,
       t: { x: ax - (e.x0 + (e.x1 - e.x0) * s.al), y: s.b0 + (s.b1 - s.b0) * u - e.y0, z: s.z0 + (s.z1 - s.z0) * u - e.z0 },
     };
   }
   const w = { x: s.w0.x + (s.w1.x - s.w0.x) * u, y: s.w0.y + (s.w1.y - s.w0.y) * u, z: s.w0.z + (s.w1.z - s.w0.z) * u };
-  return { id: tr.id, dims: tr.dims, roll, yaw, t: sub3(w, rot(roll, yaw, s.a)) };
+  return { id: tr.id, dims: tr.dims, roll, yaw, spin, t: sub3(w, rot(roll, yaw, s.a, spin)) };
 }
 
 // ---------- 경로 조각 ----------
@@ -87,25 +91,25 @@ type State = Book3;
 const blank = { al: 0, x0: 0, x1: 0, b0: 0, b1: 0, z0: 0, z1: 0 };
 
 function pivotSeg(b0: State, b1: State, t0: number, t1: number, a: Vec3): Seg {
-  return { kind: 0, t0, t1, r0: b0.roll, r1: b1.roll, y0: b0.yaw, y1: b1.yaw, a, w0: toWorld(b0, a), w1: toWorld(b1, a), ...blank };
+  return { kind: 0, t0, t1, r0: b0.roll, r1: b1.roll, y0: b0.yaw, y1: b1.yaw, sp0: b0.spin ?? 0, sp1: b1.spin ?? 0, a, w0: toWorld(b0, a), w1: toWorld(b1, a), ...blank };
 }
 
 function boxOf(b: State, al: number) {
-  const e = extent(b.dims, b.roll, b.yaw);
+  const e = extent(b.dims, b.roll, b.yaw, b.spin ?? 0);
   return { x: b.t.x + e.x0 + (e.x1 - e.x0) * al, y: b.t.y + e.y0, z: b.t.z + e.z0 };
 }
 
 function boxSeg(b0: State, b1: State, t0: number, t1: number, al: number): Seg {
   const p = boxOf(b0, al);
   const q = boxOf(b1, al);
-  return { kind: 1, t0, t1, r0: b0.roll, r1: b1.roll, y0: b0.yaw, y1: b1.yaw, a: ZERO, w0: ZERO, w1: ZERO, al, x0: p.x, x1: q.x, b0: p.y, b1: q.y, z0: p.z, z1: q.z };
+  return { kind: 1, t0, t1, r0: b0.roll, r1: b1.roll, y0: b0.yaw, y1: b1.yaw, sp0: b0.spin ?? 0, sp1: b1.spin ?? 0, a: ZERO, w0: ZERO, w1: ZERO, al, x0: p.x, x1: q.x, b0: p.y, b1: q.y, z0: p.z, z1: q.z };
 }
 
 // 방향 b.roll·b.yaw를 (roll, yaw)로 바꾸되 정렬 기준(al)의 가로 위치·바닥·앞면은 그대로
-function reorient(b: State, roll: number, yaw: number, al: number): State {
+function reorient(b: State, roll: number, yaw: number, al: number, spin = 0): State {
   const p = boxOf(b, al);
-  const e = extent(b.dims, roll, yaw);
-  return { id: b.id, dims: b.dims, roll, yaw, t: { x: p.x - (e.x0 + (e.x1 - e.x0) * al), y: p.y - e.y0, z: p.z - e.z0 } };
+  const e = extent(b.dims, roll, yaw, spin);
+  return { id: b.id, dims: b.dims, roll, yaw, spin, t: { x: p.x - (e.x0 + (e.x1 - e.x0) * al), y: p.y - e.y0, z: p.z - e.z0 } };
 }
 
 // 같은 방향 두 자세를 잇는 이동. 높이가 바뀌면 L자(올라갈 때는 먼저 위로, 내려갈 때는 먼저 옆으로).
@@ -118,13 +122,14 @@ function moveSegs(b0: State, b1: State, t0: number, t1: number): Seg[] {
 }
 
 const near = (a: number, b: number) => Math.abs(a - b) < 1e-4;
-const sameRot = (a: State, b: State) => near(a.roll, b.roll) && near(a.yaw, b.yaw);
+const sameRot = (a: State, b: State) => near(a.roll, b.roll) && near(a.yaw, b.yaw) && near(a.spin ?? 0, b.spin ?? 0);
+const sameRY = (a: State, b: State) => near(a.roll, b.roll) && near(a.yaw, b.yaw);
 const same = (a: State, b: State) => sameRot(a, b) && near(a.t.x, b.t.x) && near(a.t.y, b.t.y) && near(a.t.z, b.t.z);
 function depthOf(b: State) {
   let lo = Infinity;
   let hi = -Infinity;
   for (let i = 0; i < 8; i++) {
-    const z = rot(b.roll, b.yaw, cornerLocal(b.dims, i)).z;
+    const z = rot(b.roll, b.yaw, cornerLocal(b.dims, i), b.spin ?? 0).z;
     lo = Math.min(lo, z);
     hi = Math.max(hi, z);
   }
@@ -155,7 +160,8 @@ function leanSegs(from: State, to: State, t0: number, t1: number, order: 'sync' 
 
 function reorientPivot(b: State, roll: number, yaw: number, a: Vec3): State {
   const w = toWorld(b, a);
-  return { id: b.id, dims: b.dims, roll, yaw, t: sub3(w, rot(roll, yaw, a)) };
+  const spin = b.spin ?? 0;
+  return { id: b.id, dims: b.dims, roll, yaw, spin, t: sub3(w, rot(roll, yaw, a, spin)) };
 }
 
 // 자세가 바뀌는 책. 기댄 책이면 먼저 세우고(발 축), 정렬 al로 돌며, order에 따라 이동을 앞/뒤/함께.
@@ -164,6 +170,15 @@ function poseSegs(from: State, to: State, t0: number, t1: number, al: number, or
   let b = from;
   let t = t0;
   const span = t1 - t0;
+  if (Math.abs(b.spin ?? 0) > 1e-4) {
+    // 비스듬히 놓인 눕힌 책은 먼저 제자리(가운데 축)에서 바로 놓고 돈다
+    const c = { x: b.dims.T / 2, y: 0, z: b.dims.W / 2 };
+    const w = toWorld(b, c);
+    const flat: State = { ...b, spin: 0, t: sub3(w, rot(b.roll, b.yaw, c, 0)) };
+    segs.push(pivotSeg(b, flat, t, t + span * 0.2, c));
+    b = flat;
+    t += span * 0.2;
+  }
   if (!near(b.roll, 0) && Math.abs(b.roll) < 45 && !near(from.yaw, to.yaw)) {
     const up = reorientPivot(b, 0, b.yaw, pivotLocal(b.dims, b.roll));
     segs.push(pivotSeg(b, up, t, t + span * 0.15, pivotLocal(b.dims, b.roll)));
@@ -187,7 +202,7 @@ function poseSegs(from: State, to: State, t0: number, t1: number, al: number, or
   const tm = t + (t1 - t) * 0.4;
   if (order === 'moveFirst') {
     // 목표 자리에서 돌도록: 목표를 지금 방향으로 되돌린 자리로 먼저 옮긴다
-    const pre = reorient(to, b.roll, b.yaw, al);
+    const pre = reorient(to, b.roll, b.yaw, al, 0);
     segs.push(...moveSegs(b, pre, t, tm), boxSeg(pre, to, tm, t1, al));
     return segs;
   }
@@ -223,7 +238,11 @@ export function build(prev: State[], next: State[], c: Candidate): Track[] {
     if (!from) return { id: to.id, dims: to.dims, segs: hold(to), moving: false };
     let segs: Seg[];
     if (posed(from, to)) segs = poseSegs(from, to, c.turn[0], c.turn[1], c.al, c.order);
-    else if (!sameRot(from, to)) segs = leanSegs(from, to, c.turn[0], c.turn[1], c.lean);
+    else if (sameRY(from, to) && !sameRot(from, to)) {
+      // 수직축으로만 돌기(눕힌 책을 비스듬히): 가운데를 축으로, 자리 이동은 함께
+      const ctr = { x: to.dims.T / 2, y: to.dims.H / 2, z: to.dims.W / 2 };
+      segs = [pivotSeg(from, to, c.turn[0], c.turn[1], ctr)];
+    } else if (!sameRot(from, to)) segs = leanSegs(from, to, c.turn[0], c.turn[1], c.lean);
     else if (posers.length && c.spread > 0) {
       // 옆 책: 도는 동안 대각선만큼 더 비켜 줬다가 끝에 붙는다
       const side = (xRange(from).lo + xRange(from).hi) / 2 < center ? -1 : 1;

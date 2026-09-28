@@ -233,7 +233,7 @@ export function sideFaceGeom(cam: Cam, b: Book3, f: FaceId, px: Affine, bowS: nu
   'worklet';
   if (facing(cam, b, f) <= 0.002) return EMPTY_FACE;
   // 아래를 향한 면(바닥·아래 책에 닿는 면)은 올려다볼 때도 그리지 않는다
-  if (rot(b.roll, b.yaw, faceNormal(f)).y < -0.5) return EMPTY_FACE;
+  if (rot(b.roll, b.yaw, faceNormal(f), b.spin ?? 0).y < -0.5) return EMPTY_FACE;
   const main = mainFace(cam, b);
   if (main === f) return EMPTY_FACE;
   const cs = corners(b);

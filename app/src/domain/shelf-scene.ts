@@ -1,8 +1,9 @@
 // 선반 한 칸의 책 프레임 계산(순수). 렌더링·터치 판정·그림자가 모두 이 결과를 쓴다.
 // 좌표: 설계 단위, x는 선반 판 안쪽 왼쪽 끝 기준, y는 아래로 증가하며 선반 바닥이 SHELF.clearHeight.
-import { boxSize, collide, frontPoly, silhouette, solveLean, type Camera, type Placed } from './box';
-import { fromPlaced, VIEW_MID, type Book3 } from './book3';
-import { bookHeight, bookThickness, CAMERA, cameraFor, LYING_BACK_Z, SHELF, stackOffsets } from './geometry';
+import { boxSize, collide, CONTACT, frontPoly, hull, project, solveLean, type Camera, type Placed } from './box';
+import { corners, fromPlaced, VIEW_BY_POSITION, VIEW_MID, type Book3 } from './book3';
+import { bookHeight, bookThickness, CAMERA, cameraFor, defaultDepth, SHELF } from './geometry';
+import { stackBoxes } from './support';
 import { itemPositions, placementOf, shelfItems, sortedShelves, type BookMap } from './layout-engine';
 import { firstContact, MAX_LEAN } from './lean';
 import type { Book, Pose, ShelfLayout, Tilt } from './types';
@@ -89,7 +90,7 @@ function frameOf(p: Placed, bookId: string, itemKey: string, shelfId: string, ti
   // 가로 시점은 책 가운데 위치에 따라(가운데보다 왼쪽이면 오른쪽 옆면, 오른쪽이면 왼쪽 옆면)
   const v = Math.max(-1, Math.min(1, (p.x + p.size.w / 2 - VIEW_MID) / VIEW_MID));
   const rowCam = cam;
-  cam = { kx: -Math.abs(rowCam.kx) * v, ky: rowCam.ky };
+  if (VIEW_BY_POSITION) cam = { kx: -Math.abs(rowCam.kx) * v, ky: rowCam.ky };
   const left = p.x + p.z * Math.max(0, cam.kx);
   const top = FLOOR - (p.y + p.size.h) - p.z * Math.max(0, cam.ky);
   return {
@@ -97,7 +98,7 @@ function frameOf(p: Placed, bookId: string, itemKey: string, shelfId: string, ti
     left, top, width: p.size.w, height: p.size.h,
     rotate: p.angle || 0,
     origin: p.angle > 0 ? 'right bottom' : 'left bottom',
-    poly: silhouette(cam, p),
+    poly: hull(corners(fromPlaced(p)).map((c) => project(cam, c))),
     cam: rowCam,
     stackIndex,
     box: p,
@@ -113,20 +114,18 @@ export function computeShelf(layout: ShelfLayout, books: BookMap, shelfId: strin
   for (const { item, x, width } of positions) {
     items.push({ key: item.key, x, width, bookIds: item.bookIds });
     if (item.stacked) {
-      let y = 0;
-      const offs = stackOffsets(item.bookIds.map((id) => books[id]));
-      item.bookIds.forEach((id, i) => {
-        const b = books[id];
-        const box: Placed = { bookId: id, pose: 'horizontal', size: boxSize(b, 'horizontal'), x: x + offs[i], y, z: LYING_BACK_Z, angle: 0 };
-        frames.push(frameOf(box, id, item.key, shelfId, 0, i, cam));
-        y += box.size.h;
+      const members = item.bookIds.map((id) => {
+        const p = placementOf(layout, id)!;
+        return { bookId: id, book: books[id], spin: p.spin, depth: placementOf(layout, item.bookIds[0])!.depth };
       });
+      stackBoxes(members, x).forEach((box, i) => frames.push(frameOf(box, box.bookId, item.key, shelfId, 0, i, cam)));
       continue;
     }
     const id = item.bookIds[0];
     const b = books[id];
     const p = placementOf(layout, id)!;
-    const box: Placed = { bookId: id, pose: p.pose, size: boxSize(b, p.pose), x, y: 0, z: p.pose === 'horizontal' ? LYING_BACK_Z : 0, angle: 0 };
+    const spin = p.pose === 'horizontal' ? p.spin ?? 0 : 0;
+    const box: Placed = { bookId: id, pose: p.pose, size: boxSize(b, p.pose), x, y: 0, z: p.depth ?? defaultDepth(b, p.pose), angle: 0, spin };
     frames.push(frameOf(box, id, item.key, shelfId, p.pose === 'spine' ? p.tilt : 0, 0, cam));
   }
   solveLeans(frames, layout);
@@ -158,7 +157,7 @@ function solveLeans(frames: BookFrame[], layout: ShelfLayout) {
     const a = byLeft[i];
     const b = byLeft[i + 1];
     if (!(a.pose === 'spine' && b.pose === 'spine' && a.tilt > 0 && b.tilt < 0)) continue;
-    const c = firstContact((d) => collide({ ...a.box!, angle: d }, { ...b.box!, angle: -d }));
+    const c = firstContact((d) => collide({ ...a.box!, angle: d }, { ...b.box!, angle: -d }, CONTACT));
     if (!c.found || c.angle === 0) continue;
     set(a, c.angle, { leanFailed: false, leanOn: b.bookId });
     set(b, -c.angle, { leanFailed: false, leanOn: a.bookId });
@@ -177,7 +176,7 @@ function solveLeans(frames: BookFrame[], layout: ShelfLayout) {
         const partner = stored && others.find((o) => o.bookId === stored.on);
         if (stored && partner && Math.sign(stored.angle) === dir && Math.abs(stored.angle) <= MAX_LEAN) {
           const q = { ...base, angle: stored.angle };
-          const touching = collide({ ...base, angle: stored.angle + dir * 0.6 }, partner);
+          const touching = collide({ ...base, angle: stored.angle + dir * 0.6 }, partner, CONTACT);
           if (touching && !others.some((o) => collide(q, o)) && inside(frontPoly(q))) {
             set(f, stored.angle, { leanFailed: false, leanOn: stored.on });
             continue;

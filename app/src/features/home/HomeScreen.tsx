@@ -34,6 +34,7 @@ import {
   placementOf,
   rotateStep,
   setPose,
+  setSpin,
   setTilt,
   sortedShelves,
   type SwapTarget,
@@ -129,6 +130,8 @@ export function HomeScreen() {
   const [popId, setPopId] = useState<string | null>(null); // 선반 책(떠오르는 상자)
   const [editId, setEditId] = useState<string | null>(null); // 꾸미기 모드에서 고른 책(하단 조작부)
   const [editMsg, setEditMsg] = useState<string | null>(null);
+  const [debugGeom, setDebugGeom] = useState(false); // 개발용 형상 보기
+  const [spinPreview, setSpinPreview] = useState<ShelfLayout | null>(null); // 돌리기 막대를 끄는 동안의 미리보기
   const [selectedYear, setSelectedYear] = useState<number | null>(null); // 헤더 독서 연도
   const [vpH, setVpH] = useState(0);
   const [editing, setEditing] = useState(false);
@@ -406,7 +409,7 @@ export function HomeScreen() {
   });
 
   // ---------- 표시할 레이아웃 ----------
-  const shown = drag?.settling ?? (drag?.preview?.kind === 'ok' ? drag.preview.layout : layout);
+  const shown = drag?.settling ?? (drag?.preview?.kind === 'ok' ? drag.preview.layout : spinPreview ?? layout);
   const shownShelves = useMemo(() => sortedShelves(shown), [shown]);
   const frames = useShelfScenes(shown, books);
   // Keep drop bands steady while a book travels between differently sized rows.
@@ -508,6 +511,21 @@ export function HomeScreen() {
   const editLean = (d: -1 | 0 | 1) => {
     if (!editId || !editPlacement || Math.sign(editPlacement.tilt) === d) return;
     setEditMsg(commitPath(setTilt(layout, books, editId, (d * 7) as Tilt), editId));
+  };
+  // 눕힌 책 돌리기: 끄는 동안은 미리보기(가능한 각도까지만), 놓으면 확정
+  const editSpin = (deg: number, done: boolean) => {
+    if (!editId) return;
+    const r = setSpin(layout, books, editId, deg);
+    if (!done) {
+      setSpinPreview(r.ok ? withLeans(r.layout, books) : null);
+      return;
+    }
+    setSpinPreview(null);
+    if (!r.ok) {
+      if (r.reason !== 'no-change') setEditMsg(ko.fail[r.reason] || null);
+      return;
+    }
+    setEditMsg(commitPath(r, editId));
   };
   const finishEditing = () => {
     setEditing(false);
@@ -667,6 +685,7 @@ export function HomeScreen() {
                   a11yLabelOf={a11yLabelOf}
                   onA11y={onA11y}
                   onRemove={() => {}}
+                  debug={debugGeom}
                 />
               ))}
             </View>
@@ -722,6 +741,8 @@ export function HomeScreen() {
           reduceMotion={reduceMotion}
           onPose={editPose}
           onLean={editLean}
+          spin={(spinPreview && editId ? placementOf(spinPreview, editId)?.spin : editPlacement?.spin) ?? 0}
+          onSpin={editSpin}
         />
       ) : null}
 
@@ -770,6 +791,16 @@ export function HomeScreen() {
           <Pressable accessibilityRole="button" style={styles.menuItem} onPress={() => { setShelfMenuOpen(false); setEditing(true); }}>
             <Paintbrush size={20} color={colors.ink} /><Text style={styles.menuText}>{ko.decorate}</Text>
           </Pressable>
+          {__DEV__ ? (
+            <Pressable accessibilityRole="button" style={styles.menuItem} onPress={() => { setShelfMenuOpen(false); setDebugGeom((v) => !v); }}>
+              <Text style={styles.menuText}>{debugGeom ? '형상 보기 끄기(개발)' : '형상 보기(개발)'}</Text>
+            </Pressable>
+          ) : null}
+          {__DEV__ ? (
+            <Pressable accessibilityRole="button" style={styles.menuItem} onPress={() => { setShelfMenuOpen(false); placementStore.resetSample(); }}>
+              <Text style={styles.menuText}>예시 배치로 초기화(개발)</Text>
+            </Pressable>
+          ) : null}
           <Pressable accessibilityRole="button" style={styles.menuItem} onPress={() => { setShelfMenuOpen(false); setTimeout(() => setDrawerOpen(true), 280); }}>
             <BookMarked size={20} color={colors.ink} /><Text style={styles.menuText}>{ko.drawer.title}{layout.drawer.length ? ` · ${layout.drawer.length}권` : ''}</Text>
           </Pressable>

@@ -97,6 +97,13 @@ export function cameraFor(_rowIndex: number) {
 }
 // 자리 계산(줄 높이·가로 틈)용: 가장 많이 보이는 카메라 기준(어느 줄에 놓여도 모자라지 않게)
 export const CAMERA = { kx: 0.07, ky: VIEW_KY };
+// 선반 깊이(책 줄 앞선 z=0 → 뒷벽). 판형 중 가장 넓은 표지(약 152mm)를 눕혀 뒤로 물려도 들어가도록 230mm.
+// 선반 PNG에 보이는 윗면 픽셀 두께와는 별개인 물리 값이다.
+export const SHELF_DEPTH_MM = 230;
+export const SHELF_DEPTH = SHELF_DEPTH_MM * (SHELF_USABLE_WIDTH / SHELF_LENGTH_MM);
+// 눕힌 책의 수직축 회전 범위(도). 미적·조작상의 제한(선반 깊이·충돌·받침에 따라 더 좁아질 수 있다).
+export const MAX_SPIN = 12;
+
 // 누운 책(더미)은 선반 위에서 세운 책보다 뒤에 놓인다(선반 공간 깊이 DU). 화면에서는 LYING_BACK_Z × ky만큼 올라간다.
 export const LYING_BACK_Z = 40;
 export const LYING_BACK = LYING_BACK_Z * CAMERA.ky;
@@ -145,24 +152,46 @@ export function tiltedBounds(w: number, h: number, tilt: number) {
 
 // 한 권(쌓기 전)의 선반 점유 크기(상자 모델). 폭은 앞면 가로(옆면은 옆 책 뒤로 숨는다),
 // 높이는 화면에서 보이는 높이(앞면 + 위로 밀린 윗면, 눕힌 책은 뒤에 놓인 만큼 더). 세운 책은 똑바로 선 모양으로 잰다.
-export function singleFootprint(book: Book, p: Pick<BookPlacement, 'pose' | 'tilt'>) {
+// 기본 깊이(선반 공간 z): 세운 책·표지 책은 앞선(0), 눕힌 책은 조금 뒤(선반 깊이를 넘지 않게)
+export function defaultDepth(book: Book, pose: BookPlacement['pose']) {
+  if (pose !== 'horizontal') return 0;
+  return Math.max(0, Math.min(LYING_BACK_Z, SHELF_DEPTH - frontWidth(book) - 2));
+}
+
+// 수직축으로 돌린 눕힌 책의 축 정렬 폭(x)·깊이(z)
+export function spunExtent(book: Book, spin = 0) {
+  const L = bookHeight(book);
+  const W = frontWidth(book);
+  const r = (spin * Math.PI) / 180;
+  return { w: Math.abs(L * Math.cos(r)) + Math.abs(W * Math.sin(r)), d: Math.abs(L * Math.sin(r)) + Math.abs(W * Math.cos(r)) };
+}
+
+export function placementDepth(book: Book, p: Pick<BookPlacement, 'pose' | 'depth' | 'spin'>) {
+  const d = p.pose === 'horizontal' ? spunExtent(book, p.spin).d : p.pose === 'front' ? bookThickness(book) : frontWidth(book);
+  const z = p.depth ?? defaultDepth(book, p.pose);
+  return { z0: z, z1: z + d };
+}
+
+export function singleFootprint(book: Book, p: Pick<BookPlacement, 'pose' | 'tilt'> & { spin?: number; depth?: number }) {
   const h = bookHeight(book);
   const t = bookThickness(book);
   const w = frontWidth(book);
   switch (p.pose) {
     case 'spine':
       return { width: t, height: h + w * CAMERA.ky };
-    case 'horizontal':
-      return { width: h, height: t + (LYING_BACK_Z + w) * CAMERA.ky };
+    case 'horizontal': {
+      const e = spunExtent(book, p.spin);
+      return { width: e.w, height: t + ((p.depth ?? defaultDepth(book, 'horizontal')) + e.d) * CAMERA.ky };
+    }
     case 'front':
       return { width: w, height: h + t * CAMERA.ky };
   }
 }
 
 // 앞면 윤곽(왼쪽 x=0, 바닥 y=0, 위로 음수). 배치(packing)가 쓴다.
-export function visibleBookOutline(book: Book, p: Pick<BookPlacement, 'pose' | 'tilt'>) {
+export function visibleBookOutline(book: Book, p: Pick<BookPlacement, 'pose' | 'tilt'> & { spin?: number }) {
   const h = p.pose === 'horizontal' ? bookThickness(book) : bookHeight(book);
-  const w = p.pose === 'horizontal' ? bookHeight(book) : p.pose === 'front' ? frontWidth(book) : bookThickness(book);
+  const w = p.pose === 'horizontal' ? spunExtent(book, p.spin).w : p.pose === 'front' ? frontWidth(book) : bookThickness(book);
   const points = [{ x: 0, y: 0 }, { x: w, y: 0 }, { x: w, y: h }, { x: 0, y: h }];
   const t = rad(p.pose === 'spine' ? p.tilt : 0);
   const turned = points.map((q) => ({ x: q.x * Math.cos(t) - q.y * Math.sin(t), y: q.x * Math.sin(t) + q.y * Math.cos(t) }));
@@ -184,13 +213,13 @@ export function stackOffsets(books: Book[]) {
   return out;
 }
 
-export function stackFootprint(books: Book[]) {
+export function stackFootprint(books: Book[], spins: number[] = []) {
   let width = 0;
   let height = LYING_BACK_Z * CAMERA.ky;
   let depth = 0;
   const offs = stackOffsets(books);
   books.forEach((b, i) => {
-    width = Math.max(width, bookHeight(b) + offs[i]);
+    width = Math.max(width, spunExtent(b, spins[i]).w + offs[i]);
     height += bookThickness(b);
     depth = Math.max(depth, frontWidth(b));
   });

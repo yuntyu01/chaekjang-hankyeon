@@ -1,6 +1,10 @@
 // 순수 배치 계산. UI와 저장소는 여기서 검증된 레이아웃만 확정한다.
 import {
   bookHeight,
+  placementDepth,
+  spunExtent,
+  SHELF_DEPTH,
+  MAX_SPIN,
   CAMERA,
   frontWidth,
   LYING_BACK_Z,
@@ -15,6 +19,7 @@ import {
   visibleBookOutline,
   HOME_SHELF_COUNT,
 } from './geometry';
+import { stackBoxes, stackSupported } from './support';
 import type { Book, BookPlacement, Pose, ShelfLayout, ShelfLayoutV1, Tilt } from './types';
 
 export type BookMap = Record<string, Book>;
@@ -36,6 +41,8 @@ export type FailReason =
   | 'unknown-shelf'
   | 'shelf-not-empty'
   | 'in-drawer'
+  | 'unsupported'
+  | 'spin-only-lying'
   | 'no-change';
 
 export type Result = { ok: true; layout: ShelfLayout } | { ok: false; reason: FailReason };
@@ -73,14 +80,16 @@ export function placementOf(layout: ShelfLayout, bookId: string) {
   return layout.placements.find((p) => p.bookId === bookId);
 }
 
+const spinsOf = (item: ShelfItem, layout: ShelfLayout) => item.bookIds.map((id) => placementOf(layout, id)?.spin ?? 0);
+
 export function itemWidth(item: ShelfItem, layout: ShelfLayout, books: BookMap) {
-  if (item.stacked) return stackFootprint(item.bookIds.map((id) => books[id])).width;
+  if (item.stacked) return stackFootprint(item.bookIds.map((id) => books[id]), spinsOf(item, layout)).width;
   const p = placementOf(layout, item.bookIds[0])!;
   return singleFootprint(books[p.bookId], p).width;
 }
 
 export function itemHeight(item: ShelfItem, layout: ShelfLayout, books: BookMap) {
-  if (item.stacked) return stackFootprint(item.bookIds.map((id) => books[id])).height;
+  if (item.stacked) return stackFootprint(item.bookIds.map((id) => books[id]), spinsOf(item, layout)).height;
   const p = placementOf(layout, item.bookIds[0])!;
   return singleFootprint(books[p.bookId], p).height;
 }
@@ -104,24 +113,45 @@ function lyingEndGap(item: ShelfItem, books: BookMap) {
   return (LYING_BACK_Z + depth) * CAMERA.kx;
 }
 
+// 한 항목(책 또는 쌓기 더미)이 차지하는 깊이 구간(선반 공간 z)
+export function itemDepth(item: ShelfItem, layout: ShelfLayout, books: BookMap) {
+  let z0 = Infinity;
+  let z1 = -Infinity;
+  for (const id of item.bookIds) {
+    const p = placementOf(layout, id)!;
+    const d = placementDepth(books[id], p);
+    z0 = Math.min(z0, d.z0);
+    z1 = Math.max(z1, d.z1);
+  }
+  return { z0, z1 };
+}
+
 function packedPositions(items: ShelfItem[], layout: ShelfLayout, books: BookMap) {
-  const packed: { item: ShelfItem; x: number; width: number; poly: XY[] }[] = [];
+  // sep[j]: 이 항목이 앞 항목 j보다 최소 얼마나 오른쪽에 있어야 하는지(깊이가 겹치지 않으면 -Infinity)
+  const packed: { item: ShelfItem; x: number; width: number; poly: XY[]; z: { z0: number; z1: number }; sep: number[] }[] = [];
   for (const item of items) {
+    const z = itemDepth(item, layout, books);
     const width = itemWidth(item, layout, books), height = itemHeight(item, layout, books);
     const poly = item.stacked
       ? [{ x: 0, y: -height }, { x: width, y: -height }, { x: width, y: 0 }, { x: 0, y: 0 }]
       : visibleBookOutline(books[item.bookIds[0]], { ...placementOf(layout, item.bookIds[0])!, tilt: 0 });
-    let x = 0;
-    const last = packed[packed.length - 1];
-    // 눕힌 책(더미) 바로 뒤에는 오른쪽 끝면이 보일 만큼 띄운다(뒤에 놓여 옆 책 앞면에 가려지지 않게, 시안처럼)
-    if (last && isHorizontalItem(last.item, layout)) x = last.x + last.width + lyingEndGap(last.item, books);
-    for (const prev of packed) {
+    const sep: number[] = packed.map(() => -Infinity);
+    const last = packed.length - 1;
+    packed.forEach((prev, j) => {
+      // 깊이가 겹치지 않는 책끼리는 정면에서 겹쳐 보여도 밀지 않는다
+      if (prev.z.z1 <= z.z0 + 0.05 || z.z1 <= prev.z.z0 + 0.05) return;
       for (const y of [...prev.poly, ...poly].map((q) => q.y)) {
         const a = intervalAt(prev.poly, y), b = intervalAt(poly, y);
-        if (a && b) x = Math.max(x, prev.x + a.right - b.left + SHELF.gap);
+        if (a && b) sep[j] = Math.max(sep[j], a.right - b.left + SHELF.gap);
       }
-    }
-    packed.push({ item, x, width, poly });
+    });
+    // 눕힌 책(더미) 바로 뒤에는 오른쪽 끝면이 보일 만큼 띄운다(뒤에 놓여 옆 책 앞면에 가려지지 않게, 시안처럼)
+    if (last >= 0 && isHorizontalItem(packed[last].item, layout)) sep[last] = Math.max(sep[last], packed[last].width + lyingEndGap(packed[last].item, books));
+    let x = 0;
+    packed.forEach((prev, j) => {
+      if (sep[j] > -Infinity) x = Math.max(x, prev.x + sep[j]);
+    });
+    packed.push({ item, x, width, poly, z, sep });
   }
   return packed;
 }
@@ -158,18 +188,21 @@ function legacyXs(items: ShelfItem[], layout: ShelfLayout, books: BookMap, packe
 
 // 원하는 위치를 최대한 지키며 겹치지 않게 민다(윤곽대로 붙인 간격이 최소 간격). 오른쪽 끝을 넘으면 왼쪽으로 되민다.
 // 원하는 위치가 없는 자리는 앞 자리 바로 뒤에 붙는다.
-function resolveXs(items: ShelfItem[], layout: ShelfLayout, packed: { x: number; width: number }[], want: (i: number) => number | undefined) {
+function resolveXs(items: ShelfItem[], layout: ShelfLayout, packed: { x: number; width: number; sep: number[] }[], want: (i: number) => number | undefined) {
   const { lo, hi } = bounds(items, layout);
   const xs: number[] = [];
   items.forEach((_, i) => {
     const w = want(i);
-    const min = i === 0 ? lo : xs[i - 1] + (packed[i].x - packed[i - 1].x);
-    xs.push(w === undefined ? min : Math.max(w, min));
+    let min = lo;
+    for (let j = 0; j < i; j++) if (packed[i].sep[j] > -Infinity) min = Math.max(min, xs[j] + packed[i].sep[j]);
+    xs.push(w === undefined ? (i === 0 ? lo : Math.max(min, xs[i - 1] + (packed[i].sep[i - 1] > -Infinity ? packed[i].sep[i - 1] : 0))) : Math.max(w, min));
   });
+  // 오른쪽 끝을 넘는 책이 있으면 왼쪽으로 되민다(깊이가 겹치는 앞 책도 함께)
   const n = items.length;
-  if (n && xs[n - 1] + packed[n - 1].width > hi) {
-    xs[n - 1] = hi - packed[n - 1].width;
-    for (let i = n - 2; i >= 0; i--) xs[i] = Math.min(xs[i], xs[i + 1] - (packed[i + 1].x - packed[i].x));
+  for (let i = n - 1; i >= 0; i--) {
+    let max = hi - packed[i].width;
+    for (let k = i + 1; k < n; k++) if (packed[k].sep[i] > -Infinity) max = Math.min(max, xs[k] - packed[k].sep[i]);
+    xs[i] = Math.min(xs[i], max);
   }
   return xs;
 }
@@ -259,6 +292,9 @@ export function normalize(layout: ShelfLayout): ShelfLayout {
         const src = placementOf(layout, item.bookIds[0])!;
         if (src.pos !== undefined) next.pos = src.pos;
         if (p.lean && p.pose === 'spine' && p.tilt !== 0) next.lean = p.lean;
+        // 선반 공간 깊이·수직축 회전(눕힌 책만)은 그대로 보존
+        if (p.depth !== undefined) next.depth = p.depth;
+        if (p.spin && p.pose === 'horizontal') next.spin = p.spin;
         placements.push(next);
       });
     });
@@ -311,14 +347,23 @@ function insertItem(
   return settle(next, books, desired);
 }
 
-// 여러 선반의 공간·무결성을 한 번에 확인한다.
+// 여러 선반의 공간·무결성을 한 번에 확인한다: 좌우 끝, 앞뒤 깊이(선반 앞선~뒷벽), 쌓기 받침.
+// 첫 구현은 선반 밖으로 튀어나오는 배치를 허용하지 않는다(눕힌 책의 좌우 H_OVERHANG만 예외, 기존 규칙).
 export function checkSpace(layout: ShelfLayout, books: BookMap): FailReason | null {
   for (const shelf of layout.shelves) {
     const items = shelfItems(layout, shelf.id);
     if (!items.length) continue;
     const pos = itemPositions(items, layout, books);
     const { lo, hi } = bounds(items, layout);
-    if (pos[0].x < lo - 0.01 || pos[pos.length - 1].x + pos[pos.length - 1].width > hi + 0.01) return 'no-space';
+    for (const p of pos) if (p.x < lo - 0.01 || p.x + p.width > hi + 0.01) return 'no-space';
+    for (const p of pos) {
+      const z = itemDepth(p.item, layout, books);
+      if (z.z0 < -0.01 || z.z1 > SHELF_DEPTH + 0.01) return 'no-space';
+      if (p.item.stacked) {
+        const members = p.item.bookIds.map((id) => ({ bookId: id, book: books[id], spin: placementOf(layout, id)?.spin, depth: placementOf(layout, p.item.bookIds[0])?.depth }));
+        if (!stackSupported(stackBoxes(members, p.x))) return 'unsupported';
+      }
+    }
   }
   return null;
 }
@@ -424,7 +469,8 @@ export function setPose(layout: ShelfLayout, books: BookMap, bookId: string, pos
     const base = detach(layout, bookId, books);
     return finish(layout, insertItem(base, { bookId, pose, tilt: 0 }, p.shelfId, index + 1, books), books);
   }
-  const placements = layout.placements.map((q) => (q.bookId === bookId ? { ...q, pose, tilt: 0 as Tilt } : q));
+  // 자세가 바뀌면 깊이·수직축 회전은 새 자세의 기본값으로(원본 치수는 그대로, 방향만 바뀐다)
+  const placements = layout.placements.map((q) => (q.bookId === bookId ? { ...q, pose, tilt: 0 as Tilt, depth: undefined, spin: undefined } : q));
   return finish(layout, settle(normalize({ ...layout, placements }), books, bookXs(layout, books)), books);
 }
 
@@ -440,6 +486,41 @@ export function rotateStep(layout: ShelfLayout, books: BookMap, bookId: string, 
   if (side === 0) return setTilt(layout, books, bookId, (dir * 7) as Tilt);
   if (dir > 0) return { ok: false, reason: 'no-change' };
   return setPose(layout, books, bookId, 'horizontal');
+}
+
+// 눕힌 책을 선반 위에서 비스듬히(수직축 회전). 원하는 각도가 안 되면(선반 끝·깊이·받침) 0 쪽으로 좁혀 가능한 가장 가까운 각도.
+// 다른 책은 제자리에 두고, 넓어진 만큼만 기존 규칙대로 민다. 결과 각도는 result.layout의 spin에 들어 있다.
+export function setSpin(layout: ShelfLayout, books: BookMap, bookId: string, deg: number): Result {
+  const p = placementOf(layout, bookId);
+  if (!p) return { ok: false, reason: 'unknown-book' };
+  if (p.pose !== 'horizontal') return { ok: false, reason: 'spin-only-lying' };
+  const want = Math.max(-MAX_SPIN, Math.min(MAX_SPIN, Math.abs(deg) < 1 ? 0 : deg));
+  const desired = bookXs(layout, books);
+  const book = books[bookId];
+  const z0 = placementDepth(book, p);
+  const center = (z0.z0 + z0.z1) / 2; // 가운데를 축으로 돈다: 깊이 가운데는 그대로(선반 앞선·뒷벽 안으로만)
+  const tryAt = (a: number): ShelfLayout | null => {
+    const spin = Math.round(a * 100) / 100 || undefined;
+    const d = spunExtent(book, spin).d;
+    const depth = Math.round(Math.max(0, Math.min(SHELF_DEPTH - d, center - d / 2)) * 100) / 100;
+    const placements = layout.placements.map((q) => (q.bookId === bookId ? { ...q, spin, depth: p.stackId ? q.depth : depth } : q));
+    const next = settle({ ...layout, placements }, books, desired);
+    return checkSpace(next, books) ? null : next;
+  };
+  let best = tryAt(want);
+  if (!best) {
+    // 0 쪽으로 이분 탐색
+    let ok = 0;
+    let bad = want;
+    for (let i = 0; i < 10; i++) {
+      const mid = (ok + bad) / 2;
+      if (tryAt(mid)) ok = mid;
+      else bad = mid;
+    }
+    best = tryAt(ok);
+  }
+  if (!best) return { ok: false, reason: 'no-space' };
+  return finish(layout, best, books);
 }
 
 export function setTilt(layout: ShelfLayout, books: BookMap, bookId: string, tilt: Tilt): Result {
