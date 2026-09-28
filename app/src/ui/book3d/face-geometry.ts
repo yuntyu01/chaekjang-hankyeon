@@ -1,15 +1,17 @@
 // 상자 옆면·윗면의 모양 계산(워클릿). 선반 줄·드래그·서랍 모두 이것 하나로 면을 만든다.
-// UI 스레드에서 매 프레임 진행률 t의 상자로 다시 계산하므로, 워클릿은 쓰는 함수를 먼저 정의한다(만들 때 붙잡는다).
-import { visibleFaces, type Camera, type Face, type Placed } from '@/domain/box';
+// UI 스레드에서 매 프레임 지금 자세(Book3)로 다시 계산한다. 워클릿은 쓰는 함수를 먼저 정의한다(만들 때 붙잡는다).
+// 면 윤곽 순서 [A, B, Bb, Ab]: A→B = 지금 가장 앞을 향한 면(주 면)과 맞닿은 변(주 면의 반시계 순서), Ab·Bb = 뒤쪽 끝.
+import { corners, facing, faceCorners, FACE_IDS, type Book3, type Cam, type FaceId } from '@/domain/book3';
+import { project } from '@/domain/box';
 import type { Point } from '@/domain/shelf-scene';
-import type { Pose } from '@/domain/types';
 
-export type FaceKind = Face['kind'];
+export type FaceKind = 'top' | 'right' | 'left' | 'bottom';
 // 장면 좌표 → 캔버스 px: X = x * s + tx, Y = y * s + ty
 export type Affine = { s: number; tx: number; ty: number };
 
 export type FaceGeom = {
   ok: boolean;
+  lit: boolean; // 빛을 받는 쪽(위·왼쪽) 면
   all: Point[]; // 면 윤곽(둥근 모서리·손그림 흔들림)
   runs: Point[][]; // 바깥 실루엣 변(연한 선)
   inner: Point[] | null; // 종이 단면
@@ -21,15 +23,7 @@ export type FaceGeom = {
   mid: Point; // 모서리 명암이 풀리는 곳
 };
 
-export const EMPTY_FACE: FaceGeom = { ok: false, all: [], runs: [], inner: null, lines: [], hi: [], A: { x: 0, y: 0 }, B: { x: 0, y: 0 }, Ab: { x: 0, y: 0 }, mid: { x: 0, y: 0 } };
-
-// 면 재료: 표지 판(board) 또는 종이 단면(pages). k = 밝기(빛은 왼쪽 위: 윗면 밝고 오른쪽 옆면 어둡다).
-// boards: 종이 단면에서 표지 판이 보이는 방향(u = 앞 모서리 방향 양끝, v = 깊이 방향 앞뒤 끝).
-export function materialOf(pose: Pose, kind: FaceKind): { mat: 'board' | 'pages'; k: number; boards?: 'u' | 'v' } {
-  if (pose === 'spine') return kind === 'top' ? { mat: 'pages', k: 0.97, boards: 'u' } : { mat: 'board', k: kind === 'right' ? 0.8 : 0.9 };
-  if (pose === 'front') return kind === 'left' ? { mat: 'board', k: 0.9 } : { mat: 'pages', k: kind === 'top' ? 0.97 : 0.86, boards: 'v' };
-  return kind === 'top' ? { mat: 'board', k: 1.02 } : { mat: 'pages', k: kind === 'right' ? 0.88 : 0.9, boards: 'u' };
-}
+export const EMPTY_FACE: FaceGeom = { ok: false, lit: false, all: [], runs: [], inner: null, lines: [], hi: [], A: { x: 0, y: 0 }, B: { x: 0, y: 0 }, Ab: { x: 0, y: 0 }, mid: { x: 0, y: 0 } };
 
 // 손으로 그은 선의 흔들림(0 근처 부드러운 잡음). t는 선을 따라간 거리(px), s = 1DU px.
 function wobbleAt(t: number, s: number, seed: number) {
@@ -144,15 +138,8 @@ function faceStyle(kind: FaceKind, s: number) {
   return { radii: [0, 0, 2 * s, 2 * s], wob: [false, true, true, true], outer: [false, true, true, true] };
 }
 
-export function faceAt(cam: Camera, p: Placed, kind: FaceKind): Face | null {
-  'worklet';
-  const sides = visibleFaces(cam, p).sides;
-  for (let i = 0; i < sides.length; i++) if (sides[i].kind === kind) return sides[i];
-  return null;
-}
-
 // 면 하나의 그릴 모양. bow: 세운 책 머리의 볼록함(px), boards: 종이 단면의 판 방향(null = 표지 판 면)
-export function computeFace(face: Face | null, kind: FaceKind, px: Affine, bow: number, boards: 'u' | 'v' | null, seed: number): FaceGeom {
+export function computeFace(face: { poly: Point[] } | null, kind: FaceKind, px: Affine, bow: number, boards: 'u' | 'v' | null, seed: number): FaceGeom {
   'worklet';
   if (!face) return EMPTY_FACE;
   const s = px.s;
@@ -205,6 +192,7 @@ export function computeFace(face: Face | null, kind: FaceKind, px: Affine, bow: 
   for (let k = 0; k <= 12; k++) hi.push(P(k / 12, 0));
   return {
     ok: true,
+    lit: kind === 'top' || kind === 'left',
     all: soft.all,
     runs: soft.runs,
     inner,
@@ -217,11 +205,69 @@ export function computeFace(face: Face | null, kind: FaceKind, px: Affine, bow: 
   };
 }
 
-// 이 상자에서 그릴 면 종류(처음·끝 모양 어느 쪽에서든 보이는 면). 윗면을 마지막에(옆면 위에) 그린다.
-export function kindsOf(cam: Camera, boxes: Placed[]): FaceKind[] {
-  const set = new Set<FaceKind>();
-  for (const b of boxes) for (const f of visibleFaces(cam, b).sides) set.add(f.kind);
-  return [...set].sort((a, b) => (a === 'top' ? 1 : 0) - (b === 'top' ? 1 : 0));
+
+// 가장 앞을 향한 면
+export function mainFace(cam: Cam, b: Book3): FaceId {
+  'worklet';
+  let best: FaceId = 'spine';
+  let bv = -Infinity;
+  for (const f of FACE_IDS) {
+    const v = facing(cam, b, f);
+    if (v > bv) {
+      bv = v;
+      best = f;
+    }
+  }
+  return best;
 }
 
-export const seedOf = (id: string, kind: FaceKind) => [...id].reduce((h, c) => h + c.charCodeAt(0), 0) * 0.37 + kind.length;
+// 옆면 하나의 그릴 모양(보이지 않거나 주 면이면 EMPTY). bowS: 세운 책 머리 볼록함(px, 책등이 주 면이고 서 있을 때만).
+export function sideFaceGeom(cam: Cam, b: Book3, f: FaceId, px: Affine, bowS: number, pages: boolean, seed: number): FaceGeom {
+  'worklet';
+  if (facing(cam, b, f) <= 0.002) return EMPTY_FACE;
+  const main = mainFace(cam, b);
+  if (main === f) return EMPTY_FACE;
+  const cs = corners(b);
+  const P = (i: number) => project(cam, cs[i]);
+  const mc = faceCorners(main);
+  // 주 면 꼭짓점을 화면에서 반시계(위가 +)로
+  let cx = 0;
+  let cy = 0;
+  for (const i of mc) {
+    const p = P(i);
+    cx += p.x / 4;
+    cy += p.y / 4;
+  }
+  const ord = [...mc].sort((i, j) => {
+    const p = P(i);
+    const q = P(j);
+    return Math.atan2(-(p.y - cy), p.x - cx) - Math.atan2(-(q.y - cy), q.x - cx);
+  });
+  const fc = faceCorners(f);
+  let A = -1;
+  let B = -1;
+  for (let k = 0; k < 4; k++) {
+    const i = ord[k];
+    const j = ord[(k + 1) % 4];
+    if (fc.includes(i) && fc.includes(j)) {
+      A = i;
+      B = j;
+    }
+  }
+  if (A < 0) return EMPTY_FACE;
+  const ia = fc.indexOf(A);
+  const ib = fc.indexOf(B);
+  const nb = fc[(ib + 1) % 4] === A ? fc[(ib + 3) % 4] : fc[(ib + 1) % 4];
+  const na = fc[(ia + 1) % 4] === B ? fc[(ia + 3) % 4] : fc[(ia + 1) % 4];
+  const pa = P(A);
+  const pb = P(B);
+  const mx = (pa.x + pb.x) / 2 - cx;
+  const my = (pa.y + pb.y) / 2 - cy;
+  const kind: FaceKind = Math.abs(mx) > Math.abs(my) ? (mx > 0 ? 'right' : 'left') : my < 0 ? 'top' : 'bottom';
+  // 종이 단면에서 표지 판은 두께 방향 양끝: A→B가 두께(x) 방향이면 u, 아니면 깊이 쪽 v
+  const boards = pages ? ((A ^ B) === 1 ? 'u' : 'v') : null;
+  const bow = main === 'spine' && (kind === 'top' || kind === 'right') ? bowS : 0;
+  return computeFace({ poly: [pa, pb, P(nb), P(na)] }, kind, px, bow, boards, seed);
+}
+
+export const seedOf = (id: string, f: string) => [...id].reduce((h, c) => h + c.charCodeAt(0), 0) * 0.37 + f.length;

@@ -6,6 +6,7 @@ import { useEffect } from 'react';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
+import { BookArtProvider } from '@/ui/book3d/art';
 import { PaperBackground } from '@/ui/PaperBackground';
 import { colors } from '@/ui/theme';
 
@@ -22,7 +23,9 @@ export default function RootLayout() {
       <SafeAreaProvider>
         <StatusBar style="dark" />
         <PaperBackground />
-        <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: 'transparent' } }} />
+        <BookArtProvider>
+          <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: 'transparent' } }} />
+        </BookArtProvider>
       </SafeAreaProvider>
     </GestureHandlerRootView>
   );

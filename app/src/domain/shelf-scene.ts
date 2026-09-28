@@ -1,6 +1,7 @@
 // 선반 한 칸의 책 프레임 계산(순수). 렌더링·터치 판정·그림자가 모두 이 결과를 쓴다.
 // 좌표: 설계 단위, x는 선반 판 안쪽 왼쪽 끝 기준, y는 아래로 증가하며 선반 바닥이 SHELF.clearHeight.
 import { boxSize, collide, frontPoly, silhouette, solveLean, type Placed } from './box';
+import { fromPlaced, type Book3 } from './book3';
 import { bookHeight, bookThickness, CAMERA, LYING_BACK_Z, SHELF, stackOffsets } from './geometry';
 import { itemPositions, placementOf, shelfItems, type BookMap } from './layout-engine';
 import { firstContact, MAX_LEAN } from './lean';
@@ -234,4 +235,9 @@ export function frameBBox(f: BookFrame) {
 export function standaloneFrame(book: Book, pose: Pose): BookFrame {
   const box: Placed = { bookId: book.id, pose, size: boxSize(book, pose), x: 0, y: 0, z: 0, angle: 0 };
   return frameOf(box, book.id, book.id, '', 0, 0);
+}
+
+// 선반 한 칸의 3D 자세(그리기·전환 경로의 입력)
+export function bodiesOf(layout: ShelfLayout, books: BookMap, shelfId: string): Book3[] {
+  return computeShelf(layout, books, shelfId).frames.map((f) => fromPlaced(f.box!));
 }

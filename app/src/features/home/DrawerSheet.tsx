@@ -9,7 +9,7 @@ import { bookThickness, SHELF, SHELF_STYLE, singleFootprint } from '@/domain/geo
 import { SHELF_ASSET } from '@/domain/shelf-asset.generated';
 import type { Book } from '@/domain/types';
 import { ko } from '@/i18n/ko';
-import { StandaloneBook } from '@/ui/box/BoxShelf';
+import { StandaloneBook } from '@/ui/book3d/StandaloneBook';
 import { Plank } from '@/ui/shelf/Plank';
 import { ShelfShadow } from '@/ui/shelf/ShelfShadow';
 import { colors, typeScale } from '@/ui/theme';

@@ -323,7 +323,7 @@ describe('자리 바꾸기', () => {
 });
 
 describe('좌우 돌리기', () => {
-  it('세운 책: 반대 기울임 → 똑바로 → 이쪽 기울임 → 눕힘, 누운 책은 다시 선다', () => {
+  it('다이얼: 눕힘 ← 왼쪽 기울임 ← 똑바로 → 오른쪽 기울임, 끝에서는 그대로', () => {
     const books: BookMap = Object.fromEntries(SAMPLE_BOOKS.map((b) => [b.id, b]));
     // 공간이 넉넉한 선반(두 권)
     let l: ShelfLayout = {
@@ -343,9 +343,11 @@ describe('좌우 돌리기', () => {
       return p.pose === 'spine' ? p.tilt : p.pose;
     };
     expect(step(1)).toBe(7);
+    expect(rotateStep(l, books, 'b09', 1).ok).toBe(false); // 오른쪽 끝
     expect(step(-1)).toBe(0);
     expect(step(-1)).toBe(-7);
     expect(step(-1)).toBe('horizontal');
+    expect(rotateStep(l, books, 'b09', -1).ok).toBe(false); // 왼쪽 끝
     expect(step(1)).toBe(0);
   });
 });

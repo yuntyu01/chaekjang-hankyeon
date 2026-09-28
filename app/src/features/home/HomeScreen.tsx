@@ -40,12 +40,15 @@ import {
   type FailReason,
   type Result,
 } from '@/domain/layout-engine';
-import { computeShelf, hitTest, type BookFrame } from '@/domain/shelf-scene';
+import type { Book3 } from '@/domain/book3';
+import { bodiesOf, computeShelf, hitTest, PLANK_BOUNDS, withLeans, type BookFrame } from '@/domain/shelf-scene';
+import { planTransition } from '@/domain/transition';
 import type { Pose, ShelfLayout, Tilt } from '@/domain/types';
 import { ko } from '@/i18n/ko';
 import { placementStore, usePlacementStore } from '@/store/placement-store';
 import { DragOverlay, frameBBox } from '@/ui/shelf/DragOverlay';
 import { CONTENT_TOP, computeRows, rowAt, toContent, toScene, useShelfMetrics } from '@/ui/shelf/metrics';
+import { currentStates, motionOf } from '@/ui/shelf/ShelfMotion';
 import { ShelfRow, type DropHint } from '@/ui/shelf/ShelfRow';
 import { SHELF_SHADOW_EXTENT } from '@/ui/shelf/ShelfShadow';
 import { colors, fonts, motion, navigation } from '@/ui/theme';
@@ -65,6 +68,7 @@ type Preview =
 type Drag = {
   bookId: string;
   frame: BookFrame; // 집어 든 순간의 모양(오버레이 렌더용)
+  from: Book3 | null; // 집어 든 순간 화면에 보이던 3D 자세(움직이는 도중이면 그 모습)
   boxW: number; // px
   grabX: number;
   grabY: number;
@@ -150,6 +154,13 @@ export function HomeScreen() {
   }, []);
 
   const shelves = useMemo(() => sortedShelves(layout), [layout]);
+  // 저장본을 불러와 처음 그릴 때는 움직이지 않는다(예시 배치에서 저장된 배치로 날아가지 않게)
+  const [settled, setSettled] = useState(false);
+  useEffect(() => {
+    if (!store.loaded) return;
+    const id = setTimeout(() => setSettled(true), 400);
+    return () => clearTimeout(id);
+  }, [store.loaded]);
 
   const updateDrag = (d: Drag | null) => {
     dragRef.current = d;
@@ -246,6 +257,10 @@ export function HomeScreen() {
     const d: Drag = {
       bookId: hit.bookId,
       frame: hit,
+      from: (() => {
+        const mo = motionOf(hit.shelfId);
+        return mo ? currentStates(mo)[hit.bookId] ?? null : null;
+      })(),
       boxW: box.width * m.scale,
       grabX: x - tl.x,
       grabY: y - tl.y,
@@ -302,7 +317,7 @@ export function HomeScreen() {
     const f = computeShelf(final, books, pl.shelfId).frames.find((fr) => fr.bookId === d.bookId)!;
     const box = frameBBox(f);
     const tl = toContent(m, row, { x: box.minX, y: box.minY });
-    updateDrag({ ...d, frame: f, settling: final });
+    updateDrag({ ...d, frame: f, from: null, settling: final });
     const dur = reduceMotion ? 0 : motion.settle;
     lift.value = withTiming(0, { duration: dur });
     dragX.value = withTiming(tl.x, { duration: dur });
@@ -449,19 +464,34 @@ export function HomeScreen() {
     return commit(moveToShelf(layout, books, id, shelves[i].id));
   };
 
+  // 자세·기울기 바꾸기 전에 경로를 확인한다: 옆 책이 비켜도 도중에 겹치지 않고 돌 수 없으면 바꾸지 않고 안내(브리프 규칙)
+  const commitPath = (r: Result, id: string): string | null => {
+    if (!r.ok) return commit(r);
+    const shelfId = placementOf(layout, id)?.shelfId;
+    const mo = shelfId ? motionOf(shelfId) : undefined;
+    if (shelfId && mo) {
+      const now = Object.values(currentStates(mo));
+      const next = bodiesOf(withLeans(r.layout, books), books, shelfId);
+      if (!planTransition(now, next, PLANK_BOUNDS)) return ko.fail['no-space'];
+    }
+    return commit(r);
+  };
+
   const closeTools = () => {
     setToolsId(null);
     setToolsMsg(null);
     setSelectedId(null);
   };
   // 좌우 돌리기 한 단계. 기댈 곳이 없어 바로 선 경우 알려 준다.
+  // 좌우 돌리기 한 단계. 기댈 곳이 없어 기울 수 없으면: 왼쪽은 바로 눕히고, 오른쪽은 안내한다.
   const toolRotate = (id: string, dir: -1 | 1): string | null => {
-    const r = rotateStep(layout, books, id, dir);
-    const err = commit(r);
-    if (err) return err;
-    const now = placementOf(placementStore.get().layout, id);
-    if (r.ok && placementOf(r.layout, id)?.tilt !== 0 && now && now.pose === 'spine' && now.tilt === 0) return ko.lean.noSupport;
-    return null;
+    let r = rotateStep(layout, books, id, dir);
+    if (!r.ok && r.reason === 'no-change') return null;
+    const wantTilt = r.ok ? placementOf(r.layout, id) : undefined;
+    const cannotLean = r.ok && wantTilt?.pose === 'spine' && wantTilt.tilt !== 0 && placementOf(withLeans(r.layout, books), id)?.tilt === 0;
+    if (cannotLean && dir < 0) r = setPose(layout, books, id, 'horizontal');
+    else if (cannotLean) return ko.lean.noSupport;
+    return commitPath(r, id);
   };
 
   // 도구 막대 위치: 책 밑(선반 앞턱 아래), 화면 밖이면 책 위
@@ -590,7 +620,7 @@ export function HomeScreen() {
                   hint={hintFor(s.id)}
                   editing={editing && !drag}
                   canRemove={false}
-                  reduceMotion={reduceMotion}
+                  reduceMotion={reduceMotion || !settled}
                   a11yLabelOf={a11yLabelOf}
                   onA11y={onA11y}
                   onRemove={() => {}}
@@ -601,7 +631,7 @@ export function HomeScreen() {
         </Animated.ScrollView>
 
         {drag && draggedBook ? (
-          <DragOverlay book={draggedBook} frame={drag.frame} scale={m.scale} x={dragX} y={dragY} lift={lift} />
+          <DragOverlay book={draggedBook} frame={drag.frame} from={drag.from} scale={m.scale} x={dragX} y={dragY} lift={lift} />
         ) : null}
 
         {popId && popAnchor && books[popId] && placementOf(layout, popId) ? (
@@ -626,7 +656,7 @@ export function HomeScreen() {
             onRotate={(dir) => setToolsMsg(toolRotate(toolsId, dir))}
             onCover={() => {
               const p = placementOf(layout, toolsId)!;
-              setToolsMsg(commit(setPose(layout, books, toolsId, p.pose === 'front' ? 'spine' : 'front')));
+              setToolsMsg(commitPath(setPose(layout, books, toolsId, p.pose === 'front' ? 'spine' : 'front'), toolsId));
             }}
             onDrawer={() => {
               commit(moveToDrawer(layout, toolsId, books), ko.drawer.stored);

@@ -51,6 +51,10 @@ export const typeScale = {
 // 상자 모델 카메라(앱 전체 하나). 값은 domain/geometry CAMERA(배치·충돌도 같은 값을 쓴다).
 export const camera = CAMERA;
 
+// 광원(앱 전체 하나): 왼쪽 위, 살짝 앞. 책 면 밝기 = ambient + diffuse·(법선·광원), [min, max]로 제한(램버트).
+// 참고값: 책등(앞) 1.00, 광원 반대 옆면 0.88, 윗면 1.04.
+export const light = { dir: { x: -0.115, y: 0.808, z: -0.577 }, ambient: 0.9, diffuse: 0.1732, min: 0.85, max: 1.05 };
+
 export const shadow = {
   contact: { opacity: 0.42, height: 1.4, spread: -1, shift: 2, blur: 1 }, // 선반에 닿는 좁은 그림자(책 밑에만, 빛 반대쪽으로 조금)
   // 책이 뒤 벽에 드리우는 그림자. 빛이 왼쪽 위에서 비스듬히 오므로, 책 윤곽을 오른쪽 아래로 옮긴 모양과

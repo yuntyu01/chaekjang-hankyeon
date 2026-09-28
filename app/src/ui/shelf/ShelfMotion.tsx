@@ -1,79 +1,99 @@
 // 선반 한 줄의 움직임. 배치가 바뀌면 관련 책 전부의 경로를 공통 진행률 t 하나로 짜고(domain/transition),
-// 매 프레임(UI 스레드) 같은 상자에서 옆면·윗면, 앞면(글자 포함), 벽 그림자, 바닥 접촉을 함께 계산한다.
-// 들림(선택한 책)도 같은 상자에 더한다. 동작 줄이기 설정이면 즉시 적용.
-import { BlurMask, Canvas, Group, LinearGradient, Path, Skia, useImage, vec, type SkPath } from '@shopify/react-native-skia';
-import { memo, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
+// 매 프레임(UI 스레드) 같은 3D 자세에서 책 면(BookNode), 벽 그림자, 바닥 접촉을 함께 계산한다.
+// 경로 계획의 입력은 "지금 화면에 보이는 자세"(움직이는 도중이면 그 보간값)라 도중에 다시 조작해도 튀지 않는다.
+// React 상태는 배치가 바뀔 때만 건드리고, 프레임마다는 SharedValue만 바뀐다. 동작 줄이기 설정이면 즉시 적용.
+import { BlurMask, Canvas, Group, LinearGradient, Path, Skia, vec, type SkPath } from '@shopify/react-native-skia';
+import { memo, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { StyleSheet } from 'react-native';
-import Animated, { Easing, useAnimatedStyle, useDerivedValue, useSharedValue, withTiming, type SharedValue } from 'react-native-reanimated';
+import { Easing, useDerivedValue, useSharedValue, withTiming, type SharedValue } from 'react-native-reanimated';
 import { scheduleOnUI } from 'react-native-worklets';
 
-import { BRUSH_DETAIL } from '@/domain/body-art.generated';
-import { frontPoly, project, silhouette, type Camera, type Placed } from '@/domain/box';
-import { CAMERA, DESIGN_WIDTH, SHELF } from '@/domain/geometry';
-import { castShape, rgba } from '@/domain/shadow-shape';
+import { corners, fromPlaced, lowest, type Book3, type Cam } from '@/domain/book3';
+import { project } from '@/domain/box';
+import { DESIGN_WIDTH, SHELF } from '@/domain/geometry';
+import { castShape, hull, rgba } from '@/domain/shadow-shape';
 import { PLANK_BOUNDS, type BookFrame, type Point } from '@/domain/shelf-scene';
-import { boxAt, planTransition, type TransitionEntry } from '@/domain/transition';
-import type { Book, Pose } from '@/domain/types';
-import { BOX_HEAD_BOW } from '@/ui/book/BookBody';
+import { bookAt, planTransition, type Track } from '@/domain/transition';
+import type { Book } from '@/domain/types';
+import { useBookShared, type Shared } from '@/ui/book3d/art';
+import { BookNode } from '@/ui/book3d/BookNode';
+import type { Affine } from '@/ui/book3d/face-geometry';
 import { colors, shadow } from '@/ui/theme';
-
-import { FaceShape } from '@/ui/box/BookFaces';
-import { computeFace, EMPTY_FACE, faceAt, kindsOf, materialOf, seedOf, type FaceKind } from '@/ui/box/face-geometry';
 
 const FLOOR = SHELF.clearHeight;
 export const MOTION_MS = 230; // 기울이기·밀림
+export const POSE_MS = 420; // 자세 바꾸기(표지로·눕히기)
 const LIFT_DU = 7;
 
-type Plan = Record<string, TransitionEntry>;
+type Tracks = Record<string, Track>;
 export type Motion = {
-  plan: SharedValue<Plan>;
+  tracks: SharedValue<Tracks>;
   t: SharedValue<number>;
   liftId: SharedValue<string | null>;
   lift: SharedValue<number>;
 };
 
-const stillOf = (frames: BookFrame[]): Plan =>
-  Object.fromEntries(frames.filter((f) => f.box).map((f) => [f.bookId, { id: f.bookId, from: f.box!, to: f.box!, move: [0, 1], angle: [[0, f.box!.angle], [1, f.box!.angle]] } as TransitionEntry]));
+export const holdTrack = (b: Book3): Track => ({
+  id: b.id,
+  dims: b.dims,
+  moving: false,
+  segs: [{ kind: 0, t0: 0, t1: 1, r0: b.roll, r1: b.roll, y0: b.yaw, y1: b.yaw, a: { x: 0, y: 0, z: 0 }, w0: b.t, w1: b.t, al: 0, x0: 0, x1: 0, b0: 0, b1: 0, z0: 0, z1: 0 }],
+});
 
-// 진행률 t에서 이 책의 상자(들림 포함). 경로가 아직 없으면 null.
-export function boxNow(m: Motion, id: string): Placed | null {
+// 진행률 t에서 이 책의 자세(들림 포함). 경로가 없으면 null.
+export function stateNow(m: Motion, id: string): Book3 | null {
   'worklet';
-  const e = m.plan.value[id];
-  if (!e) return null;
-  const b = boxAt(e, m.t.value);
-  if (m.liftId.value === id && m.lift.value > 0) return { ...b, y: b.y + LIFT_DU * m.lift.value };
+  const tr = m.tracks.value[id];
+  if (!tr) return null;
+  const b = bookAt(tr, m.t.value);
+  if (m.liftId.value === id && m.lift.value > 0) return { ...b, t: { x: b.t.x, y: b.t.y + LIFT_DU * m.lift.value, z: b.t.z } };
   return b;
 }
 
-export function useShelfMotion(frames: BookFrame[], reduceMotion: boolean, selectedId: string | null): Motion {
-  const [init] = useState(() => stillOf(frames));
-  const plan = useSharedValue<Plan>(init);
+// 지금 보이는 자세(JS 스레드, 조작할 때 읽는다)
+export function currentStates(m: Motion): Record<string, Book3> {
+  const out: Record<string, Book3> = {};
+  const t = m.t.value;
+  for (const [id, tr] of Object.entries(m.tracks.value)) out[id] = bookAt(tr, t);
+  return out;
+}
+
+const registry = new Map<string, Motion>();
+export const motionOf = (shelfId: string) => registry.get(shelfId);
+
+export function useShelfMotion(shelfId: string, frames: BookFrame[], reduceMotion: boolean, selectedId: string | null): Motion {
+  const [init] = useState<Tracks>(() => Object.fromEntries(frames.filter((f) => f.box).map((f) => [f.bookId, holdTrack(fromPlaced(f.box!))])));
+  const tracks = useSharedValue<Tracks>(init);
   const t = useSharedValue(1);
   const liftId = useSharedValue<string | null>(null);
   const lift = useSharedValue(0);
-  const current = useRef<Plan>(init);
+  const current = useRef<Tracks>(init);
   const first = useRef(true);
+  const m = useMemo(() => ({ tracks, t, liftId, lift }), [tracks, t, liftId, lift]);
+  registry.set(shelfId, m);
 
   useLayoutEffect(() => {
     if (first.current) {
       first.current = false;
       return;
     }
-    // 지금 보이는 모양(진행 중이면 그 중간)에서 새 배치로
+    // 지금 보이는 모습(진행 중이면 그 중간)에서 새 배치로
     const now = t.value;
-    const prev = Object.values(current.current).map((e) => boxAt(e, now));
-    const next = frames.filter((f) => f.box).map((f) => f.box!);
-    const p = planTransition(prev, next, PLANK_BOUNDS);
-    const rec: Plan = Object.fromEntries(p.entries.map((e) => [e.id, e]));
+    const prev = Object.values(current.current).map((tr) => bookAt(tr, now));
+    const next = frames.filter((f) => f.box).map((f) => fromPlaced(f.box!));
+    const plan = reduceMotion ? null : planTransition(prev, next, PLANK_BOUNDS);
+    const rec: Tracks = plan ? Object.fromEntries(plan.tracks.map((tr) => [tr.id, tr])) : Object.fromEntries(next.map((b) => [b.id, holdTrack(b)]));
     current.current = rec;
-    const animate = !reduceMotion && p.strategy !== 'snap';
+    const animate = !!plan && plan.strategy !== 'still';
+    const posing = !!plan && /al|pull/.test(plan.strategy);
+    const dur = posing ? POSE_MS : MOTION_MS;
     scheduleOnUI(() => {
       'worklet';
-      plan.value = rec;
+      tracks.value = rec;
       t.value = animate ? 0 : 1;
-      if (animate) t.value = withTiming(1, { duration: MOTION_MS, easing: Easing.out(Easing.cubic) });
+      if (animate) t.value = withTiming(1, { duration: dur, easing: Easing.inOut(Easing.cubic) });
     });
-  }, [frames, reduceMotion, plan, t]);
+  }, [frames, reduceMotion, tracks, t]);
 
   useLayoutEffect(() => {
     const id = selectedId;
@@ -87,87 +107,33 @@ export function useShelfMotion(frames: BookFrame[], reduceMotion: boolean, selec
     });
   }, [selectedId, reduceMotion, liftId, lift]);
 
-  return { plan, t, liftId, lift };
+  return m;
 }
 
-// ---------- 옆면·윗면(줄 전체 캔버스, 앞면들 아래) ----------
+// ---------- 책(한 캔버스에 줄 전체) ----------
 
-const toneOf = (book: Book, pose: Pose) => (pose === 'front' ? book.cover?.edge : undefined) ?? book.body?.face ?? book.themeColor;
-
-function Face({ m, id, book, pose, kind, cam, s, clear }: { m: Motion; id: string; book: Book; pose: Pose; kind: FaceKind; cam: Camera; s: number; clear: number }) {
-  const grain = useImage(BRUSH_DETAIL);
-  const mat = materialOf(pose, kind);
-  const boards = mat.mat === 'pages' ? (mat.boards ?? null) : null;
-  const bow = pose === 'spine' ? BOX_HEAD_BOW * s : 0;
-  const seed = seedOf(id, kind);
-  const px = { s, tx: SHELF.sideMargin * s, ty: (clear - FLOOR) * s };
-  const geom = useDerivedValue(() => {
-    const b = boxNow(m, id);
-    return b ? computeFace(faceAt(cam, b, kind), kind, px, bow, boards, seed) : EMPTY_FACE;
-  });
-  return <FaceShape geom={geom} kind={kind} pose={pose} tone={toneOf(book, pose)} s={s} grain={grain} />;
+function RowBook({ m, frame, book, cam, px, shared }: { m: Motion; frame: BookFrame; book: Book; cam: Cam; px: Affine; shared: Shared }) {
+  const rest = useMemo(() => fromPlaced(frame.box!), [frame]);
+  const id = frame.bookId;
+  const state = useDerivedValue(() => stateNow(m, id) ?? rest);
+  return <BookNode book={book} dims={rest.dims} state={state} cam={cam} px={px} shared={shared} />;
 }
 
-export const RowFaces = memo(function RowFaces({
-  m,
-  frames,
-  books,
-  hiddenId,
-  cam,
-  s,
-  clear,
-  height,
-}: {
-  m: Motion;
-  frames: BookFrame[];
-  books: Record<string, Book>;
-  hiddenId: string | null;
-  cam: Camera;
-  s: number;
-  clear: number;
-  height: number;
-}) {
+export const RowBooks = memo(function RowBooks({ m, frames, books, hiddenId, cam, s, clear, height }: { m: Motion; frames: BookFrame[]; books: Record<string, Book>; hiddenId: string | null; cam: Cam; s: number; clear: number; height: number }) {
+  const px = useMemo(() => ({ s, tx: SHELF.sideMargin * s, ty: (clear - FLOOR) * s }), [s, clear]);
+  const shared = useBookShared();
   return (
     <Canvas style={[StyleSheet.absoluteFill, { width: DESIGN_WIDTH * s, height }]} pointerEvents="none">
-      {frames
-        .filter((f) => f.box && f.bookId !== hiddenId)
-        .map((f) => (
-          <Group key={f.bookId}>
-            {kindsOf(cam, [f.box!, { ...f.box!, angle: 0 }]).map((k) => (
-              <Face key={k} m={m} id={f.bookId} book={books[f.bookId]} pose={f.pose} kind={k} cam={cam} s={s} clear={clear} />
-            ))}
-          </Group>
-        ))}
+      <Group>
+        {frames
+          .filter((f) => f.box && f.bookId !== hiddenId)
+          .map((f) => (
+            <RowBook key={f.bookId} m={m} frame={f} book={books[f.bookId]} cam={cam} px={px} shared={shared} />
+          ))}
+      </Group>
     </Canvas>
   );
 });
-
-// ---------- 앞면(기존 몸체 + 글자). 상자의 앞면 사각형에 놓고 바닥 모서리를 축으로 돌린다 ----------
-
-export function BookFront({ m, frame, s, clear, children }: { m: Motion; frame: BookFrame; s: number; clear: number; children: ReactNode }) {
-  const id = frame.bookId;
-  const w = frame.width * s;
-  const h = frame.height * s;
-  const style = useAnimatedStyle(() => {
-    const b = boxNow(m, id);
-    if (!b) return { opacity: 0 };
-    const left = (SHELF.sideMargin + b.x + b.z * CAMERA.kx) * s;
-    const top = (clear - b.y - b.size.h - b.z * CAMERA.ky) * s;
-    // RN은 가운데를 축으로 돌리므로, 기대는 쪽 바닥 모서리가 제자리에 있도록 옮긴다(화면 y 아래, 시계 방향 +)
-    const th = (b.angle * Math.PI) / 180;
-    const dx = b.angle > 0 ? w / 2 : -w / 2;
-    const dy = h / 2;
-    const rx = dx * Math.cos(th) - dy * Math.sin(th);
-    const ry = dx * Math.sin(th) + dy * Math.cos(th);
-    return {
-      opacity: 1,
-      left,
-      top,
-      transform: [{ translateX: dx - rx }, { translateY: dy - ry }, { rotate: `${b.angle}deg` }],
-    };
-  });
-  return <Animated.View pointerEvents="none" style={[{ position: 'absolute', width: w, height: h }, style]}>{children}</Animated.View>;
-}
 
 // ---------- 벽 그림자(선반 판 아래에 그린다)·바닥 접촉 ----------
 
@@ -183,13 +149,18 @@ function pathOf(polys: Point[][]): SkPath {
   return p.detach();
 }
 
-function WallLayer({ m, ids, layer, cam, s, clear, floorY, fadeTop, colors: cols, pos }: { m: Motion; ids: string[]; layer: { dx: number; dy: number; blur: number; opacity: number }; cam: Camera; s: number; clear: number; floorY: number; fadeTop: number; colors: string[]; pos: number[] }) {
+function outlineOf(cam: Cam, b: Book3): Point[] {
+  'worklet';
+  return hull(corners(b).map((c) => project(cam, c)));
+}
+
+function WallLayer({ m, ids, layer, cam, s, clear, floorY, fadeTop, colors: cols, pos }: { m: Motion; ids: string[]; layer: { dx: number; dy: number; blur: number; opacity: number }; cam: Cam; s: number; clear: number; floorY: number; fadeTop: number; colors: string[]; pos: number[] }) {
   const path = useDerivedValue(() => {
     const polys: Point[][] = [];
     for (const id of ids) {
-      const b = boxNow(m, id);
+      const b = stateNow(m, id);
       if (!b) continue;
-      const sh = castShape(silhouette(cam, b), layer.dx, layer.dy, layer.blur);
+      const sh = castShape(outlineOf(cam, b), layer.dx, layer.dy, layer.blur);
       polys.push(sh.map((q) => ({ x: (SHELF.sideMargin + q.x) * s, y: (clear + q.y - FLOOR) * s })));
     }
     return pathOf(polys);
@@ -204,7 +175,7 @@ function WallLayer({ m, ids, layer, cam, s, clear, floorY, fadeTop, colors: cols
   );
 }
 
-export const RowShadows = memo(function RowShadows({ m, ids, cam, s, clear, height }: { m: Motion; ids: string[]; cam: Camera; s: number; clear: number; height: number }) {
+export const RowShadows = memo(function RowShadows({ m, ids, cam, s, clear, height }: { m: Motion; ids: string[]; cam: Cam; s: number; clear: number; height: number }) {
   const { layers, fade } = shadow.cast;
   const fadeTop = fade[fade.length - 1][0];
   const cols = fade.map(([, k]) => rgba(colors.shadow, k));
@@ -218,50 +189,53 @@ export const RowShadows = memo(function RowShadows({ m, ids, cam, s, clear, heig
   );
 });
 
-// 바닥 접촉: 상자가 선반에 닿는 바닥면(앞면 윤곽에서 바닥 높이의 점 × 깊이)을 투영해 그린다.
-// back: 책 밑·뒤로 번지는 그늘(책보다 먼저), front: 바닥 앞 그늘과 접촉선(책 위에)
-function contactShapes(b: Placed, cam: Camera, s: number, clear: number) {
+// 바닥 접촉: 선반에 닿는 바닥 꼭짓점(가장 낮은 점 근처)의 투영. 발 그늘, 빛 반대쪽으로 번지는 그늘, 앞 모서리 접촉선.
+function contactShapes(b: Book3, cam: Cam, s: number, clear: number) {
   'worklet';
-  const poly = frontPoly(b);
-  let x0 = 1e9;
-  let x1 = -1e9;
+  const cs = corners(b);
+  const lo = lowest(b);
+  const P = (x: number, z: number) => {
+    const q = project(cam, { x, y: 0, z });
+    return { x: (SHELF.sideMargin + q.x) * s, y: (clear + q.y - FLOOR) * s };
+  };
+  let x0 = Infinity;
+  let x1 = -Infinity;
+  let z0 = Infinity;
+  let z1 = -Infinity;
   let top = 0;
-  for (const q of poly) {
-    if (q.y < b.y + 0.6) {
-      x0 = Math.min(x0, q.x);
-      x1 = Math.max(x1, q.x);
-    }
-    top = Math.max(top, q.y);
+  for (const c of cs) {
+    top = Math.max(top, c.y);
+    if (c.y >= lo + 0.6) continue;
+    x0 = Math.min(x0, c.x);
+    x1 = Math.max(x1, c.x);
+    z0 = Math.min(z0, c.z);
+    z1 = Math.max(z1, c.z);
   }
   if (x1 - x0 < 2) {
     x0 -= 1;
     x1 += 1;
   }
-  const P = (x: number, z: number) => {
-    const q = project(cam, { x, y: 0, z });
-    return { x: (SHELF.sideMargin + q.x) * s, y: (clear + q.y - FLOOR) * s };
-  };
   const reach = Math.min(10, 2 + top * 0.04);
-  const e0 = P(x0 - 0.5, b.z);
-  const e1 = P(x1 + 1.5, b.z);
+  const e0 = P(x0 - 0.5, z0);
+  const e1 = P(x1 + 1.5, z0);
   return {
-    foot: [P(x0, b.z), P(x1, b.z), P(x1, b.z + b.size.d), P(x0, b.z + b.size.d)],
-    cast: [P(x0 + 1, b.z), P(x1 + reach, b.z), P(x1 + reach, b.z + b.size.d), P(x0 + 1, b.z + b.size.d)],
+    foot: [P(x0, z0), P(x1, z0), P(x1, z1), P(x0, z1)],
+    cast: [P(x0 + 1, z0), P(x1 + reach, z0), P(x1 + reach, z1), P(x0 + 1, z1)],
     band: [e0, e1, { x: e1.x, y: e1.y + 3 * s }, { x: e0.x, y: e0.y + 3 * s }],
-    edge: [P(x0, b.z), P(x1, b.z)],
+    edge: [P(x0, z0), P(x1, z0)],
   };
 }
 
-export const RowContacts = memo(function RowContacts({ m, ids, cam, s, clear, height, front = false }: { m: Motion; ids: string[]; cam: Camera; s: number; clear: number; height: number; front?: boolean }) {
-  // 선반에서 떨어진(들린·쌓인 위) 책은 접촉이 없다. 들리는 만큼 옅어진다.
+export const RowContacts = memo(function RowContacts({ m, ids, cam, s, clear, height, front = false }: { m: Motion; ids: string[]; cam: Cam; s: number; clear: number; height: number; front?: boolean }) {
+  // 선반에서 떨어진(들린·쌓인 위) 책은 접촉이 없다
   const shapes = useDerivedValue(() => {
     const cast: Point[][] = [];
     const foot: Point[][] = [];
     const band: Point[][] = [];
     const edge = Skia.PathBuilder.Make();
     for (const id of ids) {
-      const b = boxNow(m, id);
-      if (!b || b.y > 0.5) continue;
+      const b = stateNow(m, id);
+      if (!b || lowest(b) > 0.5) continue;
       const c = contactShapes(b, cam, s, clear);
       cast.push(c.cast);
       foot.push(c.foot);
@@ -279,7 +253,6 @@ export const RowContacts = memo(function RowContacts({ m, ids, cam, s, clear, he
     <Canvas style={[StyleSheet.absoluteFill, { width: DESIGN_WIDTH * s, height }]} pointerEvents="none">
       {front ? (
         <>
-          {/* 바닥 바로 앞 선반 위의 짧은 그늘(시안: 책이 판에 눌려 앉은 느낌) */}
           <Path path={band} color="rgba(96,68,44,0.22)">
             <BlurMask blur={0.9 * s} style="normal" />
           </Path>
