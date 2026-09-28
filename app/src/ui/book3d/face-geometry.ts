@@ -133,8 +133,8 @@ export function softFace(pts: Point[], radii: number[], wob: boolean[], outer: b
 // right = [A 앞 오른쪽 아래, B 앞 오른쪽 위(윗면과 공유), Bb 뒤 위, Ab 뒤 아래], 변 0 = 앞, 1 = 윗면과 공유, 2 = 뒤, 3 = 바닥
 function faceStyle(kind: FaceKind, s: number) {
   'worklet';
-  if (kind === 'top') return { radii: [0, 1.6 * s, 1.8 * s, 1.8 * s], wob: [false, true, true, false], outer: [false, true, true, false] };
-  if (kind === 'right') return { radii: [1.2 * s, 0, 1.8 * s, 1.6 * s], wob: [false, false, true, false], outer: [false, false, true, true] };
+  if (kind === 'top') return { radii: [0, 3 * s, 3 * s, 3 * s], wob: [false, true, true, false], outer: [false, true, true, false] };
+  if (kind === 'right') return { radii: [2 * s, 0, 3 * s, 2.4 * s], wob: [false, false, true, false], outer: [false, false, true, true] };
   return { radii: [0, 0, 2 * s, 2 * s], wob: [false, true, true, true], outer: [false, true, true, true] };
 }
 

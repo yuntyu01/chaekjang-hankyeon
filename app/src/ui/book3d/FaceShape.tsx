@@ -45,7 +45,7 @@ export function FaceShape({ geom, pages, tone, k, s, grain, opacity }: { geom: R
   const mid = useDerivedValue(() => vec(geom.value.mid.x, geom.value.mid.y));
   const fill = useDerivedValue(() => scaleColor(tone, Math.min(1.06, k.value)));
   const paper = useDerivedValue(() => [mix(scaleColor(PAGE, k.value), tone, 0.08), mix(scaleColor(PAGE, k.value * 0.93), tone, 0.12)]);
-  const soft = useDerivedValue(() => (geom.value.lit ? ['rgba(255,250,240,0.2)', 'rgba(255,250,240,0)'] : ['rgba(255,250,240,0.1)', 'rgba(255,250,240,0)']));
+  const soft = useDerivedValue(() => (geom.value.lit ? ['rgba(255,250,240,0.26)', 'rgba(255,250,240,0)'] : ['rgba(255,250,240,0.18)', 'rgba(255,250,240,0)']));
   const edge = scaleColor(tone, edgeFactor(tone));
   return (
     <Group opacity={opacity}>
@@ -62,21 +62,20 @@ export function FaceShape({ geom, pages, tone, k, s, grain, opacity }: { geom: R
       <Group clip={path}>
         <Grain w={DESIGN_WIDTH * s} h={400 * s} s={s} image={grain} />
       </Group>
-      {/* 둥근 모서리로 이어지는 명암: 앞면 끝과 같은 밝기에서 시작해 면 색으로 풀린다 */}
+      {/* 앞면에서 둥글게 꺾여 들어가는 명암: 맞닿은 모서리 쪽이 앞면 밝기에 가깝고 뒤로 갈수록 어두워진다(선 없이) */}
       <Path path={path}>
         <LinearGradient start={a} end={mid} colors={soft} />
       </Path>
-      {/* 뒤로 갈수록 조금 어둡다(빛에서 멀어짐) */}
       <Path path={path}>
-        <LinearGradient start={a} end={ab} colors={['rgba(50,35,25,0)', 'rgba(50,35,25,0.08)']} />
+        <LinearGradient start={a} end={ab} colors={['rgba(50,35,25,0)', 'rgba(50,35,25,0.14)']} />
       </Path>
-      {/* 빛을 받는 둥근 모서리의 부드러운 광택 */}
-      <Path path={hi} style="stroke" strokeWidth={1.6 * s} strokeCap="round">
-        <LinearGradient start={a} end={b} colors={['rgba(255,255,255,0.4)', 'rgba(255,255,255,0.2)']} />
-        <BlurMask blur={0.9 * s} style="normal" />
+      {/* 빛 받는 윗면 모서리만 은은하게 */}
+      <Path path={hi} style="stroke" strokeWidth={2.4 * s} strokeCap="round">
+        <LinearGradient start={a} end={b} colors={['rgba(255,255,255,0.22)', 'rgba(255,255,255,0.08)']} />
+        <BlurMask blur={1.4 * s} style="normal" />
       </Path>
-      {/* 바깥 실루엣 변만 연한 같은 색 선 */}
-      <Path path={runs} style="stroke" strokeWidth={0.8 * s} strokeJoin="round" strokeCap="round" color={edge} opacity={0.7} />
+      {/* 바깥 실루엣은 아주 연하게 */}
+      <Path path={runs} style="stroke" strokeWidth={0.7 * s} strokeJoin="round" strokeCap="round" color={edge} opacity={0.35} />
     </Group>
   );
 }

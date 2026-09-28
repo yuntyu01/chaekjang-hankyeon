@@ -62,8 +62,8 @@ export const shadow = {
   wallZ: 150,
   shelfWall: { dy: 12, blur: 20, opacity: 0.16 }, // 선반 판이 벽에 드리우는 넓고 옅은 그림자
   shelfLip: { dy: 2, blur: 3, opacity: 0.08 }, // 판 바로 아래 짧은 그림자
-  bookWall: { dx: 6, dy: 8, blur: 12, opacity: 0.2, near: 0.5, perDU: 0.01 }, // 거리 배율 = near + perDU × 거리
-  contact: { height: 5, blur: 4, opacity: 0.22 }, // 책이 선반에 닿는 곳(좁고 진하게)
+  bookWall: { dx: 8, dy: 6, blur: 12, opacity: 0.26, near: 0.5, perDU: 0.01 }, // 거리 배율 = near + perDU × 거리
+  contact: { height: 5, blur: 4, opacity: 0.26 }, // 책이 선반에 닿는 곳(좁고 진하게)
   bookShelf: { dy: 4, blur: 8, opacity: 0.1 }, // 책이 선반 윗면에 드리우는 그림자
   stack: { blur: 4, opacity: 0.15 }, // 위 책이 아래 책 윗면에
   gap: { max: 0.1, fadeAt: 8 }, // 책 사이 틈 어둠: 틈이 좁을수록 진하고 fadeAt 이상이면 없음

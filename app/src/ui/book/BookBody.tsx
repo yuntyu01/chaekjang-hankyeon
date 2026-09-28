@@ -23,8 +23,6 @@ import type { BodyArt } from '@/domain/types';
 const SRC_DU = 390 / 941; // 시안 원본 1px = DU(붓결 크기를 시안과 맞춘다)
 // 붓결 세기(시안: 은은함). 질감 이미지는 명암 차를 5배로 담아 두었으므로 여기서 줄인다.
 export const GRAIN_STRENGTH = 0.22;
-const GLINT = ['rgba(255,255,255,0.45)', 'rgba(255,255,255,0.3)', 'rgba(255,255,255,0.17)', 'rgba(255,255,255,0.08)'];
-const GLINT_AT = [0, 0.15, 0.5, 1];
 export const PAGE = '#F4ECDD';
 export const PAGE_LINE = '#DDCFB8';
 
@@ -61,7 +59,8 @@ export const edgeFactor = (face: string) => 0.74 + 0.2 * luminance(face);
 function spineProfile(face: string): [number, number][] {
   const lum = luminance(face);
   const w = 0.35 + 0.75 * (1 - lum);
-  const raw: [number, number][] = [[0, 0.86], [0.02, 0.95], [0.06, 1.0], [0.4, 1.0], [0.82, 0.95], [0.93, 0.87], [1, 0.8]];
+  // 둥근 책등(베개처럼): 왼쪽 가장자리 바로 안쪽이 가장 밝은 띠, 가운데 평평, 오른쪽으로 둥글게 넘어가며 어두워진다
+  const raw: [number, number][] = [[0, 0.9], [0.04, 1.02], [0.1, 1.07], [0.2, 1.03], [0.45, 1.0], [0.75, 0.97], [0.9, 0.92], [1, 0.86]];
   return raw.map(([p, k]) => [p, 1 - (1 - k) * w] as [number, number]);
 }
 
@@ -88,9 +87,9 @@ export const BOX_HEAD_BOW = 0.3;
 
 // 책등 면 윤곽(px): 둥근 왼쪽 위, 살짝 볼록한 머리. 옆면·윗면과 이어지는 오른쪽·위·아래 변은 곧게, 왼쪽 바깥 변만 손그림 흔들림.
 function spineOutline(w: number, h: number, s: number, seed: string): Point[] {
-  const r = 2.4 * s;
-  const rb = 2 * s;
-  const rs = 0.8 * s;
+  const r = 3.4 * s;
+  const rb = 2.2 * s;
+  const rs = 2.4 * s;
   const bow = BOX_HEAD_BOW * s;
   const amp = WOBBLE * s;
   const step = 1.5 * s;
@@ -122,7 +121,7 @@ function spineOutline(w: number, h: number, s: number, seed: string): Point[] {
 
 // 표지 윤곽: 둥근 네 모서리 + 손으로 그은 듯한 흔들림
 function coverOutline(w: number, h: number, s: number, seed: string): Point[] {
-  const r = 3 * s;
+  const r = 3.4 * s;
   const amp = WOBBLE * s;
   const step = 2 * s;
   const wv = [0, 1, 2, 3].map((e) => wobble(seed, e));
@@ -165,8 +164,8 @@ function RimLight({ outline, w, h, s }: { outline: SkPath; w: number; h: number;
       <Path path={outline} style="stroke" strokeWidth={7 * s} color="rgba(255,255,255,0.18)">
         <BlurMask blur={1.1 * s} style="normal" />
       </Path>
-      <Path path={outline} style="stroke" strokeWidth={4.2 * s} color="rgba(255,255,255,0.5)">
-        <BlurMask blur={0.25 * s} style="normal" />
+      <Path path={outline} style="stroke" strokeWidth={4.2 * s} color="rgba(255,255,255,0.22)">
+        <BlurMask blur={0.9 * s} style="normal" />
       </Path>
     </Mask>
   );
@@ -177,11 +176,12 @@ function EdgeLine({ outline, outline2, s, face, opacity = 1 }: { outline: SkPath
   const edge = scaleColor(face, edgeFactor(face));
   return (
     <Group opacity={opacity}>
-      <Path path={outline} style="stroke" strokeWidth={2.2 * s} color={edge}>
-        <BlurMask blur={0.3 * s} style="normal" />
+      {/* 선이 아니라 가장자리가 둥글게 넘어가며 살짝 어두워지는 정도(목업: 또렷한 윤곽선 없음) */}
+      <Path path={outline} style="stroke" strokeWidth={3.2 * s} color={edge} opacity={0.35}>
+        <BlurMask blur={1.1 * s} style="normal" />
       </Path>
-      <Path path={outline2} style="stroke" strokeWidth={2.2 * s} color={edge} opacity={0.3}>
-        <BlurMask blur={0.35 * s} style="normal" />
+      <Path path={outline2} style="stroke" strokeWidth={1.6 * s} color={edge} opacity={0.12}>
+        <BlurMask blur={0.6 * s} style="normal" />
       </Path>
     </Group>
   );
@@ -216,10 +216,9 @@ export function SpineFaceArt({ id, w, h, s, face, art, grain, motif }: { id: str
         </Rect>
         <Grain w={w} h={h} s={s} image={grain} />
         {art?.scene && motif ? <SceneArt h={h} art={art} motif={motif} faceW={w * 0.94} /> : null}
-        {/* 옆면으로 꺾이는 모서리의 빛(빛 쪽 머리가 가장 밝고 멀어질수록 사라진다) */}
-        <Rect x={w - 0.9 * s} y={0} width={0.9 * s} height={h}>
-          <LinearGradient start={vec(0, 0)} end={vec(0, h)} colors={GLINT} positions={GLINT_AT} />
-          <BlurMask blur={0.45 * s} style="normal" />
+        {/* 머리 쪽 윗가장자리가 둥글게 빛을 받는다 */}
+        <Rect x={0} y={0} width={w} height={4 * s}>
+          <LinearGradient start={vec(0, 0)} end={vec(0, 4 * s)} colors={['rgba(255,252,244,0.22)', 'rgba(255,252,244,0)']} />
         </Rect>
         {/* 바닥 쪽 어둡게(선반에 닿는 곳) */}
         <Rect x={0} y={h - 5 * s} width={w} height={5 * s}>
@@ -236,7 +235,7 @@ export function SpineFaceArt({ id, w, h, s, face, art, grain, motif }: { id: str
       </Group>
       {/* 클립 경계는 계단처럼 깨지므로 실루엣 바깥을 부드러운 선으로 한 번 더 덮는다 */}
       <Joined w={w} h={h} s={s}>
-        <Path path={outline} style="stroke" strokeWidth={0.9 * s} color={scaleColor(face, edgeFactor(face))} antiAlias />
+        <Path path={outline} style="stroke" strokeWidth={0.7 * s} color={scaleColor(face, edgeFactor(face))} opacity={0.55} antiAlias />
       </Joined>
     </Group>
   );
@@ -338,7 +337,7 @@ export function CoverFaceArt({
         </Joined>
       </Group>
       <Joined w={fw} h={h} s={s}>
-        <Path path={outline} style="stroke" strokeWidth={0.6 * s} color={edgeC} opacity={0.8} antiAlias />
+        <Path path={outline} style="stroke" strokeWidth={0.6 * s} color={edgeC} opacity={0.5} antiAlias />
       </Joined>
     </Group>
   );
