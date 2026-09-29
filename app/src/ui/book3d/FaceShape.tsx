@@ -12,7 +12,7 @@ import type { FaceGeom } from './face-geometry';
 type RO<T> = Readonly<SharedValue<T>>;
 
 // 종이 단면 면의 표지 판 둘레를 종이 색 쪽으로 섞는 비율(짙은 책에서 윗면 테두리 대비 낮추기)
-const RIM_TO_PAGE = 0.35;
+const RIM_TO_PAGE = 0.2;
 
 export function polyPath(pts: Point[], close: boolean): SkPath {
   'worklet';
@@ -53,7 +53,8 @@ function FlatFace({ geom, tone, k, opacity }: Props) {
 function Pages({ geom, tone, k, a, ab }: { geom: RO<FaceGeom>; tone: string; k: RO<number>; a: RO<SkPoint>; ab: RO<SkPoint> }) {
   const inner = useDerivedValue(() => polyPath(geom.value.inner ?? [], true));
   const lines = useDerivedValue(() => linesPath(geom.value.lines));
-  const paper = useDerivedValue(() => [mix(scaleColor(PAGE, Math.min(1, k.value)), tone, 0.08), mix(scaleColor(PAGE, Math.min(1, k.value) * 0.93), tone, 0.12)]);
+  // 속지는 표지 판보다 안으로 들어가 판 그늘에 있다: 크림색을 조금 낮추고 책 색을 섞어 따로 얹힌 하얀 뚜껑처럼 보이지 않게
+  const paper = useDerivedValue(() => [mix(scaleColor(PAGE, Math.min(1, k.value) * 0.93), tone, 0.16), mix(scaleColor(PAGE, Math.min(1, k.value) * 0.86), tone, 0.24)]);
   return (
     <>
       <Path path={inner}>
