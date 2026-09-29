@@ -71,7 +71,7 @@ export const shadow = {
     // 선반 판 → 벽: 빛 길이 층(layers, DU)마다 진하기·흐림. 판 뒤쪽 약 13DU 빛 길이까지는 판 자신에 가려 보이지 않는다.
     // 가까운 층(판 바로 아래)만 조금 진하고, 멀리 퍼지는 층은 아주 옅게(넓은 회색 덩어리가 판을 띄워 보이지 않게).
     // 색은 크림색 벽에 맞춘 따뜻한 갈색(시안: 판 아래 벽이 파랑이 가장 많이 빠지며 어두워진다).
-    shelfWall: { layers: [16, 28, 52], opacity: [0.2, 0.14, 0.2], near: 1, perDU: 0.22, blurPad: 14, color: '#864C21' },
+    shelfWall: { layers: [16, 28, 52], opacity: [0.1, 0.1, 0.16], near: 1, perDU: 0.22, blurPad: 14, color: '#864C21' },
     bookShelf: { layers: [8, 30, 1e9], opacity: 0.1, near: 1, perDU: 0.1, maxBlur: 10 }, // 책 → 선반 윗면
     // 책 면이 받는 그림자: 다른 책(book) · 윗 선반 판(plank). 진하기 = opacity × e^(-거리/fade), 흐림 = near + perDU × 거리
     onBook: { opacity: 0.3, fade: 260, near: 0.8, perDU: 0.07, maxBlur: 8 },
@@ -83,7 +83,7 @@ export const shadow = {
     stack: { blur: 3, opacity: 0.22 }, // 위 책이 아래 책 윗면에 닿은 자리 둘레(좁게)
     lean: { touch: 0.3, near: 0.2, far: 0.04 }, // 기댄 책 ↔ 받치는 책: 닿는 점(touch), 벌어진 틈(닿는 쪽 near → 바닥 쪽 far)
     gap: { max: 0.1, fadeAt: 8 }, // 책 사이 좁은 틈: 틈이 좁을수록 진하고 fadeAt 이상이면 없음
-    shelfLip: { dy: 2, blur: 3, opacity: 0.075, color: '#864C21' }, // 판 앞면 바로 아래 좁은 어둠(판 그림자와 같은 따뜻한 색)
+    shelfLip: { dy: 1.2, blur: 1.4, opacity: 0.2, color: '#864C21' }, // 판 앞면 바로 아래 좁은 어둠(판 그림자와 같은 따뜻한 색)
   },
   // 서랍 화면의 평면 선반(3D 판이 아님)에만 쓰는 분위기 그림자
   drawerShelf: { dy: 12, blur: 20, opacity: 0.16 },

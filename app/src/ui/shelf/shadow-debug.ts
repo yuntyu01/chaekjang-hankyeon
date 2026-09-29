@@ -11,4 +11,8 @@ export const SHOW = {
   shelf: true, // 선반 → 벽 그림자
   shelfSide: true, // 선반 오른쪽 끝 나무 옆면 명암
   shelfAO: true, // 판 앞면 바로 아래 좁은 어둠
+  shelfBoard: true, // 선반 판 자체(끄면 벽 그림자만 남아 판 뒤까지 그림자 모양이 보인다)
+  shelfShade: true, // 판 면 명암(윗면 나무색·앞면 어둡게·옆면 어둡게·모서리 광택). 끄면 질감만
+  shelfBlur: true, // 벽 그림자 흐림(끄면 흐리기 전 모양)
+  shelfDebug: false, // 벽 그림자 층 외곽선과 광선 표시
 };

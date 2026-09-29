@@ -20,6 +20,20 @@ export const RENDER = { art: true, texture: true, grain: true, books: true };
 // 선반 그림자 확인용 보기(측정 메뉴): 오른쪽 끝의 옆면 명암·벽 그림자·AO를 하나씩 끄고, 빈 선반만 본다
 export const SHELF_VIEWS = ['전체', '옆면 명암 끔', '벽 그림자 끔', 'AO 끔', '빈 선반'] as const;
 export type ShelfView = (typeof SHELF_VIEWS)[number];
+// 선반 원인 분리(chaekjang:///?sh=모드). 카메라·광원·선반 형상은 그대로 두고 그리는 층만 고른다.
+export const SHELF_MODES = ['all', 'plank', 'plankflat', 'side0', 'wall', 'wallmask', 'wallboard', 'ao', 'debug'] as const;
+export type ShelfMode = (typeof SHELF_MODES)[number];
+export function setShelfMode(m: ShelfMode) {
+  const board = !['wall', 'wallmask'].includes(m);
+  SHOW.shelfBoard = board;
+  SHOW.shelfShade = m !== 'plankflat';
+  SHOW.shelfSide = m !== 'side0';
+  SHOW.shelf = ['all', 'side0', 'wall', 'wallmask', 'wallboard', 'debug'].includes(m);
+  SHOW.shelfAO = ['all', 'side0', 'ao', 'debug'].includes(m);
+  SHOW.shelfBlur = m !== 'wallmask';
+  SHOW.shelfDebug = m === 'wallmask' || m === 'debug';
+}
+
 export function setShelfView(v: ShelfView) {
   setPerfLevel('full');
   SHOW.shelfSide = v !== '옆면 명암 끔';

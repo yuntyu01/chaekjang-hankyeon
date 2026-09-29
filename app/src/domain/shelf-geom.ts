@@ -27,6 +27,14 @@ export function shelfVertices() {
   };
 }
 
+// 판 상자 꼭짓점 8개를 상자 꼭짓점 순서로(책 corners()와 같다: i&1 = 오른쪽, i&2 = 위, i&4 = 벽 쪽).
+// 그림자 계산(shadowOnPlane)의 변 목록(BOX_EDGES)이 이 순서를 가정한다. 순서가 다르면 대각선을 변으로 잘라 그림자 모양이 틀어진다.
+export function shelfBoxCorners() {
+  'worklet';
+  const v = shelfVertices();
+  return [v.LFB, v.RFB, v.LFT, v.RFT, v.LBB, v.RBB, v.LBT, v.RBT];
+}
+
 function face(a: Point, b: Point, c: Point, d: Point): ShelfFace {
   'worklet';
   return {

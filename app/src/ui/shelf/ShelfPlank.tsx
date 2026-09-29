@@ -10,7 +10,7 @@ import { shadowOnPlane, travelOf } from '@/domain/cast-shadow';
 import { SHELF, SHELF_DEPTH } from '@/domain/geometry';
 import { hull, rgba } from '@/domain/shadow-shape';
 import type { Point } from '@/domain/shelf-scene';
-import { faceTextureMatrix, shelfFaces, shelfVertices } from '@/domain/shelf-geom';
+import { faceTextureMatrix, shelfBoxCorners, shelfFaces, shelfVertices } from '@/domain/shelf-geom';
 import { SHOW } from '@/ui/shelf/shadow-debug';
 import { light, plankLight, shadow } from '@/ui/theme';
 
@@ -66,8 +66,7 @@ function WallLayer({ cam, s, clear, k }: { cam: RO<Camera>; s: number; clear: nu
   const path = useDerivedValue(() => {
     const c = cam.value;
     const t = shelfPx(s, clear);
-    const vs = shelfVertices();
-    const all = [vs.LFT, vs.RFT, vs.RBT, vs.LBT, vs.LFB, vs.RFB, vs.RBB, vs.LBB];
+    const all = shelfBoxCorners();
     const r = shadowOnPlane(all, { x: 0, y: 0, z: SHELF_DEPTH }, { x: 0, y: 0, z: -1 }, LIGHT, SW.layers[k]);
     return pathOf(hull(r.pts.map((q) => {
       const p = project(c, q);
@@ -76,8 +75,48 @@ function WallLayer({ cam, s, clear, k }: { cam: RO<Camera>; s: number; clear: nu
   });
   return (
     <Path path={path} color={rgba(SW.color, SW.opacity[k])}>
-      <BlurMask blur={((SW.near + SW.perDU * SW.layers[k]) * s) / 2} style="normal" />
+      {SHOW.shelfBlur ? <BlurMask blur={((SW.near + SW.perDU * SW.layers[k]) * s) / 2} style="normal" /> : null}
     </Path>
+  );
+}
+
+// 개발용: 층마다 흐리기 전 그림자 외곽(가까운 층부터 빨강·주황·파랑)과, 판 꼭짓점에서 벽까지 가는 광선(초록)
+const DEBUG_COLORS = ['rgba(220,30,30,0.9)', 'rgba(240,150,0,0.9)', 'rgba(30,90,220,0.9)'];
+export function ShelfShadowDebug({ cam, s, clear }: { cam: RO<Camera>; s: number; clear: number }) {
+  const g = useDerivedValue(() => {
+    const c = cam.value;
+    const t = shelfPx(s, clear);
+    const P = (q: { x: number; y: number; z: number }) => {
+      const p = project(c, q);
+      return { x: p.x * s + t.tx, y: p.y * s + t.ty };
+    };
+    const vs = shelfVertices();
+    const all = shelfBoxCorners();
+    const layers = SW.layers.map((L) => pathOf(hull(shadowOnPlane(all, { x: 0, y: 0, z: SHELF_DEPTH }, { x: 0, y: 0, z: -1 }, LIGHT, L).pts.map(P))));
+    // 광선: 오른쪽 아래 모서리들(앞·중간·뒤)에서 벽(z = SHELF_DEPTH)까지
+    const rays = Skia.PathBuilder.Make();
+    for (const v of [vs.RBB, { x: vs.RBB.x, y: vs.RBB.y, z: SHELF_DEPTH - 20 }, { x: vs.RBB.x, y: vs.RBB.y, z: SHELF_DEPTH - 40 }, { x: vs.LBB.x + 60, y: vs.LBB.y, z: SHELF_DEPTH - 30 }]) {
+      const tt = (SHELF_DEPTH - v.z) / LIGHT.z;
+      const hit = { x: v.x + LIGHT.x * tt, y: v.y + LIGHT.y * tt, z: SHELF_DEPTH };
+      const a = P(v);
+      const b = P(hit);
+      rays.moveTo(a.x, a.y);
+      rays.lineTo(b.x, b.y);
+      rays.addCircle(b.x, b.y, 1.2 * s);
+    }
+    return { layers, rays: rays.detach() };
+  });
+  const l0 = useDerivedValue(() => g.value.layers[0]);
+  const l1 = useDerivedValue(() => g.value.layers[1]);
+  const l2 = useDerivedValue(() => g.value.layers[2]);
+  const rays = useDerivedValue(() => g.value.rays);
+  return (
+    <Group>
+      {[l0, l1, l2].map((p, k) => (
+        <Path key={k} path={p} style="stroke" strokeWidth={1.2} color={DEBUG_COLORS[k]} />
+      ))}
+      <Path path={rays} style="stroke" strokeWidth={1.2} color="rgba(20,150,60,0.95)" />
+    </Group>
   );
 }
 
@@ -159,18 +198,22 @@ export function ShelfBoard({ scale: s, clear, cam }: { scale: number; clear: num
         ) : null}
         {/* 윗면: 옅은 질감에 나무색을 곱해 벽과 구분되게(책이 선반 위에 선 것으로 읽히게) */}
         <Face poly={topP} matrix={topM} image={top}>
-          <Path path={topP} color={plankLight.top} blendMode="multiply" />
+          {SHOW.shelfShade ? <Path path={topP} color={plankLight.top} blendMode="multiply" /> : null}
         </Face>
         {/* 앞면: 질감 자체가 이미 윗면보다 어둡다. 코드 명암은 아주 약하게, 아래쪽 가장자리만 살짝 */}
         <Face poly={frontP} matrix={frontM} image={front}>
-          <Path path={frontP} color={`rgba(59,51,48,${plankLight.front})`} />
-          <Path path={frontP}>
-            <LinearGradient start={g0} end={g1} colors={['rgba(110,75,45,0)', 'rgba(110,75,45,0.10)']} />
-          </Path>
+          {SHOW.shelfShade ? (
+            <>
+              <Path path={frontP} color={`rgba(59,51,48,${plankLight.front})`} />
+              <Path path={frontP}>
+                <LinearGradient start={g0} end={g1} colors={['rgba(110,75,45,0)', 'rgba(110,75,45,0.10)']} />
+              </Path>
+            </>
+          ) : null}
         </Face>
         {/* 오른쪽 옆면: 빛 반대쪽이라 앞면보다 조금 더 어둡게 */}
         <Face poly={sideP} matrix={sideM} image={front}>
-          {SHOW.shelfSide ? <Path path={sideP} color="rgba(59,51,48,0.10)" /> : null}
+          {SHOW.shelfSide && SHOW.shelfShade ? <Path path={sideP} color="rgba(59,51,48,0.10)" /> : null}
         </Face>
         {/* 윗면과 앞면이 만나는 모서리의 은은한 광택(둥글게 깎인 모서리에 빛이 맺힌 느낌) */}
         <Path path={edge} style="stroke" strokeWidth={0.8 * s} strokeCap="round" color="rgba(255,250,240,0.55)">

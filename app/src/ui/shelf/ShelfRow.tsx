@@ -1,6 +1,6 @@
 // 선반 한 칸: 벽 그림자 → 선반 → 접촉 그림자 → 책(한 캔버스, 앞뒤는 깊이 순) → 바닥 앞 그늘 → 앞턱.
 // 모든 책 모양은 줄의 움직임(ShelfMotion)이 공통 진행률로 계산한 3D 자세에서 나온다.
-import { Canvas } from '@shopify/react-native-skia';
+import { Canvas, Group } from '@shopify/react-native-skia';
 import { memo, useMemo } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
@@ -14,13 +14,16 @@ import { project } from '@/domain/box';
 import { toWorld, type Book3, type Cam } from '@/domain/book3';
 import { GestureDetector, type PanGesture } from 'react-native-gesture-handler';
 import Animated, { useAnimatedStyle } from 'react-native-reanimated';
-import { SHELF_CAST_EXTENT, ShelfBoard, ShelfWallShadow } from '@/ui/shelf/ShelfPlank';
+import { SHELF_CAST_EXTENT, ShelfBoard, ShelfShadowDebug, ShelfWallShadow } from '@/ui/shelf/ShelfPlank';
 import { Plank } from '@/ui/shelf/Plank';
 import { colors, fonts } from '@/ui/theme';
 import { SHOW } from '@/ui/shelf/shadow-debug';
 import { RENDER } from '@/ui/perf';
 
 export type DropHint = { text: string; bad: boolean } | null;
+
+// 줄 캔버스의 좌우 여백(DU): 판 끝 너머 벽 그림자(빛 길이 × 빛의 x 성분, 약 22DU)와 흐림
+const CANVAS_PAD = 40;
 
 type SlotProps = {
   frame: BookFrame;
@@ -121,14 +124,18 @@ export const ShelfRow = memo(function ShelfRow(p: Props) {
       {/* 줄 전체를 캔버스 하나에(층마다 캔버스를 따로 두면 프레임마다 표면 여러 장을 다시 그려 합성한다). 그리는 순서가 곧 앞뒤:
           책 → 벽 그림자, 판 → 벽 그림자, 판, 선반 윗면 그림자·접촉, 책, 앞 접촉 띠. 판 그림자는 줄 아래로 넘친다. */}
       {SHELF_STYLE === 'asset' ? (
-        <Canvas style={[StyleSheet.absoluteFill, { width: DESIGN_WIDTH * s, height: p.height + SHELF_CAST_EXTENT * s }]} pointerEvents="none">
+        // 좌우 여백(CANVAS_PAD): 판 끝 밖으로 나오는 벽 그림자와 흐림이 캔버스 경계에서 잘리지 않게(화면 밖이면 화면이 자른다)
+        <Canvas style={{ position: 'absolute', top: 0, left: -CANVAS_PAD * s, width: (DESIGN_WIDTH + CANVAS_PAD * 2) * s, height: p.height + SHELF_CAST_EXTENT * s }} pointerEvents="none">
+          <Group transform={[{ translateX: CANVAS_PAD * s }]}>
           {RENDER.books && (SHOW.wall || SHOW.gap) ? <RowShadows m={m} ids={ids} cam={cam} s={s} clear={p.clear} /> : null}
           {SHOW.shelf ? <ShelfWallShadow cam={cam} s={s} clear={p.clear} /> : null}
-          <ShelfBoard scale={s} clear={p.clear} cam={cam} />
+          {SHOW.shelfBoard ? <ShelfBoard scale={s} clear={p.clear} cam={cam} /> : null}
           {RENDER.books && (SHOW.shelfCast || SHOW.contact) ? <RowContacts m={m} ids={ids} cam={cam} s={s} clear={p.clear} /> : null}
           {/* 옆면·윗면은 모든 앞면 아래(앞에 있는 책의 앞면이 가린다) */}
           {RENDER.books ? <RowBooks m={m} frames={p.frames} books={p.books} hiddenId={p.placeholderId} glowId={p.editing ? p.selectedId : null} dragId={p.dragId ?? null} cam={cam} s={s} clear={p.clear} shared={shared} debug={p.debug} plankAbove={!p.topRow} /> : null}
           {RENDER.books && SHOW.contact ? <RowContacts m={m} ids={ids} cam={cam} s={s} clear={p.clear} front /> : null}
+          {SHOW.shelfDebug ? <ShelfShadowDebug cam={cam} s={s} clear={p.clear} /> : null}
+          </Group>
         </Canvas>
       ) : (
         <Plank left={SHELF.sideMargin * s} width={(DESIGN_WIDTH - SHELF.sideMargin * 2) * s} floorY={p.clear * s} scale={s} height={p.height + 20 * s} canvasWidth={DESIGN_WIDTH * s} />

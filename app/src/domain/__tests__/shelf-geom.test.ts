@@ -1,11 +1,13 @@
 // 선반 판 모양: 3D 꼭짓점을 책과 같은 project()로 투영한 면이고, 이웃 면은 꼭짓점을 공유한다. 책은 어디에 놓여도 윗면 위에 있다.
 import { corners, fromPlaced } from '../book3';
 import { project } from '../box';
-import { CAMERA, SHELF, SHELF_DEPTH, SHELF_DEPTH_MM, SHELF_FRONT, SHELF_FRONT_MM, SHELF_TOTAL_DEPTH_MM, SHELF_USABLE_WIDTH, SHELF_X0, SHELF_X1 } from '../geometry';
+import { CAMERA, SHELF, SHELF_DEPTH, SHELF_DEPTH_MM, SHELF_FRONT, SHELF_FRONT_MM, SHELF_THICK, SHELF_TOTAL_DEPTH_MM, SHELF_USABLE_WIDTH, SHELF_X0, SHELF_X1 } from '../geometry';
+import { shadowOnPlane, travelOf } from '../cast-shadow';
+import { light } from '@/ui/theme';
 import { normalize, setSpin, type BookMap } from '../layout-engine';
 import { SAMPLE_BOOKS, SAMPLE_LAYOUT } from '../onboarding-sample';
 import { computeShelf } from '../shelf-scene';
-import { shelfFaces, shelfVertices } from '../shelf-geom';
+import { shelfBoxCorners, shelfFaces, shelfVertices } from '../shelf-geom';
 
 const books: BookMap = Object.fromEntries(SAMPLE_BOOKS.map((b) => [b.id, b]));
 const eq = (a: { x: number; y: number }, b: { x: number; y: number }) => {
@@ -76,4 +78,50 @@ it.each([
     expect(cx).toBeGreaterThan(SHELF_X0);
     expect(cx).toBeLessThan(SHELF_X1);
   }
+});
+
+describe('판 → 벽 그림자 모양', () => {
+  it('판 상자 꼭짓점은 상자 순서(i&1 오른쪽, i&2 위, i&4 벽 쪽)', () => {
+    const c = shelfBoxCorners();
+    for (let i = 0; i < 8; i++) {
+      expect(c[i].x > 100).toBe(!!(i & 1));
+      expect(c[i].y > -1).toBe(!!(i & 2));
+      expect(c[i].z > 0).toBe(!!(i & 4));
+    }
+  });
+
+  it('벽 그림자 모양 = 판을 촘촘히 나눈 점에서 쏜 광선이 벽에 닿은 점들(빛 길이 층 이내)의 범위와 같다', () => {
+    // 변 목록을 쓰지 않는 독립 계산: 판 상자 안 격자점마다 빛 방향으로 벽(z = SHELF_DEPTH)까지 광선을 쏘고,
+    // 광선 길이가 층 길이 이하인 점만 모은다. shadowOnPlane 결과의 좌우·아래 끝이 이 점들의 끝과 같아야 한다.
+    const L = travelOf(light.dir);
+    const c = shelfBoxCorners();
+    const N = 60; // 좌우
+    const M = 700; // 앞뒤(광선 길이 간격 약 0.45DU)
+    for (const layer of [16, 28, 52]) {
+      let x0 = Infinity;
+      let x1 = -Infinity;
+      let y0 = Infinity;
+      for (let i = 0; i <= N; i++)
+        for (let j = 0; j <= M; j++)
+          for (let k = 0; k <= 8; k++) {
+            const p = { x: SHELF_X0 + ((SHELF_X1 - SHELF_X0) * i) / N, y: -SHELF_THICK * (k / 8), z: -SHELF_FRONT + ((SHELF_DEPTH + SHELF_FRONT) * j) / M };
+            const t = (SHELF_DEPTH - p.z) / L.z; // 광선 길이
+            if (t < 0.1 || t > layer) continue;
+            const hit = { x: p.x + L.x * t, y: p.y + L.y * t };
+            x0 = Math.min(x0, hit.x);
+            x1 = Math.max(x1, hit.x);
+            y0 = Math.min(y0, hit.y);
+          }
+      const r = shadowOnPlane(c, { x: 0, y: 0, z: SHELF_DEPTH }, { x: 0, y: 0, z: -1 }, L, layer);
+      const xs = r.pts.map((q) => q.x);
+      const ys = r.pts.map((q) => q.y);
+      // 격자 간격만큼의 오차 안에서 같다
+      const tol = 1;
+      expect(Math.abs(Math.max(...xs) - x1)).toBeLessThan(tol);
+      expect(Math.abs(Math.min(...xs) - x0)).toBeLessThan(tol);
+      expect(Math.abs(Math.min(...ys) - y0)).toBeLessThan(tol);
+      // 오른쪽 끝은 판 끝보다 오른쪽(빛이 오른쪽으로 간다), 왼쪽 끝은 판 왼쪽 끝(벽에 닿은 뒤 모서리)
+      expect(Math.max(...xs)).toBeGreaterThan(SHELF_X1);
+    }
+  });
 });

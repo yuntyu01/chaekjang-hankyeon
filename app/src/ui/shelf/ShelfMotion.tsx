@@ -719,7 +719,7 @@ export const RowShadows = memo(function RowShadows({ m, ids, cam, s, clear }: { 
   // 선반 위 책이 벽에 드리우는 그림자는 판 윗면이 벽에 닿는 선 위에만: 그 아래 벽으로 가는 빛은 판 윗면을 지나야 해서 책이 가릴 수 없다
   const clip = useDerivedValue(() => {
     const p = Skia.PathBuilder.Make();
-    p.addRect(Skia.XYWHRect(0, -1000, DESIGN_WIDTH * s, 1000 + (clear - SHELF_DEPTH * cam.value.ky) * s));
+    p.addRect(Skia.XYWHRect(-1000, -1000, DESIGN_WIDTH * s + 2000, 1000 + (clear - SHELF_DEPTH * cam.value.ky) * s));
     return p.detach();
   });
   return (
