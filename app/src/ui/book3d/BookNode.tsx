@@ -199,17 +199,20 @@ function Ribbons({ art, state, cam, px }: { art: BookArt; state: RO<Book3>; cam:
 
 export { depthKey } from '@/domain/book3';
 
+const NOTHING = Skia.XYWHRect(0, 0, 0, 0);
+
 // shared: 캔버스 밖에서 useBookShared()로 읽어 넘긴다
 // under: 면 위·갈피 아래에 그릴 것(이 책이 받는 그림자)
 // order: 줄 전체의 그리는 순서(가림 순서, ShelfMotion의 drawOrder). 없으면(서랍·단독) 깊이 키.
-export function BookNode({ book, dims, state, cam, px, shared, under, order }: { book: Book; dims: Book3['dims']; state: RO<Book3>; cam: RO<Cam>; px: Affine; shared: Shared; under?: React.ReactNode; order?: RO<number> }) {
+// hidden: 그리지 않는다(끌고 있는 동안 줄의 자리. 마운트는 유지해 놓는 순간 바로 다시 보인다)
+export function BookNode({ book, dims, state, cam, px, shared, under, order, hidden = false }: { book: Book; dims: Book3['dims']; state: RO<Book3>; cam: RO<Cam>; px: Affine; shared: Shared; under?: React.ReactNode; order?: RO<number>; hidden?: boolean }) {
   const art = useBookArt(book, px.s, dims, shared);
   const z = useDerivedValue(() => (order ? order.value : depthKey(state.value)));
   if (!art) return null;
   const tone = toneOf(book, false);
   const ctone = toneOf(book, true);
   return (
-    <Group zIndex={z}>
+    <Group zIndex={z} clip={hidden ? NOTHING : undefined}>
       {/* 올려다볼 때는 머리 면이 안 보이므로 책 뒤에서 나오는 것처럼(먼저), 정면·내려다볼 때는 머리 면 위에(나중) */}
       <Side f="back" state={state} cam={cam} px={px} book={book} pages={false} tone={tone} grain={shared.grain} />
       <Side f="head" state={state} cam={cam} px={px} book={book} pages tone={tone} grain={shared.grain} />

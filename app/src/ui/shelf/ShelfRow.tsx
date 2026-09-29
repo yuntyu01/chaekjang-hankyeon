@@ -82,17 +82,6 @@ function pointOf(m: Motion, id: string, cam: Cam, s: number, clear: number, loca
   return { x: (SHELF.sideMargin + q.x) * s, y: (clear + q.y - SHELF.clearHeight) * s };
 }
 
-// 은은한 선택 표시: 책 앞 바닥 가운데 아래 선반 앞턱에 짧은 막대
-function SelectMark({ m, id, cam, s, clear }: { m: Motion; id: string; cam: CamSV; s: number; clear: number }) {
-  const st = useAnimatedStyle(() => {
-    const b = stateNow(m, id);
-    // 앞을 향한 면의 아래 가운데: 표지 책은 표지(x = T), 그 밖은 책등(z = 0)
-    const p = pointOf(m, id, cam.value, s, clear, (d) => (b && b.yaw > 45 ? { x: d.T, y: 0, z: d.W / 2 } : { x: d.T / 2, y: 0, z: 0 }));
-    return { transform: [{ translateX: p.x - 11 * s }, { translateY: p.y + SHELF.lip * s + 3 * s }] };
-  });
-  return <Animated.View pointerEvents="none" style={[styles.mark, { width: 22 * s, height: 2.6 * s, borderRadius: 1.3 * s }, st]} />;
-}
-
 // 표지 책 머리 손잡이: 보이는 점은 작게, 잡는 칸은 넓게. 책이 움직이면 따라간다.
 // 끄는 방향 판별(위아래 = 젖히기, 좌우 = 돌리기)은 부모(HomeScreen)가 조금 움직인 뒤 한 번만 한다.
 function HeadHandle({ m, id, cam, s, clear, gesture }: { m: Motion; id: string; cam: CamSV; s: number; clear: number; gesture: PanGesture }) {
@@ -136,7 +125,7 @@ export const ShelfRow = memo(function ShelfRow(p: Props) {
           <ShelfBoard scale={s} clear={p.clear} cam={cam} />
           {SHOW.shelfCast || SHOW.contact ? <RowContacts m={m} ids={ids} cam={cam} s={s} clear={p.clear} /> : null}
           {/* 옆면·윗면은 모든 앞면 아래(앞에 있는 책의 앞면이 가린다) */}
-          <RowBooks m={m} frames={p.frames} books={p.books} hiddenId={p.placeholderId} cam={cam} s={s} clear={p.clear} shared={shared} debug={p.debug} plankAbove={!p.topRow} />
+          <RowBooks m={m} frames={p.frames} books={p.books} hiddenId={p.placeholderId} glowId={p.editing ? p.selectedId : null} cam={cam} s={s} clear={p.clear} shared={shared} debug={p.debug} plankAbove={!p.topRow} />
           {SHOW.contact ? <RowContacts m={m} ids={ids} cam={cam} s={s} clear={p.clear} front /> : null}
         </Canvas>
       ) : (
@@ -153,9 +142,6 @@ export const ShelfRow = memo(function ShelfRow(p: Props) {
           onA11y={p.onA11y}
         />
       ))}
-      {p.editing && p.selectedId && p.frames.some((f) => f.bookId === p.selectedId) ? (
-        <SelectMark m={m} id={p.selectedId} cam={cam} s={s} clear={p.clear} />
-      ) : null}
       {p.editing && p.handle && p.selectedId && p.frames.find((f) => f.bookId === p.selectedId)?.box?.pose === 'front' ? (
         <HeadHandle m={m} id={p.selectedId} cam={cam} s={s} clear={p.clear} gesture={p.handle} />
       ) : null}
@@ -177,7 +163,6 @@ export const ShelfRow = memo(function ShelfRow(p: Props) {
 });
 
 const styles = StyleSheet.create({
-  mark: { position: 'absolute', left: 0, top: 0, backgroundColor: 'rgba(196, 140, 92, 0.55)' },
   knob: { backgroundColor: 'rgba(255, 252, 246, 0.95)', borderWidth: 1, borderColor: 'rgba(160, 120, 88, 0.55)', alignItems: 'center', justifyContent: 'center', shadowColor: '#3B3330', shadowOpacity: 0.18, shadowRadius: 3, shadowOffset: { width: 0, height: 1 }, elevation: 2 },
   knobDot: { backgroundColor: 'rgba(160, 110, 70, 0.8)' },
   slot: { position: 'absolute' },

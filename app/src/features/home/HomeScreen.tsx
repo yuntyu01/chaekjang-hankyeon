@@ -352,6 +352,7 @@ export function HomeScreen() {
     void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
     setSelectedId(null);
     updateDrag(d);
+    if (PERF_ENABLED) dragPerfStart();
   };
 
   const moveDrag = (vx: number, vy: number, scroll: number) => {
@@ -365,6 +366,7 @@ export function HomeScreen() {
   const finishDrag = () => {
     lastDragEnd.current = Date.now();
     updateDrag(null);
+    if (PERF_ENABLED) dragPerfStop();
   };
 
   // 놓기: 유효하면 확정·저장 후 새 자리로 스냅, 아니면 원래 자리로 복귀.
@@ -593,6 +595,17 @@ export function HomeScreen() {
     perfCommit.current = null;
     c.done(performance.now() - c.t0);
   }, [view.pitch]);
+  // 책 끌기 한 번(집기 ~ 놓고 자리 잡기)의 프레임 간격
+  const dragPerfStart = () => {
+    perfDts.value = [];
+    perfFrames.setActive(true);
+    perfOn.value = true;
+  };
+  const dragPerfStop = () => {
+    perfOn.value = false;
+    perfFrames.setActive(false);
+    console.log('[perf-drag]', JSON.stringify(frameStats(perfDts.value)));
+  };
   const runPerf = async (level: PerfLevel) => {
     const wait = (ms: number) => new Promise((r) => setTimeout(r, ms));
     const record = async (ms: number) => {

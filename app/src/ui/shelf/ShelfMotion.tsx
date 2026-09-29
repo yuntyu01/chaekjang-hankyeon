@@ -222,7 +222,7 @@ function shelfFacesPx(cam: Cam, s: number, clear: number) {
 // 선반을 다시 계산하면 프레임 객체는 새로 생기지만 상자가 같으면 그대로 둔다(면 워크릿을 다시 만들지 않게)
 const boxKey = (f: BookFrame) => JSON.stringify(f.box);
 const RowBook = memo(
-  function RowBook({ m, frame, book, cam, px, shared, recv, ranks }: { m: Motion; frame: BookFrame; book: Book; cam: CamSV; px: Affine; shared: Shared; recv?: { ids: string[]; clear: number; plankAbove: boolean; debug?: boolean }; ranks?: Readonly<SharedValue<Record<string, number>>> }) {
+  function RowBook({ m, frame, book, cam, px, shared, recv, ranks, hidden = false }: { m: Motion; frame: BookFrame; book: Book; cam: CamSV; px: Affine; shared: Shared; recv?: { ids: string[]; clear: number; plankAbove: boolean; debug?: boolean }; ranks?: Readonly<SharedValue<Record<string, number>>>; hidden?: boolean }) {
   const key = boxKey(frame);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   const rest = useMemo(() => fromPlaced(frame.box!), [key]);
@@ -230,21 +230,21 @@ const RowBook = memo(
   const state = useDerivedValue(() => stateNow(m, id) ?? rest);
   const under = recv ? <BookReceives m={m} id={id} ids={recv.ids} cam={cam} px={px} clear={recv.clear} plankAbove={recv.plankAbove} debug={recv.debug} /> : null;
   const order = useDerivedValue(() => (ranks ? (ranks.value[id] ?? 0) * 10 : 0));
-  return <BookNode book={book} dims={rest.dims} state={state} cam={cam} px={px} shared={shared} under={under} order={ranks ? order : undefined} />;
+  return <BookNode book={book} dims={rest.dims} state={state} cam={cam} px={px} shared={shared} under={under} order={ranks ? order : undefined} hidden={hidden} />;
   },
   (a, b) =>
     a.m === b.m && a.book === b.book && a.cam === b.cam && a.px === b.px && a.shared === b.shared && boxKey(a.frame) === boxKey(b.frame) &&
-    a.recv?.ids.join('|') === b.recv?.ids.join('|') && a.recv?.clear === b.recv?.clear && a.recv?.plankAbove === b.recv?.plankAbove && a.recv?.debug === b.recv?.debug && a.ranks === b.ranks,
+    a.recv?.ids.join('|') === b.recv?.ids.join('|') && a.recv?.clear === b.recv?.clear && a.recv?.plankAbove === b.recv?.plankAbove && a.recv?.debug === b.recv?.debug && a.ranks === b.ranks && a.hidden === b.hidden,
 );
 
 // 줄의 한 캔버스(ShelfRow) 안에 그린다. shared는 캔버스 밖에서 읽어 넘긴다(캔버스 안에는 React 컨텍스트가 닿지 않는다).
-export const RowBooks = memo(function RowBooks({ m, frames, books, hiddenId, cam, s, clear, shared, debug = false, plankAbove = false }: { m: Motion; frames: BookFrame[]; books: Record<string, Book>; hiddenId: string | null; cam: CamSV; s: number; clear: number; shared: Shared; debug?: boolean; plankAbove?: boolean }) {
+export const RowBooks = memo(function RowBooks({ m, frames, books, hiddenId, glowId = null, cam, s, clear, shared, debug = false, plankAbove = false }: { m: Motion; frames: BookFrame[]; books: Record<string, Book>; hiddenId: string | null; glowId?: string | null; cam: CamSV; s: number; clear: number; shared: Shared; debug?: boolean; plankAbove?: boolean }) {
   const px = useMemo(() => ({ s, tx: SHELF.sideMargin * s, ty: (clear - FLOOR) * s }), [s, clear]);
   // 책 면이 받는 그림자의 가리개 후보(끌고 있는 책 제외)
   const idKey = frames.filter((f) => f.box && f.bookId !== hiddenId).map((f) => f.bookId).join('|');
   const recv = useMemo(() => (SHOW.cast ? { ids: idKey ? idKey.split('|') : [], clear, plankAbove, debug } : undefined), [idKey, clear, plankAbove, debug]);
   // 가림 순서: 지금 프레임의 3D 상자들로 화면에서 겹치는 쌍의 앞뒤를 정해 위상 정렬(움직이는 동안에도 매 프레임)
-  const allKey = frames.filter((f) => f.box).map((f) => f.bookId).join('|');
+  const allKey = frames.filter((f) => f.box && f.bookId !== hiddenId).map((f) => f.bookId).join('|');
   const all = useMemo(() => (allKey ? allKey.split('|') : []), [allKey]);
   const ranks = useDerivedValue(() => {
     const bs: Book3[] = [];
@@ -266,15 +266,13 @@ export const RowBooks = memo(function RowBooks({ m, frames, books, hiddenId, cam
         {frames
           .filter((f) => f.box)
           .map((f) =>
-            f.bookId === hiddenId ? (
-              // 끌고 있는 책이 놓일 자리: 옅은 실루엣(손가락에 가려도 최종 위치가 보이게)
-              <Group key={f.bookId} opacity={0.32} zIndex={-1e6}>
-                <RowBook m={m} frame={f} book={books[f.bookId]} cam={cam} px={px} shared={shared} />
-              </Group>
-            ) : (
-              <RowBook key={f.bookId} m={m} frame={f} book={books[f.bookId]} cam={cam} px={px} shared={shared} recv={recv} ranks={ranks} />
-            ),
+            // 끌고 있는 책은 손가락을 따라가는 한 권(DragOverlay)만 보인다. 줄의 책은 그대로 두고(놓는 순간 다시 만들면 몇 프레임 비어 보였다)
+            // 그리기만 막는다. 받는 그림자도 계산하지 않고, 다른 책의 가리개·그림자 목록에서도 빠진다.
+            <RowBook key={f.bookId} m={m} frame={f} book={books[f.bookId]} cam={cam} px={px} shared={shared} recv={f.bookId === hiddenId ? undefined : recv} ranks={ranks} hidden={f.bookId === hiddenId} />,
           )}
+        {/* 놓일 자리: 바닥 면만 옅게(제목·그림·질감 없이 단순한 면 하나) */}
+        {hiddenId && frames.some((f) => f.bookId === hiddenId && f.box) ? <PlaceSpot m={m} id={hiddenId} cam={cam} px={px} /> : null}
+        {glowId && frames.some((f) => f.bookId === glowId && f.box) ? <SelectGlow m={m} id={glowId} cam={cam} px={px} ranks={ranks} /> : null}
         {debug ? frames.filter((f) => f.box).map((f) => <DebugGeom key={`dbg${f.bookId}`} m={m} id={f.bookId} cam={cam} px={px} />) : null}
         {debug ? <DebugShelf cam={cam} px={px} /> : null}
         {frames
@@ -287,6 +285,49 @@ export const RowBooks = memo(function RowBooks({ m, frames, books, hiddenId, cam
       </Group>
   );
 });
+
+// 끌고 있는 책이 놓일 자리: 그 자리에 놓였을 때의 바닥 면(선반 윗면 위)을 옅은 단색으로
+function PlaceSpot({ m, id, cam, px }: { m: Motion; id: string; cam: CamSV; px: Affine }) {
+  const path = useDerivedValue(() => {
+    const b = stateNow(m, id);
+    if (!b) return pathOf([]);
+    const c = viewCam(cam.value, b);
+    const f = footPoly(b);
+    return pathOf([f.pts.map((q) => {
+      const p = project(c, { x: q.x, y: f.y, z: q.z });
+      return { x: p.x * px.s + px.tx, y: p.y * px.s + px.ty };
+    })]);
+  });
+  return (
+    <Group zIndex={-1e6}>
+      <Path path={path} color={rgba(shadow.color, 0.1)} />
+    </Group>
+  );
+}
+
+// 꾸미기에서 고른 한 권: 보이는 윤곽 바깥으로만 좁게 번지는 따뜻한 아이보리 빛(outer 흐림이라 책 면·글자는 덮지 않는다).
+// 그 책 바로 뒤 순서로 그려 앞에 있는 책이 빛을 가리고, 책 바닥선 아래(선반)는 잘라 선반 위로 새지 않는다.
+// 모양만 그리는 표시라 책 위치·크기·조명·그림자와는 무관하다.
+function SelectGlow({ m, id, cam, px, ranks }: { m: Motion; id: string; cam: CamSV; px: Affine; ranks: Readonly<SharedValue<Record<string, number>>> }) {
+  const z = useDerivedValue(() => (ranks.value[id] ?? 0) * 10 - 3);
+  const shape = useDerivedValue(() => {
+    const b = stateNow(m, id);
+    if (!b) return { path: pathOf([]), clip: Skia.XYWHRect(0, 0, 0, 0) };
+    const pts = outlineOf(cam.value, b).map((q) => ({ x: q.x * px.s + px.tx, y: q.y * px.s + px.ty }));
+    let bottom = -Infinity;
+    for (const q of pts) bottom = Math.max(bottom, q.y);
+    return { path: pathOf([pts]), clip: Skia.XYWHRect(-1000, -1000, 4000, 1000 + bottom) };
+  });
+  const path = useDerivedValue(() => shape.value.path);
+  const clip = useDerivedValue(() => shape.value.clip);
+  return (
+    <Group zIndex={z} clip={clip}>
+      <Path path={path} color={colors.selectGlow} opacity={0.9}>
+        <BlurMask blur={2.6 * px.s} style="outer" />
+      </Path>
+    </Group>
+  );
+}
 
 // ---------- 벽 그림자(선반 판 아래에 그린다)·바닥 접촉 ----------
 
