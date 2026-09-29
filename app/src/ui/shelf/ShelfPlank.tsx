@@ -11,6 +11,7 @@ import { SHELF, SHELF_DEPTH } from '@/domain/geometry';
 import { hull, rgba } from '@/domain/shadow-shape';
 import type { Point } from '@/domain/shelf-scene';
 import { faceTextureMatrix, shelfFaces, shelfVertices } from '@/domain/shelf-geom';
+import { SHOW } from '@/ui/shelf/shadow-debug';
 import { light, plankLight, shadow } from '@/ui/theme';
 
 type RO<T> = Readonly<SharedValue<T>>;
@@ -74,7 +75,7 @@ function WallLayer({ cam, s, clear, k }: { cam: RO<Camera>; s: number; clear: nu
     })));
   });
   return (
-    <Path path={path} color={rgba(shadow.color, SW.opacity[k])}>
+    <Path path={path} color={rgba(SW.color, SW.opacity[k])}>
       <BlurMask blur={((SW.near + SW.perDU * SW.layers[k]) * s) / 2} style="normal" />
     </Path>
   );
@@ -151,9 +152,11 @@ export function ShelfBoard({ scale: s, clear, cam }: { scale: number; clear: num
   return (
       <Group>
         {/* 주변광 차폐: 판 앞면 바로 아래 좁은 어둠(광원과 무관한 분위기 층) */}
-        <Path path={lipP} color={rgba(shadow.color, shadow.ao.shelfLip.opacity)}>
-          <BlurMask blur={(shadow.ao.shelfLip.blur / 2) * s} style="normal" />
-        </Path>
+        {SHOW.shelfAO ? (
+          <Path path={lipP} color={rgba(shadow.ao.shelfLip.color, shadow.ao.shelfLip.opacity)}>
+            <BlurMask blur={(shadow.ao.shelfLip.blur / 2) * s} style="normal" />
+          </Path>
+        ) : null}
         {/* 윗면: 빛을 받아 살짝 밝게(질감 명암 위에 한 번만) */}
         <Face poly={topP} matrix={topM} image={top}>
           <Path path={topP} color={`rgba(255,255,255,${plankLight.top})`} />
@@ -167,7 +170,7 @@ export function ShelfBoard({ scale: s, clear, cam }: { scale: number; clear: num
         </Face>
         {/* 오른쪽 옆면: 빛 반대쪽이라 앞면보다 조금 더 어둡게 */}
         <Face poly={sideP} matrix={sideM} image={front}>
-          <Path path={sideP} color="rgba(59,51,48,0.10)" />
+          {SHOW.shelfSide ? <Path path={sideP} color="rgba(59,51,48,0.10)" /> : null}
         </Face>
         {/* 윗면과 앞면이 만나는 모서리의 은은한 광택(둥글게 깎인 모서리에 빛이 맺힌 느낌) */}
         <Path path={edge} style="stroke" strokeWidth={0.8 * s} strokeCap="round" color="rgba(255,250,240,0.55)">

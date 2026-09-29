@@ -15,7 +15,18 @@ export const PERF_DETAIL: PerfLevel[] = ['art-grain', 'art+wall', 'art+shelfCast
 const SHADOWS: Shadow[] = ['wall', 'shelfCast', 'contact', 'gap', 'lean', 'stack', 'shelf', 'cast'];
 
 // 책 몸체 그리기 단계(BookNode·FaceShape가 마운트할 때 읽는다. 바꾸면 선반 줄을 다시 마운트해야 한다)
-export const RENDER = { art: true, texture: true, grain: true };
+export const RENDER = { art: true, texture: true, grain: true, books: true };
+
+// 선반 그림자 확인용 보기(측정 메뉴): 오른쪽 끝의 옆면 명암·벽 그림자·AO를 하나씩 끄고, 빈 선반만 본다
+export const SHELF_VIEWS = ['전체', '옆면 명암 끔', '벽 그림자 끔', 'AO 끔', '빈 선반'] as const;
+export type ShelfView = (typeof SHELF_VIEWS)[number];
+export function setShelfView(v: ShelfView) {
+  setPerfLevel('full');
+  SHOW.shelfSide = v !== '옆면 명암 끔';
+  SHOW.shelf = v !== '벽 그림자 끔';
+  SHOW.shelfAO = v !== 'AO 끔';
+  RENDER.books = v !== '빈 선반';
+}
 
 export function setPerfLevel(level: PerfLevel) {
   const art = level !== 'shapes';
@@ -25,6 +36,9 @@ export function setPerfLevel(level: PerfLevel) {
   SHOW.body = art;
   const on = new Set<Shadow>(level === 'full' ? SHADOWS : level === 'cast' ? SHADOWS.filter((k) => k !== 'cast') : level.startsWith('art+') ? [level.slice(4) as Shadow] : []);
   for (const k of SHADOWS) SHOW[k] = on.has(k);
+  SHOW.shelfSide = true;
+  SHOW.shelfAO = true;
+  RENDER.books = true;
 }
 
 export type FrameStats = { n: number; mean: number; p50: number; p90: number; max: number; over50: number };

@@ -18,6 +18,7 @@ import { SHELF_CAST_EXTENT, ShelfBoard, ShelfWallShadow } from '@/ui/shelf/Shelf
 import { Plank } from '@/ui/shelf/Plank';
 import { colors, fonts } from '@/ui/theme';
 import { SHOW } from '@/ui/shelf/shadow-debug';
+import { RENDER } from '@/ui/perf';
 
 export type DropHint = { text: string; bad: boolean } | null;
 
@@ -120,13 +121,13 @@ export const ShelfRow = memo(function ShelfRow(p: Props) {
           책 → 벽 그림자, 판 → 벽 그림자, 판, 선반 윗면 그림자·접촉, 책, 앞 접촉 띠. 판 그림자는 줄 아래로 넘친다. */}
       {SHELF_STYLE === 'asset' ? (
         <Canvas style={[StyleSheet.absoluteFill, { width: DESIGN_WIDTH * s, height: p.height + SHELF_CAST_EXTENT * s }]} pointerEvents="none">
-          {SHOW.wall || SHOW.gap ? <RowShadows m={m} ids={ids} cam={cam} s={s} clear={p.clear} /> : null}
+          {RENDER.books && (SHOW.wall || SHOW.gap) ? <RowShadows m={m} ids={ids} cam={cam} s={s} clear={p.clear} /> : null}
           {SHOW.shelf ? <ShelfWallShadow cam={cam} s={s} clear={p.clear} /> : null}
           <ShelfBoard scale={s} clear={p.clear} cam={cam} />
-          {SHOW.shelfCast || SHOW.contact ? <RowContacts m={m} ids={ids} cam={cam} s={s} clear={p.clear} /> : null}
+          {RENDER.books && (SHOW.shelfCast || SHOW.contact) ? <RowContacts m={m} ids={ids} cam={cam} s={s} clear={p.clear} /> : null}
           {/* 옆면·윗면은 모든 앞면 아래(앞에 있는 책의 앞면이 가린다) */}
-          <RowBooks m={m} frames={p.frames} books={p.books} hiddenId={p.placeholderId} glowId={p.editing ? p.selectedId : null} cam={cam} s={s} clear={p.clear} shared={shared} debug={p.debug} plankAbove={!p.topRow} />
-          {SHOW.contact ? <RowContacts m={m} ids={ids} cam={cam} s={s} clear={p.clear} front /> : null}
+          {RENDER.books ? <RowBooks m={m} frames={p.frames} books={p.books} hiddenId={p.placeholderId} glowId={p.editing ? p.selectedId : null} cam={cam} s={s} clear={p.clear} shared={shared} debug={p.debug} plankAbove={!p.topRow} /> : null}
+          {RENDER.books && SHOW.contact ? <RowContacts m={m} ids={ids} cam={cam} s={s} clear={p.clear} front /> : null}
         </Canvas>
       ) : (
         <Plank left={SHELF.sideMargin * s} width={(DESIGN_WIDTH - SHELF.sideMargin * 2) * s} floorY={p.clear * s} scale={s} height={p.height + 20 * s} canvasWidth={DESIGN_WIDTH * s} />

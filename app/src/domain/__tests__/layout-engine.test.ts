@@ -303,8 +303,9 @@ describe('자리 바꾸기', () => {
     // 제자리에서 조금 끌면 그만큼 옮겨 놓는다(원위치로 돌아가지 않음)
     const w01 = itemPositions(shelfItems(SAMPLE_LAYOUT, 'shelf-1'), SAMPLE_LAYOUT, books)[0].width;
     const nudge = findSwapTarget(SAMPLE_LAYOUT, books, 'b01', x('b01') + w01 / 2 + 5);
-    expect(nudge).toEqual({ kind: 'place', x: Math.round(x('b01') + 5) });
-    expect(bookXs(ok(applySwapTarget(SAMPLE_LAYOUT, books, 'b01', nudge)), books).get('b01')).toBeCloseTo(Math.round(x('b01') + 5), 1);
+    const want = Math.round((x('b01') + 5) * 2) / 2;
+    expect(nudge).toMatchObject({ kind: 'place', x: want, index: 0 });
+    expect(bookXs(ok(applySwapTarget(SAMPLE_LAYOUT, books, 'b01', nudge)), books).get('b01')).toBeCloseTo(want, 1);
     expect(findSwapTarget(SAMPLE_LAYOUT, books, 'b01', x('b01') + w01 / 2)).toEqual({ kind: 'self' });
     // 데미안 위로 끌면 그 자리에 끼워지고 데미안은 옆으로 밀린다
     const over = findSwapTarget(SAMPLE_LAYOUT, books, 'b03', x('b02') + 4);

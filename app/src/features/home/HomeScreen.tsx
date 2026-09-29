@@ -2,7 +2,7 @@
 // 짧게 누르기 → 정보 상자, 350ms 길게 누르기 → 드래그. 드래그 전 세로 이동은 스크롤이 가져간다.
 // 드래그: 같은 선반은 올라간 책과 자리 바꾸기, 다른 선반은 그 자리에 끼우기(눕힌 책 가운데면 쌓기),
 // 세 선반 사이에서 이동한다. 화면 가장자리에서 자동 스크롤.
-import { useFocusEffect, useNavigation } from 'expo-router';
+import { useFocusEffect, useLocalSearchParams, useNavigation } from 'expo-router';
 import * as Haptics from 'expo-haptics';
 import { BookMarked, Paintbrush, Plus, Undo2 } from 'lucide-react-native';
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
@@ -63,7 +63,7 @@ import { placementStore, usePlacementStore } from '@/store/placement-store';
 import { DragOverlay, frameBBox } from '@/ui/shelf/DragOverlay';
 import { CONTENT_TOP, computeRows, rowAt, toContent, toScene, useShelfMetrics, type RowGeom } from '@/ui/shelf/metrics';
 import { benchProjection, currentStates, motionOf, previewShelf, type BenchRow } from '@/ui/shelf/ShelfMotion';
-import { frameStats, PERF_DETAIL, PERF_ENABLED, PERF_LEVELS, setPerfLevel, type PerfLevel } from '@/ui/perf';
+import { frameStats, PERF_DETAIL, PERF_ENABLED, PERF_LEVELS, setPerfLevel, setShelfView, SHELF_VIEWS, type PerfLevel } from '@/ui/perf';
 import type { FrontState } from '@/domain/front-pose';
 import { ShelfRow, type DropHint } from '@/ui/shelf/ShelfRow';
 import { SHELF_CAST_EXTENT } from '@/ui/shelf/ShelfPlank';
@@ -78,10 +78,11 @@ import { DrawerSheet } from './DrawerSheet';
 
 type HintKind = SwapTarget['kind'] | 'beside';
 // key: 같은 목표면 다시 계산하지 않으려는 식별자. shelfId: 안내를 띄울 선반
+// index: 끼울 순서(다음 계산에서 경계 근처 떨림을 막는 데 쓴다)
 type Preview =
-  | { kind: 'ok'; layout: ShelfLayout; key: string; shelfId: string; hint: HintKind }
-  | { kind: 'same'; key: string; shelfId: string; hint: HintKind }
-  | { kind: 'bad'; reason: FailReason | 'outside'; key: string; shelfId: string | null };
+  | { kind: 'ok'; layout: ShelfLayout; key: string; shelfId: string; hint: HintKind; index?: number }
+  | { kind: 'same'; key: string; shelfId: string; hint: HintKind; index?: number }
+  | { kind: 'bad'; reason: FailReason | 'outside'; key: string; shelfId: string | null; index?: number };
 
 type Drag = {
   bookId: string;
@@ -270,24 +271,28 @@ export function HomeScreen() {
     if (!withinX || index < 0) return reuse('outside') ?? { kind: 'bad', reason: 'outside', key: 'outside', shelfId: null };
     if (index >= shelves.length) return reuse('outside') ?? { kind: 'bad', reason: 'outside', key: 'outside', shelfId: null };
     const shelfId = shelves[index].id;
+    // 늘 확정 배치(드래그 시작 배치)에서 계산한다: 직전 미리보기에 이동량을 쌓지 않고, 후보를 바꾸면 밀렸던 책은 원래 자리로
+    const prev = d.preview?.shelfId === shelfId ? d.preview.index : undefined;
     if (shelfId === d.shelfId) {
-      const t = findSwapTarget(layout, books, d.bookId, centerDU);
+      const t = findSwapTarget(layout, books, d.bookId, centerDU, prev);
+      const at = t.kind === 'place' ? t.index : undefined;
       const key = `same:${JSON.stringify(t)}`;
       const hit = reuse(key);
       if (hit) return hit;
       const r = applySwapTarget(layout, books, d.bookId, t);
-      if (r.ok) return { kind: 'ok', layout: r.layout, key, shelfId, hint: t.kind };
-      if (r.reason === 'no-change') return { kind: 'same', key, shelfId, hint: 'self' };
-      return { kind: 'bad', reason: r.reason, key, shelfId };
+      if (r.ok) return { kind: 'ok', layout: r.layout, key, shelfId, hint: t.kind, index: at };
+      if (r.reason === 'no-change') return { kind: 'same', key, shelfId, hint: 'self', index: at };
+      return { kind: 'bad', reason: r.reason, key, shelfId, index: at };
     }
     const p = placementOf(layout, d.bookId)!;
-    const t = findDropTarget(detach(layout, d.bookId, books), books, shelfId, centerDU, p.pose, d.boxW / m.scale);
+    const t = findDropTarget(detach(layout, d.bookId, books), books, shelfId, centerDU, p.pose, d.boxW / m.scale, prev);
+    const at = t.kind === 'insert' ? t.index : undefined;
     const key = `other:${JSON.stringify(t)}`;
     const hit = reuse(key);
     if (hit) return hit;
     const r = moveBook(layout, books, d.bookId, t);
-    if (r.ok) return { kind: 'ok', layout: r.layout, key, shelfId, hint: t.kind === 'stack' ? 'stack' : t.x !== undefined ? 'place' : 'beside' };
-    return { kind: 'bad', reason: r.reason, key, shelfId };
+    if (r.ok) return { kind: 'ok', layout: r.layout, key, shelfId, hint: t.kind === 'stack' ? 'stack' : 'place', index: at };
+    return { kind: 'bad', reason: r.reason, key, shelfId, index: at };
   };
 
   // ---------- 제스처 콜백(JS) ----------
@@ -577,6 +582,17 @@ export function HomeScreen() {
   // 같은 배치에서 그리기 단계를 바꿔 가며: ① 가만히 있을 때 ② 시점 3°→8°→3° 두 번(UI 스레드만, React 없음)의 실제 프레임 간격,
   // ③ 투영 계산만(그리기 없이 같은 함수), ④ 시점 확정 후 React 갱신(렌더·커밋) 시간과 그 뒤 프레임.
   const [perfKey, setPerfKey] = useState(0);
+  const [shelfView, setShelfViewState] = useState<(typeof SHELF_VIEWS)[number]>('전체');
+  // 측정 번들에서만: chaekjang:///?sv=0~4 로 선반 보기를 바로 고른다(비교 캡처용)
+  const { sv } = useLocalSearchParams<{ sv?: string }>();
+  useEffect(() => {
+    if (!PERF_ENABLED || sv === undefined) return;
+    const v = SHELF_VIEWS[Number(sv)];
+    if (!v) return;
+    setShelfView(v);
+    setShelfViewState(v);
+    setPerfKey((k) => k + 1);
+  }, [sv]);
   const perfOn = useSharedValue(false);
   const perfDts = useSharedValue<number[]>([]);
   const perfFrames = useFrameCallback((fi) => {
@@ -1300,6 +1316,21 @@ export function HomeScreen() {
                 </Pressable>
               ))
             : null}
+          {PERF_ENABLED ? (
+            <Pressable
+              accessibilityRole="button"
+              style={styles.menuItem}
+              onPress={() => {
+                setShelfMenuOpen(false);
+                const next = SHELF_VIEWS[(SHELF_VIEWS.indexOf(shelfView) + 1) % SHELF_VIEWS.length];
+                setShelfView(next);
+                setShelfViewState(next);
+                setPerfKey((k) => k + 1);
+                setToast({ text: `선반 보기: ${next}` });
+              }}>
+              <Text style={styles.menuText}>선반 보기: {shelfView}</Text>
+            </Pressable>
+          ) : null}
           <Pressable accessibilityRole="button" style={styles.menuItem} onPress={() => { setShelfMenuOpen(false); setTimeout(() => setDrawerOpen(true), 280); }}>
             <BookMarked size={20} color={colors.ink} /><Text style={styles.menuText}>{ko.drawer.title}{layout.drawer.length ? ` · ${layout.drawer.length}권` : ''}</Text>
           </Pressable>
