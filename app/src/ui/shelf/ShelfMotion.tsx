@@ -238,7 +238,7 @@ const RowBook = memo(
 );
 
 // 줄의 한 캔버스(ShelfRow) 안에 그린다. shared는 캔버스 밖에서 읽어 넘긴다(캔버스 안에는 React 컨텍스트가 닿지 않는다).
-export const RowBooks = memo(function RowBooks({ m, frames, books, hiddenId, glowId = null, cam, s, clear, shared, debug = false, plankAbove = false }: { m: Motion; frames: BookFrame[]; books: Record<string, Book>; hiddenId: string | null; glowId?: string | null; cam: CamSV; s: number; clear: number; shared: Shared; debug?: boolean; plankAbove?: boolean }) {
+export const RowBooks = memo(function RowBooks({ m, frames, books, hiddenId, glowId = null, dragId = null, cam, s, clear, shared, debug = false, plankAbove = false }: { m: Motion; frames: BookFrame[]; books: Record<string, Book>; hiddenId: string | null; glowId?: string | null; dragId?: string | null; cam: CamSV; s: number; clear: number; shared: Shared; debug?: boolean; plankAbove?: boolean }) {
   const px = useMemo(() => ({ s, tx: SHELF.sideMargin * s, ty: (clear - FLOOR) * s }), [s, clear]);
   // 책 면이 받는 그림자의 가리개 후보(끌고 있는 책 제외)
   const idKey = frames.filter((f) => f.box && f.bookId !== hiddenId).map((f) => f.bookId).join('|');
@@ -270,8 +270,8 @@ export const RowBooks = memo(function RowBooks({ m, frames, books, hiddenId, glo
             // 그리기만 막는다. 받는 그림자도 계산하지 않고, 다른 책의 가리개·그림자 목록에서도 빠진다.
             <RowBook key={f.bookId} m={m} frame={f} book={books[f.bookId]} cam={cam} px={px} shared={shared} recv={f.bookId === hiddenId ? undefined : recv} ranks={ranks} hidden={f.bookId === hiddenId} />,
           )}
-        {/* 놓일 자리: 바닥 면만 옅게(제목·그림·질감 없이 단순한 면 하나) */}
-        {hiddenId && frames.some((f) => f.bookId === hiddenId && f.box) ? <PlaceSpot m={m} id={hiddenId} cam={cam} px={px} /> : null}
+        {/* 끄는 책이 놓일 가로 범위: 선반 앞턱에 얇게(끄는 동안만). 책 자체는 이 줄에 실제 자리·깊이로 그려진다 */}
+        {dragId && frames.some((f) => f.bookId === dragId && f.box) ? <LipRange m={m} id={dragId} cam={cam} px={px} /> : null}
         {glowId && frames.some((f) => f.bookId === glowId && f.box) ? <SelectGlow m={m} id={glowId} cam={cam} px={px} ranks={ranks} /> : null}
         {debug ? frames.filter((f) => f.box).map((f) => <DebugGeom key={`dbg${f.bookId}`} m={m} id={f.bookId} cam={cam} px={px} />) : null}
         {debug ? <DebugShelf cam={cam} px={px} /> : null}
@@ -286,27 +286,37 @@ export const RowBooks = memo(function RowBooks({ m, frames, books, hiddenId, glo
   );
 });
 
-// 끌고 있는 책이 놓일 자리: 그 자리에 놓였을 때의 바닥 면(선반 윗면 위)을 옅은 단색으로
-function PlaceSpot({ m, id, cam, px }: { m: Motion; id: string; cam: CamSV; px: Affine }) {
+// 끄는 책이 놓일 가로 범위: 책 바닥의 좌우 끝을 선반 앞턱(판 앞 윗모서리) 바로 아래에 얇은 선으로.
+// 3°처럼 앞 책에 가려 자리가 잘 안 보일 때도 어디에 놓이는지 읽히게. 끄는 동안만(상시 선택 막대가 아니다).
+function LipRange({ m, id, cam, px }: { m: Motion; id: string; cam: CamSV; px: Affine }) {
   const path = useDerivedValue(() => {
     const b = stateNow(m, id);
-    if (!b) return pathOf([]);
-    const c = viewCam(cam.value, b);
-    const f = footPoly(b);
-    return pathOf([f.pts.map((q) => {
-      const p = project(c, { x: q.x, y: f.y, z: q.z });
-      return { x: p.x * px.s + px.tx, y: p.y * px.s + px.ty };
-    })]);
+    const p = Skia.PathBuilder.Make();
+    if (!b) return p.detach();
+    let x0 = Infinity;
+    let x1 = -Infinity;
+    const lo = lowest(b);
+    for (const c of corners(b)) {
+      if (c.y > lo + 0.6) continue;
+      x0 = Math.min(x0, c.x);
+      x1 = Math.max(x1, c.x);
+    }
+    const a = project(cam.value, { x: x0, y: 0, z: -SHELF_FRONT });
+    const e = project(cam.value, { x: x1, y: 0, z: -SHELF_FRONT });
+    const dy = 2.2;
+    p.moveTo(a.x * px.s + px.tx, (a.y + dy) * px.s + px.ty);
+    p.lineTo(e.x * px.s + px.tx, (e.y + dy) * px.s + px.ty);
+    return p.detach();
   });
   return (
-    <Group zIndex={-1e6}>
-      <Path path={path} color={rgba(shadow.color, 0.1)} />
+    <Group zIndex={2e5}>
+      <Path path={path} style="stroke" strokeWidth={1.6 * px.s} strokeCap="round" color={colors.dropRange} />
     </Group>
   );
 }
 
-// 꾸미기에서 고른 한 권: 보이는 윤곽 바깥으로만 좁게 번지는 따뜻한 아이보리 빛(outer 흐림이라 책 면·글자는 덮지 않는다).
-// 그 책 바로 뒤 순서로 그려 앞에 있는 책이 빛을 가리고, 책 바닥선 아래(선반)는 잘라 선반 위로 새지 않는다.
+// 꾸미기에서 고른 한 권: 보이는 윤곽 바깥으로 따뜻한 얇은 선과 좁은 번짐(책 면·글자는 덮지 않는다).
+// 그 책 바로 뒤 순서로 그려 선의 안쪽 절반과 앞에 있는 책이 빛을 가리고, 책 바닥선 아래(선반)는 잘라 선반 위로 새지 않는다.
 // 모양만 그리는 표시라 책 위치·크기·조명·그림자와는 무관하다.
 function SelectGlow({ m, id, cam, px, ranks }: { m: Motion; id: string; cam: CamSV; px: Affine; ranks: Readonly<SharedValue<Record<string, number>>> }) {
   const z = useDerivedValue(() => (ranks.value[id] ?? 0) * 10 - 3);
@@ -322,9 +332,10 @@ function SelectGlow({ m, id, cam, px, ranks }: { m: Motion; id: string; cam: Cam
   const clip = useDerivedValue(() => shape.value.clip);
   return (
     <Group zIndex={z} clip={clip}>
-      <Path path={path} color={colors.selectGlow} opacity={0.9}>
-        <BlurMask blur={2.6 * px.s} style="outer" />
+      <Path path={path} color={colors.selectGlow} opacity={0.65}>
+        <BlurMask blur={3.2 * px.s} style="outer" />
       </Path>
+      <Path path={path} style="stroke" strokeWidth={3 * px.s} strokeJoin="round" color={colors.selectGlow} opacity={0.95} />
     </Group>
   );
 }
@@ -585,9 +596,33 @@ export function receivedShadow3(m: Motion, id: string, ids: string[], s: number,
     const fc = faceCorners(f).map((i) => cs[i]);
     // 가리개마다 두 층: 가까운 부분(빛 길이 d0 + NEAR_SPAN 이하, 또렷하고 진함) + 전체(멀수록 흐림). 두 층이 겹친 곳이 가장 진하다.
     const found: { d: number; parts: Part3[] }[] = [];
+    // 면 좌표(u, v: 면 사각형 0~1): 그림자가 면에 실제로 닿는 가리개만 고른다. 거리만으로 고르면 면을 가로지르는 가리개가 모두
+    // 거의 0으로 같아져, 면에 닿지도 않는 이웃이 자리(RECV_OCC)를 차지하고 실제로 드리우는 책의 그림자가 빠졌다.
+    const e1 = { x: fc[1].x - fc[0].x, y: fc[1].y - fc[0].y, z: fc[1].z - fc[0].z };
+    const e2 = { x: fc[3].x - fc[0].x, y: fc[3].y - fc[0].y, z: fc[3].z - fc[0].z };
+    const l1 = e1.x * e1.x + e1.y * e1.y + e1.z * e1.z || 1;
+    const l2 = e2.x * e2.x + e2.y * e2.y + e2.z * e2.z || 1;
+    const touches = (pts: Vec3[]) => {
+      let u0 = Infinity;
+      let u1 = -Infinity;
+      let v0 = Infinity;
+      let v1 = -Infinity;
+      for (const q of pts) {
+        const dx = q.x - fc[0].x;
+        const dy = q.y - fc[0].y;
+        const dz = q.z - fc[0].z;
+        const u = (dx * e1.x + dy * e1.y + dz * e1.z) / l1;
+        const v = (dx * e2.x + dy * e2.y + dz * e2.z) / l2;
+        u0 = Math.min(u0, u);
+        u1 = Math.max(u1, u);
+        v0 = Math.min(v0, v);
+        v1 = Math.max(v1, v);
+      }
+      return u1 > 0 && u0 < 1 && v1 > 0 && v0 < 1;
+    };
     for (let k = 0; k < occs.length; k++) {
       const all = shadowOnPlane(occs[k], fc[0], n, LIGHT);
-      if (all.pts.length < 3 || !all.near || !all.far) continue;
+      if (all.pts.length < 3 || !all.near || !all.far || !touches(all.pts)) continue;
       const w = k >= nb ? shadow.cast.onBookPlank : shadow.cast.onBook;
       const rel = w.opacity / RECV_LAYER / 2;
       const mk = (r: typeof all): Part3 => ({

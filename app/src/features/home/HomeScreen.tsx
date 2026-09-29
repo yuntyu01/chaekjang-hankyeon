@@ -54,7 +54,7 @@ import {
   type FailReason,
   type Result,
 } from '@/domain/layout-engine';
-import type { Book3 } from '@/domain/book3';
+import { corners, fromPlaced, type Book3 } from '@/domain/book3';
 import { bodiesOf, computeShelf, hitTest, PLANK_BOUNDS, withLeans, type BookFrame } from '@/domain/shelf-scene';
 import { planTransition } from '@/domain/transition';
 import type { Pose, ShelfLayout, Tilt } from '@/domain/types';
@@ -94,6 +94,10 @@ type Drag = {
   preview: Preview | null;
   settling: ShelfLayout | null; // 놓은 뒤 스냅 애니메이션 동안 보여줄 레이아웃
   shelfId: string; // 꾹 누른 책의 원래 선반
+  // 잡은 지점: 손가락 x(뷰포트)와 그때 책 상자(기대기 전 곧은 상자)의 가운데(DU). 놓을 자리는 이 둘의 차이만큼만 옮긴다
+  // (기운 책의 화면 윤곽 가운데를 기준으로 하면 잡자마자 곧은 상자와의 차이만큼 자리가 튄다)
+  startVx: number;
+  startCenterDU: number;
 };
 
 type Toast = { text: string; action?: 'undo' | 'retry' } | null;
@@ -177,7 +181,6 @@ export function HomeScreen() {
   const pointer = useSharedValue({ x: 0, y: 0 }); // 뷰포트 좌표
   const dragX = useSharedValue(0);
   const dragY = useSharedValue(0);
-  const lift = useSharedValue(0);
 
   useEffect(() => {
     void placementStore.load();
@@ -265,16 +268,15 @@ export function HomeScreen() {
     const cy = vy + scroll;
     const index = rowIndexAt(cy);
     const centerPx = vx - d.grabX + d.boxW / 2;
-    const centerDU = (centerPx - m.originX) / m.scale - SHELF.sideMargin;
+    const centerDU = d.startCenterDU + (vx - d.startVx) / m.scale;
     const withinX = centerDU > -SHELF.sideMargin && centerDU < SHELF.innerLeft + SHELF_USABLE_WIDTH + SHELF.innerRight + SHELF.sideMargin;
     const reuse = (key: string) => (d.preview && d.preview.key === key ? d.preview : null);
     if (!withinX || index < 0) return reuse('outside') ?? { kind: 'bad', reason: 'outside', key: 'outside', shelfId: null };
     if (index >= shelves.length) return reuse('outside') ?? { kind: 'bad', reason: 'outside', key: 'outside', shelfId: null };
     const shelfId = shelves[index].id;
     // 늘 확정 배치(드래그 시작 배치)에서 계산한다: 직전 미리보기에 이동량을 쌓지 않고, 후보를 바꾸면 밀렸던 책은 원래 자리로
-    const prev = d.preview?.shelfId === shelfId ? d.preview.index : undefined;
     if (shelfId === d.shelfId) {
-      const t = findSwapTarget(layout, books, d.bookId, centerDU, prev);
+      const t = findSwapTarget(layout, books, d.bookId, centerDU);
       const at = t.kind === 'place' ? t.index : undefined;
       const key = `same:${JSON.stringify(t)}`;
       const hit = reuse(key);
@@ -285,7 +287,7 @@ export function HomeScreen() {
       return { kind: 'bad', reason: r.reason, key, shelfId, index: at };
     }
     const p = placementOf(layout, d.bookId)!;
-    const t = findDropTarget(detach(layout, d.bookId, books), books, shelfId, centerDU, p.pose, d.boxW / m.scale, prev);
+    const t = findDropTarget(detach(layout, d.bookId, books), books, shelfId, centerDU, p.pose, d.boxW / m.scale);
     const at = t.kind === 'insert' ? t.index : undefined;
     const key = `other:${JSON.stringify(t)}`;
     const hit = reuse(key);
@@ -346,13 +348,24 @@ export function HomeScreen() {
       preview: { kind: 'same', key: `same:${JSON.stringify({ kind: 'self' })}`, shelfId: hit.shelfId, hint: 'self' },
       settling: null,
       shelfId: hit.shelfId,
+      startVx: x,
+      startCenterDU: (() => {
+        const bx = boxOf(layout, books, hit.bookId);
+        if (!bx) return (box.minX + box.width / 2);
+        let lo = Infinity;
+        let hi = -Infinity;
+        for (const c of corners(fromPlaced(bx))) {
+          lo = Math.min(lo, c.x);
+          hi = Math.max(hi, c.x);
+        }
+        return (lo + hi) / 2;
+      })(),
     };
     grab.value = { x: d.grabX, y: d.grabY };
     vpOrigin.value = { x: absX - x, y: absY - (y - scroll) };
     pointer.value = { x, y: y - scroll };
     dragX.value = tl.x;
     dragY.value = tl.y - scroll;
-    lift.value = withTiming(1, { duration: reduceMotion ? 0 : 140 });
     active.value = true;
     void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
     setSelectedId(null);
@@ -391,7 +404,14 @@ export function HomeScreen() {
     } else if (!cancelled && d.preview?.kind === 'bad') {
       showToast({ text: ko.fail[d.preview.reason] || ko.fail.outside });
     }
-    // 스냅 목적지 계산
+    // 후보 자리에 선반 안 책으로 보이고 있었으면(끌기 표시가 없다) 그대로 끝낸다: 확정됐으면 그 자리, 아니면 선반 안에서 원래 자리로
+    if (d.preview?.kind === 'ok' || d.preview?.kind === 'same') {
+      if (!committed && d.preview.kind === 'ok') void Haptics.selectionAsync().catch(() => {});
+      finishDrag();
+      setEditId(d.bookId);
+      return;
+    }
+    // 떠 있던 책(자리 없음·선반 밖): 원래 자리로 돌아가 앉힌다
     const pl = placementOf(final, d.bookId)!;
     const finalRows = shiftRows(computeRows(final, books, m.scale, vpH, navigation.height + insets.bottom, rowKy), rowShift);
     const row = finalRows.find((r) => r.shelfId === pl.shelfId)!;
@@ -400,12 +420,11 @@ export function HomeScreen() {
     const tl = toContent(m, row, { x: box.minX, y: box.minY });
     updateDrag({ ...d, frame: f, from: null, settling: final });
     const dur = reduceMotion ? 0 : motion.settle;
-    lift.value = withTiming(0, { duration: dur });
     dragX.value = withTiming(tl.x, { duration: dur });
     dragY.value = withTiming(tl.y - scrollY.value, { duration: dur }, () => {
       scheduleOnRN(finishDrag);
     });
-    if (!committed && d.preview?.kind !== 'ok') void Haptics.selectionAsync().catch(() => {});
+    void Haptics.selectionAsync().catch(() => {});
     // 놓은 뒤에도 꾸미기 모드는 유지하고, 놓은 책을 고른 상태로 둔다
     setEditId(d.bookId);
   };
@@ -414,10 +433,9 @@ export function HomeScreen() {
   const cancelDrag = useCallback(() => {
     if (!dragRef.current) return;
     active.value = false;
-    lift.value = 0;
     lastDragEnd.current = Date.now();
     updateDrag(null);
-  }, [active, lift]);
+  }, [active]);
   useFocusEffect(useCallback(() => cancelDrag, [cancelDrag]));
   useEffect(() => {
     const sub = AppState.addEventListener('change', (s) => {
@@ -584,7 +602,8 @@ export function HomeScreen() {
   const [perfKey, setPerfKey] = useState(0);
   const [shelfView, setShelfViewState] = useState<(typeof SHELF_VIEWS)[number]>('전체');
   // 측정 번들에서만: chaekjang:///?sv=0~4 로 선반 보기를 바로 고른다(비교 캡처용)
-  const { sv } = useLocalSearchParams<{ sv?: string }>();
+  // lv=<그리기 단계>(예: full, cast)로 단계만 바꿔 같은 화면을 비교한다
+  const { sv, lv } = useLocalSearchParams<{ sv?: string; lv?: string }>();
   useEffect(() => {
     if (!PERF_ENABLED || sv === undefined) return;
     const v = SHELF_VIEWS[Number(sv)];
@@ -593,6 +612,11 @@ export function HomeScreen() {
     setShelfViewState(v);
     setPerfKey((k) => k + 1);
   }, [sv]);
+  useEffect(() => {
+    if (!PERF_ENABLED || !lv) return;
+    setPerfLevel(lv as PerfLevel);
+    setPerfKey((k) => k + 1);
+  }, [lv]);
   const perfOn = useSharedValue(false);
   const perfDts = useSharedValue<number[]>([]);
   const perfFrames = useFrameCallback((fi) => {
@@ -674,6 +698,9 @@ export function HomeScreen() {
 
   // ---------- 표시할 레이아웃 ----------
   const shown = drag?.settling ?? (drag?.preview?.kind === 'ok' ? drag.preview.layout : layout);
+  // 끄는 책이 후보 선반의 자리(또는 제자리)에 있으면 선반 안 책으로 그린다(실제 깊이·가림 그대로, 떠 있는 끌기 표시 없음).
+  // 놓을 곳이 없을 때(선반 밖·자리 없음)만 손가락을 따라가는 끌기 표시로 그린다. 어느 때든 한 권만.
+  const dragInRow = !!drag && !drag.settling && (drag.preview?.kind === 'ok' || drag.preview?.kind === 'same');
   const shownShelves = useMemo(() => sortedShelves(shown), [shown]);
   const frames = useShelfScenes(shown, books, view.pitch);
   // Keep drop bands steady while a book travels between differently sized rows.
@@ -1152,7 +1179,8 @@ export function HomeScreen() {
                   originX={m.originX}
                   height={rowOf.get(s.id)?.height ?? 0}
                   clear={rowOf.get(s.id)?.clear ?? SHELF.minClear}
-                  placeholderId={drag?.bookId ?? null}
+                  placeholderId={drag && !dragInRow ? drag.bookId : null}
+                  dragId={dragInRow ? drag!.bookId : null}
                   selectedId={editing ? (drag ? null : editId) : (popId ?? detailId ?? selectedId)}
                   hint={hintFor(s.id)}
                   editing={editing && !drag}
@@ -1172,8 +1200,8 @@ export function HomeScreen() {
         </Animated.ScrollView>
         </GestureDetector>
 
-        {drag && draggedBook ? (
-          <DragOverlay book={draggedBook} frame={drag.frame} from={drag.from} scale={m.scale} x={dragX} y={dragY} lift={lift} />
+        {drag && draggedBook && !dragInRow ? (
+          <DragOverlay book={draggedBook} frame={drag.frame} from={drag.from} scale={m.scale} x={dragX} y={dragY} />
         ) : null}
 
         {popId && popAnchor && books[popId] && placementOf(layout, popId) ? (

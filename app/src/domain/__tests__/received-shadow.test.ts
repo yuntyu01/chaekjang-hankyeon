@@ -2,7 +2,7 @@
 import { corners, faceCorners, faceNormal, rot, type Book3 } from '../book3';
 import { shadowOnPlane, travelOf } from '../cast-shadow';
 import { SHELF_FRONT } from '../geometry';
-import { applySwapTarget, bookXs, findSwapTarget, setDepth, type BookMap, type Result } from '../layout-engine';
+import { applySwapTarget, bookXs, findSwapTarget, moveBook, placementOf, setDepth, type BookMap, type Result } from '../layout-engine';
 import { SAMPLE_BOOKS, SAMPLE_LAYOUT } from '../onboarding-sample';
 import { bodiesOf } from '../shelf-scene';
 import type { ShelfLayout } from '../types';
@@ -72,6 +72,43 @@ describe('윗면이 받는 그림자(같은 깊이)', () => {
 
   it('낮은 여행의 이유는 월든 윗면에 그림자를 드리우지 않는다', () => {
     expect(onHead(body(SAMPLE_LAYOUT, 'b08'), body(SAMPLE_LAYOUT, 'b07'))).toBe(0);
+  });
+});
+
+describe('채식주의자 → 뒤로 민 월든 표지', () => {
+  // 월든을 벽 쪽으로 밀고(앞면 z 83) 채식주의자를 그 왼쪽에 둔다. 빛은 오른쪽·아래·벽 쪽으로 가므로 채식주의자 그림자가 월든 표지에 닿는다.
+  const setup = (dz = 0) => {
+    let l = ok(setDepth(SAMPLE_LAYOUT, books, 'b07', 100));
+    l = ok(moveBook(l, books, 'b09', { kind: 'insert', shelfId: 'shelf-2', index: 0, x: bookXs(l, books).get('b07')! + 45 }));
+    if (dz) l = ok(setDepth(l, books, 'b09', (placementOf(l, 'b09')!.depth ?? 0) + dz));
+    return l;
+  };
+  // 월든 표지(앞면) 사각형 안에 들어오는 그림자 점이 있는지(면 좌표 u, v ∈ 0~1)
+  function coverHit(l: ShelfLayout, occId: string) {
+    const w = body(l, 'b07');
+    const n = rot(w.roll, w.yaw, faceNormal('cover'), w.spin ?? 0, w.pitch ?? 0);
+    const fc = faceCorners('cover').map((i) => corners(w)[i]);
+    const r = shadowOnPlane(corners(body(l, occId)), fc[0], n, L);
+    const e1 = { x: fc[1].x - fc[0].x, y: fc[1].y - fc[0].y, z: fc[1].z - fc[0].z };
+    const e2 = { x: fc[3].x - fc[0].x, y: fc[3].y - fc[0].y, z: fc[3].z - fc[0].z };
+    const uv = r.pts.map((q) => {
+      const d = { x: q.x - fc[0].x, y: q.y - fc[0].y, z: q.z - fc[0].z };
+      return { u: (d.x * e1.x + d.y * e1.y + d.z * e1.z) / (e1.x ** 2 + e1.y ** 2 + e1.z ** 2), v: (d.x * e2.x + d.y * e2.y + d.z * e2.z) / (e2.x ** 2 + e2.y ** 2 + e2.z ** 2) };
+    });
+    return { n, uv, reaches: uv.length >= 3 && Math.max(...uv.map((q) => q.u)) > 0 && Math.min(...uv.map((q) => q.u)) < 1 && Math.max(...uv.map((q) => q.v)) > 0 && Math.min(...uv.map((q) => q.v)) < 1 };
+  }
+
+  it('표지는 앞을 향하고, 채식주의자 그림자는 표지에 닿지만 다른 이웃 그림자는 닿지 않는다', () => {
+    const l = setup();
+    const hit = coverHit(l, 'b09');
+    expect(hit.n.z).toBeCloseTo(-1, 3);
+    expect(hit.reaches).toBe(true);
+    for (const id of ['b08', 'b10', 'b18']) expect(coverHit(l, id).reaches).toBe(false);
+  });
+
+  it('채식주의자를 앞뒤로 조금씩 옮기면 표지 위 그림자 경계가 이어서 움직인다', () => {
+    const edges = [-10, -5, 5, 10].map((dz) => Math.max(...coverHit(setup(dz), 'b09').uv.map((q) => q.u)));
+    for (let i = 1; i < edges.length; i++) expect(Math.abs(edges[i] - edges[i - 1])).toBeLessThan(0.08);
   });
 });
 

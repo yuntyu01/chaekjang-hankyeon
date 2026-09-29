@@ -59,7 +59,8 @@ type Props = {
   scale: number;
   originX: number;
   height: number;
-  placeholderId: string | null;
+  placeholderId: string | null; // 끌기 표시로 떠 있는 책(줄에서는 그리지 않는다)
+  dragId?: string | null; // 끄는 중 이 줄의 후보 자리에 놓여 보이는 책(선반 앞턱에 가로 범위 표시)
   selectedId: string | null;
   hint: DropHint;
   editing: boolean;
@@ -126,7 +127,7 @@ export const ShelfRow = memo(function ShelfRow(p: Props) {
           <ShelfBoard scale={s} clear={p.clear} cam={cam} />
           {RENDER.books && (SHOW.shelfCast || SHOW.contact) ? <RowContacts m={m} ids={ids} cam={cam} s={s} clear={p.clear} /> : null}
           {/* 옆면·윗면은 모든 앞면 아래(앞에 있는 책의 앞면이 가린다) */}
-          {RENDER.books ? <RowBooks m={m} frames={p.frames} books={p.books} hiddenId={p.placeholderId} glowId={p.editing ? p.selectedId : null} cam={cam} s={s} clear={p.clear} shared={shared} debug={p.debug} plankAbove={!p.topRow} /> : null}
+          {RENDER.books ? <RowBooks m={m} frames={p.frames} books={p.books} hiddenId={p.placeholderId} glowId={p.editing ? p.selectedId : null} dragId={p.dragId ?? null} cam={cam} s={s} clear={p.clear} shared={shared} debug={p.debug} plankAbove={!p.topRow} /> : null}
           {RENDER.books && SHOW.contact ? <RowContacts m={m} ids={ids} cam={cam} s={s} clear={p.clear} front /> : null}
         </Canvas>
       ) : (

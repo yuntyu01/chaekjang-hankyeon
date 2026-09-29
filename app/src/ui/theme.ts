@@ -6,7 +6,8 @@ export const colors = {
   bg: '#FBF7F0', // 벽
   wall: '#FBF7F0',
   ink: '#1F2533',
-  selectGlow: '#EFD9AE', // 꾸미기에서 고른 책 둘레의 은은한 빛(따뜻한 아이보리, 좁게 번진다)
+  selectGlow: '#E7B574', // 꾸미기에서 고른 책 둘레의 얇은 선·좁은 번짐(따뜻한 꿀색, 크림 벽에서도 읽히게)
+  dropRange: 'rgba(196, 128, 64, 0.85)', // 끄는 동안 선반 앞턱에 놓일 가로 범위
   inkSoft: '#6E6B66',
   inkFaint: '#9A958C',
   line: '#ECE3D5',

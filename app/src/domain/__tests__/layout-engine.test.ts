@@ -307,13 +307,14 @@ describe('자리 바꾸기', () => {
     expect(nudge).toMatchObject({ kind: 'place', x: want, index: 0 });
     expect(bookXs(ok(applySwapTarget(SAMPLE_LAYOUT, books, 'b01', nudge)), books).get('b01')).toBeCloseTo(want, 1);
     expect(findSwapTarget(SAMPLE_LAYOUT, books, 'b01', x('b01') + w01 / 2)).toEqual({ kind: 'self' });
-    // 데미안 위로 끌면 그 자리에 끼워지고 데미안은 옆으로 밀린다
+    // 데미안 위로 끌면 그 자리에 놓이고, 부딪히는 데미안은 왼쪽 우선으로 비킨다(왼쪽에 자리가 있으면)
     const over = findSwapTarget(SAMPLE_LAYOUT, books, 'b03', x('b02') + 4);
     expect(over.kind).toBe('place');
     const moved = ok(applySwapTarget(SAMPLE_LAYOUT, books, 'b03', over));
-    expect(shelfItems(moved, 'shelf-1').map((it) => it.key).slice(0, 3)).toEqual(['b01', 'b03', 'b02']);
+    expect(shelfItems(moved, 'shelf-1').map((it) => it.key).slice(0, 3)).toEqual(['b01', 'b02', 'b03']);
     const xs = bookXs(moved, books);
-    expect(xs.get('b02')!).toBeGreaterThan(xs.get('b03')!);
+    expect(xs.get('b03')).toBeCloseTo((over as { x: number }).x, 1);
+    expect(xs.get('b02')!).toBeLessThan(xs.get('b03')!);
     const l = ok(moveToDrawer(SAMPLE_LAYOUT, 'b06', books));
     const t = findSwapTarget(l, books, 'b01', 356);
     expect(t.kind).toBe('place');
