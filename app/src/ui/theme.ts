@@ -92,7 +92,9 @@ export const shadow = {
 };
 
 // 선반 판 명암: 윗면 살짝 밝게, 앞면 살짝 어둡게
-export const plankLight = { top: 0.07, front: 0.05 };
+// top: 윗면 나무색 곱하기(질감 이미지가 벽과 거의 같은 옅은 크림색이라 그대로 두면 뒤로 민 책이 벽 앞에 떠 보인다.
+//      시안 윗면 약 (230,200,155)에 맞춘 따뜻한 나무색), front: 앞면을 아주 약하게 어둡게
+export const plankLight = { top: '#EBDABC', front: 0.05 };
 
 export const motion = {
   shift: 180, // 옆 책이 비켜주는 시간(ms)

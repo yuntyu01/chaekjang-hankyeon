@@ -157,9 +157,9 @@ export function ShelfBoard({ scale: s, clear, cam }: { scale: number; clear: num
             <BlurMask blur={(shadow.ao.shelfLip.blur / 2) * s} style="normal" />
           </Path>
         ) : null}
-        {/* 윗면: 빛을 받아 살짝 밝게(질감 명암 위에 한 번만) */}
+        {/* 윗면: 옅은 질감에 나무색을 곱해 벽과 구분되게(책이 선반 위에 선 것으로 읽히게) */}
         <Face poly={topP} matrix={topM} image={top}>
-          <Path path={topP} color={`rgba(255,255,255,${plankLight.top})`} />
+          <Path path={topP} color={plankLight.top} blendMode="multiply" />
         </Face>
         {/* 앞면: 질감 자체가 이미 윗면보다 어둡다. 코드 명암은 아주 약하게, 아래쪽 가장자리만 살짝 */}
         <Face poly={frontP} matrix={frontM} image={front}>
