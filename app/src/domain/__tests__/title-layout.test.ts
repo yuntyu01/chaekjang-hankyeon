@@ -33,7 +33,7 @@ describe('책등 제목 자리', () => {
     for (const title of ['소년이 온다', '82년생 김지영', '여행의 이유', '달러구트 꿈 백화점']) {
       const r = spineTitleLayout(title, 143, 23, 0.5);
       expect(r.columns.some((c) => c.endsWith('⋯'))).toBe(false);
-      expect(r.fontSize).toBeGreaterThanOrEqual(9.5);
+      expect(r.fontSize).toBeGreaterThanOrEqual(8.5);
       expect(r.artTop).toBeLessThanOrEqual(0.85);
     }
   });
@@ -45,5 +45,11 @@ describe('책등 제목 자리', () => {
 describe('책등 제목 열', () => {
   it('넓은 책등이어도 한 열에 들어가면 한 열로', () => {
     expect(spineTitleLayout('쇼코의 미소', 143, 35, 0.5).columns).toHaveLength(1);
+  });
+});
+
+describe('책등 제목 한 열 우선', () => {
+  it('눕혀 읽는 긴 제목(나미야 잡화점의 기적)도 한 열에 들어간다', () => {
+    expect(spineTitleLayout('나미야 잡화점의 기적', 160, 30, 0.58).columns).toHaveLength(1);
   });
 });

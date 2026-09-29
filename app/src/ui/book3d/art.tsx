@@ -8,7 +8,7 @@ import { createContext, useContext, useEffect, useState, type ReactNode } from '
 
 import { BRUSH_DETAIL } from '@/domain/body-art.generated';
 import { inkFor, shade } from '@/domain/color';
-import { spineTitleLayout } from '@/domain/title-layout';
+import { LINE_PITCH, spineTitleLayout } from '@/domain/title-layout';
 import type { Book } from '@/domain/types';
 import { motifSvg } from '@/ui/art/motifs';
 import { CoverFaceArt, SpineFaceArt, spineMotifRect } from '@/ui/book/BookBody';
@@ -136,7 +136,6 @@ async function buildArt(book: Book, s: number, dims: { T: number; H: number; W: 
     const list: { ch: string; punct?: string }[] = [];
     for (const ch of cols[c]) {
       if ((ch === ',' || ch === '.') && list.length) list[list.length - 1].punct = ch;
-      else if (ch === ' ' && list[list.length - 1]?.punct) continue;
       else list.push({ ch });
     }
     let y = t.textTop * h;
@@ -144,11 +143,12 @@ async function buildArt(book: Book, s: number, dims: { T: number; H: number; W: 
     const lieFs = fs * Math.min(1, (0.42 * dims.T) / t.fontSize);
     for (const cell of list) {
       if (cell.ch === ' ') {
-        y += fs * 0.45;
+        // 띄어쓰기(쉼표 뒤도): 시안처럼 반 글자 남짓 띄운다
+        y += fs * 0.5;
         yl += lieFs * 0.35;
         continue;
       }
-      const ch = fs * 1.14;
+      const ch = fs * LINE_PITCH;
       const gw = font.measureText(cell.ch).width;
       const fm = font.getMetrics();
       cells.push({
@@ -186,8 +186,9 @@ async function buildArt(book: Book, s: number, dims: { T: number; H: number; W: 
   const lines = text.split('\n');
   const longest = Math.max(...lines.map((l) => l.length));
   const cfs = Math.max(9, Math.min(15, (dims.W * 0.8) / (longest * 1.05))) * s;
-  const cfont = Skia.Font(bold, cfs);
-  const spacing = long ? 0 : cfs * 0.06;
+  // 시안 표지 제목: 굵지 않은 명조, 글자 사이를 조금 띄운다
+  const cfont = Skia.Font(regular, cfs);
+  const spacing = long ? cfs * 0.02 : cfs * 0.1;
   const lh = cfs * 1.45;
   const cm = cfont.getMetrics();
   const top = (cover?.titleTop ?? 0.2) * h;
@@ -205,9 +206,10 @@ async function buildArt(book: Book, s: number, dims: { T: number; H: number; W: 
   });
   let authorEl: ReactNode = null;
   if (book.author) {
-    let afs = Math.max(7, (cfs / s) * 0.52) * s;
+    // 저자는 제목보다 훨씬 작게, 표지 가운데 폭 안에만(그림 가장자리의 나무·잎에 걸리지 않게)
+    let afs = Math.max(6.5, (cfs / s) * 0.44) * s;
     let afont = Skia.Font(regular, afs);
-    const maxW = cw * 0.84;
+    const maxW = cw * 0.5;
     let aw = afont.measureText(book.author).width;
     if (aw > maxW) {
       afs = Math.max(afs * 0.7, (afs * maxW) / aw);
@@ -215,7 +217,7 @@ async function buildArt(book: Book, s: number, dims: { T: number; H: number; W: 
       aw = afont.measureText(book.author).width;
     }
     const am = afont.getMetrics();
-    const ay = top + lines.length * lh + cfs * 0.35 - am.ascent;
+    const ay = top + lines.length * lh + cfs * 0.1 - am.ascent;
     authorEl = <Text x={cw / 2 - aw / 2} y={ay} text={book.author} font={afont} color={cink} opacity={0.85} />;
   }
   let coverMotif: ReactNode = null;
