@@ -1,0 +1,37 @@
+// 성능 측정용 그리기 단계. EXPO_PUBLIC_PERF=1로 만든 번들에서만 선반 메뉴에 측정 항목이 보인다(보통 빌드에서는 늘 'full').
+// 같은 배치·같은 시점 전환에서 단계를 하나씩 켜 프레임 간격 차이로 비용을 가른다.
+//   shapes: 책 면을 단색 다각형으로만(그림·글자·질감·명암·그림자 없음)
+//   art:    + 책등·표지 그림, 글자, 질감, 면 명암
+//   cast:   + 벽·선반 윗면 그림자, 접촉·틈·기대기·쌓기 어둠, 선반 아래 그림자
+//   full:   + 책 면이 받는 그림자(다른 책·윗 선반 판)
+import { SHOW } from '@/ui/shelf/shadow-debug';
+
+export const PERF_ENABLED = process.env.EXPO_PUBLIC_PERF === '1';
+// 세부 단계: art에서 옆면 질감만 뺀 것(art-grain), art에 그림자 한 종류씩 더한 것(art+이름)
+type Shadow = 'wall' | 'shelfCast' | 'contact' | 'gap' | 'lean' | 'stack' | 'shelf' | 'cast';
+export type PerfLevel = 'shapes' | 'art' | 'cast' | 'full' | 'art-grain' | `art+${Shadow}`;
+export const PERF_LEVELS: PerfLevel[] = ['shapes', 'art', 'cast', 'full'];
+export const PERF_DETAIL: PerfLevel[] = ['art-grain', 'art+wall', 'art+shelfCast', 'art+contact', 'art+gap', 'art+lean', 'art+stack', 'art+shelf', 'art+cast'];
+const SHADOWS: Shadow[] = ['wall', 'shelfCast', 'contact', 'gap', 'lean', 'stack', 'shelf', 'cast'];
+
+// 책 몸체 그리기 단계(BookNode·FaceShape가 마운트할 때 읽는다. 바꾸면 선반 줄을 다시 마운트해야 한다)
+export const RENDER = { art: true, texture: true, grain: true };
+
+export function setPerfLevel(level: PerfLevel) {
+  const art = level !== 'shapes';
+  RENDER.art = art;
+  RENDER.texture = art;
+  RENDER.grain = art && level !== 'art-grain';
+  SHOW.body = art;
+  const on = new Set<Shadow>(level === 'full' ? SHADOWS : level === 'cast' ? SHADOWS.filter((k) => k !== 'cast') : level.startsWith('art+') ? [level.slice(4) as Shadow] : []);
+  for (const k of SHADOWS) SHOW[k] = on.has(k);
+}
+
+export type FrameStats = { n: number; mean: number; p50: number; p90: number; max: number; over50: number };
+
+export function frameStats(dts: number[]): FrameStats {
+  const a = [...dts].sort((x, y) => x - y);
+  const q = (p: number) => (a.length ? a[Math.min(a.length - 1, Math.floor(p * a.length))] : 0);
+  const mean = a.length ? a.reduce((s, v) => s + v, 0) / a.length : 0;
+  return { n: a.length, mean: +mean.toFixed(1), p50: +q(0.5).toFixed(1), p90: +q(0.9).toFixed(1), max: +(a.at(-1) ?? 0).toFixed(1), over50: a.filter((v) => v > 50).length };
+}

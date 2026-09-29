@@ -16,6 +16,7 @@ import {
   type SkPath,
 } from '@shopify/react-native-skia';
 import type { ReactNode } from 'react';
+import type { SharedValue } from 'react-native-reanimated';
 
 import type { Point } from '@/domain/shelf-scene';
 import type { BodyArt } from '@/domain/types';
@@ -201,6 +202,16 @@ export function Grain({ w, h, s, image }: { w: number; h: number; s: number; ima
     <Rect x={0} y={0} width={w} height={h} blendMode="softLight" opacity={GRAIN_STRENGTH}>
       <ImageShader image={image} tx="repeat" ty="repeat" transform={[{ scale: SRC_DU * s }]} />
     </Rect>
+  );
+}
+
+// 모양(path) 안에만 결을 입힌다. 모양으로 자른 큰 사각형(Grain)과 같은 무늬·같은 자리지만, 자르기(클립) 없이 모양만 칠한다.
+export function GrainFill({ path, s, image }: { path: SkPath | SharedValue<SkPath>; s: number; image: SkImageType | null }) {
+  if (!image) return null;
+  return (
+    <Path path={path} blendMode="softLight" opacity={GRAIN_STRENGTH}>
+      <ImageShader image={image} tx="repeat" ty="repeat" transform={[{ scale: SRC_DU * s }]} />
+    </Path>
   );
 }
 

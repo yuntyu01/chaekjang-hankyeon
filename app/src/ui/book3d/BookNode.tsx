@@ -3,16 +3,17 @@
 //   누울 때만 책등 글자·작은 모티프를 바로 세워(돌리면서) 가로로 읽히게 한다.
 // - 나머지 면(뒤표지·머리·꼬리·책배): 표지 판·종이 단면 재질. 앞표지·책등이 비스듬히 옆으로 갈수록 판 색으로 덮인다.
 // - 밝기: 면 법선과 광원(램버트). 책끼리 앞뒤는 매 프레임 깊이로(zIndex).
-import { Group, Image as SkImg, ImageSVG, LinearGradient, Picture, Rect, Text, vec } from '@shopify/react-native-skia';
+import { Group, Image as SkImg, ImageSVG, LinearGradient, Path, Picture, Rect, Skia, Text, vec } from '@shopify/react-native-skia';
 import type React from 'react';
 import { useDerivedValue, type SharedValue } from 'react-native-reanimated';
 
-import { brightness, depthKey, facing, rot, toWorld, viewCam, type Book3, type Cam, type FaceId } from '@/domain/book3';
+import { brightness, corners, depthKey, faceCorners, facing, rot, toWorld, viewCam, type Book3, type Cam, type FaceId } from '@/domain/book3';
 import { project } from '@/domain/box';
 import type { Book } from '@/domain/types';
-import { BOX_HEAD_BOW } from '@/ui/book/BookBody';
-import { light } from '@/ui/theme';
+import { BOX_HEAD_BOW, scaleColor } from '@/ui/book/BookBody';
+import { RENDER } from '@/ui/perf';
 import { SHOW } from '@/ui/shelf/shadow-debug';
+import { light } from '@/ui/theme';
 
 import { useBookArt, toneOf, type BookArt, type Shared } from './art';
 import { FaceShape } from './FaceShape';
@@ -161,6 +162,26 @@ function Side({ f, state, cam, px, book, pages, tone, grain, graze }: { f: FaceI
   return <FaceShape geom={geom} pages={pages} tone={tone} k={k} s={px.s} grain={grain} opacity={op} />;
 }
 
+// 측정용 기본 도형: 책등·표지 면을 그림 없이 단색 사각형으로
+function PlainFace({ f, state, cam, px, tone }: { f: 'spine' | 'cover'; state: RO<Book3>; cam: RO<Cam>; px: Affine; tone: string }) {
+  const path = useDerivedValue(() => {
+    const b = state.value;
+    const c = viewCam(cam.value, b);
+    const p = Skia.PathBuilder.Make();
+    if (facing(c, b, f) <= 0.002) return p.detach();
+    const cs = corners(b);
+    faceCorners(f).forEach((i, n) => {
+      const q = project(c, cs[i]);
+      if (n === 0) p.moveTo(q.x * px.s + px.tx, q.y * px.s + px.ty);
+      else p.lineTo(q.x * px.s + px.tx, q.y * px.s + px.ty);
+    });
+    p.close();
+    return p.detach();
+  });
+  const color = useDerivedValue(() => scaleColor(tone, Math.min(1.06, brightness(light, state.value, f))));
+  return <Path path={path} color={color} />;
+}
+
 function Ribbons({ art, state, cam, px }: { art: BookArt; state: RO<Book3>; cam: RO<Cam>; px: Affine }) {
   const tf = useDerivedValue(() => {
     const b = state.value;
@@ -194,13 +215,22 @@ export function BookNode({ book, dims, state, cam, px, shared, under, order }: {
       <Side f="head" state={state} cam={cam} px={px} book={book} pages tone={tone} grain={shared.grain} />
       <Side f="tail" state={state} cam={cam} px={px} book={book} pages tone={tone} grain={shared.grain} />
       <Side f="fore" state={state} cam={cam} px={px} book={book} pages tone={ctone} grain={shared.grain} />
-      <ArtFace f="spine" art={art} state={state} cam={cam} px={px} d={dims} />
-      <ArtFace f="cover" art={art} state={state} cam={cam} px={px} d={dims} />
-      <Side f="cover" state={state} cam={cam} px={px} book={book} pages={false} tone={ctone} grain={shared.grain} graze />
-      <Side f="spine" state={state} cam={cam} px={px} book={book} pages={false} tone={tone} grain={shared.grain} graze />
+      {RENDER.art ? (
+        <>
+          <ArtFace f="spine" art={art} state={state} cam={cam} px={px} d={dims} />
+          <ArtFace f="cover" art={art} state={state} cam={cam} px={px} d={dims} />
+          <Side f="cover" state={state} cam={cam} px={px} book={book} pages={false} tone={ctone} grain={shared.grain} graze />
+          <Side f="spine" state={state} cam={cam} px={px} book={book} pages={false} tone={tone} grain={shared.grain} graze />
+        </>
+      ) : (
+        <>
+          <PlainFace f="spine" state={state} cam={cam} px={px} tone={tone} />
+          <PlainFace f="cover" state={state} cam={cam} px={px} tone={ctone} />
+        </>
+      )}
       {under}
       {/* 갈피: 내려다보는 시점(3°~8°)이라 머리 면 위에 그린다 */}
-      {art.ribbons ? <Ribbons art={art} state={state} cam={cam} px={px} /> : null}
+      {art.ribbons && RENDER.art ? <Ribbons art={art} state={state} cam={cam} px={px} /> : null}
     </Group>
   );
 }

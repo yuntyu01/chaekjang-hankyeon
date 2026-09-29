@@ -2,17 +2,15 @@
 // 모양: 3D 판 꼭짓점을 책과 같은 카메라로 투영한 면(domain/shelf-geom). 화면에 보이는 선반 외곽 = 이 면들의 외곽.
 // 재질: 받은 선반 PNG에서 잘라 낸 나무 질감(윗면·앞면 안쪽만, scripts/extract-shelf-texture.py)을 각 면에 affine으로 붙인다.
 // PNG의 외곽·투명 여백·원근 끝·바깥 그림자는 쓰지 않는다. 판이 벽에 드리우는 그림자는 광원으로 계산한다(ShelfWallShadow).
-import { BlurMask, Canvas, Group, ImageShader, LinearGradient, Path, Skia, useImage, vec, type SkPath } from '@shopify/react-native-skia';
-import { StyleSheet } from 'react-native';
+import { BlurMask, Group, ImageShader, LinearGradient, Path, Skia, useImage, vec, type SkPath } from '@shopify/react-native-skia';
 import { useDerivedValue, type SharedValue } from 'react-native-reanimated';
 
 import { project, type Camera } from '@/domain/box';
 import { shadowOnPlane, travelOf } from '@/domain/cast-shadow';
-import { DESIGN_WIDTH, SHELF, SHELF_DEPTH } from '@/domain/geometry';
+import { SHELF, SHELF_DEPTH } from '@/domain/geometry';
 import { hull, rgba } from '@/domain/shadow-shape';
 import type { Point } from '@/domain/shelf-scene';
 import { faceTextureMatrix, shelfFaces, shelfVertices } from '@/domain/shelf-geom';
-import { SHOW } from '@/ui/shelf/shadow-debug';
 import { light, plankLight, shadow } from '@/ui/theme';
 
 type RO<T> = Readonly<SharedValue<T>>;
@@ -82,13 +80,14 @@ function WallLayer({ cam, s, clear, k }: { cam: RO<Camera>; s: number; clear: nu
   );
 }
 
-function ShelfWallShadow({ cam, s, clear, height }: { cam: RO<Camera>; s: number; clear: number; height: number }) {
+// 판 → 벽 그림자(줄 캔버스에서 판보다 먼저 그린다)
+export function ShelfWallShadow({ cam, s, clear }: { cam: RO<Camera>; s: number; clear: number }) {
   return (
-    <Canvas style={[StyleSheet.absoluteFill, { width: DESIGN_WIDTH * s, height: height + SHELF_CAST_EXTENT * s }]} pointerEvents="none">
+    <Group>
       {SW.layers.map((_, k) => (
         <WallLayer key={k} cam={cam} s={s} clear={clear} k={k} />
       ))}
-    </Canvas>
+    </Group>
   );
 }
 
@@ -103,7 +102,8 @@ function Face({ poly, matrix, image, children }: { poly: RO<SkPath>; matrix: RO<
   );
 }
 
-export function ShelfBoard({ scale: s, clear, cam, height }: { scale: number; clear: number; cam: RO<Camera>; height: number }) {
+// 판(줄의 한 캔버스 안에 그린다. 판 → 벽 그림자는 ShelfWallShadow로 따로, 그보다 나중에)
+export function ShelfBoard({ scale: s, clear, cam }: { scale: number; clear: number; cam: RO<Camera> }) {
   const top = useImage(TOP_TEX);
   const front = useImage(FRONT_TEX);
   const tw = top?.width() ?? 1;
@@ -149,10 +149,7 @@ export function ShelfBoard({ scale: s, clear, cam, height }: { scale: number; cl
   const g0 = useDerivedValue(() => g.value.g0);
   const g1 = useDerivedValue(() => g.value.g1);
   return (
-    <>
-      {/* 실제 그림자: 판 → 벽 */}
-      {SHOW.shelf ? <ShelfWallShadow cam={cam} s={s} clear={clear} height={height} /> : null}
-      <Canvas style={[StyleSheet.absoluteFill, { width: DESIGN_WIDTH * s, height: height + SHELF_CAST_EXTENT * s }]} pointerEvents="none">
+      <Group>
         {/* 주변광 차폐: 판 앞면 바로 아래 좁은 어둠(광원과 무관한 분위기 층) */}
         <Path path={lipP} color={rgba(shadow.color, shadow.ao.shelfLip.opacity)}>
           <BlurMask blur={(shadow.ao.shelfLip.blur / 2) * s} style="normal" />
@@ -179,7 +176,6 @@ export function ShelfBoard({ scale: s, clear, cam, height }: { scale: number; cl
         <Path path={sideEdge} style="stroke" strokeWidth={0.6 * s} strokeCap="round" color="rgba(255,250,240,0.25)">
           <BlurMask blur={0.35 * s} style="normal" />
         </Path>
-      </Canvas>
-    </>
+      </Group>
   );
 }

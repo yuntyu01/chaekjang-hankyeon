@@ -57,3 +57,21 @@ describe('월든 → 채식주의자', () => {
     expect(shadowRight(body(l, 'b07'), shifted)).toBeCloseTo(base, 6);
   });
 });
+
+describe('윗면이 받는 그림자(같은 깊이)', () => {
+  // 받는 책 윗면(머리) 평면 위 그림자 점 수. 빛이 아래로 가므로 가리개가 받는 윗면보다 높을 때만 생긴다.
+  function onHead(occ: Book3, recv: Book3) {
+    const n = rot(recv.roll, recv.yaw, faceNormal('head'), recv.spin ?? 0, recv.pitch ?? 0);
+    const p0 = corners(recv)[faceCorners('head')[0]];
+    return shadowOnPlane(corners(occ), p0, n, L).pts.length;
+  }
+
+  it('앞면이 같은 평면이어도 더 높은 월든은 여행의 이유 윗면에 그림자를 드리운다', () => {
+    expect(onHead(body(SAMPLE_LAYOUT, 'b07'), body(SAMPLE_LAYOUT, 'b08'))).toBeGreaterThanOrEqual(3);
+  });
+
+  it('낮은 여행의 이유는 월든 윗면에 그림자를 드리우지 않는다', () => {
+    expect(onHead(body(SAMPLE_LAYOUT, 'b08'), body(SAMPLE_LAYOUT, 'b07'))).toBe(0);
+  });
+});
+
