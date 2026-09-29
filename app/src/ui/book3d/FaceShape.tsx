@@ -4,7 +4,7 @@ import { BlurMask, Group, LinearGradient, Path, Skia, vec, type SkImage, type Sk
 import { useDerivedValue, type SharedValue } from 'react-native-reanimated';
 
 import type { Point } from '@/domain/shelf-scene';
-import { edgeFactor, GrainFill, mix, PAGE, PAGE_LINE, scaleColor } from '@/ui/book/BookBody';
+import { edgeFactor, GrainFill, litTone, mix, PAGE, PAGE_LINE, scaleColor, withAlpha } from '@/ui/book/BookBody';
 import { RENDER } from '@/ui/perf';
 
 import type { FaceGeom } from './face-geometry';
@@ -78,7 +78,11 @@ function TexturedFace({ geom, pages, tone, k, s, grain, opacity }: Props) {
     const f = scaleColor(tone, Math.min(1.06, k.value));
     return pages ? mix(f, scaleColor(PAGE, Math.min(1, k.value)), RIM_TO_PAGE) : f;
   });
-  const soft = useDerivedValue(() => (geom.value.lit ? ['rgba(255,250,240,0.26)', 'rgba(255,250,240,0)'] : ['rgba(255,250,240,0.18)', 'rgba(255,250,240,0)']));
+  // 면이 꺾이는 모서리 쪽 빛·빛 받는 모서리 광택: 흰색이 아니라 책 색을 밝힌 색(표지색과 이어지게)
+  const lit = litTone(tone);
+  // 빛을 등진 면(오른쪽 옆면 등)은 맞닿은 모서리를 밝히지 않는다(앞면과의 경계에 밝은 선이 생겨 테두리처럼 보였다)
+  const soft = useDerivedValue(() => (geom.value.lit ? [withAlpha(lit, 0.24), withAlpha(lit, 0)] : [withAlpha(lit, 0), withAlpha(lit, 0)]));
+  const hiColors = pages ? [withAlpha(lit, 0.14), withAlpha(lit, 0.04)] : [withAlpha(lit, 0.4), withAlpha(lit, 0.12)];
   const edge = pages ? mix(scaleColor(tone, edgeFactor(tone)), PAGE, RIM_TO_PAGE) : scaleColor(tone, edgeFactor(tone));
   return (
     <Group opacity={opacity}>
@@ -91,15 +95,15 @@ function TexturedFace({ geom, pages, tone, k, s, grain, opacity }: Props) {
         <LinearGradient start={a} end={mid} colors={soft} />
       </Path>
       <Path path={path}>
-        <LinearGradient start={a} end={ab} colors={['rgba(50,35,25,0)', 'rgba(50,35,25,0.14)']} />
+        <LinearGradient start={a} end={ab} colors={[withAlpha(scaleColor(tone, 0.6), 0), withAlpha(scaleColor(tone, 0.6), 0.14)]} />
       </Path>
       {/* 빛 받는 윗면 모서리만 은은하게 */}
       <Path path={hi} style="stroke" strokeWidth={2.4 * s} strokeCap="round">
-        <LinearGradient start={a} end={b} colors={pages ? ['rgba(255,250,238,0.12)', 'rgba(255,250,238,0.04)'] : ['rgba(255,255,255,0.22)', 'rgba(255,255,255,0.08)']} />
+        <LinearGradient start={a} end={b} colors={hiColors} />
         <BlurMask blur={1.4 * s} style="normal" />
       </Path>
-      {/* 바깥 실루엣은 아주 연하게 */}
-      <Path path={runs} style="stroke" strokeWidth={0.7 * s} strokeJoin="round" strokeCap="round" color={edge} opacity={pages ? 0.18 : 0.35} />
+      {/* 바깥 실루엣은 아주 연하게(진한 테두리로 읽히지 않게) */}
+      <Path path={runs} style="stroke" strokeWidth={0.7 * s} strokeJoin="round" strokeCap="round" color={edge} opacity={pages ? 0.1 : 0.16} />
     </Group>
   );
 }

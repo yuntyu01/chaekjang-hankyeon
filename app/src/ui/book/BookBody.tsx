@@ -49,6 +49,20 @@ export function mix(a: string, b: string, t: number) {
   return `rgb(${m[0]}, ${m[1]}, ${m[2]})`;
 }
 
+// 색에 투명도 붙이기(a: 'rgb(...)' 또는 '#RRGGBB')
+export function withAlpha(c: string, alpha: number) {
+  'worklet';
+  const v = c.startsWith('#') ? [1, 3, 5].map((i) => parseInt(c.slice(i, i + 2), 16)) : (c.match(/\d+/g) ?? []).slice(0, 3).map(Number);
+  return `rgba(${v[0]}, ${v[1]}, ${v[2]}, ${Math.max(0, Math.min(1, alpha)).toFixed(3)})`;
+}
+
+// 책 색에서 이어지는 빛: 흰색이 아니라 그 책 색을 따뜻한 빛 쪽으로 밝힌 색(모서리 하이라이트가 표지색과 이어지게)
+export const LIGHT_TINT = '#FFF4E2';
+export function litTone(tone: string) {
+  'worklet';
+  return mix(tone, LIGHT_TINT, 0.5);
+}
+
 export function luminance(hex: string) {
   const n = parseInt(hex.slice(1), 16);
   return (0.2126 * ((n >> 16) & 255) + 0.7152 * ((n >> 8) & 255) + 0.0722 * (n & 255)) / 255;

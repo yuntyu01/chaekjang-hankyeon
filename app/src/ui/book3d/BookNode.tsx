@@ -10,7 +10,7 @@ import { useDerivedValue, type SharedValue } from 'react-native-reanimated';
 import { brightness, corners, depthKey, faceCorners, facing, rot, toWorld, viewCam, type Book3, type Cam, type FaceId } from '@/domain/book3';
 import { project } from '@/domain/box';
 import type { Book } from '@/domain/types';
-import { BOX_HEAD_BOW, scaleColor } from '@/ui/book/BookBody';
+import { BOX_HEAD_BOW, litTone, scaleColor, withAlpha } from '@/ui/book/BookBody';
 import { RENDER } from '@/ui/perf';
 import { SHOW } from '@/ui/shelf/shadow-debug';
 import { light } from '@/ui/theme';
@@ -69,32 +69,35 @@ function litDelta(b: Book3, n: { x: number; y: number; z: number }) {
   return w.x * LN.x + w.y * LN.y + w.z * LN.z - (w0.x * LN.x + w0.y * LN.y + w0.z * LN.z);
 }
 
-function bevelColor(delta: number) {
+// 빛 쪽 모서리는 책 색을 밝힌 색(흰 띠가 아니라 표지색과 이어지게), 반대쪽은 같은 책 색을 조금 어둡게(검은 테두리가 아니게)
+function bevelColor(delta: number, lit: string, dark: string) {
   'worklet';
-  if (delta >= 0) return `rgba(255, 246, 230, ${Math.min(0.4, delta * 2.2)})`;
-  return `rgba(84, 60, 44, ${Math.min(0.16, -delta * 0.28)})`;
+  if (delta >= 0) return withAlpha(lit, Math.min(0.45, delta * 2.4));
+  return withAlpha(dark, Math.min(0.22, -delta * 0.4));
 }
 
 // 가장자리에서 안쪽으로: 기울기 1(가장자리) → 0.45 → 0(평평)
 const PROFILE = [1, 0.45, 0];
 
-function edgeColors(b: Book3, axis: 'x' | 'y', sign: number) {
+function edgeColors(b: Book3, axis: 'x' | 'y', sign: number, lit: string, dark: string) {
   'worklet';
   const out: string[] = [];
   for (const k of PROFILE) {
     const a = (BEVEL_DEG * k * Math.PI) / 180;
     const n = axis === 'x' ? { x: sign * Math.sin(a), y: 0, z: -Math.cos(a) } : { x: 0, y: Math.sin(a), z: -Math.cos(a) };
-    out.push(bevelColor(litDelta(b, n)));
+    out.push(bevelColor(litDelta(b, n), lit, dark));
   }
   return out;
 }
 
-function SpineBevel({ state, w, h, s, T }: { state: RO<Book3>; w: number; h: number; s: number; T: number }) {
+function SpineBevel({ state, w, h, s, T, tone }: { state: RO<Book3>; w: number; h: number; s: number; T: number; tone: string }) {
   const bx = Math.max(2.5, Math.min(5, 0.2 * T)) * s;
   const bh = 2.6 * s;
-  const left = useDerivedValue(() => edgeColors(state.value, 'x', -1));
-  const right = useDerivedValue(() => edgeColors(state.value, 'x', 1));
-  const head = useDerivedValue(() => edgeColors(state.value, 'y', 1));
+  const lit = litTone(tone);
+  const dark = scaleColor(tone, 0.7);
+  const left = useDerivedValue(() => edgeColors(state.value, 'x', -1, lit, dark));
+  const right = useDerivedValue(() => edgeColors(state.value, 'x', 1, lit, dark));
+  const head = useDerivedValue(() => edgeColors(state.value, 'y', 1, lit, dark));
   const pos = [0, 0.45, 1];
   return (
     <>
@@ -111,7 +114,7 @@ function SpineBevel({ state, w, h, s, T }: { state: RO<Book3>; w: number; h: num
   );
 }
 
-function ArtFace({ f, art, state, cam, px, d }: { f: 'spine' | 'cover'; art: BookArt; state: RO<Book3>; cam: RO<Cam>; px: Affine; d: Book3['dims'] }) {
+function ArtFace({ f, art, state, cam, px, d, tone }: { f: 'spine' | 'cover'; art: BookArt; state: RO<Book3>; cam: RO<Cam>; px: Affine; d: Book3['dims']; tone: string }) {
   const s = px.s;
   // 보이지 않는 면은 행렬을 0으로(그룹 불투명도만으로는 기록된 그림이 얇은 선으로 남는다)
   const m = useDerivedValue(() => {
@@ -128,7 +131,7 @@ function ArtFace({ f, art, state, cam, px, d }: { f: 'spine' | 'cover'; art: Boo
     <Group matrix={m}>
       <Picture picture={f === 'spine' ? art.spine : art.cover} />
       <Rect x={0} y={0} width={w} height={h} color={shade} />
-      {f === 'spine' && SHOW.body ? <SpineBevel state={state} w={w} h={h} s={s} T={d.T} /> : null}
+      {f === 'spine' && SHOW.body ? <SpineBevel state={state} w={w} h={h} s={s} T={d.T} tone={tone} /> : null}
       {f === 'spine' ? (
         <>
           {art.motif ? (
@@ -220,8 +223,8 @@ export function BookNode({ book, dims, state, cam, px, shared, under, order, hid
       <Side f="fore" state={state} cam={cam} px={px} book={book} pages tone={ctone} grain={shared.grain} />
       {RENDER.art ? (
         <>
-          <ArtFace f="spine" art={art} state={state} cam={cam} px={px} d={dims} />
-          <ArtFace f="cover" art={art} state={state} cam={cam} px={px} d={dims} />
+          <ArtFace f="spine" art={art} state={state} cam={cam} px={px} d={dims} tone={tone} />
+          <ArtFace f="cover" art={art} state={state} cam={cam} px={px} d={dims} tone={ctone} />
           <Side f="cover" state={state} cam={cam} px={px} book={book} pages={false} tone={ctone} grain={shared.grain} graze />
           <Side f="spine" state={state} cam={cam} px={px} book={book} pages={false} tone={tone} grain={shared.grain} graze />
         </>
