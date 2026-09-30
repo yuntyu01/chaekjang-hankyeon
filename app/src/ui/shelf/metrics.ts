@@ -35,6 +35,9 @@ export function useShelfMetrics() {
 
 export const RIBBON_OUT = 12;
 
+// 헤더 아래 빈 공간 비율(1 = 세 줄을 가운데 정렬). 측정 번들에서 비교할 때만 바꾼다
+export const LAYOUT = { topGap: 1 };
+
 // ky: 줄 높이를 잴 카메라(없으면 지금 보기 각). 꾸미기에서는 가장 내려다보는 각으로 재 두어 시점을 끌어도 줄이 움직이지 않는다.
 export function computeRows(layout: ShelfLayout, books: BookMap, scale: number, viewportHeight = 0, bottomInset = 0, ky?: number): RowGeom[] {
   const shelves = sortedShelves(layout);
@@ -47,7 +50,7 @@ export function computeRows(layout: ShelfLayout, books: BookMap, scale: number, 
   );
   const clear = tallest + SHELF.rowTopPad;
   const height = (clear + SHELF.below + SHELF.rowGap) * scale;
-  let top = Math.max(CONTENT_TOP, (viewportHeight - bottomInset - height * shelves.length) / 2);
+  let top = Math.max(CONTENT_TOP, ((viewportHeight - bottomInset - height * shelves.length) / 2) * LAYOUT.topGap);
   return shelves.map((s) => {
     const row = { shelfId: s.id, top, clear, height };
     top += height;

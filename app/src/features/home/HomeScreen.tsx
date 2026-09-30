@@ -61,7 +61,7 @@ import type { Pose, ShelfLayout, Tilt } from '@/domain/types';
 import { ko } from '@/i18n/ko';
 import { placementStore, usePlacementStore } from '@/store/placement-store';
 import { DragOverlay, frameBBox } from '@/ui/shelf/DragOverlay';
-import { CONTENT_TOP, computeRows, rowAt, toContent, toScene, useShelfMetrics, type RowGeom } from '@/ui/shelf/metrics';
+import { CONTENT_TOP, computeRows, LAYOUT, rowAt, toContent, toScene, useShelfMetrics, type RowGeom } from '@/ui/shelf/metrics';
 import { benchProjection, currentStates, motionOf, previewShelf, type BenchRow } from '@/ui/shelf/ShelfMotion';
 import { frameStats, PERF_DETAIL, PERF_ENABLED, PERF_LEVELS, setPerfLevel, setShelfMode, setShelfView, SHELF_MODES, SHELF_VIEWS, type PerfLevel, type ShelfMode } from '@/ui/perf';
 import type { FrontState } from '@/domain/front-pose';
@@ -603,7 +603,13 @@ export function HomeScreen() {
   const [shelfView, setShelfViewState] = useState<(typeof SHELF_VIEWS)[number]>('전체');
   // 측정 번들에서만: chaekjang:///?sv=0~4 로 선반 보기를 바로 고른다(비교 캡처용)
   // lv=<그리기 단계>(예: full, cast)로 단계만 바꿔 같은 화면을 비교한다
-  const { sv, lv, sh } = useLocalSearchParams<{ sv?: string; lv?: string; sh?: string }>();
+  const { sv, lv, sh, gap } = useLocalSearchParams<{ sv?: string; lv?: string; sh?: string; gap?: string }>();
+  const [, setGapTick] = useState(0);
+  useEffect(() => {
+    if (!PERF_ENABLED || gap === undefined) return;
+    LAYOUT.topGap = Number(gap);
+    setGapTick((k) => k + 1);
+  }, [gap]);
   useEffect(() => {
     if (!PERF_ENABLED || !sh || !SHELF_MODES.includes(sh as ShelfMode)) return;
     setShelfMode(sh as ShelfMode);
@@ -712,7 +718,7 @@ export function HomeScreen() {
   const rows = useMemo(() => {
     const base = drag && !drag.settling ? layout : shown;
     return shiftRows(computeRows(base, books, m.scale, vpH, navigation.height + insets.bottom, rowKy), rowShift);
-  }, [shown, layout, books, m.scale, vpH, insets.bottom, !!drag, drag?.settling, view.pitch, rowKy, rowShift]);
+  }, [shown, layout, books, m.scale, vpH, insets.bottom, !!drag, drag?.settling, view.pitch, rowKy, rowShift, gap]);
   const rowOf = useMemo(() => new Map(rows.map((r) => [r.shelfId, r])), [rows]);
   useEffect(() => {
     const out: Box[] = [];

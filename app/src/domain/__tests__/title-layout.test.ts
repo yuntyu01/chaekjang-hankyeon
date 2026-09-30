@@ -1,9 +1,9 @@
 import { inkFor, shade } from '../color';
-import { layoutVerticalTitle, spineTitleLayout } from '../title-layout';
+import { coverTitleLayout, layoutVerticalTitle, spineTitleLayout } from '../title-layout';
 
 describe('세로 제목 조판', () => {
   it('짧은 제목은 한 열', () => {
-    expect(layoutVerticalTitle('모순', 90, 34, [13, 11])).toEqual({ fontSize: 13, columns: ['모순'] });
+    expect(layoutVerticalTitle('모순', 90, 34, [13, 11])).toMatchObject({ fontSize: 13, columns: ['모순'] });
   });
 
   it('넓은 책은 단어 단위로 두 열까지 나눈다', () => {
@@ -51,5 +51,29 @@ describe('책등 제목 열', () => {
 describe('책등 제목 한 열 우선', () => {
   it('눕혀 읽는 긴 제목(나미야 잡화점의 기적)도 한 열에 들어간다', () => {
     expect(spineTitleLayout('나미야 잡화점의 기적', 160, 30, 0.58).columns).toHaveLength(1);
+  });
+});
+
+describe('앞표지 제목', () => {
+  it('짧은 제목(월든)은 크게 한 줄', () => {
+    const r = coverTitleLayout('월든', 116, 172);
+    expect(r.lines).toEqual(['월든']);
+    expect(r.fontSize).toBeGreaterThanOrEqual(17);
+  });
+  it('긴 제목(우리가 빛의 속도로 갈 수 없다면)은 단어를 깨지 않고 줄을 나눠 두 줄 때보다 크게', () => {
+    const r = coverTitleLayout('우리가 빛의 속도로 갈 수 없다면', 103, 152);
+    expect(r.lines.length).toBeGreaterThanOrEqual(2);
+    expect(r.lines.join(' ')).toBe('우리가 빛의 속도로 갈 수 없다면');
+    expect(r.fontSize).toBeGreaterThan(10.5);
+  });
+});
+
+describe('책등 제목 크기는 길이에 따라', () => {
+  it('짧은 제목은 크게, 긴 제목만 줄인다', () => {
+    const short = spineTitleLayout('아몬드', 156, 26, 0.58);
+    const long = spineTitleLayout('달러구트 꿈 백화점', 160, 27, 0.58);
+    expect(short.fontSize).toBeGreaterThanOrEqual(12.5);
+    expect(long.fontSize).toBeGreaterThanOrEqual(10);
+    expect(long.fontSize).toBeLessThan(short.fontSize);
   });
 });

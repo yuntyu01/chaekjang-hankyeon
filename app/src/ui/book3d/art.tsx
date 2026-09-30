@@ -8,7 +8,7 @@ import { createContext, useContext, useEffect, useState, type ReactNode } from '
 
 import { BRUSH_DETAIL } from '@/domain/body-art.generated';
 import { inkFor, shade } from '@/domain/color';
-import { LINE_PITCH, spineTitleLayout } from '@/domain/title-layout';
+import { COVER_LINE_H, coverTitleLayout, spineTitleLayout } from '@/domain/title-layout';
 import type { Book } from '@/domain/types';
 import { motifSvg } from '@/ui/art/motifs';
 import { CoverFaceArt, SpineFaceArt, spineMotifRect } from '@/ui/book/BookBody';
@@ -52,22 +52,6 @@ export const toneOf = (b: Book, cover: boolean) => (cover ? b.cover?.edge : unde
 
 export const RIBBON_OUT = 12; // 시안: 갈피가 책 위로 약 13DU
 export const SPINE_FACE = 0.94; // 책등 글자·그림이 놓이는 폭(오른쪽 끝은 옆면으로 꺾이는 곳)
-
-// 긴 표지 제목은 단어 경계에서 두 줄로 나눈다(단어 중간에서 끊기지 않게).
-export function splitTwoLines(title: string) {
-  const words = title.split(' ');
-  if (words.length < 2) return title;
-  let best = 1;
-  let bestDiff = Infinity;
-  for (let i = 1; i < words.length; i++) {
-    const diff = Math.abs(words.slice(0, i).join(' ').length - words.slice(i).join(' ').length);
-    if (diff < bestDiff) {
-      bestDiff = diff;
-      best = i;
-    }
-  }
-  return `${words.slice(0, best).join(' ')}\n${words.slice(best).join(' ')}`;
-}
 
 function Ribbons({ book, s }: { book: Book; s: number }) {
   const n = Math.min(2, book.quotes ?? 0);
@@ -148,7 +132,7 @@ async function buildArt(book: Book, s: number, dims: { T: number; H: number; W: 
         yl += lieFs * 0.35;
         continue;
       }
-      const ch = fs * LINE_PITCH;
+      const ch = fs * t.pitch;
       const gw = font.measureText(cell.ch).width;
       const fm = font.getMetrics();
       cells.push({
@@ -180,16 +164,15 @@ async function buildArt(book: Book, s: number, dims: { T: number; H: number; W: 
   // 표지(앞표지 그림 + 제목·저자)
   const cw = dims.W * s;
   const cover = book.cover;
+  // 제목은 크고 굵게(표지마다 정한 제목 색 그대로: 밝은 표지엔 진하게, 어두운 표지엔 밝게), 저자는 작고 옅게
   const cink = cover?.ink ?? ink;
-  const long = book.title.length > 9;
-  const text = long ? splitTwoLines(book.title) : book.title;
-  const lines = text.split('\n');
-  const longest = Math.max(...lines.map((l) => l.length));
-  const cfs = Math.max(9, Math.min(15, (dims.W * 0.8) / (longest * 1.05))) * s;
-  // 시안 표지 제목: 굵지 않은 명조, 글자 사이를 조금 띄운다
-  const cfont = Skia.Font(regular, cfs);
-  const spacing = long ? cfs * 0.02 : cfs * 0.1;
-  const lh = cfs * 1.45;
+  const ainkc = cink;
+  const ct = coverTitleLayout(book.title, dims.W, dims.H);
+  const lines = ct.lines;
+  const cfs = ct.fontSize * s;
+  const cfont = Skia.Font(bold, cfs);
+  const spacing = lines.length === 1 && [...book.title].length <= 5 ? cfs * 0.08 : cfs * 0.02;
+  const lh = cfs * COVER_LINE_H;
   const cm = cfont.getMetrics();
   const top = (cover?.titleTop ?? 0.2) * h;
   const lineEls = lines.map((line, i) => {
@@ -207,9 +190,9 @@ async function buildArt(book: Book, s: number, dims: { T: number; H: number; W: 
   let authorEl: ReactNode = null;
   if (book.author) {
     // 저자는 제목보다 훨씬 작게, 표지 가운데 폭 안에만(그림 가장자리의 나무·잎에 걸리지 않게)
-    let afs = Math.max(6.5, (cfs / s) * 0.44) * s;
+    let afs = Math.max(6.5, Math.min(8.5, (cfs / s) * 0.46)) * s;
     let afont = Skia.Font(regular, afs);
-    const maxW = cw * 0.5;
+    const maxW = cw * 0.42;
     let aw = afont.measureText(book.author).width;
     if (aw > maxW) {
       afs = Math.max(afs * 0.7, (afs * maxW) / aw);
@@ -217,8 +200,8 @@ async function buildArt(book: Book, s: number, dims: { T: number; H: number; W: 
       aw = afont.measureText(book.author).width;
     }
     const am = afont.getMetrics();
-    const ay = top + lines.length * lh + cfs * 0.1 - am.ascent;
-    authorEl = <Text x={cw / 2 - aw / 2} y={ay} text={book.author} font={afont} color={cink} opacity={0.85} />;
+    const ay = top + lines.length * lh + cfs * 0.12 - am.ascent;
+    authorEl = <Text x={cw / 2 - aw / 2} y={ay} text={book.author} font={afont} color={ainkc} opacity={0.8} />;
   }
   let coverMotif: ReactNode = null;
   if (!cover && !book.body) {
