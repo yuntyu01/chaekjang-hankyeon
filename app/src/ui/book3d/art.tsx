@@ -206,7 +206,7 @@ async function buildArt(book: Book, s: number, dims: { T: number; H: number; W: 
   const r = spineMotifRect(art, motif, h, fw);
   if (r && motif) {
     motifCell = { image: motif, svg: null, cx: r.x + r.w / 2, cy: r.y + r.h / 2, w: r.w, h: r.h };
-  } else if (!book.body) {
+  } else if (!book.body && book.art.motif !== 'none') {
     const svg = Skia.SVG.MakeFromString(motifSvg(book.art.motif, book.art.accentColor ?? ink));
     const top = t.artTop * h;
     const mh = (h * 0.93 - top) * 0.9;
@@ -260,7 +260,7 @@ async function buildArt(book: Book, s: number, dims: { T: number; H: number; W: 
     authorEl = <Text x={cw / 2 - aw / 2} y={ay} text={book.author} font={afont} color={ainkc} opacity={0.8} />;
   }
   let coverMotif: ReactNode = null;
-  if (!cover && !book.body) {
+  if (!cover && !book.body && book.art.motif !== 'none') {
     const svg = Skia.SVG.MakeFromString(motifSvg(book.art.motif, book.art.accentColor ?? ink));
     const mH = h * 0.4;
     const mw = Math.min(cw * 0.4, (mH * 24) / 60);
@@ -288,7 +288,8 @@ export function useBookArt(book: Book, s: number, dims: { T: number; H: number; 
   const needMotif = !!book.body?.motif;
   const needCover = !!book.cover?.image;
   const ready = shared.bold && shared.regular && shared.grain && (!needMotif || motif) && (!needCover || coverImg);
-  const key = `${book.id}|${s.toFixed(4)}|${dims.T.toFixed(3)}|${dims.H.toFixed(3)}|${dims.W.toFixed(3)}|${book.title}|${book.quotes ?? 0}`;
+  // 장정(책등 색·모티프)·저자가 바뀌면 다시 기록한다(같은 책 id라도)
+  const key = `${book.id}|${s.toFixed(4)}|${dims.T.toFixed(3)}|${dims.H.toFixed(3)}|${dims.W.toFixed(3)}|${book.title}|${book.author ?? ''}|${book.quotes ?? 0}|${book.themeColor}|${book.art.motif}|${book.art.ribbon ?? ''}`;
   const [art, setArt] = useState<{ key: string; art: BookArt } | null>(() => (done.has(key) ? { key, art: done.get(key)! } : null));
   useEffect(() => {
     if (!ready) return;

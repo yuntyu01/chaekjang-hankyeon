@@ -3,11 +3,9 @@
 import { useSyncExternalStore } from 'react';
 import Storage from 'expo-sqlite/kv-store';
 
-import { toShelfBook } from '@/domain/catalog';
-import { applySwapTarget, bookXs, findSwapTarget, fitToShelf, migrate, normalize, setDepth, threeShelfLayout, validate, withNormalizedX, type BookMap } from '@/domain/layout-engine';
+import { addBook as placeNewBook, addShelf, applySwapTarget, bookXs, ensureShelves, findSwapTarget, fitToShelf, migrate, moveToDrawer, normalize, placeFromDrawer, pruneEmptyShelves, setDepth, validate, withNormalizedX, type BookMap } from '@/domain/layout-engine';
 import { withLeans } from '@/domain/shelf-scene';
 import { SHELF_DEPTH, SHELF_FRONT } from '@/domain/geometry';
-import { loadLibrary } from '@/db/local-db';
 import { SAMPLE_BOOKS, SAMPLE_LAYOUT } from '@/domain/onboarding-sample';
 import type { ShelfLayout, ShelfLayoutV1 } from '@/domain/types';
 
@@ -23,12 +21,14 @@ type State = {
   save: SaveStatus;
   loaded: boolean;
   notice: number | null; // 복원하면서 선반에 들어가지 않아 서랍으로 옮긴 책 수(한 번 알리고 지운다)
+  demo: boolean; // 측정 번들 전용 예시 책장(메모리에만, 저장하지 않는다. 사용자 데이터와 섞지 않는다)
 };
 
-// 온보딩 예시 16권 + 로컬 DB의 내 책(읽음만 선반/서랍 대상, Phase 1에서 추가 흐름 연결)
-const books: BookMap = Object.fromEntries(SAMPLE_BOOKS.map((b) => [b.id, b]));
+// 첫 실행: 빈 선반 세 칸
+export const EMPTY_LAYOUT: ShelfLayout = ensureShelves({ version: 2, shelves: [], placements: [], drawer: [] });
 
-let state: State = { books, layout: SAMPLE_LAYOUT, undo: null, save: 'idle', loaded: false, notice: null };
+let state: State = { books: {}, layout: EMPTY_LAYOUT, undo: null, save: 'idle', loaded: false, notice: null, demo: false };
+let userSnapshot: { books: BookMap; layout: ShelfLayout } | null = null;
 const listeners = new Set<() => void>();
 
 function set(patch: Partial<State>) {
@@ -52,7 +52,7 @@ export function repair(saved: ShelfLayout | ShelfLayoutV1, bookMap: BookMap): Sh
   });
   for (const id of Object.keys(bookMap)) if (!seen.has(id)) drawer.push(id);
   const shelves = layout.shelves.length ? layout.shelves : [{ id: 'shelf-1', order: 0 }];
-  return threeShelfLayout({ version: 2, shelves, placements, drawer });
+  return ensureShelves({ version: 2, shelves, placements, drawer });
 }
 
 // 복원 + 지금 선반 경계(좌우 끝·깊이 0~230mm)에 맞추기. 맞지 않던 책만 최소로 옮기고 서랍으로 간 책을 알려 준다.
@@ -63,6 +63,7 @@ export function restore(saved: ShelfLayout | ShelfLayoutV1, bookMap: BookMap) {
 }
 
 async function persist(layout: ShelfLayout) {
+  if (state.demo) return;
   set({ save: 'saving' });
   try {
     await Storage.setItem(KEY, JSON.stringify(withNormalizedX(layout, state.books)));
@@ -80,35 +81,105 @@ export const placementStore = {
     return () => listeners.delete(l);
   },
 
-  async load() {
-    try {
-      const lib = await loadLibrary();
-      const mine = lib.filter((r) => r.user.status === 'read').map((r) => toShelfBook(r.catalog, r.user));
-      if (mine.length) set({ books: { ...state.books, ...Object.fromEntries(mine.map((b) => [b.id, b])) } });
-    } catch {
-      // 로컬 DB를 못 열어도 예시 책장은 보여준다.
-    }
+  // 저장된 배치를 읽는다. 책 목록은 서재(library-store)가 syncBooks로 넘긴다(먼저 불러온 뒤 호출).
+  async load(books: BookMap) {
+    state = { ...state, books };
     try {
       const raw = (await Storage.getItem(KEY)) ?? (await Storage.getItem(LEGACY_KEY));
       if (raw) {
         const saved = JSON.parse(raw) as ShelfLayout | ShelfLayoutV1;
         if (saved.version === 1 || saved.version === 2) {
-          const r = restore(saved, state.books);
+          // 예전 예시 책(b01~b18)만 있던 저장본은 내 책이 아니므로 배치에서 빠진다(repair가 모르는 책을 버린다)
+          const r = restore(saved, books);
           set({ layout: r.layout, loaded: true, notice: r.moved.length ? r.moved.length : null });
           if (r.changed) void persist(r.layout);
           return;
         }
       }
     } catch {
-      // 읽기 실패 시 샘플로 시작하되 저장은 덮어쓰지 않는다(다음 확정 때 저장).
+      // 읽기 실패 시 빈 책장으로 시작하되 저장은 덮어쓰지 않는다(다음 확정 때 저장).
     }
-    set({ loaded: true });
+    set({ layout: repair(EMPTY_LAYOUT, books), loaded: true });
+  },
+
+  // 서재가 바뀌면(추가·삭제·장정·갈피 수) 책 모양을 다시 만들고, 사라진 책은 배치에서 뺀다(새 책은 addToShelf로)
+  syncBooks(books: BookMap) {
+    if (state.demo) {
+      userSnapshot = userSnapshot && { ...userSnapshot, books };
+      return;
+    }
+    const known = new Set(Object.keys(books));
+    const gone = [...state.layout.placements.map((p) => p.bookId), ...state.layout.drawer].filter((id) => !known.has(id));
+    // 크기(판형·쪽수)가 바뀐 책이 선반에 있으면 그 선반만 다시 맞춘다(안 들어가면 끝 책을 서랍으로, 알림)
+    const resized = state.layout.placements.some((p) => {
+      const a = state.books[p.bookId]?.physical;
+      const b = books[p.bookId]?.physical;
+      return !!a && !!b && (a.widthMm !== b.widthMm || a.heightMm !== b.heightMm || a.pages !== b.pages);
+    });
+    if (!gone.length && !resized) {
+      set({ books });
+      return;
+    }
+    if (!gone.length) {
+      const fit = fitToShelf(state.layout, books);
+      const layout = withLeans(fit.layout, books);
+      set({ books, layout, undo: null, notice: fit.moved.length ? fit.moved.length : state.notice });
+      if (fit.changed) void persist(layout);
+      return;
+    }
+    const layout = withLeans(
+      normalize({ ...state.layout, placements: state.layout.placements.filter((p) => known.has(p.bookId)), drawer: state.layout.drawer.filter((id) => known.has(id)) }),
+      books,
+    );
+    set({ books, layout, undo: null });
+    void persist(layout);
+  },
+
+  // 새 책을 책장 빈 자리에(없으면 where: 'none' — 새 선반 추가 또는 서랍 보관을 고르게 한다)
+  addToShelf(bookId: string): 'shelf' | 'none' {
+    const base = { ...state.layout, drawer: state.layout.drawer.filter((id) => id !== bookId) };
+    const r = placeNewBook(base, state.books, bookId);
+    if (r.where !== 'shelf') return 'none';
+    return placementStore.commit(r.layout) ? 'shelf' : 'none';
+  },
+  addToDrawer(bookId: string) {
+    if (state.layout.drawer.includes(bookId) || state.layout.placements.some((p) => p.bookId === bookId)) return true;
+    return placementStore.commit(normalize({ ...state.layout, drawer: [bookId, ...state.layout.drawer] }));
+  },
+  toDrawer(bookId: string) {
+    const r = moveToDrawer(state.layout, bookId, state.books);
+    return r.ok ? placementStore.commit(r.layout) : false;
+  },
+  fromDrawer(bookId: string): 'shelf' | 'none' {
+    const r = placeFromDrawer(state.layout, state.books, bookId);
+    if (!r.ok) return 'none';
+    return placementStore.commit(r.layout) ? 'shelf' : 'none';
+  },
+  addShelf() {
+    const id = `shelf-${Date.now().toString(36)}`;
+    return placementStore.commit(addShelf(state.layout, id));
+  },
+  pruneShelves() {
+    return placementStore.commit(pruneEmptyShelves(state.layout));
+  },
+
+  // 측정 번들 전용: 예시 18권 책장(메모리에만). 끄면 내 책장으로 돌아간다.
+  setDemo(on: boolean) {
+    if (on === state.demo) return;
+    if (on) {
+      userSnapshot = { books: state.books, layout: state.layout };
+      set({ demo: true, books: Object.fromEntries(SAMPLE_BOOKS.map((b) => [b.id, b])), layout: withLeans(SAMPLE_LAYOUT, Object.fromEntries(SAMPLE_BOOKS.map((b) => [b.id, b]))), undo: null });
+    } else {
+      const snap = userSnapshot ?? { books: {}, layout: EMPTY_LAYOUT };
+      userSnapshot = null;
+      set({ demo: false, books: snap.books, layout: snap.layout, undo: null });
+    }
   },
 
   // 검증된 레이아웃만 받는다. 무결성이 깨졌으면 거절한다.
   commit(next: ShelfLayout) {
     // 기대기 결과(최종 각도·상대)를 함께 저장하고, 기댈 곳이 없던 책은 바로 세운다.
-    next = withLeans(threeShelfLayout(next), state.books);
+    next = withLeans(ensureShelves(next), state.books);
     const errors = validate(next, state.books, Object.keys(state.books));
     if (errors.length) return false;
     set({ undo: state.layout, layout: next });

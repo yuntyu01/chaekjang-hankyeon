@@ -1,36 +1,54 @@
 import { Tabs } from 'expo-router';
+import { StyleSheet } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { ko } from '@/i18n/ko';
-import { MyIcon, RecordIcon, ShelfIcon } from '@/ui/TabIcons';
+import { BookmarkTabIcon, ReadTabIcon, ShelfIcon } from '@/ui/TabIcons';
 import { tabBarStyle } from '@/ui/tabBar';
 import { colors, navigation } from '@/ui/theme';
 
-// Icons float over the same paper and shadows as the shelf scene.
-
+// 하단 탭: 책장 · 갈피 · 읽기. 아이콘은 책장 장면과 같은 종이 위에 뜬다.
 export default function TabsLayout() {
   const insets = useSafeAreaInsets();
   return (
-    <Tabs screenOptions={{
-      headerShown: false,
-      tabBarShowLabel: false,
-      tabBarActiveTintColor: colors.tabActive,
-      tabBarInactiveTintColor: colors.tabInactive,
-      tabBarStyle: tabBarStyle(insets.bottom),
-      sceneStyle: { backgroundColor: 'transparent' },
-    }}>
-      <Tabs.Screen name="index" options={{
-        title: ko.tabs.shelf, tabBarAccessibilityLabel: ko.tabs.shelf,
-        tabBarIcon: ({ color }) => <ShelfIcon color={String(color)} size={navigation.iconSize} filled />,
-      }} />
-      <Tabs.Screen name="record" options={{
-        title: ko.tabs.record, tabBarAccessibilityLabel: ko.tabs.record,
-        tabBarIcon: ({ color }) => <RecordIcon color={String(color)} bg={colors.bg} size={navigation.iconSize} filled />,
-      }} />
-      <Tabs.Screen name="my" options={{
-        title: ko.tabs.my, tabBarAccessibilityLabel: ko.tabs.my,
-        tabBarIcon: ({ color }) => <MyIcon color={String(color)} size={navigation.iconSize} filled />,
-      }} />
+    <Tabs
+      screenOptions={{
+        headerShown: false,
+        tabBarShowLabel: true,
+        tabBarLabelStyle: { fontSize: 10.5, marginTop: -2 },
+        tabBarActiveTintColor: colors.tabActive,
+        tabBarInactiveTintColor: colors.tabInactive,
+        tabBarStyle: tabBarStyle(insets.bottom),
+        sceneStyle: { backgroundColor: 'transparent' },
+      }}>
+      <Tabs.Screen
+        name="index"
+        options={{
+          title: ko.tabs.shelf,
+          tabBarAccessibilityLabel: ko.tabs.shelf,
+          tabBarIcon: ({ color, focused }) => <ShelfIcon color={String(color)} size={navigation.iconSize} filled={focused} />,
+        }}
+      />
+      <Tabs.Screen
+        name="bookmarks"
+        options={{
+          // 책장 밖 화면은 탭 바에 종이 바탕을 깐다(내용이 비쳐 보이지 않게)
+          tabBarStyle: { ...tabBarStyle(insets.bottom), backgroundColor: colors.tabBar, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.line },
+          title: ko.tabs.bookmarks,
+          tabBarAccessibilityLabel: ko.tabs.bookmarks,
+          tabBarIcon: ({ color, focused }) => <BookmarkTabIcon color={String(color)} size={navigation.iconSize} filled={focused} />,
+        }}
+      />
+      <Tabs.Screen
+        name="read"
+        options={{
+          // 책장 밖 화면은 탭 바에 종이 바탕을 깐다(내용이 비쳐 보이지 않게)
+          tabBarStyle: { ...tabBarStyle(insets.bottom), backgroundColor: colors.tabBar, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.line },
+          title: ko.tabs.read,
+          tabBarAccessibilityLabel: ko.tabs.read,
+          tabBarIcon: ({ color, focused }) => <ReadTabIcon color={String(color)} bg={colors.bg} size={navigation.iconSize} filled={focused} />,
+        }}
+      />
     </Tabs>
   );
 }

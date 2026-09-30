@@ -2,9 +2,9 @@
 // 짧게 누르기 → 정보 상자, 350ms 길게 누르기 → 드래그. 드래그 전 세로 이동은 스크롤이 가져간다.
 // 드래그: 같은 선반은 올라간 책과 자리 바꾸기, 다른 선반은 그 자리에 끼우기(눕힌 책 가운데면 쌓기),
 // 세 선반 사이에서 이동한다. 화면 가장자리에서 자동 스크롤.
-import { useFocusEffect, useLocalSearchParams, useNavigation } from 'expo-router';
+import { router, useFocusEffect, useLocalSearchParams, useNavigation } from 'expo-router';
 import * as Haptics from 'expo-haptics';
-import { BookMarked, Paintbrush, Plus, Undo2 } from 'lucide-react-native';
+import { BookMarked, ChartNoAxesColumn, Eraser, Menu, Paintbrush, Plus, Search, Settings, Undo2 } from 'lucide-react-native';
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { AppState, Modal, PixelRatio, Pressable, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
@@ -60,6 +60,8 @@ import { bodiesOf, computeShelf, hitTest, PLANK_BOUNDS, withLeans, type BookFram
 import { planTransition } from '@/domain/transition';
 import type { Pose, ShelfLayout, Tilt } from '@/domain/types';
 import { ko } from '@/i18n/ko';
+import { settingsStore, useSettings } from '@/store/settings-store';
+import { uiBus } from '@/store/ui-bus';
 import { placementStore, usePlacementStore } from '@/store/placement-store';
 import { DragOverlay, frameBBox } from '@/ui/shelf/DragOverlay';
 import { CONTENT_TOP, computeRows, LAYOUT, rowAt, toContent, toScene, useShelfMetrics, type RowGeom } from '@/ui/shelf/metrics';
@@ -70,12 +72,11 @@ import { ShelfRow, type DropHint } from '@/ui/shelf/ShelfRow';
 import { SHELF_CAST_EXTENT } from '@/ui/shelf/ShelfPlank';
 import { colors, fonts, motion, navigation } from '@/ui/theme';
 
-import { BookDetail, type MoveAction } from './BookDetail';
+import { type MoveAction } from './BookDetail';
 import { BookPopover } from './BookPopover';
 import { tabBarStyle } from '@/ui/tabBar';
 
 import { DecoratePanel } from './DecoratePanel';
-import { DrawerSheet } from './DrawerSheet';
 
 type HintKind = SwapTarget['kind'] | 'beside';
 // key: 같은 목표면 다시 계산하지 않으려는 식별자. shelfId: 안내를 띄울 선반
@@ -151,7 +152,10 @@ export function HomeScreen() {
   const { books, layout } = store;
   const m = useShelfMetrics();
   const { width: winW } = useWindowDimensions();
-  const reduceMotion = useReducedMotion();
+  const sysReduceMotion = useReducedMotion();
+  const appSettings = useSettings();
+  // 동작 줄이기: 설정에서 기기 설정을 따르거나 앱에서 켜고 끈다
+  const reduceMotion = appSettings.reduceMotion === 'system' ? sysReduceMotion : appSettings.reduceMotion === 'on';
 
   const [drag, setDrag] = useState<Drag | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -183,10 +187,6 @@ export function HomeScreen() {
   const dragX = useSharedValue(0);
   const dragY = useSharedValue(0);
 
-  useEffect(() => {
-    void placementStore.load();
-    void viewStore.load();
-  }, []);
 
   // ---------- 보기 각(내려다보기 3°~8°): 꾸미기에서 선반 앞면을 위아래로 끌어 바꾼다(빈 벽을 끌면 스크롤) ----------
   // 화면 카메라는 공유 값(UI 스레드, 끄는 동안 매 프레임). 확정된 각은 보기 설정으로 저장하고 터치 영역·줄 높이에 쓴다.
@@ -298,6 +298,32 @@ export function HomeScreen() {
     return { kind: 'bad', reason: r.reason, key, shelfId, index: at };
   };
 
+  // 책 찾기에서 고른 책: 그 선반으로 옮겨 정보 상자로 강조(배치는 그대로)
+  const focusRef = useRef<(id: string) => void>(() => {});
+  focusRef.current = (id: string) => {
+    const p = placementOf(layout, id);
+    const row = p && rows.find((r) => r.shelfId === p.shelfId);
+    if (!row) return;
+    setEditingKeep(false);
+    setPopId(null);
+    scrollRef.current?.scrollTo({ y: Math.max(0, row.top - 60), animated: !reduceMotion });
+    setTimeout(() => {
+      popScroll.current = scrollY.value;
+      setSelectedId(id);
+      setPopId(id);
+    }, reduceMotion ? 50 : 450);
+  };
+  useFocusEffect(
+    useCallback(() => {
+      const run = () => {
+        const id = uiBus.takeFocus();
+        if (id) setTimeout(() => focusRef.current(id), 60);
+      };
+      run();
+      return uiBus.subscribe(run);
+    }, []),
+  );
+
   // ---------- 제스처 콜백(JS) ----------
   const onTap = (x: number, y: number) => {
     if (Date.now() - lastDragEnd.current < 350 || dragRef.current) return;
@@ -368,7 +394,7 @@ export function HomeScreen() {
     dragX.value = tl.x;
     dragY.value = tl.y - scroll;
     active.value = true;
-    void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
+    if (settingsStore.get().haptics) void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
     setSelectedId(null);
     updateDrag(d);
     if (PERF_ENABLED) dragPerfStart();
@@ -407,7 +433,7 @@ export function HomeScreen() {
     }
     // 후보 자리에 선반 안 책으로 보이고 있었으면(끌기 표시가 없다) 그대로 끝낸다: 확정됐으면 그 자리, 아니면 선반 안에서 원래 자리로
     if (d.preview?.kind === 'ok' || d.preview?.kind === 'same') {
-      if (!committed && d.preview.kind === 'ok') void Haptics.selectionAsync().catch(() => {});
+      if (!committed && d.preview.kind === 'ok' && settingsStore.get().haptics) void Haptics.selectionAsync().catch(() => {});
       finishDrag();
       setEditId(d.bookId);
       return;
@@ -425,7 +451,7 @@ export function HomeScreen() {
     dragY.value = withTiming(tl.y - scrollY.value, { duration: dur }, () => {
       scheduleOnRN(finishDrag);
     });
-    void Haptics.selectionAsync().catch(() => {});
+    if (settingsStore.get().haptics) void Haptics.selectionAsync().catch(() => {});
     // 놓은 뒤에도 꾸미기 모드는 유지하고, 놓은 책을 고른 상태로 둔다
     setEditId(d.bookId);
   };
@@ -1173,8 +1199,11 @@ export function HomeScreen() {
                 <Paintbrush size={13 * m.scale} color={colors.ink} strokeWidth={1.6} />
                 <Text style={[styles.pillText, { fontSize: 12.5 * m.scale }]}>{ko.decorate}</Text>
               </Pressable>
-              <HeaderButton size={28 * m.scale} label="책 추가 및 책장 메뉴" onPress={() => setShelfMenuOpen(true)}>
+              <HeaderButton size={28 * m.scale} label={ko.add} onPress={() => router.push('/book/add')}>
                 <Plus size={16 * m.scale} color={colors.ink} strokeWidth={1.4} />
+              </HeaderButton>
+              <HeaderButton size={28 * m.scale} label={ko.menu.title} onPress={() => setShelfMenuOpen(true)}>
+                <Menu size={15 * m.scale} color={colors.ink} strokeWidth={1.5} />
               </HeaderButton>
             </>
           )}
@@ -1248,9 +1277,45 @@ export function HomeScreen() {
               setPopId(null);
               setSelectedId(null);
             }}
+            onDetail={() => {
+              const id = popId;
+              setPopId(null);
+              setSelectedId(null);
+              router.push(`/book/${id}`);
+            }}
+            onRead={() => {
+              const id = popId;
+              setPopId(null);
+              setSelectedId(null);
+              router.push({ pathname: '/read', params: { book: id } });
+            }}
+            onBookmark={() => {
+              const id = popId;
+              setPopId(null);
+              setSelectedId(null);
+              router.push({ pathname: '/bookmark/new', params: { book: id } });
+            }}
           />
         ) : null}
 
+
+        {!store.demo && !editing && !layout.placements.length ? (
+          <View pointerEvents="box-none" style={styles.emptyWrap}>
+            <View style={styles.emptyCard}>
+              <Text style={styles.emptyTitle}>{ko.empty.title}</Text>
+              <Text style={styles.emptyBody}>{layout.drawer.length ? `${ko.empty.body}\n서랍에 ${layout.drawer.length}권이 있어요.` : ko.empty.body}</Text>
+              <Pressable onPress={() => router.push('/book/add')} accessibilityRole="button" style={styles.emptyBtn}>
+                <Plus size={16} color={colors.bg} strokeWidth={1.8} />
+                <Text style={styles.emptyBtnText}>{ko.add}</Text>
+              </Pressable>
+              {layout.drawer.length ? (
+                <Pressable onPress={() => router.push('/drawer')} accessibilityRole="button" hitSlop={8} style={{ marginTop: 12 }}>
+                  <Text style={styles.emptyLink}>서랍 열기</Text>
+                </Pressable>
+              ) : null}
+            </View>
+          </View>
+        ) : null}
 
         {toast ? (
           <View style={[styles.toast, { bottom: (editing ? 205 : navigation.height) + insets.bottom + 8 }]} accessibilityLiveRegion="polite">
@@ -1293,78 +1358,51 @@ export function HomeScreen() {
         />
       ) : null}
 
-      <BookDetail
-        book={detailId ? books[detailId] : null}
-        placement={detailPlacement}
-        onClose={() => {
-          setDetailId(null);
-          setSelectedId(null);
-        }}
-        onPose={menuPose}
-        onTilt={menuTilt}
-        onMove={(mv) => menuMove(mv)}
-        onToDrawer={() => {
-          if (!detailId) return;
-          commit(moveToDrawer(layout, detailId, books), ko.drawer.stored);
-          setDetailId(null);
-          setSelectedId(null);
-        }}
-        onToShelf={() => {
-          if (!detailId) return null;
-          const r = placeFromDrawer(layout, books, detailId);
-          if (!r.ok) return r.reason === 'no-space' ? ko.drawer.noRoom : ko.fail[r.reason] || null;
-          commit(r, ko.drawer.placed);
-          setDetailId(null);
-          return null;
-        }}
-      />
-      <DrawerSheet
-        visible={drawerOpen}
-        books={layout.drawer.map((id) => books[id]).filter(Boolean)}
-        scale={m.scale}
-        onClose={() => setDrawerOpen(false)}
-        onPick={(id) => {
-          setDrawerOpen(false);
-          setTimeout(() => setDetailId(id), 280);
-        }}
-      />
-      <Modal visible={shelfMenuOpen} transparent statusBarTranslucent navigationBarTranslucent animationType={reduceMotion ? 'none' : 'fade'} onRequestClose={() => setShelfMenuOpen(false)}>
+      <Modal visible={shelfMenuOpen} transparent animationType={reduceMotion ? 'none' : 'fade'} onRequestClose={() => setShelfMenuOpen(false)}>
         <Pressable style={styles.menuBackdrop} onPress={() => setShelfMenuOpen(false)} accessibilityLabel="닫기" />
         <View style={[styles.menuSheet, { paddingBottom: insets.bottom + 24 }]}>
-          <Text style={styles.menuTitle}>{ko.title}</Text>
-          <Pressable accessibilityRole="button" style={styles.menuItem} onPress={() => { setShelfMenuOpen(false); showToast({ text: ko.addSoon }); }}>
-            <Plus size={20} color={colors.ink} /><Text style={styles.menuText}>{ko.add}</Text>
+          <Text style={styles.menuTitle}>{ko.menu.title}</Text>
+          <Pressable accessibilityRole="button" style={styles.menuItem} onPress={() => { setShelfMenuOpen(false); router.push('/search'); }}>
+            <Search size={20} color={colors.ink} strokeWidth={1.6} /><Text style={styles.menuText}>{ko.menu.search}</Text>
           </Pressable>
-          <Pressable accessibilityRole="button" style={styles.menuItem} onPress={() => { setShelfMenuOpen(false); setEditingKeep(true); }}>
-            <Paintbrush size={20} color={colors.ink} /><Text style={styles.menuText}>{ko.decorate}</Text>
+          <Pressable accessibilityRole="button" style={styles.menuItem} onPress={() => { setShelfMenuOpen(false); router.push('/drawer'); }}>
+            <BookMarked size={20} color={colors.ink} strokeWidth={1.6} /><Text style={styles.menuText}>{ko.drawer.title}{layout.drawer.length ? ` · ${layout.drawer.length}권` : ''}</Text>
           </Pressable>
-          {__DEV__ ? (
-            <Pressable accessibilityRole="button" style={styles.menuItem} onPress={() => { setShelfMenuOpen(false); setDebugGeom((v) => !v); }}>
-              <Text style={styles.menuText}>{debugGeom ? '형상 보기 끄기(개발)' : '형상 보기(개발)'}</Text>
+          <Pressable accessibilityRole="button" style={styles.menuItem} onPress={() => { setShelfMenuOpen(false); router.push('/stats'); }}>
+            <ChartNoAxesColumn size={20} color={colors.ink} strokeWidth={1.6} /><Text style={styles.menuText}>{ko.menu.stats}</Text>
+          </Pressable>
+          <Pressable accessibilityRole="button" style={styles.menuItem} onPress={() => { setShelfMenuOpen(false); router.push('/settings'); }}>
+            <Settings size={20} color={colors.ink} strokeWidth={1.6} /><Text style={styles.menuText}>{ko.menu.settings}</Text>
+          </Pressable>
+          <View style={styles.menuDivider} />
+          <Pressable accessibilityRole="button" style={styles.menuItem} onPress={() => { setShelfMenuOpen(false); showToast({ text: placementStore.addShelf() ? ko.menu.shelfAdded : ko.menu.shelfFail }); }}>
+            <Plus size={20} color={colors.ink} strokeWidth={1.6} /><Text style={styles.menuText}>{ko.menu.addShelf}</Text>
+          </Pressable>
+          {layout.shelves.length > 3 && layout.shelves.some((sh) => !layout.placements.some((p) => p.shelfId === sh.id)) ? (
+            <Pressable accessibilityRole="button" style={styles.menuItem} onPress={() => { setShelfMenuOpen(false); showToast({ text: placementStore.pruneShelves() ? ko.menu.pruned : ko.menu.shelfFail }); }}>
+              <Eraser size={20} color={colors.ink} strokeWidth={1.6} /><Text style={styles.menuText}>{ko.menu.prune}</Text>
             </Pressable>
           ) : null}
-          {__DEV__ ? (
-            <Pressable accessibilityRole="button" style={styles.menuItem} onPress={() => { setShelfMenuOpen(false); placementStore.resetSample(); }}>
-              <Text style={styles.menuText}>예시 배치로 초기화(개발)</Text>
-            </Pressable>
-          ) : null}
-          {__DEV__ ? (
-            <Pressable accessibilityRole="button" style={styles.menuItem} onPress={() => { setShelfMenuOpen(false); placementStore.resetPilot(); }}>
-              <Text style={styles.menuText}>눕힌 책 한 권 시험(개발)</Text>
-            </Pressable>
-          ) : null}
-          {__DEV__ ? (
-            <Pressable accessibilityRole="button" style={styles.menuItem} onPress={() => { setShelfMenuOpen(false); placementStore.resetOcclusionPilot(); }}>
-              <Text style={styles.menuText}>앞뒤 가림 시험(개발)</Text>
-            </Pressable>
-          ) : null}
-          {__DEV__ ? (
-            <Pressable accessibilityRole="button" style={styles.menuItem} onPress={() => { setShelfMenuOpen(false); placementStore.resetWallPilot(); }}>
-              <Text style={styles.menuText}>벽 기대기 시험(개발)</Text>
-            </Pressable>
-          ) : null}
-          {PERF_ENABLED
-            ? (['all', 'detail'] as const).map((lv) => (
+          {PERF_ENABLED ? (
+            <>
+              <View style={styles.menuDivider} />
+              <Pressable accessibilityRole="button" style={styles.menuItem} onPress={() => { setShelfMenuOpen(false); placementStore.setDemo(!store.demo); setPerfKey((k) => k + 1); }}>
+                <Text style={styles.menuText}>{store.demo ? '예시 책장 끄기(측정)' : '예시 책장 보기(측정, 저장 안 함)'}</Text>
+              </Pressable>
+              <Pressable accessibilityRole="button" style={styles.menuItem} onPress={() => { setShelfMenuOpen(false); setDebugGeom((v) => !v); }}>
+                <Text style={styles.menuText}>{debugGeom ? '형상 보기 끄기(측정)' : '형상 보기(측정)'}</Text>
+              </Pressable>
+              {store.demo ? (
+                <>
+                  <Pressable accessibilityRole="button" style={styles.menuItem} onPress={() => { setShelfMenuOpen(false); placementStore.resetSample(); }}>
+                    <Text style={styles.menuText}>예시 배치로 초기화(측정)</Text>
+                  </Pressable>
+                  <Pressable accessibilityRole="button" style={styles.menuItem} onPress={() => { setShelfMenuOpen(false); placementStore.resetWallPilot(); }}>
+                    <Text style={styles.menuText}>벽 기대기 시험(측정)</Text>
+                  </Pressable>
+                </>
+              ) : null}
+              {(['all', 'detail'] as const).map((lv) => (
                 <Pressable
                   key={lv}
                   accessibilityRole="button"
@@ -1377,26 +1415,22 @@ export function HomeScreen() {
                   }}>
                   <Text style={styles.menuText}>측정: {lv}</Text>
                 </Pressable>
-              ))
-            : null}
-          {PERF_ENABLED ? (
-            <Pressable
-              accessibilityRole="button"
-              style={styles.menuItem}
-              onPress={() => {
-                setShelfMenuOpen(false);
-                const next = SHELF_VIEWS[(SHELF_VIEWS.indexOf(shelfView) + 1) % SHELF_VIEWS.length];
-                setShelfView(next);
-                setShelfViewState(next);
-                setPerfKey((k) => k + 1);
-                setToast({ text: `선반 보기: ${next}` });
-              }}>
-              <Text style={styles.menuText}>선반 보기: {shelfView}</Text>
-            </Pressable>
+              ))}
+              <Pressable
+                accessibilityRole="button"
+                style={styles.menuItem}
+                onPress={() => {
+                  setShelfMenuOpen(false);
+                  const next = SHELF_VIEWS[(SHELF_VIEWS.indexOf(shelfView) + 1) % SHELF_VIEWS.length];
+                  setShelfView(next);
+                  setShelfViewState(next);
+                  setPerfKey((k) => k + 1);
+                  setToast({ text: `선반 보기: ${next}` });
+                }}>
+                <Text style={styles.menuText}>선반 보기: {shelfView}</Text>
+              </Pressable>
+            </>
           ) : null}
-          <Pressable accessibilityRole="button" style={styles.menuItem} onPress={() => { setShelfMenuOpen(false); setTimeout(() => setDrawerOpen(true), 280); }}>
-            <BookMarked size={20} color={colors.ink} /><Text style={styles.menuText}>{ko.drawer.title}{layout.drawer.length ? ` · ${layout.drawer.length}권` : ''}</Text>
-          </Pressable>
         </View>
       </Modal>
     </View>
@@ -1447,4 +1481,12 @@ const styles = StyleSheet.create({
   menuTitle: { fontFamily: fonts.serif, fontSize: 22, color: colors.ink, marginBottom: 12 },
   menuItem: { flexDirection: 'row', alignItems: 'center', gap: 14, minHeight: 54 },
   menuText: { fontSize: 16, color: colors.ink },
+  emptyWrap: { position: 'absolute', left: 0, right: 0, top: 0, bottom: 0, alignItems: 'center', justifyContent: 'center', paddingBottom: 60 },
+  emptyCard: { alignItems: 'center', backgroundColor: 'rgba(251,247,240,0.92)', borderRadius: 18, paddingVertical: 24, paddingHorizontal: 28 },
+  emptyTitle: { fontFamily: fonts.serif, fontSize: 21, color: colors.ink },
+  emptyBody: { fontSize: 13.5, lineHeight: 20, color: colors.inkSoft, textAlign: 'center', marginTop: 8 },
+  emptyBtn: { marginTop: 16, height: 44, borderRadius: 22, backgroundColor: colors.ink, paddingHorizontal: 22, flexDirection: 'row', alignItems: 'center', gap: 6 },
+  emptyBtnText: { color: colors.bg, fontSize: 15 },
+  emptyLink: { fontSize: 13.5, color: colors.inkSoft, textDecorationLine: 'underline' },
+  menuDivider: { height: StyleSheet.hairlineWidth, backgroundColor: colors.line, marginVertical: 6 },
 });

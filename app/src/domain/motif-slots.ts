@@ -43,8 +43,10 @@ export function isMotifSlot(id: string): id is MotifSlotId {
   return byId.has(id);
 }
 
+const DEV_MOTIFS: readonly string[] = ['sprig', 'leaf', 'cotton', 'moon', 'star', 'wave', 'flower', 'pine', 'bud'];
+
 export function devMotifFor(id: string): MotifId {
-  return byId.get(id)?.devFallback ?? 'sprig';
+  return byId.get(id)?.devFallback ?? (DEV_MOTIFS.includes(id) ? (id as MotifId) : 'sprig');
 }
 
 // ISBN으로 기본 모티프를 고르게 흩뿌린다(서버 default_motif_id가 없을 때).

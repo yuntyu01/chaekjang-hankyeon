@@ -16,6 +16,9 @@ type Props = {
   anchor: Anchor;
   reduceMotion: boolean;
   onClose: () => void;
+  onDetail: () => void;
+  onRead: () => void;
+  onBookmark: () => void;
 };
 
 const ARROW = 8;
@@ -33,7 +36,7 @@ export function readingLines(book: Pick<Book, 'publishedAt' | 'startedAt' | 'fin
   return lines;
 }
 
-export function BookPopover({ book, anchor, reduceMotion, onClose }: Props) {
+export function BookPopover({ book, anchor, reduceMotion, onClose, onDetail, onRead, onBookmark }: Props) {
   const [photoOk, setPhotoOk] = useState(true);
   useEffect(() => {
     const sub = BackHandler.addEventListener('hardwareBackPress', () => {
@@ -50,7 +53,8 @@ export function BookPopover({ book, anchor, reduceMotion, onClose }: Props) {
   const exit = reduceMotion ? undefined : FadeOut.duration(100);
   // 왼쪽 사진 칸: 상자 높이에 맞춘 표지 비율
   const pad = 12;
-  const photoH = Math.max(80, box.height - pad * 2);
+  const actionsH = 40;
+  const photoH = Math.max(70, box.height - pad * 2 - actionsH);
   const photoW = photoH * (book.coverAspectRatio || 0.68);
   const photo = book.originalCoverUri && photoOk ? book.originalCoverUri : null;
   const lines = readingLines(book);
@@ -100,6 +104,18 @@ export function BookPopover({ book, anchor, reduceMotion, onClose }: Props) {
             </View>
           </View>
         </View>
+        {/* 이 책으로: 자세히 보기 · 이 책 읽기 · 갈피 남기기 */}
+        <View style={[styles.actions, { height: actionsH }]}>
+          {[
+            { label: ko.info.detail, on: onDetail },
+            { label: ko.info.read, on: onRead },
+            { label: ko.info.bookmark, on: onBookmark },
+          ].map((a) => (
+            <Pressable key={a.label} onPress={a.on} accessibilityRole="button" style={({ pressed }) => [styles.action, pressed && { opacity: 0.6 }]}>
+              <Text style={styles.actionText}>{a.label}</Text>
+            </Pressable>
+          ))}
+        </View>
       </Animated.View>
     </View>
   );
@@ -122,6 +138,9 @@ const styles = StyleSheet.create({
     transform: [{ rotate: '45deg' }],
   },
   head: { flex: 1, flexDirection: 'row', gap: 14 },
+  actions: { flexDirection: 'row', gap: 8, alignItems: 'flex-end' },
+  action: { flex: 1, height: 34, borderRadius: 17, borderWidth: StyleSheet.hairlineWidth, borderColor: '#D6CCBC', alignItems: 'center', justifyContent: 'center' },
+  actionText: { fontSize: 13, color: colors.ink },
   photo: { borderRadius: 4, overflow: 'hidden', backgroundColor: colors.line },
   photoEmpty: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 6 },
   photoEmptyText: { fontSize: 11, lineHeight: 15, color: colors.inkFaint, textAlign: 'center' },

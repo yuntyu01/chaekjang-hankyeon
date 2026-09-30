@@ -356,6 +356,28 @@ export function settle(layout: ShelfLayout, books: BookMap, desired: Map<string,
   return { ...layout, placements: layout.placements.map((p) => (posByBook.has(p.bookId) ? { ...p, pos: posByBook.get(p.bookId) } : p)) };
 }
 
+// 선반은 최소 min개(기본 3). 사용자가 더한 선반은 그대로 두고, 모자라면 빈 선반을 채운다(책이 있는 선반을 지우지 않는다).
+export function ensureShelves(layout: ShelfLayout, min = HOME_SHELF_COUNT): ShelfLayout {
+  const shelves = sortedShelves(layout);
+  for (let n = 1; shelves.length < min; n++) {
+    const id = `shelf-${n}`;
+    if (!shelves.some((s) => s.id === id)) shelves.push({ id, order: shelves.length });
+  }
+  const kept = new Set(shelves.map((s) => s.id));
+  const lost = layout.placements.filter((p) => !kept.has(p.shelfId)).map((p) => p.bookId);
+  return normalize({ ...layout, shelves, placements: layout.placements.filter((p) => kept.has(p.shelfId)), drawer: [...layout.drawer, ...lost] });
+}
+
+// 빈 선반 정리: 책이 없는 선반만, 최소 min개는 남긴다(아래쪽 빈 선반부터)
+export function pruneEmptyShelves(layout: ShelfLayout, min = HOME_SHELF_COUNT): ShelfLayout {
+  let shelves = sortedShelves(layout);
+  for (const s of [...shelves].reverse()) {
+    if (shelves.length <= min) break;
+    if (!layout.placements.some((p) => p.shelfId === s.id)) shelves = shelves.filter((x) => x.id !== s.id);
+  }
+  return normalize({ ...layout, shelves });
+}
+
 // Keep three shelves. Books on removed shelves are preserved in the drawer.
 export function threeShelfLayout(layout: ShelfLayout): ShelfLayout {
   const shelves = sortedShelves(layout).slice(0, HOME_SHELF_COUNT);
