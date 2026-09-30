@@ -107,7 +107,11 @@ async function buildArt(book: Book, s: number, dims: { T: number; H: number; W: 
   const w = dims.T * s;
   const h = dims.H * s;
   const fw = w * SPINE_FACE;
-  const t = spineTitleLayout(book.title, dims.H, fw / s, book.body?.motifTop ?? 0.58);
+  // 그림이 제목 아래가 아니라 책등 가운데 띠에 잡힌 장정(누운 책 끝 표식처럼 쓰는 모티프)은 제목 뒤 끝에 작게 둔다
+  const endMark = !!book.body && book.body.motifTop < 0.3;
+  const t = endMark
+    ? spineTitleLayout(book.title, dims.H, fw / s, 0.82, 1.12)
+    : spineTitleLayout(book.title, dims.H, fw / s, book.body?.motifTop ?? 0.58, book.body?.motifBottom ?? 0.93);
   const art = book.body && t.artTop !== book.body.motifTop ? { ...book.body, motifTop: t.artTop } : book.body;
   const spine = await record(<SpineFaceArt id={book.id} w={w} h={h} s={s} face={face} art={art} grain={shared.grain} motif={motif} />, w, h);
   const fs = t.fontSize * s;

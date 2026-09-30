@@ -272,13 +272,14 @@ export function spineMotifRect(art: BodyArt | undefined, motif: SkImageType | nu
   if (!art || art.scene || !motif) return null;
   const top = art.motifTop * h;
   const mh = Math.max(4, (Math.max(art.motifBottom, art.motifTop + 0.1) - art.motifTop) * h);
+  // 그림 칸 높이를 채우되 가로세로 비율은 그대로, 폭은 책등의 62%까지(시안: 가지·꽃이 책등 폭의 절반 남짓). 가운데 정렬
   let mw = (mh * motif.width()) / motif.height();
   let mH = mh;
-  if (mw > faceW * 0.9) {
-    mH = (mH * faceW * 0.9) / mw;
-    mw = faceW * 0.9;
+  if (mw > faceW * 0.62) {
+    mH = (mH * faceW * 0.62) / mw;
+    mw = faceW * 0.62;
   }
-  const cx = Math.min(Math.max(art.motifCx * faceW, mw / 2 + 1), faceW - mw / 2 - 1);
+  const cx = faceW / 2;
   return { x: cx - mw / 2, y: top + (mh - mH), w: mw, h: mH };
 }
 

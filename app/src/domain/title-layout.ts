@@ -58,27 +58,42 @@ export function layoutVerticalTitle(
 // 세운 책 제목 자리(장정 규칙). 시안 책등: 글자는 책등 폭의 약 1/4, 보통 굵기, 글자 사이가 넉넉하다(글자 크기의 약 1.45배),
 // 책등 위에서 1/5쯤 내려와 시작한다. 우리 책등은 실제 두께라 시안보다 좁으므로 폭의 40%로 두되 읽을 수 있는 8.5DU 아래로는 줄이지 않는다.
 // 길이에 따라: 짧은 제목(3글자 이하)은 더 넉넉한 간격, 긴 제목은 간격 → 시작 위치 → 크기 순으로 줄여 그림 자리를 지킨다.
-export function spineTitleLayout(title: string, hDU: number, faceDU: number, artTop0: number, maxArt = 0.85) {
+// 그림 자리(모티프·풍경)를 먼저 지킨다: 제목은 그림 위 남은 칸에서 크기 → 간격 → 시작 위치로 맞추고,
+// 그래도 안 되면 그림을 밀되 그림 칸(artBottom까지)의 최소 비율을 남긴다(작은 기호로 줄어들지 않게).
+// artBottom: 그림 아래 끝(책 높이 비율), minArt: 남길 그림 칸(짧은 제목·긴 제목 공통 0.3, 그래도 안 되면 0.2까지).
+export function spineTitleLayout(title: string, hDU: number, faceDU: number, artTop0: number, artBottom = 0.93) {
   const MIN = 8.5;
   const base = Math.max(MIN, Math.min(11, Math.round(faceDU * 0.4 * 2) / 2));
-  const sizes: number[] = [];
-  for (let v = base; v >= MIN - 1e-9; v -= 0.5) sizes.push(Math.round(v * 10) / 10);
+  const all: number[] = [];
+  for (let v = base; v >= MIN - 1e-9; v -= 0.5) all.push(Math.round(v * 10) / 10);
   const short = units(title) <= 3;
   const pitches = short ? [1.5, 1.35, 1.2] : [1.4, 1.25, 1.12];
   const tops = [0.2, 0.12];
-  for (const cols of [1, 2]) {
-    for (const size of sizes) {
-      for (const pitch of pitches) {
-        for (const tt of tops) {
-          for (let top = artTop0; top <= maxArt + 1e-9; top += 0.02) {
-            const r = layoutVerticalTitle(title, (top - tt) * hDU - 4, faceDU, [size], cols, pitch);
+  const tryIt = (sizes: number[], maxArt: number) => {
+    const hi = Math.max(artTop0, maxArt);
+    for (let top = artTop0; top <= hi + 1e-9; top += 0.02) {
+      for (const size of sizes)
+        for (const pitch of pitches)
+          for (const tt of tops) {
+            const r = layoutVerticalTitle(title, (top - tt) * hDU - 4, faceDU, [size], 1, pitch);
             if (!r.columns.some((c) => c.endsWith('⋯'))) return { ...r, textTop: tt, artTop: Math.round(top * 100) / 100 };
           }
-        }
-      }
     }
+    return null;
+  };
+  // ① 거의 제 크기로 그림 칸 0.3을 지키며 ② 최소 크기까지 ③ 그림 칸 0.2까지 ④ 그림을 0.85까지 밀어 한 열 ⑤ 두 열
+  const r =
+    tryIt(all.slice(0, 2), artBottom - 0.3) ??
+    tryIt(all, artBottom - 0.3) ??
+    tryIt(all, Math.min(0.85, artBottom - 0.2)) ??
+    // 그림을 더 밀어서라도 한 열로(눕혀 읽히는 책은 한 줄이어야 한다)
+    tryIt(all, 0.85);
+  if (r) return r;
+  for (const size of all) {
+    const two = layoutVerticalTitle(title, (Math.min(0.85, artBottom - 0.2) - 0.12) * hDU - 4, faceDU, [size], 2, 1.25);
+    if (!two.columns.some((c) => c.endsWith('⋯'))) return { ...two, textTop: 0.12, artTop: Math.min(0.85, artBottom - 0.2) };
   }
-  return { ...layoutVerticalTitle(title, (maxArt - 0.08) * hDU - 4, faceDU, [MIN], 2, 1.1), textTop: 0.08, artTop: maxArt };
+  return { ...layoutVerticalTitle(title, (0.85 - 0.08) * hDU - 4, faceDU, [MIN], 2, 1.1), textTop: 0.08, artTop: 0.85 };
 }
 
 // 앞표지 제목 조판(장정 규칙). 시안: 제목은 표지 폭의 약 8~9%, 보통 굵기, 하늘·빈 곳에 여유 있게 1~2줄.
