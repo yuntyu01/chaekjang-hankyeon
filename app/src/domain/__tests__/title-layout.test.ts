@@ -54,26 +54,27 @@ describe('책등 제목 한 열 우선', () => {
   });
 });
 
-describe('앞표지 제목', () => {
-  it('짧은 제목(월든)은 크게 한 줄', () => {
+describe('앞표지 제목(장정 규칙)', () => {
+  it('제목은 표지 폭의 약 9%로, 짧으면 한 줄', () => {
     const r = coverTitleLayout('월든', 116, 172);
     expect(r.lines).toEqual(['월든']);
-    expect(r.fontSize).toBeGreaterThanOrEqual(17);
+    expect(r.fontSize).toBeCloseTo(116 * 0.088, 0);
   });
-  it('긴 제목(우리가 빛의 속도로 갈 수 없다면)은 단어를 깨지 않고 줄을 나눠 두 줄 때보다 크게', () => {
+  it('한 줄이 표지 폭을 넘는 긴 제목은 단어를 깨지 않고 두 줄, 크기는 그대로(작게 두고 여백을 남긴다)', () => {
     const r = coverTitleLayout('우리가 빛의 속도로 갈 수 없다면', 103, 152);
-    expect(r.lines.length).toBeGreaterThanOrEqual(2);
+    expect(r.lines).toHaveLength(2);
     expect(r.lines.join(' ')).toBe('우리가 빛의 속도로 갈 수 없다면');
-    expect(r.fontSize).toBeGreaterThan(10.5);
+    expect(r.fontSize).toBeLessThanOrEqual(11);
   });
 });
 
-describe('책등 제목 크기는 길이에 따라', () => {
-  it('짧은 제목은 크게, 긴 제목만 줄인다', () => {
-    const short = spineTitleLayout('아몬드', 156, 26, 0.58);
-    const long = spineTitleLayout('달러구트 꿈 백화점', 160, 27, 0.58);
-    expect(short.fontSize).toBeGreaterThanOrEqual(12.5);
-    expect(long.fontSize).toBeGreaterThanOrEqual(10);
-    expect(long.fontSize).toBeLessThan(short.fontSize);
+describe('책등 제목(장정 규칙)', () => {
+  it('글자는 책등 폭의 약 40%, 읽을 수 있는 8.5DU 아래로는 줄이지 않는다', () => {
+    expect(spineTitleLayout('모순', 188, 27.7, 0.5).fontSize).toBe(11);
+    expect(spineTitleLayout('흰', 188, 21, 0.5).fontSize).toBe(8.5);
+  });
+  it('짧은 제목은 넉넉한 간격(1.5배), 긴 제목은 간격부터 줄인다', () => {
+    expect(spineTitleLayout('데미안', 225, 24.6, 0.5).pitch).toBe(1.5);
+    expect(spineTitleLayout('달러구트 꿈 백화점', 205, 27.5, 0.65).pitch).toBeLessThan(1.5);
   });
 });

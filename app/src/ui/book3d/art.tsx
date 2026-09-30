@@ -111,7 +111,8 @@ async function buildArt(book: Book, s: number, dims: { T: number; H: number; W: 
   const art = book.body && t.artTop !== book.body.motifTop ? { ...book.body, motifTop: t.artTop } : book.body;
   const spine = await record(<SpineFaceArt id={book.id} w={w} h={h} s={s} face={face} art={art} grain={shared.grain} motif={motif} />, w, h);
   const fs = t.fontSize * s;
-  const font = Skia.Font(bold, fs);
+  // 책등 글자: 보통 굵기(시안처럼 획이 가늘어 좁은 책등에서 튀지 않게)
+  const font = Skia.Font(regular, fs);
   const cells: Cell[] = [];
   const colW = fs * 1.2;
   const cols = [...t.columns].reverse();
@@ -170,11 +171,12 @@ async function buildArt(book: Book, s: number, dims: { T: number; H: number; W: 
   const ct = coverTitleLayout(book.title, dims.W, dims.H);
   const lines = ct.lines;
   const cfs = ct.fontSize * s;
-  const cfont = Skia.Font(bold, cfs);
-  const spacing = lines.length === 1 && [...book.title].length <= 5 ? cfs * 0.08 : cfs * 0.02;
+  const cfont = Skia.Font(regular, cfs);
+  const spacing = cfs * 0.06;
   const lh = cfs * COVER_LINE_H;
   const cm = cfont.getMetrics();
-  const top = (cover?.titleTop ?? 0.2) * h;
+  // 제목 칸 위치: 그림 자산의 제목 자리(titleTop)를 따르되 표지 위 끝에 붙지 않게(시안: 위에서 약 15~25%)
+  const top = Math.max(0.15, cover?.titleTop ?? 0.2) * h;
   const lineEls = lines.map((line, i) => {
     const chars = [...line];
     const ws = chars.map((c) => (c === ' ' ? cfs * 0.32 : cfont.measureText(c).width));
@@ -190,9 +192,9 @@ async function buildArt(book: Book, s: number, dims: { T: number; H: number; W: 
   let authorEl: ReactNode = null;
   if (book.author) {
     // 저자는 제목보다 훨씬 작게, 표지 가운데 폭 안에만(그림 가장자리의 나무·잎에 걸리지 않게)
-    let afs = Math.max(6.5, Math.min(8.5, (cfs / s) * 0.46)) * s;
+    let afs = Math.max(6, (cfs / s) * 0.62) * s;
     let afont = Skia.Font(regular, afs);
-    const maxW = cw * 0.42;
+    const maxW = cw * 0.5;
     let aw = afont.measureText(book.author).width;
     if (aw > maxW) {
       afs = Math.max(afs * 0.7, (afs * maxW) / aw);
@@ -200,7 +202,7 @@ async function buildArt(book: Book, s: number, dims: { T: number; H: number; W: 
       aw = afont.measureText(book.author).width;
     }
     const am = afont.getMetrics();
-    const ay = top + lines.length * lh + cfs * 0.12 - am.ascent;
+    const ay = top + lines.length * lh + cfs * 0.2 - am.ascent;
     authorEl = <Text x={cw / 2 - aw / 2} y={ay} text={book.author} font={afont} color={ainkc} opacity={0.8} />;
   }
   let coverMotif: ReactNode = null;
