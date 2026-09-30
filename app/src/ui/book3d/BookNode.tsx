@@ -110,7 +110,7 @@ function roundColors(b: Book3, lit: string, dark: string) {
 }
 
 function SpineBevel({ state, w, h, s, tone }: { state: RO<Book3>; w: number; h: number; s: number; T: number; tone: string }) {
-  const bh = 2.6 * s;
+  const bh = 3.2 * s; // 책등이 머리 면으로 둥글게 넘어가는 띠(작게: 볼록한 캡슐처럼 보이지 않게)
   const lit = litTone(tone);
   const dark = scaleColor(tone, 0.7);
   const deep = scaleColor(tone, 0.55); // 원통이 옆면으로 넘어가는 반대쪽 끝(같은 책 색을 낮춘 좁은 그늘)
@@ -225,7 +225,7 @@ function Side({ f, state, cam, px, book, pages, tone, grain, graze }: { f: FaceI
   const k = useDerivedValue(() => brightness(light, state.value, f));
   // 앞표지·책등이 옆면이 되면(비스듬히) 판 색으로 덮는다: 정면에 가까울수록 그림이 드러난다
   const op = useDerivedValue(() => (graze ? Math.max(0, Math.min(1, (0.5 - facing(viewCam(cam.value, state.value), state.value, f)) / 0.4)) : 1));
-  return <FaceShape geom={geom} pages={pages} tone={tone} k={k} s={px.s} grain={grain} opacity={op} />;
+  return <FaceShape geom={geom} pages={pages} tone={tone} k={k} s={px.s} grain={grain} opacity={op} hinge={f === 'cover' || f === 'back'} />;
 }
 
 // 측정용 기본 도형: 책등·표지 면을 그림 없이 단색 사각형으로

@@ -4,7 +4,7 @@ import { BlurMask, Group, LinearGradient, Path, Skia, vec, type SkImage, type Sk
 import { useDerivedValue, type SharedValue } from 'react-native-reanimated';
 
 import type { Point } from '@/domain/shelf-scene';
-import { edgeFactor, GrainFill, litTone, mix, PAGE, PAGE_LINE, scaleColor, withAlpha } from '@/ui/book/BookBody';
+import { edgeFactor, GrainFill, litTone, mix, PAGE, PAGE_BASE, PAGE_LINE, PAGE_LIT, PAGE_RIM, scaleColor, withAlpha } from '@/ui/book/BookBody';
 import { RENDER } from '@/ui/perf';
 
 import type { FaceGeom } from './face-geometry';
@@ -36,7 +36,8 @@ export function linesPath(list: Point[][]): SkPath {
   return p.detach();
 }
 
-type Props = { geom: RO<FaceGeom>; pages: boolean; tone: string; k: RO<number>; s: number; grain: SkImage | null; opacity?: RO<number> };
+// hinge: 표지 판 면(앞·뒤표지)이라 책등과 맞닿은 변(A→B) 가까이에 제본 홈이 있다
+type Props = { geom: RO<FaceGeom>; pages: boolean; tone: string; k: RO<number>; s: number; grain: SkImage | null; opacity?: RO<number>; hinge?: boolean };
 
 export function FaceShape(p: Props) {
   return RENDER.texture ? <TexturedFace {...p} /> : <FlatFace {...p} />;
@@ -50,29 +51,53 @@ function FlatFace({ geom, tone, k, opacity }: Props) {
 }
 
 // 종이 단면(속지)과 종이 결: 종이 단면이 있는 면에만(없는 면에는 파생 값을 만들지 않는다)
-function Pages({ geom, tone, k, a, ab, s }: { geom: RO<FaceGeom>; tone: string; k: RO<number>; a: RO<SkPoint>; ab: RO<SkPoint>; s: number }) {
+// 속지는 밝은 종이색 그대로 두고(표지색 섞기·판 그늘 겹치기 없이) 면 밝기는 돌려서 어두워질 때만 따른다(기본 자세에서는 1).
+// 표지 판과 맞닿는 안쪽 가장자리에만 좁은 회베이지 그늘, 종이 결은 아주 옅게.
+function Pages({ geom, k, a, ab, s }: { geom: RO<FaceGeom>; k: RO<number>; a: RO<SkPoint>; ab: RO<SkPoint>; s: number }) {
   const inner = useDerivedValue(() => polyPath(geom.value.inner ?? [], true));
   const lines = useDerivedValue(() => linesPath(geom.value.lines));
-  // 속지는 표지 판보다 안으로 들어가 판 그늘에 있다: 크림색을 조금 낮추고 책 색을 섞어 따로 얹힌 하얀 뚜껑처럼 보이지 않게
-  const paper = useDerivedValue(() => [mix(scaleColor(PAGE, Math.min(1, k.value) * 0.93), tone, 0.16), mix(scaleColor(PAGE, Math.min(1, k.value) * 0.86), tone, 0.24)]);
-  // 속지가 표지 판보다 조금 안으로 들어간 경계: 선이 아니라 속지 안쪽 가장자리에 좁고 흐린 그늘(판이 드리운 것처럼)
-  const rim = withAlpha(scaleColor(tone, 0.55), 0.22);
+  const paper = useDerivedValue(() => {
+    const kk = Math.min(1, k.value / 0.98);
+    return [scaleColor(PAGE_LIT, kk), scaleColor(PAGE_BASE, kk), scaleColor(PAGE_BASE, kk * 0.985)];
+  });
+  const rim = withAlpha(PAGE_RIM, 0.34);
   return (
     <>
       <Path path={inner}>
-        <LinearGradient start={a} end={ab} colors={paper} />
+        <LinearGradient start={a} end={ab} colors={paper} positions={[0, 0.35, 1]} />
       </Path>
-      <Path path={lines} style="stroke" strokeWidth={0.5} color={PAGE_LINE} opacity={0.5} />
+      <Path path={lines} style="stroke" strokeWidth={0.5} color={PAGE_LINE} opacity={0.14} />
       <Group clip={inner}>
-        <Path path={inner} style="stroke" strokeWidth={2.2 * s} color={rim}>
-          <BlurMask blur={1.1 * s} style="normal" />
+        <Path path={inner} style="stroke" strokeWidth={1.8 * s} color={rim}>
+          <BlurMask blur={0.8 * s} style="normal" />
         </Path>
       </Group>
     </>
   );
 }
 
-function TexturedFace({ geom, pages, tone, k, s, grain, opacity }: Props) {
+// 제본 홈: 책등 쪽 변에서 표지 깊이의 약 5% 안쪽을 따라가는 좁고 옅은 그늘과 그 바로 뒤의 가는 밝음(검은 선이 아니다)
+function Hinge({ geom, tone, s }: { geom: RO<FaceGeom>; tone: string; s: number }) {
+  const groove = useDerivedValue(() => {
+    const g = geom.value;
+    const at = (t: number) => ({ x: (g.Ab.x - g.A.x) * t, y: (g.Ab.y - g.A.y) * t });
+    const d = at(0.05);
+    const e = at(0.075);
+    return { d: linesPath([[{ x: g.A.x + d.x, y: g.A.y + d.y }, { x: g.B.x + d.x, y: g.B.y + d.y }]]), e: linesPath([[{ x: g.A.x + e.x, y: g.A.y + e.y }, { x: g.B.x + e.x, y: g.B.y + e.y }]]) };
+  });
+  const dp = useDerivedValue(() => groove.value.d);
+  const ep = useDerivedValue(() => groove.value.e);
+  return (
+    <>
+      <Path path={dp} style="stroke" strokeWidth={1.1 * s} color={withAlpha(scaleColor(tone, 0.55), 0.16)}>
+        <BlurMask blur={0.5 * s} style="normal" />
+      </Path>
+      <Path path={ep} style="stroke" strokeWidth={0.8 * s} color={withAlpha(litTone(tone), 0.14)} />
+    </>
+  );
+}
+
+function TexturedFace({ geom, pages, tone, k, s, grain, opacity, hinge }: Props) {
   const path = useDerivedValue(() => polyPath(geom.value.all, true));
   const hi = useDerivedValue(() => polyPath(geom.value.lit ? geom.value.hi : [], false));
   const runs = useDerivedValue(() => linesPath(geom.value.runs));
@@ -96,7 +121,6 @@ function TexturedFace({ geom, pages, tone, k, s, grain, opacity }: Props) {
     <Group opacity={opacity}>
       {/* 표지 판 색(종이면이면 판이 테두리로 조금 보인다). 선 대신 색 차이로만 구분 */}
       <Path path={path} color={fill} />
-      {pages ? <Pages geom={geom} tone={tone} k={k} a={a} ab={ab} s={s} /> : null}
       {RENDER.grain ? <GrainFill path={path} s={s} image={grain} /> : null}
       {/* 앞면에서 둥글게 꺾여 들어가는 명암: 맞닿은 모서리 쪽이 앞면 밝기에 가깝고 뒤로 갈수록 어두워진다(선 없이) */}
       <Path path={path}>
@@ -105,6 +129,13 @@ function TexturedFace({ geom, pages, tone, k, s, grain, opacity }: Props) {
       <Path path={path}>
         <LinearGradient start={a} end={ab} colors={[withAlpha(scaleColor(tone, 0.6), 0), withAlpha(scaleColor(tone, 0.6), 0.14)]} />
       </Path>
+      {hinge && !pages ? (
+        <Group clip={path}>
+          <Hinge geom={geom} tone={tone} s={s} />
+        </Group>
+      ) : null}
+      {/* 속지는 판 명암 위에 따로(판의 둥근 명암·그늘이 종이에 겹쳐 회색 뚜껑처럼 되지 않게) */}
+      {pages ? <Pages geom={geom} k={k} a={a} ab={ab} s={s} /> : null}
       {/* 빛 받는 윗면 모서리만 은은하게 */}
       <Path path={hi} style="stroke" strokeWidth={2.4 * s} strokeCap="round">
         <LinearGradient start={a} end={b} colors={hiColors} />

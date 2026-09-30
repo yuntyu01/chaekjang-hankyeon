@@ -26,6 +26,10 @@ const SRC_DU = 390 / 941; // 시안 원본 1px = DU(붓결 크기를 시안과 �
 export const GRAIN_STRENGTH = 0.22;
 // 속지(종이 단면): 새하얀색이 아니라 따뜻한 크림색
 export const PAGE = '#EFE2C8';
+// 속지(종이 단면) 색: 따뜻한 백색, 빛 받는 가장자리는 조금 더 밝게. 표지색·판 그늘은 섞지 않는다(속지 면에만).
+export const PAGE_BASE = '#FAF8F2';
+export const PAGE_LIT = '#FFFDFB';
+export const PAGE_RIM = '#B8A993'; // 표지와 맞닿는 안쪽의 좁은 회베이지 그늘
 export const PAGE_LINE = '#DDCFB8';
 
 // 책 색을 k배로 어둡게. 시안의 그늘은 회색이 아니라 따뜻한 갈색 쪽으로 어두워진다

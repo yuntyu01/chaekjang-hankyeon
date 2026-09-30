@@ -174,7 +174,10 @@ export function computeFace(face: { poly: Point[] } | null, kind: FaceKind, px: 
     Bb = { x: Bb.x + dn.x * bow, y: Bb.y + dn.y * bow };
   }
   const st = faceStyle(kind, s);
-  const soft = softFace([A, B, Bb, Ab], st.radii, st.wob, st.outer, bulge, s, seed);
+  // 앞면 밑으로 밀어 넣은 윗면은 앞면 둥근 모서리(약 3.4DU) 자리를 메워 모서리를 다시 각지게 만든다:
+  // 바깥 앞 모서리(B)를 밀어 넣은 만큼 더 둥글게 해 앞면 모서리와 같은 곡선으로 넘어가게 한다(곡률은 그대로 작게)
+  const radii = kind === 'top' && under > 0 ? [st.radii[0], 3.4 * s + under, st.radii[2], st.radii[3]] : st.radii;
+  const soft = softFace([A, B, Bb, Ab], radii, st.wob, st.outer, bulge, s, seed);
   const up0 = bulge ? bulge[0] : null;
   const P = (u: number, v: number) => {
     const bs = up0 ? Math.sin(Math.PI * u) : 0;
