@@ -67,7 +67,8 @@ export const shadow = {
   cast: {
     // 책 그림자는 가리는 책에서의 빛 길이로 층을 나눈다(layers, DU): 가까운 층일수록 선명하고, 겹쳐 그려져 진하다.
     // 한 층의 진하기 opacity, 흐림 = near + perDU × 층 길이(최대 maxBlur)
-    bookWall: { layers: [10, 35, 1e9], opacity: 0.12, near: 1.2, perDU: 0.07, maxBlur: 12 }, // 책 → 벽
+    // 책 → 벽: 시안의 책 뒤 그림자는 넓고 옅은 따뜻한 음영(회색 덩어리가 아니다). 층별 진하기(가까운 층은 낮추고 먼 층은 유지), 따뜻한 갈색
+    bookWall: { layers: [10, 35, 1e9], opacity: 0.12, layerOpacity: [0.06, 0.07, 0.09], color: '#7A5236', near: 1.2, perDU: 0.07, maxBlur: 12 },
     // 선반 판 → 벽: 빛 길이 층(layers, DU)마다 진하기·흐림. 판 뒤쪽 약 13DU 빛 길이까지는 판 자신에 가려 보이지 않는다.
     // 가까운 층(판 바로 아래)만 조금 진하고, 멀리 퍼지는 층은 아주 옅게(넓은 회색 덩어리가 판을 띄워 보이지 않게).
     // 색은 크림색 벽에 맞춘 따뜻한 갈색(시안: 판 아래 벽이 파랑이 가장 많이 빠지며 어두워진다).
@@ -94,7 +95,8 @@ export const shadow = {
 // 선반 판 명암: 윗면 살짝 밝게, 앞면 살짝 어둡게
 // top: 윗면 나무색 곱하기(질감 이미지가 벽과 거의 같은 옅은 크림색이라 그대로 두면 뒤로 민 책이 벽 앞에 떠 보인다.
 //      시안 윗면 약 (230,200,155)에 맞춘 따뜻한 나무색), front: 앞면을 아주 약하게 어둡게
-export const plankLight = { top: '#EBDABC', front: 0.05 };
+// 판 색(시안: 옅은 살구빛 크림, 윗면 약 (250,229,204)·앞면 약 (231,199,167)). top: 윗면 질감에 곱할 색, front: 앞면을 밝히는 크림빛 세기
+export const plankLight = { top: '#FCF6EE', front: 0.1 };
 
 export const motion = {
   shift: 180, // 옆 책이 비켜주는 시간(ms)

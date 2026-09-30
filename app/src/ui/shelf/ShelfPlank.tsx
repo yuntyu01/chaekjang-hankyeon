@@ -204,7 +204,7 @@ export function ShelfBoard({ scale: s, clear, cam }: { scale: number; clear: num
         <Face poly={frontP} matrix={frontM} image={front}>
           {SHOW.shelfShade ? (
             <>
-              <Path path={frontP} color={`rgba(59,51,48,${plankLight.front})`} />
+              <Path path={frontP} color={`rgba(255,248,238,${plankLight.front})`} />
               <Path path={frontP}>
                 <LinearGradient start={g0} end={g1} colors={['rgba(110,75,45,0)', 'rgba(110,75,45,0.10)']} />
               </Path>

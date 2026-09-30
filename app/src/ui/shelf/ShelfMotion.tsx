@@ -417,7 +417,7 @@ function castPath(cam: Cam, c: Cast3, s: number, clear: number): SkPath {
 }
 
 // 그림자 한 권·한 층: 불투명하게 그려 층(CastLayer) 안에서 합쳐지게 한다
-function CastShadow({ m, id, of, k, cam, s, clear }: { m: Motion; id: string; of: (b: Book3, k: number) => Cast3; k: number; cam: CamSV; s: number; clear: number }) {
+function CastShadow({ m, id, of, k, cam, s, clear, color }: { m: Motion; id: string; of: (b: Book3, k: number) => Cast3; k: number; cam: CamSV; s: number; clear: number; color: string }) {
   const c = useDerivedValue(() => {
     const b = stateNow(m, id);
     return b ? of(b, k) : null;
@@ -425,14 +425,14 @@ function CastShadow({ m, id, of, k, cam, s, clear }: { m: Motion; id: string; of
   const path = useDerivedValue(() => castPath(cam.value, c.value, s, clear));
   const blur = useDerivedValue(() => (c.value ? c.value.blur / 2 : 0));
   return (
-    <Path path={path} color={shadow.color}>
+    <Path path={path} color={color}>
       <BlurMask blur={blur} style="normal" />
     </Path>
   );
 }
 
 // 한 층의 그림자들을 한 장에 합친 뒤 층 진하기로 한 번만 얹는다(같은 광원의 그림자가 겹쳐도 계속 어두워지지 않는다)
-function CastLayer({ m, ids, of, k, opacity, cam, s, clear }: { m: Motion; ids: string[]; of: (b: Book3, k: number) => Cast3; k: number; opacity: number; cam: CamSV; s: number; clear: number }) {
+function CastLayer({ m, ids, of, k, opacity, color = shadow.color, cam, s, clear }: { m: Motion; ids: string[]; of: (b: Book3, k: number) => Cast3; k: number; opacity: number; color?: string; cam: CamSV; s: number; clear: number }) {
   const paint = useMemo(() => {
     const p = Skia.Paint();
     p.setAlphaf(opacity);
@@ -441,7 +441,7 @@ function CastLayer({ m, ids, of, k, opacity, cam, s, clear }: { m: Motion; ids: 
   return (
     <Group layer={paint}>
       {ids.map((id) => (
-        <CastShadow key={id} m={m} id={id} of={of} k={k} cam={cam} s={s} clear={clear} />
+        <CastShadow key={id} m={m} id={id} of={of} k={k} cam={cam} s={s} clear={clear} color={color} />
       ))}
     </Group>
   );
@@ -725,7 +725,7 @@ export const RowShadows = memo(function RowShadows({ m, ids, cam, s, clear }: { 
   return (
     <Group>
       <Group clip={clip}>
-        {SHOW.wall ? shadow.cast.bookWall.layers.map((_, k) => <CastLayer key={k} m={m} ids={ids} of={of} k={k} opacity={shadow.cast.bookWall.opacity} cam={cam} s={s} clear={clear} />) : null}
+        {SHOW.wall ? shadow.cast.bookWall.layers.map((_, k) => <CastLayer key={k} m={m} ids={ids} of={of} k={k} opacity={shadow.cast.bookWall.layerOpacity[k]} color={shadow.cast.bookWall.color} cam={cam} s={s} clear={clear} />) : null}
       </Group>
       {SHOW.gap ? [0, 1, 2, 3].map((b) => <GapShade key={b} m={m} ids={ids} cam={cam} s={s} clear={clear} band={b} />) : null}
     </Group>
