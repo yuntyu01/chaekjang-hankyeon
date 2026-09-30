@@ -90,22 +90,33 @@ function edgeColors(b: Book3, axis: 'x' | 'y', sign: number, lit: string, dark: 
   return out;
 }
 
-function SpineBevel({ state, w, h, s, T, tone }: { state: RO<Book3>; w: number; h: number; s: number; T: number; tone: string }) {
-  const bx = Math.max(2.5, Math.min(5, 0.2 * T)) * s;
+// 둥근 책등: 책등 폭 전체에 걸쳐 법선을 -50°~+50°로 기울인 원통으로 보고 공통 광원으로 밝기를 매긴다(가장자리 테두리 없이
+// 완만하게 이어지는 명암). 세우면 왼쪽이, 눕히면 위쪽이 밝다(책 자세를 따라 광원 기준으로 바뀐다). 머리 쪽 가장자리는 좁게.
+const ROUND = [-1, -0.6, -0.25, 0, 0.25, 0.6, 1];
+const ROUND_DEG = 50;
+function roundColors(b: Book3, lit: string, dark: string) {
+  'worklet';
+  const out: string[] = [];
+  for (const u of ROUND) {
+    const a = (ROUND_DEG * u * Math.PI) / 180;
+    const d = litDelta(b, { x: Math.sin(a), y: 0, z: -Math.cos(a) });
+    out.push(d >= 0 ? withAlpha(lit, Math.min(0.32, d * 1.6)) : withAlpha(dark, Math.min(0.2, -d * 0.45)));
+  }
+  return out;
+}
+const ROUND_POS = ROUND.map((u) => (u + 1) / 2);
+
+function SpineBevel({ state, w, h, s, tone }: { state: RO<Book3>; w: number; h: number; s: number; T: number; tone: string }) {
   const bh = 2.6 * s;
   const lit = litTone(tone);
   const dark = scaleColor(tone, 0.7);
-  const left = useDerivedValue(() => edgeColors(state.value, 'x', -1, lit, dark));
-  const right = useDerivedValue(() => edgeColors(state.value, 'x', 1, lit, dark));
+  const across = useDerivedValue(() => roundColors(state.value, lit, dark));
   const head = useDerivedValue(() => edgeColors(state.value, 'y', 1, lit, dark));
   const pos = [0, 0.45, 1];
   return (
     <>
-      <Rect x={0} y={0} width={bx} height={h}>
-        <LinearGradient start={vec(0, 0)} end={vec(bx, 0)} colors={left} positions={pos} />
-      </Rect>
-      <Rect x={w - bx} y={0} width={bx} height={h}>
-        <LinearGradient start={vec(w, 0)} end={vec(w - bx, 0)} colors={right} positions={pos} />
+      <Rect x={0} y={0} width={w} height={h}>
+        <LinearGradient start={vec(0, 0)} end={vec(w, 0)} colors={across} positions={ROUND_POS} />
       </Rect>
       <Rect x={0} y={0} width={w} height={bh}>
         <LinearGradient start={vec(0, 0)} end={vec(0, bh)} colors={head} positions={pos} />
