@@ -21,7 +21,10 @@ export const RENDER = { art: true, texture: true, grain: true, books: true };
 export const SHELF_VIEWS = ['전체', '옆면 명암 끔', '벽 그림자 끔', 'AO 끔', '빈 선반'] as const;
 export type ShelfView = (typeof SHELF_VIEWS)[number];
 // 선반 원인 분리(chaekjang:///?sh=모드). 카메라·광원·선반 형상은 그대로 두고 그리는 층만 고른다.
-export const SHELF_MODES = ['all', 'plank', 'plankflat', 'side0', 'wall', 'wallmask', 'wallboard', 'ao', 'debug', 'nowall', 'norecv', 'noplank'] as const;
+// 측정 번들: 자세 바꾸기·밀림 애니메이션을 이 배수만큼 느리게(중간 프레임 캡처용, 기본 1)
+export const ANIM = { slow: 1 };
+
+export const SHELF_MODES = ['all', 'plank', 'plankflat', 'side0', 'wall', 'wallmask', 'wallboard', 'ao', 'debug', 'nowall', 'norecv', 'noplank', 'faces'] as const;
 export type ShelfMode = (typeof SHELF_MODES)[number];
 export function setShelfMode(m: ShelfMode) {
   const board = !['wall', 'wallmask'].includes(m);
@@ -38,6 +41,11 @@ export function setShelfMode(m: ShelfMode) {
     SHOW.shelf = m === 'norecv';
   }
   SHOW.castPlank = m !== 'norecv' && m !== 'noplank';
+  SHOW.faceDebug = m === 'faces';
+  if (m === 'faces') {
+    SHOW.shelf = true;
+    SHOW.shelfAO = true;
+  }
 }
 
 export function setShelfView(v: ShelfView) {

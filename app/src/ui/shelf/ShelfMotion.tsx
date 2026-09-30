@@ -24,6 +24,7 @@ import type { Affine } from '@/ui/book3d/face-geometry';
 import { linesPath, polyPath } from '@/ui/book3d/FaceShape';
 import { BOX_HEAD_BOW } from '@/ui/book/BookBody';
 import { colors, light, shadow } from '@/ui/theme';
+import { ANIM } from '@/ui/perf';
 import { SHOW } from '@/ui/shelf/shadow-debug';
 
 const FLOOR = SHELF.clearHeight;
@@ -104,7 +105,7 @@ export function useShelfMotion(shelfId: string, frames: BookFrame[], reduceMotio
     current.current = rec;
     const animate = !!plan && plan.strategy !== 'still';
     const posing = !!plan && /al|pull/.test(plan.strategy);
-    const dur = posing ? POSE_MS : MOTION_MS;
+    const dur = (posing ? POSE_MS : MOTION_MS) * ANIM.slow;
     scheduleOnUI(() => {
       'worklet';
       tracks.value = rec;

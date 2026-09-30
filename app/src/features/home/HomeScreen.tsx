@@ -6,7 +6,7 @@ import { useFocusEffect, useLocalSearchParams, useNavigation } from 'expo-router
 import * as Haptics from 'expo-haptics';
 import { BookMarked, Paintbrush, Plus, Undo2 } from 'lucide-react-native';
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import { AppState, Modal, Pressable, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
+import { AppState, Modal, PixelRatio, Pressable, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import Animated, {
   cancelAnimation,
@@ -15,6 +15,7 @@ import Animated, {
   scrollTo,
   useAnimatedRef,
   useFrameCallback,
+  useAnimatedReaction,
   useAnimatedScrollHandler,
   useReducedMotion,
   useSharedValue,
@@ -63,7 +64,7 @@ import { placementStore, usePlacementStore } from '@/store/placement-store';
 import { DragOverlay, frameBBox } from '@/ui/shelf/DragOverlay';
 import { CONTENT_TOP, computeRows, LAYOUT, rowAt, toContent, toScene, useShelfMetrics, type RowGeom } from '@/ui/shelf/metrics';
 import { benchProjection, currentStates, motionOf, previewShelf, type BenchRow } from '@/ui/shelf/ShelfMotion';
-import { frameStats, PERF_DETAIL, PERF_ENABLED, PERF_LEVELS, setPerfLevel, setShelfMode, setShelfView, SHELF_MODES, SHELF_VIEWS, type PerfLevel, type ShelfMode } from '@/ui/perf';
+import { ANIM, frameStats, PERF_DETAIL, PERF_ENABLED, PERF_LEVELS, setPerfLevel, setShelfMode, setShelfView, SHELF_MODES, SHELF_VIEWS, type PerfLevel, type ShelfMode } from '@/ui/perf';
 import type { FrontState } from '@/domain/front-pose';
 import { ShelfRow, type DropHint } from '@/ui/shelf/ShelfRow';
 import { SHELF_CAST_EXTENT } from '@/ui/shelf/ShelfPlank';
@@ -603,7 +604,27 @@ export function HomeScreen() {
   const [shelfView, setShelfViewState] = useState<(typeof SHELF_VIEWS)[number]>('전체');
   // 측정 번들에서만: chaekjang:///?sv=0~4 로 선반 보기를 바로 고른다(비교 캡처용)
   // lv=<그리기 단계>(예: full, cast)로 단계만 바꿔 같은 화면을 비교한다
-  const { sv, lv, sh, gap, rowfit } = useLocalSearchParams<{ sv?: string; lv?: string; sh?: string; gap?: string; rowfit?: string }>();
+  const { sv, lv, sh, gap, rowfit, cam: camDebug, pitch: pitchParam, slow } = useLocalSearchParams<{ sv?: string; lv?: string; sh?: string; gap?: string; rowfit?: string; cam?: string; pitch?: string; slow?: string }>();
+  if (PERF_ENABLED && slow !== undefined) ANIM.slow = Math.max(1, Number(slow) || 1);
+  // 측정 번들: ?pitch=3 처럼 저장된 보기 각을 바로 정한다(비교 캡처를 같은 각에서 시작)
+  useEffect(() => {
+    if (!PERF_ENABLED || pitchParam === undefined || !view.loaded) return;
+    const deg = Math.max(VIEW_PITCH_MIN, Math.min(VIEW_PITCH_MAX, Number(pitchParam)));
+    pitchSV.value = deg;
+    viewGoal.value = deg;
+    savePitch(deg);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pitchParam, view.loaded]);
+  // 측정 번들: ?cam=1 이면 지금 프레임에 실제로 쓰는 시점 값(UI 스레드 카메라)을 화면 위에 적는다
+  const [camNow, setCamNow] = useState('');
+  useAnimatedReaction(
+    () => Math.round(pitchSV.value * 100) / 100,
+    (deg, prev) => {
+      if (camDebug !== '1' || deg === prev) return;
+      scheduleOnRN(setCamNow, `적용 ${deg.toFixed(2)}° · ky ${camSV.value.ky.toFixed(4)} · kx ${camSV.value.kx}`);
+    },
+    [camDebug],
+  );
   // 줄 높이 계산(rows) 전에 렌더 중에 바로 반영한다(효과에서 바꾸면 rows가 한 단계 늦은 값으로 계산된다)
   if (PERF_ENABLED && gap !== undefined) LAYOUT.topGap = Number(gap);
   // 비교안: chaekjang:///?rowfit=0.5 → 줄마다 필요한 높이 쪽으로 선반 위 공간을 절반만큼 줄인다
@@ -1090,6 +1111,11 @@ export function HomeScreen() {
 
   return (
     <View style={[styles.root, { paddingTop: insets.top }]}>
+      {PERF_ENABLED && camDebug === '1' ? (
+        <Text pointerEvents="none" style={{ position: 'absolute', zIndex: 99, left: 8, bottom: navigation.height + insets.bottom + 4, fontSize: 11, color: '#7A2E1E', backgroundColor: 'rgba(255,255,255,0.8)' }}>
+          {`저장 ${view.pitch}° · ${camNow || `적용 ${view.pitch}°`} · 배율 ${m.scale.toFixed(4)}dp/DU(${(m.scale * PixelRatio.get()).toFixed(3)}px/DU) · 줄 높이 기준 ky ${(rowKy ?? kyOf(view.pitch)).toFixed(4)} · 꾸미기 ${editing ? '켬' : '끔'}`}
+        </Text>
+      ) : null}
       {/* 시안 비율: 제목 26DU·요약 12.5DU·원형 버튼 28DU, 좌우 여백 23/18DU */}
       <View style={[styles.header, { paddingLeft: 23 * m.scale + m.originX, paddingRight: 18 * m.scale + m.originX, paddingTop: 20 * m.scale, height: 84 * m.scale }]}>
         <View style={{ flex: 1 }}>
