@@ -603,13 +603,11 @@ export function HomeScreen() {
   const [shelfView, setShelfViewState] = useState<(typeof SHELF_VIEWS)[number]>('전체');
   // 측정 번들에서만: chaekjang:///?sv=0~4 로 선반 보기를 바로 고른다(비교 캡처용)
   // lv=<그리기 단계>(예: full, cast)로 단계만 바꿔 같은 화면을 비교한다
-  const { sv, lv, sh, gap } = useLocalSearchParams<{ sv?: string; lv?: string; sh?: string; gap?: string }>();
-  const [, setGapTick] = useState(0);
-  useEffect(() => {
-    if (!PERF_ENABLED || gap === undefined) return;
-    LAYOUT.topGap = Number(gap);
-    setGapTick((k) => k + 1);
-  }, [gap]);
+  const { sv, lv, sh, gap, rowfit } = useLocalSearchParams<{ sv?: string; lv?: string; sh?: string; gap?: string; rowfit?: string }>();
+  // 줄 높이 계산(rows) 전에 렌더 중에 바로 반영한다(효과에서 바꾸면 rows가 한 단계 늦은 값으로 계산된다)
+  if (PERF_ENABLED && gap !== undefined) LAYOUT.topGap = Number(gap);
+  // 비교안: chaekjang:///?rowfit=0.5 → 줄마다 필요한 높이 쪽으로 선반 위 공간을 절반만큼 줄인다
+  if (PERF_ENABLED && rowfit !== undefined) LAYOUT.rowFit = Number(rowfit);
   useEffect(() => {
     if (!PERF_ENABLED || !sh || !SHELF_MODES.includes(sh as ShelfMode)) return;
     setShelfMode(sh as ShelfMode);
@@ -718,7 +716,7 @@ export function HomeScreen() {
   const rows = useMemo(() => {
     const base = drag && !drag.settling ? layout : shown;
     return shiftRows(computeRows(base, books, m.scale, vpH, navigation.height + insets.bottom, rowKy), rowShift);
-  }, [shown, layout, books, m.scale, vpH, insets.bottom, !!drag, drag?.settling, view.pitch, rowKy, rowShift, gap]);
+  }, [shown, layout, books, m.scale, vpH, insets.bottom, !!drag, drag?.settling, view.pitch, rowKy, rowShift, gap, rowfit]);
   const rowOf = useMemo(() => new Map(rows.map((r) => [r.shelfId, r])), [rows]);
   useEffect(() => {
     const out: Box[] = [];

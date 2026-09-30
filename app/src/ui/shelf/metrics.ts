@@ -36,24 +36,24 @@ export function useShelfMetrics() {
 export const RIBBON_OUT = 12;
 
 // 헤더 아래 빈 공간 비율(1 = 세 줄을 가운데 정렬). 측정 번들에서 비교할 때만 바꾼다
-export const LAYOUT = { topGap: 1 };
+// rowFit(비교안, 기본 0): 줄마다 그 줄에 필요한 높이(가장 큰 책·갈피·기울기 + 여백)로 선반 위 공간을 이 비율만큼 줄인다
+export const LAYOUT = { topGap: 1, rowFit: 0 };
 
 // ky: 줄 높이를 잴 카메라(없으면 지금 보기 각). 꾸미기에서는 가장 내려다보는 각으로 재 두어 시점을 끌어도 줄이 움직이지 않는다.
 export function computeRows(layout: ShelfLayout, books: BookMap, scale: number, viewportHeight = 0, bottomInset = 0, ky?: number): RowGeom[] {
   const shelves = sortedShelves(layout);
   // 갈피는 갈피가 있는 책의 키에만 더한다(모든 줄에 일괄로 더하지 않음)
-  const tallest = Math.max(
-    SHELF.minClear,
-    ...shelves.flatMap((s) =>
-      shelfItems(layout, s.id).map((it) => itemHeight(it, layout, books, ky) + (it.bookIds.some((id) => (books[id]?.quotes ?? 0) > 0) ? RIBBON_OUT : 0)),
-    ),
-  );
+  const need = (id: string) =>
+    Math.max(SHELF.minClear, ...shelfItems(layout, id).map((it) => itemHeight(it, layout, books, ky) + (it.bookIds.some((b) => (books[b]?.quotes ?? 0) > 0) ? RIBBON_OUT : 0)));
+  const tallest = Math.max(...shelves.map((s) => need(s.id)));
   const clear = tallest + SHELF.rowTopPad;
-  const height = (clear + SHELF.below + SHELF.rowGap) * scale;
-  let top = Math.max(CONTENT_TOP, ((viewportHeight - bottomInset - height * shelves.length) / 2) * LAYOUT.topGap);
-  return shelves.map((s) => {
-    const row = { shelfId: s.id, top, clear, height };
-    top += height;
+  const clears = shelves.map((s) => clear - LAYOUT.rowFit * (clear - (need(s.id) + SHELF.rowTopPad)));
+  const heights = clears.map((c) => (c + SHELF.below + SHELF.rowGap) * scale);
+  const total = heights.reduce((a, b) => a + b, 0);
+  let top = Math.max(CONTENT_TOP, ((viewportHeight - bottomInset - total) / 2) * LAYOUT.topGap);
+  return shelves.map((s, i) => {
+    const row = { shelfId: s.id, top, clear: clears[i], height: heights[i] };
+    top += heights[i];
     return row;
   });
 }
