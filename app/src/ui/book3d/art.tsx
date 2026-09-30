@@ -7,7 +7,7 @@ import { AlphaType, ColorType, Group, ImageSVG, LinearGradient, Path, Skia, Text
 import { createContext, useContext, useEffect, useState, type ReactNode } from 'react';
 
 import { BRUSH_DETAIL } from '@/domain/body-art.generated';
-import { rgbHex, shade, titleInk } from '@/domain/color';
+import { rgbHex, shade, TITLE_LIGHT, titleInk } from '@/domain/color';
 import { COVER_LINE_H, coverTitleLayout, spineTitleLayout } from '@/domain/title-layout';
 import type { Book } from '@/domain/types';
 import { motifSvg } from '@/ui/art/motifs';
@@ -49,7 +49,10 @@ export const inkOf = (b: Book) => b.art.inkColor ?? titleInk(faceOf(b));
 
 // 제목 획 두께: 보통 굵기 글꼴에 글자 크기의 일부만큼 같은 색 윤곽을 더해 중간 굵기로(글자 모양·크기는 그대로).
 // 시안의 제목 획은 보통 굵기보다 약 30% 두껍고, 가는 획은 실제 표시 크기에서 바탕에 묻혀 옅어 보인다.
+// 어두운 바탕의 밝은 글자는 번져 보여 같은 두께도 더 굵게 읽히므로 덧그리는 두께를 조금 줄인다(바탕·글자색에 따른 공통 규칙).
 export const TITLE_WEIGHT = 0.03;
+export const TITLE_WEIGHT_LIGHT = 0.022;
+const weightFor = (ink: string) => (ink === TITLE_LIGHT ? TITLE_WEIGHT_LIGHT : TITLE_WEIGHT);
 function Glyph({ x, y, text, font, color, weight }: { x: number; y: number; text: string; font: SkFont; color: string; weight: number }) {
   return (
     <>
@@ -178,8 +181,8 @@ async function buildArt(book: Book, s: number, dims: { T: number; H: number; W: 
       const gy = -(fm.ascent + fm.descent) / 2;
       const pic = await record(
         <Group>
-          <Glyph x={-gw / 2} y={gy} text={cell.ch} font={font} color={ink} weight={fs * TITLE_WEIGHT} />
-          {cell.punct ? <Glyph x={gw / 2 - fs * 0.05} y={fs * 0.5} text={cell.punct} font={font} color={ink} weight={fs * TITLE_WEIGHT} /> : null}
+          <Glyph x={-gw / 2} y={gy} text={cell.ch} font={font} color={ink} weight={fs * weightFor(ink)} />
+          {cell.punct ? <Glyph x={gw / 2 - fs * 0.05} y={fs * 0.5} text={cell.punct} font={font} color={ink} weight={fs * weightFor(ink)} /> : null}
         </Group>,
         fs * 2,
         fs * 2,
@@ -226,7 +229,7 @@ async function buildArt(book: Book, s: number, dims: { T: number; H: number; W: 
     let x = cw / 2 - total / 2;
     const base = top + i * lh + lh / 2 - (cm.ascent + cm.descent) / 2;
     return chars.map((c, j) => {
-      const el = <Glyph key={`${i}-${j}`} x={x} y={base} text={c} font={cfont} color={cink} weight={cfs * TITLE_WEIGHT} />;
+      const el = <Glyph key={`${i}-${j}`} x={x} y={base} text={c} font={cfont} color={cink} weight={cfs * weightFor(cink)} />;
       x += ws[j] + spacing;
       return el;
     });
