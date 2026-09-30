@@ -3,7 +3,7 @@
 //   누울 때만 책등 글자·작은 모티프를 바로 세워(돌리면서) 가로로 읽히게 한다.
 // - 나머지 면(뒤표지·머리·꼬리·책배): 표지 판·종이 단면 재질. 앞표지·책등이 비스듬히 옆으로 갈수록 판 색으로 덮인다.
 // - 밝기: 면 법선과 광원(램버트). 책끼리 앞뒤는 매 프레임 깊이로(zIndex).
-import { Group, Image as SkImg, ImageSVG, LinearGradient, Path, Picture, Rect, Skia, Text, vec } from '@shopify/react-native-skia';
+import { Group, Image as SkImg, ImageSVG, LinearGradient, Path, Picture, Rect, Skia, vec } from '@shopify/react-native-skia';
 import type React from 'react';
 import { useDerivedValue, type SharedValue } from 'react-native-reanimated';
 
@@ -62,10 +62,12 @@ const LN = (() => {
   return { x: d.x / l, y: d.y / l, z: d.z / l };
 })();
 
-function litDelta(b: Book3, n: { x: number; y: number; z: number }) {
+type V3 = { x: number; y: number; z: number };
+// n0: 기준 면 법선(없으면 책등). 기본값 매개변수는 워클릿에 실리지 않아 본문에서 정한다.
+function litDelta(b: Book3, n: V3, n0?: V3) {
   'worklet';
   const w = rot(b.roll, b.yaw, n, b.spin ?? 0, b.pitch ?? 0);
-  const w0 = rot(b.roll, b.yaw, { x: 0, y: 0, z: -1 }, b.spin ?? 0, b.pitch ?? 0);
+  const w0 = rot(b.roll, b.yaw, n0 ?? { x: 0, y: 0, z: -1 }, b.spin ?? 0, b.pitch ?? 0);
   return w.x * LN.x + w.y * LN.y + w.z * LN.z - (w0.x * LN.x + w0.y * LN.y + w0.z * LN.z);
 }
 
@@ -90,27 +92,29 @@ function edgeColors(b: Book3, axis: 'x' | 'y', sign: number, lit: string, dark: 
   return out;
 }
 
-// 둥근 책등: 책등 폭 전체에 걸쳐 법선을 -50°~+50°로 기울인 원통으로 보고 공통 광원으로 밝기를 매긴다(가장자리 테두리 없이
-// 완만하게 이어지는 명암). 세우면 왼쪽이, 눕히면 위쪽이 밝다(책 자세를 따라 광원 기준으로 바뀐다). 머리 쪽 가장자리는 좁게.
-const ROUND = [-1, -0.6, -0.25, 0, 0.25, 0.6, 1];
-const ROUND_DEG = 50;
+// 둥근 책등: 책등 폭 전체를 가장자리에서 ±80°까지 넘어가는 원통으로 보고 공통 광원으로 밝기를 매긴다.
+// 앞에서 본 원통이라 가로 위치는 sin(각도): 가운데는 넓고 완만하게, 양 끝(옆면으로 꺾이는 곳)은 좁게 바뀐다.
+// 빛 쪽 끝은 가장 밝은 곳(약 37°)을 지나 살짝 가라앉고, 반대쪽 끝은 책 색을 낮춘 좁은 그늘로 옆면에 넘어간다(검은 선 없음).
+// 세우면 왼쪽이, 눕히면 위쪽이 밝다(책 자세를 따라 광원 기준으로 바뀐다). 머리 쪽 가장자리는 좁게.
+const ROUND_DEG = [-80, -64, -44, -22, 0, 22, 44, 64, 80];
+const ROUND_POS = ROUND_DEG.map((g) => (Math.sin((g * Math.PI) / 180) / Math.sin((80 * Math.PI) / 180) + 1) / 2);
 function roundColors(b: Book3, lit: string, dark: string) {
   'worklet';
   const out: string[] = [];
-  for (const u of ROUND) {
-    const a = (ROUND_DEG * u * Math.PI) / 180;
+  for (const g of ROUND_DEG) {
+    const a = (g * Math.PI) / 180;
     const d = litDelta(b, { x: Math.sin(a), y: 0, z: -Math.cos(a) });
-    out.push(d >= 0 ? withAlpha(lit, Math.min(0.32, d * 1.6)) : withAlpha(dark, Math.min(0.2, -d * 0.45)));
+    out.push(d >= 0 ? withAlpha(lit, Math.min(0.32, d * 1.6)) : withAlpha(dark, Math.min(0.45, -d * 0.5)));
   }
   return out;
 }
-const ROUND_POS = ROUND.map((u) => (u + 1) / 2);
 
 function SpineBevel({ state, w, h, s, tone }: { state: RO<Book3>; w: number; h: number; s: number; T: number; tone: string }) {
   const bh = 2.6 * s;
   const lit = litTone(tone);
   const dark = scaleColor(tone, 0.7);
-  const across = useDerivedValue(() => roundColors(state.value, lit, dark));
+  const deep = scaleColor(tone, 0.55); // 원통이 옆면으로 넘어가는 반대쪽 끝(같은 책 색을 낮춘 좁은 그늘)
+  const across = useDerivedValue(() => roundColors(state.value, lit, deep));
   const head = useDerivedValue(() => edgeColors(state.value, 'y', 1, lit, dark));
   const pos = [0, 0.45, 1];
   return (
@@ -120,6 +124,54 @@ function SpineBevel({ state, w, h, s, tone }: { state: RO<Book3>; w: number; h: 
       </Rect>
       <Rect x={0} y={0} width={w} height={bh}>
         <LinearGradient start={vec(0, 0)} end={vec(0, bh)} colors={head} positions={pos} />
+      </Rect>
+    </>
+  );
+}
+
+// 앞표지 가장자리: 판 모서리가 둥글게 넘어가는 좁은 띠. 네 변을 각각 바깥으로 기울인 법선으로 공통 광원에 비춰
+// 빛 쪽 변만 책 색을 밝힌 얇은 밝음, 반대쪽 변은 같은 색을 조금 낮춘 그늘(모든 변을 하얗게 두르지 않는다).
+// 그림 좌표: 왼쪽 = 책등 쪽(z=0), 위 = 머리(y=H). 표지 법선은 +x.
+const COVER_N: V3 = { x: 1, y: 0, z: 0 };
+// e: 0 위, 1 아래, 2 왼쪽(책등 쪽), 3 오른쪽(책배 쪽)
+function coverEdgeNormal(e: number, a: number): V3 {
+  'worklet';
+  const c = Math.cos(a);
+  const t = Math.sin(a);
+  if (e === 0) return { x: c, y: t, z: 0 };
+  if (e === 1) return { x: c, y: -t, z: 0 };
+  if (e === 2) return { x: c, y: 0, z: -t };
+  return { x: c, y: 0, z: t };
+}
+function coverEdgeColors(b: Book3, e: number, lit: string, dark: string) {
+  'worklet';
+  const out: string[] = [];
+  for (const k of PROFILE) out.push(bevelColor(litDelta(b, coverEdgeNormal(e, (BEVEL_DEG * k * Math.PI) / 180), COVER_N), lit, dark));
+  return out;
+}
+
+function CoverBevel({ state, w, h, s, tone }: { state: RO<Book3>; w: number; h: number; s: number; tone: string }) {
+  const t = 2.4 * s;
+  const lit = litTone(tone);
+  const dark = scaleColor(tone, 0.7);
+  const top = useDerivedValue(() => coverEdgeColors(state.value, 0, lit, dark));
+  const bottom = useDerivedValue(() => coverEdgeColors(state.value, 1, lit, dark));
+  const left = useDerivedValue(() => coverEdgeColors(state.value, 2, lit, dark));
+  const right = useDerivedValue(() => coverEdgeColors(state.value, 3, lit, dark));
+  const pos = [0, 0.45, 1];
+  return (
+    <>
+      <Rect x={0} y={0} width={w} height={t}>
+        <LinearGradient start={vec(0, 0)} end={vec(0, t)} colors={top} positions={pos} />
+      </Rect>
+      <Rect x={0} y={h - t} width={w} height={t}>
+        <LinearGradient start={vec(0, h)} end={vec(0, h - t)} colors={bottom} positions={pos} />
+      </Rect>
+      <Rect x={0} y={0} width={t} height={h}>
+        <LinearGradient start={vec(0, 0)} end={vec(t, 0)} colors={left} positions={pos} />
+      </Rect>
+      <Rect x={w - t} y={0} width={t} height={h}>
+        <LinearGradient start={vec(w, 0)} end={vec(w - t, 0)} colors={right} positions={pos} />
       </Rect>
     </>
   );
@@ -143,6 +195,7 @@ function ArtFace({ f, art, state, cam, px, d, tone }: { f: 'spine' | 'cover'; ar
       <Picture picture={f === 'spine' ? art.spine : art.cover} />
       <Rect x={0} y={0} width={w} height={h} color={shade} />
       {f === 'spine' && SHOW.body ? <SpineBevel state={state} w={w} h={h} s={s} T={d.T} tone={tone} /> : null}
+      {f === 'cover' && SHOW.body ? <CoverBevel state={state} w={w} h={h} s={s} tone={tone} /> : null}
       {f === 'spine' ? (
         <>
           {art.motif ? (

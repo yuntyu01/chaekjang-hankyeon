@@ -161,32 +161,6 @@ function coverOutline(w: number, h: number, s: number, seed: string): Point[] {
 
 const poly = (pts: Point[]) => Skia.Path.Polygon(pts.map((q) => ({ x: q.x, y: q.y })), true);
 
-// 빛 받는 가장자리: 왼쪽 위 빛에 둥근 모서리(머리·왼쪽 가장자리)가 밝게 빛난다(시안 모순·데미안).
-function RimLight({ outline, w, h, s }: { outline: SkPath; w: number; h: number; s: number }) {
-  const t = 6 * s;
-  const l = 4 * s;
-  const fade = (x0: number, y0: number, x1: number, y1: number) => (
-    <LinearGradient start={vec(x0, y0)} end={vec(x1, y1)} colors={['rgba(0,0,0,1)', 'rgba(0,0,0,0)']} />
-  );
-  return (
-    <Mask
-      mode="alpha"
-      mask={
-        <Group>
-          <Rect x={0} y={0} width={w} height={t}>{fade(0, 0, 0, t)}</Rect>
-          <Rect x={0} y={0} width={l} height={h}>{fade(0, 0, l, 0)}</Rect>
-        </Group>
-      }>
-      <Path path={outline} style="stroke" strokeWidth={7 * s} color="rgba(255,255,255,0.18)">
-        <BlurMask blur={1.1 * s} style="normal" />
-      </Path>
-      <Path path={outline} style="stroke" strokeWidth={4.2 * s} color="rgba(255,255,255,0.22)">
-        <BlurMask blur={0.9 * s} style="normal" />
-      </Path>
-    </Mask>
-  );
-}
-
 // 가장자리 선: 책 색을 어둡게 한 또렷한 선 + 조금 어긋난 두 번째 선(굵기가 고르지 않은 손그림 선)
 function EdgeLine({ outline, outline2, s, face, opacity = 1 }: { outline: SkPath; outline2: SkPath; s: number; face: string; opacity?: number }) {
   const edge = scaleColor(face, edgeFactor(face));
@@ -329,17 +303,7 @@ export function CoverFaceArt({
           <BlurMask blur={0.35 * s} style="normal" />
         </Rect>
         <Rect x={fw * 0.04 + 0.9 * s} y={0} width={0.6 * s} height={h} color="rgba(255,255,255,0.14)" />
-        <Rect x={0} y={0} width={fw} height={h}>
-          <LinearGradient start={vec(0, 0)} end={vec(fw, h)} colors={['rgba(255,255,255,0.08)', 'rgba(255,255,255,0)', 'rgba(0,0,0,0.08)']} positions={[0, 0.45, 1]} />
-        </Rect>
-        {/* 오른쪽 끝이 옆면으로 둥글게 넘어가며 어두워진다 */}
-        <Rect x={fw - 5 * s} y={0} width={5 * s} height={h}>
-          <LinearGradient start={vec(fw - 5 * s, 0)} end={vec(fw, 0)} colors={['rgba(60,40,28,0)', 'rgba(60,40,28,0.16)']} />
-        </Rect>
-        <Rect x={0} y={h - 5 * s} width={fw} height={5 * s}>
-          <LinearGradient start={vec(0, h - 5 * s)} end={vec(0, h)} colors={['rgba(60,40,28,0)', 'rgba(60,40,28,0.14)']} />
-        </Rect>
-        <RimLight outline={outline} w={fw} h={h} s={s} />
+        {/* 가장자리 명암(빛 쪽 얇은 밝음·반대쪽 그늘)은 고정해 굽지 않는다: 3D 렌더러가 자세와 공통 광원으로 매 프레임 덧그린다(BookNode 표지 베벨) */}
         {/* 표지 그림은 그 자체로 경계가 보이므로 선은 반만(진하면 액자처럼 보인다) */}
         <Joined w={fw} h={h} s={s}>
           <EdgeLine outline={outline} outline2={outline2} s={s} face={tone} opacity={image ? 0.5 : 1} />
