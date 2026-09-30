@@ -16,7 +16,6 @@ type Meta = {
   finishedAt?: string;
   quotes?: number;
   ribbon?: string;
-  coverInk?: string; // 표지 전시 책의 제목 색
 };
 
 const p = (widthMm: number, heightMm: number, pages: number): Physical => ({ widthMm, heightMm, pages });
@@ -25,11 +24,11 @@ const META: Meta[] = [
   { id: 'b01', title: '모순', author: '양귀자', publisher: '쓰다', physical: p(128, 188, 304), motif: 'leaf', publishedAt: '2013-04', startedAt: '2026-01-03', finishedAt: '2026-01-12' },
   { id: 'b02', title: '데미안', author: '헤르만 헤세', publisher: '민음사', physical: p(132, 225, 232), motif: 'leaf', publishedAt: '2000-12', startedAt: '2026-01-16', finishedAt: '2026-01-28', quotes: 2, ribbon: '#98AC9E' },
   { id: 'b03', title: '어린 왕자', author: '앙투안 드 생텍쥐페리', publisher: '열린책들', physical: p(128, 188, 156), motif: 'star', publishedAt: '2015-10', startedAt: '2026-02-05', finishedAt: '2026-02-09', quotes: 1, ribbon: '#E3AE6C' },
-  { id: 'b04', title: '작별하지 않는다', author: '한강', publisher: '문학동네', physical: p(135, 200, 332), motif: 'moon', publishedAt: '2021-09', startedAt: '2026-02-08', finishedAt: '2026-02-22', quotes: 2, ribbon: '#7D9CC4', coverInk: '#F3EEE3' },
+  { id: 'b04', title: '작별하지 않는다', author: '한강', publisher: '문학동네', physical: p(135, 200, 332), motif: 'moon', publishedAt: '2021-09', startedAt: '2026-02-08', finishedAt: '2026-02-22', quotes: 2, ribbon: '#7D9CC4' },
   { id: 'b05', title: '소년이 온다', author: '한강', publisher: '창비', physical: p(128, 188, 216), motif: 'sprig', publishedAt: '2014-05', startedAt: '2026-03-07', finishedAt: '2026-03-15', quotes: 2, ribbon: '#D98A7C' },
   { id: 'b17', title: '82년생 김지영', author: '조남주', publisher: '민음사', physical: p(128, 188, 192), motif: 'flower', publishedAt: '2016-10', startedAt: '2026-03-17', finishedAt: '2026-03-22' },
   { id: 'b06', title: '흰', author: '한강', publisher: '문학동네', physical: p(125, 188, 196), motif: 'cotton', publishedAt: '2018-04', startedAt: '2026-03-24', finishedAt: '2026-03-30' },
-  { id: 'b07', title: '월든', author: '헨리 데이비드 소로', publisher: '은행나무', physical: p(152, 225, 512), motif: 'leaf', publishedAt: '2011-09', startedAt: '2026-03-24', finishedAt: '2026-04-18', coverInk: '#2A2E38' },
+  { id: 'b07', title: '월든', author: '헨리 데이비드 소로', publisher: '은행나무', physical: p(152, 225, 512), motif: 'leaf', publishedAt: '2011-09', startedAt: '2026-03-24', finishedAt: '2026-04-18' },
   { id: 'b08', title: '여행의 이유', author: '김영하', publisher: '문학동네', physical: p(128, 188, 216), motif: 'wave', publishedAt: '2019-04', startedAt: '2026-04-25', finishedAt: '2026-05-02', quotes: 2, ribbon: '#8EAAD0' },
   { id: 'b09', title: '채식주의자', author: '한강', publisher: '창비', physical: p(128, 188, 247), motif: 'bud', publishedAt: '2007-10', startedAt: '2026-05-11', finishedAt: '2026-05-21' },
   { id: 'b10', title: '밝은 밤', author: '최은영', publisher: '문학동네', physical: p(140, 210, 344), motif: 'crescent', publishedAt: '2021-07', startedAt: '2026-05-28', finishedAt: '2026-06-10' },
@@ -39,7 +38,7 @@ const META: Meta[] = [
   { id: 'b13', title: '불편한 편의점', author: '김호연', publisher: '나무옆의자', physical: p(140, 205, 268), motif: 'leaf', publishedAt: '2021-04', startedAt: '2026-07-22', finishedAt: '2026-07-30' },
   { id: 'b14', title: '쇼코의 미소', author: '최은영', publisher: '문학동네', physical: p(128, 188, 312), motif: 'sprig', publishedAt: '2016-07', startedAt: '2026-08-05', finishedAt: '2026-08-14' },
   { id: 'b15', title: '아무튼, 서재', author: '김윤관', publisher: '제철소', physical: p(110, 175, 144), motif: 'leaf', publishedAt: '2020-06', startedAt: '2026-08-28', finishedAt: '2026-08-31', quotes: 1, ribbon: '#C9A46A' },
-  { id: 'b16', title: '우리가 빛의 속도로 갈 수 없다면', author: '김초엽', publisher: '허블', physical: p(135, 200, 344), motif: 'sun', publishedAt: '2019-06', startedAt: '2026-09-08', coverInk: '#3A3440' },
+  { id: 'b16', title: '우리가 빛의 속도로 갈 수 없다면', author: '김초엽', publisher: '허블', physical: p(135, 200, 344), motif: 'sun', publishedAt: '2019-06', startedAt: '2026-09-08' },
 ];
 
 const heightClass = (hMm: number): HeightClass => (hMm < 180 ? 'short' : hMm < 215 ? 'medium' : 'tall');
@@ -47,7 +46,7 @@ const thicknessClass = (pages: number): ThicknessClass => (pages < 220 ? 'thin' 
 
 function toBook(m: Meta): Book {
   const body = BODY_ART[m.id];
-  const cover = COVER_ART[m.id] && m.coverInk ? { ...COVER_ART[m.id], ink: m.coverInk } : COVER_ART[m.id];
+  const cover = COVER_ART[m.id];
   return {
     id: m.id,
     title: m.title,

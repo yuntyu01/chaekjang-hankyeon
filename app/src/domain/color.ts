@@ -22,7 +22,21 @@ export function luminance(hex: string) {
   return 0.2126 * r + 0.7152 * g + 0.0722 * b;
 }
 
-// 밝은 책엔 먹색, 어두운 책엔 크림색 글자
-export function inkFor(hex: string) {
-  return luminance(hex) > 0.36 ? '#2A2A2C' : '#F6EEDD';
+
+export function contrast(a: string, b: string) {
+  const la = luminance(a);
+  const lb = luminance(b);
+  return (Math.max(la, lb) + 0.05) / (Math.min(la, lb) + 0.05);
+}
+
+// 제목 색: 바탕 색에 대해 대비가 더 큰 쪽. 밝은 바탕엔 차분한 짙은 먹색, 어두운 바탕엔 따뜻한 밝은색.
+// 대비비 공식은 중간 밝기의 진한 색(붉은 책등 등) 위 밝은 글자를 낮게 쳐서, 먹색은 1.3배 이상 앞설 때만 고른다.
+export const TITLE_DARK = '#211F23';
+export const TITLE_LIGHT = '#F7EEDC';
+export function titleInk(bg: string) {
+  return contrast(TITLE_DARK, bg) >= contrast(TITLE_LIGHT, bg) * 1.3 ? TITLE_DARK : TITLE_LIGHT;
+}
+
+export function rgbHex(r: number, g: number, b: number) {
+  return toHex([r, g, b]);
 }

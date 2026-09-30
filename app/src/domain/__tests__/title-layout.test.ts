@@ -1,4 +1,4 @@
-import { inkFor, shade } from '../color';
+import { contrast, shade, titleInk, TITLE_DARK, TITLE_LIGHT } from '../color';
 import { coverTitleLayout, layoutVerticalTitle, spineTitleLayout } from '../title-layout';
 
 describe('세로 제목 조판', () => {
@@ -20,9 +20,11 @@ describe('세로 제목 조판', () => {
 });
 
 describe('색', () => {
-  it('어두운 책엔 밝은 글자', () => {
-    expect(inkFor('#1F3557')).toBe('#F6EEDD');
-    expect(inkFor('#F1E9DA')).toBe('#2A2A2C');
+  it('제목 색은 바탕 색에 대한 공통 규칙: 밝은 바탕엔 먹색, 어두운 바탕엔 따뜻한 밝은색', () => {
+    for (const bg of ['#FBEDDD', '#F7E8D5', '#B5C7D7', '#F8C69F', '#E39E8A', '#F1E0C8']) expect(titleInk(bg)).toBe(TITLE_DARK);
+    for (const bg of ['#1F3557', '#3D5F57', '#1D426B', '#893E41', '#BE5D47', '#244A70']) expect(titleInk(bg)).toBe(TITLE_LIGHT);
+    // 고른 색은 늘 충분히 대비된다(중간 밝기 붉은 책등 포함)
+    for (const bg of ['#FBEDDD', '#B5C7D7', '#E39E8A', '#BE5D47', '#3D5F57', '#1D426B']) expect(contrast(titleInk(bg), bg)).toBeGreaterThan(3.5);
     expect(shade('#808080', -0.5)).toBe('#404040');
   });
 });

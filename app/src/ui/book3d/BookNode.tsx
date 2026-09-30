@@ -156,8 +156,7 @@ function ArtFace({ f, art, state, cam, px, d, tone }: { f: 'spine' | 'cover'; ar
           ) : null}
           {art.cells.map((c, i) => (
             <Upright key={i} cx={c.cx} cy={c.cy} cyLie={c.cyLie} state={state} fit={fitG}>
-              <Text x={c.x} y={c.y} text={c.ch} font={art.font} color={art.ink} />
-              {c.punct ? <Text x={c.punct.x} y={c.punct.y} text={c.punct.text} font={art.font} color={art.ink} /> : null}
+              <Picture picture={c.pic} />
             </Upright>
           ))}
         </>

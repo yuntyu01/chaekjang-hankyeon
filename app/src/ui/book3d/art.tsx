@@ -3,11 +3,11 @@
 // - 책등 글자 칸·작은 모티프: 칸마다 따로(원점 가운데). 누울 때 바로 세우려고 면과 따로 둔다.
 // - 표지 면: 표지 그림 + 제목·저자
 // - 갈피: 머리 뒤에서 나오는 끈(원점 = 아래 가운데)
-import { Group, ImageSVG, LinearGradient, Path, Skia, Text, drawAsPicture, useImage, useTypeface, vec, type SkFont, type SkImage, type SkPicture, type SkTypeface } from '@shopify/react-native-skia';
+import { AlphaType, ColorType, Group, ImageSVG, LinearGradient, Path, Skia, Text, drawAsPicture, useImage, useTypeface, vec, type SkFont, type SkImage, type SkPicture, type SkTypeface } from '@shopify/react-native-skia';
 import { createContext, useContext, useEffect, useState, type ReactNode } from 'react';
 
 import { BRUSH_DETAIL } from '@/domain/body-art.generated';
-import { inkFor, shade } from '@/domain/color';
+import { rgbHex, shade, titleInk } from '@/domain/color';
 import { COVER_LINE_H, coverTitleLayout, spineTitleLayout } from '@/domain/title-layout';
 import type { Book } from '@/domain/types';
 import { motifSvg } from '@/ui/art/motifs';
@@ -31,7 +31,7 @@ export const useBookShared = () => useContext(Ctx);
 
 // 책등 글자 칸: 칸 가운데(cx, cy)에 원점을 둔 글자(x, y = 원점 기준 글자 기준선 위치)
 // cyLie: 누웠을 때(가로로 읽힐 때)의 자리. 세로 줄 간격 대신 글자 폭만큼 붙인다.
-export type Cell = { cx: number; cy: number; cyLie: number; ch: string; x: number; y: number; punct?: { text: string; x: number; y: number } };
+export type Cell = { cx: number; cy: number; cyLie: number; ch: string; pic: SkPicture };
 export type Motif = { cx: number; cy: number; w: number; h: number; image: SkImage | null; svg: ReturnType<typeof Skia.SVG.MakeFromString> };
 export type BookArt = {
   spine: SkPicture;
@@ -44,10 +44,45 @@ export type BookArt = {
   ribbons: SkPicture | null;
 };
 
-const DARK_INK = '#1F2533';
-const LIGHT_INK = '#F2EADB';
 const faceOf = (b: Book) => b.body?.face ?? b.themeColor;
-export const inkOf = (b: Book) => b.art.inkColor ?? (inkFor(faceOf(b)) === '#2A2A2C' ? DARK_INK : LIGHT_INK);
+export const inkOf = (b: Book) => b.art.inkColor ?? titleInk(faceOf(b));
+
+// 제목 획 두께: 보통 굵기 글꼴에 글자 크기의 일부만큼 같은 색 윤곽을 더해 중간 굵기로(글자 모양·크기는 그대로).
+// 시안의 제목 획은 보통 굵기보다 약 30% 두껍고, 가는 획은 실제 표시 크기에서 바탕에 묻혀 옅어 보인다.
+export const TITLE_WEIGHT = 0.03;
+function Glyph({ x, y, text, font, color, weight }: { x: number; y: number; text: string; font: SkFont; color: string; weight: number }) {
+  return (
+    <>
+      <Text x={x} y={y} text={text} font={font} color={color} />
+      <Text x={x} y={y} text={text} font={font} color={color} style="stroke" strokeWidth={weight} strokeJoin="round" />
+    </>
+  );
+}
+
+// 표지 그림에서 제목이 놓일 띠의 평균색(그림은 면을 꽉 채우게 놓인다: fit="cover")
+function bandColor(img: SkImage, fw: number, fh: number, x0: number, y0: number, x1: number, y1: number) {
+  const iw = img.width();
+  const ih = img.height();
+  const k = Math.max(fw / iw, fh / ih);
+  const ox = (fw - iw * k) / 2;
+  const oy = (fh - ih * k) / 2;
+  const sx = Math.max(0, Math.floor((x0 - ox) / k));
+  const sy = Math.max(0, Math.floor((y0 - oy) / k));
+  const w = Math.max(1, Math.min(iw - sx, Math.ceil((x1 - x0) / k)));
+  const h = Math.max(1, Math.min(ih - sy, Math.ceil((y1 - y0) / k)));
+  const px = img.readPixels(sx, sy, { width: w, height: h, colorType: ColorType.RGBA_8888, alphaType: AlphaType.Unpremul });
+  if (!px) return null;
+  let r = 0;
+  let g = 0;
+  let b = 0;
+  const n = w * h;
+  for (let i = 0; i < n; i++) {
+    r += px[i * 4];
+    g += px[i * 4 + 1];
+    b += px[i * 4 + 2];
+  }
+  return rgbHex(r / n, g / n, b / n);
+}
 export const toneOf = (b: Book, cover: boolean) => (cover ? b.cover?.edge : undefined) ?? faceOf(b);
 
 export const RIBBON_OUT = 12; // 시안: 갈피가 책 위로 약 13DU
@@ -140,15 +175,16 @@ async function buildArt(book: Book, s: number, dims: { T: number; H: number; W: 
       const ch = fs * t.pitch;
       const gw = font.measureText(cell.ch).width;
       const fm = font.getMetrics();
-      cells.push({
-        cx: x0 + (c + 0.5) * colW,
-        cy: y + ch / 2,
-        cyLie: yl + (lieFs * 1.02) / 2,
-        ch: cell.ch,
-        x: -gw / 2,
-        y: -(fm.ascent + fm.descent) / 2,
-        punct: cell.punct ? { text: cell.punct, x: gw / 2 - fs * 0.05, y: fs * 0.5 } : undefined,
-      });
+      const gy = -(fm.ascent + fm.descent) / 2;
+      const pic = await record(
+        <Group>
+          <Glyph x={-gw / 2} y={gy} text={cell.ch} font={font} color={ink} weight={fs * TITLE_WEIGHT} />
+          {cell.punct ? <Glyph x={gw / 2 - fs * 0.05} y={fs * 0.5} text={cell.punct} font={font} color={ink} weight={fs * TITLE_WEIGHT} /> : null}
+        </Group>,
+        fs * 2,
+        fs * 2,
+      );
+      cells.push({ cx: x0 + (c + 0.5) * colW, cy: y + ch / 2, cyLie: yl + (lieFs * 1.02) / 2, ch: cell.ch, pic });
       y += ch;
       yl += lieFs * 1.02 + (cell.punct ? lieFs * 0.3 : 0);
     }
@@ -169,9 +205,6 @@ async function buildArt(book: Book, s: number, dims: { T: number; H: number; W: 
   // 표지(앞표지 그림 + 제목·저자)
   const cw = dims.W * s;
   const cover = book.cover;
-  // 제목은 크고 굵게(표지마다 정한 제목 색 그대로: 밝은 표지엔 진하게, 어두운 표지엔 밝게), 저자는 작고 옅게
-  const cink = cover?.ink ?? ink;
-  const ainkc = cink;
   const ct = coverTitleLayout(book.title, dims.W, dims.H);
   const lines = ct.lines;
   const cfs = ct.fontSize * s;
@@ -181,6 +214,11 @@ async function buildArt(book: Book, s: number, dims: { T: number; H: number; W: 
   const cm = cfont.getMetrics();
   // 제목 칸 위치: 그림 자산의 제목 자리(titleTop)를 따르되 표지 위 끝에 붙지 않게(시안: 위에서 약 15~25%)
   const top = Math.max(0.15, cover?.titleTop ?? 0.2) * h;
+  // 제목 색: 제목이 놓이는 그림 띠의 실제 색에 대해 공통 규칙으로(밝으면 먹색, 어두우면 따뜻한 밝은색)
+  const bandW = Math.min(cw * 0.84, Math.max(...lines.map((l) => cfont.measureText(l).width)) + cfs);
+  const band = coverImg ? bandColor(coverImg, cw, h, cw / 2 - bandW / 2, top, cw / 2 + bandW / 2, top + lines.length * lh + cfs) : null;
+  const cink = band ? titleInk(band) : titleInk(toneOf(book, true));
+  const ainkc = cink;
   const lineEls = lines.map((line, i) => {
     const chars = [...line];
     const ws = chars.map((c) => (c === ' ' ? cfs * 0.32 : cfont.measureText(c).width));
@@ -188,7 +226,7 @@ async function buildArt(book: Book, s: number, dims: { T: number; H: number; W: 
     let x = cw / 2 - total / 2;
     const base = top + i * lh + lh / 2 - (cm.ascent + cm.descent) / 2;
     return chars.map((c, j) => {
-      const el = <Text key={`${i}-${j}`} x={x} y={base} text={c} font={cfont} color={cink} />;
+      const el = <Glyph key={`${i}-${j}`} x={x} y={base} text={c} font={cfont} color={cink} weight={cfs * TITLE_WEIGHT} />;
       x += ws[j] + spacing;
       return el;
     });
