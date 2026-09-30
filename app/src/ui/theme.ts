@@ -76,7 +76,10 @@ export const shadow = {
     bookShelf: { layers: [8, 30, 1e9], opacity: 0.1, near: 1, perDU: 0.1, maxBlur: 10 }, // 책 → 선반 윗면
     // 책 면이 받는 그림자: 다른 책(book) · 윗 선반 판(plank). 진하기 = opacity × e^(-거리/fade), 흐림 = near + perDU × 거리
     onBook: { opacity: 0.3, fade: 260, near: 0.8, perDU: 0.07, maxBlur: 8 },
-    onBookPlank: { opacity: 0.16, fade: 28, near: 1.5, perDU: 0.06, maxBlur: 8 },
+    // 윗 선반 판 → 아래 줄 책: 같은 판이 벽에 드리우는 그림자와 같은 빛 길이에서 비슷하게 어둡도록(벽: 빛 길이 16DU 안 약 0.36,
+    // 52DU까지 0.16). 예전 값(0.16, 28DU)은 같은 높이의 벽보다 약 1/3만 어두워 책머리가 벽 그림자에서 떨어져 보였다.
+    // 받는 면이 실제로 판에 가려질 때만(투영이 면에 닿을 때만) 그려지고 멀수록 옅어진다.
+    onBookPlank: { opacity: 0.3, fade: 40, near: 1.5, perDU: 0.06, maxBlur: 8 },
   },
   ao: {
     contact: { height: 4, blur: 3, opacity: 0.34 }, // 책이 선반에 닿는 곳(좁고 진하게)

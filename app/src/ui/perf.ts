@@ -21,7 +21,7 @@ export const RENDER = { art: true, texture: true, grain: true, books: true };
 export const SHELF_VIEWS = ['전체', '옆면 명암 끔', '벽 그림자 끔', 'AO 끔', '빈 선반'] as const;
 export type ShelfView = (typeof SHELF_VIEWS)[number];
 // 선반 원인 분리(chaekjang:///?sh=모드). 카메라·광원·선반 형상은 그대로 두고 그리는 층만 고른다.
-export const SHELF_MODES = ['all', 'plank', 'plankflat', 'side0', 'wall', 'wallmask', 'wallboard', 'ao', 'debug'] as const;
+export const SHELF_MODES = ['all', 'plank', 'plankflat', 'side0', 'wall', 'wallmask', 'wallboard', 'ao', 'debug', 'nowall', 'norecv', 'noplank'] as const;
 export type ShelfMode = (typeof SHELF_MODES)[number];
 export function setShelfMode(m: ShelfMode) {
   const board = !['wall', 'wallmask'].includes(m);
@@ -32,6 +32,12 @@ export function setShelfMode(m: ShelfMode) {
   SHOW.shelfAO = ['all', 'side0', 'ao', 'debug'].includes(m);
   SHOW.shelfBlur = m !== 'wallmask';
   SHOW.shelfDebug = m === 'wallmask' || m === 'debug';
+  // 선반 그림자 연결 확인(책 있는 화면): nowall = 판 → 벽만 끔, norecv = 판 → 아래 책만 끔, noplank = 둘 다 끔
+  if (m === 'nowall' || m === 'norecv' || m === 'noplank') {
+    SHOW.shelfAO = true;
+    SHOW.shelf = m === 'norecv';
+  }
+  SHOW.castPlank = m !== 'norecv' && m !== 'noplank';
 }
 
 export function setShelfView(v: ShelfView) {

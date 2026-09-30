@@ -8,6 +8,7 @@ export const SHOW = {
   gap: true, // 좁은 틈 어둠
   body: true, // 책 몸체 명암(둥근 책등·가장자리)
   cast: true, // 책 면이 받는 그림자(다른 책·윗 선반 판)
+  castPlank: true, // 그중 윗 선반 판 → 아래 줄 책(끄면 책끼리 받는 그림자만)
   shelf: true, // 선반 → 벽 그림자
   shelfSide: true, // 선반 오른쪽 끝 나무 옆면 명암
   shelfAO: true, // 판 앞면 바로 아래 좁은 어둠

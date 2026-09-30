@@ -575,7 +575,7 @@ function plankAboveBox(clear: number): Vec3[] {
 
 // 받는 그림자 3D 단계(카메라와 무관). 가리개 = 같은 줄의 다른 책 + 윗 선반 판. 책이 움직일 때만 다시 계산하고,
 // 시점을 끄는 동안에는 책 그림(BookNode)이 recvProject로 투영만 한다.
-export function receivedShadow3(m: Motion, id: string, ids: string[], s: number, clear: number, plankAbove: boolean): Recv3 {
+export function receivedShadow3(m: Motion, id: string, ids: string[], s: number, clear: number, plankAbove: boolean, castPlank?: boolean): Recv3 {
   'worklet';
   const b = stateNow(m, id);
   if (!b) return null;
@@ -586,7 +586,7 @@ export function receivedShadow3(m: Motion, id: string, ids: string[], s: number,
     if (ob) occs.push(corners(ob));
   }
   const nb = occs.length;
-  if (plankAbove) occs.push(plankAboveBox(clear));
+  if (plankAbove && castPlank !== false) occs.push(plankAboveBox(clear));
   const cs = corners(b);
   const faces: Face3[] = [];
   for (const f of FACE_IDS) {
@@ -700,7 +700,8 @@ function ReceivedShadow({ r3, cam, px, slot, debug }: { r3: Readonly<SharedValue
 
 // 한 책이 받는 그림자 전부(보이는 면마다, 다른 책·윗 선반 판을 합쳐서). 책 그룹 안, 면 다음·갈피 전에 그린다(BookNode의 under).
 export function BookReceives({ m, id, ids, cam, px, clear, plankAbove, debug }: { m: Motion; id: string; ids: string[]; cam: CamSV; px: Affine; clear: number; plankAbove: boolean; debug?: boolean }) {
-  const r3 = useDerivedValue(() => receivedShadow3(m, id, ids, px.s, clear, plankAbove));
+  const castPlank = SHOW.castPlank;
+  const r3 = useDerivedValue(() => receivedShadow3(m, id, ids, px.s, clear, plankAbove, castPlank));
   return (
     <Group>
       {[0, 1, 2].map((slot) => (
