@@ -16,6 +16,10 @@ export type FaceGeom = {
   runs: Point[][]; // 바깥 실루엣 변(연한 선)
   inner: Point[] | null; // 종이 단면
   lines: Point[][]; // 종이 결 선
+  gaps: Point[][]; // 표지 판 두 장이 종이보다 튀어나온 곳(배쪽·머리쪽 끝): 판 사이로 들어간 종이 끝이 그늘져 보인다
+  shades: Point[][]; // 종이가 판·책등과 맞닿는 안쪽 좁은 띠(판이 드리운 그늘). 열린 쪽(배쪽)에는 없다
+  boardHi: Point[][]; // 표지 판 두 장의 윗모서리(판 가운데 선): 책색을 밝힌 가는 밝음
+  boardIn: Point[][]; // 판 안쪽 면이 종이와 만나는 선: 판 두께가 읽히는 좁은 그늘
   hi: Point[]; // 빛 받는 모서리 광택
   A: Point;
   B: Point;
@@ -23,7 +27,7 @@ export type FaceGeom = {
   mid: Point; // 모서리 명암이 풀리는 곳
 };
 
-export const EMPTY_FACE: FaceGeom = { ok: false, lit: false, all: [], runs: [], inner: null, lines: [], hi: [], A: { x: 0, y: 0 }, B: { x: 0, y: 0 }, Ab: { x: 0, y: 0 }, mid: { x: 0, y: 0 } };
+export const EMPTY_FACE: FaceGeom = { ok: false, lit: false, all: [], runs: [], inner: null, lines: [], gaps: [], shades: [], boardHi: [], boardIn: [], hi: [], A: { x: 0, y: 0 }, B: { x: 0, y: 0 }, Ab: { x: 0, y: 0 }, mid: { x: 0, y: 0 } };
 
 // 손으로 그은 선의 흔들림(0 근처 부드러운 잡음). t는 선을 따라간 거리(px), s = 1DU px.
 function wobbleAt(t: number, s: number, seed: number) {
@@ -207,6 +211,10 @@ export function computeFace(face: { poly: Point[] } | null, kind: FaceKind, px: 
     runs: soft.runs,
     inner,
     lines,
+    gaps: [],
+    shades: [],
+    boardHi: [],
+    boardIn: [],
     hi,
     A,
     B,
@@ -229,6 +237,83 @@ export function mainFace(cam: Cam, b: Book3): FaceId {
     }
   }
   return best;
+}
+
+// 종이 단면 면(머리·꼬리·책배)의 구조를 책 좌표에서 정해 투영한다(세우기·전시·눕히기·돌리기 뒤에도 같은 자리).
+// 책 좌표: x = 두께(0 뒤표지 ~ T 앞표지), y = 높이, z = 깊이(0 책등 ~ W 책배).
+// - 표지 판 두 장: x ∈ [0, bd], [T − bd, T] (면 바탕색 = 표지색)
+// - 책등 띠: 머리·꼬리에서 z ∈ [0, sp] (제본된 쪽, 표지색)
+// - 속지 묶음: 판 사이, 책등 띠 뒤 ~ 배쪽에서 판보다 sq 안쪽까지
+// - 판 끝 사이 틈(gaps): 판이 종이보다 sq 튀어나온 곳. 종이 끝이 판 그늘에 들어가 조금 어둡다
+// - 종이 결: 종이 낱장은 표지와 나란한 면(x = 일정)이라 머리에서는 z 방향, 책배에서는 y 방향 선
+export const PAGE_BOARD = { min: 1.1, max: 1.8, k: 0.08 }; // 판 두께 = 책 두께 × k (DU, 범위 안)
+export const PAGE_SQUARE = 1.6; // 판이 종이보다 튀어나온 길이(DU)
+function pageStructure(cam: Cam, b: Book3, f: FaceId, px: Affine) {
+  'worklet';
+  const { T, H, W } = b.dims;
+  const bd = Math.max(PAGE_BOARD.min, Math.min(PAGE_BOARD.max, T * PAGE_BOARD.k));
+  const sp = bd * 1.1;
+  const sq = PAGE_SQUARE;
+
+  const S = (x: number, y: number, z: number) => {
+    const q = project(cam, toWorld(b, { x, y, z }));
+    return { x: q.x * px.s + px.tx, y: q.y * px.s + px.ty };
+  };
+  const x0 = bd;
+  const x1 = T - bd;
+  // 안쪽 그늘 띠 폭(DU): 종이 묶음 폭에 비례(판에 가까울수록 어두워지는 좁은 차폐). 흐림으로 안쪽으로 풀린다
+  const w = Math.max(0.9, Math.min(2.4, (x1 - x0) * 0.14));
+  const xa = x0 + (x1 - x0) * 0.36;
+  const xb = x0 + (x1 - x0) * 0.68;
+  if (f === 'fore') {
+    const z = W;
+    return {
+      inner: [S(x0, sq, z), S(x1, sq, z), S(x1, H - sq, z), S(x0, H - sq, z)],
+      gaps: [
+        [S(x0, H - sq, z), S(x1, H - sq, z), S(x1, H, z), S(x0, H, z)],
+        [S(x0, 0, z), S(x1, 0, z), S(x1, sq, z), S(x0, sq, z)],
+      ],
+      shades: [
+        [S(x0, sq, z), S(x0 + w, sq, z), S(x0 + w, H - sq, z), S(x0, H - sq, z)],
+        [S(x1 - w, sq, z), S(x1, sq, z), S(x1, H - sq, z), S(x1 - w, H - sq, z)],
+      ],
+      lines: [
+        [S(xa, sq + 1, z), S(xa, H - sq - 1, z)],
+        [S(xb, sq + 1, z), S(xb, H - sq - 1, z)],
+      ],
+      boardHi: [
+        [S(bd * 0.45, 0, z), S(bd * 0.45, H, z)],
+        [S(T - bd * 0.45, 0, z), S(T - bd * 0.45, H, z)],
+      ],
+      boardIn: [
+        [S(x0, sq, z), S(x0, H - sq, z)],
+        [S(x1, sq, z), S(x1, H - sq, z)],
+      ],
+    };
+  }
+  const y = f === 'head' ? H : 0;
+  return {
+    inner: [S(x0, y, sp), S(x1, y, sp), S(x1, y, W - sq), S(x0, y, W - sq)],
+    // 배쪽 틈은 면 윤곽(둥근 모서리·볼록한 머리)이 종이 칸보다 바깥으로 나온 곳까지 덮는다(판 색 띠가 뒤쪽에 남아 빈 상자처럼 보이지 않게)
+    gaps: [[S(x0, y, W - sq), S(x1, y, W - sq), S(x1, y + 1.2, W + 1.2), S(x0, y + 1.2, W + 1.2)]],
+    shades: [
+      [S(x0, y, sp), S(x0 + w, y, sp), S(x0 + w, y, W - sq), S(x0, y, W - sq)],
+      [S(x1 - w, y, sp), S(x1, y, sp), S(x1, y, W - sq), S(x1 - w, y, W - sq)],
+      [S(x0, y, sp), S(x1, y, sp), S(x1, y, sp + w), S(x0, y, sp + w)],
+    ],
+    lines: [
+      [S(xa, y, sp + 1), S(xa, y, W - sq - 0.5)],
+      [S(xb, y, sp + 1), S(xb, y, W - sq - 0.5)],
+    ],
+    boardHi: [
+      [S(bd * 0.45, y, 0.6), S(bd * 0.45, y, W)],
+      [S(T - bd * 0.45, y, 0.6), S(T - bd * 0.45, y, W)],
+    ],
+    boardIn: [
+      [S(x0, y, sp), S(x0, y, W - sq)],
+      [S(x1, y, sp), S(x1, y, W - sq)],
+    ],
+  };
 }
 
 // 옆면 하나의 그릴 모양(보이지 않거나 주 면이면 EMPTY). bowS: 세운 책 머리 볼록함(px, 책등이 주 면이고 서 있을 때만).
@@ -282,8 +367,11 @@ export function sideFaceGeom(cam: Cam, b: Book3, f: FaceId, px: Affine, bowS: nu
   const bow = main === 'spine' && Math.abs(b.roll) < 45 && (kind === 'top' || kind === 'right') ? bowS : 0;
   // 책등·앞표지가 옆면이 될 때(비스듬히)는 그림 위에 그려지므로 밀어 넣지 않는다
   const under = f === 'spine' || f === 'cover' ? 0 : 2.4 * px.s;
-  return computeFace({ poly: [pa, pb, P(nb), P(na)] }, kind, px, bow, boards, seed, under);
+  const g = computeFace({ poly: [pa, pb, P(nb), P(na)] }, kind, px, bow, boards, seed, under);
+  if (!pages || !g.ok) return g;
+  return { ...g, ...pageStructure(cam, b, f, px) };
 }
+
 
 // 면 그림 px → 캔버스 px 행렬(3×3, 행 우선). 투영이 선형(직교)이라 면의 세 모서리로 정해지는 affine이 곧 면 전체의 투영이다.
 export function faceMatrix(b: Book3, f: 'spine' | 'cover', cam: Cam, px: Affine) {

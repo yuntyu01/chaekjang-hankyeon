@@ -3,7 +3,7 @@
 // - 책등 글자 칸·작은 모티프: 칸마다 따로(원점 가운데). 누울 때 바로 세우려고 면과 따로 둔다.
 // - 표지 면: 표지 그림 + 제목·저자
 // - 갈피: 머리 뒤에서 나오는 끈(원점 = 아래 가운데)
-import { AlphaType, ColorType, Group, ImageSVG, LinearGradient, Path, Skia, Text, drawAsPicture, useImage, useTypeface, vec, type SkFont, type SkImage, type SkPicture, type SkTypeface } from '@shopify/react-native-skia';
+import { AlphaType, BlurMask, ColorType, Group, ImageSVG, LinearGradient, Path, Rect, Skia, Text, drawAsPicture, useImage, useTypeface, vec, type SkFont, type SkImage, type SkPicture, type SkTypeface } from '@shopify/react-native-skia';
 import { createContext, useContext, useEffect, useState, type ReactNode } from 'react';
 
 import { BRUSH_DETAIL } from '@/domain/body-art.generated';
@@ -100,6 +100,15 @@ function Ribbons({ book, s }: { book: Book; s: number }) {
   const total = n * w + (n - 1) * gap;
   return (
     <Group>
+      {/* 갈피가 종이 묶음 사이로 들어가는 자리: 좁고 옅은 틈 그늘(갈피가 종이 사이에 끼워진 얇은 끈으로 보이게) */}
+      {Array.from({ length: n }, (_, i) => {
+        const x = -total / 2 + i * (w + gap);
+        return (
+          <Rect key={`slit${i}`} x={x - 0.4 * s} y={hidden - 0.7 * s} width={w + 0.8 * s} height={1.2 * s} color="rgba(96,74,52,0.22)">
+            <BlurMask blur={0.45 * s} style="normal" />
+          </Rect>
+        );
+      })}
       {Array.from({ length: n }, (_, i) => {
         const x = -total / 2 + i * (w + gap);
         const out = (RIBBON_OUT - (i ? 2 : 0)) * s; // 두 번째 가닥은 조금 짧다

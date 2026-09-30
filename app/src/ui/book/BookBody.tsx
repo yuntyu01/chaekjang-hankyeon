@@ -25,6 +25,7 @@ const SRC_DU = 390 / 941; // 시안 원본 1px = DU(붓결 크기를 시안과 �
 // 붓결 세기(시안: 은은함). 질감 이미지는 명암 차를 5배로 담아 두었으므로 여기서 줄인다.
 export const GRAIN_STRENGTH = 0.22;
 // 속지(종이 단면): 새하얀색이 아니라 따뜻한 크림색
+const COVER_ART_TRIM = 0.015;
 export const PAGE = '#EFE2C8';
 // 속지(종이 단면) 색: 따뜻한 백색, 빛 받는 가장자리는 조금 더 밝게. 표지색·판 그늘은 섞지 않는다(속지 면에만).
 export const PAGE_BASE = '#FAF8F2';
@@ -296,7 +297,9 @@ export function CoverFaceArt({
     <Group>
       <Group clip={outline}>
         <Rect x={0} y={0} width={fw} height={h} color={face} />
-        {image ? <SkImage image={image} x={0} y={0} width={fw} height={h} fit="cover" /> : null}
+        {/* 표지 그림 왼쪽(제본 쪽) 끝 약 1%에는 시안에서 뽑을 때 따라온 어두운 윤곽 한 줄이 있다(b04 50 vs 안쪽 82). 제본 홈·가장자리 명암은
+            코드가 그리므로 그림을 1.5% 왼쪽으로 밀어 그 줄을 면 밖으로 보낸다 */}
+        {image ? <SkImage image={image} x={-fw * COVER_ART_TRIM} y={0} width={fw * (1 + COVER_ART_TRIM)} height={h} fit="cover" /> : null}
         {!image && motif ? <SkImage image={motif} x={fw / 2 - mw / 2} y={h * 0.9 - mh} width={mw} height={mh} fit="contain" /> : null}
         <Grain w={fw} h={h} s={s} image={grain} />
         {/* 제본선(시안: 왼쪽에서 조금 안쪽의 가는 홈 하나) */}

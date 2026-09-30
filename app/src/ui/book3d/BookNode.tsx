@@ -74,7 +74,7 @@ function litDelta(b: Book3, n: V3, n0?: V3) {
 // 빛 쪽 모서리는 책 색을 밝힌 색(흰 띠가 아니라 표지색과 이어지게), 반대쪽은 같은 책 색을 조금 어둡게(검은 테두리가 아니게)
 function bevelColor(delta: number, lit: string, dark: string) {
   'worklet';
-  if (delta >= 0) return withAlpha(lit, Math.min(0.45, delta * 2.4));
+  if (delta >= 0) return withAlpha(lit, Math.min(0.3, delta * 2));
   return withAlpha(dark, Math.min(0.22, -delta * 0.4));
 }
 
@@ -96,7 +96,7 @@ function edgeColors(b: Book3, axis: 'x' | 'y', sign: number, lit: string, dark: 
 // 앞에서 본 원통이라 가로 위치는 sin(각도): 가운데는 넓고 완만하게, 양 끝(옆면으로 꺾이는 곳)은 좁게 바뀐다.
 // 빛 쪽 끝은 가장 밝은 곳(약 37°)을 지나 살짝 가라앉고, 반대쪽 끝은 책 색을 낮춘 좁은 그늘로 옆면에 넘어간다(검은 선 없음).
 // 세우면 왼쪽이, 눕히면 위쪽이 밝다(책 자세를 따라 광원 기준으로 바뀐다). 머리 쪽 가장자리는 좁게.
-const ROUND_DEG = [-80, -64, -44, -22, 0, 22, 44, 64, 80];
+const ROUND_DEG = [-80, -70, -58, -44, -32, -18, 0, 22, 44, 64, 80];
 const ROUND_POS = ROUND_DEG.map((g) => (Math.sin((g * Math.PI) / 180) / Math.sin((80 * Math.PI) / 180) + 1) / 2);
 function roundColors(b: Book3, lit: string, dark: string) {
   'worklet';
@@ -104,7 +104,8 @@ function roundColors(b: Book3, lit: string, dark: string) {
   for (const g of ROUND_DEG) {
     const a = (g * Math.PI) / 180;
     const d = litDelta(b, { x: Math.sin(a), y: 0, z: -Math.cos(a) });
-    out.push(d >= 0 ? withAlpha(lit, Math.min(0.32, d * 1.6)) : withAlpha(dark, Math.min(0.45, -d * 0.5)));
+    // 밝음은 광원을 가장 정면으로 받는 좁은 곡면에만(가운데 넓은 면은 책 색 그대로의 중간색), 반대쪽은 완만한 그늘
+    out.push(d >= 0 ? withAlpha(lit, Math.min(0.34, Math.max(0, d - 0.085) * 6)) : withAlpha(dark, Math.min(0.45, -d * 0.5)));
   }
   return out;
 }
@@ -196,6 +197,7 @@ function ArtFace({ f, art, state, cam, px, d, tone }: { f: 'spine' | 'cover'; ar
       <Rect x={0} y={0} width={w} height={h} color={shade} />
       {f === 'spine' && SHOW.body ? <SpineBevel state={state} w={w} h={h} s={s} T={d.T} tone={tone} /> : null}
       {f === 'cover' && SHOW.body ? <CoverBevel state={state} w={w} h={h} s={s} tone={tone} /> : null}
+      {SHOW.faceDebug ? <Rect x={0} y={0} width={w} height={h} color={f === 'spine' ? 'rgba(44,91,208,0.45)' : 'rgba(208,52,44,0.45)'} /> : null}
       {f === 'spine' ? (
         <>
           {art.motif ? (

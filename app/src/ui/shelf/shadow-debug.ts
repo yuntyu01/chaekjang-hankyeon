@@ -16,4 +16,5 @@ export const SHOW = {
   shelfShade: true, // 판 면 명암(윗면 나무색·앞면 어둡게·옆면 어둡게·모서리 광택). 끄면 질감만
   shelfBlur: true, // 벽 그림자 흐림(끄면 흐리기 전 모양)
   shelfDebug: false, // 벽 그림자 층 외곽선과 광선 표시
+  faceDebug: false, // 책 면 구조 확인용 색(책등 파랑·앞표지 빨강·판 초록 윤곽·속지 노랑·틈 보라·그늘 주황). 일반 화면에서는 끔
 };

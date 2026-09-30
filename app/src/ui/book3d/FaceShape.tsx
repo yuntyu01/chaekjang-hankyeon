@@ -4,15 +4,14 @@ import { BlurMask, Group, LinearGradient, Path, Skia, vec, type SkImage, type Sk
 import { useDerivedValue, type SharedValue } from 'react-native-reanimated';
 
 import type { Point } from '@/domain/shelf-scene';
-import { edgeFactor, GrainFill, litTone, mix, PAGE, PAGE_BASE, PAGE_LINE, PAGE_LIT, PAGE_RIM, scaleColor, withAlpha } from '@/ui/book/BookBody';
+import { edgeFactor, GrainFill, litTone, mix, PAGE_BASE, PAGE_LINE, PAGE_LIT, PAGE_RIM, scaleColor, withAlpha } from '@/ui/book/BookBody';
 import { RENDER } from '@/ui/perf';
+import { SHOW } from '@/ui/shelf/shadow-debug';
 
 import type { FaceGeom } from './face-geometry';
 
 type RO<T> = Readonly<SharedValue<T>>;
 
-// 종이 단면 면의 표지 판 둘레를 종이 색 쪽으로 섞는 비율(짙은 책에서 윗면 테두리 대비 낮추기)
-const RIM_TO_PAGE = 0.2;
 
 export function polyPath(pts: Point[], close: boolean): SkPath {
   'worklet';
@@ -50,28 +49,63 @@ function FlatFace({ geom, tone, k, opacity }: Props) {
   return <Path path={path} color={fill} opacity={opacity} />;
 }
 
-// 종이 단면(속지)과 종이 결: 종이 단면이 있는 면에만(없는 면에는 파생 값을 만들지 않는다)
-// 속지는 밝은 종이색 그대로 두고(표지색 섞기·판 그늘 겹치기 없이) 면 밝기는 돌려서 어두워질 때만 따른다(기본 자세에서는 1).
-// 표지 판과 맞닿는 안쪽 가장자리에만 좁은 회베이지 그늘, 종이 결은 아주 옅게.
-function Pages({ geom, k, a, ab, s }: { geom: RO<FaceGeom>; k: RO<number>; a: RO<SkPoint>; ab: RO<SkPoint>; s: number }) {
+// 종이 단면(속지 묶음)과 종이 결: 종이 단면이 있는 면에만(없는 면에는 파생 값을 만들지 않는다)
+// 구조는 책 좌표에서 정해 투영한 것(face-geometry pageStructure): 판 두 장 사이·책등 띠 뒤의 속지 묶음, 배쪽에서 판이 튀어나온
+// 틈(종이 끝이 판 그늘에 들어가 조금 어둡다), 판·책등과 맞닿는 쪽에만 좁은 회베이지 그늘(열린 배쪽에는 없다).
+// 속지는 밝은 종이색 그대로(표지색 섞기·판 명암 겹치기 없이), 면 밝기는 돌려서 어두워질 때만 따른다.
+function Pages({ geom, k, a, ab, s, debug, tone }: { geom: RO<FaceGeom>; k: RO<number>; a: RO<SkPoint>; ab: RO<SkPoint>; s: number; debug: boolean; tone: string }) {
+  const boardHi = useDerivedValue(() => linesPath(geom.value.boardHi));
+  const boardIn = useDerivedValue(() => linesPath(geom.value.boardIn));
+  // 판 윗모서리 밝음은 빛을 받는 면(위·왼쪽)에서만, 옆면(빛 등진 쪽)에서는 아주 약하게
+  const hiAlpha = useDerivedValue(() => (geom.value.lit ? 0.5 : 0.18));
   const inner = useDerivedValue(() => polyPath(geom.value.inner ?? [], true));
   const lines = useDerivedValue(() => linesPath(geom.value.lines));
+  const gaps = useDerivedValue(() => {
+    const p = Skia.PathBuilder.Make();
+    for (const g of geom.value.gaps) p.addPath(polyPath(g, true));
+    return p.detach();
+  });
+  const shades = useDerivedValue(() => {
+    const p = Skia.PathBuilder.Make();
+    for (const g of geom.value.shades) p.addPath(polyPath(g, true));
+    return p.detach();
+  });
   const paper = useDerivedValue(() => {
     const kk = Math.min(1, k.value / 0.98);
     return [scaleColor(PAGE_LIT, kk), scaleColor(PAGE_BASE, kk), scaleColor(PAGE_BASE, kk * 0.985)];
   });
-  const rim = withAlpha(PAGE_RIM, 0.34);
+  const gapColor = useDerivedValue(() => mix(scaleColor(PAGE_BASE, Math.min(1, k.value / 0.98) * 0.86), PAGE_RIM, 0.25));
+  if (debug) {
+    return (
+      <>
+        <Path path={inner} color="#F2D23C" />
+        <Path path={gaps} color="#9B4FD0" />
+        <Path path={shades} color="#E07A2E" />
+        <Path path={lines} style="stroke" strokeWidth={1} color="#6A5A00" />
+        <Path path={boardHi} style="stroke" strokeWidth={1.5} color="#FFFFFF" />
+        <Path path={boardIn} style="stroke" strokeWidth={1.5} color="#000000" />
+      </>
+    );
+  }
   return (
     <>
       <Path path={inner}>
         <LinearGradient start={a} end={ab} colors={paper} positions={[0, 0.35, 1]} />
       </Path>
+      <Path path={gaps} color={gapColor} />
       <Path path={lines} style="stroke" strokeWidth={0.5} color={PAGE_LINE} opacity={0.14} />
       <Group clip={inner}>
-        <Path path={inner} style="stroke" strokeWidth={1.8 * s} color={rim}>
-          <BlurMask blur={0.8 * s} style="normal" />
+        <Path path={shades} color={withAlpha(PAGE_RIM, 0.34)}>
+          <BlurMask blur={0.9 * s} style="normal" />
         </Path>
       </Group>
+      {/* 표지 판 두 장: 윗모서리의 가는 밝음(책색을 밝힌 색) + 판 안쪽 면이 종이와 만나는 좁은 그늘(검은 선이 아니라 책색을 낮춘 색) */}
+      <Path path={boardHi} style="stroke" strokeWidth={0.55 * s} strokeCap="round" color={litTone(tone)} opacity={hiAlpha}>
+        <BlurMask blur={0.25 * s} style="normal" />
+      </Path>
+      <Path path={boardIn} style="stroke" strokeWidth={0.45 * s} color={withAlpha(scaleColor(tone, 0.55), 0.45)}>
+        <BlurMask blur={0.2 * s} style="normal" />
+      </Path>
     </>
   );
 }
@@ -107,16 +141,15 @@ function TexturedFace({ geom, pages, tone, k, s, grain, opacity, hinge }: Props)
   const mid = useDerivedValue(() => vec(geom.value.mid.x, geom.value.mid.y));
   // 종이 단면이 있는 면(머리·꼬리·책배): 종이는 밝혀도 크림색을 넘지 않게(k ≤ 1), 둘레 표지 판은 종이 쪽으로 조금 섞어
   // 짙은 책에서 윗면 테두리가 튀지 않게 한다. 표지·책등 면(pages=false)은 그대로.
-  const fill = useDerivedValue(() => {
-    const f = scaleColor(tone, Math.min(1.06, k.value));
-    return pages ? mix(f, scaleColor(PAGE, Math.min(1, k.value)), RIM_TO_PAGE) : f;
-  });
+  // 종이 단면 면의 바탕 = 표지 판·책등 띠(표지색 그대로: 판과 종이가 색으로 구분되게)
+  const fill = useDerivedValue(() => scaleColor(tone, Math.min(1.06, k.value)));
+  const debug = SHOW.faceDebug;
   // 면이 꺾이는 모서리 쪽 빛·빛 받는 모서리 광택: 흰색이 아니라 책 색을 밝힌 색(표지색과 이어지게)
   const lit = litTone(tone);
   // 빛을 등진 면(오른쪽 옆면 등)은 맞닿은 모서리를 밝히지 않는다(앞면과의 경계에 밝은 선이 생겨 테두리처럼 보였다)
   const soft = useDerivedValue(() => (geom.value.lit ? [withAlpha(lit, 0.24), withAlpha(lit, 0)] : [withAlpha(lit, 0), withAlpha(lit, 0)]));
   const hiColors = pages ? [withAlpha(lit, 0.14), withAlpha(lit, 0.04)] : [withAlpha(lit, 0.4), withAlpha(lit, 0.12)];
-  const edge = pages ? mix(scaleColor(tone, edgeFactor(tone)), PAGE, RIM_TO_PAGE) : scaleColor(tone, edgeFactor(tone));
+  const edge = scaleColor(tone, edgeFactor(tone));
   return (
     <Group opacity={opacity}>
       {/* 표지 판 색(종이면이면 판이 테두리로 조금 보인다). 선 대신 색 차이로만 구분 */}
@@ -135,7 +168,12 @@ function TexturedFace({ geom, pages, tone, k, s, grain, opacity, hinge }: Props)
         </Group>
       ) : null}
       {/* 속지는 판 명암 위에 따로(판의 둥근 명암·그늘이 종이에 겹쳐 회색 뚜껑처럼 되지 않게) */}
-      {pages ? <Pages geom={geom} k={k} a={a} ab={ab} s={s} /> : null}
+      {pages ? (
+        <Group clip={path}>
+          <Pages geom={geom} k={k} a={a} ab={ab} s={s} debug={debug} tone={tone} />
+        </Group>
+      ) : null}
+      {debug ? <Path path={path} style="stroke" strokeWidth={1} color={pages ? '#2E8B3C' : hinge ? '#D0342C' : '#2C5BD0'} /> : null}
       {/* 빛 받는 윗면 모서리만 은은하게 */}
       <Path path={hi} style="stroke" strokeWidth={2.4 * s} strokeCap="round">
         <LinearGradient start={a} end={b} colors={hiColors} />
