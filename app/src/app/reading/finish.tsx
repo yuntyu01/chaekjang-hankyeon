@@ -20,6 +20,7 @@ export default function Finish() {
   const [pages, setPages] = useState('');
   const [memo, setMemo] = useState('');
   const [saved, setSaved] = useState<{ bookId?: string } | null>(null);
+  const [saving, setSaving] = useState(false);
   if (saved)
     return (
       <Screen title="저장했어요" back={false}>
@@ -41,8 +42,10 @@ export default function Finish() {
   const b = pending.myBookId ? lib.books[pending.myBookId] : undefined;
   const e = b && lib.editions[b.editionId];
   const save = () => {
+    if (saving) return;
+    setSaving(true);
     const n = Number(pages);
-    libraryStore.addSession({ myBookId: pending.myBookId, startedAt: pending.startedAt, endedAt: pending.endedAt, durationMs: pending.durationMs, pagesRead: Number.isFinite(n) && n > 0 ? Math.round(n) : undefined, memo: memo.trim() || undefined });
+    libraryStore.addSession({ id: pending.id, myBookId: pending.myBookId, startedAt: pending.startedAt, endedAt: pending.endedAt, durationMs: pending.durationMs, pagesRead: Number.isFinite(n) && n > 0 ? Math.round(n) : undefined, memo: memo.trim() || undefined });
     // 읽기 전이던 책을 읽었다면 읽는 중으로(완독은 사용자가 정한다)
     if (b && b.status === 'want') libraryStore.setStatus(b.id, 'reading');
     ambient.stop();

@@ -1,6 +1,6 @@
 // 공통 화면 부품. 아이보리 종이 바탕, 먹색 글자, 제목은 명조, 메뉴·숫자는 고딕(시스템). 색은 책에서 온다.
 import { router } from 'expo-router';
-import { ChevronLeft, Star } from 'lucide-react-native';
+import { ChevronLeft, Star } from '@/ui/icons';
 import { useState, type ReactNode } from 'react';
 import { ActivityIndicator, Image, Pressable, ScrollView, StyleSheet, Text, TextInput, View, type StyleProp, type TextInputProps, type ViewStyle } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -126,7 +126,9 @@ export function Chip({ label, on, onPress, color }: { label: string; on?: boolea
   return (
     <Pressable onPress={onPress} accessibilityRole="button" accessibilityState={{ selected: !!on }} style={[s.chip, on && { backgroundColor: colors.ink, borderColor: colors.ink }]}>
       {color ? <View style={[s.dot, { backgroundColor: color }]} /> : null}
-      <Text style={[s.chipText, on && { color: colors.bg }]}>{label}</Text>
+      <Text style={[s.chipText, on && { color: colors.bg }, { maxWidth: 230 }]} numberOfLines={1}>
+        {label}
+      </Text>
     </Pressable>
   );
 }

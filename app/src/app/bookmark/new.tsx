@@ -2,7 +2,7 @@
 // 사진으로 가져오기: 페이지 촬영/선택 → (OCR 연결되면) 문장 선택 → 수정·확인 → 저장. 페이지 전체를 자동으로 저장하지 않는다.
 // OCR이 연결되지 않은 지금은 사진을 보면서 옮겨 적는다(사진은 선택해서 함께 보관).
 import { router, useLocalSearchParams } from 'expo-router';
-import { Camera, ImageIcon } from 'lucide-react-native';
+import { Camera, ImageIcon } from '@/ui/icons';
 import { useState } from 'react';
 import { Image, Pressable, Text, View } from 'react-native';
 

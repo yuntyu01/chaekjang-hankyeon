@@ -8,10 +8,12 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 
 import { ReadingPill, RecoveryDialog } from '@/features/reading/ActiveReading';
 import { bootStores } from '@/store/boot';
+import { bootMark } from '@/ui/boot-trace';
 import { BookArtProvider } from '@/ui/book3d/art';
 import { PaperBackground } from '@/ui/PaperBackground';
 import { colors } from '@/ui/theme';
 
+bootMark('js-layout-module');
 void SplashScreen.preventAutoHideAsync();
 
 export default function RootLayout() {
@@ -19,11 +21,20 @@ export default function RootLayout() {
   const [booted, setBooted] = useState(false);
   useEffect(() => {
     // 저장소를 다 불러온 뒤 첫 화면을 그린다(빈 책장이 잠깐 보였다가 책이 나타나지 않게)
-    bootStores().finally(() => setBooted(true));
+    bootStores().finally(() => {
+      bootMark('stores-ready');
+      setBooted(true);
+    });
   }, []);
   const ready = (loaded || !!error) && booted;
   useEffect(() => {
-    if (ready) void SplashScreen.hideAsync();
+    if (loaded || error) bootMark('fonts-ready', error ? 'error' : '');
+  }, [loaded, error]);
+  useEffect(() => {
+    if (ready) {
+      bootMark('splash-hide');
+      void SplashScreen.hideAsync();
+    }
   }, [ready]);
   if (!ready) return null;
   return (

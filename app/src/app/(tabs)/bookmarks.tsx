@@ -1,11 +1,13 @@
 // 갈피 탭: 저장한 문장을 읽는 카드 목록. 책별 필터·검색·추가. '오늘의 갈피'는 내가 저장한 문장 중 하나를 작게.
 import { router, useLocalSearchParams } from 'expo-router';
-import { Plus, Search, X } from 'lucide-react-native';
+import { Plus, Search, X } from '@/ui/icons';
 import { useMemo, useState } from 'react';
-import { Pressable, Text, TextInput, View } from 'react-native';
+import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 
 import { ymd } from '@/features/book/labels';
 import { today } from '@/domain/library';
+import { mix } from '@/ui/book/BookBody';
+import { WordWrap } from '@/features/bookmark/BookmarkCard';
 import { useLibrary } from '@/store/library-store';
 import { Card, Chip, Empty, Muted, Row, Screen, s as kit } from '@/ui/kit';
 import { colors, fonts, navigation } from '@/ui/theme';
@@ -78,17 +80,22 @@ export default function BookmarksTab() {
         <View style={{ gap: 12 }}>
           {list.map((m) => {
             const i = info(m.myBookId);
+            const accent = mix(i.color, '#7F95AD', 0.35);
+            // 문학잡지형 카드(목록): 왼쪽 치우친 조판, 쪽수 → 문장(명조, 넉넉한 행간) → 가는 줄 → 책·날짜. 긴 문장은 여섯 줄까지, 전체는 상세에서
             return (
-              <Card key={m.id} stripe={i.color} onPress={() => router.push(`/bookmark/${m.id}`)} style={{ paddingVertical: 20 }}>
-                <Text style={{ fontFamily: fonts.serif, fontSize: 16, lineHeight: 30, color: colors.ink }} numberOfLines={8}>
-                  {m.text}
-                </Text>
-                <Text style={{ fontSize: 13, color: colors.ink, marginTop: 12 }}>
-                  {i.title}
-                  {i.author ? <Text style={{ color: colors.inkSoft }}> · {i.author}</Text> : null}
-                </Text>
-                <Muted style={{ marginTop: 2 }}>{[m.page ? `${m.page}쪽` : null, ymd(m.createdAt)].filter(Boolean).join(' · ')}</Muted>
-              </Card>
+              <Pressable key={m.id} onPress={() => router.push(`/bookmark/${m.id}`)} accessibilityRole="button" style={({ pressed }) => [st.card, pressed && { opacity: 0.85 }]}>
+                <View style={st.pageRow}>
+                  <View style={[st.bar, { backgroundColor: accent }]} />
+                  <Text style={st.meta}>{m.page ? `p. ${m.page}` : ' '}</Text>
+                </View>
+                <View style={{ marginTop: 14, paddingRight: 8 }}>
+                  <WordWrap text={m.text.replace(/\s*\n+\s*/g, ' ')} style={st.quote} maxLines={6} />
+                  {m.text.length > 110 ? <Text style={[st.meta, { marginTop: 2 }]}>…</Text> : null}
+                </View>
+                <View style={st.rule} />
+                <WordWrap text={i.author ? `${i.title}  ·  ${i.author}` : i.title} style={st.src} />
+                <Text style={[st.meta, { marginTop: 4 }]}>{ymd(m.createdAt)}</Text>
+              </Pressable>
             );
           })}
         </View>
@@ -96,3 +103,14 @@ export default function BookmarksTab() {
     </Screen>
   );
 }
+
+const st = StyleSheet.create({
+  card: { backgroundColor: '#F8F4EC', paddingLeft: 30, paddingRight: 22, paddingTop: 20, paddingBottom: 22, borderRadius: 2, elevation: 1, shadowColor: '#5C4A36', shadowOpacity: 0.08, shadowRadius: 5, shadowOffset: { width: 0, height: 2 } },
+  pageRow: { flexDirection: 'row', alignItems: 'center', gap: 12, marginLeft: -4 },
+  bar: { width: 2.5, height: 18 },
+  meta: { fontFamily: fonts.serif, fontSize: 13, color: '#8C877E' },
+  quote: { fontFamily: fonts.serif, fontSize: 18.5, lineHeight: 32, color: colors.ink },
+  rule: { height: StyleSheet.hairlineWidth, backgroundColor: '#CFC7B9', marginVertical: 14 },
+  src: { fontFamily: fonts.serif, fontSize: 14.5, lineHeight: 22, color: colors.ink },
+  srcAuthor: { fontFamily: fonts.serif, fontSize: 14, color: colors.inkSoft },
+});

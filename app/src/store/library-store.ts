@@ -180,10 +180,12 @@ export const libraryStore = {
     commit({ ...state.lib, bookmarks: next });
   },
 
-  addSession(input: Pick<Session, 'myBookId' | 'startedAt' | 'endedAt' | 'durationMs' | 'pagesRead' | 'memo'>) {
+  // id를 주면(타이머 id) 같은 기록을 두 번 저장해도 하나로 남는다
+  addSession(input: Pick<Session, 'myBookId' | 'startedAt' | 'endedAt' | 'durationMs' | 'pagesRead' | 'memo'> & { id?: string }) {
     const t = now();
     const round = input.myBookId ? currentRound(state.lib, input.myBookId) : undefined;
-    const s: Session = { id: newId('ss'), roundId: round?.id, createdAt: t, updatedAt: t, ...input };
+    const prev = input.id ? state.lib.sessions[input.id] : undefined;
+    const s: Session = { roundId: round?.id, createdAt: prev?.createdAt ?? t, updatedAt: t, ...input, id: input.id ?? newId('ss') };
     let lib: Library = { ...state.lib, sessions: { ...state.lib.sessions, [s.id]: s } };
     // 쪽수를 적었으면 현재 쪽수를 앞으로만 옮긴다(선택 입력)
     const b = input.myBookId ? lib.books[input.myBookId] : undefined;

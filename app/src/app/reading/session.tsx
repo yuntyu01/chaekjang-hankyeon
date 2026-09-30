@@ -2,7 +2,7 @@
 // 조작부를 접으면 작은 다시 열기 버튼만 남는다(다시 열어도 타이머는 멈추지 않는다).
 // 소리만 듣기(sound=1)는 타이머 없이 소리만: 독서 시간으로 기록하지 않는다.
 import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
-import { ChevronDown, ChevronUp, Pause, Play, Volume1, Volume2, VolumeX } from 'lucide-react-native';
+import { ChevronDown, ChevronUp, Pause, Play, Volume1, Volume2, VolumeX } from '@/ui/icons';
 import { useCallback, useEffect, useState } from 'react';
 import { AccessibilityInfo, AppState, Pressable, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';

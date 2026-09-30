@@ -4,7 +4,7 @@
 // 세 선반 사이에서 이동한다. 화면 가장자리에서 자동 스크롤.
 import { router, useFocusEffect, useLocalSearchParams, useNavigation } from 'expo-router';
 import * as Haptics from 'expo-haptics';
-import { BookMarked, ChartNoAxesColumn, Eraser, Menu, Paintbrush, Plus, Search, Settings, Undo2 } from 'lucide-react-native';
+import { BookMarked, ChartNoAxesColumn, Eraser, Menu, Paintbrush, Plus, Search, Settings, Undo2 } from '@/ui/icons';
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { AppState, Modal, PixelRatio, Pressable, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
@@ -62,11 +62,14 @@ import type { Pose, ShelfLayout, Tilt } from '@/domain/types';
 import { ko } from '@/i18n/ko';
 import { settingsStore, useSettings } from '@/store/settings-store';
 import { uiBus } from '@/store/ui-bus';
+import { DEMO_BOOT_KEY } from '@/store/boot';
+import Storage from 'expo-sqlite/kv-store';
+import { bootMark, watchResponsive } from '@/ui/boot-trace';
 import { placementStore, usePlacementStore } from '@/store/placement-store';
 import { DragOverlay, frameBBox } from '@/ui/shelf/DragOverlay';
 import { CONTENT_TOP, computeRows, LAYOUT, rowAt, toContent, toScene, useShelfMetrics, type RowGeom } from '@/ui/shelf/metrics';
 import { benchProjection, currentStates, motionOf, previewShelf, type BenchRow } from '@/ui/shelf/ShelfMotion';
-import { ANIM, frameStats, PERF_DETAIL, PERF_ENABLED, PERF_LEVELS, setPerfLevel, setShelfMode, setShelfView, SHELF_MODES, SHELF_VIEWS, type PerfLevel, type ShelfMode } from '@/ui/perf';
+import { ANIM, frameStats, MENU_FLAGS, PERF_DETAIL, PERF_ENABLED, PERF_LEVELS, setPerfLevel, setShelfMode, setShelfView, SHELF_MODES, SHELF_VIEWS, type PerfLevel, type ShelfMode } from '@/ui/perf';
 import type { FrontState } from '@/domain/front-pose';
 import { ShelfRow, type DropHint } from '@/ui/shelf/ShelfRow';
 import { SHELF_CAST_EXTENT } from '@/ui/shelf/ShelfPlank';
@@ -297,6 +300,12 @@ export function HomeScreen() {
     if (r.ok) return { kind: 'ok', layout: r.layout, key, shelfId, hint: t.kind === 'stack' ? 'stack' : 'place', index: at };
     return { kind: 'bad', reason: r.reason, key, shelfId, index: at };
   };
+
+  useEffect(() => {
+    bootMark('home-mount', `books=${Object.keys(books).length}`);
+    watchResponsive();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // 책 찾기에서 고른 책: 그 선반으로 옮겨 정보 상자로 강조(배치는 그대로)
   const focusRef = useRef<(id: string) => void>(() => {});
@@ -655,6 +664,12 @@ export function HomeScreen() {
   if (PERF_ENABLED && gap !== undefined) LAYOUT.topGap = Number(gap);
   // 비교안: chaekjang:///?rowfit=0.5 → 줄마다 필요한 높이 쪽으로 선반 위 공간을 절반만큼 줄인다
   if (PERF_ENABLED && rowfit !== undefined) LAYOUT.rowFit = Number(rowfit);
+  const { demoboot, menutl } = useLocalSearchParams<{ demoboot?: string; menutl?: string }>();
+  if (PERF_ENABLED && menutl !== undefined) MENU_FLAGS.translucent = menutl === '1';
+  useEffect(() => {
+    if (!PERF_ENABLED || demoboot === undefined) return;
+    void Storage.setItem(DEMO_BOOT_KEY, demoboot === '1' ? '1' : '0');
+  }, [demoboot]);
   useEffect(() => {
     if (!PERF_ENABLED || !sh || !SHELF_MODES.includes(sh as ShelfMode)) return;
     setShelfMode(sh as ShelfMode);
@@ -1358,7 +1373,7 @@ export function HomeScreen() {
         />
       ) : null}
 
-      <Modal visible={shelfMenuOpen} transparent animationType={reduceMotion ? 'none' : 'fade'} onRequestClose={() => setShelfMenuOpen(false)}>
+      <Modal visible={shelfMenuOpen} transparent statusBarTranslucent={MENU_FLAGS.translucent} navigationBarTranslucent={MENU_FLAGS.translucent} animationType={reduceMotion ? 'none' : 'fade'} onRequestClose={() => setShelfMenuOpen(false)}>
         <Pressable style={styles.menuBackdrop} onPress={() => setShelfMenuOpen(false)} accessibilityLabel="닫기" />
         <View style={[styles.menuSheet, { paddingBottom: insets.bottom + 24 }]}>
           <Text style={styles.menuTitle}>{ko.menu.title}</Text>

@@ -1,20 +1,21 @@
 // 책 추가: 책 찾기(검색·사진·직접 입력) → 책·판본 확인 → 재장정 미리보기 → 내 책에 추가 → 책장에 꽂기 또는 서랍에 보관.
 // 검색 결과·표지·쪽수가 없어도 직접 입력과 기본 장정으로 끝낼 수 있다. 추정 크기를 확인된 정보처럼 저장하지 않는다.
 import { router, useLocalSearchParams } from 'expo-router';
-import { Camera, ImageIcon, PenLine, Search } from 'lucide-react-native';
+import { Camera, ImageIcon, PenLine, Search } from '@/ui/icons';
 import { useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, Image, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 
 import { BindingEditor, type BindingDraft } from '@/features/book/BindingEditor';
 import { STATUS_LABEL } from '@/features/book/labels';
 import { defaultBinding, READ_STATUSES, type ReadStatus, type SizeMm } from '@/domain/library';
-import { searchBooks, type BookCandidate } from '@/services/book-search';
+import { candidateDetails, searchBooks, type BookCandidate } from '@/services/book-search';
 import { photoIdentify } from '@/services/connectors';
 import { deniedMessage, pickPhoto } from '@/services/photos';
 import { keepImage } from '@/store/files';
 import { libraryStore } from '@/store/library-store';
 import { placementStore } from '@/store/placement-store';
 import { uiBus } from '@/store/ui-bus';
+import { PERF_ENABLED } from '@/ui/perf';
 import { Btn, Card, Chip, Empty, Field, H2, Muted, RealCover, Row, Screen, ui } from '@/ui/kit';
 import { colors, fonts } from '@/ui/theme';
 
@@ -61,7 +62,10 @@ export default function AddBook() {
     setStep('confirm');
   };
 
-  const fromCandidate = (c: BookCandidate) =>
+  // 고르면 그 판본의 상세(쪽수·판형·ISBN)를 읽어 채운다(없으면 비워 둔 채로 확인 단계로)
+  const fromCandidate = async (picked: BookCandidate) => {
+    setNotice('판본 정보를 확인하는 중…');
+    const c = await candidateDetails(picked);
     toConfirm({
       ...blank('search'),
       title: c.title,
@@ -75,7 +79,8 @@ export default function AddBook() {
       coverUri: c.coverUrl,
       coverSource: c.coverUrl ? 'api' : undefined,
       sourceName: c.sourceName,
-    });
+    }, c.pageCount && c.size ? null : `${c.sourceName} 판본 기록에 ${[c.pageCount ? null : '쪽수', c.size ? null : '판형'].filter(Boolean).join('·')} 정보가 없어요. 알면 적고, 모르면 비워 두세요(장정은 흔한 크기로 만들고 ‘확인 전’으로 표시해요).`);
+  };
 
   const fromPhoto = async (from: 'camera' | 'library') => {
     const r = await pickPhoto(from);
@@ -248,6 +253,7 @@ function FindStep({ initial, notice, onPick, onPhoto, onManual }: { initial?: st
   const [q, setQ] = useState(initial ?? '');
   const [items, setItems] = useState<BookCandidate[] | null>(null);
   const [provider, setProvider] = useState<string | undefined>(undefined);
+  const [diag, setDiag] = useState<string | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const ctrl = useRef<AbortController | null>(null);
@@ -264,9 +270,10 @@ function FindStep({ initial, notice, onPick, onPhoto, onManual }: { initial?: st
     if (r.ok) {
       setItems(r.items);
       setProvider(r.provider);
-    }
-    else {
+      setDiag(r.diag ?? null);
+    } else {
       setErr(r.message);
+      setDiag(r.diag);
       setItems(null);
     }
   };
@@ -305,6 +312,7 @@ function FindStep({ initial, notice, onPick, onPhoto, onManual }: { initial?: st
       {err ? (
         <Card style={{ marginTop: 16 }}>
           <Text style={{ fontSize: 14, color: colors.ink, lineHeight: 20 }}>{err}</Text>
+          {PERF_ENABLED && diag ? <Muted style={{ fontSize: 11, marginTop: 4 }}>{diag}</Muted> : null}
           <Row style={{ marginTop: 10 }}>
             <Btn label="다시 시도" kind="secondary" onPress={() => run()} />
             <Btn label="직접 입력" kind="ghost" onPress={() => onManual(q)} />
@@ -315,6 +323,7 @@ function FindStep({ initial, notice, onPick, onPhoto, onManual }: { initial?: st
       {items?.length ? (
         <View style={{ marginTop: 16, gap: 10 }}>
           <Muted>검색 결과 · {provider ?? '도서 검색'}</Muted>
+          {PERF_ENABLED && diag ? <Muted style={{ fontSize: 11 }}>{diag}</Muted> : null}
           {items.map((c) => (
             <Pressable key={c.key} onPress={() => onPick(c)} style={({ pressed }) => [st.result, pressed && { opacity: 0.7 }]} accessibilityRole="button" accessibilityLabel={`${c.title}, ${c.authors.join(', ')}`}>
               {c.coverUrl ? <Image source={{ uri: c.coverUrl }} style={st.thumb} /> : <View style={[st.thumb, { backgroundColor: ui.soft }]} />}

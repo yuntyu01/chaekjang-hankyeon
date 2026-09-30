@@ -3,7 +3,7 @@
 // - 책등 글자 칸·작은 모티프: 칸마다 따로(원점 가운데). 누울 때 바로 세우려고 면과 따로 둔다.
 // - 표지 면: 표지 그림 + 제목·저자
 // - 갈피: 머리 뒤에서 나오는 끈(원점 = 아래 가운데)
-import { AlphaType, BlurMask, ColorType, Group, ImageSVG, LinearGradient, Path, Rect, Skia, Text, drawAsPicture, useImage, useTypeface, vec, type SkFont, type SkImage, type SkPicture, type SkTypeface } from '@shopify/react-native-skia';
+import { AlphaType, BlurMask, ColorType, Group, PaintStyle, StrokeJoin, ImageSVG, LinearGradient, Path, Rect, Skia, Text, drawAsPicture, useImage, useTypeface, vec, type SkFont, type SkImage, type SkPicture, type SkTypeface } from '@shopify/react-native-skia';
 import { createContext, useContext, useEffect, useState, type ReactNode } from 'react';
 
 import { BRUSH_DETAIL } from '@/domain/body-art.generated';
@@ -11,20 +11,24 @@ import { rgbHex, shade, TITLE_LIGHT, titleInk } from '@/domain/color';
 import { COVER_LINE_H, coverTitleLayout, spineTitleLayout } from '@/domain/title-layout';
 import type { Book } from '@/domain/types';
 import { motifSvg } from '@/ui/art/motifs';
+import { bootMark } from '@/ui/boot-trace';
 import { CoverFaceArt, SpineFaceArt, spineMotifRect } from '@/ui/book/BookBody';
 
-const BOLD = require('@expo-google-fonts/gowun-batang/700Bold/GowunBatang_700Bold.ttf');
 const REGULAR = require('@expo-google-fonts/gowun-batang/400Regular/GowunBatang_400Regular.ttf');
 
-export type Shared = { bold: SkTypeface | null; regular: SkTypeface | null; grain: SkImage | null };
-const Ctx = createContext<Shared>({ bold: null, regular: null, grain: null });
+// 제목은 보통 굵기 + 윤곽 덧그리기로 굵기를 정하므로 Skia에는 보통 굵기 글꼴 하나만 읽는다(굵은 글꼴 8MB를 따로 읽지 않는다)
+export type Shared = { regular: SkTypeface | null; grain: SkImage | null };
+const Ctx = createContext<Shared>({ regular: null, grain: null });
 
 // 앱 뿌리에 한 번: 제목 글꼴과 붓결 질감
 export function BookArtProvider({ children }: { children: ReactNode }) {
-  const bold = useTypeface(BOLD);
   const regular = useTypeface(REGULAR);
   const grain = useImage(BRUSH_DETAIL);
-  return <Ctx.Provider value={{ bold, regular, grain }}>{children}</Ctx.Provider>;
+  useEffect(() => {
+    if (regular) bootMark('skia-font-regular');
+    if (grain) bootMark('skia-grain');
+  }, [regular, grain]);
+  return <Ctx.Provider value={{ regular, grain }}>{children}</Ctx.Provider>;
 }
 
 export const useBookShared = () => useContext(Ctx);
@@ -60,6 +64,24 @@ function Glyph({ x, y, text, font, color, weight }: { x: number; y: number; text
       <Text x={x} y={y} text={text} font={font} color={color} style="stroke" strokeWidth={weight} strokeJoin="round" />
     </>
   );
+}
+
+// 책등 글자 한 칸: 칸마다 React 렌더 없이 바로 기록(글자 + 같은 색 윤곽으로 중간 굵기, 쉼표·마침표는 오른쪽 아래)
+function glyphPicture(ch: string, punct: string | undefined, font: SkFont, fs: number, gw: number, gy: number, ink: string): SkPicture {
+  const rec = Skia.PictureRecorder();
+  const c = rec.beginRecording(Skia.XYWHRect(-fs * 2, -fs * 2, fs * 4, fs * 4));
+  const fill = Skia.Paint();
+  fill.setColor(Skia.Color(ink));
+  fill.setAntiAlias(true);
+  const stroke = fill.copy();
+  stroke.setStyle(PaintStyle.Stroke);
+  stroke.setStrokeWidth(fs * weightFor(ink));
+  stroke.setStrokeJoin(StrokeJoin.Round);
+  for (const p of [fill, stroke]) {
+    c.drawText(ch, -gw / 2, gy, p, font);
+    if (punct) c.drawText(punct, gw / 2 - fs * 0.05, fs * 0.5, p, font);
+  }
+  return rec.finishRecordingAsPicture();
 }
 
 // 표지 그림에서 제목이 놓일 띠의 평균색(그림은 면을 꽉 채우게 놓인다: fit="cover")
@@ -144,9 +166,12 @@ async function record(el: ReactNode, w: number, h: number) {
 const cache = new Map<string, Promise<BookArt>>();
 const done = new Map<string, BookArt>(); // 이미 기록된 것(다시 그릴 때 한 프레임도 비지 않게)
 let queue: Promise<unknown> = Promise.resolve();
+// 측정: 기록 대기 중인 책 수와 누적 기록 시간
+let pendingArt = 0;
+let builtArt = 0;
+let artMs = 0;
 
 async function buildArt(book: Book, s: number, dims: { T: number; H: number; W: number }, shared: Shared, motif: SkImage | null, coverImg: SkImage | null): Promise<BookArt> {
-  const bold = shared.bold!;
   const regular = shared.regular!;
   const face = faceOf(book);
   const ink = inkOf(book);
@@ -188,14 +213,7 @@ async function buildArt(book: Book, s: number, dims: { T: number; H: number; W: 
       const gw = font.measureText(cell.ch).width;
       const fm = font.getMetrics();
       const gy = -(fm.ascent + fm.descent) / 2;
-      const pic = await record(
-        <Group>
-          <Glyph x={-gw / 2} y={gy} text={cell.ch} font={font} color={ink} weight={fs * weightFor(ink)} />
-          {cell.punct ? <Glyph x={gw / 2 - fs * 0.05} y={fs * 0.5} text={cell.punct} font={font} color={ink} weight={fs * weightFor(ink)} /> : null}
-        </Group>,
-        fs * 2,
-        fs * 2,
-      );
+      const pic = glyphPicture(cell.ch, cell.punct, font, fs, gw, gy, ink);
       cells.push({ cx: x0 + (c + 0.5) * colW, cy: y + ch / 2, cyLie: yl + (lieFs * 1.02) / 2, ch: cell.ch, pic });
       y += ch;
       yl += lieFs * 1.02 + (cell.punct ? lieFs * 0.3 : 0);
@@ -287,7 +305,7 @@ export function useBookArt(book: Book, s: number, dims: { T: number; H: number; 
   const coverImg = useImage((book.cover?.image as number) ?? null);
   const needMotif = !!book.body?.motif;
   const needCover = !!book.cover?.image;
-  const ready = shared.bold && shared.regular && shared.grain && (!needMotif || motif) && (!needCover || coverImg);
+  const ready = shared.regular && shared.grain && (!needMotif || motif) && (!needCover || coverImg);
   // 장정(책등 색·모티프)·저자가 바뀌면 다시 기록한다(같은 책 id라도)
   const key = `${book.id}|${s.toFixed(4)}|${dims.T.toFixed(3)}|${dims.H.toFixed(3)}|${dims.W.toFixed(3)}|${book.title}|${book.author ?? ''}|${book.quotes ?? 0}|${book.themeColor}|${book.art.motif}|${book.art.ribbon ?? ''}`;
   const [art, setArt] = useState<{ key: string; art: BookArt } | null>(() => (done.has(key) ? { key, art: done.get(key)! } : null));
@@ -296,7 +314,17 @@ export function useBookArt(book: Book, s: number, dims: { T: number; H: number; 
     let p = cache.get(key);
     if (!p) {
       // 한 권씩 차례로 기록한다(한꺼번에 하면 앱이 멈춘다)
-      p = queue.then(() => buildArt(book, s, dims, shared, motif, coverImg));
+      pendingArt++;
+      p = queue.then(async () => {
+        const t0 = Date.now();
+        const a = await buildArt(book, s, dims, shared, motif, coverImg);
+        artMs += Date.now() - t0;
+        builtArt++;
+        pendingArt--;
+        if (builtArt === 1) bootMark('art-first', `${Date.now() - t0}ms`);
+        if (pendingArt === 0) bootMark(`art-idle-${builtArt}`, `books=${builtArt} build=${artMs}ms`);
+        return a;
+      });
       queue = p.catch(() => undefined).then(() => new Promise((r) => setTimeout(r, 0)));
       cache.set(key, p);
     }

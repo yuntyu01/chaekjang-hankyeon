@@ -1,6 +1,6 @@
 // 진행 중 독서: 다른 화면에서 다시 들어갈 수 있는 작은 표시 + 강제 종료 뒤 복구 창.
 import { router, usePathname } from 'expo-router';
-import { BookOpen } from 'lucide-react-native';
+import { BookOpen } from '@/ui/icons';
 import { useEffect, useState } from 'react';
 import { Modal, Pressable, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -63,7 +63,30 @@ export function ReadingPill() {
 }
 
 export function RecoveryDialog() {
-  const { interrupted } = useReading();
+  const { interrupted, pending, pendingRestored } = useReading();
+  const path = usePathname();
+  // 끝냈지만 저장·버리기를 고르기 전에 앱이 꺼졌던 기록
+  if (!interrupted && pending && pendingRestored && !path.startsWith('/reading/finish'))
+    return (
+      <Modal transparent animationType="fade" visible onRequestClose={() => readingStore.ackPendingRestored()}>
+        <View style={st.dim}>
+          <View style={st.card}>
+            <Text style={st.title}>저장하지 않은 독서 기록이 있어요</Text>
+            <Text style={st.body}>지난번에 끝낸 {formatDuration(pending.durationMs)} 기록을 아직 저장하거나 버리지 않았어요.</Text>
+            <View style={{ gap: 8, marginTop: 16 }}>
+              <Btn
+                label="기록 확인하기"
+                onPress={() => {
+                  readingStore.ackPendingRestored();
+                  router.push('/reading/finish');
+                }}
+              />
+              <Btn label="나중에" kind="ghost" onPress={() => readingStore.ackPendingRestored()} />
+            </View>
+          </View>
+        </View>
+      </Modal>
+    );
   if (!interrupted) return null;
   const at = new Date(interrupted.lastBeat);
   const hm = `${at.getHours()}:${String(at.getMinutes()).padStart(2, '0')}`;

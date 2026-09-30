@@ -44,6 +44,11 @@ export function BindingEditor({ title, author, size, pages, value, onChange }: {
           <Text style={st.cap}>정면</Text>
         </View>
       </View>
+      {!size || !pages ? (
+        <Muted style={{ marginTop: 8 }}>
+          {`${!pages && !size ? '쪽수·판형' : !pages ? '쪽수' : '판형'}을 몰라 흔한 크기(${ESTIMATED_SIZE.widthMm}×${ESTIMATED_SIZE.heightMm}mm · ${ESTIMATED_PAGES}쪽)로 만든 모양이에요. 도서 정보에는 ‘확인 전’으로 남아요.`}
+        </Muted>
+      ) : null}
       <Muted style={{ marginTop: 8 }}>{aiBinding.available ? 'AI 재장정 그림을 쓰고 있어요.' : `기본 장정이에요. ${aiBinding.reason}`}</Muted>
 
       <H2>책등 색</H2>
