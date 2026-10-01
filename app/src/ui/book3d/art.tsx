@@ -1,57 +1,49 @@
 // 책 면 그림과 조판을 Skia Picture로 한 번 기록해 두고(책·배율마다 캐시), 매 프레임은 면 변환만 바꿔 그린다.
-// - 책등 면: 몸체(명암·붓결·가장자리·장면 그림)
-// - 책등 글자 칸·작은 모티프: 칸마다 따로(원점 가운데). 누울 때 바로 세우려고 면과 따로 둔다.
-// - 표지 면: 표지 그림 + 제목·저자
+// - 책등 면: 책 색 한 가지(균일한 무광. 장식 그림·질감 없음)
+// - 책등 제목: 조판 두 가지를 따로 기록한다. 세운 책등은 세로(글자를 바로 세워 쌓음), 눕힌 책등은 가로 한 줄.
+//   둘 다 책등 면 그림 좌표에 고정되어 몸체와 함께 돈다(글자를 따로 돌리지 않는다). 어느 쪽을 보일지는 자세가 정한다(BookNode).
+// - 표지 면: 표지 그림(달·풍경 등) + 제목·저자
 // - 갈피: 머리 뒤에서 나오는 끈(원점 = 아래 가운데)
-import { AlphaType, BlurMask, ColorType, Group, PaintStyle, StrokeJoin, ImageSVG, LinearGradient, Path, Rect, Skia, Text, drawAsPicture, useImage, useTypeface, vec, type SkFont, type SkImage, type SkPicture, type SkTypeface } from '@shopify/react-native-skia';
+import { BlurMask, ColorType, AlphaType, Group, PaintStyle, StrokeJoin, ImageSVG, Path, Rect, Skia, Text, drawAsPicture, useImage, useTypeface, type SkFont, type SkImage, type SkPicture, type SkTypeface } from '@shopify/react-native-skia';
 import { createContext, useContext, useEffect, useState, type ReactNode } from 'react';
 
-import { BRUSH_DETAIL } from '@/domain/body-art.generated';
 import { rgbHex, shade, TITLE_LIGHT, titleInk } from '@/domain/color';
-import { COVER_LINE_H, coverTitleLayout, spineTitleLayout } from '@/domain/title-layout';
+import { COVER_LINE_H, coverTitleLayout, LYING_TRACK, lyingTitleLayout, spineTitleLayout } from '@/domain/title-layout';
 import type { Book } from '@/domain/types';
 import { motifSvg } from '@/ui/art/motifs';
 import { bootMark } from '@/ui/boot-trace';
 import { rigOf } from '@/domain/book-parts';
-import { CoverFaceArt, PAGE_BASE, PAGE_LINE, PAGE_RIM, SpineFaceArt, spineMotifRect, withAlpha as withAlphaHex } from '@/ui/book/BookBody';
+import { CoverFaceArt, PAGE_BASE, PAGE_LINE, PAGE_RIM, SpineFaceArt, withAlpha as withAlphaHex } from '@/ui/book/BookBody';
 
 const REGULAR = require('@expo-google-fonts/gowun-batang/400Regular/GowunBatang_400Regular.ttf');
 
 // 제목은 보통 굵기 + 윤곽 덧그리기로 굵기를 정하므로 Skia에는 보통 굵기 글꼴 하나만 읽는다(굵은 글꼴 8MB를 따로 읽지 않는다)
-export type Shared = { regular: SkTypeface | null; grain: SkImage | null };
-const Ctx = createContext<Shared>({ regular: null, grain: null });
+export type Shared = { regular: SkTypeface | null };
+const Ctx = createContext<Shared>({ regular: null });
 
-// 앱 뿌리에 한 번: 제목 글꼴과 붓결 질감
+// 앱 뿌리에 한 번: 제목 글꼴
 export function BookArtProvider({ children }: { children: ReactNode }) {
   const regular = useTypeface(REGULAR);
-  const grain = useImage(BRUSH_DETAIL);
   useEffect(() => {
     if (regular) bootMark('skia-font-regular');
-    if (grain) bootMark('skia-grain');
-  }, [regular, grain]);
-  return <Ctx.Provider value={{ regular, grain }}>{children}</Ctx.Provider>;
+  }, [regular]);
+  return <Ctx.Provider value={{ regular }}>{children}</Ctx.Provider>;
 }
 
 export const useBookShared = () => useContext(Ctx);
 
-// 책등 글자 칸: 칸 가운데(cx, cy)에 원점을 둔 글자(x, y = 원점 기준 글자 기준선 위치)
-// cyLie: 누웠을 때(가로로 읽힐 때)의 자리. 세로 줄 간격 대신 글자 폭만큼 붙인다.
-export type Cell = { cx: number; cy: number; cyLie: number; ch: string; pic: SkPicture };
-export type Motif = { cx: number; cy: number; w: number; h: number; image: SkImage | null; svg: ReturnType<typeof Skia.SVG.MakeFromString> };
 export type BookArt = {
-  spine: SkPicture;
-  cells: Cell[];
-  font: SkFont; // 책등 글자
-  ink: string;
-  motif: Motif | null; // 책등 작은 모티프(원점 = 가운데)
-  fontDU: number; // 책등 글자 크기(DU)
+  spine: SkPicture; // 책등 면(책 색)
+  titleV: SkPicture; // 세운 책등 제목(세로 조판, 책등 면 그림 좌표)
+  titleH: SkPicture; // 눕힌 책등 제목(가로 한 줄, 책등 면 그림 좌표에서 머리 → 꼬리 방향으로 읽힌다)
   cover: SkPicture;
   ribbons: SkPicture | null;
   pageEnd: SkPicture; // 머리·꼬리 속지 면(두께 × 책등 띠 뒤 ~ 책배 판 끝 안쪽)
   pageFore: SkPicture; // 책배 속지 면(두께 × 머리·꼬리 판 끝 안쪽)
 };
 
-const faceOf = (b: Book) => b.body?.face ?? b.themeColor;
+// 책 몸체 색 하나: 표지판·책등·판 끝이 모두 같은 색이다(같은 책의 판 두 장과 책등). 표지 그림이 있는 책은 그 판 색(가장자리 색)을 쓴다.
+const faceOf = (b: Book) => b.cover?.edge ?? b.body?.face ?? b.themeColor;
 export const inkOf = (b: Book) => b.art.inkColor ?? titleInk(faceOf(b));
 
 // 제목 획 두께: 보통 굵기 글꼴에 글자 크기의 일부만큼 같은 색 윤곽을 더해 중간 굵기로(글자 모양·크기는 그대로).
@@ -69,10 +61,8 @@ function Glyph({ x, y, text, font, color, weight }: { x: number; y: number; text
   );
 }
 
-// 책등 글자 한 칸: 칸마다 React 렌더 없이 바로 기록(글자 + 같은 색 윤곽으로 중간 굵기, 쉼표·마침표는 오른쪽 아래)
-function glyphPicture(ch: string, punct: string | undefined, font: SkFont, fs: number, gw: number, gy: number, ink: string): SkPicture {
-  const rec = Skia.PictureRecorder();
-  const c = rec.beginRecording(Skia.XYWHRect(-fs * 2, -fs * 2, fs * 4, fs * 4));
+// 글자 칠 + 같은 색 윤곽(중간 굵기)
+function inkPaints(ink: string, fs: number) {
   const fill = Skia.Paint();
   fill.setColor(Skia.Color(ink));
   fill.setAntiAlias(true);
@@ -80,10 +70,78 @@ function glyphPicture(ch: string, punct: string | undefined, font: SkFont, fs: n
   stroke.setStyle(PaintStyle.Stroke);
   stroke.setStrokeWidth(fs * weightFor(ink));
   stroke.setStrokeJoin(StrokeJoin.Round);
-  for (const p of [fill, stroke]) {
-    c.drawText(ch, -gw / 2, gy, p, font);
-    if (punct) c.drawText(punct, gw / 2 - fs * 0.05, fs * 0.5, p, font);
+  return [fill, stroke];
+}
+
+// 세운 책등 제목(세로 조판): 글자를 바로 세워 열로 쌓는다. 책등 폭 가운데. 쉼표·마침표는 앞 글자 오른쪽 아래.
+function verticalTitlePicture(title: string, dims: { T: number; H: number }, s: number, regular: SkTypeface, ink: string) {
+  const w = dims.T * s;
+  const h = dims.H * s;
+  // 장식 그림 자리를 두지 않는다(제목만): 그림 칸을 책 아래 끝 가까이로(조판 규칙의 시작 위치·크기·간격은 그대로)
+  const t = spineTitleLayout(title, dims.H, dims.T * SPINE_FACE, 0.9, 0.93);
+  const fs = t.fontSize * s;
+  const font = Skia.Font(regular, fs);
+  const fm = font.getMetrics();
+  const gy = -(fm.ascent + fm.descent) / 2;
+  const colW = fs * 1.2;
+  const cols = [...t.columns].reverse();
+  const x0 = w / 2 - (cols.length * colW) / 2;
+  const rec = Skia.PictureRecorder();
+  const c = rec.beginRecording(Skia.XYWHRect(-w, -h, w * 3, h * 3));
+  const paints = inkPaints(ink, fs);
+  for (let ci = 0; ci < cols.length; ci++) {
+    const list: { ch: string; punct?: string }[] = [];
+    for (const ch of cols[ci]) {
+      if ((ch === ',' || ch === '.') && list.length) list[list.length - 1].punct = ch;
+      else list.push({ ch });
+    }
+    const cx = x0 + (ci + 0.5) * colW;
+    let y = t.textTop * h;
+    for (const cell of list) {
+      if (cell.ch === ' ') {
+        // 띄어쓰기(쉼표 뒤도): 시안처럼 반 글자 남짓 띄운다
+        y += fs * 0.5;
+        continue;
+      }
+      const ch = fs * t.pitch;
+      const gw = font.measureText(cell.ch).width;
+      const cy = y + ch / 2;
+      for (const p of paints) {
+        c.drawText(cell.ch, cx - gw / 2, cy + gy, p, font);
+        if (cell.punct) c.drawText(cell.punct, cx + gw / 2 - fs * 0.05, cy + fs * 0.5, p, font);
+      }
+      y += ch;
+    }
   }
+  return rec.finishRecordingAsPicture();
+}
+
+// 눕힌 책등 제목(가로 한 줄): 책등 면 그림 좌표에서 머리(위) → 꼬리(아래) 방향으로 쓰고, 글자 위쪽은 앞표지 쪽(그림 오른쪽)을 향한다.
+// 눕힘(roll −90)에서 머리가 왼쪽·앞표지가 위라 화면에서 왼쪽 → 오른쪽으로 바로 읽힌다. 두께 방향 가운데.
+function lyingTitlePicture(title: string, dims: { T: number; H: number }, s: number, regular: SkTypeface, ink: string) {
+  const w = dims.T * s;
+  const h = dims.H * s;
+  const t = lyingTitleLayout(title, dims.H, dims.T);
+  const fs = t.fontSize * s;
+  const font = Skia.Font(regular, fs);
+  const fm = font.getMetrics();
+  const gy = -(fm.ascent + fm.descent) / 2;
+  const rec = Skia.PictureRecorder();
+  const c = rec.beginRecording(Skia.XYWHRect(-w, -h, w * 3, h * 3));
+  const paints = inkPaints(ink, fs);
+  c.save();
+  c.translate(w / 2, t.start * h);
+  c.rotate(90, 0, 0);
+  let x = 0;
+  for (const ch of [...t.text]) {
+    if (ch === ' ') {
+      x += fs * 0.32;
+      continue;
+    }
+    for (const p of paints) c.drawText(ch, x, gy, p, font);
+    x += font.measureText(ch).width + fs * LYING_TRACK;
+  }
+  c.restore();
   return rec.finishRecordingAsPicture();
 }
 
@@ -111,11 +169,13 @@ function bandColor(img: SkImage, fw: number, fh: number, x0: number, y0: number,
   }
   return rgbHex(r / n, g / n, b / n);
 }
-export const toneOf = (b: Book, cover: boolean) => (cover ? b.cover?.edge : undefined) ?? faceOf(b);
+// 몸체 색(판 두 장·책등이 같은 색). cover 인자는 예전 호출과 맞추려고 남겨 둔다(앞표지·뒤표지·책등이 모두 같은 색).
+export const toneOf = (b: Book, _cover?: boolean) => faceOf(b);
 
 export const RIBBON_OUT = 12; // 시안: 갈피가 책 위로 약 13DU
-export const SPINE_FACE = 0.94; // 책등 글자·그림이 놓이는 폭(오른쪽 끝은 옆면으로 꺾이는 곳)
+export const SPINE_FACE = 0.94; // 세운 책등 제목 크기를 정할 때 쓰는 폭(책등 폭의 94%. 글자는 책등 가운데)
 
+// 갈피 끈: 균일한 무광 색(외곽선·광택 없음). 두 번째 가닥은 조금 짧고 살짝 어둡다.
 function Ribbons({ book, s }: { book: Book; s: number }) {
   const n = Math.min(2, book.quotes ?? 0);
   const color = book.art.ribbon ?? shade(book.themeColor, 0.25);
@@ -129,7 +189,7 @@ function Ribbons({ book, s }: { book: Book; s: number }) {
       {Array.from({ length: n }, (_, i) => {
         const x = -total / 2 + i * (w + gap);
         return (
-          <Rect key={`slit${i}`} x={x - 0.4 * s} y={hidden - 0.7 * s} width={w + 0.8 * s} height={1.2 * s} color="rgba(96,74,52,0.22)">
+          <Rect key={`slit${i}`} x={x - 0.4 * s} y={hidden - 0.7 * s} width={w + 0.8 * s} height={1.2 * s} color="rgba(96,74,52,0.18)">
             <BlurMask blur={0.45 * s} style="normal" />
           </Rect>
         );
@@ -145,16 +205,11 @@ function Ribbons({ book, s }: { book: Book; s: number }) {
           { x: x + w, y: top + Math.max(0, -cut) - hidden },
           { x: x + w - 0.2 * s, y: hidden },
         ];
-        const tone = i ? shade(color, 0.12) : color;
+        const tone = i ? shade(color, -0.06) : color;
         const path = Skia.Path.Polygon(pts, true);
-        const tip = Skia.Path.Polygon([pts[1], pts[2], { x: pts[2].x, y: pts[2].y + 0.9 * s }, { x: pts[1].x, y: pts[1].y + 0.9 * s }], true);
         return (
           <Group key={i} transform={[{ translateX: x + w / 2 }, { translateY: hidden }, { rotate: ((i ? 4 : -6) * Math.PI) / 180 }, { translateX: -(x + w / 2) }, { translateY: -hidden }]}>
-            <Path path={path}>
-              <LinearGradient start={vec(x, 0)} end={vec(x + w, 0)} colors={[shade(tone, 0.12), tone, shade(tone, -0.1)]} positions={[0, 0.45, 1]} />
-            </Path>
-            <Path path={path} style="stroke" strokeWidth={0.45 * s} color={shade(tone, -0.25)} opacity={0.55} strokeJoin="round" />
-            <Path path={tip} color="#FFFFFF" opacity={0.18} />
+            <Path path={path} color={tone} />
           </Group>
         );
       })}
@@ -162,28 +217,28 @@ function Ribbons({ book, s }: { book: Book; s: number }) {
   );
 }
 
-// 속지 면(판 사이, 판 끝보다 안쪽). w×h DU를 배율 s로. 종이색 바탕 + 판과 나란한 종이 결 두 줄 + 판(과 책등 띠) 쪽 좁은 그늘.
+// 속지 면(판 사이, 판 끝보다 안쪽). w×h DU를 배율 s로. 밝은 아이보리 바탕 + 판과 나란한 옅은 종이 결 두 줄 + 판(과 책등 띠) 쪽 좁은 그늘.
 // 결·그늘은 책 좌표에 붙어 있어 세우기·눕히기·돌리기에도 같은 자리다. 밝기는 그릴 때 면마다 덧칠한다.
 function PageArt({ w, h, s, spineBand }: { w: number; h: number; s: number; spineBand: boolean }) {
   const W = w * s;
   const H = h * s;
-  const band = Math.max(0.9, Math.min(2.4, w * 0.14)) * s;
-  const rim = withAlphaHex(PAGE_RIM, 0.34);
+  const band = Math.max(0.8, Math.min(2.0, w * 0.12)) * s;
+  const rim = withAlphaHex(PAGE_RIM, 0.26);
   return (
     <Group clip={Skia.XYWHRect(0, 0, W, H)}>
       <Rect x={0} y={0} width={W} height={H} color={PAGE_BASE} />
       {[0.36, 0.68].map((u) => (
-        <Rect key={u} x={W * u - 0.25} y={1 * s} width={0.5} height={Math.max(0, H - 2 * s)} color={PAGE_LINE} opacity={0.14} />
+        <Rect key={u} x={W * u - 0.25} y={1 * s} width={0.5} height={Math.max(0, H - 2 * s)} color={PAGE_LINE} opacity={0.16} />
       ))}
       <Rect x={-band} y={-band} width={2 * band} height={H + 2 * band} color={rim}>
-        <BlurMask blur={0.9 * s} style="normal" />
+        <BlurMask blur={0.8 * s} style="normal" />
       </Rect>
       <Rect x={W - band} y={-band} width={2 * band} height={H + 2 * band} color={rim}>
-        <BlurMask blur={0.9 * s} style="normal" />
+        <BlurMask blur={0.8 * s} style="normal" />
       </Rect>
       {spineBand ? (
         <Rect x={-band} y={-band} width={W + 2 * band} height={2 * band} color={rim}>
-          <BlurMask blur={0.9 * s} style="normal" />
+          <BlurMask blur={0.8 * s} style="normal" />
         </Rect>
       ) : null}
     </Group>
@@ -206,63 +261,12 @@ async function buildArt(book: Book, s: number, dims: { T: number; H: number; W: 
   const regular = shared.regular!;
   const face = faceOf(book);
   const ink = inkOf(book);
-  // 책등
+  // 책등: 책 색 면 + 제목 두 가지(세로·가로). 장식 그림은 두지 않는다.
   const w = dims.T * s;
   const h = dims.H * s;
-  const fw = w * SPINE_FACE;
-  // 그림이 제목 아래가 아니라 책등 가운데 띠에 잡힌 장정(누운 책 끝 표식처럼 쓰는 모티프)은 제목 뒤 끝에 작게 둔다
-  const endMark = !!book.body && book.body.motifTop < 0.3;
-  const t = endMark
-    ? spineTitleLayout(book.title, dims.H, fw / s, 0.82, 1.12)
-    : spineTitleLayout(book.title, dims.H, fw / s, book.body?.motifTop ?? 0.58, book.body?.motifBottom ?? 0.93);
-  const art = book.body && t.artTop !== book.body.motifTop ? { ...book.body, motifTop: t.artTop } : book.body;
-  const spine = await record(<SpineFaceArt w={w} h={h} s={s} face={face} art={art} grain={shared.grain} motif={motif} />, w, h);
-  const fs = t.fontSize * s;
-  // 책등 글자: 보통 굵기(시안처럼 획이 가늘어 좁은 책등에서 튀지 않게)
-  const font = Skia.Font(regular, fs);
-  const cells: Cell[] = [];
-  const colW = fs * 1.2;
-  const cols = [...t.columns].reverse();
-  const x0 = fw / 2 - (cols.length * colW) / 2;
-  for (let c = 0; c < cols.length; c++) {
-    const list: { ch: string; punct?: string }[] = [];
-    for (const ch of cols[c]) {
-      if ((ch === ',' || ch === '.') && list.length) list[list.length - 1].punct = ch;
-      else list.push({ ch });
-    }
-    let y = t.textTop * h;
-    let yl = t.textTop * h;
-    const lieFs = fs * Math.min(1, (0.42 * dims.T) / t.fontSize);
-    for (const cell of list) {
-      if (cell.ch === ' ') {
-        // 띄어쓰기(쉼표 뒤도): 시안처럼 반 글자 남짓 띄운다
-        y += fs * 0.5;
-        yl += lieFs * 0.35;
-        continue;
-      }
-      const ch = fs * t.pitch;
-      const gw = font.measureText(cell.ch).width;
-      const fm = font.getMetrics();
-      const gy = -(fm.ascent + fm.descent) / 2;
-      const pic = glyphPicture(cell.ch, cell.punct, font, fs, gw, gy, ink);
-      cells.push({ cx: x0 + (c + 0.5) * colW, cy: y + ch / 2, cyLie: yl + (lieFs * 1.02) / 2, ch: cell.ch, pic });
-      y += ch;
-      yl += lieFs * 1.02 + (cell.punct ? lieFs * 0.3 : 0);
-    }
-  }
-  // 작은 모티프(바로 세울 수 있게 따로)
-  let motifCell: BookArt['motif'] = null;
-  const r = spineMotifRect(art, motif, h, fw);
-  if (r && motif) {
-    motifCell = { image: motif, svg: null, cx: r.x + r.w / 2, cy: r.y + r.h / 2, w: r.w, h: r.h };
-  } else if (!book.body && book.art.motif !== 'none') {
-    const svg = Skia.SVG.MakeFromString(motifSvg(book.art.motif, book.art.accentColor ?? ink));
-    const top = t.artTop * h;
-    const mh = (h * 0.93 - top) * 0.9;
-    const mw = Math.min(fw * 0.8, (mh * 24) / 60);
-    const mH = (mw * 60) / 24;
-    if (svg) motifCell = { image: null, svg, cx: fw / 2, cy: h * 0.93 - mH / 2, w: mw, h: mH };
-  }
+  const spine = await record(<SpineFaceArt w={w} h={h} face={face} />, w, h);
+  const titleV = verticalTitlePicture(book.title, dims, s, regular, ink);
+  const titleH = lyingTitlePicture(book.title, dims, s, regular, ink);
   // 표지(앞표지 그림 + 제목·저자)
   const cw = dims.W * s;
   const cover = book.cover;
@@ -278,8 +282,7 @@ async function buildArt(book: Book, s: number, dims: { T: number; H: number; W: 
   // 제목 색: 제목이 놓이는 그림 띠의 실제 색에 대해 공통 규칙으로(밝으면 먹색, 어두우면 따뜻한 밝은색)
   const bandW = Math.min(cw * 0.84, Math.max(...lines.map((l) => cfont.measureText(l).width)) + cfs);
   const band = coverImg ? bandColor(coverImg, cw, h, cw / 2 - bandW / 2, top, cw / 2 + bandW / 2, top + lines.length * lh + cfs) : null;
-  const cink = band ? titleInk(band) : titleInk(toneOf(book, true));
-  const ainkc = cink;
+  const cink = band ? titleInk(band) : titleInk(face);
   const lineEls = lines.map((line, i) => {
     const chars = [...line];
     const ws = chars.map((c) => (c === ' ' ? cfs * 0.32 : cfont.measureText(c).width));
@@ -306,8 +309,9 @@ async function buildArt(book: Book, s: number, dims: { T: number; H: number; W: 
     }
     const am = afont.getMetrics();
     const ay = top + lines.length * lh + cfs * 0.2 - am.ascent;
-    authorEl = <Text x={cw / 2 - aw / 2} y={ay} text={book.author} font={afont} color={ainkc} opacity={0.8} />;
+    authorEl = <Text x={cw / 2 - aw / 2} y={ay} text={book.author} font={afont} color={cink} opacity={0.8} />;
   }
+  // 표지 장식(그림이 없는 책): 모티프는 표지에만 둔다(책등에는 제목만)
   let coverMotif: ReactNode = null;
   if (!cover && !book.body && book.art.motif !== 'none') {
     const svg = Skia.SVG.MakeFromString(motifSvg(book.art.motif, book.art.accentColor ?? ink));
@@ -317,7 +321,7 @@ async function buildArt(book: Book, s: number, dims: { T: number; H: number; W: 
   }
   const coverPic = await record(
     <Group>
-      <CoverFaceArt id={book.id} w={cw} h={h} s={s} face={face} tone={toneOf(book, true)} image={coverImg} motif={book.body ? motif : null} grain={shared.grain} />
+      <CoverFaceArt w={cw} h={h} s={s} face={face} tone={face} image={coverImg} motif={book.body ? motif : null} />
       {coverMotif}
       {lineEls}
       {authorEl}
@@ -331,19 +335,20 @@ async function buildArt(book: Book, s: number, dims: { T: number; H: number; W: 
   const pw = dims.T - 2 * rig.bd;
   const pageEnd = await record(<PageArt w={pw} h={dims.W - rig.sq - rig.sp} s={s} spineBand />, pw * s, (dims.W - rig.sq - rig.sp) * s);
   const pageFore = await record(<PageArt w={pw} h={dims.H - 2 * rig.sq} s={s} spineBand={false} />, pw * s, (dims.H - 2 * rig.sq) * s);
-  return { spine, cells, font, ink, motif: motifCell, fontDU: t.fontSize, cover: coverPic, ribbons, pageEnd, pageFore };
+  return { spine, titleV, titleH, cover: coverPic, ribbons, pageEnd, pageFore };
 }
 
 // 책 한 권의 기록된 그림(없으면 null → 다음 렌더에서 채워진다)
 // shared는 캔버스 밖에서 읽어 넘긴다(Skia 캔버스 안은 별도 렌더러라 React 컨텍스트가 닿지 않는다)
 export function useBookArt(book: Book, s: number, dims: { T: number; H: number; W: number }, shared: Shared): BookArt | null {
-  const motif = useImage(book.body?.motif ?? null);
-  const coverImg = useImage((book.cover?.image as number) ?? null);
-  const needMotif = !!book.body?.motif;
+  // 모티프 그림은 표지에만 쓴다(그림 없는 표지의 장식). 책등에는 제목만.
+  const needMotif = !!book.body?.motif && !book.cover?.image;
   const needCover = !!book.cover?.image;
-  const ready = shared.regular && shared.grain && (!needMotif || motif) && (!needCover || coverImg);
-  // 장정(책등 색·모티프)·저자가 바뀌면 다시 기록한다(같은 책 id라도)
-  const key = `${book.id}|${s.toFixed(4)}|${dims.T.toFixed(3)}|${dims.H.toFixed(3)}|${dims.W.toFixed(3)}|${book.title}|${book.author ?? ''}|${book.quotes ?? 0}|${book.themeColor}|${book.art.motif}|${book.art.ribbon ?? ''}`;
+  const motif = useImage(needMotif ? (book.body?.motif ?? null) : null);
+  const coverImg = useImage((book.cover?.image as number) ?? null);
+  const ready = shared.regular && (!needMotif || motif) && (!needCover || coverImg);
+  // 장정(책 색·모티프)·저자가 바뀌면 다시 기록한다(같은 책 id라도)
+  const key = `${book.id}|${s.toFixed(4)}|${dims.T.toFixed(3)}|${dims.H.toFixed(3)}|${dims.W.toFixed(3)}|${book.title}|${book.author ?? ''}|${book.quotes ?? 0}|${faceOf(book)}|${book.art.motif}|${book.art.ribbon ?? ''}`;
   const [art, setArt] = useState<{ key: string; art: BookArt } | null>(() => (done.has(key) ? { key, art: done.get(key)! } : null));
   useEffect(() => {
     if (!ready) return;

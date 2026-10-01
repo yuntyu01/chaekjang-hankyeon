@@ -96,6 +96,46 @@ export function spineTitleLayout(title: string, hDU: number, faceDU: number, art
   return { ...layoutVerticalTitle(title, (0.85 - 0.08) * hDU - 4, faceDU, [MIN], 2, 1.1), textTop: 0.08, artTop: 0.85 };
 }
 
+// 책등 제목 조판을 바꾸는 눕힘 정도(|roll|, 도): 세로 조판(세운 책등)은 from~mid에서 옅어져 사라지고, 가로 조판(눕힌 책등)은
+// mid~to에서 나타난다. 몸체는 경로대로 계속 돌고(면 변환), 글자는 각 조판 그대로 책등 면에 붙어 있다(몸체 회전과 조판 변경은 따로).
+// 두 조판이 겹쳐 제목이 두 번 보이는 때가 없게 차례로 바꾼다. mid 45°는 자세 판정(눕힘/세움)의 경계와 같다.
+export const TITLE_SWAP = { from: 36, mid: 45, to: 54 };
+function smoothstep(a: number, b: number, v: number) {
+  'worklet';
+  const t = Math.max(0, Math.min(1, (v - a) / (b - a)));
+  return t * t * (3 - 2 * t);
+}
+export function titleOpacity(roll: number) {
+  'worklet';
+  const r = Math.abs(roll);
+  return { v: 1 - smoothstep(TITLE_SWAP.from, TITLE_SWAP.mid, r), h: smoothstep(TITLE_SWAP.mid, TITLE_SWAP.to, r) };
+}
+
+// 눕힌 책등 제목 조판(가로 한 줄). 세운 책등의 세로 조판과 따로 정하고, 몸체 회전과 상관없이 자세(눕힘)에 따라 바꿔 보인다.
+// 시안(느린 계절 눕힘): 머리 쪽 끝에서 길이의 약 12%부터 한 줄, 글자는 책등 두께의 약 0.4, 두께 방향 가운데.
+// 길이: 글자 1, 띄어쓰기 0.32, 자간 6%(표지 조판과 같은 셈). 넘치면 크기를 줄이고(7.5DU까지), 그래도 넘치면 말줄임.
+export const LYING_START = 0.12;
+const LYING_END = 0.08;
+export const LYING_TRACK = 0.06;
+const lineUnits = (s: string) => [...s].reduce((n, ch) => n + (ch === ' ' ? 0.32 : 1), 0) * (1 + LYING_TRACK);
+export type LyingTitle = { fontSize: number; text: string; start: number };
+export function lyingTitleLayout(title: string, hDU: number, tDU: number): LyingTitle {
+  const text0 = title.trim().replace(/\s+/g, ' ');
+  const room = hDU * (1 - LYING_START - LYING_END);
+  const target = Math.max(7.5, Math.min(11, tDU * 0.4));
+  const fit = room / Math.max(1, lineUnits(text0));
+  if (fit >= target) return { fontSize: Math.round(target * 10) / 10, text: text0, start: LYING_START };
+  if (fit >= 7.5) return { fontSize: Math.floor(fit * 10) / 10, text: text0, start: LYING_START };
+  // 가장 작은 크기에서도 넘치면 들어가는 만큼만 남기고 말줄임
+  const cap = room / 7.5;
+  let out = '';
+  for (const ch of [...text0]) {
+    if (lineUnits(out + ch + '⋯') > cap) break;
+    out += ch;
+  }
+  return { fontSize: 7.5, text: `${out.trimEnd()}⋯`, start: LYING_START };
+}
+
 // 앞표지 제목 조판(장정 규칙). 시안: 제목은 표지 폭의 약 8~9%, 보통 굵기, 하늘·빈 곳에 여유 있게 1~2줄.
 // 목표 크기에서 한 줄이 표지 폭의 84%를 넘으면 단어를 깨지 않고 가장 고르게 2줄(그래도 넘치면 3줄), 그래도 넘치면 그때만 줄인다.
 export const COVER_LINE_H = 1.45;

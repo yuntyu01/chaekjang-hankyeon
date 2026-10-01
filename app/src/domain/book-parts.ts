@@ -10,8 +10,8 @@ import type { Book3, FaceId, Vec3 } from './book3';
 type Dims = Book3['dims'];
 
 export const BOARD = { min: 1.1, max: 1.8, k: 0.08 }; // 판 두께 = 책 두께 × k (DU, 범위 안)
-export const SQUARE = 1.6; // 판이 속지보다 나온 길이(DU)
-export const CORNER_R = 3.0; // 보이는 윤곽 모서리 둥글기(DU): 모든 책·모든 자세에 같은 규칙
+export const SQUARE = 1.2; // 판이 속지보다 나온 길이(DU): 속지 묶음이 판보다 조금 안쪽에 들어가 있다
+export const CORNER_R = 1.8; // 보이는 윤곽 모서리 둥글기(DU): 모든 책·모든 자세에 같은 규칙(작게 둥글린 모서리)
 // 표지 판의 제본 홈: 책등 쪽 변에서 at(DU) 안쪽의 좁은 그늘(dark 폭)과 그 바로 뒤(gap)의 가는 밝음(lit 폭).
 // 앞표지 그림과 판 면(뒤표지·비스듬한 앞표지 덮개)이 같은 규칙을 쓴다.
 export const GROOVE = { at: 5, dark: 0.8, lit: 0.6, gap: 0.9 };

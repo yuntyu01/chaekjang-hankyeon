@@ -63,7 +63,7 @@ export function pageGeom(cam: Cam, b: Book3, f: 'head' | 'tail' | 'fore', px: Af
   return { ok: true, opening: pf.opening.map(P), pageM: panelMatrix(b, pf.page, cam, px), rims: pf.rims.map((r) => r.map(P)), walls };
 }
 
-// 책 전체의 투영 윤곽(8 꼭짓점의 볼록 껍질)을 모서리마다 같은 반지름으로 깎은 모양(캔버스 px). 짧은 변에서는 반지름을 줄인다.
+// 책 전체의 투영 윤곽(8 꼭짓점의 볼록 껍질)을 모서리마다 같은 작은 반지름으로 깎은 모양(캔버스 px). 짧은 변에서는 반지름을 줄인다.
 export function silhouette(cam: Cam, b: Book3, px: Affine): Point[] {
   'worklet';
   const pts = hull(
@@ -81,7 +81,8 @@ export function silhouette(cam: Cam, b: Book3, px: Affine): Point[] {
     const e = pts[(i + 1) % n];
     const la = Math.hypot(a.x - c.x, a.y - c.y) || 1;
     const le = Math.hypot(e.x - c.x, e.y - c.y) || 1;
-    const k = Math.min(r, la * 0.45, le * 0.45);
+    // 짧은 변(3°에서 비스듬한 윤곽 변은 약 6DU)에서도 이웃 모서리가 한 곡선으로 합쳐지지 않게 변 길이의 30%까지만 깎는다
+    const k = Math.min(r, la * 0.3, le * 0.3);
     const p0 = { x: c.x + ((a.x - c.x) * k) / la, y: c.y + ((a.y - c.y) * k) / la };
     const p1 = { x: c.x + ((e.x - c.x) * k) / le, y: c.y + ((e.y - c.y) * k) / le };
     // 모서리 곡선(2차 베지어, 꼭짓점이 조절점)

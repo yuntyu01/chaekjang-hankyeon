@@ -1,5 +1,5 @@
 import { contrast, shade, titleInk, TITLE_DARK, TITLE_LIGHT } from '../color';
-import { coverTitleLayout, layoutVerticalTitle, spineTitleLayout } from '../title-layout';
+import { coverTitleLayout, layoutVerticalTitle, LYING_START, lyingTitleLayout, spineTitleLayout, titleOpacity, TITLE_SWAP } from '../title-layout';
 
 describe('세로 제목 조판', () => {
   it('짧은 제목은 한 열', () => {
@@ -80,3 +80,50 @@ describe('책등 제목(장정 규칙)', () => {
     expect(spineTitleLayout('달러구트 꿈 백화점', 205, 27.5, 0.65).pitch).toBeLessThan(1.5);
   });
 });
+
+describe('눕힌 책등 제목(가로 한 줄)', () => {
+  // 길이 셈(조판 함수와 같은 규칙): 글자 1, 띄어쓰기 0.32, 자간 6%
+  const span = (t: string, fs: number) => [...t].reduce((n, ch) => n + (ch === ' ' ? 0.32 : 1), 0) * 1.06 * fs;
+  it('머리 쪽 끝에서 길이의 12%부터, 글자는 두께의 약 40%(11DU 넘지 않음)', () => {
+    const r = lyingTitleLayout('불편한 편의점', 156, 22.6);
+    expect(r.start).toBe(LYING_START);
+    expect(r.text).toBe('불편한 편의점');
+    expect(r.fontSize).toBeCloseTo(22.6 * 0.4, 1);
+    expect(lyingTitleLayout('나미야 잡화점의 기적', 160, 36.4).fontSize).toBe(11);
+  });
+  it('한 줄이 책 길이(앞 12%·뒤 8% 빼고)를 넘지 않게 줄이고, 7.5DU 아래로는 줄이지 않고 말줄임', () => {
+    for (const [title, h, t] of [['우리가 빛의 속도로 갈 수 없다면', 152.5, 31.3], ['나미야 잡화점의 기적', 133, 30], ['모순', 143, 29]] as const) {
+      const r = lyingTitleLayout(title, h, t);
+      expect(r.fontSize).toBeGreaterThanOrEqual(7.5);
+      expect(span(r.text, r.fontSize)).toBeLessThanOrEqual(h * 0.8 + 1e-6);
+    }
+    const long = lyingTitleLayout('아주 아주 아주 아주 긴 제목이 들어간 아주 긴 책', 100, 24);
+    expect(long.fontSize).toBe(7.5);
+    expect(long.text.endsWith('⋯')).toBe(true);
+    expect(span(long.text, long.fontSize)).toBeLessThanOrEqual(100 * 0.8 + 1e-6);
+  });
+  it('띄어쓰기는 하나로 모은다(앞뒤 공백 제거)', () => {
+    expect(lyingTitleLayout('  아무튼,   서재 ', 133, 22).text).toBe('아무튼, 서재');
+  });
+});
+
+describe('책등 제목 조판 바꾸기(세움 ↔ 눕힘)', () => {
+  it('세로 조판이 사라진 뒤 가로 조판이 나타난다: 두 조판이 함께 보이는 각도가 없다', () => {
+    expect(titleOpacity(0)).toEqual({ v: 1, h: 0 });
+    expect(titleOpacity(-7)).toEqual({ v: 1, h: 0 }); // 기대기
+    expect(titleOpacity(-90)).toEqual({ v: 0, h: 1 }); // 눕힘
+    expect(titleOpacity(TITLE_SWAP.mid)).toEqual({ v: 0, h: 0 });
+    for (let a = 0; a <= 90; a += 0.5) {
+      const o = titleOpacity(-a);
+      expect(o.v === 0 || o.h === 0).toBe(true);
+      expect(o.v).toBeGreaterThanOrEqual(0);
+      expect(o.h).toBeLessThanOrEqual(1);
+    }
+    // 바뀌는 구간 안에서 차례로 옅어지고 나타난다
+    expect(titleOpacity(40).v).toBeGreaterThan(0);
+    expect(titleOpacity(40).v).toBeLessThan(1);
+    expect(titleOpacity(50).h).toBeGreaterThan(0);
+    expect(titleOpacity(50).h).toBeLessThan(1);
+  });
+});
+
