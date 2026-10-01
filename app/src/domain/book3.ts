@@ -5,10 +5,11 @@
 //   세움 = (roll 기대기 각, yaw 0), 눕힘 = (roll -90: 책등이 앞, 앞표지가 위, 뒤표지가 받침, 머리가 왼쪽), 표지 전시 = (roll 0, yaw 90: 앞표지가 앞, 아래 면이 받침).
 // 선반 공간(월드): x 오른쪽, y 위, z 벽 쪽. 월드 점 = R·책좌표 + t.
 // 워클릿은 만들어질 때 쓰는 함수를 붙잡으므로, 쓰이는 함수를 먼저 정의한다.
+import type { Cam, Vec3 } from './camera';
 import type { Placed } from './box';
 import type { Pose } from './types';
 
-export type Vec3 = { x: number; y: number; z: number };
+export type { Cam, Vec3 };
 export type Dims = { T: number; H: number; W: number };
 export type Book3 = { id: string; dims: Dims; roll: number; yaw: number; t: Vec3; spin?: number; pitch?: number };
 
@@ -101,9 +102,7 @@ export function faceFrame(d: Dims, f: 'spine' | 'cover'): { O: Vec3; U: Vec3; V:
   return { O: { x: d.T, y: d.H, z: 0 }, U: { x: 0, y: 0, z: d.W }, V: { x: 0, y: -d.H, z: 0 }, w: d.W, h: d.H };
 }
 
-// 카메라(직교 + 사선): 깊이 1이 화면 오른쪽 kx, 위 ky. 보이는 면 = 법선이 (kx, ky, -1) 쪽을 향함.
-export type Cam = { kx: number; ky: number };
-
+// 카메라(domain/camera, 직교 + 사선): 깊이 1이 화면 오른쪽 kx, 위 ky. 보이는 면 = 법선이 (kx, ky, -1) 쪽을 향함.
 export function facing(cam: Cam, b: Book3, f: FaceId) {
   'worklet';
   const n = rot(b.roll, b.yaw, faceNormal(f), b.spin ?? 0, b.pitch ?? 0);
@@ -300,7 +299,7 @@ export function depthKey(b: Book3) {
   const x = (x0 + x1) / 2;
   // 뒤(깊이 큰) → 앞, 아래 → 위, 옆면이 보이는 쪽 반대편부터(오른쪽 옆면이 보이면 왼쪽 책부터: 오른쪽 이웃 앞면이 가린다)
   // 쌓인 책(y > 0)은 받침 책보다 깊이가 조금 뒤여도 위에 얹혀 있으므로 나중에 그린다(y 가중이 깊이보다 크다)
-  return -z * 10 + y * 20 + (VIEW_BY_POSITION ? -Math.abs(x - VIEW_MID) : x) * 0.0001;
+  return -z * 10 + y * 20 + x * 0.0001;
 }
 
 // ---------- 가림 순서(그리는 순서) ----------
@@ -416,17 +415,4 @@ export function xRange(b: Book3) {
     hi = Math.max(hi, q.x);
   }
   return { lo, hi };
-}
-
-// 가로 시점: 선반 가운데보다 왼쪽 책은 오른쪽 옆면이, 오른쪽 책은 왼쪽 옆면이, 가운데 책은 거의 정면만 보인다.
-// 책 가운데 x(선반 공간)에 따라 카메라 kx를 바꾼다(줄의 ky는 그대로). 책이 움직이면 보이는 옆면도 따라 바뀐다.
-export const VIEW_MID = 183; // 선반 사용 폭의 가운데(DU)
-// 지시서(3D 배치) 7.1: 직교 카메라에서 화면 좌우 위치만으로 보이는 옆면을 뒤집지 않는다 → 기본은 끔(모든 책이 같은 쪽 옆면).
-export const VIEW_BY_POSITION = false;
-export function viewCam(base: Cam, b: Book3): Cam {
-  'worklet';
-  if (!VIEW_BY_POSITION) return base;
-  const c = toWorld(b, { x: b.dims.T / 2, y: b.dims.H / 2, z: b.dims.W / 2 });
-  const v = Math.max(-1, Math.min(1, (c.x - VIEW_MID) / VIEW_MID));
-  return { kx: -Math.abs(base.kx) * v, ky: base.ky };
 }

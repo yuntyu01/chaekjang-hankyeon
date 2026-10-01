@@ -1,5 +1,5 @@
 import { boxSize, collide, CONTACT, frontPoly, project, silhouette, solveLean, visibleFaces, type Placed } from '../box';
-import { LYING_BACK_Z, SHELF } from '../geometry';
+import { LYING_BACK_Z } from '../geometry';
 import { SAMPLE_BOOKS } from '../onboarding-sample';
 import { PLANK_BOUNDS } from '../shelf-scene';
 
@@ -27,7 +27,10 @@ describe('책 상자', () => {
   it('깊이는 화면에서 오른쪽 위로 밀린다', () => {
     const a = project(cam, { x: 0, y: 0, z: 0 });
     const b = project(cam, { x: 0, y: 0, z: 100 });
-    expect(a.y).toBeCloseTo(SHELF.clearHeight);
+    // 원점 = 책 기준선 왼쪽 끝(판 윗면): 바닥 점은 화면 0, 위로 갈수록 -(화면 y는 아래가 +)
+    expect(a.x).toBeCloseTo(0);
+    expect(a.y).toBeCloseTo(0);
+    expect(project(cam, { x: 0, y: 10, z: 0 }).y).toBeCloseTo(-10);
     expect(b.x - a.x).toBeCloseTo(7);
     expect(a.y - b.y).toBeCloseTo(4.5);
   });

@@ -2,14 +2,16 @@
 // 선반 공간: x = 선반 판 안쪽 왼쪽에서 오른쪽(DU), y = 선반 바닥에서 위(DU), z = 책 줄 앞선에서 벽 쪽(DU).
 // 카메라는 앱 전체에 하나: 직교 투영 + 고정 사선(깊이 1DU가 화면에서 오른쪽 kx, 위로 ky). 줄·가로 위치로 바뀌지 않는다.
 // 역할: 그리기는 투영(project/faces), 충돌·기대기는 선반 공간(collide/solveLean), 터치는 투영 외곽(silhouette).
-import { bookHeight, bookThickness, frontWidth, SHELF } from './geometry';
+import { project, type Cam } from './camera';
+import { bookHeight, bookThickness, frontWidth } from './geometry';
 import { fromPlaced, gap } from './book3';
 import { firstContact } from './lean';
 import type { Point } from './shelf-scene';
 import type { Book, Pose } from './types';
 
-export type Camera = { kx: number; ky: number };
-export type Vec3 = { x: number; y: number; z: number };
+export type Camera = Cam;
+export type { Vec3 } from './camera';
+export { project };
 
 // 선반 공간에서 상자가 차지하는 크기: w = 가로(x), h = 높이(y), d = 깊이(z)
 export type BoxSize = { w: number; h: number; d: number };
@@ -99,13 +101,7 @@ export function frontPoly(p: Placed): Point[] {
   return base.map((q) => ({ x: pivot.x + (q.x - pivot.x) * c - (q.y - pivot.y) * s, y: pivot.y + (q.x - pivot.x) * s + (q.y - pivot.y) * c }));
 }
 
-// 선반 공간 → 장면 좌표(기존 프레임과 같은 좌표: x 그대로, y 아래로 증가, 바닥 = SHELF.clearHeight)
-export function project(cam: Camera, v: Vec3): Point {
-  'worklet';
-  return { x: v.x + v.z * cam.kx, y: SHELF.clearHeight - v.y - v.z * cam.ky };
-}
-
-function at(q: Point, z: number): Vec3 {
+function at(q: Point, z: number): { x: number; y: number; z: number } {
   'worklet';
   return { x: q.x, y: q.y, z };
 }

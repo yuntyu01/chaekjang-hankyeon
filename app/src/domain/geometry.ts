@@ -1,42 +1,17 @@
 // 책 형상 계산. 모든 값은 설계 단위(DU, 기준 폭 390)이며 화면에서는 scale을 곱한다.
+// 카메라(보기 각·사선)는 domain/camera 하나뿐이다. 여기 값들은 카메라와 상관없는 3D 구조다.
+import { BASE_CAM, kyOf, VIEW_KX, VIEW_PITCH_MAX, VIEW_PITCH_MIN } from './camera';
 import { frontExtent } from './front-pose';
-import { SHELF_ASSET } from './shelf-asset.generated';
-import type { Book, BookPlacement, HeightClass, ThicknessClass, Tilt } from './types';
+import type { Book, BookPlacement, HeightClass, ThicknessClass } from './types';
+
+export { kyOf, VIEW_KX, VIEW_PITCH_MAX, VIEW_PITCH_MIN };
 
 export const DESIGN_WIDTH = 390;
-
-// 선반 표현 방식.
-// 'asset': assets/bookshelf/shelf-plank.png(받은 v4에서 바깥 그림자를 분리한 나무판만). 그림자는 ShelfShadow가 그린다. 기본.
-// 'drawn': 코드로 그리는 판(PNG가 없을 때의 대체).
-export const SHELF_STYLE = 'asset' as 'drawn' | 'asset';
-
-// 선반 이미지는 원본 비율 그대로. 폭은 투명 여백이 아니라 나무판 바운딩 박스(plankLeft~plankRight)가
-// 화면 좌우 PLANK_INSET 여백에 맞도록 계산하고, 이미지 오프셋도 그에 맞춘다(양 끝이 보이게).
 export const PLANK_INSET = 2;
-export const SHELF_IMG_W = (DESIGN_WIDTH - PLANK_INSET * 2) / (SHELF_ASSET.plankRight - SHELF_ASSET.plankLeft);
-// 선반 두께: 윗면·앞면을 세로로 THICKNESS배(나무판 PNG는 결이 가로라 세로로 늘려도 티가 나지 않는다)
-export const SHELF_THICKNESS = 0.8;
-export const SHELF_IMG_H = ((SHELF_IMG_W * SHELF_ASSET.height) / SHELF_ASSET.width) * SHELF_THICKNESS;
-export const SHELF_IMG_X = PLANK_INSET - SHELF_ASSET.plankLeft * SHELF_IMG_W;
 
-// 시안(941px → 390DU)에서 잰 선반 치수
-const PLANK_TOP = 6; // 윗면: 책 앞으로 또렷하게 보이게 시안보다 깊게
-const PLANK_FRONT = 11.5; // 앞면
-
-const asset = SHELF_STYLE === 'asset';
 const USABLE_LEFT = 12;
 const USABLE_W = DESIGN_WIDTH - USABLE_LEFT * 2;
 const DU_MM = USABLE_W / 480; // 선반 안쪽 480mm = 사용 폭(SHELF_LENGTH_MM과 같은 비율)
-
-// ---------- 공통 카메라(선반과 책이 같은 것을 쓴다) ----------
-// 직교 투영으로 살짝 내려다본다. 선반 공간(x 오른쪽, y 위, z 벽 쪽)의 점이 화면(설계 단위, 아래가 +)으로:
-//   화면 x = x + z·kx,  화면 y = 바닥 - (y + z·tanφ)
-// 정확한 직교식 -(y·cosφ + z·sinφ)과는 화면 전체 세로 배율(1/cosφ, 3°에서 0.14%)만 다르다.
-// 3°·kx 0.035: 시안(거의 눈높이)에 가깝게 윗면·옆면을 줄이면서 돌린 눕힌 책의 기울기는 남기는 값(6°·2°와 비교해 정함).
-// 같은 높이라도 깊이가 다르면 화면 높이가 달라진다(벽 쪽일수록 위). kx는 옆면을 조금 보이게 하는 사선이다(카메라 좌우 회전 아님).
-export const VIEW_PITCH_DEG = 3;
-export const VIEW_KY = Math.tan((VIEW_PITCH_DEG * Math.PI) / 180);
-export const VIEW_KX = 0.035;
 
 // ---------- 선반 판(3D) ----------
 // 깊이(선반 공간 z, 책 줄 기준): 판 앞 끝 z = -SHELF_FRONT, 책 기준선 z = 0, 뒷벽 z = SHELF_DEPTH.
@@ -46,28 +21,21 @@ export const SHELF_FRONT_MM = 70;
 export const SHELF_DEPTH_MM = SHELF_TOTAL_DEPTH_MM - SHELF_FRONT_MM;
 export const SHELF_DEPTH = SHELF_DEPTH_MM * DU_MM;
 export const SHELF_FRONT = SHELF_FRONT_MM * DU_MM;
-// 판 두께(앞면 높이, DU): 지금 화면의 앞면 두께 그대로
-export const SHELF_THICK = (SHELF_ASSET.frontBottomY - SHELF_ASSET.frontTopY) * SHELF_IMG_H;
-// 판 좌우 끝(선반 공간 x). 책 줄(0 ~ 사용 폭)을 덮고, 사선(kx)으로 투영했을 때
-// 앞 왼쪽 모서리와 뒤 오른쪽 모서리가 화면 양 끝에서 PLANK_INSET 안쪽에 오도록 정한다.
+// 판 두께(앞면 높이): 예전 선반 그림 비율에서 잰 값(8.81DU)을 mm로 고정
+export const SHELF_THICK_MM = 11.554;
+export const SHELF_THICK = SHELF_THICK_MM * DU_MM;
+// 판 좌우 끝(선반 공간 x). 책 줄(0 ~ 사용 폭)을 덮고, 기본 사선(kx)으로 투영했을 때
+// 앞 왼쪽 모서리와 뒤 오른쪽 모서리가 화면 양 끝에서 PLANK_INSET 안쪽에 오도록 정한 길이(kx는 보기 각과 무관한 상수).
 export const SHELF_X0 = PLANK_INSET - USABLE_LEFT + SHELF_FRONT * VIEW_KX;
 export const SHELF_X1 = DESIGN_WIDTH - PLANK_INSET - USABLE_LEFT - SHELF_DEPTH * VIEW_KX;
 
 export const SHELF = {
-  sideMargin: USABLE_LEFT, // 장면 x=0의 화면 설계 좌표(drawn: 선반 판 왼쪽 끝)
+  sideMargin: USABLE_LEFT, // 선반 공간 x=0의 화면 설계 좌표
   innerLeft: 0,
   innerRight: 0,
   gap: 0, // 책 사이 기본 간격(시안: 서로 맞닿음)
-  clearHeight: 178, // 장면 좌표의 바닥(y) 값
-  rowGap: 0, // 앞턱 아래 ~ 다음 줄
-  rowTopPad: 2, // 가장 높은 책(갈피 포함) 위 여백: 시안처럼 위 선반 바로 밑까지
+  rowTopPad: 2, // 가장 높은 책(갈피 포함) 위 여백(기본 3°에서): 시안처럼 위 선반 바로 밑까지
   minClear: 110,
-  plankTop: PLANK_TOP,
-  plankFront: PLANK_FRONT,
-  // 책 줄 바닥선(화면 y = 바닥) 기준 화면 거리(DU). 모두 위 카메라로 3D 판을 투영한 값.
-  back: asset ? SHELF_DEPTH * VIEW_KY : 0, // 바닥선 → 윗면 뒤 모서리(벽)
-  lip: asset ? SHELF_FRONT * VIEW_KY : PLANK_TOP, // 바닥선 → 윗면 앞 모서리
-  below: asset ? SHELF_FRONT * VIEW_KY + SHELF_THICK : PLANK_TOP + PLANK_FRONT, // 바닥선 → 판 앞면 아래
 };
 
 export const SHELF_USABLE_WIDTH = USABLE_W - SHELF.innerLeft - SHELF.innerRight;
@@ -88,19 +56,6 @@ export const COVER_MM = 1.5;
 
 export const mm = (v: number) => v * DU_PER_MM;
 
-// 가운데 시점: 책 가운데 x(장면 좌표)가 화면 가운데에서 얼마나 떨어졌나(-1 왼쪽 끝 ~ 1 오른쪽 끝).
-// 왼쪽 책은 오른쪽 옆면이, 오른쪽 책은 왼쪽 옆면이 보이고, 가운데에 가까울수록 옆면이 좁다.
-export function viewOf(centerX: number) {
-  const mid = DESIGN_WIDTH / 2 - SHELF.sideMargin;
-  return Math.max(-1, Math.min(1, (centerX - mid) / (SHELF_USABLE_WIDTH / 2)));
-}
-// 세로 시점: 2번째 선반이 눈높이(0). 위 선반은 올려다봐 윗면이 안 보이고 옆면 윗부분이 깎여 보이며(-1),
-// 아래 선반은 내려다봐 세운 책 윗면이 살짝 보인다(+1).
-export function viewYOf(rowIndex: number) {
-  return Math.max(-1, Math.min(1, rowIndex - 1));
-}
-export const TOP_VIEW = 4; // 내려다볼 때 보이는 세운 책 윗면 높이(DU)
-
 export function spineDU(thickMm: number) {
   return MIN_SPINE_DU + Math.max(0, thickMm - MIN_SPINE_MM) * DU_PER_MM * THICKNESS_GROWTH;
 }
@@ -111,24 +66,11 @@ export function thicknessMm(pages: number) {
 export const BOOK_HEIGHT: Record<HeightClass, number> = { short: 136, medium: 174, tall: 188 };
 export const BOOK_THICKNESS: Record<ThicknessClass, number> = { thin: 28, medium: 36, thick: 42 };
 
-// 줄마다 같은 카메라(위 공통 카메라). 배치·충돌은 카메라와 상관없는 선반 공간에서 하고, 카메라는 그리기·터치에만 쓴다.
-export const ROW_CAMERAS = [{ kx: VIEW_KX, ky: VIEW_KY }];
-export function cameraFor(_rowIndex: number) {
-  return ROW_CAMERAS[0];
-}
-export const CAMERA = ROW_CAMERAS[0];
+// 예전 이름(다른 화면 호환). 값이 바뀌지 않는 기본 3° 카메라다. 보기 각은 view-store → 화면 카메라(camSV)로만 바뀐다.
+export const CAMERA = BASE_CAM;
 
-// ---------- 보기 설정: 내려다보는 각 ----------
-// 기본 3°, 꾸미기에서 위아래로 끌어 8°까지(책 배치·광원은 그대로, 같은 장면을 다르게 보는 것).
-// 확정된 각은 공통 카메라(CAMERA, 배치 계산·터치·줄 높이용)에 반영한다. 끄는 동안의 각은 화면(UI 스레드) 카메라만 바꾼다.
-export const VIEW_PITCH_MIN = 3;
-export const VIEW_PITCH_MAX = 8;
-export const kyOf = (deg: number) => Math.tan((deg * Math.PI) / 180);
-export function setViewPitch(deg: number) {
-  const d = Math.max(VIEW_PITCH_MIN, Math.min(VIEW_PITCH_MAX, deg));
-  CAMERA.ky = kyOf(d);
-  return d;
-}
+// ---------- 보기 설정: 내려다보는 각(3° ~ 8°) ----------
+// 꾸미기에서 선반 앞면을 위아래로 끌어 바꾼다. 책 배치·광원·줄 간격은 그대로(같은 장면을 다르게 보는 것).
 
 // 시점 끌기를 놓았을 때 정착할 각(3° 또는 8°). home = 잡기 전에 있던(정착 중이었으면 향하던) 시점,
 // now = 손가락이 끈 만큼의 각, vy = 놓을 때 세로 속도(dp/s, + = 아래로 = 더 내려다보기).
@@ -147,19 +89,14 @@ export function viewSettle(home: number, p0: number, now: number, vy: number) {
 // 눕힌 책의 수직축 회전 범위(도). 미적·조작상의 제한(선반 깊이·충돌·받침에 따라 더 좁아질 수 있다).
 export const MAX_SPIN = 12;
 
-// 누운 책(더미)은 선반 위에서 세운 책보다 뒤에 놓인다(선반 공간 깊이 DU). 화면에서는 LYING_BACK_Z × ky만큼 올라간다.
+// 누운 책(더미)의 기본 깊이: 세운 책보다 조금 뒤(선반 공간 z, DU)
 export const LYING_BACK_Z = 40;
-export const LYING_BACK = LYING_BACK_Z * CAMERA.ky;
-// (예전 방식 렌더러용: 서랍 등) 눕힌 책의 윗면 깊이, 표지 전시의 옆면 두께
-export const TOP_FACE = 9;
-export const FRONT_SIDE = 4;
 // 쌓을 때 위 책을 살짝 어긋나게 둔다(아래에서 위 순서).
 export const STACK_OFFSETS = [0, 8, 3];
 export const MAX_STACK = 3;
 export const HOME_SHELF_COUNT = 3;
 
-// tilt 값의 부호 = 기대는 방향(-: 왼쪽, +: 오른쪽). 실제 각도는 빈틈과 옆 책 윤곽으로 계산한다(lean.ts).
-export const TILTS: Tilt[] = [-7, 0, 7];
+// tilt 값은 부호만 쓴다(기대는 방향: -1 왼쪽, +1 오른쪽). 실제 각도는 빈틈과 옆 책 3D 상자로 계산한다.
 // 예전 저장본(빈틈 없음)의 기울인 책이 기댈 수 있게 만들어 주는 각도
 export const LEGACY_LEAN = 7;
 // 메뉴로 기울일 때 벌려 주는 각도(최대 기울기는 lean.ts MAX_LEAN)
@@ -181,14 +118,6 @@ export function frontWidth(book: Book) {
   if (book.dims?.coverWidth) return book.dims.coverWidth;
   if (book.physical) return mm(book.physical.widthMm);
   return Math.round(bookHeight(book) * book.coverAspectRatio);
-}
-
-const rad = (deg: number) => (deg * Math.PI) / 180;
-
-// 세운 책을 기울였을 때 차지하는 폭/높이. 바닥 모서리를 축으로 돌린다.
-export function tiltedBounds(w: number, h: number, tilt: number) {
-  const t = rad(Math.abs(tilt));
-  return { width: w * Math.cos(t) + h * Math.sin(t), height: h * Math.cos(t) + w * Math.sin(t) };
 }
 
 // 한 권(쌓기 전)의 선반 점유 크기(상자 모델). 폭은 앞면 가로(옆면은 옆 책 뒤로 숨는다),
@@ -219,10 +148,6 @@ export const WALL_LEAN_MAX = 20;
 export function wallGap(book: Book, depth: number) {
   return SHELF_DEPTH - (depth + bookThickness(book));
 }
-export function nextWallLean(book: Book, depth: number, prev?: boolean) {
-  const lim = bookHeight(book) * Math.sin(((prev ? WALL_LEAN_MAX : WALL_LEAN_ENTER) * Math.PI) / 180);
-  return wallGap(book, depth) <= lim + 1e-6;
-}
 export function wallPitch(book: Book, depth: number, lean?: boolean) {
   if (!lean) return 0;
   const g = Math.max(0, wallGap(book, depth));
@@ -247,8 +172,8 @@ export function frontExt(book: Book, p: { pitch?: number; spin?: number }) {
   return frontExtent(frontDims(book), p.pitch ?? 0, p.spin ?? 0);
 }
 
-// ky: 화면 높이를 잴 카메라(기본은 지금 보기 각). 줄 높이는 가장 내려다보는 각으로 재서 보기 각을 바꿔도 줄이 움직이지 않게 한다.
-export function singleFootprint(book: Book, p: Pick<BookPlacement, 'pose' | 'tilt'> & { spin?: number; depth?: number; pitch?: number }, ky = CAMERA.ky) {
+// ky: 화면 높이를 잴 카메라(기본 3°). 폭(width)은 배치(packing)가 쓴다. 줄 간격은 이 값이 아니라 3D 높이로 정한다(ui/shelf/metrics).
+export function singleFootprint(book: Book, p: Pick<BookPlacement, 'pose' | 'tilt'> & { spin?: number; depth?: number; pitch?: number }, ky = BASE_CAM.ky) {
   const h = bookHeight(book);
   const t = bookThickness(book);
   const w = frontWidth(book);
@@ -267,33 +192,23 @@ export function singleFootprint(book: Book, p: Pick<BookPlacement, 'pose' | 'til
   }
 }
 
-// 앞면 윤곽(왼쪽 x=0, 바닥 y=0, 위로 음수). 배치(packing)가 쓴다.
-export function visibleBookOutline(book: Book, p: Pick<BookPlacement, 'pose' | 'tilt'> & { spin?: number; pitch?: number }) {
-  const fe = p.pose === 'front' && (p.pitch || p.spin) ? frontExt(book, p) : null;
-  const h = p.pose === 'horizontal' ? bookThickness(book) : fe ? fe.y1 : bookHeight(book);
-  const w = p.pose === 'horizontal' ? spunExtent(book, p.spin).w : fe ? fe.x1 - fe.x0 : p.pose === 'front' ? frontWidth(book) : bookThickness(book);
-  const points = [{ x: 0, y: 0 }, { x: w, y: 0 }, { x: w, y: h }, { x: 0, y: h }];
-  const t = rad(p.pose === 'spine' ? p.tilt : 0);
-  const turned = points.map((q) => ({ x: q.x * Math.cos(t) - q.y * Math.sin(t), y: q.x * Math.sin(t) + q.y * Math.cos(t) }));
-  const x0 = Math.min(...turned.map((q) => q.x)), floor = Math.max(...turned.map((q) => q.y));
-  return turned.map((q) => ({ x: q.x - x0, y: q.y - floor }));
-}
-
 // 쌓기 그룹: 폭은 (어긋남 포함) 가장 긴 책, 높이는 두께의 합.
 // 쌓인 책의 왼쪽 어긋남(DU). 아래 책보다 짧은 책은 아래 책 안쪽(가운데보다 조금 오른쪽)에 올린다(시안).
-// 같거나 긴 책은 정해진 어긋남(STACK_OFFSETS)을 쓴다.
+// 길이가 같은 책은 아래 책에 맞춰 올린다(어긋나면 받침 밖으로 나가 쌓을 수 없다: 받침 판정 support.ts와 같은 규칙).
+// 더 긴 책은 정해진 어긋남(STACK_OFFSETS)을 쓴다.
+const SAME_LENGTH = 0.5; // DU: 이만큼 차이는 같은 판형으로 본다
 export function stackOffsets(books: Book[]) {
   const out: number[] = [];
   books.forEach((b, i) => {
     if (i === 0) return out.push(0);
     const below = bookHeight(books[i - 1]);
     const d = below - bookHeight(b);
-    out.push(d > 0 ? out[i - 1] + d * 0.6 : (STACK_OFFSETS[i] ?? 0));
+    out.push(d > SAME_LENGTH ? out[i - 1] + d * 0.6 : d >= -SAME_LENGTH ? out[i - 1] : (STACK_OFFSETS[i] ?? 0));
   });
   return out;
 }
 
-export function stackFootprint(books: Book[], spins: number[] = [], ky = CAMERA.ky) {
+export function stackFootprint(books: Book[], spins: number[] = [], ky = BASE_CAM.ky) {
   let width = 0;
   let height = LYING_BACK_Z * ky;
   let depth = 0;

@@ -3,9 +3,11 @@ import { faceMatrix } from '@/ui/book3d/face-geometry';
 
 import { corners, faceCorners, faceFrame, fromPlaced, lowest } from '../book3';
 import { project } from '../box';
-import { CAMERA, SHELF, SHELF_DEPTH, SHELF_FRONT, VIEW_KY, VIEW_PITCH_DEG } from '../geometry';
+import { camAt, VIEW_KX } from '../camera';
+import { CAMERA, SHELF_DEPTH, SHELF_FRONT, VIEW_PITCH_MAX, VIEW_PITCH_MIN } from '../geometry';
 import { normalize, placementOf, setSpin, type BookMap } from '../layout-engine';
 import { SAMPLE_BOOKS, SAMPLE_LAYOUT } from '../onboarding-sample';
+import { shelfVertices } from '../shelf-geom';
 import { computeShelf } from '../shelf-scene';
 import type { ShelfLayout } from '../types';
 
@@ -33,13 +35,22 @@ function spineAt(layout: ShelfLayout) {
 
 describe('공통 카메라', () => {
   it('살짝 내려다보는 한 카메라: ky = tan(내려다보는 각)', () => {
-    expect(VIEW_PITCH_DEG).toBeGreaterThan(0);
-    expect(CAMERA.ky).toBeCloseTo(Math.tan((VIEW_PITCH_DEG * Math.PI) / 180), 12);
+    expect(VIEW_PITCH_MIN).toBeGreaterThan(0);
+    // 기본 카메라(CAMERA)는 가장 얕은 3°. 꾸미기 보기 각(3°~8°)도 같은 식이고 사선 kx는 각과 무관
+    expect(CAMERA.ky).toBeCloseTo(Math.tan((VIEW_PITCH_MIN * Math.PI) / 180), 12);
+    for (const deg of [VIEW_PITCH_MIN, 5, VIEW_PITCH_MAX]) {
+      expect(camAt(deg).ky).toBeCloseTo(Math.tan((deg * Math.PI) / 180), 12);
+      expect(camAt(deg).kx).toBe(VIEW_KX);
+    }
   });
 
   it('선반 판도 같은 카메라로 투영한 자리: 윗면 뒤 모서리(벽)·앞 모서리', () => {
-    expect(SHELF.back).toBeCloseTo(SHELF_DEPTH * VIEW_KY, 9);
-    expect(SHELF.lip).toBeCloseTo(SHELF_FRONT * VIEW_KY, 9);
+    // 원점 = 책 기준선(판 윗면 z=0): 벽 쪽 모서리는 기준선 위(-)로 깊이 × ky, 앞 모서리는 아래(+)로 앞 길이 × ky
+    const v = shelfVertices();
+    for (const cam of [CAMERA, camAt(VIEW_PITCH_MAX)]) {
+      expect(project(cam, v.LBT).y).toBeCloseTo(-SHELF_DEPTH * cam.ky, 9);
+      expect(project(cam, v.LFT).y).toBeCloseTo(SHELF_FRONT * cam.ky, 9);
+    }
   });
 });
 

@@ -6,7 +6,8 @@ import { applySwapTarget, bookXs, findSwapTarget, moveBook, placementOf, setDept
 import { SAMPLE_BOOKS, SAMPLE_LAYOUT } from '../onboarding-sample';
 import { bodiesOf } from '../shelf-scene';
 import type { ShelfLayout } from '../types';
-import { light } from '@/ui/theme';
+import { light } from '@/ui/lighting';
+import { receivedShadow3, RECV_PARTS } from '../received3';
 
 const books: BookMap = Object.fromEntries(SAMPLE_BOOKS.map((b) => [b.id, b]));
 const L = travelOf(light.dir);
@@ -112,3 +113,40 @@ describe('채식주의자 → 뒤로 민 월든 표지', () => {
   });
 });
 
+
+describe('받는 그림자 칸', () => {
+  // 받는 책(가운데)의 책등 면에 왼쪽 앞의 키 큰 책 둘과 윗선반 판이 모두 그림자를 드리우는 배치
+  const box = (id: string, x: number, z: number, T: number, H: number): Book3 => ({ id, dims: { T, H, W: 100 }, roll: 0, yaw: 0, t: { x, y: 0, z } });
+  const recv = box('r', 100, 0, 24, 120);
+  const near1 = box('o1', 74, -18, 22, 175);
+  const near2 = box('o2', 50, -30, 20, 178);
+  const space = 132; // 윗선반 판 아랫면이 받는 책 머리 바로 위
+
+  it('윗선반 판은 가까운 책 둘에 밀려 빠지지 않고, 판 + 책 둘 세 가리개가 모두 남는다', () => {
+    const r = receivedShadow3(recv, [near1, near2], 3, space, true);
+    // 가리개마다 [가까운 층, 전체 층]. 세 가리개가 모두 닿는 면(이 배치에서는 뒤표지 쪽 면)에서 전체 층(1, 3, 5)이 모두 있다
+    for (const f of r!.faces) expect(f.parts.length === 0 || f.parts.length === RECV_PARTS).toBe(true);
+    const full = r!.faces.filter((f) => [1, 3, 5].every((i) => f.parts[i]));
+    expect(full.length).toBeGreaterThan(0);
+    // 판은 늘 첫 칸: 판 그림자의 그라데이션은 세로(판 가장자리에 수직)
+    for (const f of full) expect(Math.abs(f.parts[1]!.far.x - f.parts[1]!.near.x)).toBeLessThan(1e-6);
+    // 판이 닿는 면에서 판은 빠지지 않는다(예전: 가까운 책 둘이 있으면 판이 먼저 빠졌다)
+    const spine = r!.faces.find((f) => f.f === 'spine')!;
+    expect(spine.parts[1]).not.toBeNull();
+    expect(Math.abs(spine.parts[1]!.far.x - spine.parts[1]!.near.x)).toBeLessThan(1e-6);
+  });
+
+  it('긴 가리개(선반 판)의 그라데이션은 판 가장자리에 수직이라 받는 책의 가로 위치와 상관없다', () => {
+    const axis = (x: number) => {
+      const r = receivedShadow3(box('r', x, 0, 24, 120), [], 3, space, true);
+      const p = r!.faces.find((f) => f.f === 'spine')!.parts[1]!; // 판의 전체 층
+      return { dx: p.far.x - p.near.x, dy: p.far.y - p.near.y };
+    };
+    for (const x of [10, 150, 300]) {
+      const a = axis(x);
+      // 판 앞 아래 모서리(가로 방향)에 수직: 가로 성분이 없다
+      expect(Math.abs(a.dx)).toBeLessThan(1e-6);
+      expect(a.dy).toBeLessThan(0);
+    }
+  });
+});

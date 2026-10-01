@@ -1,4 +1,4 @@
-import { SHELF_USABLE_WIDTH, singleFootprint, tiltedBounds } from '../geometry';
+import { SHELF_FRONT, SHELF_USABLE_WIDTH, singleFootprint } from '../geometry';
 import {
   addBook,
   addShelf,
@@ -28,10 +28,11 @@ import {
   checkSpace,
   type BookMap,
 } from '../layout-engine';
-import { gap } from '../book3';
+import { fromPlaced, gap, xRange } from '../book3';
+import { boxSize } from '../box';
 import { bodiesOf } from '../shelf-scene';
 import { SAMPLE_BOOKS, SAMPLE_LAYOUT } from '../onboarding-sample';
-import type { ShelfLayout } from '../types';
+import type { Book, ShelfLayout } from '../types';
 
 const books: BookMap = Object.fromEntries(SAMPLE_BOOKS.map((b) => [b.id, b]));
 const ids = SAMPLE_BOOKS.map((b) => b.id);
@@ -66,9 +67,17 @@ describe('샘플 데이터', () => {
 
 describe('형상', () => {
   it('기울이면 점유 폭이 늘어난다', () => {
-    const { width } = tiltedBounds(34, 148, 7);
+    // 두께 34·키 148 상자를 바닥 모서리 축으로 7° 기울인 가로 폭(3D) = 34·cos7° + 148·sin7°
+    const book: Book = { ...books.b01, dims: { height: 148, thickness: 34 } };
+    const box = { bookId: 'b01', pose: 'spine' as const, size: boxSize(book, 'spine'), x: 0, y: 0, z: 0, angle: 7 };
+    const r = xRange(fromPlaced(box));
+    const width = r.hi - r.lo;
     expect(width).toBeGreaterThan(34 + 17);
     expect(width).toBeLessThan(34 + 19);
+    const t = (7 * Math.PI) / 180;
+    expect(width).toBeCloseTo(34 * Math.cos(t) + 148 * Math.sin(t), 9);
+    // 기울기는 빈틈 안에서 생기므로 배치 점유 폭(자리)은 똑바로 선 폭 그대로
+    expect(singleFootprint(book, { pose: 'spine', tilt: 7 }).width).toBe(34);
   });
 
   it('표지 전시는 책등보다 넓다', () => {
@@ -114,6 +123,25 @@ describe('이동', () => {
 });
 
 describe('쌓기', () => {
+  it('같은 판형 책도 쌓을 수 있다: 길이가 같으면 어긋남 없이 아래 책에 맞춰 올린다(받침 밖으로 나가지 않게)', () => {
+    // b14·b03·b05·b01·b17은 모두 같은 판형(길이 143.35DU). 예전에는 8DU 어긋남 때문에 받침 밖으로 나가 늘 쌓을 수 없었다
+    let l = SAMPLE_LAYOUT;
+    for (const id of ['b16', 'b15']) l = ok(moveToDrawer(l, id, books));
+    l = ok(setPose(l, books, 'b14', 'horizontal'));
+    const shelfId = placementOf(l, 'b14')!.shelfId;
+    const key = () => shelfItems(l, shelfId).find((it) => it.bookIds.includes('b14'))!.key;
+    for (const id of ['b03', 'b05']) {
+      const r = moveBook(l, books, id, { kind: 'stack', shelfId, itemKey: key() });
+      expect(r.ok).toBe(true);
+    }
+    l = ok(moveBook(l, books, 'b03', { kind: 'stack', shelfId, itemKey: key() }));
+    // 위 책(같은 길이)의 가로 자리는 아래 책과 같다
+    const bx = bodiesOf(l, books, shelfId);
+    const lo = xRange(bx.find((b) => b.id === 'b14')!).lo;
+    const up = xRange(bx.find((b) => b.id === 'b03')!).lo;
+    expect(up).toBeCloseTo(lo, 1);
+  });
+
   it('눕힌 책을 눕힌 그룹 위에 쌓고, 3권까지만 허용한다', () => {
     let l = ok(setPose(roomy(), books, 'b15', 'horizontal'));
     l = ok(moveBook(l, books, 'b15', { kind: 'stack', shelfId: 'shelf-3', itemKey: 'stack:b12' }));
@@ -203,6 +231,8 @@ describe('형태·기울기', () => {
     expect(findDropTarget(d, books, 'shelf-3', 12, 'horizontal')).toMatchObject({ kind: 'insert', shelfId: 'shelf-3', index: 0 });
     expect(findDropTarget(d, books, 'shelf-3', middle, 'spine')).toEqual({ kind: 'stack', shelfId: 'shelf-3', itemKey: 'stack:b12' });
     expect(findDropTarget(d, books, 'shelf-3', 999, 'spine')).toMatchObject({ kind: 'insert', shelfId: 'shelf-3', index: 2 });
+    // 놓을 자리 x = 끄는 책 3D 상자의 왼쪽 끝(가운데 - 폭/2, 0.5DU 단위)
+    expect(findDropTarget(d, books, 'shelf-3', 999, 'spine', 25)).toMatchObject({ kind: 'insert', index: 2, x: 986.5 });
   });
 });
 
@@ -324,6 +354,34 @@ describe('자리 바꾸기', () => {
     const before = bookXs(l, books);
     const after = bookXs(r, books);
     for (const id of ['b03', 'b04', 'b05']) expect(after.get(id)).toBeCloseTo(before.get(id)!, 1);
+  });
+
+  it('누운 책 더미 앞에 겹쳐 선 책을 제자리에서 잡으면 쌓기가 아니다(자기 자리 먼저)', () => {
+    // 더미(깊이 약 20~120)는 뒤에, 세운 책 S(깊이 -53~-3)는 판 앞 끝에서 더미 가운데 앞에 선다: 가로로는 겹쳐도 3D로는 떨어져 있다
+    const mini = (id: string, height: number, thickness: number, coverWidth: number): Book => ({ ...books.b01, id, physical: undefined, dims: { height, thickness, coverWidth } });
+    const bs: BookMap = { L1: mini('L1', 180, 30, 100), L2: mini('L2', 170, 26, 95), S: mini('S', 150, 28, 50) };
+    const l: ShelfLayout = {
+      version: 2,
+      drawer: [],
+      shelves: [{ id: 's', order: 0 }],
+      placements: [
+        { bookId: 'L1', shelfId: 's', order: 0, pose: 'horizontal', tilt: 0, stackId: 'stack:L1', stackOrder: 0, pos: 10 },
+        { bookId: 'L2', shelfId: 's', order: 0, pose: 'horizontal', tilt: 0, stackId: 'stack:L1', stackOrder: 1 },
+        { bookId: 'S', shelfId: 's', order: 1, pose: 'spine', tilt: 0, pos: 75, depth: -SHELF_FRONT },
+      ],
+    };
+    expect(validate(l, bs)).toEqual([]);
+    expect(checkSpace(l, bs)).toBeNull();
+    const [stack, s] = itemPositions(shelfItems(l, 's'), l, bs);
+    const center = s.x + s.width / 2;
+    // 잡은 자리(S 가운데)는 더미의 가운데 절반 위이기도 하다
+    expect(center).toBeGreaterThan(stack.x + stack.width * 0.25);
+    expect(center).toBeLessThan(stack.x + stack.width * 0.75);
+    expect(findSwapTarget(l, bs, 'S', center)).toEqual({ kind: 'self' });
+    // 제자리에서 조금 끌면 그만큼 옮겨 놓기(더미에 얹지 않음)
+    expect(findSwapTarget(l, bs, 'S', center + 3)).toMatchObject({ kind: 'place', x: s.x + 3 });
+    // 자기 자리를 벗어나 더미 가운데로 끌어가면 그때 쌓기
+    expect(findSwapTarget(l, bs, 'S', stack.x + stack.width * 0.7)).toEqual({ kind: 'stack', itemKey: 'stack:L1' });
   });
 
   it('쌓인 책을 옮기면 그룹에서 빠져 그 자리로 간다', () => {

@@ -1,7 +1,8 @@
-// 홈 책장. 선반 전체를 하나의 제스처로 받아 책 윤곽으로 터치를 판정한다(그림자는 판정에서 제외).
-// 짧게 누르기 → 정보 상자, 350ms 길게 누르기 → 드래그. 드래그 전 세로 이동은 스크롤이 가져간다.
-// 드래그: 같은 선반은 올라간 책과 자리 바꾸기, 다른 선반은 그 자리에 끼우기(눕힌 책 가운데면 쌓기),
-// 세 선반 사이에서 이동한다. 화면 가장자리에서 자동 스크롤.
+// 홈 책장. 선반 전체를 하나의 제스처로 받고, 터치는 UI 스레드에서 지금 보이는 3D 자세·가림 순서로 앞에 보이는 책을 고른다
+// (그리기·그림자·선택 빛·손잡이와 같은 장면 상태, ui/shelf/scene).
+// 짧게 누르기 → 정보 상자, 350ms 길게 누르기 → 끌기. 끌기 전 세로 이동은 스크롤이 가져간다.
+// 끌기: 같은 선반은 그 자리에 놓고 부딪히는 옆 책만 비키고, 다른 선반은 그 자리에 끼우기(눕힌 책 가운데면 쌓기).
+// 놓을 곳이 없으면 책은 제자리에 있고 안내만 뜬다(따로 떠 있는 끌기 그림 없음). 화면 가장자리에서 자동 스크롤.
 import { router, useFocusEffect, useLocalSearchParams, useNavigation } from 'expo-router';
 import * as Haptics from 'expo-haptics';
 import { BookMarked, ChartNoAxesColumn, Eraser, Menu, Paintbrush, Plus, Search, Settings, Undo2 } from '@/ui/icons';
@@ -26,20 +27,19 @@ import Animated, {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { scheduleOnRN, scheduleOnUI } from 'react-native-worklets';
 
-import { DESIGN_WIDTH, PLANK_INSET, SHELF, SHELF_FRONT, SHELF_THICK, SHELF_USABLE_WIDTH, kyOf, VIEW_DEG_PER_DP, VIEW_KX, VIEW_PITCH_MAX, VIEW_PITCH_MIN, viewSettle } from '@/domain/geometry';
+import { camAt, VIEW_PITCH_MAX, VIEW_PITCH_MIN } from '@/domain/camera';
+import { DESIGN_WIDTH, PLANK_INSET, SHELF, SHELF_FRONT, SHELF_THICK, SHELF_USABLE_WIDTH, VIEW_DEG_PER_DP, viewSettle } from '@/domain/geometry';
 import { useViewStore, viewStore } from '@/store/view-store';
 import {
   applySwapTarget,
   detach,
   findDropTarget,
   findSwapTarget,
+  itemWidth,
   moveBook,
   moveBy,
-  moveToDrawer,
   moveToShelf,
-  placeFromDrawer,
   placementOf,
-  rotateStep,
   setPose,
   setSpin,
   setDepth,
@@ -50,14 +50,14 @@ import {
   boxOf,
   depthRange,
   setTilt,
+  shelfItems,
   sortedShelves,
   type SwapTarget,
   type FailReason,
   type Result,
 } from '@/domain/layout-engine';
 import { corners, fromPlaced, type Book3 } from '@/domain/book3';
-import { bodiesOf, computeShelf, hitTest, PLANK_BOUNDS, withLeans, type BookFrame } from '@/domain/shelf-scene';
-import { planTransition } from '@/domain/transition';
+import { computeShelf, frameBBox, withLeans, type BookFrame } from '@/domain/shelf-scene';
 import type { Pose, ShelfLayout, Tilt } from '@/domain/types';
 import { ko } from '@/i18n/ko';
 import { settingsStore, useSettings } from '@/store/settings-store';
@@ -66,20 +66,22 @@ import { DEMO_BOOT_KEY } from '@/store/boot';
 import Storage from 'expo-sqlite/kv-store';
 import { bootMark, watchResponsive } from '@/ui/boot-trace';
 import { placementStore, usePlacementStore } from '@/store/placement-store';
-import { DragOverlay, frameBBox } from '@/ui/shelf/DragOverlay';
-import { CONTENT_TOP, computeRows, LAYOUT, rowAt, toContent, toScene, useShelfMetrics, type RowGeom } from '@/ui/shelf/metrics';
-import { benchProjection, currentStates, motionOf, previewShelf, type BenchRow } from '@/ui/shelf/ShelfMotion';
-import { ANIM, frameStats, MENU_FLAGS, PERF_DETAIL, PERF_ENABLED, PERF_LEVELS, setPerfLevel, setShelfMode, setShelfView, SHELF_MODES, SHELF_VIEWS, type PerfLevel, type ShelfMode } from '@/ui/perf';
+import { useBookShared } from '@/ui/book3d/art';
+import { CONTENT_TOP, computeRows, LAYOUT, rowAffine, rowAt, toContent, useShelfMetrics, type RowGeom } from '@/ui/shelf/metrics';
+import { benchProjection, type BenchRow } from '@/ui/shelf/ShelfMotion';
+import { displayedPoses, flushApply, lastPlan, previewInto, PULL_MS, settleInto } from '@/ui/shelf/planner';
+import { makeMotion, pickAt, plankFrontBand, rowPx, type Motion, type Pick, type SceneGeo, type SceneMotion } from '@/ui/shelf/scene';
+import { HANDLE_HIT, handlePoint, SHELF_CAST_EXTENT, ShelfScene, type DropHint, type SceneRowProps } from '@/ui/shelf/ShelfScene';
+import { ANIM, frameStats, MENU_FLAGS, PERF_DETAIL, PERF_ENABLED, PERF_LEVELS, setPerfLevel, TRANSIT_DEBUG, setShelfMode, setShelfView, SHELF_MODES, SHELF_VIEWS, type PerfLevel, type ShelfMode } from '@/ui/perf';
 import type { FrontState } from '@/domain/front-pose';
-import { ShelfRow, type DropHint } from '@/ui/shelf/ShelfRow';
-import { SHELF_CAST_EXTENT } from '@/ui/shelf/ShelfPlank';
 import { colors, fonts, motion, navigation } from '@/ui/theme';
 
-import { type MoveAction } from './BookDetail';
 import { BookPopover } from './BookPopover';
 import { tabBarStyle } from '@/ui/tabBar';
 
 import { DecoratePanel } from './DecoratePanel';
+
+type MoveAction = 'prev' | 'next' | 'up' | 'down';
 
 type HintKind = SwapTarget['kind'] | 'beside';
 // key: 같은 목표면 다시 계산하지 않으려는 식별자. shelfId: 안내를 띄울 선반
@@ -91,37 +93,28 @@ type Preview =
 
 type Drag = {
   bookId: string;
-  frame: BookFrame; // 집어 든 순간의 모양(오버레이 렌더용)
-  from: Book3 | null; // 집어 든 순간 화면에 보이던 3D 자세(움직이는 도중이면 그 모습)
-  boxW: number; // px
-  grabX: number;
-  grabY: number;
-  preview: Preview | null;
-  settling: ShelfLayout | null; // 놓은 뒤 스냅 애니메이션 동안 보여줄 레이아웃
   shelfId: string; // 꾹 누른 책의 원래 선반
-  // 잡은 지점: 손가락 x(뷰포트)와 그때 책 상자(기대기 전 곧은 상자)의 가운데(DU). 놓을 자리는 이 둘의 차이만큼만 옮긴다
-  // (기운 책의 화면 윤곽 가운데를 기준으로 하면 잡자마자 곧은 상자와의 차이만큼 자리가 튄다)
+  preview: Preview | null;
+  // 잡은 지점: 손가락 x(뷰포트)와 그때 책 상자(기대기 전 곧은 상자)의 가운데·폭(DU). 놓을 자리는 손가락이 움직인 만큼만 옮긴다
+  // (기운 책의 화면 윤곽으로 재면 잡자마자 곧은 상자와의 차이만큼 자리가 튄다)
   startVx: number;
   startCenterDU: number;
+  widthDU: number; // 끄는 항목(더미면 더미)의 3D 폭: 다른 선반에 놓을 때 왼쪽 끝 = 가운데 - 폭/2
 };
 
 type Toast = { text: string; action?: 'undo' | 'retry' } | null;
-type Box = { x0: number; y0: number; x1: number; y1: number };
 
 // 꾸미기 시점 끌기 영역(선반 앞면 띠)의 최소 높이·위아래 여유(px)
 const FRONT_HIT = 48;
 const FRONT_PAD = 10;
 
-const shiftRows = (rows: RowGeom[], dy: number) => (dy ? rows.map((r) => ({ ...r, top: r.top + dy })) : rows);
-
-// 선반별 프레임을 캐시해서 바뀐 선반만 다시 그린다.
-function useShelfScenes(layout: ShelfLayout, books: Parameters<typeof computeShelf>[1], pitch: number) {
+// 선반별 프레임(3D 상자)을 캐시해서 바뀐 선반만 다시 그린다. 보기 각과 상관없다.
+function useShelfScenes(layout: ShelfLayout, books: Parameters<typeof computeShelf>[1]) {
   const cache = useRef(new Map<string, { sig: string; books: typeof books; frames: BookFrame[] }>());
   return useMemo(() => {
     const out = new Map<string, BookFrame[]>();
     for (const s of layout.shelves) {
-      // 보기 각이 바뀌면 투영(터치 영역)도 다시
-      const sig = pitch + JSON.stringify(layout.placements.filter((p) => p.shelfId === s.id));
+      const sig = JSON.stringify(layout.placements.filter((p) => p.shelfId === s.id));
       const hit = cache.current.get(s.id);
       if (hit && hit.sig === sig && hit.books === books) {
         out.set(s.id, hit.frames);
@@ -132,7 +125,24 @@ function useShelfScenes(layout: ShelfLayout, books: Parameters<typeof computeShe
       out.set(s.id, frames);
     }
     return out;
-  }, [layout, books, pitch]);
+  }, [layout, books]);
+}
+
+// 선반마다 움직임 하나(UI 스레드 SharedValue). 선반이 그대로면 같은 객체라 제스처·그림이 다시 만들어지지 않는다.
+function useSceneMotions(ids: string[], frames: Map<string, BookFrame[]>): SceneMotion[] {
+  const map = useRef(new Map<string, Motion>()).current;
+  const key = ids.join('|');
+  return useMemo(() => {
+    return ids.map((id) => {
+      let m = map.get(id);
+      if (!m) {
+        m = makeMotion((frames.get(id) ?? []).map((f) => fromPlaced(f.box)));
+        map.set(id, m);
+      }
+      return { shelfId: id, m };
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [key]);
 }
 
 function HeaderButton({ size, on, label, onPress, children }: { size: number; on?: boolean; label: string; onPress: () => void; children: React.ReactNode }) {
@@ -154,6 +164,7 @@ export function HomeScreen() {
   const store = usePlacementStore();
   const { books, layout } = store;
   const m = useShelfMetrics();
+  const bookShared = useBookShared(); // 책 그림 공용 자원(글꼴·종이 결). 캔버스 안에는 컨텍스트가 닿지 않아 여기서 읽어 넘긴다
   const { width: winW } = useWindowDimensions();
   const sysReduceMotion = useReducedMotion();
   const appSettings = useSettings();
@@ -184,38 +195,28 @@ export function HomeScreen() {
   const viewportH = useSharedValue(0);
   const contentH = useSharedValue(0);
   const active = useSharedValue(false);
-  const grab = useSharedValue({ x: 0, y: 0 });
   const vpOrigin = useSharedValue({ x: 0, y: 0 }); // 뷰포트의 창(window) 좌표
   const pointer = useSharedValue({ x: 0, y: 0 }); // 뷰포트 좌표
-  const dragX = useSharedValue(0);
-  const dragY = useSharedValue(0);
-
 
   // ---------- 보기 각(내려다보기 3°~8°): 꾸미기에서 선반 앞면을 위아래로 끌어 바꾼다(빈 벽을 끌면 스크롤) ----------
-  // 화면 카메라는 공유 값(UI 스레드, 끄는 동안 매 프레임). 확정된 각은 보기 설정으로 저장하고 터치 영역·줄 높이에 쓴다.
+  // 화면 카메라는 공유 값 하나(UI 스레드, 끄는 동안 매 프레임). 그리기·그림자·터치가 모두 이것을 읽는다.
+  // 보기 각은 카메라만 바꾼다: 책 배치·줄 간격(3D)은 그대로다. 확정된 각은 보기 설정으로 저장한다.
   const view = useViewStore();
   const pitchSV = useSharedValue(view.pitch);
   const viewGoal = useSharedValue(view.pitch);
-  const camSV = useDerivedValue(() => ({ kx: VIEW_KX, ky: Math.tan((pitchSV.value * Math.PI) / 180) }));
+  const camSV = useDerivedValue(() => camAt(pitchSV.value));
   useEffect(() => {
-    if (view.loaded) {
-      pitchSV.value = view.pitch;
-      viewGoal.value = view.pitch;
-    }
-    // 불러온 뒤 한 번만(끄고 놓을 때는 애니메이션이 직접 맞춘다)
+    // 불러왔을 때, 백업 복원처럼 밖에서 보기 각이 바뀌었을 때 화면 카메라를 맞춘다(끄고 놓을 때는 애니메이션이 직접 맞춘다)
+    if (!view.loaded || viewGoal.value === view.pitch) return;
+    pitchSV.value = view.pitch;
+    viewGoal.value = view.pitch;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [view.loaded]);
+  }, [view.loaded, view.pitch]);
   const savePitch = useCallback((deg: number) => {
     if (deg !== viewStore.get().pitch) viewStore.setPitch(deg);
   }, []);
-  // 줄 높이: 꾸미기 중에는 가장 내려다보는 각 기준(시점을 끌고 놓아도 줄이 튀지 않게), 평소에는 지금 보기 각
-  const rowKy = editing ? kyOf(VIEW_PITCH_MAX) : undefined;
-  // 꾸미기에 들어가고 나올 때 줄 높이가 바뀌어도(8° 기준 ↔ 지금 각) 보던 줄의 선반 바닥이 화면에서 제자리에 있도록
-  // 줄 전체를 옮기는 양(rowShift)과, 나올 때 줄어드는 목록 끝을 잠시 유지하는 여백(tailPad)
-  const [rowShift, setRowShift] = useState(0);
+  // 꾸미기에서 나올 때 조작부 여백이 빠져 목록 끝이 줄어도 지금 스크롤이 잘리지 않게 잠시 남기는 여백
   const [tailPad, setTailPad] = useState(0);
-  const pendingScroll = useRef<number | null>(null);
-
 
   const shelves = useMemo(() => sortedShelves(layout), [layout]);
   // 저장본을 불러와 처음 그릴 때는 움직이지 않는다(예시 배치에서 저장된 배치로 날아가지 않게)
@@ -226,10 +227,95 @@ export function HomeScreen() {
     return () => clearTimeout(id);
   }, [store.loaded]);
 
+  // 측정 번들: 끌기 한 번 동안 JS 쪽 시간(미리보기 계산, 미리보기 → 커밋, JS 프레임 간격)
+  const dragJs = useRef({ preview: [] as number[], commit: [] as number[], js: [] as number[], commitStart: 0, raf: 0, last: 0 });
   const updateDrag = (d: Drag | null) => {
     dragRef.current = d;
     setDrag(d);
   };
+
+  // ---------- 표시할 배치와 장면 ----------
+  // 확정 배치 또는 끄는 중 미리보기(유효할 때만). 놓을 곳이 없으면 확정 배치 그대로(끄는 책은 제자리, 안내만).
+  const { gap, rowfit } = useLocalSearchParams<{ gap?: string; rowfit?: string }>();
+  // 줄 위치 계산(rows) 전에 렌더 중에 바로 반영한다(측정 번들 비교안)
+  if (PERF_ENABLED && gap !== undefined) LAYOUT.topGap = Number(gap);
+  if (PERF_ENABLED && rowfit !== undefined) LAYOUT.rowFit = Number(rowfit);
+  const shown = drag?.preview?.kind === 'ok' ? drag.preview.layout : layout;
+  const shownShelves = useMemo(() => sortedShelves(shown), [shown]);
+  const frames = useShelfScenes(shown, books);
+  // 줄 간격은 3D 값(가장 키 큰 책 + 여유)이라 보기 각·꾸미기와 상관없다
+  const rowsRef = useRef<RowGeom[]>([]);
+  const rows = useMemo(() => {
+    const next = computeRows(shown, books, m.scale, vpH, navigation.height + insets.bottom);
+    const prev = rowsRef.current;
+    const same = prev.length === next.length && prev.every((r, i) => r.shelfId === next[i].shelfId && r.top === next[i].top && r.space === next[i].space && r.height === next[i].height && r.baseline === next[i].baseline);
+    if (!same) rowsRef.current = next;
+    return rowsRef.current;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [shown, books, m.scale, vpH, insets.bottom, gap, rowfit]);
+  const rowOf = useMemo(() => new Map(rows.map((r) => [r.shelfId, r])), [rows]);
+  const motions = useSceneMotions(useMemo(() => shownShelves.map((sh) => sh.id), [shownShelves]), frames);
+  // 장면 위치(UI 스레드): 터치 판정·가림 순서가 읽는다
+  const geoOf = (): SceneGeo => ({ rows: rows.map((r) => ({ shelfId: r.shelfId, baseline: r.baseline, dy: rows.length ? (r.baseline - rows[0].baseline) / m.scale : 0, space: r.space })), s: m.scale, originX: m.originX });
+  const geoSV = useSharedValue<SceneGeo>(geoOf());
+  useLayoutEffect(() => {
+    geoSV.value = geoOf();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [rows, m]);
+  // 다른 줄로 옮겨 가는 책: 그 줄에서 지금 보이는 자세를 새 줄 좌표로(새 줄은 거기서 이어서 들어온다)
+  const prevShown = useRef(shown);
+  const transitRef = useRef(new Map<string, number>());
+  const arrivals = useMemo(() => {
+    const out: Record<string, Record<string, Book3>> = {};
+    const before = prevShown.current;
+    if (before === shown) return out;
+    for (const p of shown.placements) {
+      const q = before.placements.find((x) => x.bookId === p.bookId);
+      if (!q || q.shelfId === p.shelfId) continue;
+      const from = motions.find((e) => e.shelfId === q.shelfId);
+      const src = rowOf.get(q.shelfId);
+      const dst = rowOf.get(p.shelfId);
+      if (!from || !src || !dst) continue;
+      const pose = displayedPoses(from.m)[p.bookId];
+      if (!pose) continue;
+      const dy = (dst.baseline - src.baseline) / m.scale;
+      (out[p.shelfId] ??= {})[p.bookId] = { ...pose, t: { x: pose.t.x, y: pose.t.y + dy, z: pose.t.z } };
+      // 옮겨 가는 동안 이동 캔버스에 올려 둔다(경로가 끝나고 조금 뒤 내린다)
+      transitRef.current.set(p.bookId, Date.now() + PULL_MS * ANIM.slow + 400);
+    }
+    return out;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [shown]);
+  // 이번 배치에서 다른 줄로 옮겨 가는 책(같은 배열이면 같은 객체)
+  const leaving = useMemo(() => Object.values(arrivals).flatMap((a) => Object.keys(a)).sort(), [arrivals]);
+  // 이동 캔버스에 미리 올려 둘 책: 다른 줄로 옮겨 갈 수 있는 책(끄는 책, 꾸미기에서 고른 책, 정보 상자의 책)과 방금 옮겨 간 책.
+  // 캔버스에 책을 올리는 일은 JS에서 늦게 끝나므로, 옮기는 순간이 아니라 그 전에 올려 둔다.
+  const [transitTick, setTransitTick] = useState(0);
+  const transitIds = useMemo(() => {
+    const now = Date.now();
+    for (const [id, until] of transitRef.current) if (until < now) transitRef.current.delete(id);
+    const ids = new Set(transitRef.current.keys());
+    if (drag) ids.add(drag.bookId);
+    if (editing && editId) ids.add(editId);
+    if (popId) ids.add(popId);
+    return [...ids].sort();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [arrivals, transitTick, drag?.bookId, editing, editId, popId]);
+  useEffect(() => {
+    if (!transitRef.current.size) return;
+    const next = Math.min(...transitRef.current.values()) - Date.now();
+    const id = setTimeout(() => setTransitTick((k) => k + 1), Math.max(50, next));
+    return () => clearTimeout(id);
+  }, [transitIds]);
+  useLayoutEffect(() => {
+    if (PERF_ENABLED && dragJs.current.commitStart) {
+      dragJs.current.commit.push(performance.now() - dragJs.current.commitStart);
+      dragJs.current.commitStart = 0;
+    }
+    prevShown.current = shown;
+    // 줄마다 짠 경로를 한 번에 UI로(다른 줄로 옮겨 가는 책이 두 권이나 빈 프레임으로 보이지 않게)
+    flushApply();
+  });
 
   // 꾸미는 중에는 되돌리기가 상단에 있으므로 '옮겼어요 · 되돌리기' 알림은 띄우지 않는다
   const editingRef = useRef(false);
@@ -268,10 +354,10 @@ export function HomeScreen() {
     return i === -1 ? rows.length : i;
   };
 
+  const detached = useRef<{ layout: ShelfLayout; id: string; value: ShelfLayout } | null>(null);
   const computePreview = (d: Drag, vx: number, vy: number, scroll: number): Preview => {
     const cy = vy + scroll;
     const index = rowIndexAt(cy);
-    const centerPx = vx - d.grabX + d.boxW / 2;
     const centerDU = d.startCenterDU + (vx - d.startVx) / m.scale;
     const withinX = centerDU > -SHELF.sideMargin && centerDU < SHELF.innerLeft + SHELF_USABLE_WIDTH + SHELF.innerRight + SHELF.sideMargin;
     const reuse = (key: string) => (d.preview && d.preview.key === key ? d.preview : null);
@@ -291,7 +377,9 @@ export function HomeScreen() {
       return { kind: 'bad', reason: r.reason, key, shelfId, index: at };
     }
     const p = placementOf(layout, d.bookId)!;
-    const t = findDropTarget(detach(layout, d.bookId, books), books, shelfId, centerDU, p.pose, d.boxW / m.scale);
+    // 끄는 책을 뺀 배치는 끌기 한 번에 한 번만 계산한다(확정 배치가 그대로인 동안 같다)
+    if (!detached.current || detached.current.layout !== layout || detached.current.id !== d.bookId) detached.current = { layout, id: d.bookId, value: detach(layout, d.bookId, books) };
+    const t = findDropTarget(detached.current.value, books, shelfId, centerDU, p.pose, d.widthDU);
     const at = t.kind === 'insert' ? t.index : undefined;
     const key = `other:${JSON.stringify(t)}`;
     const hit = reuse(key);
@@ -334,133 +422,109 @@ export function HomeScreen() {
   );
 
   // ---------- 제스처 콜백(JS) ----------
-  const onTap = (x: number, y: number) => {
+  // pick: UI 스레드가 지금 보이는 자세·가림 순서로 고른 책(없으면 null)
+  const onTap = (pick: Pick) => {
     if (Date.now() - lastDragEnd.current < 350 || dragRef.current) return;
-    if (Date.now() - handleAt.current < 400) return; // 머리 손잡이를 누른 탭은 책 고르기가 아니다
-    const hit = hitAt(x, y);
     if (editing) {
       // 꾸미는 중: 짧게 누르면 그 책을 고른다(정보 상자는 띄우지 않는다)
       setEditMsg(null);
-      setEditId(hit ? hit.bookId : null);
+      setEditId(pick ? pick.bookId : null);
       return;
     }
-    if (!hit) {
+    if (!pick) {
       setPopId(null);
       setSelectedId(null);
       return;
     }
-    setSelectedId(hit.bookId);
+    setSelectedId(pick.bookId);
     popScroll.current = scrollY.value;
-    setTimeout(() => setPopId(hit.bookId), reduceMotion ? 0 : 120);
+    setPopId(pick.bookId);
   };
 
-  const hitAt = (x: number, y: number) => {
-    const row = rows[rowAt(rows, y)];
-    if (!row) return null;
-    return hitTest(frames.get(row.shelfId) ?? [], toScene(m, row, x, y));
-  };
-
-  const beginDrag = (x: number, y: number, absX: number, absY: number, scroll: number) => {
-    const hit = hitAt(x, y);
-    if (!hit) return;
-    // 꾹 눌러 책을 집으면 꾸미기 모드가 시작된다(집은 책의 줄이 제자리에 있게)
-    setEditingKeep(true, hit.shelfId);
+  const beginDrag = (pick: Pick, x: number, y: number, absX: number, absY: number, scroll: number) => {
+    if (!pick) return;
+    const p = placementOf(layout, pick.bookId);
+    if (!p || p.shelfId !== pick.shelfId) return;
+    // 꾹 눌러 책을 집으면 꾸미기 모드가 시작된다(줄 간격은 3D 값이라 줄이 움직이지 않는다)
+    setEditingKeep(true);
     setPopId(null);
     setEditMsg(null);
-    setEditId(hit.bookId);
-    const row = rows.find((r) => r.shelfId === hit.shelfId)!;
-    const box = frameBBox(hit);
-    const tl = toContent(m, row, { x: box.minX, y: box.minY });
+    setEditId(pick.bookId);
+    // 잡은 항목(더미의 받침이면 더미 전체)의 곧은 3D 상자: 가운데와 폭
+    const items = shelfItems(layout, p.shelfId);
+    const item = items.find((it) => it.bookIds.includes(pick.bookId));
+    const bx = boxOf(layout, books, pick.bookId);
+    let lo = Infinity;
+    let hi = -Infinity;
+    if (bx) for (const c of corners(fromPlaced(bx))) {
+      lo = Math.min(lo, c.x);
+      hi = Math.max(hi, c.x);
+    }
     const d: Drag = {
-      bookId: hit.bookId,
-      frame: hit,
-      from: (() => {
-        const mo = motionOf(hit.shelfId);
-        return mo ? currentStates(mo)[hit.bookId] ?? null : null;
-      })(),
-      boxW: box.width * m.scale,
-      grabX: x - tl.x,
-      grabY: y - tl.y,
-      preview: { kind: 'same', key: `same:${JSON.stringify({ kind: 'self' })}`, shelfId: hit.shelfId, hint: 'self' },
-      settling: null,
-      shelfId: hit.shelfId,
+      bookId: pick.bookId,
+      shelfId: p.shelfId,
+      preview: { kind: 'same', key: `same:${JSON.stringify({ kind: 'self' })}`, shelfId: p.shelfId, hint: 'self' },
       startVx: x,
-      startCenterDU: (() => {
-        const bx = boxOf(layout, books, hit.bookId);
-        if (!bx) return (box.minX + box.width / 2);
-        let lo = Infinity;
-        let hi = -Infinity;
-        for (const c of corners(fromPlaced(bx))) {
-          lo = Math.min(lo, c.x);
-          hi = Math.max(hi, c.x);
-        }
-        return (lo + hi) / 2;
-      })(),
+      startCenterDU: (lo + hi) / 2,
+      widthDU: item ? itemWidth(item, layout, books) : hi - lo,
     };
-    grab.value = { x: d.grabX, y: d.grabY };
     vpOrigin.value = { x: absX - x, y: absY - (y - scroll) };
     pointer.value = { x, y: y - scroll };
-    dragX.value = tl.x;
-    dragY.value = tl.y - scroll;
     active.value = true;
+    autoScroll.setActive(true);
     if (settingsStore.get().haptics) void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
     setSelectedId(null);
     updateDrag(d);
     if (PERF_ENABLED) dragPerfStart();
   };
 
+  // 미리보기는 한 프레임에 한 번(손가락 이벤트가 몰려도 마지막 위치만 계산한다)
+  const movePending = useRef<{ vx: number; vy: number; scroll: number } | null>(null);
+  const moveFrame = useRef(0);
   const moveDrag = (vx: number, vy: number, scroll: number) => {
-    const d = dragRef.current;
-    if (!d || d.settling) return;
-    const preview = computePreview(d, vx, vy, scroll);
-    if (preview === d.preview) return;
-    updateDrag({ ...d, preview });
+    movePending.current = { vx, vy, scroll };
+    if (moveFrame.current) return;
+    moveFrame.current = requestAnimationFrame(() => {
+      moveFrame.current = 0;
+      const d = dragRef.current;
+      const mv = movePending.current;
+      if (!d || !mv) return;
+      const c0 = PERF_ENABLED ? performance.now() : 0;
+      const preview = computePreview(d, mv.vx, mv.vy, mv.scroll);
+      if (PERF_ENABLED) dragJs.current.preview.push(performance.now() - c0);
+      if (preview === d.preview) return;
+      if (PERF_ENABLED) dragJs.current.commitStart = performance.now();
+      updateDrag({ ...d, preview });
+    });
   };
 
   const finishDrag = () => {
     lastDragEnd.current = Date.now();
+    cancelAnimationFrame(moveFrame.current);
+    moveFrame.current = 0;
+    autoScroll.setActive(false);
     updateDrag(null);
     if (PERF_ENABLED) dragPerfStop();
   };
 
-  // 놓기: 유효하면 확정·저장 후 새 자리로 스냅, 아니면 원래 자리로 복귀.
+  // 놓기: 미리보기가 유효하면 그대로 확정·저장(화면은 이미 그 자리). 아니면 확정 배치(원래 자리)에 그대로 있다.
   const endDrag = (cancelled: boolean) => {
     const d = dragRef.current;
     active.value = false;
     if (!d) return;
+    // 마지막 손가락 위치의 미리보기를 먼저 반영한다(프레임 안에 밀린 이동이 있으면)
+    const mv = movePending.current;
+    let preview = d.preview;
+    if (!cancelled && mv && moveFrame.current) preview = computePreview(d, mv.vx, mv.vy, mv.scroll);
     lastDragEnd.current = Date.now();
-    let final = layout;
-    let committed = false;
-    if (!cancelled && d.preview?.kind === 'ok') {
-      committed = placementStore.commit(d.preview.layout);
-      if (committed) {
-        final = d.preview.layout;
-        showToast({ text: ko.moved, action: 'undo' });
-      }
-    } else if (!cancelled && d.preview?.kind === 'bad') {
-      showToast({ text: ko.fail[d.preview.reason] || ko.fail.outside });
+    if (!cancelled && preview?.kind === 'ok') {
+      if (placementStore.commit(preview.layout)) showToast({ text: ko.moved, action: 'undo' });
+      else showToast({ text: ko.fail['no-space'] });
+    } else if (!cancelled && preview?.kind === 'bad') {
+      showToast({ text: ko.fail[preview.reason] || ko.fail.outside });
     }
-    // 후보 자리에 선반 안 책으로 보이고 있었으면(끌기 표시가 없다) 그대로 끝낸다: 확정됐으면 그 자리, 아니면 선반 안에서 원래 자리로
-    if (d.preview?.kind === 'ok' || d.preview?.kind === 'same') {
-      if (!committed && d.preview.kind === 'ok' && settingsStore.get().haptics) void Haptics.selectionAsync().catch(() => {});
-      finishDrag();
-      setEditId(d.bookId);
-      return;
-    }
-    // 떠 있던 책(자리 없음·선반 밖): 원래 자리로 돌아가 앉힌다
-    const pl = placementOf(final, d.bookId)!;
-    const finalRows = shiftRows(computeRows(final, books, m.scale, vpH, navigation.height + insets.bottom, rowKy), rowShift);
-    const row = finalRows.find((r) => r.shelfId === pl.shelfId)!;
-    const f = computeShelf(final, books, pl.shelfId).frames.find((fr) => fr.bookId === d.bookId)!;
-    const box = frameBBox(f);
-    const tl = toContent(m, row, { x: box.minX, y: box.minY });
-    updateDrag({ ...d, frame: f, from: null, settling: final });
-    const dur = reduceMotion ? 0 : motion.settle;
-    dragX.value = withTiming(tl.x, { duration: dur });
-    dragY.value = withTiming(tl.y - scrollY.value, { duration: dur }, () => {
-      scheduleOnRN(finishDrag);
-    });
     if (settingsStore.get().haptics) void Haptics.selectionAsync().catch(() => {});
+    finishDrag();
     // 놓은 뒤에도 꾸미기 모드는 유지하고, 놓은 책을 고른 상태로 둔다
     setEditId(d.bookId);
   };
@@ -482,32 +546,45 @@ export function HomeScreen() {
 
   // ---------- 제스처 ----------
   // 제스처 객체는 한 번만 만든다(다시 그릴 때마다 새로 만들면 끄는 도중 다시 붙으며 제스처가 끊긴다). JS 쪽 동작은 ref로 최신 것을 부른다.
+  // 어떤 책을 눌렀는지는 UI 스레드에서 정한다(pickAt): 지금 그려진 자세·카메라·가림 순서 그대로라 보이는 책이 잡힌다.
   const jsRef = useRef({ beginDrag, moveDrag, endDrag, onTap });
   jsRef.current = { beginDrag, moveDrag, endDrag, onTap };
-  const jsBegin = useCallback((x: number, y: number, ax: number, ay: number, sc: number) => jsRef.current.beginDrag(x, y, ax, ay, sc), []);
+  const jsBegin = useCallback((pick: Pick, x: number, y: number, ax: number, ay: number, sc: number) => jsRef.current.beginDrag(pick, x, y, ax, ay, sc), []);
   const jsMove = useCallback((x: number, y: number, sc: number) => jsRef.current.moveDrag(x, y, sc), []);
   const jsEnd = useCallback((cancel: boolean) => jsRef.current.endDrag(cancel), []);
-  const jsTap = useCallback((x: number, y: number) => jsRef.current.onTap(x, y), []);
+  const jsTap = useCallback((pick: Pick) => jsRef.current.onTap(pick), []);
+  const SLOP_DU = 3; // 손가락 여유: 윤곽 밖 이만큼(설계 단위)까지는 가장 가까운 책
+  const downPick = useSharedValue<Pick>(null); // 누른 순간 보인 책
   const pan = useMemo(
     () =>
       Gesture.Pan()
         .activateAfterLongPress(motion.longPress)
+        // 누른 곳에 보이는 책이 없으면(빈 벽·선반 판) 바로 포기: 길게 눌러도 스크롤·시점 끌기가 막히지 않는다
+        .onTouchesDown((e, mgr) => {
+          const t = e.allTouches[0];
+          const g = geoSV.value;
+          const pick = t ? pickAt(motions, g, camSV.value, t.x, t.y, SLOP_DU * g.s) : null;
+          downPick.value = pick;
+          if (!pick) mgr.fail();
+        })
         .onStart((e) => {
-          scheduleOnRN(jsBegin, e.x, e.y, e.absoluteX, e.absoluteY, scrollY.value);
+          const g = geoSV.value;
+          // 집는 순간 손가락 아래 책(움직이는 중이었으면 누른 순간 보인 책)
+          const pick = pickAt(motions, g, camSV.value, e.x, e.y, SLOP_DU * g.s) ?? downPick.value;
+          scheduleOnRN(jsBegin, pick, e.x, e.y, e.absoluteX, e.absoluteY, scrollY.value);
         })
         .onUpdate((e) => {
           if (!active.value) return;
           const vx = e.absoluteX - vpOrigin.value.x;
           const vy = e.absoluteY - vpOrigin.value.y;
           pointer.value = { x: vx, y: vy };
-          dragX.value = vx - grab.value.x;
-          dragY.value = vy - grab.value.y;
           scheduleOnRN(jsMove, vx, vy, scrollY.value);
         })
         .onFinalize((_e, success) => {
+          active.value = false;
           scheduleOnRN(jsEnd, !success);
         }),
-    [jsBegin, jsMove, jsEnd, scrollY, active, vpOrigin, pointer, dragX, dragY, grab],
+    [jsBegin, jsMove, jsEnd, scrollY, active, vpOrigin, pointer, motions, geoSV, camSV, downPick],
   );
   const tap = useMemo(
     () =>
@@ -515,9 +592,11 @@ export function HomeScreen() {
         .maxDuration(300)
         .maxDistance(10)
         .onEnd((e, success) => {
-          if (success) scheduleOnRN(jsTap, e.x, e.y);
+          if (!success) return;
+          const g = geoSV.value;
+          scheduleOnRN(jsTap, pickAt(motions, g, camSV.value, e.x, e.y, SLOP_DU * g.s));
         }),
-    [jsTap],
+    [jsTap, motions, geoSV, camSV],
   );
   const onHandleRef = useRef<(phase: 'begin' | 'move' | 'end', dx: number, dy: number) => void>(() => {});
   const handleJS = useCallback((phase: 'begin' | 'move' | 'end', dx: number, dy: number) => onHandleRef.current(phase, dx, dy), []);
@@ -537,23 +616,21 @@ export function HomeScreen() {
         })
         .onFinalize(() => {
           scheduleOnRN(handleJS, 'end', 0, 0);
-        })
-        ,
+        }),
     [handleJS],
   );
   // 목록 스크롤(네이티브 ScrollView). 손잡이·선반 앞면(시점)에서 시작한 끌기가 잡혀 있는 동안은 스크롤이 기다린다.
   const scrollNative = useMemo(() => Gesture.Native(), []);
-  useMemo(() => {
-    pan.requireExternalGestureToFail(headPan);
-    tap.requireExternalGestureToFail(headPan);
-    headPan.blocksExternalGesture(scrollNative);
-  }, [pan, tap, headPan, scrollNative]);
   // 꾸미기 모드 시점 끌기: 누른 곳으로 역할을 정하고 놓을 때까지 유지한다.
   //   책 몸통 → 책 조작(탭·길게 눌러 옮기기), 고른 책 머리 손잡이 → 손잡이, 선반 앞면(넉넉한 띠) → 시점, 그 밖의 빈 벽 → 스크롤.
   // 선반 앞면에서 누르면 바로 잡아(스크롤이 끼어들지 않게) 손가락이 책 위를 지나가도 시점 조절로 남는다.
-  // 판정 영역은 JS에서 줄마다 미리 계산한 콘텐츠 좌표 사각형으로 넘겨 둔다(UI 스레드에서 바로 판정).
-  const bookBoxes = useSharedValue<Box[]>([]);
-  const frontBoxes = useSharedValue<Box[]>([]);
+  // 판정은 UI 스레드에서 지금 장면으로 한다: 앞에 보이는 책이면 책, 판 앞면 띠(지금 카메라로 투영, 최소 48px)면 시점.
+  const handleSV = useSharedValue<{ shelfId: string; bookId: string } | null>(null);
+  const handleKey = editing && !drag && editId && placementOf(layout, editId)?.pose === 'front' ? `${placementOf(layout, editId)!.shelfId}|${editId}` : '';
+  useEffect(() => {
+    const [shelfId, bookId] = handleKey ? handleKey.split('|') : [];
+    handleSV.value = handleKey ? { shelfId, bookId } : null;
+  }, [handleKey, handleSV]);
   const viewStart = useSharedValue({ p0: VIEW_PITCH_MIN, started: false });
   const reduceMotionSV = useSharedValue(reduceMotion);
   const editingSV = useSharedValue(editing);
@@ -571,15 +648,33 @@ export function HomeScreen() {
             mgr.fail();
             return;
           }
-          const inside = (r: Box) => t.x >= r.x0 && t.x <= r.x1 && t.y >= r.y0 && t.y <= r.y1;
-          for (const r of bookBoxes.value) {
-            if (inside(r)) {
-              mgr.fail();
-              return;
+          const g = geoSV.value;
+          const cam = camSV.value;
+          // 표지 책 손잡이 위면 손잡이가 가져간다
+          const h = handleSV.value;
+          if (h) {
+            for (const mo of motions) {
+              if (mo.shelfId !== h.shelfId) continue;
+              for (const row of g.rows) {
+                if (row.shelfId !== h.shelfId) continue;
+                const hp = handlePoint(mo.m, h.bookId, cam, rowPx(g, row));
+                if (hp && Math.abs(t.x - hp.x) <= HANDLE_HIT / 2 && Math.abs(t.y - hp.y) <= HANDLE_HIT / 2) {
+                  mgr.fail();
+                  return;
+                }
+              }
             }
           }
+          // 앞에 보이는 책이면(책 조작과 같은 여유로 판정) 책 조작: 한 자리가 책과 시점 두 역할을 함께 갖지 않게
+          if (pickAt(motions, g, cam, t.x, t.y, SLOP_DU * g.s)) {
+            mgr.fail();
+            return;
+          }
           let front = false;
-          for (const r of frontBoxes.value) if (inside(r)) front = true;
+          for (const row of g.rows) {
+            const band = plankFrontBand(row, g, cam, FRONT_HIT, FRONT_PAD);
+            if (t.y >= band.y0 && t.y <= band.y1 && t.x >= g.originX + PLANK_INSET * g.s && t.x <= g.originX + (DESIGN_WIDTH - PLANK_INSET) * g.s) front = true;
+          }
           if (!front) {
             mgr.fail();
             return;
@@ -607,12 +702,19 @@ export function HomeScreen() {
           scheduleOnRN(savePitch, target);
         })
         .blocksExternalGesture(scrollNative),
-    [editingSV, bookBoxes, frontBoxes, viewStart, pitchSV, viewGoal, reduceMotionSV, savePitch, scrollNative],
+    [editingSV, viewStart, pitchSV, viewGoal, reduceMotionSV, savePitch, scrollNative, motions, geoSV, camSV, handleSV],
   );
+  useMemo(() => {
+    pan.requireExternalGestureToFail(headPan);
+    tap.requireExternalGestureToFail(headPan);
+    headPan.blocksExternalGesture(scrollNative);
+    // 손잡이를 잡은 동안 시점 끌기는 기다린다(손잡이가 선반 앞면 띠와 겹쳐도 둘이 함께 움직이지 않게)
+    headPan.blocksExternalGesture(viewPan);
+  }, [pan, tap, headPan, scrollNative, viewPan]);
   const gesture = useMemo(() => Gesture.Simultaneous(viewPan, Gesture.Race(pan, tap)), [viewPan, pan, tap]);
 
-  // 가장자리 자동 스크롤. 스크롤하면서도 최신 좌표로 놓을 자리를 다시 계산한다.
-  useFrameCallback(() => {
+  // 가장자리 자동 스크롤(끄는 동안만 켠다). 스크롤하면서도 최신 좌표로 놓을 자리를 다시 계산한다.
+  const autoScroll = useFrameCallback(() => {
     if (!active.value) return;
     const y = pointer.value.y;
     const edge = motion.autoScrollEdge;
@@ -625,8 +727,8 @@ export function HomeScreen() {
     if (next === scrollY.value) return;
     scrollY.value = next;
     scrollTo(scrollRef, 0, next, false);
-    scheduleOnRN(moveDrag, pointer.value.x, pointer.value.y, next);
-  });
+    scheduleOnRN(jsMove, pointer.value.x, pointer.value.y, next);
+  }, false);
 
   const onScroll = useAnimatedScrollHandler((e) => {
     scrollY.value = e.contentOffset.y;
@@ -639,8 +741,13 @@ export function HomeScreen() {
   const [shelfView, setShelfViewState] = useState<(typeof SHELF_VIEWS)[number]>('전체');
   // 측정 번들에서만: chaekjang:///?sv=0~4 로 선반 보기를 바로 고른다(비교 캡처용)
   // lv=<그리기 단계>(예: full, cast)로 단계만 바꿔 같은 화면을 비교한다
-  const { sv, lv, sh, gap, rowfit, cam: camDebug, pitch: pitchParam, slow } = useLocalSearchParams<{ sv?: string; lv?: string; sh?: string; gap?: string; rowfit?: string; cam?: string; pitch?: string; slow?: string }>();
+  const { sv, lv, sh, cam: camDebug, pitch: pitchParam, slow, transit, geom } = useLocalSearchParams<{ sv?: string; lv?: string; sh?: string; cam?: string; pitch?: string; slow?: string; transit?: string; geom?: string }>();
+  // 측정 번들: ?geom=1 로 형상 보기(3D 상자 모서리·받침·계산상 선반)를 켜고 끈다(캡처 스크립트용)
+  useEffect(() => {
+    if (PERF_ENABLED && geom !== undefined) setDebugGeom(geom === '1');
+  }, [geom]);
   if (PERF_ENABLED && slow !== undefined) ANIM.slow = Math.max(1, Number(slow) || 1);
+  if (PERF_ENABLED && transit !== undefined) TRANSIT_DEBUG.on = transit === 'show';
   // 측정 번들: ?pitch=3 처럼 저장된 보기 각을 바로 정한다(비교 캡처를 같은 각에서 시작)
   useEffect(() => {
     if (!PERF_ENABLED || pitchParam === undefined || !view.loaded) return;
@@ -660,11 +767,15 @@ export function HomeScreen() {
     },
     [camDebug],
   );
-  // 줄 높이 계산(rows) 전에 렌더 중에 바로 반영한다(효과에서 바꾸면 rows가 한 단계 늦은 값으로 계산된다)
-  if (PERF_ENABLED && gap !== undefined) LAYOUT.topGap = Number(gap);
-  // 비교안: chaekjang:///?rowfit=0.5 → 줄마다 필요한 높이 쪽으로 선반 위 공간을 절반만큼 줄인다
-  if (PERF_ENABLED && rowfit !== undefined) LAYOUT.rowFit = Number(rowfit);
-  const { demoboot, menutl } = useLocalSearchParams<{ demoboot?: string; menutl?: string }>();
+  const { demoboot, menutl, perfrun } = useLocalSearchParams<{ demoboot?: string; menutl?: string; perfrun?: string }>();
+  // 측정 번들: ?perfrun=full 처럼 메뉴를 거치지 않고 그 단계의 시점 전환 측정을 한 번 돌린다(전후 비교 스크립트용)
+  const perfRan = useRef('');
+  useEffect(() => {
+    if (!PERF_ENABLED || !perfrun || !store.loaded || perfRan.current === perfrun) return;
+    perfRan.current = perfrun;
+    const id = setTimeout(() => void runPerfRef.current(perfrun as PerfLevel), 1500);
+    return () => clearTimeout(id);
+  }, [perfrun, store.loaded]);
   if (PERF_ENABLED && menutl !== undefined) MENU_FLAGS.translucent = menutl === '1';
   useEffect(() => {
     if (!PERF_ENABLED || demoboot === undefined) return;
@@ -711,11 +822,28 @@ export function HomeScreen() {
     perfDts.value = [];
     perfFrames.setActive(true);
     perfOn.value = true;
+    const j = dragJs.current;
+    j.preview = [];
+    j.commit = [];
+    j.js = [];
+    j.last = performance.now();
+    lastPlan.log = [];
+    const tick = () => {
+      const now = performance.now();
+      j.js.push(now - j.last);
+      j.last = now;
+      j.raf = requestAnimationFrame(tick);
+    };
+    j.raf = requestAnimationFrame(tick);
   };
   const dragPerfStop = () => {
     perfOn.value = false;
     perfFrames.setActive(false);
-    console.log('[perf-drag]', JSON.stringify(frameStats(perfDts.value)));
+    const j = dragJs.current;
+    cancelAnimationFrame(j.raf);
+    const ms = (a: number[]) => ({ n: a.length, mean: a.length ? +(a.reduce((x, y) => x + y, 0) / a.length).toFixed(1) : 0, max: a.length ? +Math.max(...a).toFixed(1) : 0 });
+    console.log('[perf-drag]', JSON.stringify({ ...frameStats(perfDts.value), js: frameStats(j.js), preview: ms(j.preview), commit: ms(j.commit), plan: ms(lastPlan.log ?? []) }));
+    lastPlan.log = null;
   };
   const runPerf = async (level: PerfLevel) => {
     const wait = (ms: number) => new Promise((r) => setTimeout(r, ms));
@@ -740,7 +868,7 @@ export function HomeScreen() {
     const sweep = await record(3700);
     const benchRows: BenchRow[] = rows.flatMap((r, i) => {
       const mo = motionOf(r.shelfId);
-      return mo ? [{ m: mo, clear: r.clear, plankAbove: i > 0 }] : [];
+      return mo ? [{ m: mo, px: rowAffine(m, r, 0), space: r.space, plankAbove: i > 0 }] : [];
     });
     const s = m.scale;
     const calc = await new Promise<ReturnType<typeof benchProjection>>((resolve) => {
@@ -766,97 +894,30 @@ export function HomeScreen() {
     pitchSV.value = VIEW_PITCH_MIN;
     viewGoal.value = VIEW_PITCH_MIN;
   };
+  const runPerfRef = useRef(runPerf);
+  runPerfRef.current = runPerf;
 
-  // ---------- 표시할 레이아웃 ----------
-  const shown = drag?.settling ?? (drag?.preview?.kind === 'ok' ? drag.preview.layout : layout);
-  // 끄는 책이 후보 선반의 자리(또는 제자리)에 있으면 선반 안 책으로 그린다(실제 깊이·가림 그대로, 떠 있는 끌기 표시 없음).
-  // 놓을 곳이 없을 때(선반 밖·자리 없음)만 손가락을 따라가는 끌기 표시로 그린다. 어느 때든 한 권만.
-  const dragInRow = !!drag && !drag.settling && (drag.preview?.kind === 'ok' || drag.preview?.kind === 'same');
-  const shownShelves = useMemo(() => sortedShelves(shown), [shown]);
-  const frames = useShelfScenes(shown, books, view.pitch);
-  // Keep drop bands steady while a book travels between differently sized rows.
-  const rows = useMemo(() => {
-    const base = drag && !drag.settling ? layout : shown;
-    return shiftRows(computeRows(base, books, m.scale, vpH, navigation.height + insets.bottom, rowKy), rowShift);
-  }, [shown, layout, books, m.scale, vpH, insets.bottom, !!drag, drag?.settling, view.pitch, rowKy, rowShift, gap, rowfit]);
-  const rowOf = useMemo(() => new Map(rows.map((r) => [r.shelfId, r])), [rows]);
-  useEffect(() => {
-    const out: Box[] = [];
-    const fronts: Box[] = [];
-    for (const row of rows) {
-      for (const f of frames.get(row.shelfId) ?? []) {
-        const bb = frameBBox(f);
-        const a = toContent(m, row, { x: bb.minX, y: bb.minY });
-        const b = toContent(m, row, { x: bb.minX + bb.width, y: bb.minY + bb.height });
-        // 아래로는 넓히지 않는다(책은 바닥선 밑으로 내려가지 않고, 바로 아래가 선반 앞면이다)
-        out.push({ x0: a.x - 4, y0: a.y - 4, x1: b.x + 4, y1: b.y });
-      }
-      // 선반 앞면이 3°~8°에서 지나는 범위(윗모서리 3° ~ 아래모서리 8°)를 위아래로 넓혀 최소 FRONT_HIT 높이로
-      const floor = row.top + row.clear * m.scale;
-      let y0 = floor + SHELF_FRONT * kyOf(VIEW_PITCH_MIN) * m.scale;
-      let y1 = floor + (SHELF_FRONT * kyOf(VIEW_PITCH_MAX) + SHELF_THICK) * m.scale;
-      const grow = Math.max(FRONT_PAD, (FRONT_HIT - (y1 - y0)) / 2);
-      y0 -= grow;
-      y1 += grow;
-      fronts.push({ x0: m.originX + PLANK_INSET * m.scale, y0, x1: m.originX + (DESIGN_WIDTH - PLANK_INSET) * m.scale, y1 });
-    }
-    bookBoxes.value = out;
-    frontBoxes.value = fronts;
-  }, [rows, frames, m, bookBoxes, frontBoxes]);
-
-  // 꾸미기 켜기·끄기: 새 줄 높이로 바꾸면서 기준 줄(집은 책의 줄, 없으면 보이는 영역 가운데 줄)의 선반 바닥이
-  // 화면에서 같은 자리에 오도록 줄을 옮긴다. 맨 윗줄이 콘텐츠 위 끝을 넘으면 넘는 만큼 스크롤로 받는다.
-  const setEditingKeep = (on: boolean, anchorShelfId?: string) => {
+  // 꾸미기 켜기·끄기. 줄 간격은 3D 값이라 그대로다. 나올 때 조작부 여백이 빠져 목록 끝이 줄어도
+  // 지금 스크롤이 잘리지 않게 여백을 잠깐 남겼다가, 넘친 만큼은 부드럽게 올린 뒤 뺀다.
+  const setEditingKeep = (on: boolean) => {
     if (on === editing) return;
-    const base = drag && !drag.settling ? layout : shown;
-    const next = computeRows(base, books, m.scale, vpH, navigation.height + insets.bottom, on ? kyOf(VIEW_PITCH_MAX) : kyOf(view.pitch));
-    if (!rows.length || next.length !== rows.length) {
-      setEditing(on);
-      return;
-    }
-    const sc = scrollY.value;
-    const visible = editing ? vpH - panelH : vpH - navigation.height - insets.bottom;
-    const mid = sc + visible / 2;
-    let ai = anchorShelfId ? rows.findIndex((r) => r.shelfId === anchorShelfId) : rows.findIndex((r) => mid >= r.top && mid < r.top + r.height);
-    if (ai < 0) ai = mid < rows[0].top ? 0 : rows.length - 1;
-    const floorOf = (r: RowGeom) => r.top + r.clear * m.scale;
-    let shift = floorOf(rows[ai]) - floorOf(next[ai]);
-    let scroll = sc;
-    if (next[0].top + shift < CONTENT_TOP) {
-      scroll += CONTENT_TOP - (next[0].top + shift);
-      shift = CONTENT_TOP - next[0].top;
-    }
-    // 나올 때: 조작부 여백이 빠져 목록 끝이 줄어도 지금 스크롤이 잘리지 않게 여백을 남겼다가, 넘친 만큼은 부드럽게 올린 뒤 뺀다
     if (!on) {
-      const last = next.at(-1)!;
-      const h = Math.max(vpH, last.top + shift + last.height + (SHELF_CAST_EXTENT + 8) * m.scale);
+      const last = rows.at(-1);
+      const h = Math.max(vpH, (last ? last.top + last.height : 0) + (SHELF_CAST_EXTENT + 8) * m.scale);
       const max = Math.max(0, h - vpH);
       setTailPad(panelH);
-      if (scroll > max) {
-        const to = max;
+      if (scrollY.value > max) {
         setTimeout(() => {
           scheduleOnUI(() => {
             'worklet';
-            scrollTo(scrollRef, 0, to, true);
+            scrollTo(scrollRef, 0, max, true);
           });
         }, 0);
         setTimeout(() => setTailPad(0), 450);
       } else setTailPad(0);
     }
-    if (Math.abs(scroll - sc) >= 0.5) pendingScroll.current = scroll;
-    setRowShift(shift);
     setEditing(on);
   };
-  // 줄을 옮긴 렌더가 반영된 직후 같은 프레임에 스크롤을 맞춘다
-  useLayoutEffect(() => {
-    const y = pendingScroll.current;
-    if (y === null) return;
-    pendingScroll.current = null;
-    scheduleOnUI(() => {
-      'worklet';
-      scrollTo(scrollRef, 0, y, false);
-    });
-  }, [rowShift, editing, scrollRef]);
 
   // 정보 상자 위치: 위 선반 칸(화면 밖이면 아래 칸)을 덮는 선반 크기 상자. 한 줄뿐이면 책 위 빈 곳.
   const popAnchor = useMemo(() => {
@@ -867,7 +928,7 @@ export function HomeScreen() {
     const f = row && frames.get(p!.shelfId)?.find((fr) => fr.bookId === popId);
     if (!row || !f) return null;
     const sy = popScroll.current;
-    const box = frameBBox(f);
+    const box = frameBBox(f, camAt(view.pitch));
     const cx = toContent(m, row, { x: box.minX + box.width / 2, y: 0 }).x;
     const left = m.originX + PLANK_INSET * m.scale;
     const width = (DESIGN_WIDTH - PLANK_INSET * 2) * m.scale;
@@ -884,14 +945,17 @@ export function HomeScreen() {
       ? { cx, box: { left, width, top: Math.max(4, bookTop - h - 10), height: h }, above: true }
       : { cx, box: down, above: false };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [popId, shown, rows, frames, m, vpH, insets.bottom]);
+  }, [popId, shown, rows, frames, m, vpH, insets.bottom, view.pitch]);
 
+  const hints = useRef(new Map<string, DropHint>());
   const hintFor = (shelfId: string): DropHint => {
     const p = drag?.preview;
-    if (!drag || drag.settling || !p || p.shelfId !== shelfId) return null;
-    if (p.kind === 'bad') return { text: ko.fail[p.reason] || ko.fail.outside, bad: true };
-    if (p.hint === 'self') return null;
-    return { text: ko.hint[p.hint], bad: false };
+    if (!drag || !p || p.shelfId !== shelfId) return null;
+    const h = p.kind === 'bad' ? { text: ko.fail[p.reason] || ko.fail.outside, bad: true } : p.hint === 'self' ? null : { text: ko.hint[p.hint], bad: false };
+    if (!h) return null;
+    const key = `${h.bad ? 1 : 0}${h.text}`;
+    if (!hints.current.has(key)) hints.current.set(key, h);
+    return hints.current.get(key)!;
   };
 
   // ---------- 메뉴 동작 ----------
@@ -915,17 +979,20 @@ export function HomeScreen() {
     return commit(moveToShelf(layout, books, id, shelves[i].id));
   };
 
-  // 자세·기울기 바꾸기 전에 경로를 확인한다: 옆 책이 비켜도 도중에 겹치지 않고 돌 수 없으면 바꾸지 않고 안내(브리프 규칙)
-  const commitPath = (r: Result, id: string): string | null => {
-    if (!r.ok) return commit(r);
-    const shelfId = placementOf(layout, id)?.shelfId;
-    const mo = shelfId ? motionOf(shelfId) : undefined;
-    if (shelfId && mo) {
-      const now = Object.values(currentStates(mo));
-      const next = bodiesOf(withLeans(r.layout, books), books, shelfId);
-      if (!planTransition(now, next, PLANK_BOUNDS)) return ko.fail['no-space'];
-    }
-    return commit(r);
+  // 자세·기울기 바꾸기: 제자리에서 돌 수 없으면(옆 책에 걸리면) 경로 계획이 선반 앞으로 빼서 돌려 넣는다(planner).
+  const commitPath = (r: Result): string | null => commit(r);
+  // 조작 중 미리보기(손잡이·앞뒤·돌리기): 그 선반 경로만 바로 바꾼다. restore = 확정 배치로.
+  const motionOf = (shelfId: string) => motions.find((e) => e.shelfId === shelfId)?.m;
+  // 한 선반의 프레임: 확정할 때와 같은 계산(기대기 결과 반영)이라 놓은 뒤 다시 움직이지 않는다
+  const shelfFrames = (l: ShelfLayout, shelfId: string) => computeShelf(withLeans(l, books, shelfId), books, shelfId).frames;
+  const previewShelf = (shelfId: string, l: ShelfLayout) => {
+    const mo = motionOf(shelfId);
+    if (mo) previewInto(mo, shelfId, shelfFrames(l, shelfId), reduceMotion || !settled);
+  };
+  // 조작을 마칠 때: 확정한 배치(실패면 조작 전 배치)로 맞춘다. 미리보기 자세가 남지 않게.
+  const settleShelf = (shelfId: string, l: ShelfLayout) => {
+    const mo = motionOf(shelfId);
+    if (mo) settleInto(mo, shelfId, shelfFrames(l, shelfId), reduceMotion || !settled);
   };
 
   // 꾸미기 조작부: 자세와 기대기(방향만 고르고 각도는 옆 책과의 틈으로)
@@ -945,11 +1012,11 @@ export function HomeScreen() {
   }, [editId, editPlacement, layout, books]);
   const editPose = (pose: Pose) => {
     if (!editId || editPlacement?.pose === pose) return;
-    setEditMsg(commitPath(setPose(layout, books, editId, pose), editId));
+    setEditMsg(commitPath(setPose(layout, books, editId, pose)));
   };
   const editLean = (d: -1 | 0 | 1) => {
     if (!editId || !editPlacement || Math.sign(editPlacement.tilt) === d) return;
-    setEditMsg(commitPath(setTilt(layout, books, editId, (d * 7) as Tilt), editId));
+    setEditMsg(commitPath(setTilt(layout, books, editId, (d * 7) as Tilt)));
   };
   // ---------- 표지 책 머리 손잡이: 위아래 = 뒤로 젖히기, 좌우 = 돌리기 ----------
   // 조금(10px) 움직인 뒤 주된 방향으로 조작을 정하고 놓을 때까지 고정한다. 시작 자세·포인터 위치 기준 변화량이라 잡는 순간 튀지 않는다.
@@ -974,7 +1041,7 @@ export function HomeScreen() {
     if (!r) return;
     h.cur = r.state;
     h.last = r.layout;
-    previewShelf(h.shelfId, computeShelf(withLeans(r.layout, books, h.shelfId), books, h.shelfId).frames);
+    previewShelf(h.shelfId, r.layout);
     setHeadLive(r.state);
   };
   const onHandle = (phase: 'begin' | 'move' | 'end', dx: number, dy: number) => {
@@ -998,17 +1065,14 @@ export function HomeScreen() {
     headRef.current = null;
     setHeadLive(null);
     if (!h.last) return;
-    // 벽에 기대 있으면 그대로, 받침 없이 기울었으면 제자리에서 선다. 설 수 없으면 조작 전으로.
+    // 벽에 기대 있으면 그대로, 받침 없이 기울었으면 제자리에서 선다. 설 수 없거나 저장이 안 되면 조작 전으로.
     const fin = frontRelease(layout, books, h.id, h.cur, h.qx);
-    if (!fin) {
-      previewShelf(h.shelfId, frames.get(h.shelfId) ?? []);
-      setEditMsg(ko.fail['no-space']);
-      return;
-    }
-    setEditMsg(commitPath({ ok: true, layout: fin }, h.id));
+    const err = fin ? commitPath({ ok: true, layout: fin }) : ko.fail['no-space'];
+    settleShelf(h.shelfId, fin && !err ? fin : layout);
+    setEditMsg(err);
   };
   onHandleRef.current = onHandle;
-  const frontInfo = editId ? frontStateOf(layout, books, editId) : null;
+  const frontInfo = useMemo(() => (editId ? frontStateOf(layout, books, editId) : null), [editId, layout, books]);
   const anglesText = frontInfo ? ko.decoratePanel.angles((headLive ?? frontInfo.state).spin, (headLive ?? frontInfo.state).pitch) : null;
 
   // 앞뒤: 끄는 동안은 그 선반 경로만 바로 바꾸고(미리보기) 놓으면 확정한다. 옆 책·벽에 닿으면 가능한 데까지. 실제로 된 깊이를 돌려준다.
@@ -1018,25 +1082,21 @@ export function HomeScreen() {
     const cur = boxOf(layout, books, editId)?.z ?? 0;
     // 끄는 동안은 직전 미리보기의 벽 기대기 상태를 이어받는다(경계 여유가 한 번의 끌기 안에서도 작동하게)
     const r = setDepth(layout, books, editId, z, leanRef.current);
-    leanRef.current = done ? undefined : r.ok ? !!placementOf(r.layout, editId)?.wallLean : leanRef.current;
+    const leaned = r.ok ? placementOf(r.layout, editId) : undefined;
+    leanRef.current = done ? undefined : r.ok ? !!(leaned?.wallLean || (leaned?.pitch ?? 0) > 0) : leanRef.current;
     const got = r.ok ? boxOf(r.layout, books, editId)?.z ?? cur : cur;
     const limited = Math.abs(got - z) >= 1;
-    const restore = () => shelfId && previewShelf(shelfId, frames.get(shelfId) ?? []);
     if (!done) {
-      if (shelfId) {
-        if (r.ok) previewShelf(shelfId, computeShelf(withLeans(r.layout, books, shelfId), books, shelfId).frames);
-        else restore();
-      }
+      if (shelfId) previewShelf(shelfId, r.ok ? r.layout : layout);
       setEditMsg(limited ? ko.decoratePanel.depthLimit : null);
       return got;
     }
+    const err = r.ok ? commitPath(r) : null;
+    if (shelfId) settleShelf(shelfId, r.ok && !err ? r.layout : layout);
     if (!r.ok) {
-      restore();
       setEditMsg(r.reason === 'no-change' ? null : ko.decoratePanel.depthLimit);
       return cur;
     }
-    const err = commitPath(r, editId);
-    if (err) restore();
     setEditMsg(err ?? (limited ? ko.decoratePanel.depthLimit : null));
     return err ? cur : got;
   };
@@ -1053,21 +1113,18 @@ export function HomeScreen() {
     // 원한 만큼 못 돌면(옆 책·쌓인 책·선반 깊이에 막힘) 어디까지 되는지 알려 준다
     const limited = Math.abs(deg) >= 1 && Math.abs(got - deg) >= 1;
     const limitMsg = limited ? ko.decoratePanel.spinLimit(Math.round(got)) : null;
-    const restore = () => shelfId && previewShelf(shelfId, frames.get(shelfId) ?? []);
     if (!done) {
       if (!shelfId) return got;
-      if (r.ok) previewShelf(shelfId, computeShelf(withLeans(r.layout, books, shelfId), books, shelfId).frames);
-      else restore();
+      previewShelf(shelfId, r.ok ? r.layout : layout);
       setEditMsg(limitMsg);
       return got;
     }
+    const err = r.ok ? commitPath(r) : null;
+    if (shelfId) settleShelf(shelfId, r.ok && !err ? r.layout : layout);
     if (!r.ok) {
-      restore();
       setEditMsg(r.reason === 'no-change' ? limitMsg : ko.fail[r.reason] || null);
       return cur;
     }
-    const err = commitPath(r, editId);
-    if (err) restore();
     setEditMsg(err ?? limitMsg);
     return err ? cur : got;
   };
@@ -1119,7 +1176,6 @@ export function HomeScreen() {
   if (!years.length) years.push(new Date().getFullYear());
   const year = selectedYear && years.includes(selectedYear) ? selectedYear : years[0];
   const count = Object.values(books).filter((b) => b.finishedAt?.startsWith(String(year))).length;
-  const draggedBook = drag ? books[drag.bookId] : null;
   // 꾸미기에서 책을 고르면(탭) 그 책이 아래 조작부에 가릴 때만 가리지 않을 만큼 스크롤한다.
   // 꾸미기에 들어가고 나올 때는 스크롤하지 않는다(보던 줄 그대로, 손으로 스크롤할 수 있다).
   const prevEditId = useRef<string | null>(null);
@@ -1131,9 +1187,10 @@ export function HomeScreen() {
     const row = p ? rowOf.get(p.shelfId) : undefined;
     const f = row && frames.get(row.shelfId)?.find((fr) => fr.bookId === editId);
     if (!row || !f) return;
-    const box = frameBBox(f);
+    const cam = camAt(view.pitch);
+    const box = frameBBox(f, cam);
     const top = toContent(m, row, { x: 0, y: box.minY }).y;
-    const bottom = row.top + (row.clear + SHELF.lip) * m.scale + 8;
+    const bottom = row.baseline + (SHELF_FRONT * cam.ky + SHELF_THICK) * m.scale + 8;
     const cur = scrollY.value;
     const visible = vpH - panelH;
     let next = cur;
@@ -1148,13 +1205,29 @@ export function HomeScreen() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [editId, editing, panelH]);
 
+  // 선택 빛: 끄는 책, 꾸미기에서 고른 책, 정보 상자·시트의 책(들어 올리지 않고 윤곽 빛만). 그 책이 있는 줄에만 넘긴다(다른 줄은 다시 그리지 않게).
+  const glowId = drag ? drag.bookId : editing ? editId : (popId ?? detailId ?? selectedId);
+  const glowShelf = glowId ? placementOf(shown, glowId)?.shelfId : undefined;
+  const dragShelf = drag ? placementOf(shown, drag.bookId)?.shelfId : undefined;
+  // 표지 책 머리 손잡이: 꾸미기에서 고른 표지 책(끄는 중이 아닐 때)
+  const handleOn = editing && !drag && editId && placementOf(layout, editId)?.pose === 'front' ? { shelfId: placementOf(layout, editId)!.shelfId, bookId: editId } : null;
+  const sceneRows: SceneRowProps[] = useMemo(
+    () =>
+      shownShelves.flatMap((sh) => {
+        const row = rowOf.get(sh.id);
+        if (!row) return [];
+        return [{ shelfId: sh.id, row, frames: frames.get(sh.id) ?? [], arrive: arrivals[sh.id], dragId: dragShelf === sh.id ? drag!.bookId : null, glowId: glowShelf === sh.id ? glowId : null, hint: hintFor(sh.id) }];
+      }),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [shownShelves, rowOf, frames, arrivals, dragShelf, glowShelf, glowId, drag?.bookId, drag?.preview],
+  );
   const contentHeight = Math.max(vpH, (rows.at(-1) ? rows.at(-1)!.top + rows.at(-1)!.height : CONTENT_TOP) + (SHELF_CAST_EXTENT + 8) * m.scale + (editing ? panelH : tailPad));
 
   return (
     <View style={[styles.root, { paddingTop: insets.top }]}>
       {PERF_ENABLED && camDebug === '1' ? (
         <Text pointerEvents="none" style={{ position: 'absolute', zIndex: 99, left: 8, bottom: navigation.height + insets.bottom + 4, fontSize: 11, color: '#7A2E1E', backgroundColor: 'rgba(255,255,255,0.8)' }}>
-          {`저장 ${view.pitch}° · ${camNow || `적용 ${view.pitch}°`} · 배율 ${m.scale.toFixed(4)}dp/DU(${(m.scale * PixelRatio.get()).toFixed(3)}px/DU) · 줄 높이 기준 ky ${(rowKy ?? kyOf(view.pitch)).toFixed(4)} · 꾸미기 ${editing ? '켬' : '끔'}`}
+          {`저장 ${view.pitch}° · ${camNow || `적용 ${view.pitch}°`} · 배율 ${m.scale.toFixed(4)}dp/DU(${(m.scale * PixelRatio.get()).toFixed(3)}px/DU) · 3D 줄 간격 ${(rows[0]?.space ?? 0).toFixed(1)}DU · 꾸미기 ${editing ? '켬' : '끔'}`}
         </Text>
       ) : null}
       {/* 시안 비율: 제목 26DU·요약 12.5DU·원형 버튼 28DU, 좌우 여백 23/18DU */}
@@ -1247,41 +1320,32 @@ export function HomeScreen() {
           }}
           showsVerticalScrollIndicator={false}>
           <GestureDetector gesture={gesture}>
-            <View key={perfKey} style={{ height: contentHeight, paddingTop: rows[0]?.top ?? CONTENT_TOP }} collapsable={false}>
-              {shownShelves.map((s) => (
-                <ShelfRow
-                  key={s.id}
-                  shelfId={s.id}
-                  frames={frames.get(s.id) ?? []}
-                  books={books}
-                  scale={m.scale}
-                  originX={m.originX}
-                  height={rowOf.get(s.id)?.height ?? 0}
-                  clear={rowOf.get(s.id)?.clear ?? SHELF.minClear}
-                  placeholderId={drag && !dragInRow ? drag.bookId : null}
-                  dragId={dragInRow ? drag!.bookId : null}
-                  selectedId={editing ? (drag ? null : editId) : (popId ?? detailId ?? selectedId)}
-                  hint={hintFor(s.id)}
-                  editing={editing && !drag}
-                  canRemove={false}
-                  reduceMotion={reduceMotion || !settled}
-                  a11yLabelOf={a11yLabelOf}
-                  onA11y={onA11y}
-                  onRemove={() => {}}
-                  debug={debugGeom}
-                  topRow={s.id === shownShelves[0]?.id}
-                  handle={editing && !drag && editId && placementOf(layout, editId)?.shelfId === s.id ? headPan : undefined}
-                  cam={camSV}
-                />
-              ))}
+            <View key={perfKey} style={{ height: contentHeight }} collapsable={false}>
+              <ShelfScene
+                rows={sceneRows}
+                motions={motions}
+                geo={geoSV}
+                books={books}
+                m={m}
+                width={winW}
+                height={contentHeight}
+                cam={camSV}
+                shared={bookShared}
+                reduceMotion={reduceMotion || !settled}
+                planBudgetMs={drag ? 16 : 60}
+                debug={debugGeom}
+                handle={handleOn ? { gesture: headPan, shelfId: handleOn.shelfId, bookId: handleOn.bookId } : null}
+                a11yLabelOf={a11yLabelOf}
+                onA11y={onA11y}
+                viewPitch={view.pitch}
+                transitIds={transitIds}
+                glowId={glowId}
+                leaving={leaving}
+              />
             </View>
           </GestureDetector>
         </Animated.ScrollView>
         </GestureDetector>
-
-        {drag && draggedBook && !dragInRow ? (
-          <DragOverlay book={draggedBook} frame={drag.frame} from={drag.from} scale={m.scale} x={dragX} y={dragY} />
-        ) : null}
 
         {popId && popAnchor && books[popId] && placementOf(layout, popId) ? (
           <BookPopover
@@ -1353,7 +1417,8 @@ export function HomeScreen() {
         ) : null}
       </View>
 
-      {editing ? (
+      {/* 끄는 동안은 조작부를 내려 둔다(아래 줄과 끄는 책을 덮지 않게). 놓으면 그 책으로 다시 뜬다 */}
+      {editing && !drag ? (
         <DecoratePanel
           title={editId ? books[editId]?.title ?? null : null}
           pose={editPlacement?.pose ?? null}

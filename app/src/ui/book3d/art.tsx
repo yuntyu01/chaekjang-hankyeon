@@ -12,7 +12,8 @@ import { COVER_LINE_H, coverTitleLayout, spineTitleLayout } from '@/domain/title
 import type { Book } from '@/domain/types';
 import { motifSvg } from '@/ui/art/motifs';
 import { bootMark } from '@/ui/boot-trace';
-import { CoverFaceArt, SpineFaceArt, spineMotifRect } from '@/ui/book/BookBody';
+import { rigOf } from '@/domain/book-parts';
+import { CoverFaceArt, PAGE_BASE, PAGE_LINE, PAGE_RIM, SpineFaceArt, spineMotifRect, withAlpha as withAlphaHex } from '@/ui/book/BookBody';
 
 const REGULAR = require('@expo-google-fonts/gowun-batang/400Regular/GowunBatang_400Regular.ttf');
 
@@ -46,6 +47,8 @@ export type BookArt = {
   fontDU: number; // 책등 글자 크기(DU)
   cover: SkPicture;
   ribbons: SkPicture | null;
+  pageEnd: SkPicture; // 머리·꼬리 속지 면(두께 × 책등 띠 뒤 ~ 책배 판 끝 안쪽)
+  pageFore: SkPicture; // 책배 속지 면(두께 × 머리·꼬리 판 끝 안쪽)
 };
 
 const faceOf = (b: Book) => b.body?.face ?? b.themeColor;
@@ -159,6 +162,34 @@ function Ribbons({ book, s }: { book: Book; s: number }) {
   );
 }
 
+// 속지 면(판 사이, 판 끝보다 안쪽). w×h DU를 배율 s로. 종이색 바탕 + 판과 나란한 종이 결 두 줄 + 판(과 책등 띠) 쪽 좁은 그늘.
+// 결·그늘은 책 좌표에 붙어 있어 세우기·눕히기·돌리기에도 같은 자리다. 밝기는 그릴 때 면마다 덧칠한다.
+function PageArt({ w, h, s, spineBand }: { w: number; h: number; s: number; spineBand: boolean }) {
+  const W = w * s;
+  const H = h * s;
+  const band = Math.max(0.9, Math.min(2.4, w * 0.14)) * s;
+  const rim = withAlphaHex(PAGE_RIM, 0.34);
+  return (
+    <Group clip={Skia.XYWHRect(0, 0, W, H)}>
+      <Rect x={0} y={0} width={W} height={H} color={PAGE_BASE} />
+      {[0.36, 0.68].map((u) => (
+        <Rect key={u} x={W * u - 0.25} y={1 * s} width={0.5} height={Math.max(0, H - 2 * s)} color={PAGE_LINE} opacity={0.14} />
+      ))}
+      <Rect x={-band} y={-band} width={2 * band} height={H + 2 * band} color={rim}>
+        <BlurMask blur={0.9 * s} style="normal" />
+      </Rect>
+      <Rect x={W - band} y={-band} width={2 * band} height={H + 2 * band} color={rim}>
+        <BlurMask blur={0.9 * s} style="normal" />
+      </Rect>
+      {spineBand ? (
+        <Rect x={-band} y={-band} width={W + 2 * band} height={2 * band} color={rim}>
+          <BlurMask blur={0.9 * s} style="normal" />
+        </Rect>
+      ) : null}
+    </Group>
+  );
+}
+
 async function record(el: ReactNode, w: number, h: number) {
   return drawAsPicture(<Group>{el}</Group>, Skia.XYWHRect(-w, -h, w * 3, h * 3));
 }
@@ -185,7 +216,7 @@ async function buildArt(book: Book, s: number, dims: { T: number; H: number; W: 
     ? spineTitleLayout(book.title, dims.H, fw / s, 0.82, 1.12)
     : spineTitleLayout(book.title, dims.H, fw / s, book.body?.motifTop ?? 0.58, book.body?.motifBottom ?? 0.93);
   const art = book.body && t.artTop !== book.body.motifTop ? { ...book.body, motifTop: t.artTop } : book.body;
-  const spine = await record(<SpineFaceArt id={book.id} w={w} h={h} s={s} face={face} art={art} grain={shared.grain} motif={motif} />, w, h);
+  const spine = await record(<SpineFaceArt w={w} h={h} s={s} face={face} art={art} grain={shared.grain} motif={motif} />, w, h);
   const fs = t.fontSize * s;
   // 책등 글자: 보통 굵기(시안처럼 획이 가늘어 좁은 책등에서 튀지 않게)
   const font = Skia.Font(regular, fs);
@@ -295,7 +326,12 @@ async function buildArt(book: Book, s: number, dims: { T: number; H: number; W: 
     h,
   );
   const ribbons = (book.quotes ?? 0) > 0 ? await record(<Ribbons book={book} s={s} />, 40 * s, 30 * s) : null;
-  return { spine, cells, font, ink, motif: motifCell, fontDU: t.fontSize, cover: coverPic, ribbons };
+  // 속지 면(book-parts와 같은 치수): 머리·꼬리는 책등 띠 쪽에도 그늘, 책배는 판 쪽만
+  const rig = rigOf(dims);
+  const pw = dims.T - 2 * rig.bd;
+  const pageEnd = await record(<PageArt w={pw} h={dims.W - rig.sq - rig.sp} s={s} spineBand />, pw * s, (dims.W - rig.sq - rig.sp) * s);
+  const pageFore = await record(<PageArt w={pw} h={dims.H - 2 * rig.sq} s={s} spineBand={false} />, pw * s, (dims.H - 2 * rig.sq) * s);
+  return { spine, cells, font, ink, motif: motifCell, fontDU: t.fontSize, cover: coverPic, ribbons, pageEnd, pageFore };
 }
 
 // 책 한 권의 기록된 그림(없으면 null → 다음 렌더에서 채워진다)

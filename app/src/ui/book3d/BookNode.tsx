@@ -1,23 +1,26 @@
-// 책 한 권 = Skia 그룹 하나. 지금 자세(Book3, UI 스레드 SharedValue)에서 여섯 면을 매 프레임 투영해 그린다.
+// 책 한 권 = Skia 그룹 하나. 지금 자세(Book3, UI 스레드 SharedValue)에서 몸체 조각(domain/book-parts)을 매 프레임 투영해 그린다.
 // - 책등·앞표지: 기록해 둔 그림(Picture)을 면 변환 행렬에 태운다. 글자도 그 면에 붙어 면만큼 보인다.
 //   누울 때만 책등 글자·작은 모티프를 바로 세워(돌리면서) 가로로 읽히게 한다.
-// - 나머지 면(뒤표지·머리·꼬리·책배): 표지 판·종이 단면 재질. 앞표지·책등이 비스듬히 옆으로 갈수록 판 색으로 덮인다.
-// - 밝기: 면 법선과 광원(램버트). 책끼리 앞뒤는 매 프레임 깊이로(zIndex).
-import { Group, Image as SkImg, ImageSVG, LinearGradient, Path, Picture, Rect, Skia, vec } from '@shopify/react-native-skia';
+// - 머리·꼬리·책배: 판 끝보다 안쪽으로 들어간 속지 면 + 판·책등 테두리(BookFaces). 뒤표지: 판 면.
+//   앞표지·책등이 비스듬히 옆으로 갈수록 판 색으로 덮인다.
+// - 그리는 순서: 속지 면(안쪽) 먼저, 바깥 면(판·책등·앞표지) 나중: 들어간 속지 가운데 바깥 면 뒤로 숨는 부분은 바깥 면이 덮는다.
+// - 둥근 모서리: 책 전체 투영 윤곽을 공통 반지름으로 깎아 자른다(모든 면·받는 그림자가 같이). 갈피 끈만 윤곽 밖(머리 위로 나온다).
+// - 밝기: 면 법선과 광원(램버트). 책끼리 앞뒤는 매 프레임 가림 순서로(zIndex).
+import { Group, Image as SkImg, ImageSVG, LinearGradient, Path, Picture, Rect, Skia, vec, type SkRect } from '@shopify/react-native-skia';
 import type React from 'react';
 import { useDerivedValue, type SharedValue } from 'react-native-reanimated';
 
-import { brightness, corners, depthKey, faceCorners, facing, rot, toWorld, viewCam, type Book3, type Cam, type FaceId } from '@/domain/book3';
-import { project } from '@/domain/box';
+import { brightness, corners, depthKey, faceCorners, facing, rot, toWorld, type Book3, type Cam } from '@/domain/book3';
+import { project } from '@/domain/camera';
 import type { Book } from '@/domain/types';
-import { BOX_HEAD_BOW, litTone, scaleColor, withAlpha } from '@/ui/book/BookBody';
+import { litTone, scaleColor, withAlpha } from '@/ui/book/BookBody';
 import { RENDER } from '@/ui/perf';
 import { SHOW } from '@/ui/shelf/shadow-debug';
-import { light } from '@/ui/theme';
+import { light } from '@/ui/lighting';
 
 import { useBookArt, toneOf, type BookArt, type Shared } from './art';
-import { FaceShape } from './FaceShape';
-import { faceMatrix, sideFaceGeom, seedOf, type Affine } from './face-geometry';
+import { BackFace, GrazeFace, PageFace, shadeColor } from './BookFaces';
+import { faceMatrix, HIDDEN_MATRIX, silhouette, type Affine } from './face-geometry';
 
 type RO<T> = Readonly<SharedValue<T>>;
 
@@ -25,11 +28,6 @@ function smooth(a: number, b: number, v: number) {
   'worklet';
   const t = Math.max(0, Math.min(1, (v - a) / (b - a)));
   return t * t * (3 - 2 * t);
-}
-
-function shadeColor(k: number) {
-  'worklet';
-  return k < 1 ? `rgba(45, 32, 24, ${Math.min(0.5, (1 - k) * 1.1)})` : `rgba(255, 252, 245, ${Math.min(0.3, k - 1)})`;
 }
 
 // 누울수록 글자·모티프를 바로 세운다(기대기 정도의 기울기에서는 책과 함께 기운다)
@@ -180,10 +178,10 @@ function CoverBevel({ state, w, h, s, tone }: { state: RO<Book3>; w: number; h: 
 
 function ArtFace({ f, art, state, cam, px, d, tone }: { f: 'spine' | 'cover'; art: BookArt; state: RO<Book3>; cam: RO<Cam>; px: Affine; d: Book3['dims']; tone: string }) {
   const s = px.s;
-  // 보이지 않는 면은 행렬을 0으로(그룹 불투명도만으로는 기록된 그림이 얇은 선으로 남는다)
+  // 보이지 않는 면, 비스듬히 옆으로 가 판 색에 완전히 덮이는 면(GrazeFace 불투명)은 그리지 않는다(행렬을 화면 밖 한 점으로)
   const m = useDerivedValue(() => {
-    const c = viewCam(cam.value, state.value);
-    return facing(c, state.value, f) > 0.002 ? faceMatrix(state.value, f, c, px) : [0, 0, -1e4, 0, 0, -1e4, 0, 0, 1];
+    const c = cam.value;
+    return facing(c, state.value, f) > 0.1 ? faceMatrix(state.value, f, c, px) : HIDDEN_MATRIX;
   });
   const shade = useDerivedValue(() => shadeColor(brightness(light, state.value, f)));
   const w = (f === 'spine' ? d.T : d.W) * s;
@@ -220,21 +218,11 @@ function ArtFace({ f, art, state, cam, px, d, tone }: { f: 'spine' | 'cover'; ar
   );
 }
 
-function Side({ f, state, cam, px, book, pages, tone, grain, graze }: { f: FaceId; state: RO<Book3>; cam: RO<Cam>; px: Affine; book: Book; pages: boolean; tone: string; grain: Shared['grain']; graze?: boolean }) {
-  const seed = seedOf(book.id, f);
-  const bow = BOX_HEAD_BOW * px.s;
-  const geom = useDerivedValue(() => sideFaceGeom(viewCam(cam.value, state.value), state.value, f, px, bow, pages, seed));
-  const k = useDerivedValue(() => brightness(light, state.value, f));
-  // 앞표지·책등이 옆면이 되면(비스듬히) 판 색으로 덮는다: 정면에 가까울수록 그림이 드러난다
-  const op = useDerivedValue(() => (graze ? Math.max(0, Math.min(1, (0.5 - facing(viewCam(cam.value, state.value), state.value, f)) / 0.4)) : 1));
-  return <FaceShape geom={geom} pages={pages} tone={tone} k={k} s={px.s} grain={grain} opacity={op} hinge={f === 'cover' || f === 'back'} />;
-}
-
 // 측정용 기본 도형: 책등·표지 면을 그림 없이 단색 사각형으로
 function PlainFace({ f, state, cam, px, tone }: { f: 'spine' | 'cover'; state: RO<Book3>; cam: RO<Cam>; px: Affine; tone: string }) {
   const path = useDerivedValue(() => {
     const b = state.value;
-    const c = viewCam(cam.value, b);
+    const c = cam.value;
     const p = Skia.PathBuilder.Make();
     if (facing(c, b, f) <= 0.002) return p.detach();
     const cs = corners(b);
@@ -255,7 +243,7 @@ function Ribbons({ art, state, cam, px }: { art: BookArt; state: RO<Book3>; cam:
     const b = state.value;
     const d = b.dims;
     // 책등 가까이 책장 사이에서 나온다(머리 면 앞쪽 18%)
-    const p = project(viewCam(cam.value, b), toWorld(b, { x: d.T * 0.55, y: d.H, z: d.W * 0.18 }));
+    const p = project(cam.value, toWorld(b, { x: d.T * 0.55, y: d.H, z: d.W * 0.18 }));
     return [{ translateX: p.x * px.s + px.tx }, { translateY: p.y * px.s + px.ty }, { rotate: (b.roll * Math.PI) / 180 }];
   });
   return (
@@ -267,40 +255,49 @@ function Ribbons({ art, state, cam, px }: { art: BookArt; state: RO<Book3>; cam:
 
 export { depthKey } from '@/domain/book3';
 
-const NOTHING = Skia.XYWHRect(0, 0, 0, 0);
-
 // shared: 캔버스 밖에서 useBookShared()로 읽어 넘긴다
 // under: 면 위·갈피 아래에 그릴 것(이 책이 받는 그림자)
 // order: 줄 전체의 그리는 순서(가림 순서, ShelfMotion의 drawOrder). 없으면(서랍·단독) 깊이 키.
-// hidden: 그리지 않는다(끌고 있는 동안 줄의 자리. 마운트는 유지해 놓는 순간 바로 다시 보인다)
-export function BookNode({ book, dims, state, cam, px, shared, under, order, hidden = false }: { book: Book; dims: Book3['dims']; state: RO<Book3>; cam: RO<Cam>; px: Affine; shared: Shared; under?: React.ReactNode; order?: RO<number>; hidden?: boolean }) {
+// clip: 이 책을 그릴 영역(없으면 전부). 줄 캔버스는 다른 줄로 옮겨 가는 동안 빈 영역을 준다(그동안은 이동 캔버스가 그린다)
+export function BookNode({ book, dims, state, cam, px, shared, under, order, clip }: { book: Book; dims: Book3['dims']; state: RO<Book3>; cam: RO<Cam>; px: Affine; shared: Shared; under?: React.ReactNode; order?: RO<number>; clip?: RO<SkRect> }) {
   const art = useBookArt(book, px.s, dims, shared);
   const z = useDerivedValue(() => (order ? order.value : depthKey(state.value)));
+  // 둥근 모서리: 투영 윤곽을 공통 반지름으로 깎은 모양(face-geometry silhouette)
+  const outline = useDerivedValue(() => {
+    const pts = silhouette(cam.value, state.value, px);
+    const p = Skia.PathBuilder.Make();
+    pts.forEach((q, i) => (i ? p.lineTo(q.x, q.y) : p.moveTo(q.x, q.y)));
+    p.close();
+    return p.detach();
+  });
   if (!art) return null;
   const tone = toneOf(book, false);
   const ctone = toneOf(book, true);
   return (
-    <Group zIndex={z} clip={hidden ? NOTHING : undefined}>
-      {/* 올려다볼 때는 머리 면이 안 보이므로 책 뒤에서 나오는 것처럼(먼저), 정면·내려다볼 때는 머리 면 위에(나중) */}
-      <Side f="back" state={state} cam={cam} px={px} book={book} pages={false} tone={tone} grain={shared.grain} />
-      <Side f="head" state={state} cam={cam} px={px} book={book} pages tone={tone} grain={shared.grain} />
-      <Side f="tail" state={state} cam={cam} px={px} book={book} pages tone={tone} grain={shared.grain} />
-      <Side f="fore" state={state} cam={cam} px={px} book={book} pages tone={ctone} grain={shared.grain} />
-      {RENDER.art ? (
-        <>
-          <ArtFace f="spine" art={art} state={state} cam={cam} px={px} d={dims} tone={tone} />
-          <ArtFace f="cover" art={art} state={state} cam={cam} px={px} d={dims} tone={ctone} />
-          <Side f="cover" state={state} cam={cam} px={px} book={book} pages={false} tone={ctone} grain={shared.grain} graze />
-          <Side f="spine" state={state} cam={cam} px={px} book={book} pages={false} tone={tone} grain={shared.grain} graze />
-        </>
-      ) : (
-        <>
-          <PlainFace f="spine" state={state} cam={cam} px={px} tone={tone} />
-          <PlainFace f="cover" state={state} cam={cam} px={px} tone={ctone} />
-        </>
-      )}
-      {under}
-      {/* 갈피: 내려다보는 시점(3°~8°)이라 머리 면 위에 그린다 */}
+    <Group zIndex={z} clip={clip}>
+      <Group clip={outline}>
+        {/* 안쪽: 머리·꼬리·책배(판 끝보다 들어간 속지 + 테두리) */}
+        <PageFace f="head" state={state} cam={cam} px={px} art={art} tone={tone} />
+        <PageFace f="tail" state={state} cam={cam} px={px} art={art} tone={tone} />
+        <PageFace f="fore" state={state} cam={cam} px={px} art={art} tone={ctone} />
+        {/* 바깥: 뒤표지 판, 책등·앞표지 그림(비스듬하면 판 색으로 덮는다) */}
+        <BackFace dims={dims} state={state} cam={cam} px={px} tone={ctone} grain={shared.grain} />
+        {RENDER.art ? (
+          <>
+            <ArtFace f="spine" art={art} state={state} cam={cam} px={px} d={dims} tone={tone} />
+            <ArtFace f="cover" art={art} state={state} cam={cam} px={px} d={dims} tone={ctone} />
+            <GrazeFace f="cover" dims={dims} state={state} cam={cam} px={px} tone={ctone} grain={shared.grain} />
+            <GrazeFace f="spine" dims={dims} state={state} cam={cam} px={px} tone={tone} grain={shared.grain} />
+          </>
+        ) : (
+          <>
+            <PlainFace f="spine" state={state} cam={cam} px={px} tone={tone} />
+            <PlainFace f="cover" state={state} cam={cam} px={px} tone={ctone} />
+          </>
+        )}
+        {under}
+      </Group>
+      {/* 갈피: 머리 위로 나오므로 둥근 윤곽 밖에 */}
       {art.ribbons && RENDER.art ? <Ribbons art={art} state={state} cam={cam} px={px} /> : null}
     </Group>
   );

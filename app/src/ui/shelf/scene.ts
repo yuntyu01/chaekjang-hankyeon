@@ -1,0 +1,245 @@
+// 홈 선반 장면 상태(하나). 줄마다 움직임(트랙·진행률)과 줄 위치, 공통 카메라가 UI 스레드 SharedValue에 있고,
+// 책 면·그림자·선택 빛·손잡이·터치 판정이 모두 여기서 같은 프레임의 3D 자세를 읽는다.
+// - 3D: 줄마다 자기 선반 공간(판 윗면 y=0). 줄 사이는 3D 줄 간격(dy)만큼 떨어진 한 공간이다(카메라와 무관).
+// - 가림: 모든 줄의 책과 선반 판을 한 번에 분리축으로 앞뒤를 정한다(drawOrder). 윗선반 판이 아래 줄 책머리를 가리고,
+//   다른 줄로 옮겨 가는 책처럼 줄 경계를 지나는 책도 같은 규칙으로 정해진다.
+// - 터치: 지금 보이는 윤곽과 가림 순서로 가장 앞에 보이는 책을 고른다(UI 스레드, 그리는 것과 같은 프레임).
+// 워클릿은 만들어질 때 쓰는 함수를 붙잡으므로, 쓰이는 함수를 먼저 정의한다.
+import { makeMutable, type SharedValue } from 'react-native-reanimated';
+
+import { corners, depthKey, drawOrder, frontOf, type Book3 } from '@/domain/book3';
+import { hull } from '@/domain/box';
+import { toPx, type Affine, type Cam, type Point } from '@/domain/camera';
+import { SHELF, SHELF_DEPTH, SHELF_FRONT, SHELF_THICK, SHELF_X0, SHELF_X1 } from '@/domain/geometry';
+import { pointInPoly } from '@/domain/shelf-scene';
+import { bookAt, holdTrack, type Track } from '@/domain/transition';
+
+export type Tracks = Record<string, Track>;
+// 한 줄의 움직임: 책마다 경로(트랙)와 줄 전체가 함께 쓰는 진행률 t(0→1)
+export type Motion = { tracks: SharedValue<Tracks>; t: SharedValue<number> };
+
+export function makeMotion(init: Book3[]): Motion {
+  return { tracks: makeMutable<Tracks>(Object.fromEntries(init.map((b) => [b.id, holdTrack(b)]))), t: makeMutable(1) };
+}
+
+// 이 줄에서 지금 이 책의 자세(없으면 null). 멈춘 책은 늘 같은 객체라, 읽는 쪽 계산이 다시 돌지 않는다.
+export function bodyOf(m: Motion, id: string): Book3 | null {
+  'worklet';
+  const tr = m.tracks.value[id];
+  return tr ? bookAt(tr, m.t.value) : null;
+}
+
+// 줄 위치(UI 스레드용): 콘텐츠 px의 책 기준선, 맨 윗줄 기준 3D 세로 거리 dy(DU, 아래로 +), 그 줄의 3D 줄 간격 space
+export type SceneRow = { shelfId: string; baseline: number; dy: number; space: number };
+export type SceneGeo = { rows: SceneRow[]; s: number; originX: number };
+export type SceneMotion = { shelfId: string; m: Motion };
+
+// 줄의 px 변환(콘텐츠 px): 그 줄 책 기준선 왼쪽 끝이 원점. JS 쪽 rowAffine(metrics)과 같은 식.
+export function rowPx(geo: SceneGeo, row: SceneRow): Affine {
+  'worklet';
+  return { s: geo.s, tx: geo.originX + SHELF.sideMargin * geo.s, ty: row.baseline };
+}
+
+// 줄 선반 판의 3D 상자(그 줄 공간). 책과 같은 Book3로 두고 분리축 가림 순서에 함께 넣는다.
+export function plankBody(shelfId: string, dy: number): Book3 {
+  'worklet';
+  return { id: `plank:${shelfId}`, dims: { T: SHELF_X1 - SHELF_X0, H: SHELF_THICK, W: SHELF_FRONT + SHELF_DEPTH }, roll: 0, yaw: 0, t: { x: SHELF_X0, y: -SHELF_THICK - dy, z: -SHELF_FRONT } };
+}
+
+export function lowered(b: Book3, dy: number): Book3 {
+  'worklet';
+  return dy ? { ...b, t: { x: b.t.x, y: b.t.y - dy, z: b.t.z } } : b;
+}
+
+// 줄 캔버스에 실제로 올라간 책(책 id → 줄). 줄 캔버스의 책이 첫 그림을 낸 뒤 표시된다(ShelfMotion RowBook).
+// 다른 줄로 막 옮겨 간 책은 새 줄 캔버스에 올라가기 전까지 이동 캔버스가 계속 그린다(캔버스에 책을 올리는 일은 JS에서 늦게 끝난다).
+export const presentSV = makeMutable<Record<string, string>>({});
+
+// 이 책의 지금 줄과 자세: 모든 줄 움직임 가운데 이 책 트랙이 있는 줄(한 줄뿐이다)
+export function locate(list: SceneMotion[], geo: SceneGeo, id: string): { row: SceneRow; b: Book3 } | null {
+  'worklet';
+  for (const row of geo.rows)
+    for (const e of list) {
+      if (e.shelfId !== row.shelfId) continue;
+      const tr = e.m.tracks.value[id];
+      if (tr) return { row, b: bookAt(tr, e.m.t.value) };
+    }
+  return null;
+}
+
+// 책이 제 줄 공간(판 윗면 ~ 윗선반 아랫면) 밖에 걸쳐 있다 = 다른 줄로 옮겨 가는 중. 그동안은 줄 캔버스가 아니라
+// 맨 위 이동 캔버스가 그린다(ShelfScene). 제 줄 안에서 들어 올리거나 앞으로 빼는 것은 줄 공간 안이다.
+export function outsideRow(b: Book3, space: number) {
+  'worklet';
+  let lo = Infinity;
+  let hi = -Infinity;
+  for (const c of corners(b)) {
+    lo = Math.min(lo, c.y);
+    hi = Math.max(hi, c.y);
+  }
+  return lo < -1 || hi > space + 1;
+}
+
+// 이동 캔버스가 이 책을 그릴 때: 제 줄 공간 밖에 걸쳐 있거나(옮겨 가는 중), 지금 줄 캔버스에 아직 올라가지 않았다.
+// present는 부르는 쪽 계산에서 presentSV.value로 읽어 넘긴다(계산이 그 값의 변화를 알고 다시 돌게: 함수 안에서 읽으면 모른다).
+export function transitVisible(list: SceneMotion[], geo: SceneGeo, id: string, present: Record<string, string>) {
+  'worklet';
+  const at = locate(list, geo, id);
+  if (!at) return false;
+  return outsideRow(at.b, at.row.space) || present[id] !== at.row.shelfId;
+}
+
+// 화면 투영 범위(설계 단위, 위가 +): 겹칠 수 있는 쌍만 앞뒤를 따진다
+function screenBox(b: Book3, cam: Cam) {
+  'worklet';
+  let x0 = Infinity;
+  let x1 = -Infinity;
+  let y0 = Infinity;
+  let y1 = -Infinity;
+  for (const c of corners(b)) {
+    const x = c.x + c.z * cam.kx;
+    const y = c.y + c.z * cam.ky;
+    x0 = Math.min(x0, x);
+    x1 = Math.max(x1, x);
+    y0 = Math.min(y0, y);
+    y1 = Math.max(y1, y);
+  }
+  return { x0, x1, y0, y1 };
+}
+
+// 옮겨 가는 책(shelfId 줄의 id) 앞에 있는 것들(다른 책·선반 판, 모든 줄)의 화면 윤곽(콘텐츠 px).
+// 이동 캔버스는 모든 줄 캔버스 위에 있으므로, 그 책은 이 윤곽들 밖에만 그려야 가림이 맞다.
+// 같이 옮겨 가는 다른 책은 빼고(이동 캔버스 안에서 서로의 순서로 그린다) 겹칠 수 있는 것만 분리축으로 앞뒤를 가린다.
+export function frontOccluders(list: SceneMotion[], geo: SceneGeo, cam: Cam, shelfId: string, id: string): Point[][] {
+  'worklet';
+  const out: Point[][] = [];
+  let B: Book3 | null = null;
+  for (const row of geo.rows) {
+    if (row.shelfId !== shelfId) continue;
+    for (const e of list) {
+      if (e.shelfId !== shelfId) continue;
+      const tr = e.m.tracks.value[id];
+      if (tr) B = lowered(bookAt(tr, e.m.t.value), row.dy);
+    }
+  }
+  if (!B) return out;
+  const bb = screenBox(B, cam);
+  for (const row of geo.rows) {
+    const aff = rowPx(geo, row);
+    const test = (b: Book3) => {
+      const L = lowered(b, row.dy);
+      const lb = screenBox(L, cam);
+      if (lb.x1 < bb.x0 - 0.5 || bb.x1 < lb.x0 - 0.5 || lb.y1 < bb.y0 - 0.5 || bb.y1 < lb.y0 - 0.5) return;
+      if (frontOf(L, B!, cam) < 0) out.push(hull(corners(b).map((q) => toPx(cam, aff, q))));
+    };
+    for (const e of list) {
+      if (e.shelfId !== row.shelfId) continue;
+      const tracks = e.m.tracks.value;
+      const t = e.m.t.value;
+      for (const k in tracks) {
+        if (row.shelfId === shelfId && k === id) continue;
+        const b = bookAt(tracks[k], t);
+        if (outsideRow(b, row.space)) continue;
+        test(b);
+      }
+    }
+    test(plankBody(row.shelfId, 0));
+  }
+  return out;
+}
+
+// 장면 전체의 그리는 순서(키 → 순위, 작을수록 먼저 = 뒤). 책 키는 책 id, 판은 'plank:선반id'.
+export function sceneOrder(list: SceneMotion[], geo: SceneGeo, cam: Cam): Record<string, number> {
+  'worklet';
+  const bs: Book3[] = [];
+  for (const row of geo.rows) {
+    let m: Motion | null = null;
+    for (const e of list) if (e.shelfId === row.shelfId) m = e.m;
+    if (m) {
+      const tracks = m.tracks.value;
+      const t = m.t.value;
+      for (const id in tracks) bs.push(lowered(bookAt(tracks[id], t), row.dy));
+    }
+    bs.push(plankBody(row.shelfId, row.dy));
+  }
+  const r = drawOrder(bs, cam, depthKey);
+  const out: Record<string, number> = {};
+  for (let i = 0; i < bs.length; i++) out[bs[i].id] = r[i];
+  return out;
+}
+
+// ---------- 터치 판정 ----------
+function distToPoly(p: Point, poly: Point[]) {
+  'worklet';
+  let best = Infinity;
+  for (let i = 0; i < poly.length; i++) {
+    const a = poly[i];
+    const b = poly[(i + 1) % poly.length];
+    const dx = b.x - a.x;
+    const dy = b.y - a.y;
+    const l = dx * dx + dy * dy || 1;
+    const u = Math.max(0, Math.min(1, ((p.x - a.x) * dx + (p.y - a.y) * dy) / l));
+    best = Math.min(best, Math.hypot(p.x - a.x - u * dx, p.y - a.y - u * dy));
+  }
+  return best;
+}
+
+export type Pick = { shelfId: string; bookId: string } | null;
+
+// 콘텐츠 px의 한 점에서 가장 앞에 보이는 책. 선반 판(앞면·윗면)이 앞에 있으면 책이 아니다.
+// 윤곽 안에 들어간 것이 없으면 slopPx 안에서 가장 가까운(같으면 앞에 있는) 책.
+export function pickAt(list: SceneMotion[], geo: SceneGeo, cam: Cam, x: number, y: number, slopPx: number): Pick {
+  'worklet';
+  const order = sceneOrder(list, geo, cam);
+  let best: Pick = null;
+  let bestRank = -1;
+  let near: Pick = null;
+  let nearD = Infinity;
+  let nearRank = -1;
+  for (const row of geo.rows) {
+    const aff = rowPx(geo, row);
+    const px = (q: { x: number; y: number; z: number }) => toPx(cam, aff, q);
+    // 판: 앞에 있으면 그 뒤 책은 가려진다
+    const plank = plankBody(row.shelfId, 0);
+    const pr = order[plank.id] ?? -1;
+    const pp = hull(corners(plank).map(px));
+    if (pointInPoly({ x, y }, pp) && pr > bestRank) {
+      best = null;
+      bestRank = pr;
+    }
+    let m: Motion | null = null;
+    for (const e of list) if (e.shelfId === row.shelfId) m = e.m;
+    if (!m) continue;
+    const tracks = m.tracks.value;
+    const t = m.t.value;
+    for (const id in tracks) {
+      const b = bookAt(tracks[id], t);
+      const poly = hull(corners(b).map(px));
+      const r = order[id] ?? 0;
+      if (pointInPoly({ x, y }, poly)) {
+        if (r > bestRank) {
+          best = { shelfId: row.shelfId, bookId: id };
+          bestRank = r;
+        }
+      } else {
+        const d = distToPoly({ x, y }, poly);
+        if (d <= slopPx && (d < nearD - 0.5 || (Math.abs(d - nearD) <= 0.5 && r > nearRank))) {
+          near = { shelfId: row.shelfId, bookId: id };
+          nearD = d;
+          nearRank = r;
+        }
+      }
+    }
+  }
+  if (bestRank >= 0) return best;
+  return near;
+}
+
+// 선반 앞면(시점 끌기 띠): 지금 카메라로 투영한 판 앞면의 세로 범위(콘텐츠 px), 최소 minPx 높이로 넓힌다
+export function plankFrontBand(row: SceneRow, geo: SceneGeo, cam: Cam, minPx: number, padPx: number) {
+  'worklet';
+  const top = row.baseline + SHELF_FRONT * cam.ky * geo.s;
+  const bottom = top + SHELF_THICK * geo.s;
+  const grow = Math.max(padPx, (minPx - (bottom - top)) / 2);
+  return { y0: top - grow, y1: bottom + grow };
+}

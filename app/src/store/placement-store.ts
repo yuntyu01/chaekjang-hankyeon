@@ -178,6 +178,11 @@ export const placementStore = {
 
   // 검증된 레이아웃만 받는다. 무결성이 깨졌으면 거절한다.
   commit(next: ShelfLayout) {
+    // 서재에는 있는데 배치(선반·서랍) 어디에도 없는 책(추가하고 자리를 고르지 않은 책)은 서랍에 넣는다.
+    // 그러지 않으면 '모든 책이 한 곳에' 검사에 걸려 이후 모든 확정이 실패한다.
+    const placed = new Set([...next.placements.map((p) => p.bookId), ...next.drawer]);
+    const missing = Object.keys(state.books).filter((id) => !placed.has(id));
+    if (missing.length) next = { ...next, drawer: [...next.drawer, ...missing] };
     // 기대기 결과(최종 각도·상대)를 함께 저장하고, 기댈 곳이 없던 책은 바로 세운다.
     next = withLeans(ensureShelves(next), state.books);
     const errors = validate(next, state.books, Object.keys(state.books));

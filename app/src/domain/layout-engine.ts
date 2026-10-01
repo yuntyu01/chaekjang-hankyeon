@@ -6,7 +6,6 @@ import {
   SHELF_DEPTH,
   SHELF_FRONT,
   MAX_SPIN,
-  CAMERA,
   frontWidth,
   LYING_BACK_Z,
   defaultDepth,
@@ -22,7 +21,6 @@ import {
   SHELF_USABLE_WIDTH,
   singleFootprint,
   stackFootprint,
-  visibleBookOutline,
   HOME_SHELF_COUNT,
 } from './geometry';
 import { corners, fromPlaced, gap, lowest, type Book3 } from './book3';
@@ -131,10 +129,12 @@ function intervalAt(poly: XY[], y: number) {
   return xs.length ? { left: Math.min(...xs), right: Math.max(...xs) } : null;
 }
 
-// 눕힌 책 끝면이 화면에서 차지하는 폭(DU): 깊이 끝까지 × 카메라 kx
+// 눕힌 책(더미) 바로 뒤에 두는 틈(DU): 뒤에 놓인 더미의 오른쪽 끝면이 옆 책에 가리지 않게, 더미 깊이에 비례해 조금 띄운다.
+// (예전에는 카메라 kx로 계산했다. 같은 값을 카메라와 상관없는 배치 규칙으로 고정: 보기 각을 바꿔도 책 자리가 바뀌지 않는다)
+const LYING_END_GAP_PER_DU = 0.035;
 function lyingEndGap(item: ShelfItem, books: BookMap) {
   const depth = Math.max(...item.bookIds.map((id) => frontWidth(books[id])));
-  return (LYING_BACK_Z + depth) * CAMERA.kx;
+  return (LYING_BACK_Z + depth) * LYING_END_GAP_PER_DU;
 }
 
 // 한 항목(책 또는 쌓기 더미)의 실제 상자들: 화면에 그리는 것과 같은 상자(쌓인 책은 아래 책 위 가운데).
@@ -571,7 +571,8 @@ function finish(prev: ShelfLayout, next: ShelfLayout, books: BookMap): Result {
 // ---------- 끼워 넣을 때 옆 책 비키기(한쪽 우선) ----------
 // 옮긴 항목을 가리킨 자리 x(깊이·자세 그대로)에 고정하고, 실제 3D 상자가 부딪히는 이웃을 모두 한쪽으로 필요한 만큼만 비킨다.
 // 먼저 왼쪽: 부딪히는 이웃을 모두 옮긴 항목 왼쪽에 두고 왼쪽으로 연쇄해 민다. 왼쪽 공간이 모자라면 드래그 시작 배치에서
-// 다시 오른쪽 후보를 계산한다(왼쪽 결과에 덧붙이지 않는다). 둘 다 안 되면 null. 옮긴 항목은 옆이나 앞으로 옮겨 끼우지 않는다.
+// 다시 오른쪽 후보를 계산한다(왼쪽 결과에 덧붙이지 않는다). 둘 다 안 되면 마지막으로 양쪽 이웃을 각자 바깥으로 나눠 비키고,
+// 그것도 안 되면 null. 옮긴 항목은 옆이나 앞으로 옮겨 끼우지 않는다.
 // 부딪히지 않는 책(앞뒤로 떨어진 책 포함)과 빈틈은 그대로, 쌓기 더미는 한 항목이라 통째로, 기대는 책은 받치는 책과 함께.
 // base: 옮긴 책을 뺀 드래그 시작 배치. want: 그 배치의 항목 자리.
 export function pushOneSide(
@@ -582,7 +583,7 @@ export function pushOneSide(
   movedKey: string,
   x: number,
   want: Map<string, number>,
-): { layout: ShelfLayout; side: 'left' | 'right' | 'none' } | null {
+): { layout: ShelfLayout; side: 'left' | 'right' | 'split' | 'none' } | null {
   const baseItems = shelfItems(base, shelfId);
   const n0 = baseItems.length;
   // 부딪힘·좌우 판정: 옮긴 항목과 각 항목을 두 순서로 두어 필요한 간격(sep)을 잰다
@@ -602,6 +603,8 @@ export function pushOneSide(
     const center = xi + itemWidth(it, probe, books) / 2;
     return { collide: !leftOk && !rightOk, left: center < x + mw / 2 };
   });
+  // 나눠 비키기(마지막 대안)는 각 항목이 실제로 있던 쪽으로: 기대는 쌍 사이에 끼우면 기댄 책은 확정 때 새 이웃에 다시 기댄다
+  const natural = side.map((q) => q.left);
   // 기대는 책과 받치는 책은 같은 쪽으로(둘 중 하나라도 부딪히면 묶음째)
   const leansOnBase = (a: ShelfItem, b: ShelfItem) => !a.stacked && b.bookIds.includes(placementOf(base, a.bookIds[0])?.lean?.on ?? '');
   for (let i = 0; i + 1 < n0; i++) {
@@ -613,7 +616,8 @@ export function pushOneSide(
   }
   const { lo, hi } = bounds(baseItems, base);
   const leansOn = (l: ShelfLayout, a: ShelfItem, b: ShelfItem) => !a.stacked && b.bookIds.includes(placementOf(l, a.bookIds[0])?.lean?.on ?? '');
-  const tryAt = (index: number, dir: 'left' | 'right'): ShelfLayout | null => {
+  // dir: 'left' 옮긴 항목 왼쪽 것만 왼쪽으로 연쇄, 'right' 오른쪽 것만 오른쪽으로, 'split' 양쪽을 각자 바깥으로(index가 나누는 자리)
+  const tryAt = (index: number, dir: 'left' | 'right' | 'split'): ShelfLayout | null => {
     const next = insertAt(index);
     const items = shelfItems(next, shelfId);
     const m = items.findIndex((it) => it.key === movedKey);
@@ -622,7 +626,7 @@ export function pushOneSide(
     const base0 = items.map((it, i) => (i === m ? x : want.get(it.key) ?? packed[i].x));
     const link = items.map((it, i) => i + 1 < n && i !== m && i + 1 !== m && (leansOn(next, it, items[i + 1]) || leansOn(next, items[i + 1], it)));
     const xs = [...base0];
-    if (dir === 'left') {
+    if (dir !== 'right') {
       for (let round = 0; round < 3; round++) {
         for (let j = m - 1; j >= 0; j--) {
           let v = xs[j];
@@ -632,7 +636,8 @@ export function pushOneSide(
         }
         for (let j = 0; j < m - 1; j++) if (link[j]) xs[j + 1] = Math.min(xs[j + 1], xs[j] + (base0[j + 1] - base0[j]));
       }
-    } else {
+    }
+    if (dir !== 'left') {
       for (let round = 0; round < 3; round++) {
         for (let i = m + 1; i < n; i++) {
           let v = xs[i];
@@ -662,6 +667,11 @@ export function pushOneSide(
   if (left) return { layout: left, side: 'left' };
   const right = tryAt(firstRight < 0 ? n0 : firstRight, 'right');
   if (right) return { layout: right, side: 'right' };
+  // 마지막 대안: 두 책 경계처럼 양쪽 이웃과 함께 부딪혀 한쪽으로 모두 넘길 수 없을 때, 옮긴 항목 왼쪽에 있던 이웃은 왼쪽으로,
+  // 오른쪽에 있던 이웃은 오른쪽으로 나눠 비킨다(옮긴 항목 자리는 그대로, 부딪히는 이웃만)
+  const split = natural.findIndex((l) => !l);
+  const both = tryAt(split < 0 ? n0 : split, 'split');
+  if (both) return { layout: both, side: 'split' };
   return null;
 }
 
@@ -1092,7 +1102,7 @@ export function removeShelf(layout: ShelfLayout, shelfId: string): Result {
   return { ok: true, layout: normalize({ ...layout, shelves: layout.shelves.filter((s) => s.id !== shelfId) }) };
 }
 
-// 드래그 중 삽입 자리 판정. centerX는 선반 판 안쪽 기준 설계 단위.
+// 드래그 중 삽입 자리 판정. centerX는 선반 판 안쪽 기준 설계 단위(끄는 항목 3D 상자의 가운데), draggedWidth는 그 상자의 폭(DU).
 // 눕힌 책/그룹의 가운데 절반 위에 가져가면 쌓기(세운 책은 눕혀서), 그 밖은 나란히 놓기.
 export function findDropTarget(
   detached: ShelfLayout,
@@ -1111,9 +1121,9 @@ export function findDropTarget(
       return { kind: 'stack', shelfId, itemKey: pos.item.key };
     }
   }
-  // 그 자리(끄는 책 가운데 기준, 1DU 단위)에 놓고, 부딪히는 옆 책은 pushOneSide가 한쪽으로 비킨다
+  // 그 자리(끄는 책의 3D 상자 가운데 기준, 같은 선반과 같은 0.5DU 단위)에 놓고, 부딪히는 옆 책은 pushOneSide가 한쪽으로 비킨다
   const index = insertIndex(positions, centerX);
-  return { kind: 'insert', shelfId, index, x: Math.round(centerX - draggedWidth / 2) };
+  return { kind: 'insert', shelfId, index, x: Math.round((centerX - draggedWidth / 2) * 2) / 2 };
 }
 
 export function sameTarget(a: DropTarget | null, b: DropTarget | null) {
@@ -1283,14 +1293,15 @@ export function findSwapTarget(layout: ShelfLayout, books: BookMap, bookId: stri
     const others = positions.filter((q) => q !== mine);
     return { kind: 'place', x, index: insertIndex(others, x + w / 2) };
   };
+  // 자기 자리(가로 범위) 위에 있는 동안은 자기 자리가 먼저다: 앞뒤로 겹쳐 선 누운 책 위라도 잡자마자 쌓이지 않는다
+  if (centerX >= mine.x && centerX <= mine.x + mine.width) {
+    // 제자리 위: 끈 만큼 그대로 옮긴다(위 책은 아래 책 위에서만)
+    if (Math.abs(centerX - cur) < 0.25) return { kind: 'self' };
+    if (upper) return { kind: 'shift', dx: Math.round((centerX - cur) * 2) / 2 };
+    return place();
+  }
   for (const pos of positions) {
-    if (centerX < pos.x || centerX > pos.x + pos.width) continue;
-    if (pos === mine) {
-      // 제자리 위: 끈 만큼 그대로 옮긴다(위 책은 아래 책 위에서만)
-      if (Math.abs(centerX - cur) < 0.25) return { kind: 'self' };
-      if (upper) return { kind: 'shift', dx: Math.round((centerX - cur) * 2) / 2 };
-      return place();
-    }
+    if (pos === mine || centerX < pos.x || centerX > pos.x + pos.width) continue;
     const middle = centerX >= pos.x + pos.width * 0.25 && centerX <= pos.x + pos.width * 0.75;
     if (!base && middle && isHorizontalItem(pos.item, layout)) return { kind: 'stack', itemKey: pos.item.key };
     break; // 다른 책 위: 그 자리에 끼워 넣고 옆 책들을 민다(자리 바꾸기 대신). 깊이가 떨어져 있으면 겹쳐 놓인다

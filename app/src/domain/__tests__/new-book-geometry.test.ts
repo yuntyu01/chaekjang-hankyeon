@@ -1,10 +1,11 @@
 import { toShelfBook } from '../catalog';
-import { LYING_BACK, SHELF, SHELF_DEPTH, SHELF_FRONT, SHELF_THICK, singleFootprint, VIEW_KY } from '../geometry';
+import { BASE_CAM, project } from '../camera';
+import { SHELF_DEPTH, SHELF_FRONT, SHELF_THICK, singleFootprint } from '../geometry';
 import { computeShelf, frontOutline } from '../shelf-scene';
 import { corners, fromPlaced } from '../book3';
 import { onWall, travelOf } from '../cast-shadow';
 import type { Pose, ShelfLayout, Tilt } from '../types';
-import { light, shadow } from '@/ui/theme';
+import { light, shadow } from '@/ui/lighting';
 
 const fresh = toShelfBook({
   isbn13: '9780000000001', title: '새로 추가한 책', authors: ['저자'],
@@ -19,8 +20,9 @@ describe('예시 이미지가 없는 새 책의 공통 배치와 그림자', () 
       placements: [{ bookId: fresh.id, shelfId: 's', order: 0, pose, tilt }] };
     const f = computeShelf(layout, { [fresh.id]: fresh }, 's').frames[0];
     const bottom = Math.max(...frontOutline(f).map((p) => p.y));
-    expect(bottom).toBeCloseTo(SHELF.clearHeight, 6); // 선반 공간 바닥(누운 책은 뒤에 놓일 뿐 같은 바닥)
-    expect(bottom).toBeLessThan(SHELF.clearHeight + SHELF.lip - 1); // 책 앞에 나무판이 보인다(판 앞 70mm를 공통 카메라로 본 높이)
+    expect(bottom).toBeCloseTo(0, 6); // 선반 공간 바닥 = 판 윗면(누운 책은 뒤에 놓일 뿐 같은 바닥)
+    // 책 앞에 나무판이 보인다: 판 윗면 앞 모서리(판 앞 70mm를 공통 카메라로 본 자리)가 책 밑면보다 화면에서 아래
+    expect(bottom).toBeLessThan(project(BASE_CAM, { x: 0, y: 0, z: -SHELF_FRONT }).y - 1);
     const extent = singleFootprint(fresh, { pose, tilt });
     const o = frontOutline(f);
     expect(Math.max(...o.map((p) => p.x)) - Math.min(...o.map((p) => p.x))).toBeCloseTo(extent.width, 6); // 점유 폭 = 앞면 폭
@@ -36,9 +38,10 @@ describe('예시 이미지가 없는 새 책의 공통 배치와 그림자', () 
 
   it('그림자는 따뜻한 회색이고 실제 그림자·주변광 차폐가 나뉘어 있다', () => {
     expect(shadow.color).not.toBe('#000000');
-    // 책 그림자 한 층은 옅게(층이 겹쳐 가까운 곳만 진해진다)
-    expect(shadow.cast.bookWall.opacity).toBeLessThanOrEqual(0.2);
-    expect(shadow.cast.bookShelf.opacity).toBeLessThanOrEqual(0.2);
+    // 책 그림자(벽·선반 윗면 한 모델) 한 층은 옅게(층이 겹쳐 가까운 곳만 진해진다). 문턱은 멀수록 길다
+    const b = shadow.cast.book;
+    for (const o of b.opacity) expect(o).toBeLessThanOrEqual(0.2);
+    for (let k = 1; k < b.layers.length; k++) expect(b.layers[k]).toBeGreaterThan(b.layers[k - 1]);
     // 선반 → 벽: 빛 길이 층은 멀수록 길다. 층은 서로 포개지므로(먼 층이 가까운 부분도 덮는다) 판 바로 아래가 가장 진하다.
     // 세기는 시안 판 아래 수치(벽 대비 +4px 약 45%, +44px 약 19%, 따뜻한 갈색)에 맞춘다: 층 하나는 0.25 이하, 모두 겹친 곳은 0.6 이하
     const w = shadow.cast.shelfWall;
@@ -47,8 +50,6 @@ describe('예시 이미지가 없는 새 책의 공통 배치와 그림자', () 
     expect(w.opacity.reduce((a, b) => a + b, 0)).toBeLessThanOrEqual(0.6);
     void travelOf;
     void SHELF_THICK;
-    void SHELF_FRONT;
-    void VIEW_KY;
     expect(shadow.ao.gap.max).toBeLessThanOrEqual(0.15);
   });
 });

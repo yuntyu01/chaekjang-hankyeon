@@ -67,7 +67,11 @@ function SpinSlider({ value, onChange }: { value: number; onChange: (deg: number
     .runOnJS(true)
     .onBegin((e) => send(toDeg(e.x), false))
     .onUpdate((e) => send(toDeg(e.x), false))
-    .onEnd((e) => send(toDeg(e.x), true));
+    .onEnd((e) => send(toDeg(e.x), true))
+    // 다른 제스처에 넘어가거나 취소되면 조작 전 각도로 확정(미리보기 자세가 남지 않게)
+    .onFinalize((_e, success) => {
+      if (!success) send(value, true);
+    });
   const shown = live ?? value;
   const pos = ((shown / MAX_SPIN + 1) / 2) * w;
   return (
@@ -129,7 +133,11 @@ function DepthSlider({ lo, hi, value, onChange }: { lo: number; hi: number; valu
       start.current = value;
     })
     .onUpdate((e) => send(toZ(e.translationX), false))
-    .onEnd((e) => send(toZ(e.translationX), true));
+    .onEnd((e) => send(toZ(e.translationX), true))
+    // 취소되면 조작 전 깊이로(미리보기 자세가 남지 않게)
+    .onFinalize((_e, success) => {
+      if (!success && last.current !== null) send(start.current, true);
+    });
   const shown = live ?? value;
   const pos = ((shown + SHELF_FRONT) / full) * w;
   const mmOf = (z: number) => Math.round((z + SHELF_FRONT) / DU_PER_MM);

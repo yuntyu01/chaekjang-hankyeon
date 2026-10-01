@@ -1,6 +1,6 @@
 // 책 면 그림(캔버스 없이, 면 그림 좌표 0..w, 0..h). 상자 렌더러(ui/book3d)가 Skia Picture로 기록해 면 변환에 태워 그린다.
-// 책등 면: 둥근 책등 명암 + 붓결 + 가장자리(손으로 그은 선, 빛 받는 테). 옆면·윗면과 이어지는 변(오른쪽·위)은 선 없이.
-// 표지 면: 표지 그림(없으면 책 색 + 모티프) + 제본선 + 가장자리. 제목·작은 모티프는 따로 그린다(누울 때 바로 세우려고).
+// 책등 면: 책 색 + 붓결 + 장면 그림. 표지 면: 표지 그림(없으면 책 색 + 모티프) + 붓결 + 제본 홈. 제목·작은 모티프는 따로 그린다(누울 때 바로 세우려고).
+// 둥근 모서리·책등 곡면·빛 받는 모서리는 여기서 굽지 않는다: 자세와 공통 광원으로 매 프레임 덧그린다(BookNode).
 import {
   BlurMask,
   Group,
@@ -8,28 +8,20 @@ import {
   ImageShader,
   LinearGradient,
   Mask,
-  Path,
   Rect,
   Skia,
   vec,
   type SkImage as SkImageType,
-  type SkPath,
 } from '@shopify/react-native-skia';
-import type { ReactNode } from 'react';
-import type { SharedValue } from 'react-native-reanimated';
 
-import type { Point } from '@/domain/shelf-scene';
+import { GROOVE } from '@/domain/book-parts';
 import type { BodyArt } from '@/domain/types';
 
-const SRC_DU = 390 / 941; // 시안 원본 1px = DU(붓결 크기를 시안과 맞춘다)
+export const SRC_DU = 390 / 941; // 시안 원본 1px = DU(붓결 크기를 시안과 맞춘다)
 // 붓결 세기(시안: 은은함). 질감 이미지는 명암 차를 5배로 담아 두었으므로 여기서 줄인다.
 export const GRAIN_STRENGTH = 0.22;
-// 속지(종이 단면): 새하얀색이 아니라 따뜻한 크림색
-const COVER_ART_TRIM = 0.015;
-export const PAGE = '#EFE2C8';
-// 속지(종이 단면) 색: 따뜻한 백색, 빛 받는 가장자리는 조금 더 밝게. 표지색·판 그늘은 섞지 않는다(속지 면에만).
+// 속지(종이 단면) 색: 따뜻한 백색. 표지색·판 그늘은 섞지 않는다(속지 면에만).
 export const PAGE_BASE = '#FAF8F2';
-export const PAGE_LIT = '#FFFDFB';
 export const PAGE_RIM = '#B8A993'; // 표지와 맞닿는 안쪽의 좁은 회베이지 그늘
 export const PAGE_LINE = '#DDCFB8';
 
@@ -68,127 +60,7 @@ export function litTone(tone: string) {
   return mix(tone, LIGHT_TINT, 0.5);
 }
 
-export function luminance(hex: string) {
-  const n = parseInt(hex.slice(1), 16);
-  return (0.2126 * ((n >> 16) & 255) + 0.7152 * ((n >> 8) & 255) + 0.0722 * (n & 255)) / 255;
-}
-
-// 실루엣 가장자리 선: 책 색을 어둡게 한 같은 색. 선은 구분만 될 만큼(진하면 틀처럼 보인다)
-export const edgeFactor = (face: string) => 0.74 + 0.2 * luminance(face);
-
-// 책등 앞면의 가로 명암: 옆면으로 꺾이는 오른쪽 끝이 조금 어둡다(밝은 책일수록 명암 폭이 작다)
-function spineProfile(face: string): [number, number][] {
-  const lum = luminance(face);
-  const w = 0.45 + 0.75 * (1 - lum);
-  // 둥근 책등(베개처럼): 왼쪽 가장자리 바로 안쪽이 가장 밝은 띠, 가운데 평평, 오른쪽으로 둥글게 넘어가며 어두워진다
-  const raw: [number, number][] = [[0, 0.88], [0.035, 1.0], [0.09, 1.07], [0.2, 1.04], [0.45, 1.0], [0.72, 0.96], [0.88, 0.91], [1, 0.84]];
-  return raw.map(([p, k]) => [p, 1 - (1 - k) * w] as [number, number]);
-}
-
 // 결정적 잡음(책마다 같은 모양)
-function jitter(seed: string) {
-  let h = 2166136261;
-  for (const ch of seed) h = Math.imul(h ^ ch.charCodeAt(0), 16777619);
-  return (i: number) => {
-    const x = Math.sin((h % 1000) * 12.9898 + i * 78.233) * 43758.5453;
-    return x - Math.floor(x) - 0.5;
-  };
-}
-
-// 손으로 그은 선의 흔들림: 파장이 다른 사인 둘을 더한 부드러운 잡음(0~1). t는 선을 따라간 거리(DU). 늘 안쪽으로만 민다.
-export const WOBBLE = 0.32; // 최대 흔들림(DU)
-function wobble(seed: string, edge: number) {
-  const r = jitter(seed);
-  const waves = [24, 10].map((len, i) => ({ len, amp: [0.65, 0.35][i], ph: (r(edge * 7 + i) + 0.5) * Math.PI * 2 }));
-  return (t: number) => 0.5 + 0.5 * waves.reduce((sum, w) => sum + w.amp * Math.sin((t / w.len) * Math.PI * 2 + w.ph), 0);
-}
-
-// 책등 머리가 볼록한 정도(DU): 윗면이 같은 곡선을 따라가므로 아주 살짝
-export const BOX_HEAD_BOW = 0.3;
-
-// 책등 면 윤곽(px): 둥근 왼쪽 위, 살짝 볼록한 머리. 옆면·윗면과 이어지는 오른쪽·위·아래 변은 곧게, 왼쪽 바깥 변만 손그림 흔들림.
-function spineOutline(w: number, h: number, s: number, seed: string): Point[] {
-  const r = 3.4 * s;
-  const rb = 2.2 * s;
-  const rs = 2.4 * s;
-  const bow = BOX_HEAD_BOW * s;
-  const amp = WOBBLE * s;
-  const step = 1.5 * s;
-  const wLeft = wobble(seed, 3);
-  const headY = (x: number) => bow * (1 - Math.sin((Math.PI * Math.min(x, w)) / w));
-  const pts: Point[] = [];
-  const y0 = headY(r);
-  for (let i = 0; i <= 6; i++) {
-    const a = Math.PI + (Math.PI / 2) * (i / 6);
-    pts.push({ x: r + r * Math.cos(a), y: y0 + r + r * Math.sin(a) });
-  }
-  for (let x = r + step; x < w - rs; x += step) pts.push({ x, y: headY(x) });
-  const sy = headY(w);
-  for (let i = 0; i <= 5; i++) {
-    const a = -Math.PI / 2 + (Math.PI / 2) * (i / 5);
-    pts.push({ x: w - rs + rs * Math.cos(a), y: sy + rs + rs * Math.sin(a) });
-  }
-  for (let i = 0; i <= 4; i++) {
-    const a = (Math.PI / 2) * (i / 4);
-    pts.push({ x: w - rb + rb * Math.cos(a), y: h - rb + rb * Math.sin(a) });
-  }
-  for (let i = 0; i <= 4; i++) {
-    const a = Math.PI / 2 + (Math.PI / 2) * (i / 4);
-    pts.push({ x: rb + rb * Math.cos(a), y: h - rb + rb * Math.sin(a) });
-  }
-  for (let y = h - rb - step; y > y0 + r; y -= step) pts.push({ x: amp * wLeft(y / s), y });
-  return pts;
-}
-
-// 표지 윤곽: 둥근 네 모서리 + 손으로 그은 듯한 흔들림
-function coverOutline(w: number, h: number, s: number, seed: string): Point[] {
-  const r = 3.4 * s;
-  const amp = WOBBLE * s;
-  const step = 2 * s;
-  const wv = [0, 1, 2, 3].map((e) => wobble(seed, e));
-  const pts: Point[] = [];
-  const corner = (cx: number, cy: number, a0: number) => {
-    for (let i = 0; i <= 5; i++) {
-      const a = a0 + (Math.PI / 2) * (i / 5);
-      pts.push({ x: cx + r * Math.cos(a), y: cy + r * Math.sin(a) });
-    }
-  };
-  corner(w - r, r, -Math.PI / 2);
-  for (let y = r + step; y < h - r; y += step) pts.push({ x: w - amp * wv[1](y / s), y });
-  corner(w - r, h - r, 0);
-  for (let x = w - r - step; x > r; x -= step) pts.push({ x, y: h - 0.5 * amp * wv[2](x / s) });
-  corner(r, h - r, Math.PI / 2);
-  for (let y = h - r - step; y > r; y -= step) pts.push({ x: amp * wv[3](y / s), y });
-  corner(r, r, Math.PI);
-  for (let x = r + step; x < w - r; x += step) pts.push({ x, y: amp * wv[0](x / s) });
-  return pts;
-}
-
-const poly = (pts: Point[]) => Skia.Path.Polygon(pts.map((q) => ({ x: q.x, y: q.y })), true);
-
-// 가장자리 선: 책 색을 어둡게 한 또렷한 선 + 조금 어긋난 두 번째 선(굵기가 고르지 않은 손그림 선)
-function EdgeLine({ outline, outline2, s, face, opacity = 1 }: { outline: SkPath; outline2: SkPath; s: number; face: string; opacity?: number }) {
-  const edge = scaleColor(face, edgeFactor(face));
-  return (
-    <Group opacity={opacity}>
-      {/* 선이 아니라 가장자리가 둥글게 넘어가며 살짝 어두워지는 정도(목업: 또렷한 윤곽선 없음) */}
-      <Path path={outline} style="stroke" strokeWidth={3.2 * s} color={edge} opacity={0.35}>
-        <BlurMask blur={1.1 * s} style="normal" />
-      </Path>
-      <Path path={outline2} style="stroke" strokeWidth={1.6 * s} color={edge} opacity={0.12}>
-        <BlurMask blur={0.6 * s} style="normal" />
-      </Path>
-    </Group>
-  );
-}
-
-// 다른 면과 이어지는 변(오른쪽·위)에서는 가장자리 선을 지운다: 그 변은 선이 아니라 빛·그늘로 구분한다.
-function Joined({ w, h, s, children }: { w: number; h: number; s: number; children: ReactNode }) {
-  const m = 10 * s;
-  const cut = 2 * s;
-  return <Group clip={Skia.XYWHRect(-m, cut, w - cut + m, h + m - cut)}>{children}</Group>;
-}
-
 export function Grain({ w, h, s, image }: { w: number; h: number; s: number; image: SkImageType | null }) {
   if (!image) return null;
   return (
@@ -198,32 +70,15 @@ export function Grain({ w, h, s, image }: { w: number; h: number; s: number; ima
   );
 }
 
-// 모양(path) 안에만 결을 입힌다. 모양으로 자른 큰 사각형(Grain)과 같은 무늬·같은 자리지만, 자르기(클립) 없이 모양만 칠한다.
-export function GrainFill({ path, s, image }: { path: SkPath | SharedValue<SkPath>; s: number; image: SkImageType | null }) {
-  if (!image) return null;
-  return (
-    <Path path={path} blendMode="softLight" opacity={GRAIN_STRENGTH}>
-      <ImageShader image={image} tx="repeat" ty="repeat" transform={[{ scale: SRC_DU * s }]} />
-    </Path>
-  );
-}
-
 // 책등 면(제목·작은 모티프 제외). 장면(scene) 그림은 면에 그대로 붙인다.
-export function SpineFaceArt({ id, w, h, s, face, art, grain, motif }: { id: string; w: number; h: number; s: number; face: string; art?: BodyArt; grain: SkImageType | null; motif: SkImageType | null }) {
-  // 책등 그림은 색·결·모티프만 기록한다. 둥근 가장자리·빛 받는 모서리 명암은 3D 렌더러가 지금 자세와 공통 광원으로
-  // 매 프레임 계산해 덧그린다(BookNode 베벨). 여기에 고정된 가장자리 명암을 넣으면 책을 돌려도 같은 쪽이 어두워 테두리처럼 보인다.
-  const outline = poly(spineOutline(w, h, s, id));
+export function SpineFaceArt({ w, h, s, face, art, grain, motif }: { w: number; h: number; s: number; face: string; art?: BodyArt; grain: SkImageType | null; motif: SkImageType | null }) {
+  // 책등 그림은 면 전체(사각형)에 색·결·모티프만 기록한다. 둥근 모서리는 3D 렌더러가 책 전체 윤곽을 공통 반지름으로 깎아 만들고,
+  // 빛 받는 모서리 명암은 지금 자세와 공통 광원으로 매 프레임 덧그린다(BookNode 베벨). 고정된 윤곽·명암을 굽지 않는다.
   return (
-    <Group>
-      <Group clip={outline}>
-        <Rect x={0} y={0} width={w} height={h} color={face} />
-        <Grain w={w} h={h} s={s} image={grain} />
-        {art?.scene && motif ? <SceneArt h={h} art={art} motif={motif} faceW={w * 0.94} /> : null}
-      </Group>
-      {/* 클립 경계는 계단처럼 깨지므로 같은 색으로 한 번 더 덮는다(어두운 윤곽선이 아니라 가장자리 안티앨리어싱용) */}
-      <Joined w={w} h={h} s={s}>
-        <Path path={outline} style="stroke" strokeWidth={0.6 * s} color={face} antiAlias />
-      </Joined>
+    <Group clip={Skia.XYWHRect(0, 0, w, h)}>
+      <Rect x={0} y={0} width={w} height={h} color={face} />
+      <Grain w={w} h={h} s={s} image={grain} />
+      {art?.scene && motif ? <SceneArt h={h} art={art} motif={motif} faceW={w * 0.94} /> : null}
     </Group>
   );
 }
@@ -262,6 +117,9 @@ export function spineMotifRect(art: BodyArt | undefined, motif: SkImageType | nu
   return { x: cx - mw / 2, y: top + (mh - mH), w: mw, h: mH };
 }
 
+// 표지 그림 왼쪽(제본 쪽)을 면 밖으로 미는 비율(아래 CoverFaceArt 설명)
+const COVER_ART_TRIM = 0.015;
+
 // 표지 면(제목 제외). 표지 그림이 없으면 책 색 + 모티프.
 export function CoverFaceArt({
   id,
@@ -284,41 +142,30 @@ export function CoverFaceArt({
   motif: SkImageType | null;
   grain: SkImageType | null;
 }) {
-  const outline = poly(coverOutline(fw, h, s, id));
-  const outline2 = poly(coverOutline(fw, h, s, `${id}~`));
   let mh = h * 0.38;
   let mw = motif ? (mh * motif.width()) / motif.height() : 0;
   if (mw > fw * 0.5) {
     mh = (mh * fw * 0.5) / mw;
     mw = fw * 0.5;
   }
-  const edgeC = scaleColor(tone, edgeFactor(tone));
   return (
     <Group>
-      <Group clip={outline}>
+      <Group clip={Skia.XYWHRect(0, 0, fw, h)}>
         <Rect x={0} y={0} width={fw} height={h} color={face} />
         {/* 표지 그림 왼쪽(제본 쪽) 끝 약 1%에는 시안에서 뽑을 때 따라온 어두운 윤곽 한 줄이 있다(b04 50 vs 안쪽 82). 제본 홈·가장자리 명암은
             코드가 그리므로 그림을 1.5% 왼쪽으로 밀어 그 줄을 면 밖으로 보낸다 */}
         {image ? <SkImage image={image} x={-fw * COVER_ART_TRIM} y={0} width={fw * (1 + COVER_ART_TRIM)} height={h} fit="cover" /> : null}
         {!image && motif ? <SkImage image={motif} x={fw / 2 - mw / 2} y={h * 0.9 - mh} width={mw} height={mh} fit="contain" /> : null}
         <Grain w={fw} h={h} s={s} image={grain} />
-        {/* 제본선(시안: 왼쪽에서 조금 안쪽의 가는 홈 하나) */}
-        <Rect x={0} y={0} width={fw * 0.05} height={h}>
-          <LinearGradient start={vec(0, 0)} end={vec(fw * 0.05, 0)} colors={['rgba(0,0,0,0.07)', 'rgba(0,0,0,0)']} />
+        {/* 제본 홈(책등 쪽에서 GROOVE.at 안쪽): 책 색을 낮춘 좁은 그늘 + 바로 뒤 책 색을 밝힌 가는 밝음(흰·검정 고정색이 아니다) */}
+        <Rect x={0} y={0} width={(GROOVE.at + GROOVE.dark) * s} height={h}>
+          <LinearGradient start={vec(0, 0)} end={vec((GROOVE.at + GROOVE.dark) * s, 0)} colors={[withAlpha(scaleColor(tone, 0.6), 0.07), withAlpha(scaleColor(tone, 0.6), 0)]} />
         </Rect>
-        <Rect x={fw * 0.04} y={0} width={0.7 * s} height={h} color="rgba(40,30,20,0.16)">
-          <BlurMask blur={0.35 * s} style="normal" />
+        <Rect x={(GROOVE.at - GROOVE.dark / 2) * s} y={0} width={GROOVE.dark * s} height={h} color={withAlpha(scaleColor(tone, 0.55), 0.18)}>
+          <BlurMask blur={0.4 * s} style="normal" />
         </Rect>
-        <Rect x={fw * 0.04 + 0.9 * s} y={0} width={0.6 * s} height={h} color="rgba(255,255,255,0.14)" />
-        {/* 가장자리 명암(빛 쪽 얇은 밝음·반대쪽 그늘)은 고정해 굽지 않는다: 3D 렌더러가 자세와 공통 광원으로 매 프레임 덧그린다(BookNode 표지 베벨) */}
-        {/* 표지 그림은 그 자체로 경계가 보이므로 선은 반만(진하면 액자처럼 보인다) */}
-        <Joined w={fw} h={h} s={s}>
-          <EdgeLine outline={outline} outline2={outline2} s={s} face={tone} opacity={image ? 0.5 : 1} />
-        </Joined>
+        <Rect x={(GROOVE.at + GROOVE.gap) * s} y={0} width={GROOVE.lit * s} height={h} color={withAlpha(litTone(tone), 0.16)} />
       </Group>
-      <Joined w={fw} h={h} s={s}>
-        <Path path={outline} style="stroke" strokeWidth={0.6 * s} color={edgeC} opacity={0.5} antiAlias />
-      </Joined>
     </Group>
   );
 }

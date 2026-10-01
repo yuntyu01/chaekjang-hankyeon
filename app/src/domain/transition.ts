@@ -6,6 +6,7 @@
 // 맞추고 가장 낮은 점을 받침에 댄 채 돈다(box). 도는 도중에는 대각선만큼 폭이 잠깐 커지므로, 옆 책이 그만큼 더 비켜 줬다가 끝에 붙는다.
 // 높이가 바뀌는 이동(쌓인 책 내리기)은 L자로 나눠 대각선으로 다른 책을 가로지르지 않게 한다.
 import { cornerLocal, corners, gap, lowest, pivotLocal, rot, sub3, toWorld, xRange, type Book3, type Vec3 } from './book3';
+import { SHELF_DEPTH, SHELF_FRONT } from './geometry';
 
 // kind 0 = pivot(기준점 a의 월드 위치를 w0→w1), 1 = box(가로 정렬 al의 x를 x0→x1, 가장 낮은 y를 b0→b1, 가장 앞 z를 z0→z1)
 export type Seg = {
@@ -31,7 +32,8 @@ export type Seg = {
   z0: number;
   z1: number;
 };
-export type Track = { id: string; dims: Book3['dims']; segs: Seg[]; moving: boolean };
+// rest: 움직이지 않는 트랙의 자세(늘 같은 객체). bookAt이 그대로 돌려줘서, 이 책을 읽는 화면 계산이 매 프레임 다시 돌지 않는다.
+export type Track = { id: string; dims: Book3['dims']; segs: Seg[]; moving: boolean; rest?: Book3 };
 export type Plan = { tracks: Track[]; strategy: string };
 
 const ZERO = { x: 0, y: 0, z: 0 };
@@ -60,6 +62,7 @@ export function extent(dims: Book3['dims'], roll: number, yaw: number, spin = 0,
 
 export function bookAt(tr: Track, t: number): Book3 {
   'worklet';
+  if (!tr.moving && tr.rest) return tr.rest;
   const segs = tr.segs;
   let s = segs[0];
   for (let i = 0; i < segs.length; i++) {
@@ -132,16 +135,6 @@ const onlyPitch = (a: State, b: State) => near(a.roll, b.roll) && near(a.yaw, b.
 const wallPivot = (b: State) => ({ x: 0, y: 0, z: b.dims.W / 2 });
 const sameRY = (a: State, b: State) => near(a.roll, b.roll) && near(a.yaw, b.yaw);
 const same = (a: State, b: State) => sameRot(a, b) && near(a.t.x, b.t.x) && near(a.t.y, b.t.y) && near(a.t.z, b.t.z);
-function depthOf(b: State) {
-  let lo = Infinity;
-  let hi = -Infinity;
-  for (let i = 0; i < 8; i++) {
-    const z = rot(b.roll, b.yaw, cornerLocal(b.dims, i), b.spin ?? 0, b.pitch ?? 0).z;
-    lo = Math.min(lo, z);
-    hi = Math.max(hi, z);
-  }
-  return hi - lo;
-}
 
 const posed = (a: State, b: State) => !near(a.yaw, b.yaw) || Math.abs(a.roll) > 45 !== Math.abs(b.roll) > 45;
 const shift = (b: State, dx: number): State => ({ ...b, t: { ...b.t, x: b.t.x + dx } });
@@ -158,8 +151,11 @@ function leanSegs(from: State, to: State, t0: number, t1: number, order: 'sync' 
   if (order === 'sync') return [pivotSeg(from, to, t0, t1, a)];
   const tm = t0 + (t1 - t0) * 0.45;
   if (order === 'moveFirst') {
-    const pre = shift(from, toWorld(to, a).x - toWorld(from, a).x);
-    return [...moveSegs(from, { ...pre, t: { ...pre.t, y: to.t.y + (pre.t.y - from.t.y), z: pre.t.z } }, t0, tm), pivotSeg(pre, to, tm, t1, a)];
+    // 축(발)이 목표 자리로 먼저 간다: 지금 자세 그대로 옮긴 한 자세를 첫 조각의 끝이자 둘째 조각의 시작으로 쓴다
+    const wa = toWorld(from, a);
+    const wb = toWorld(to, a);
+    const pre: State = { ...from, t: { x: from.t.x + (wb.x - wa.x), y: from.t.y + (wb.y - wa.y), z: from.t.z + (wb.z - wa.z) } };
+    return [...moveSegs(from, pre, t0, tm), pivotSeg(pre, to, tm, t1, a)];
   }
   const turned = reorientPivot(from, to.roll, to.yaw, a);
   return [pivotSeg(from, turned, t0, tm, a), ...moveSegs(turned, to, tm, t1)];
@@ -205,18 +201,6 @@ function poseSegs(from: State, to: State, t0: number, t1: number, al: number, or
     segs.push(boxSeg(b, to, t, t1, al));
     return segs;
   }
-  if (order === 'pull') {
-    // 앞으로 빼내고(다른 책보다 앞, 깊이가 겹치지 않게) → 그 앞에서 돌며 옮기고 → 밀어 넣는다
-    // 도는 동안 모서리가 더 나오는 만큼(면 대각선의 절반) 더 앞으로 뺀다
-    const sweep = Math.max(0, Math.hypot(b.dims.H, b.dims.W) / 2 - Math.min(depthOf(b), depthOf(to)) / 2);
-    const pulled = (x: State): State => ({ ...x, t: { ...x.t, z: x.t.z - (boxOf(x, 0).z + depthOf(x) + 1 + sweep) } });
-    const A = pulled(b);
-    const B = pulled(to);
-    const ta = t + (t1 - t) * 0.22;
-    const tb = t + (t1 - t) * 0.78;
-    segs.push(pivotSeg(b, A, t, ta, ZERO), boxSeg(A, B, ta, tb, al), pivotSeg(B, to, tb, t1, ZERO));
-    return segs;
-  }
   const tm = t + (t1 - t) * 0.4;
   if (order === 'moveFirst') {
     // 목표 자리에서 돌도록: 목표를 지금 방향으로 되돌린 자리로 먼저 옮긴다
@@ -253,7 +237,7 @@ export function build(prev: State[], next: State[], c: Candidate): Track[] {
   const center = p0 ? (xRange(p0).lo + xRange(p0).hi) / 2 : 0;
   return next.map((to) => {
     const from = before.get(to.id);
-    if (!from) return { id: to.id, dims: to.dims, segs: hold(to), moving: false };
+    if (!from) return holdTrack(to);
     let segs: Seg[];
     if (posed(from, to)) segs = poseSegs(from, to, c.turn[0], c.turn[1], c.al, c.order);
     else if (onlyPitch(from, to)) {
@@ -271,8 +255,66 @@ export function build(prev: State[], next: State[], c: Candidate): Track[] {
       segs = [...moveSegs(from, mid, 0, 0.3), ...moveSegs(mid, to, 0.75, 1)];
     } else if (same(from, to)) segs = hold(to);
     else segs = moveSegs(from, to, c.others[0], c.others[1]);
-    return { id: to.id, dims: to.dims, segs, moving: !same(from, to) || (posers.length > 0 && c.spread > 0) };
+    const moving = !same(from, to) || (posers.length > 0 && c.spread > 0);
+    // 멈춰 있는 책은 지금 보이던 자세 객체를 그대로(다시 짜도 이 책을 읽는 계산이 돌지 않게)
+    return moving ? { id: to.id, dims: to.dims, segs, moving } : holdTrack(from);
   });
+}
+
+// 그 자리에 멈춰 있는 트랙(자세 객체를 그대로 돌려준다)
+export function holdTrack(b: State): Track {
+  return { id: b.id, dims: b.dims, segs: hold(b), moving: false, rest: b };
+}
+
+// ---------- 앞으로 빼서 옮기기 ----------
+// 다른 줄에서 들어오는 책, 또는 같은 줄에서 다른 경로가 모두 막혔을 때: 살짝 들고 → 선반 앞(판 앞 끝 밖)으로 빼고 →
+// 그 앞에서 옮기며(자세를 바꿔야 하면 여기서 돈다) → 목표 자리 앞에서 밀어 넣고 → 내려놓는다.
+// 빼낸 동안은 모든 책·선반 판보다 앞이라 부딪히지 않고, 바닥이 판 윗면보다 높아 판을 뚫지 않는다.
+export const PULL_LIFT = 6; // 들어 올리는 높이(DU)
+const PULL_MARGIN = 2; // 판 앞 끝과 빼낸 책 사이(DU)
+
+function zRange(b: State) {
+  let lo = Infinity;
+  let hi = -Infinity;
+  for (let i = 0; i < 8; i++) {
+    const z = toWorld(b, cornerLocal(b.dims, i)).z;
+    lo = Math.min(lo, z);
+    hi = Math.max(hi, z);
+  }
+  return { lo, hi };
+}
+
+// 돌리는 동안(방향 a → b 선형 보간) 깊이 폭의 최댓값
+function sweepDepth(a: State, b: State) {
+  let d = 0;
+  for (let k = 0; k <= 8; k++) {
+    const u = k / 8;
+    const e = extent(a.dims, a.roll + (b.roll - a.roll) * u, a.yaw + (b.yaw - a.yaw) * u, (a.spin ?? 0) + ((b.spin ?? 0) - (a.spin ?? 0)) * u, (a.pitch ?? 0) + ((b.pitch ?? 0) - (a.pitch ?? 0)) * u);
+    let z1 = -Infinity;
+    for (let i = 0; i < 8; i++) z1 = Math.max(z1, rot(a.roll + (b.roll - a.roll) * u, a.yaw + (b.yaw - a.yaw) * u, cornerLocal(a.dims, i), (a.spin ?? 0) + ((b.spin ?? 0) - (a.spin ?? 0)) * u, (a.pitch ?? 0) + ((b.pitch ?? 0) - (a.pitch ?? 0)) * u).z);
+    d = Math.max(d, z1 - e.z0);
+  }
+  return d;
+}
+
+const lifted = (b: State, dy: number): State => ({ ...b, t: { x: b.t.x, y: b.t.y + dy, z: b.t.z } });
+// 가장 앞(z 최소)이 front에 오도록 앞으로 뺀 자세
+const pulledTo = (b: State, front: number, dy: number): State => ({ ...b, t: { x: b.t.x, y: b.t.y + dy, z: b.t.z + (front - zRange(b).lo) } });
+
+// lane: 몇 번째 차선(여러 권을 함께 뺄 때 서로 부딪히지 않게 앞뒤로 비켜 둔다)
+export function pullSegs(from: State, to: State, t0: number, t1: number, lane = 0): Seg[] {
+  const span = t1 - t0;
+  const at = (u: number) => t0 + span * u;
+  const turn = !sameRot(from, to);
+  const depth = turn ? sweepDepth(from, to) : Math.max(zRange(from).hi - zRange(from).lo, zRange(to).hi - zRange(to).lo);
+  const back = -SHELF_FRONT - PULL_MARGIN - lane * (depth + PULL_MARGIN);
+  const front = back - depth;
+  const up0 = lifted(from, PULL_LIFT);
+  const out0 = pulledTo(from, front, PULL_LIFT);
+  const out1 = pulledTo(to, front, PULL_LIFT);
+  const up1 = lifted(to, PULL_LIFT);
+  const mid: Seg = turn ? boxSeg(out0, out1, at(0.3), at(0.7), 0.5) : pivotSeg(out0, out1, at(0.3), at(0.7), ZERO);
+  return [pivotSeg(from, up0, t0, at(0.1), ZERO), pivotSeg(up0, out0, at(0.1), at(0.3), ZERO), mid, pivotSeg(out1, up1, at(0.7), at(0.9), ZERO), pivotSeg(up1, to, at(0.9), t1, ZERO)];
 }
 
 export function candidates(growing: boolean, posing: boolean): Candidate[] {
@@ -293,14 +335,7 @@ export function candidates(growing: boolean, posing: boolean): Candidate[] {
     for (const al of [0, 1, 0.5])
       for (const order of ['together', 'moveFirst', 'turnFirst'])
         out.push({ name: `${order}-al${al}-s${spread}`, lean: 'sync', turn: spread ? [0.25, 0.8] : turn, others, al, order, spread });
-  // 제자리에서 돌 수 없을 때(쌓인 책 아래·빽빽한 선반): 앞으로 빼내서 돌린다
-  for (const g of [growing, !growing])
-    for (const al of [0.5, 0, 1]) {
-      out.push({ name: `pull-al${al}`, lean: 'sync', turn: g ? [0.1, 1] : [0, 0.85], others: g ? [0, 0.35] : [0.6, 1], al, order: 'pull', spread: 0 });
-      out.push({ name: `pull-late-al${al}`, lean: 'sync', turn: g ? [0, 0.9] : [0, 0.6], others: g ? [0.1, 0.5] : [0.55, 1], al, order: 'pull', spread: 0 });
-      // 빼낸 동안 옆 책(쌓인 책 포함)이 먼저 자리를 옮기고, 그다음 밀어 넣는다
-      out.push({ name: `pull-mid-al${al}`, lean: 'sync', turn: [0, 1], others: [0.25, 0.7], al, order: 'pull', spread: 0 });
-    }
+  // 제자리에서 돌 수 없으면(쌓인 책 아래·빽빽한 선반) 대신하는 경로(pullPlan)가 들어 올려 앞으로 빼서 돌린다
   return out;
 }
 
@@ -311,9 +346,10 @@ export const SAMPLES = 48;
 
 // 처음 겹치는 곳(없으면 null). 균등 시점(바닥·선반 끝) + 책 쌍마다 구간 검사:
 // 구간 양 끝의 틈에서 그 사이 두 책이 움직인 거리를 빼도 겹칠 수 없으면 통과, 아니면 반씩 나눠 더 본다(적응형).
-export function firstOverlap(tracks: Track[], bounds?: { min: number; max: number }) {
+export function firstOverlap(tracks: Track[], bounds?: { min: number; max: number }, deadline = Infinity) {
   const n = tracks.length;
   if (!tracks.some((t) => t.moving)) return null;
+  const late = () => deadline < Infinity && Date.now() > deadline;
   const bodies = new Map<number, Book3[]>();
   const pts = new Map<number, Vec3[][]>();
   const at = (t: number) => {
@@ -348,7 +384,15 @@ export function firstOverlap(tracks: Track[], bounds?: { min: number; max: numbe
       if (lowest(bs[i]) < -0.05) return { t, a: tracks[i].id, b: 'floor' };
       if (bounds && Math.abs(bs[i].roll) < 45) {
         const r = xRange(bs[i]);
-        if (r.lo < bounds.min - 0.5 || r.hi > bounds.max + 0.5) return { t, a: tracks[i].id, b: 'bounds' };
+        // 판 앞 끝보다 앞으로 빼낸 책은 판 끝 범위와 상관없다(선반 앞 허공에서 옮긴다)
+        let zhi = -Infinity;
+        for (const c of cornersAt(t)[i]) zhi = Math.max(zhi, c.z);
+        if (zhi > -SHELF_FRONT && (r.lo < bounds.min - 0.5 || r.hi > bounds.max + 0.5)) return { t, a: tracks[i].id, b: 'bounds' };
+      }
+      // 벽을 뚫거나, 판 윗면 높이에 있으면서 판 앞 끝 밖으로 나가(허공) 있으면 안 된다(빼낸 책은 들어 올려 판보다 높다)
+      for (const c of cornersAt(t)[i]) {
+        if (c.z > SHELF_DEPTH + 0.3) return { t, a: tracks[i].id, b: 'wall' };
+        if (c.y < 0.5 && c.z < -SHELF_FRONT - 0.3) return { t, a: tracks[i].id, b: 'edge' };
       }
     }
   }
@@ -364,6 +408,7 @@ export function firstOverlap(tracks: Track[], bounds?: { min: number; max: numbe
   for (let i = 0; i < n; i++)
     for (let j = i + 1; j < n; j++) {
       if (!tracks[i].moving && !tracks[j].moving) continue;
+      if (late()) return { t: 0, a: tracks[i].id, b: 'timeout' };
       let prev = pairGap(i, j, 0);
       for (let k = 1; k <= SAMPLES; k++) {
         const t = k / SAMPLES;
@@ -376,25 +421,171 @@ export function firstOverlap(tracks: Track[], bounds?: { min: number; max: numbe
   return null;
 }
 
-// 경로 계획. 아무 후보도 통과하지 못하면 null(자세를 바꾸지 말고 안내).
-export function planTransition(prev: State[], next: State[], bounds?: { min: number; max: number }): Plan | null {
-  const before = new Map(prev.map((p) => [p.id, p]));
+// 경로 계획: 후보 경로를 차례로 검사해 처음 통과하는 것을 쓴다. 시간 안에 못 찾거나 모두 막히면 앞으로 빼서 옮기는 경로로
+// 대신한다(순간 이동하거나 가능한 배치를 '자리 없음'으로 거절하지 않는다).
+// arrive: 이 줄에 없던 책의 지금 자세(다른 줄에서 옮겨 오는 중이면 그 줄에서 보이던 자세를 이 줄 좌표로). 있으면 거기서 이어서 들어온다.
+export type PlanOptions = { budgetMs?: number; arrive?: Record<string, State> };
+export function planTransition(prev: State[], next: State[], bounds?: { min: number; max: number }, opts: PlanOptions = {}): Plan {
+  const arrive = opts.arrive ?? {};
+  const inPrev = new Set(prev.map((p) => p.id));
+  const extra = next.filter((b) => !inPrev.has(b.id) && arrive[b.id]).map((b) => arrive[b.id]);
+  const all = extra.length ? [...prev, ...extra] : prev;
+  const before = new Map(all.map((p) => [p.id, p]));
   const changed = next.filter((b) => {
     const a = before.get(b.id);
     return a && !same(a, b);
   });
-  if (!changed.length) return { tracks: build(prev, next, candidates(false, false)[0]), strategy: 'still' };
+  if (!changed.length) return { tracks: build(all, next, candidates(false, false)[0]), strategy: 'still' };
+  const deadline = Date.now() + (opts.budgetMs ?? 40);
+  // 다른 줄에서 들어오는 책은 늘 앞으로 빼서 들어온다(판을 뚫고 지나가지 않게)
+  const arriving = new Set(extra.map((b) => b.id));
+  const withArrivals = (tracks: Track[]) =>
+    arriving.size ? tracks.map((tr) => (arriving.has(tr.id) ? { id: tr.id, dims: tr.dims, segs: pullSegs(before.get(tr.id)!, next.find((b) => b.id === tr.id)!, 0, 1), moving: true } : tr)) : tracks;
   const posers = next.filter((b) => {
     const a = before.get(b.id);
-    return a && posed(a, b);
+    return a && !arriving.has(b.id) && posed(a, b);
   });
   const growing = posers.some((b) => {
     const a = before.get(b.id)!;
     return xRange(b).hi - xRange(b).lo > xRange(a).hi - xRange(a).lo + 0.5;
   });
   for (const c of candidates(growing, posers.length > 0)) {
-    const tracks = build(prev, next, c);
-    if (!firstOverlap(tracks, bounds)) return { tracks, strategy: c.name };
+    const tracks = withArrivals(build(all, next, c));
+    const hit = firstOverlap(tracks, bounds, deadline);
+    if (!hit) return { tracks, strategy: c.name };
+    if (hit.b === 'timeout' || Date.now() > deadline) break;
   }
-  return null;
+  return { tracks: pullPlan(all, next, arriving), strategy: 'pull' };
+}
+
+// 대신하는 경로(후보가 모두 막혔거나 시간이 다 됐을 때, 다른 줄에서 들어오는 책): 자리가 크게 바뀌는 책을 선반 앞으로 빼서 옮긴다.
+// 빼낼 책 = 자세가 바뀌는 책, 다른 책을 건너가는 책, 다른 줄에서 오는 책 + 그 위에 쌓여 있던 책 + 빼거나 밀어 넣는 길(상자를 앞으로
+// 늘인 곳)을 막는 책(잠깐 빼 두었다가 다시 넣는다). 앞쪽(쌓였으면 위쪽) 책부터 한 권씩 빼고(먼저 뺀 책이 더 먼 차선이라 뒤에 빼는 책이
+// 지나가지 않는다), 모두 빠진 동안 선반 앞에서 옮기고 옆 책이 제자리에서 밀린 뒤, 뺀 순서의 반대로 밀어 넣는다.
+type Box3 = { x0: number; x1: number; y0: number; y1: number; z0: number; z1: number };
+function box3(b: State): Box3 {
+  const r: Box3 = { x0: Infinity, x1: -Infinity, y0: Infinity, y1: -Infinity, z0: Infinity, z1: -Infinity };
+  for (let i = 0; i < 8; i++) {
+    const c = toWorld(b, cornerLocal(b.dims, i));
+    r.x0 = Math.min(r.x0, c.x);
+    r.x1 = Math.max(r.x1, c.x);
+    r.y0 = Math.min(r.y0, c.y);
+    r.y1 = Math.max(r.y1, c.y);
+    r.z0 = Math.min(r.z0, c.z);
+    r.z1 = Math.max(r.z1, c.z);
+  }
+  return r;
+}
+const overlap1 = (a0: number, a1: number, b0: number, b1: number, m = 0.3) => a0 < b1 - m && b0 < a1 - m;
+// 상자 b를 들어 올린 높이에서 선반 앞까지 늘인 길(빼는 길·밀어 넣는 길)에 o가 걸리는가
+function inCorridor(b: State, o: Box3) {
+  const r = box3(lifted(b, PULL_LIFT));
+  return overlap1(r.x0, r.x1, o.x0, o.x1) && overlap1(r.y0, r.y1, o.y0, o.y1) && overlap1(-SHELF_FRONT - PULL_MARGIN, r.z0, o.z0, o.z1);
+}
+// o가 b 위에 얹혀 있는가(o 바닥 = b 윗면, 바닥 면이 겹친다)
+function restsOn(o: State, b: State) {
+  const ro = box3(o);
+  const rb = box3(b);
+  return Math.abs(ro.y0 - rb.y1) < 0.8 && overlap1(ro.x0, ro.x1, rb.x0, rb.x1) && overlap1(ro.z0, ro.z1, rb.z0, rb.z1);
+}
+
+function pullPlan(prev: State[], next: State[], arriving: Set<string>): Track[] {
+  const before = new Map(prev.map((p) => [p.id, p]));
+  const after = new Map(next.map((p) => [p.id, p]));
+  const cx = (b: State) => {
+    const r = xRange(b);
+    return (r.lo + r.hi) / 2;
+  };
+  const movers = new Set<string>(arriving);
+  const moved = next.filter((b) => before.has(b.id));
+  for (const b of moved) if (posed(before.get(b.id)!, b)) movers.add(b.id);
+  // 순서가 바뀌는 책: 앞뒤 자세의 가운데 x 순서가 다른 쌍에 든 책 중 더 많이 움직인 쪽
+  for (let i = 0; i < moved.length; i++)
+    for (let j = i + 1; j < moved.length; j++) {
+      const a0 = cx(before.get(moved[i].id)!);
+      const b0 = cx(before.get(moved[j].id)!);
+      const a1 = cx(moved[i]);
+      const b1 = cx(moved[j]);
+      if ((a0 - b0) * (a1 - b1) >= 0) continue;
+      movers.add(Math.abs(a1 - a0) >= Math.abs(b1 - b0) ? moved[i].id : moved[j].id);
+    }
+  // 위에 쌓여 있던 책과 길을 막는 책을 더한다(더할 것이 없을 때까지)
+  for (let grew = true; grew; ) {
+    grew = false;
+    for (const b of moved) {
+      if (movers.has(b.id)) continue;
+      const from = before.get(b.id)!;
+      const fb = box3(from);
+      const tb = box3(b);
+      for (const id of movers) {
+        const mf = before.get(id);
+        const mt = after.get(id)!;
+        const hit = (mf && !arriving.has(id) && (restsOn(from, mf) || inCorridor(mf, fb))) || inCorridor(mt, tb) || inCorridor(mt, fb);
+        if (hit) {
+          movers.add(b.id);
+          grew = true;
+          break;
+        }
+      }
+    }
+  }
+  // 빼는 순서(넣는 순서는 그 반대). x가 y보다 먼저 빠져야 하는 경우:
+  //   x가 y 위에 얹혀 있다 · x가 y의 빼는 길을 막는다 · (넣을 때) y가 x 위에 얹힌다 · x의 목표 자리가 y의 밀어 넣는 길에 있다(y가 먼저 들어가야 한다).
+  // 이 제약으로 위상 정렬하고, 같으면 앞쪽(z가 작은) 책부터. 다른 줄에서 오는 책은 이미 이 줄 밖이라 빼는 길이 없다.
+  const list = next.filter((b) => movers.has(b.id) && before.has(b.id));
+  const firstOut = (x: State, y: State) => {
+    const xf = before.get(x.id)!;
+    const yf = before.get(y.id)!;
+    const outX = !arriving.has(x.id);
+    const outY = !arriving.has(y.id);
+    return (outX && outY && (restsOn(xf, yf) || inCorridor(yf, box3(xf)))) || restsOn(y, x) || inCorridor(y, box3(x));
+  };
+  const zOf = (b: State) => (arriving.has(b.id) ? Infinity : box3(before.get(b.id)!).z0);
+  const order: State[] = [];
+  const left = [...list];
+  while (left.length) {
+    // 먼저 빠져야 할 책이 남아 있지 않은 것 중 가장 앞쪽(순환이면 가장 앞쪽 아무거나)
+    const free = left.filter((y) => !left.some((x) => x !== y && firstOut(x, y)));
+    const pool = free.length ? free : left;
+    pool.sort((a, b) => zOf(a) - zOf(b));
+    const pick = pool[0];
+    order.push(pick);
+    left.splice(left.indexOf(pick), 1);
+  }
+  // 차선: 마지막에 빼는 책이 판에 가장 가깝다. 도는 동안의 깊이까지 비워 둔다.
+  const lanes = new Map<string, number>();
+  let back = -SHELF_FRONT - PULL_MARGIN;
+  for (let i = order.length - 1; i >= 0; i--) {
+    const to = order[i];
+    const from = before.get(to.id)!;
+    const depth = !sameRot(from, to) ? sweepDepth(from, to) : Math.max(zRange(from).hi - zRange(from).lo, zRange(to).hi - zRange(to).lo);
+    lanes.set(to.id, back - depth);
+    back = back - depth - PULL_MARGIN;
+  }
+  const k = Math.max(1, order.length);
+  const OUT = 0.4;
+  const IN = 0.6;
+  const slot = OUT / k;
+  const tracks = new Map<string, Track>();
+  order.forEach((to, j) => {
+    const from = before.get(to.id)!;
+    const front = lanes.get(to.id)!;
+    const up0 = lifted(from, PULL_LIFT);
+    const out0 = pulledTo(from, front, PULL_LIFT);
+    const out1 = pulledTo(to, front, PULL_LIFT);
+    const up1 = lifted(to, PULL_LIFT);
+    const o0 = slot * j;
+    const i0 = IN + slot * (k - 1 - j);
+    const mid: Seg = !sameRot(from, to) ? boxSeg(out0, out1, OUT, IN, 0.5) : pivotSeg(out0, out1, OUT, IN, ZERO);
+    const segs = [pivotSeg(from, up0, o0, o0 + slot * 0.3, ZERO), pivotSeg(up0, out0, o0 + slot * 0.3, o0 + slot, ZERO), mid, pivotSeg(out1, up1, i0, i0 + slot * 0.7, ZERO), pivotSeg(up1, to, i0 + slot * 0.7, i0 + slot, ZERO)];
+    tracks.set(to.id, { id: to.id, dims: to.dims, segs, moving: true });
+  });
+  return next.map((to) => {
+    const tr = tracks.get(to.id);
+    if (tr) return tr;
+    const from = before.get(to.id);
+    if (!from || same(from, to)) return holdTrack(from ?? to);
+    // 제자리에서 밀리는 책: 빼낸 책이 모두 선반 앞에 있는 동안
+    return { id: to.id, dims: to.dims, segs: moveSegs(from, to, OUT, IN), moving: true };
+  });
 }

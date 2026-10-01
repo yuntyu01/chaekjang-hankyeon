@@ -3,7 +3,7 @@ import { corners, fromPlaced } from '../book3';
 import { project } from '../box';
 import { CAMERA, SHELF, SHELF_DEPTH, SHELF_DEPTH_MM, SHELF_FRONT, SHELF_FRONT_MM, SHELF_THICK, SHELF_TOTAL_DEPTH_MM, SHELF_USABLE_WIDTH, SHELF_X0, SHELF_X1 } from '../geometry';
 import { shadowOnPlane, travelOf } from '../cast-shadow';
-import { light } from '@/ui/theme';
+import { light } from '@/ui/lighting';
 import { normalize, setSpin, type BookMap } from '../layout-engine';
 import { SAMPLE_BOOKS, SAMPLE_LAYOUT } from '../onboarding-sample';
 import { computeShelf } from '../shelf-scene';
@@ -21,7 +21,8 @@ it('깊이 기준: 앞 끝 0 → 책 기준선 70mm → 벽 230mm(기준선 뒤 
   expect(SHELF_DEPTH_MM).toBe(160);
   const v = shelfVertices();
   expect(v.LBT.z - v.LFT.z).toBeCloseTo(SHELF_FRONT + SHELF_DEPTH, 9);
-  expect(SHELF.back + SHELF.lip).toBeCloseTo((SHELF_FRONT + SHELF_DEPTH) * CAMERA.ky, 9);
+  // 화면에서 윗면 앞 모서리(기준선 아래) → 뒤 모서리(기준선 위) 거리 = 판 전체 깊이 × ky
+  expect(project(CAMERA, v.LFT).y - project(CAMERA, v.LBT).y).toBeCloseTo((SHELF_FRONT + SHELF_DEPTH) * CAMERA.ky, 9);
 });
 
 it('면 = 3D 꼭짓점의 투영, 이웃 면은 같은 꼭짓점', () => {

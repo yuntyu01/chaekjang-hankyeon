@@ -14,7 +14,7 @@ export const PERF_LEVELS: PerfLevel[] = ['shapes', 'art', 'cast', 'full'];
 export const PERF_DETAIL: PerfLevel[] = ['art-grain', 'art+wall', 'art+shelfCast', 'art+contact', 'art+gap', 'art+lean', 'art+stack', 'art+shelf', 'art+cast'];
 const SHADOWS: Shadow[] = ['wall', 'shelfCast', 'contact', 'gap', 'lean', 'stack', 'shelf', 'cast'];
 
-// 책 몸체 그리기 단계(BookNode·FaceShape가 마운트할 때 읽는다. 바꾸면 선반 줄을 다시 마운트해야 한다)
+// 책 몸체 그리기 단계(BookNode·BookFaces가 마운트할 때 읽는다. 바꾸면 선반 줄을 다시 마운트해야 한다)
 export const RENDER = { art: true, texture: true, grain: true, books: true };
 
 // 선반 그림자 확인용 보기(측정 메뉴): 오른쪽 끝의 옆면 명암·벽 그림자·AO를 하나씩 끄고, 빈 선반만 본다
@@ -23,6 +23,8 @@ export type ShelfView = (typeof SHELF_VIEWS)[number];
 // 선반 원인 분리(chaekjang:///?sh=모드). 카메라·광원·선반 형상은 그대로 두고 그리는 층만 고른다.
 // 측정 번들: 자세 바꾸기·밀림 애니메이션을 이 배수만큼 느리게(중간 프레임 캡처용, 기본 1)
 export const ANIM = { slow: 1 };
+// 측정 번들: 이동 캔버스 진단(?transit=show 늘 보이게 + 자르는 윤곽 표시 + 드나들 때 기록)
+export const TRANSIT_DEBUG = { on: false };
 // 측정 번들: 메뉴 모달의 반투명 옵션을 다시 켜 ANR 재현 여부를 비교(?menutl=1). 기본은 끔
 export const MENU_FLAGS = { translucent: false };
 
