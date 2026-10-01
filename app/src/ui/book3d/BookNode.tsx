@@ -116,14 +116,37 @@ function roundColors(b: Book3, lit: string, dark: string) {
   return out;
 }
 
-function SpineShade({ state, w, h, tone }: { state: RO<Book3>; w: number; h: number; tone: string }) {
+// 그늘 쪽 가장자리 띠: 시안 책등은 면이 거의 평평하고, 빛을 등진 쪽 가장자리(세우면 오른쪽) 약 2.6DU가 13~20% 어둡다.
+// 공통 광원으로 정한다(자세를 바꾸면 그늘 쪽으로 옮겨 간다). 검은 선이 아니라 같은 책 색을 낮춘 넓은 그러데이션이다.
+const SIDE_BAND = { width: 2.6, dead: 0.45, gain: 0.8, max: 0.32 };
+function sideBands(b: Book3) {
+  'worklet';
+  const a = (80 * Math.PI) / 180;
+  const dl = litDelta(b, { x: -Math.sin(a), y: 0, z: -Math.cos(a) });
+  const dr = litDelta(b, { x: Math.sin(a), y: 0, z: -Math.cos(a) });
+  return [Math.min(SIDE_BAND.max, Math.max(0, -dl - SIDE_BAND.dead) * SIDE_BAND.gain), Math.min(SIDE_BAND.max, Math.max(0, -dr - SIDE_BAND.dead) * SIDE_BAND.gain)];
+}
+
+function SpineShade({ state, w, h, s, tone }: { state: RO<Book3>; w: number; h: number; s: number; tone: string }) {
   const lit = litTone(tone);
   const dark = scaleColor(tone, 0.6);
   const across = useDerivedValue(() => roundColors(state.value, lit, dark));
+  const band = useDerivedValue(() => sideBands(state.value));
+  const cl = useDerivedValue(() => [withAlpha(dark, band.value[0]), withAlpha(dark, 0)]);
+  const cr = useDerivedValue(() => [withAlpha(dark, 0), withAlpha(dark, band.value[1])]);
+  const bw = Math.min(w * 0.3, SIDE_BAND.width * s);
   return (
-    <Rect x={0} y={0} width={w} height={h}>
-      <LinearGradient start={vec(0, 0)} end={vec(w, 0)} colors={across} positions={ROUND_POS} />
-    </Rect>
+    <>
+      <Rect x={0} y={0} width={w} height={h}>
+        <LinearGradient start={vec(0, 0)} end={vec(w, 0)} colors={across} positions={ROUND_POS} />
+      </Rect>
+      <Rect x={0} y={0} width={bw} height={h}>
+        <LinearGradient start={vec(0, 0)} end={vec(bw, 0)} colors={cl} />
+      </Rect>
+      <Rect x={w - bw} y={0} width={bw} height={h}>
+        <LinearGradient start={vec(w - bw, 0)} end={vec(w, 0)} colors={cr} />
+      </Rect>
+    </>
   );
 }
 
@@ -161,7 +184,7 @@ function ArtFace({ f, art, state, cam, px, d, tone }: { f: 'spine' | 'cover'; ar
     <Group matrix={m}>
       <Picture picture={f === 'spine' ? art.spine : art.cover} />
       <Rect x={0} y={0} width={w} height={h} color={shade} />
-      {f === 'spine' && SHOW.body ? <SpineShade state={state} w={w} h={h} tone={tone} /> : null}
+      {f === 'spine' && SHOW.body ? <SpineShade state={state} w={w} h={h} s={s} tone={tone} /> : null}
       {SHOW.body ? <EdgeLights state={state} f={f} w={w} h={h} s={s} tone={tone} /> : null}
       {SHOW.faceDebug ? <Rect x={0} y={0} width={w} height={h} color={f === 'spine' ? 'rgba(44,91,208,0.45)' : 'rgba(208,52,44,0.45)'} /> : null}
       {f === 'spine' ? <SpineTitles art={art} state={state} /> : null}

@@ -5,8 +5,8 @@ import { BlurMask, Group, Image as SkImage, LinearGradient, Rect, Skia, vec, typ
 
 import { GROOVE } from '@/domain/book-parts';
 
-// 속지(종이 단면) 색: 밝은 아이보리(시안 느린 계절 머리 쪽 속지 약 (241,229,213)보다 조금 밝게). 표지색·판 그늘은 섞지 않는다(속지 면에만).
-export const PAGE_BASE = '#F4E9D8';
+// 속지(종이 단면) 색: 밝은 아이보리(시안 책장 책 머리의 속지 평균). 표지색·판 그늘은 섞지 않는다(속지 면에만).
+export const PAGE_BASE = '#FBF2E2'; // 시안 속지 약 (253,243,226)
 export const PAGE_RIM = '#C6B293'; // 표지와 맞닿는 안쪽의 좁은 그늘(따뜻한 베이지)
 export const PAGE_LINE = '#E0D1BA';
 
@@ -86,12 +86,12 @@ export function CoverFaceArt({
       {!image && motif ? <SkImage image={motif} x={fw / 2 - mw / 2} y={h * 0.9 - mh} width={mw} height={mh} fit="contain" /> : null}
       {/* 제본 홈(책등 쪽에서 GROOVE.at 안쪽): 책 색을 낮춘 좁은 그늘 + 바로 뒤 책 색을 밝힌 가는 밝음(흰·검정 고정색이 아니다) */}
       <Rect x={0} y={0} width={(GROOVE.at + GROOVE.dark) * s} height={h}>
-        <LinearGradient start={vec(0, 0)} end={vec((GROOVE.at + GROOVE.dark) * s, 0)} colors={[withAlpha(scaleColor(tone, 0.6), 0.05), withAlpha(scaleColor(tone, 0.6), 0)]} />
+        <LinearGradient start={vec(0, 0)} end={vec((GROOVE.at + GROOVE.dark) * s, 0)} colors={[withAlpha(scaleColor(tone, 0.6), 0.09), withAlpha(scaleColor(tone, 0.6), 0.05)]} />
       </Rect>
       <Rect x={(GROOVE.at - GROOVE.dark / 2) * s} y={0} width={GROOVE.dark * s} height={h} color={withAlpha(scaleColor(tone, 0.55), 0.14)}>
         <BlurMask blur={0.45 * s} style="normal" />
       </Rect>
-      <Rect x={(GROOVE.at + GROOVE.gap) * s} y={0} width={GROOVE.lit * s} height={h} color={withAlpha(litTone(tone), 0.12)} />
+      <Rect x={(GROOVE.at + GROOVE.gap) * s} y={0} width={GROOVE.lit * s} height={h} color={withAlpha(litTone(tone), 0.2)} />
     </Group>
   );
 }

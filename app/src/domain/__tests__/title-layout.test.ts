@@ -27,6 +27,13 @@ describe('색', () => {
     for (const bg of ['#FBEDDD', '#B5C7D7', '#E39E8A', '#BE5D47', '#3D5F57', '#1D426B']) expect(contrast(titleInk(bg), bg)).toBeGreaterThan(3.5);
     expect(shade('#808080', -0.5)).toBe('#404040');
   });
+  it('시안 책장의 글자색: 중간 밝기의 붉은·푸른 책등은 밝은 글자, 연한 책은 따뜻한 갈색 먹', () => {
+    // 문장 수집·느린 하루·여행의 이유·사람의 마음이란·데미안·고요한 우연
+    for (const bg of ['#CE886F', '#8DA5B9', '#819AB1', '#475A78', '#647361', '#8F5654']) expect(titleInk(bg)).toBe(TITLE_LIGHT);
+    // 모순·어린 왕자·작은 것들의 기쁨·너라는 계절·찰나의 마음
+    for (const bg of ['#FDF0E0', '#FBD392', '#FDECD4', '#F0BDA0', '#F3B497']) expect(titleInk(bg)).toBe(TITLE_DARK);
+    expect(TITLE_DARK).toBe('#4A403A');
+  });
 });
 
 
@@ -57,50 +64,55 @@ describe('책등 제목 한 열 우선', () => {
 });
 
 describe('앞표지 제목(장정 규칙)', () => {
-  it('제목은 표지 폭의 약 9%로, 짧으면 한 줄', () => {
-    const r = coverTitleLayout('월든', 116, 172);
-    expect(r.lines).toEqual(['월든']);
-    expect(r.fontSize).toBeCloseTo(116 * 0.088, 0);
+  it('짧은 제목은 한 줄, 글자는 표지 폭의 약 0.135배(시안 느린 계절 잉크 높이 0.107~0.12W), 14DU를 넘지 않는다', () => {
+    const r = coverTitleLayout('느린 계절', 102.9, 152.5);
+    expect(r.lines).toEqual(['느린 계절']);
+    expect(r.fontSize).toBeCloseTo(102.9 * 0.135, 0);
+    expect(coverTitleLayout('월든', 116, 172)).toEqual({ lines: ['월든'], fontSize: 14 });
   });
-  it('한 줄이 표지 폭을 넘는 긴 제목은 단어를 깨지 않고 두 줄, 크기는 그대로(작게 두고 여백을 남긴다)', () => {
+  it('긴 제목은 단어를 깨지 않고 고르게 두 줄(시안과 같은 줄 나눔), 긴 줄이 표지 폭의 0.72를 넘지 않게', () => {
     const r = coverTitleLayout('우리가 빛의 속도로 갈 수 없다면', 103, 152);
-    expect(r.lines).toHaveLength(2);
-    expect(r.lines.join(' ')).toBe('우리가 빛의 속도로 갈 수 없다면');
-    expect(r.fontSize).toBeLessThanOrEqual(11);
+    expect(r.lines).toEqual(['우리가 빛의 속도로', '갈 수 없다면']);
+    expect(r.fontSize).toBeCloseTo(103 * 0.095, 0); // 시안 약 0.09W
+    expect(r.fontSize).toBeLessThan(coverTitleLayout('느린 계절', 103, 152).fontSize);
   });
 });
 
 describe('책등 제목(장정 규칙)', () => {
-  it('글자는 책등 폭의 약 40%, 읽을 수 있는 8.5DU 아래로는 줄이지 않는다', () => {
+  it('글자는 책등 폭의 약 40%(시안 잉크 높이 ≈ 책 높이의 0.064), 읽을 수 있는 8.5DU 아래로는 줄이지 않는다', () => {
     expect(spineTitleLayout('모순', 188, 27.7, 0.5).fontSize).toBe(11);
     expect(spineTitleLayout('흰', 188, 21, 0.5).fontSize).toBe(8.5);
   });
-  it('짧은 제목은 넉넉한 간격(1.5배), 긴 제목은 간격부터 줄인다', () => {
-    expect(spineTitleLayout('데미안', 225, 24.6, 0.5).pitch).toBe(1.5);
-    expect(spineTitleLayout('달러구트 꿈 백화점', 205, 27.5, 0.65).pitch).toBeLessThan(1.5);
+  it('글자 간격은 시안처럼 글자 크기의 약 1.1배(짧은 제목 1.16), 긴 제목은 간격부터 줄인다', () => {
+    expect(spineTitleLayout('데미안', 225, 24.6, 0.5).pitch).toBe(1.16);
+    expect(spineTitleLayout('달러구트 꿈 백화점', 205, 27.5, 0.65).pitch).toBeLessThan(1.16);
+  });
+  it('첫 글자는 책 높이의 약 0.215에서 시작한다(시안 잉크 위 끝 약 0.23H)', () => {
+    expect(spineTitleLayout('데미안', 225, 24.6, 0.9).textTop).toBe(0.215);
   });
 });
 
 describe('눕힌 책등 제목(가로 한 줄)', () => {
-  // 길이 셈(조판 함수와 같은 규칙): 글자 1, 띄어쓰기 0.32, 자간 6%
-  const span = (t: string, fs: number) => [...t].reduce((n, ch) => n + (ch === ' ' ? 0.32 : 1), 0) * 1.06 * fs;
-  it('머리 쪽 끝에서 길이의 12%부터, 글자는 두께의 약 40%(11DU 넘지 않음)', () => {
+  // 길이 셈(조판 함수와 같은 규칙): 글자 1, 띄어쓰기 0.32, 자간 2%
+  const span = (t: string, fs: number) => [...t].reduce((n, ch) => n + (ch === ' ' ? 0.32 : 1), 0) * 1.02 * fs;
+  it('머리 쪽 끝에서 길이의 14%부터, 글자는 두께의 약 0.38(시안 더미 두 권 모두 잉크 약 10DU, 11DU 넘지 않음)', () => {
     const r = lyingTitleLayout('불편한 편의점', 156, 22.6);
     expect(r.start).toBe(LYING_START);
+    expect(LYING_START).toBe(0.14);
     expect(r.text).toBe('불편한 편의점');
-    expect(r.fontSize).toBeCloseTo(22.6 * 0.4, 1);
+    expect(r.fontSize).toBeCloseTo(22.6 * 0.38, 1);
     expect(lyingTitleLayout('나미야 잡화점의 기적', 160, 36.4).fontSize).toBe(11);
   });
-  it('한 줄이 책 길이(앞 12%·뒤 8% 빼고)를 넘지 않게 줄이고, 7.5DU 아래로는 줄이지 않고 말줄임', () => {
+  it('한 줄이 책 길이(앞 14%·뒤 8% 빼고)를 넘지 않게 줄이고, 7.5DU 아래로는 줄이지 않고 말줄임', () => {
     for (const [title, h, t] of [['우리가 빛의 속도로 갈 수 없다면', 152.5, 31.3], ['나미야 잡화점의 기적', 133, 30], ['모순', 143, 29]] as const) {
       const r = lyingTitleLayout(title, h, t);
       expect(r.fontSize).toBeGreaterThanOrEqual(7.5);
-      expect(span(r.text, r.fontSize)).toBeLessThanOrEqual(h * 0.8 + 1e-6);
+      expect(span(r.text, r.fontSize)).toBeLessThanOrEqual(h * 0.78 + 1e-6);
     }
     const long = lyingTitleLayout('아주 아주 아주 아주 긴 제목이 들어간 아주 긴 책', 100, 24);
     expect(long.fontSize).toBe(7.5);
     expect(long.text.endsWith('⋯')).toBe(true);
-    expect(span(long.text, long.fontSize)).toBeLessThanOrEqual(100 * 0.8 + 1e-6);
+    expect(span(long.text, long.fontSize)).toBeLessThanOrEqual(100 * 0.78 + 1e-6);
   });
   it('띄어쓰기는 하나로 모은다(앞뒤 공백 제거)', () => {
     expect(lyingTitleLayout('  아무튼,   서재 ', 133, 22).text).toBe('아무튼, 서재');

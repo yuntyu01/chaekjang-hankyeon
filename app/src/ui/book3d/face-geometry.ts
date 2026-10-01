@@ -63,7 +63,49 @@ export function pageGeom(cam: Cam, b: Book3, f: 'head' | 'tail' | 'fore', px: Af
   return { ok: true, opening: pf.opening.map(P), pageM: panelMatrix(b, pf.page, cam, px), rims: pf.rims.map((r) => r.map(P)), walls };
 }
 
-// 책 전체의 투영 윤곽(8 꼭짓점의 볼록 껍질)을 모서리마다 같은 작은 반지름으로 깎은 모양(캔버스 px). 짧은 변에서는 반지름을 줄인다.
+// 볼록 다각형을 r만큼 안으로 줄인 모양: 변마다 안쪽으로 r 민 반평면들의 교집합(변이 짧으면 그 변은 사라진다).
+function insetConvex(pts: Point[], r: number): Point[] {
+  'worklet';
+  const n = pts.length;
+  let cx = 0;
+  let cy = 0;
+  for (const p of pts) {
+    cx += p.x / n;
+    cy += p.y / n;
+  }
+  let poly = pts.slice();
+  for (let i = 0; i < n && poly.length >= 3; i++) {
+    const a = pts[i];
+    const b = pts[(i + 1) % n];
+    const len = Math.hypot(b.x - a.x, b.y - a.y);
+    if (len < 1e-6) continue;
+    let nx = -(b.y - a.y) / len;
+    let ny = (b.x - a.x) / len;
+    if ((cx - a.x) * nx + (cy - a.y) * ny < 0) {
+      nx = -nx;
+      ny = -ny;
+    }
+    const out: Point[] = [];
+    for (let j = 0; j < poly.length; j++) {
+      const P = poly[j];
+      const Q = poly[(j + 1) % poly.length];
+      const dp = (P.x - a.x) * nx + (P.y - a.y) * ny - r;
+      const dq = (Q.x - a.x) * nx + (Q.y - a.y) * ny - r;
+      if (dp >= 0) out.push(P);
+      if (dp >= 0 !== dq >= 0) {
+        const t = dp / (dp - dq);
+        out.push({ x: P.x + (Q.x - P.x) * t, y: P.y + (Q.y - P.y) * t });
+      }
+    }
+    poly = out;
+  }
+  return poly;
+}
+
+// 책 전체의 투영 윤곽(8 꼭짓점의 볼록 껍질)을 같은 반지름 r로 둥글린 모양(캔버스 px): 윤곽을 r만큼 안으로 줄였다가 둥근 이음으로
+// r만큼 다시 넓힌다(민코프스키). 3°에서 머리 쪽은 짧은 변 두세 개가 몰려 있어 꼭짓점마다 깎으면 반지름이 거의 사라졌다
+// (시안 책등 위 모서리 약 2.6~4.3DU 둥글기가 1~2px로만 보였다). 이렇게 하면 그 짧은 변들을 한 번에 둥글린다.
+// 윤곽이 너무 얇아(폭 < 2r) 줄인 모양이 없어지면 반지름을 줄여 다시 하고, 그래도 안 되면 껍질 그대로.
 export function silhouette(cam: Cam, b: Book3, px: Affine): Point[] {
   'worklet';
   const pts = hull(
@@ -72,24 +114,44 @@ export function silhouette(cam: Cam, b: Book3, px: Affine): Point[] {
       return { x: q.x * px.s + px.tx, y: q.y * px.s + px.ty };
     }),
   );
-  const n = pts.length;
+  let r = CORNER_R * px.s;
+  let core: Point[] = [];
+  for (let k = 0; k < 3; k++, r /= 2) {
+    core = insetConvex(pts, r);
+    if (core.length >= 3) break;
+  }
+  if (core.length < 3) return pts;
+  const n = core.length;
+  let cx = 0;
+  let cy = 0;
+  for (const p of core) {
+    cx += p.x / n;
+    cy += p.y / n;
+  }
+  // 변의 바깥 법선
+  const normal = (a: Point, b: Point) => {
+    const len = Math.hypot(b.x - a.x, b.y - a.y) || 1;
+    let nx = (b.y - a.y) / len;
+    let ny = -(b.x - a.x) / len;
+    if ((a.x - cx) * nx + (a.y - cy) * ny < 0) {
+      nx = -nx;
+      ny = -ny;
+    }
+    return { x: nx, y: ny };
+  };
   const out: Point[] = [];
-  const r = CORNER_R * px.s;
   for (let i = 0; i < n; i++) {
-    const c = pts[i];
-    const a = pts[(i + n - 1) % n];
-    const e = pts[(i + 1) % n];
-    const la = Math.hypot(a.x - c.x, a.y - c.y) || 1;
-    const le = Math.hypot(e.x - c.x, e.y - c.y) || 1;
-    // 짧은 변(3°에서 비스듬한 윤곽 변은 약 6DU)에서도 이웃 모서리가 한 곡선으로 합쳐지지 않게 변 길이의 30%까지만 깎는다
-    const k = Math.min(r, la * 0.3, le * 0.3);
-    const p0 = { x: c.x + ((a.x - c.x) * k) / la, y: c.y + ((a.y - c.y) * k) / la };
-    const p1 = { x: c.x + ((e.x - c.x) * k) / le, y: c.y + ((e.y - c.y) * k) / le };
-    // 모서리 곡선(2차 베지어, 꼭짓점이 조절점)
-    for (let j = 0; j <= 4; j++) {
-      const t = j / 4;
-      const u = 1 - t;
-      out.push({ x: u * u * p0.x + 2 * u * t * c.x + t * t * p1.x, y: u * u * p0.y + 2 * u * t * c.y + t * t * p1.y });
+    const v = core[i];
+    const n0 = normal(core[(i + n - 1) % n], v);
+    const n1 = normal(v, core[(i + 1) % n]);
+    const a0 = Math.atan2(n0.y, n0.x);
+    let da = Math.atan2(n1.y, n1.x) - a0;
+    while (da > Math.PI) da -= 2 * Math.PI;
+    while (da < -Math.PI) da += 2 * Math.PI;
+    const steps = Math.max(1, Math.ceil(Math.abs(da) / (Math.PI / 10)));
+    for (let j = 0; j <= steps; j++) {
+      const a = a0 + (da * j) / steps;
+      out.push({ x: v.x + r * Math.cos(a), y: v.y + r * Math.sin(a) });
     }
   }
   return out;

@@ -106,7 +106,7 @@ describe('책 몸체 구조', () => {
           return { x: q.x * px.s, y: q.y * px.s };
         }));
         const sil = silhouette(cam, b, px);
-        expect(sil.length).toBeGreaterThanOrEqual(box.length * 5);
+        expect(sil.length).toBeGreaterThanOrEqual(box.length);
         for (const p of sil) expect(inside(p, box)).toBe(true);
         // 모서리에서 깎인 거리는 공통 반지름을 넘지 않는다
         for (const c of box) {
@@ -115,6 +115,24 @@ describe('책 몸체 구조', () => {
         }
       }
     }
+  });
+
+  it('얇은 윗면 띠(표지 전시 책, 3°에서 몇 px)가 있어도 위 모서리는 반지름 r로 둥글다(꼭짓점마다 깎으면 1~2px로 줄던 것)', () => {
+    const cam = camAt(3);
+    const b = fromPlaced({ bookId: 'f', pose: 'front', size: { w: 100, h: 150, d: 22 }, x: 10, y: 0, z: 0, angle: 0 });
+    const box = hull(corners(b).map((c) => {
+      const q = project(cam, c);
+      return { x: q.x * px.s, y: q.y * px.s };
+    }));
+    const sil = silhouette(cam, b, px);
+    const r = CORNER_R * px.s;
+    // 앞면 위 끝과 얇은 띠를 한 모서리로 본 왼쪽 위 모서리(외곽 상자의 모서리)에서 윤곽까지 r(√2−1): 직각 모서리를 반지름 r로 둥글린 거리
+    const corner = { x: Math.min(...box.map((p) => p.x)), y: Math.min(...box.map((p) => p.y)) };
+    const cut = Math.min(...sil.map((p) => Math.hypot(p.x - corner.x, p.y - corner.y)));
+    expect(cut).toBeGreaterThanOrEqual(r * (Math.SQRT2 - 1) * 0.9);
+    // 둥근 부분은 왼쪽 변·윗변을 따라 r 안팎에서 시작한다(띠 두께 몇 px로 줄지 않는다)
+    const left = sil.filter((p) => Math.abs(p.x - corner.x) < 0.01);
+    expect(Math.min(...left.map((p) => p.y)) - corner.y).toBeGreaterThanOrEqual(r * 0.9);
   });
 
   it('선반 위 정지 자세(fromPlaced)에서도 같은 규칙: 윤곽 아래 끝이 바닥(판 윗면)을 넘지 않는다', () => {

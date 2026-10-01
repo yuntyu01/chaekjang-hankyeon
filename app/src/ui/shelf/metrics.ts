@@ -36,6 +36,7 @@ export function useShelfMetrics() {
 }
 
 export const RIBBON_OUT = 12;
+export const RIBBON_W = 8.5; // 갈피 끈 한 가닥 폭(DU, 시안 7.2~9.6DU). art.tsx와 같은 값
 // 가장 키 큰 책(갈피 포함) 머리 위의 3D 여유(DU). 기본 3° 보기에서 예전 줄 간격(가장 큰 책의 투영 높이 + 2DU)과 같아지는 값.
 export const ROW_CLEARANCE = 10.1;
 // 줄 칸(화면)의 기준 보기는 기본 3°다: 칸 경계 = 윗선반 앞면 아래 모서리를 3°로 본 자리(기본 보기에서 예전과 같은 위치).

@@ -10,7 +10,7 @@ import { useDerivedValue, type SharedValue } from 'react-native-reanimated';
 import { brightness, facing, type Book3, type Cam } from '@/domain/book3';
 import { facePanel, GROOVE } from '@/domain/book-parts';
 import type { Point } from '@/domain/camera';
-import { litTone, mix, PAGE_BASE, PAGE_RIM, scaleColor, withAlpha } from '@/ui/book/BookBody';
+import { litTone, PAGE_BASE, scaleColor, withAlpha } from '@/ui/book/BookBody';
 import { light } from '@/ui/lighting';
 
 import type { BookArt } from './art';
@@ -39,8 +39,9 @@ function polysPath(list: Point[][]): SkPath {
 
 // 판 안쪽은 면지(종이)라 종이색이다. 판 사이로 들여다보이는 칸(속지 묶음의 끝 단면이 비스듬히 보이는 곳)은 조금 그늘진 아이보리,
 // 카메라 쪽을 향한 판 안쪽 벽은 그보다 덜 그늘진 아이보리(속지와 같은 계열이라 어두운 띠·윤곽선처럼 읽히지 않게).
-const GAP = mix(scaleColor(PAGE_BASE, 0.93), PAGE_RIM, 0.06);
-const WALL = mix(scaleColor(PAGE_BASE, 0.96), PAGE_RIM, 0.03);
+// 시안: 머리 면은 책 색 테두리 안의 밝은 아이보리 속지뿐이다(베이지 안쪽 띠 없음). 칸·벽도 속지보다 조금만 어둡게.
+const GAP = scaleColor(PAGE_BASE, 0.96);
+const WALL = scaleColor(PAGE_BASE, 0.985);
 
 // 종이 단면 면 하나
 export function PageFace({ f, state, cam, px, art, tone }: { f: 'head' | 'tail' | 'fore'; state: RO<Book3>; cam: RO<Cam>; px: Affine; art: BookArt; tone: string }) {
@@ -86,7 +87,7 @@ function Board({ w, h, s, tone, hingeAt }: { w: number; h: number; s: number; to
           <Rect x={gx - (GROOVE.dark / 2) * s} y={0} width={GROOVE.dark * s} height={H} color={withAlpha(scaleColor(tone, 0.55), 0.14)}>
             <BlurMask blur={0.45 * s} style="normal" />
           </Rect>
-          <Rect x={ex - (GROOVE.lit / 2) * s} y={0} width={GROOVE.lit * s} height={H} color={withAlpha(litTone(tone), 0.12)} />
+          <Rect x={ex - (GROOVE.lit / 2) * s} y={0} width={GROOVE.lit * s} height={H} color={withAlpha(litTone(tone), 0.2)} />
         </>
       ) : null}
     </>

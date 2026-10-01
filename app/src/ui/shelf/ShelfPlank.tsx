@@ -166,6 +166,8 @@ const K_SIDE = lambert({ x: 1, y: 0, z: 0 });
 const K_SIDE_EDGE = lambert({ x: 1, y: 1, z: 0 }); // 윗면·오른쪽 옆면 사이 모서리(두 면 사이 밝기로 이어진다)
 // 윗면·앞면 사이 둥근 모서리: 책 모서리(BookNode bevelColor)와 같은 규칙. 모서리 법선이 앞면보다 빛을 더 받는 만큼 판 색을 밝힌 얇은 밝음
 const PLANK_TONE = '#F3DDC3';
+// 앞면·옆면 질감(평균 약 (229,196,165))을 시안 앞면 (242,220,194) 쪽으로 밝히는 크림빛 덮기. 옆면 끝은 어둡게 하지 않는다(시안에 어두운 끝면이 없다)
+const PLANK_CREAM = 'rgba(255,246,232,0.45)';
 const EDGE_LIT = (() => {
   const d = light.dir;
   const l = Math.hypot(d.x, d.y, d.z) || 1;
@@ -227,6 +229,7 @@ export function ShelfBoard({ px, cam, zIndex }: { px: Affine; cam: RO<Camera>; z
         <Face poly={frontP} matrix={frontM} image={front}>
           {SHOW.shelfShade ? (
             <>
+              <Path path={frontP} color={PLANK_CREAM} />
               <Path path={frontP} color={shadeColor(K_FRONT)} />
               <Path path={frontP}>
                 <LinearGradient start={g0} end={g1} colors={['rgba(110,75,45,0)', 'rgba(110,75,45,0.10)']} />
@@ -236,7 +239,12 @@ export function ShelfBoard({ px, cam, zIndex }: { px: Affine; cam: RO<Camera>; z
         </Face>
         {/* 오른쪽 옆면: 공통 광원(빛 반대쪽) */}
         <Face poly={sideP} matrix={sideM} image={front}>
-          {SHOW.shelfSide && SHOW.shelfShade ? <Path path={sideP} color={shadeColor(K_SIDE)} /> : null}
+          {SHOW.shelfSide && SHOW.shelfShade ? (
+            <>
+              <Path path={sideP} color={PLANK_CREAM} />
+              <Path path={sideP} color={shadeColor(Math.max(K_SIDE, 0.95))} />
+            </>
+          ) : null}
         </Face>
         {/* 둥글게 깎인 모서리: 두 면 사이 법선의 밝기(빛 쪽이면 조금 밝게) */}
         <Path path={edge} style="stroke" strokeWidth={0.8 * s} strokeCap="round" color={EDGE_LIT}>

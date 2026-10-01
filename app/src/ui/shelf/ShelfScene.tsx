@@ -328,7 +328,7 @@ const TransitCanvas = memo(function TransitCanvas({ ids, rows, motions, geo, boo
   // 앞을 가리는 갈피 끈(책 id → 끈 수)과 함께 옮겨 가는 책(서로 실제 깊이로 가린다)
   const ribbons = useMemo(() => {
     const out: Record<string, number> = {};
-    for (const [id, b] of Object.entries(books)) if ((b.quotes ?? 0) > 0) out[id] = Math.min(2, b.quotes ?? 0);
+    for (const [id, b] of Object.entries(books)) if ((b.quotes ?? 0) > 0) out[id] = 1;
     return out;
   }, [books]);
   const transit = useMemo(() => Object.fromEntries(idList.map((id) => [id, true as const])), [idList]);

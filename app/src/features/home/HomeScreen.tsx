@@ -1492,11 +1492,12 @@ export function HomeScreen() {
           {`저장 ${view.pitch}° · ${camNow || `적용 ${view.pitch}°`} · 배율 ${m.scale.toFixed(4)}dp/DU(${(m.scale * PixelRatio.get()).toFixed(3)}px/DU) · 3D 줄 간격 ${(rows[0]?.space ?? 0).toFixed(1)}DU · 꾸미기 ${editing ? '켬' : '끔'}`}
         </Text>
       ) : null}
-      {/* 시안 비율: 제목 26DU·요약 12.5DU·원형 버튼 28DU, 좌우 여백 23/18DU */}
+      {/* 시안 비율: 제목은 작고 둥근 고딕(잉크 약 86×21.5DU, 따뜻한 짙은 갈색), 연도 잉크 높이 약 11.9DU·제목 잉크 위 끝에서 약 30DU 아래,
+          원형 버튼 32DU, 좌우 여백 23/18DU */}
       <View style={[styles.header, { paddingLeft: 23 * m.scale + m.originX, paddingRight: 18 * m.scale + m.originX, paddingTop: 20 * m.scale, height: 84 * m.scale }]}>
         <View style={{ flex: 1 }}>
           <Text
-            style={[styles.title, { fontSize: 26 * m.scale, lineHeight: 34 * m.scale }]}
+            style={[styles.title, { fontSize: 22.5 * m.scale, lineHeight: 29 * m.scale }]}
             accessibilityRole="header"
             numberOfLines={1}
             adjustsFontSizeToFit
@@ -1510,7 +1511,7 @@ export function HomeScreen() {
             accessibilityRole="button"
             accessibilityLabel={ko.yearA11y(year, count)}
             style={{ alignSelf: 'flex-start' }}>
-            <Text style={[styles.summary, { fontSize: 12.5 * m.scale, marginTop: 7 * m.scale }]}>
+            <Text style={[styles.summary, { fontSize: 13.5 * m.scale, marginTop: 4 * m.scale }]}>
               {ko.year(year)}
               {years.length > 1 ? ' ▾' : ''}
               {editing ? ` · ${ko.decorating}` : ''}
@@ -1547,15 +1548,16 @@ export function HomeScreen() {
                 }}
                 accessibilityRole="button"
                 accessibilityLabel={ko.decorate}
-                style={[styles.pill, { height: 28 * m.scale, paddingHorizontal: 11 * m.scale, flexDirection: 'row', gap: 4 * m.scale }]}>
-                <Paintbrush size={13 * m.scale} color={colors.ink} strokeWidth={1.6} />
-                <Text style={[styles.pillText, { fontSize: 12.5 * m.scale }]}>{ko.decorate}</Text>
+                style={[styles.pill, { height: 32 * m.scale, paddingHorizontal: 12 * m.scale, flexDirection: 'row', gap: 4 * m.scale }]}>
+                <Paintbrush size={13.5 * m.scale} color={colors.homeTitle} strokeWidth={1.8} />
+                <Text style={[styles.pillText, { fontSize: 13 * m.scale }]}>{ko.decorate}</Text>
               </Pressable>
-              <HeaderButton size={28 * m.scale} label={ko.add} onPress={() => router.push('/book/add')}>
-                <Plus size={16 * m.scale} color={colors.ink} strokeWidth={1.4} />
+              {/* 시안: 둥근 테두리 원 버튼(약 33DU)과 따뜻한 짙은 갈색의 굵은 더하기 */}
+              <HeaderButton size={32 * m.scale} label={ko.add} onPress={() => router.push('/book/add')}>
+                <Plus size={18 * m.scale} color={colors.homeTitle} strokeWidth={1.9} />
               </HeaderButton>
-              <HeaderButton size={28 * m.scale} label={ko.menu.title} onPress={() => setShelfMenuOpen(true)}>
-                <Menu size={15 * m.scale} color={colors.ink} strokeWidth={1.5} />
+              <HeaderButton size={32 * m.scale} label={ko.menu.title} onPress={() => setShelfMenuOpen(true)}>
+                <Menu size={16 * m.scale} color={colors.homeTitle} strokeWidth={1.8} />
               </HeaderButton>
             </>
           )}
@@ -1786,13 +1788,13 @@ export function HomeScreen() {
 const styles = StyleSheet.create({
   root: { flex: 1 },
   header: { flexDirection: 'row', alignItems: 'flex-start' },
-  title: { fontFamily: fonts.serif, color: colors.title },
-  summary: { color: colors.summary, letterSpacing: 0.3 },
+  title: { fontFamily: fonts.roundTitle, color: colors.homeTitle },
+  summary: { fontFamily: fonts.round, color: colors.homeSummary, letterSpacing: 0.2 },
   actions: { flexDirection: 'row', alignItems: 'center', alignSelf: 'center' },
   circle: { borderWidth: 1, borderColor: colors.circle, alignItems: 'center', justifyContent: 'center' },
   circleOn: { backgroundColor: colors.ink, borderColor: colors.ink },
   pill: { borderWidth: 1, borderColor: colors.circle, borderRadius: 999, alignItems: 'center', justifyContent: 'center' },
-  pillText: { color: colors.ink },
+  pillText: { fontFamily: fonts.round, color: colors.homeTitle },
   badge: {
     position: 'absolute',
     top: -2,

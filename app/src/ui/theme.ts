@@ -21,6 +21,8 @@ export const colors = {
   tabBar: '#FBF6EE',
   title: '#1B2433',
   summary: '#7F858C',
+  homeTitle: '#4A3C3A', // 홈 머리글 '나의 책장'(시안의 따뜻한 짙은 갈색)
+  homeSummary: '#918880', // 홈 머리글 연도(시안의 따뜻한 회색)
   circle: '#D8CFC4',
   tabActive: '#141D2B',
   tabInactive: '#7E8187',
@@ -36,6 +38,9 @@ export const fonts = {
   bookTitle: 'GowunBatang_700Bold',
   // 메뉴·숫자는 시스템 고딕(안드로이드 Noto Sans CJK, iOS Apple SD Gothic Neo)
   sans: undefined as string | undefined,
+  // 홈 머리글: 시안의 작고 둥근 고딕(제목 ExtraBold, 연도 Bold)
+  roundTitle: 'NanumSquareRoundEB',
+  round: 'NanumSquareRoundB',
 };
 
 export const navigation = { height: 56, iconSize: 25 };

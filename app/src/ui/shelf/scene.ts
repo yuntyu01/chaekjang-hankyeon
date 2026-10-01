@@ -14,7 +14,7 @@ import { SHELF, SHELF_DEPTH, SHELF_FRONT, SHELF_THICK, SHELF_X0, SHELF_X1 } from
 import { pointInPoly } from '@/domain/shelf-scene';
 import { bookAt, holdTrack, type Track } from '@/domain/transition';
 import { silhouette } from '@/ui/book3d/face-geometry';
-import { RIBBON_OUT } from '@/ui/shelf/metrics';
+import { RIBBON_OUT, RIBBON_W } from '@/ui/shelf/metrics';
 
 export type Tracks = Record<string, Track>;
 // 막 다른 줄로 떠난 책이 이 줄에 남기는 경로(이 줄 좌표): 그 책이 지금 있는 줄의 경로를 세로로 옮긴 것과 그 진행 시각.
@@ -204,7 +204,8 @@ function ribbonQuad(cam: Cam, aff: Affine, b: Book3, n: number): Point[] {
   'worklet';
   const d = b.dims;
   const o = toPx(cam, aff, toWorld(b, { x: d.T * 0.55, y: d.H, z: d.W * 0.18 }));
-  const half = ((n * 6.8 + (n - 1) * 2.4) / 2 + 0.8) * aff.s;
+  // 끈 한 가닥(폭 RIBBON_W, BookNode·art Ribbons)
+  const half = (n > 0 ? RIBBON_W / 2 + 0.8 : 0) * aff.s;
   const top = -(RIBBON_OUT + 0.8) * aff.s;
   const bottom = 1.2 * aff.s;
   const a = (b.roll * Math.PI) / 180;
