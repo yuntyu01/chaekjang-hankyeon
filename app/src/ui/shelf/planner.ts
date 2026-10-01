@@ -3,18 +3,20 @@
 // - 여러 줄의 트랙 바꾸기는 한 번에 UI로 보낸다: 다른 줄로 옮겨 가는 책이 한 프레임이라도 두 권이거나 비어 보이지 않게.
 // - 다른 줄에서 들어오는 책은 그 줄에서 보이던 자세(이 줄 좌표로 옮긴 것)에서 이어서 들어온다(순간 이동 없음).
 //   이런 배치는 도착 줄 캔버스에 그 책이 올라간 뒤에 적용한다(그동안 이동 캔버스가 제자리의 책을 그린다, ShelfScene).
-// - 다른 줄로 떠나는 책은 원래 줄이 그 책의 실제 경로(원래 줄 좌표, away)로 자기 공간을 벗어날 때까지 계속 그리고, 그동안 이동
-//   캔버스가 같은 자세로 위에 겹친다(어느 캔버스가 한 프레임 늦어도 빈 프레임이 없다). 그 책의 그림자도 그 경로를 따라 옅어진다.
+// - 다른 줄로 떠나는 책은 원래 줄에 그 책의 실제 경로(원래 줄 좌표, away)를 남긴다: 원래 줄은 이동 캔버스가 그 책을 그리지 못하는 동안
+//   그 경로로 책을 그리고, 그 책이 드리우던 그림자를 그 경로로 옅게 한다. 그 책이 있는 줄이 경로를 다시 짜면(손가락이 도착 줄에서
+//   계속 움직일 때 등) 원래 줄에 남은 경로도 같은 새 경로로 옮겨 잇는다(예전에는 거둬서 그림자가 한 프레임에 사라졌다).
 import { useLayoutEffect } from 'react';
 import { Easing, makeMutable, withTiming } from 'react-native-reanimated';
 import { scheduleOnRN, scheduleOnUI } from 'react-native-worklets';
 
 import { fromPlaced, type Book3 } from '@/domain/book3';
+import { SHELF_THICK } from '@/domain/geometry';
 import { PLANK_BOUNDS, type BookFrame } from '@/domain/shelf-scene';
-import { awayTrack, bookAt, holdTrack, planTransition } from '@/domain/transition';
+import { awayShift, awayTrack, bookAt, holdTrack, offBetween, planTransition, shiftTrack, withOff, type Off, type Track } from '@/domain/transition';
 import { ANIM, TL, tl, tlOn, tlu } from '@/ui/perf';
 
-import { OUT_SHADE_MAX, outsideDist, outsideRow, presentSV, type Motion, type Tracks } from './scene';
+import { awayAt, easeOf, OUT_SHADE_MAX, outsideDist, outsideRow, presentSV, type AwayEntry, type Aways, type Motion, type Tracks } from './scene';
 
 export const MOTION_MS = 230; // 기울이기·밀림·끌기 미리보기
 export const POSE_MS = 420; // 자세 바꾸기(표지로·눕히기)
@@ -46,7 +48,8 @@ function progress(mr: Mirror) {
   return mr.ease === 'out' ? easeOutCubic(u) : easeInOutCubic(u);
 }
 
-const moving = (mr: Mirror) => !!mr.dur && Date.now() - mr.start < mr.dur;
+// 지금 움직이는 중인가(출발 전 = start Infinity는 아직 멈춰 있다: 그때 다시 짜면 천천히 출발한다)
+const moving = (mr: Mirror) => Number.isFinite(mr.start) && !!mr.dur && Date.now() - mr.start < mr.dur;
 
 // 지금 화면에 보이는 자세(JS 계산). 조작을 시작하거나 경로를 다시 짤 때의 출발점.
 export function displayedPoses(m: Motion): Record<string, Book3> {
@@ -61,8 +64,7 @@ export function displayedPoses(m: Motion): Record<string, Book3> {
 // 여러 줄의 트랙 바꾸기는 한 번에 UI로 보낸다. 다른 줄로 옮겨 가는 책이 있으면(waits) 도착한 줄 캔버스에 그 책이 올라갈 때까지
 // 적용을 미룬다: 캔버스에 책을 올리는 일(React 반영과 캔버스 다시 기록)은 JS에서 늦게 끝나고 그동안 UI가 멈출 수 있어,
 // 먼저 움직이기 시작하면 이동 경로가 멈춘 사이에 지나가 버린다(순간 이동처럼 보임). 그동안 책은 제자리에 있다(이동 캔버스가 그린다).
-// left: 이 줄을 떠나는 책의 떠날 때 자세(이 줄 좌표). away: 다른 줄로 떠난 책의 경로를 이 줄 좌표로 옮긴 것과 그 진행(실제 시간 비율 k까지, dur 동안).
-// space: 이 줄 공간 높이(줄 계획에서 온 것만).
+// left: 이 줄을 떠나는 책의 떠날 때 자세(이 줄 좌표). space: 이 줄 공간 높이(줄 계획에서 온 것만).
 type Apply = {
   m: Motion;
   shelfId: string;
@@ -73,21 +75,29 @@ type Apply = {
   key: number;
   space?: number;
   left?: Record<string, Book3>;
-  away?: { tracks: Tracks; dur: number; k: number; out: boolean };
 };
 export type Wait = { id: string; shelfId: string };
-// 다른 줄에 남겨 둔 떠난 책 경로를 거둔다(그 책이 가는 줄에서 경로를 다시 짰을 때: 남은 경로가 새 경로와 어긋나 두 권으로 보이지 않게)
-type Clear = { m: Motion; id: string };
-// waited: 도착 줄 캔버스에 책이 올라가기를 실제로 기다렸다(올라간 첫 그림 프레임이 지난 뒤 출발한다)
-type Pending = { list: Apply[]; waits: Wait[]; since: number; waited: boolean; clears: Clear[] };
+// 다른 줄에 남는 경로 하나를 새로 두거나 옮겨 잇거나(tr) 거둔다(tr null). space: 그 줄 공간 높이.
+// 남길지와 그림자가 없어지는 진행(k)은 UI가 정한다: 지금 보이는 자세에서 이어 붙인 경로(이어 주기)로 재야 화면과 맞는다(JS 어림과 다를 수 있다).
+// 시각(t0)도 UI가 그 책이 있는 줄의 경로와 함께 출발할 때 정한다.
+type AwayUpd = { m: Motion; shelfId: string; id: string; tr: Track | null; dur: number; out: boolean; space: number };
+// waited: 도착 줄 캔버스에 책이 올라가기를 실제로 기다렸다(올라간 첫 그림 프레임이 지난 뒤 출발한다).
+// seq: 기다림을 새로 건 묶음 번호(대기 시간 초과 타이머가 자기 묶음에만 작동하게). since: 그 기다림을 건 시각.
+type Pending = { list: Apply[]; waits: Wait[]; since: number; waited: boolean; ups: AwayUpd[]; seq: number };
 let batch: Apply[] = [];
 let batchWaits: Wait[] = [];
 let nextKey = 1;
+let pendSeq = 0;
 const byKey = new Map<number, Motion>();
 const pendingSV = makeMutable<Pending | null>(null);
-const WAIT_MAX = 1200; // 이만큼 기다려도 올라가지 않으면 그냥 움직인다(ms)
-// 떠난 책 → 그 책의 남은 경로를 둔 줄(JS 쪽 기록)
-const awayRows = new Map<string, Motion>();
+export const WAIT_MAX = 1200; // 이만큼 기다려도 올라가지 않으면 그냥 움직인다(ms)
+// 떠난 책 → 그 책의 남는 경로를 둔 줄들(JS 쪽 기록). dy: 그 책이 지금 있는 줄 좌표 → 그 줄 좌표(세로만 다르다), space: 그 줄 공간 높이.
+// 한 책이 연달아 여러 줄을 지나면(A → B → C) 앞서 떠난 줄들도 지금 경로로 옮겨 잇는다(버린 경로를 따라 그림자가 남지 않게).
+type AwayRow = { m: Motion; shelfId: string; dy: number; space: number };
+const awayRows = new Map<string, AwayRow[]>();
+// UI에서 아직 적용되지 않은(미뤄 둔 묶음에 합쳐진) 적용들: 이 동안 다시 짜는 경로는 출발 전 자세에서 시작한다(JS 사본이 UI에서
+// 돌지 않은 경로를 따라 앞서가 적용 순간 책이 튀지 않게)
+const openKeys = new Set<number>();
 
 export function queueApply(m: Motion, shelfId: string, rec: Tracks, animate: boolean, dur: number, target: string | null, waits: Wait[] = [], space?: number) {
   const mr = mirrorOf(m);
@@ -109,45 +119,65 @@ export function queueApply(m: Motion, shelfId: string, rec: Tracks, animate: boo
   batchWaits.push(...waits);
 }
 
-const easeOf = (out: boolean) => (out ? easeOutCubic : easeInOutCubic);
+const easeFn = (out: boolean) => (out ? easeOutCubic : easeInOutCubic);
+const goneIn = (space: number) => (b: Book3) => outsideDist(b, space) > OUT_SHADE_MAX;
 
-// 다른 줄로 옮겨 가는 책(기다림 = 도착 줄)마다, 같은 묶음에 원래 줄이 있으면 원래 줄에 남는 경로를 붙인다:
-// 도착 줄 경로를 원래 줄 좌표로(세로만 다르다), 도착 줄과 같은 시각·같은 감속으로. 원래 줄은 그 책이 자기 공간 안에 있는 동안
-// 이 경로로 계속 그리고(이동 캔버스의 첫 그림이 늦어도 빈 프레임이 없게), 그 책이 드리우던 그림자를 이 경로로 옅게 한다.
-// 원래 줄 공간 밖 OUT_SHADE_MAX를 넘는 곳(더는 그림도 그림자도 없는 곳)까지만 움직인다(그 뒤로는 그 줄 계산을 다시 돌리지 않게).
-// 이어서 이 묶음에서 경로를 다시 짠 책이 다른 줄에 남은 경로를 갖고 있으면 거둔다.
-function awaysOf(list: Apply[], waits: Wait[]): Clear[] {
-  const fresh = new Set<string>();
-  for (const w of waits) {
-    const to = list.find((a) => a.shelfId === w.shelfId);
-    const from = list.find((a) => a.shelfId !== w.shelfId && a.left?.[w.id]);
-    const tr = to?.rec[w.id];
-    const space = from?.space;
-    if (!to || !from || !tr || space === undefined || !to.animate) continue;
-    const a = awayTrack(tr, from.left![w.id], easeOf(to.out), (b) => outsideDist(b, space) > OUT_SHADE_MAX);
-    if (!a) continue;
-    from.away = { tracks: { ...(from.away?.tracks ?? {}), [w.id]: a.track }, dur: to.dur, k: a.k, out: to.out };
-    awayRows.set(w.id, from.m);
-    fresh.add(w.id);
-  }
-  const clears: Clear[] = [];
-  for (const [id, m] of awayRows) {
-    if (fresh.has(id)) continue;
-    // 남은 경로를 둔 줄을 새로 짜면(이 묶음에) 그 줄의 남은 경로는 어차피 비워진다
-    if (list.some((a) => a.m === m)) {
+// 다른 줄에 남는 경로(away)를 이 묶음에 맞춘다. 책마다:
+// - 새로 다른 줄로 떠났으면(기다림 = 도착 줄) 원래 줄에 남는 경로를 둔다: 도착 줄 경로를 원래 줄 좌표로(세로만 다르다),
+//   도착 줄과 같은 시각·같은 감속으로, 원래 줄 공간 밖 OUT_SHADE_MAX를 넘는 곳(더는 그림도 그림자도 없는 곳, k)까지.
+// - 그 책이 있는 줄의 경로를 다시 짰으면(같은 줄에서 목표가 바뀌거나, 또 다른 줄로 떠났으면) 다른 줄들에 남은 경로를 새 경로로 옮겨 잇는다.
+//   그 책이 돌아온 줄은 그 줄 트랙이 맡으므로 거둔다.
+// - 경로 없이 바로 옮긴 책(동작 줄이기 등)은 남길 경로가 없다: 앞서 남긴 경로도 거둔다(책과 함께 그림자도 그 순간 옮겨 간다).
+// 남길지(그 줄에 그림자가 아직 있는지)와 k는 UI가 정한다(AwayUpd). 여기 기록(awayRows)은 다음에 옮겨 이을 줄을 고르는 데만 쓴다.
+function awaysOf(list: Apply[], waits: Wait[]): AwayUpd[] {
+  const ups: AwayUpd[] = [];
+  const ids = new Set<string>([...waits.map((w) => w.id), ...awayRows.keys()]);
+  for (const id of ids) {
+    const to = list.find((a) => a.rec[id]);
+    if (!to) continue; // 그 책이 있는 줄은 이 묶음에서 다시 짜지 않았다(남은 경로는 그대로 간다)
+    let rows = (awayRows.get(id) ?? []).filter((r) => r.m !== to.m);
+    const drop = (rs: AwayRow[]) => {
+      for (const r of rs) ups.push({ m: r.m, shelfId: r.shelfId, id, tr: null, dur: 0, out: false, space: r.space });
+    };
+    if (!to.animate) {
+      drop(rows);
       awayRows.delete(id);
       continue;
     }
-    if (list.some((a) => a.rec[id])) {
-      clears.push({ m, id });
-      awayRows.delete(id);
+    const fresh = waits.some((w) => w.id === id && w.shelfId === to.shelfId);
+    const from = fresh ? list.find((a) => a.m !== to.m && a.left?.[id]) : undefined;
+    if (from && from.space !== undefined) {
+      const a = awayTrack(to.rec[id], from.left![id], easeFn(to.out), goneIn(from.space), from.space + SHELF_THICK);
+      if (a) {
+        rows = rows.filter((r) => r.m !== from.m).map((r) => ({ ...r, dy: r.dy + a.dy }));
+        ups.push({ m: from.m, shelfId: from.shelfId, id, tr: a.track, dur: to.dur, out: to.out, space: from.space });
+        rows.push({ m: from.m, shelfId: from.shelfId, dy: a.dy, space: from.space });
+      } else {
+        // 떠날 때 자세와 새 경로가 이어지지 않으면(같은 책의 경로가 아니면) 줄 사이 거리를 알 수 없어 앞서 남긴 경로도 모두 거둔다
+        drop(rows);
+        rows = [];
+      }
     }
+    const kept: AwayRow[] = [];
+    for (const r of rows) {
+      if (from && r.m === from.m) {
+        kept.push(r);
+        continue;
+      }
+      ups.push({ m: r.m, shelfId: r.shelfId, id, tr: shiftTrack(to.rec[id], r.dy), dur: to.dur, out: to.out, space: r.space });
+      // 새 경로 출발점이 이미 그 줄 그림자 범위 밖이면(JS 어림) 다음부터는 옮겨 잇지 않는다(UI 쪽 남은 경로는 UI가 정한 k까지 간다)
+      if (awayShift(to.rec[id], r.dy, easeFn(to.out), goneIn(r.space))) kept.push(r);
+    }
+    if (kept.length) awayRows.set(id, kept);
+    else awayRows.delete(id);
   }
-  return clears;
+  return ups;
 }
 
-// UI에서 실제로 적용한 시각을 JS 사본에 맞춘다
+// UI에서 실제로 적용한 시각을 JS 사본에 맞춘다. 미뤄 둔 묶음이 적용되면(그 묶음의 열쇠가 하나라도 오면) 대기 구간을 닫는다.
 function applied(keys: number[], at: number) {
+  if (TL.on) tl(`applied ${keys.join(',')} late=${Date.now() - at}`);
+  if (keys.some((k) => openKeys.has(k))) openKeys.clear();
   for (const k of keys) {
     const m = byKey.get(k);
     byKey.delete(k);
@@ -157,63 +187,171 @@ function applied(keys: number[], at: number) {
   }
 }
 
+// 남는 경로가 있는 동안 줄 시계(awayT, ms)를 실제 시간으로 흐르게 한다: 가장 늦게 끝나는 남는 경로의 끝까지 직선으로.
+function runClock(m: Motion) {
+  'worklet';
+  const now = m.awayT.value;
+  let end = now;
+  const aw = m.away.value;
+  for (const id in aw) {
+    const e = aw[id];
+    if (e.t0 === Infinity || !(e.dur > 0)) continue;
+    end = Math.max(end, e.t0 + e.dur * e.k);
+  }
+  if (end > now) m.awayT.value = withTiming(end, { duration: end - now, easing: Easing.linear });
+}
+
+// 남는 경로에서 그 줄에 그림자가 더는 없는 첫 진행(실제 시간 비율 u, 1/48 단위). 출발점부터 없으면 0, 끝까지 있으면 1.
+function goneAt(tr: Track, out: boolean, space: number) {
+  'worklet';
+  if (outsideDist(bookAt(tr, 0), space) > OUT_SHADE_MAX) return 0;
+  for (let i = 1; i <= 48; i++) if (outsideDist(bookAt(tr, easeOf(out, i / 48)), space) > OUT_SHADE_MAX) return i / 48;
+  return 1;
+}
+
+// 측정 번들: 이어 주기 크기(위치 DU / 각도 °)가 0.5를 넘으면 '위치/각도' 문자열, 아니면 ''
+function offText(o: Off) {
+  'worklet';
+  const d = Math.max(Math.abs(o.x), Math.abs(o.y), Math.abs(o.z));
+  const r = Math.max(Math.abs(o.roll), Math.abs(o.yaw), Math.abs(o.spin), Math.abs(o.pitch));
+  return d > 0.5 || r > 0.5 ? `${d.toFixed(1)}/${r.toFixed(1)}` : '';
+}
+
 // late: 도착 줄 캔버스에 막 올라간 책을 기다린 적용. 새로 올라간 책은 첫 그림을 내는 프레임에 계산이 몰려(파생 값 시작) 그 프레임이
 // 길어지므로, 트랙은 바로 넣어 출발 자세에 두고 진행은 그 프레임이 지난 뒤(두 프레임 뒤) 시작한다. 그 사이 더 새 경로가 들어오면 건너뛴다.
-// clears: 다른 줄에 남겨 둔 떠난 책 경로를 이 적용과 같은 때 거둔다.
-function applyNow(list: Apply[], late = false, clears: Clear[] = []) {
+// ups: 다른 줄에 남는 경로(새로 두기·옮겨 잇기·거두기)를 이 적용과 같은 때 바꾼다. 남는 경로의 진행은 그 책이 있는 줄의 경로와 함께 출발한다.
+// 새 경로는 지금 보이는 자세(UI)에서 잇는다: JS가 어림한 출발점과 다르면 그 차이를 경로 앞부분에 더한다(Track.off).
+// 바로 바꾸는 적용(animate false: 손가락이 자세를 직접 정하는 조작 등)은 그대로 바꾼다.
+function applyNow(list: Apply[], late = false, ups: AwayUpd[] = []) {
   'worklet';
-  if (tlOn.value) tlu(`apply ${list.map((a) => `${a.shelfId}${a.animate ? `:${Math.round(a.dur)}` : ''}${a.away ? '+away' : ''}`).join(',')}${late ? ' late' : ''}${clears.length ? ` clear ${clears.map((c) => c.id).join(',')}` : ''}`);
-  for (const a of list) {
-    a.m.tracks.value = a.rec;
-    a.m.t.value = a.animate ? 0 : 1;
-    // 다른 줄로 떠난 책이 이 줄에 남기는 경로(이 줄을 새로 짜면 비운다)
-    if (a.away) {
-      a.m.away.value = a.away.tracks;
-      a.m.awayT.value = 0;
-    } else if (Object.keys(a.m.away.value).length) a.m.away.value = {};
+  // 1) 바꾸기 전에 지금 보이는 자세와의 차이를 잰다. 막 다른 줄로 떠나는 책은 떠나는 줄에서 보이던 자세에서 잇는다(도착 줄 경로와
+  //    남는 경로가 같은 차이: 남는 경로는 도착 줄 경로를 세로로 옮긴 것)
+  //    남길지와 그림자가 없어지는 진행(k)도 이어 붙인 경로로 정한다. 그 줄에 그 책이 없으면(트랙도 남은 경로도) 새로 만들지 않는다.
+  const carry: Record<string, Off> = {};
+  const upTr: (Track | null)[] = [];
+  const upK: number[] = [];
+  let log = '';
+  for (const u of ups) {
+    let tr = u.tr;
+    let k = 0;
+    if (tr) {
+      const src = u.m.tracks.value[u.id];
+      const e = u.m.away.value[u.id];
+      const from = src ? bookAt(src, u.m.t.value) : e ? awayAt(e, u.m.awayT.value) : null;
+      if (!from) tr = null;
+      else {
+        const d = offBetween(from, bookAt(tr, 0));
+        if (d) {
+          tr = withOff(tr, d);
+          if (src) carry[u.id] = d;
+          if (tlOn.value && offText(d)) log += ` away:${u.id}@${u.shelfId}:${offText(d)}`;
+        }
+        k = goneAt(tr, u.out, u.space);
+        if (k <= 0) tr = null;
+      }
+    }
+    upTr.push(tr);
+    upK.push(k);
   }
-  for (const c of clears) {
-    const cur = c.m.away.value;
-    if (!cur[c.id]) continue;
-    const next = { ...cur };
-    delete next[c.id];
-    c.m.away.value = next;
+  const recs: Tracks[] = [];
+  for (const a of list) {
+    let rec = a.rec;
+    if (a.animate) {
+      const old = a.m.tracks.value;
+      const t = a.m.t.value;
+      for (const id in a.rec) {
+        const nt = a.rec[id];
+        const o = old[id];
+        const d = o ? (o === nt ? null : offBetween(bookAt(o, t), bookAt(nt, 0))) : (carry[id] ?? null);
+        if (!d) continue;
+        if (rec === a.rec) rec = { ...a.rec };
+        rec[id] = withOff(nt, d);
+        if (tlOn.value && offText(d)) log += ` ${id}@${a.shelfId}:${offText(d)}(t=${t.toFixed(3)})`;
+      }
+    }
+    recs.push(rec);
+  }
+  if (tlOn.value) {
+    tlu(
+      `apply ${list.map((a) => `${a.shelfId}${a.animate ? `:${Math.round(a.dur)}` : ''}#${a.key}`).join(',')}${late ? ' late' : ''}${ups.length ? ` away ${ups.map((u) => `${u.id}@${u.shelfId}${u.tr ? '' : '-'}`).join(',')}` : ''}`,
+    );
+    if (log) tlu(`bridge${log}`);
+  }
+  // 2) 바꾼다
+  for (let i = 0; i < list.length; i++) {
+    const a = list[i];
+    const rec = recs[i];
+    a.m.tracks.value = rec;
+    a.m.t.value = a.animate ? 0 : 1;
+    // 이 줄로 돌아온 책은 이 줄 트랙이 맡는다(남는 경로를 지운다). 다른 책의 남는 경로는 그대로 둔다(이 줄을 다시 짜도 이어진다)
+    const aw = a.m.away.value;
+    let back = false;
+    for (const id in aw) if (rec[id]) back = true;
+    if (back) {
+      const keep: Aways = {};
+      for (const id in aw) if (!rec[id]) keep[id] = aw[id];
+      a.m.away.value = keep;
+    }
+  }
+  // 남는 경로: 출발 전(t0 = Infinity)으로 두고, 진행은 run()에서 그 책이 있는 줄의 경로와 같은 때 출발한다
+  const placed: { m: Motion; id: string; e: AwayEntry }[] = [];
+  for (let i = 0; i < ups.length; i++) {
+    const u = ups[i];
+    const tr = upTr[i];
+    const cur = u.m.away.value;
+    if (!tr) {
+      if (!cur[u.id]) continue;
+      const next: Aways = {};
+      for (const id in cur) if (id !== u.id) next[id] = cur[id];
+      u.m.away.value = next;
+      continue;
+    }
+    const e: AwayEntry = { tr, t0: Infinity, dur: u.dur, out: u.out, k: upK[i] };
+    u.m.away.value = { ...cur, [u.id]: e };
+    placed.push({ m: u.m, id: u.id, e });
   }
   const run = () => {
     const keys: number[] = [];
-    for (const a of list) {
-      if (a.m.tracks.value !== a.rec) continue;
+    for (let i = 0; i < list.length; i++) {
+      const a = list[i];
+      if (a.m.tracks.value !== recs[i]) continue;
       keys.push(a.key);
       const ease = a.out ? Easing.out(Easing.cubic) : Easing.inOut(Easing.cubic);
       if (a.animate) a.m.t.value = withTiming(1, { duration: a.dur, easing: ease });
-      // 남은 경로는 도착 줄 진행과 같은 시각·같은 감속으로, 더는 그림도 그림자도 없는 곳(k)까지만
-      const aw = a.away;
-      if (aw) {
-        const base = aw.out ? Easing.out(Easing.cubic) : Easing.inOut(Easing.cubic);
-        const k = aw.k;
-        const end = base(k);
-        a.m.awayT.value = withTiming(end, {
-          duration: aw.dur * k,
-          easing: (u: number) => {
-            'worklet';
-            return end > 0 ? base(u * k) / end : 1;
-          },
-        });
+      if (tlOn.value && a.animate) {
+        let ids = '';
+        for (const id in recs[i]) if (recs[i][id].moving) ids += `${ids ? ',' : ''}${id}`;
+        tlu(`path-start ${a.shelfId}:${Math.round(a.dur)} ${ids}`);
       }
     }
+    // 남는 경로의 시각: 지금 줄 시계 값에서 출발(그 책이 있는 줄의 경로와 같은 프레임). 더 새 적용이 바꿔 놓았으면 건드리지 않는다.
+    const clocks: Motion[] = [];
+    for (const p of placed) {
+      const cur = p.m.away.value;
+      if (cur[p.id] !== p.e) continue;
+      p.m.away.value = { ...cur, [p.id]: { ...p.e, t0: p.m.awayT.value } };
+      if (clocks.indexOf(p.m) < 0) clocks.push(p.m);
+    }
+    for (const m of clocks) runClock(m);
     if (late && tlOn.value) tlu('apply-run');
-    scheduleOnRN(applied, keys, Date.now());
+    // 경로가 실제로 출발한 시각(Date.now 기준)을 JS 사본에 알린다. 프레임 처리 중에 적용하면 Reanimated는 그 프레임 시각을 출발로
+    // 잡으므로(긴 프레임이면 지금보다 한참 앞) 그만큼 당긴다. 이 차이를 모르면 JS 어림이 UI보다 늦어 다시 짤 때마다 크게 어긋났다.
+    const g = globalThis as unknown as { __frameTimestamp?: number; _getAnimationTimestamp?: () => number };
+    const nowA = g._getAnimationTimestamp ? g._getAnimationTimestamp() : 0;
+    const startA = g.__frameTimestamp || nowA;
+    scheduleOnRN(applied, keys, Date.now() - Math.max(0, nowA - startA));
   };
   if (!late) run();
   else requestAnimationFrame(() => requestAnimationFrame(run));
 }
 
 // 미뤄 둔 적용: 기다리는 책이 모두 도착한 줄 캔버스에 올라갔으면(또는 너무 오래 기다렸으면) 적용한다.
-// 줄 캔버스의 책이 올라갈 때마다(ShelfMotion RowBook) 부른다.
-export function tryApplyPending(force = false) {
+// 줄 캔버스의 책이 올라갈 때마다(ShelfMotion RowBook) 부른다. seq: 대기 시간 초과 타이머가 부를 때 자기 묶음 번호(다른 묶음이면 무시).
+export function tryApplyPending(force = false, seq = 0) {
   'worklet';
   const p = pendingSV.value;
   if (!p) return;
+  if (force && seq && p.seq !== seq) return;
   let ready = true;
   for (const w of p.waits) if (!presentSV.value[w.id]?.[w.shelfId]) ready = false;
   if (!ready && !force && Date.now() - p.since < WAIT_MAX) {
@@ -223,7 +361,7 @@ export function tryApplyPending(force = false) {
   if (!ready) tlu('pending-timeout');
   pendingSV.value = null;
   // 실제로 기다린 끝에 막 올라간 책이면 첫 그림 프레임이 지난 뒤 출발한다(이미 올라가 있었으면 바로)
-  applyNow(p.list, ready && p.waited, p.clears);
+  applyNow(p.list, ready && p.waited, p.ups);
 }
 
 export function flushApply() {
@@ -232,22 +370,36 @@ export function flushApply() {
   const waits = batchWaits;
   batch = [];
   batchWaits = [];
-  const clears = awaysOf(list, waits);
+  const ups = awaysOf(list, waits);
   if (TL.on) tl(`flush ${list.map((a) => a.shelfId).join(',')} waits=${waits.map((w) => `${w.id}@${w.shelfId}`).join(',')}`);
-  // 미루는 적용은 UI에서 적용될 때까지 출발 전으로 둔다
-  if (waits.length) for (const a of list) if (mirrorOf(a.m).key === a.key) mirrorOf(a.m).start = Infinity;
+  // 미루는 적용은 UI에서 적용될 때까지 출발 전으로 둔다. 미뤄 둔 묶음이 있는 동안 더 짜는 경로도(UI에서 그 묶음에 합쳐진다) 같다.
+  if (waits.length || openKeys.size)
+    for (const a of list) {
+      openKeys.add(a.key);
+      if (mirrorOf(a.m).key === a.key) mirrorOf(a.m).start = Infinity;
+    }
+  const seq = waits.length ? ++pendSeq : 0;
   scheduleOnUI(() => {
     'worklet';
     const p = pendingSV.value;
     if (!p && !waits.length) {
-      applyNow(list, false, clears);
+      applyNow(list, false, ups);
       return;
     }
-    // 미뤄 둔 것이 있으면 합친다(같은 줄은 새것이 이긴다). 기다림은 새 배치의 것(가장 최근 배치의 도착)
+    // 미뤄 둔 것이 있으면 합친다(같은 줄은 새것이 이긴다). 기다림은 새 배치의 것(가장 최근 배치의 도착).
+    // 새 기다림을 건 묶음이면 기다린 시각·번호도 새로(앞 묶음의 타이머가 이 묶음을 미리 적용하지 않게)
     const merged: Apply[] = [];
     if (p) for (const a of p.list) if (!list.some((b) => b.shelfId === a.shelfId)) merged.push(a);
     for (const a of list) merged.push(a);
-    pendingSV.value = { list: merged, waits: waits.length ? waits : p ? p.waits : [], since: p ? p.since : Date.now(), waited: p ? p.waited : false, clears: p ? [...p.clears, ...clears] : clears };
+    const fresh = waits.length > 0;
+    pendingSV.value = {
+      list: merged,
+      waits: fresh ? waits : p ? p.waits : [],
+      since: fresh || !p ? Date.now() : p.since,
+      waited: fresh || !p ? false : p.waited,
+      ups: p ? [...p.ups, ...ups] : ups,
+      seq: fresh ? seq : p ? p.seq : 0,
+    };
     if (tlOn.value) tlu(`pending ${merged.map((a) => a.shelfId).join(',')}`);
     tryApplyPending();
   });
@@ -255,7 +407,7 @@ export function flushApply() {
     setTimeout(() => {
       scheduleOnUI(() => {
         'worklet';
-        tryApplyPending(true);
+        tryApplyPending(true, seq);
       });
     }, WAIT_MAX + 50);
 }
@@ -268,7 +420,8 @@ export const lastPlan: PlanStats = { strategy: '', ms: 0, log: null };
 // 목표 자세(next)로 가는 경로를 짜서 줄에 넣는다. arrive: 다른 줄에서 들어오는 책의 지금 자세(이 줄 좌표).
 // budgetMs: 경로 검사에 쓸 시간(넘기면 앞으로 빼서 옮기는 경로). 끌기처럼 자주 바뀌면 짧게.
 // space: 이 줄 공간 높이. 지금 줄 공간 밖에 있는 책(다른 줄에서 넘어오는 중)은 들어오는 책으로 다시 계획한다: 가는 도중 목표가
-// 바뀌어(놓는 순간 등) 다시 짜도 판 앞을 지나는 길을 그대로 쓴다(곧장 가면 윗줄 책·판 뒤를 지나 가려지거나 튄다).
+// 바뀌어(놓는 순간, 손가락이 계속 움직일 때) 다시 짜도 판 앞을 지나는 길을 그대로 쓰고, 이미 떠 있는 책은 다시 들어 올리지 않는다
+// (곧장 가면 옆 줄 책·판을 뚫고 지나가 가려지거나 튀고, 다시 들면 다시 짤 때마다 올라간다).
 export function planInto(m: Motion, shelfId: string, next: Book3[], target: string, opts: { reduceMotion: boolean; arrive?: Record<string, Book3>; budgetMs?: number; space?: number }) {
   // 다른 줄에서 들어오는 책은 이 줄 캔버스에 올라간 뒤에 움직인다
   const waits: Wait[] = next.filter((b) => opts.arrive?.[b.id]).map((b) => ({ id: b.id, shelfId }));
@@ -277,6 +430,9 @@ export function planInto(m: Motion, shelfId: string, next: Book3[], target: stri
     return;
   }
   const t0 = Date.now();
+  // 측정 번들: JS 사본이 어림한 진행(p)과 출발 뒤 지난 시간(age, 출발 전이면 -1)
+  const mr0 = mirrorOf(m);
+  const est = TL.on ? ` p=${progress(mr0).toFixed(3)} age=${Number.isFinite(mr0.start) ? t0 - mr0.start : -1}` : '';
   const shown = displayedPoses(m);
   let arrive = opts.arrive;
   if (opts.space !== undefined) {
@@ -286,11 +442,13 @@ export function planInto(m: Motion, shelfId: string, next: Book3[], target: stri
     }
   }
   const prev = Object.values(shown);
-  const plan = planTransition(prev, next, PLANK_BOUNDS, { budgetMs: opts.budgetMs, arrive });
+  // 줄 간격(판 윗면 사이): 받침에 놓인 책인지 볼 때 쓴다(모든 줄이 같은 3D 간격)
+  const pitch = opts.space !== undefined ? opts.space + SHELF_THICK : undefined;
+  const plan = planTransition(prev, next, PLANK_BOUNDS, { budgetMs: opts.budgetMs, arrive, pitch });
   lastPlan.strategy = plan.strategy;
   lastPlan.ms = Date.now() - t0;
   lastPlan.log?.push(lastPlan.ms);
-  if (TL.on) tl(`plan ${shelfId} ${plan.strategy} ${lastPlan.ms}ms waits=${waits.length}${arrive !== opts.arrive ? ' arriving' : ''}`);
+  if (TL.on) tl(`plan ${shelfId} ${plan.strategy} ${lastPlan.ms}ms waits=${waits.length}${arrive !== opts.arrive ? ' arriving' : ''}${est}`);
   const animate = plan.strategy !== 'still';
   const pull = plan.strategy === 'pull' || (!!arrive && next.some((b) => arrive![b.id]));
   const posing = /al|pull/.test(plan.strategy);

@@ -5,7 +5,7 @@ import { CAMERA, SHELF_FRONT } from '../geometry';
 import { moveBook, moveToDrawer, placementOf, rotateStep, setPose, setTilt, type BookMap, type Result } from '../layout-engine';
 import { SAMPLE_BOOKS, SAMPLE_LAYOUT } from '../onboarding-sample';
 import { bodiesOf, PLANK_BOUNDS, withLeans } from '../shelf-scene';
-import { awayTrack, bookAt, firstOverlap, planTransition, PULL_LIFT, shiftTrack } from '../transition';
+import { awayShift, awayTrack, bookAt, firstOverlap, holdTrack, offBetween, OFF_T, planTransition, PULL_LIFT, restingSet, shiftTrack, withOff } from '../transition';
 import type { Book, BookPlacement, ShelfLayout, Tilt } from '../types';
 
 const all: BookMap = Object.fromEntries(SAMPLE_BOOKS.map((b) => [b.id, b]));
@@ -307,6 +307,11 @@ describe('경로 계획은 늘 결과를 준다(null 없음)', () => {
     expect(gone(bookAt(aw.track, ease(aw.k - 1 / 48)))).toBe(false);
     // 다른 책(가로 자리가 다른 출발)이면 남는 경로가 없다
     expect(awayTrack(tr, { ...src, t: { ...src.t, x: src.t.x + 5 } }, ease, gone)).toBeNull();
+    // 줄 간격을 주면: 떠날 때 자세를 읽은 때가 조금 달라 어긋나도(가로 3DU·세로 2DU) 같은 책의 경로로 보고, 줄 사이 거리는 줄 간격의 정수배
+    const skew = awayTrack(tr, { ...src, t: { x: src.t.x + 3, y: src.t.y + 2, z: src.t.z } }, ease, gone, -aw.dy)!;
+    expect(skew).not.toBeNull();
+    expect(skew.dy).toBeCloseTo(aw.dy, 6);
+    expect(awayTrack(tr, { ...src, t: { ...src.t, x: src.t.x + 20 } }, ease, gone, -aw.dy)).toBeNull();
   });
 });
 
@@ -347,5 +352,146 @@ describe('앞으로 빼서 옮기는 대체 경로: 막힌 경우에도 부딪�
   // 쌓인 더미 맨 아래 책(b12)을 세울 때: 위에 얹힌 b13을 먼저 빼고 나서 b12를 든다.
   it('b12 → 세움(쌓인 더미 맨 아래): 위 책이 얹힌 채 들어 올리지 않는다', () => {
     expect(firstOverlap(b12.plan.tracks, PLANK_BOUNDS)).toBeNull();
+  });
+});
+
+describe('다른 줄로 옮겨 가는 도중 경로를 다시 짤 때(손가락이 도착 줄에서 계속 움직임)', () => {
+  const trio: BookMap = { A: book('A', 180, 30), B: book('B', 170, 28), C: book('C', 160, 26) };
+  const books: BookMap = { ...trio, D: book('D', 150, 24) };
+  const P = 200; // 줄 간격(판 윗면 사이)
+  const SPACE = 190; // 줄 공간 높이
+  const nextAt = (x: number) => bodiesOf(withLeans(layoutOf(place('A', 0, 100), place('B', 1, 130), place('C', 2, 158), place('D', 3, x)), books), books, 's');
+  const first = () => bodiesOf(withLeans(layoutOf(place('A', 0, 100), place('B', 1, 130), place('C', 2, 158)), trio), trio, 's');
+  const out = (u: number) => 1 - Math.pow(1 - u, 3);
+  const inOut = (u: number) => (u < 0.5 ? 4 * u * u * u : 1 - Math.pow(-2 * u + 2, 3) / 2);
+  const gone = (b: Book3) => {
+    const ys = corners(b).map((c) => c.y);
+    return Math.min(...ys) < -41 || Math.max(...ys) > SPACE + 41;
+  };
+  // 윗줄 왼쪽 선반 위에 놓여 있던 자세(이 줄 좌표: 한 줄 위 = +P)
+  const fromOf = (target: Book3[]) => {
+    const d = target.find((x) => x.id === 'D')!;
+    return { ...d, t: { ...d.t, x: d.t.x - 120, y: d.t.y + P } };
+  };
+
+  it('이미 이 줄 트랙에 있는 책도 들어오는 책으로: 옆·아래로 가는 동안 판 앞 차선, 다시 짤 때마다 다시 들어 올리지 않는다', () => {
+    let target = nextAt(250);
+    const from = fromOf(target);
+    let plan = planTransition(first(), target, PLANK_BOUNDS, { ...NO_RUSH, arrive: { D: from }, pitch: P });
+    const restLow = lowest(from);
+    let maxLow = restLow;
+    for (let i = 1; i <= 15; i++) {
+      // 33ms마다(에뮬 끌기 프레임 간격 정도) 지금 속도를 이어(out 감속) 다시 짠다
+      const shown = plan.tracks.map((tr) => bookAt(tr, out(33 / 560)));
+      const now = shown.find((x) => x.id === 'D')!;
+      target = nextAt(250 + i * 0.5);
+      plan = planTransition(shown, target, PLANK_BOUNDS, { ...NO_RUSH, arrive: { D: now }, pitch: P });
+      const tr = plan.tracks.find((t) => t.id === 'D')!;
+      const goal = target.find((x) => x.id === 'D')!;
+      for (const k of ['x', 'y', 'z'] as const) expect(bookAt(tr, 0).t[k]).toBeCloseTo(now.t[k], 6); // 지금 보이는 자세에서 이어서
+      for (let k = 0; k <= 100; k++) {
+        const b = bookAt(tr, k / 100);
+        maxLow = Math.max(maxLow, lowest(b));
+        if (Math.abs(b.t.x - now.t.x) < 1e-6 || Math.abs(b.t.x - goal.t.x) < 1e-6) continue;
+        // 옆·아래로 가는 동안(가로 자리가 출발·목표 사이)은 판 앞 차선: 옆 줄 책·판을 뚫고 지나가지 않는다
+        expect(Math.max(...corners(b).map((c) => c.z))).toBeLessThanOrEqual(-SHELF_FRONT + 1e-6);
+      }
+    }
+    // 처음 한 번만 들어 올린다(다시 짤 때마다 6DU씩 올라가지 않는다)
+    expect(maxLow).toBeLessThanOrEqual(restLow + PULL_LIFT + 1e-6);
+    // 마지막 경로는 목표에 정확히 놓인다
+    const end = bookAt(plan.tracks.find((t) => t.id === 'D')!, 1);
+    const goal = target.find((x) => x.id === 'D')!;
+    for (const k of ['x', 'y', 'z'] as const) expect(end.t[k]).toBeCloseTo(goal.t[k], 6);
+  });
+
+  it('떠난 줄에 남는 경로는 다시 짠 경로를 같은 거리로 옮겨 이어 간다: 다시 짠 순간의 자세가 그대로(그림자가 끊기지 않는다)', () => {
+    const target = nextAt(250);
+    const from = fromOf(target);
+    const plan1 = planTransition(first(), target, PLANK_BOUNDS, { ...NO_RUSH, arrive: { D: from }, pitch: P });
+    const tr1 = plan1.tracks.find((t) => t.id === 'D')!;
+    const src: Book3 = { ...from, t: { ...from.t, y: from.t.y - P } }; // 떠난 줄 좌표
+    const aw1 = awayTrack(tr1, src, inOut, gone)!;
+    expect(aw1.dy).toBeCloseTo(-P, 6);
+    for (const u of [0.04, 0.1, 0.2]) {
+      const t1 = inOut(u);
+      const shown = plan1.tracks.map((tr) => bookAt(tr, t1));
+      const now = shown.find((x) => x.id === 'D')!;
+      const plan2 = planTransition(shown, nextAt(252), PLANK_BOUNDS, { ...NO_RUSH, arrive: { D: now }, pitch: P });
+      const aw2 = awayShift(plan2.tracks.find((t) => t.id === 'D')!, aw1.dy, out, gone);
+      expect(aw2).not.toBeNull();
+      const p = bookAt(aw2!.track, 0);
+      const q = bookAt(aw1.track, t1);
+      expect([p.t.x, p.t.y, p.t.z, p.roll, p.yaw]).toEqual([q.t.x, q.t.y, q.t.z, q.roll, q.yaw].map((v) => expect.closeTo(v, 6)));
+      expect(aw2!.k).toBeGreaterThan(0);
+      expect(gone(bookAt(aw2!.track, out(aw2!.k)))).toBe(aw2!.k < 1);
+    }
+    // 새 경로 출발점이 이미 그 줄 밖(그림자가 없는 곳)이면 남기지 않는다
+    expect(awayShift(tr1, aw1.dy - 500, out, gone)).toBeNull();
+  });
+
+  it('받침에 놓인 책: 줄 간격의 정수배 높이 판 위, 그 위에 쌓인 책. 떠 있는 책·빼낸 책은 아니다', () => {
+    const t = nextAt(250);
+    const d = t.find((x) => x.id === 'D')!;
+    const lifted = { ...d, id: 'L', t: { ...d.t, y: d.t.y + 6 } };
+    const above = { ...d, id: 'U', t: { ...d.t, y: d.t.y + P } };
+    const pulled = { ...d, id: 'F', t: { ...d.t, z: d.t.z - 80 } };
+    const r = restingSet([d, lifted, above, pulled], P);
+    expect([...r].sort()).toEqual(['D', 'U']);
+    // 줄 간격을 모르면 이 줄 바닥만
+    expect([...restingSet([d, above])]).toEqual(['D']);
+  });
+});
+
+describe('경로를 바꿀 때 지금 보이는 자세에서 잇기(이어 주기)', () => {
+  const vals = (b: Book3) => [b.t.x, b.t.y, b.t.z, b.roll, b.yaw, b.spin ?? 0, b.pitch ?? 0];
+  const close = (p: Book3, q: Book3) => expect(vals(p)).toEqual(vals(q).map((v) => expect.closeTo(v, 6)));
+  // 기울이기(발을 축으로 도는 경로)
+  const small: BookMap = { A: book('A', 180, 40), B: book('B', 150, 28) };
+  const base = withLeans(layoutOf(place('A', 0, 0), place('B', 1, 40)), small);
+  const prev = bodiesOf(base, small, 's');
+  const next = bodiesOf(withLeans(ok(moveBook(base, small, 'B', { kind: 'insert', shelfId: 's', index: 1, x: 150 })), small), small, 's');
+  const tr = planTransition(prev, next, PLANK_BOUNDS, NO_RUSH).tracks.find((t) => t.id === 'B')!;
+
+  it('경로 출발점에 차이를 더하고 진행 OFF_T까지 줄여 없앤다(그 뒤는 원래 경로 그대로)', () => {
+    expect(tr.moving).toBe(true);
+    const shown = { ...bookAt(tr, 0), roll: bookAt(tr, 0).roll + 2, t: { ...bookAt(tr, 0).t, x: bookAt(tr, 0).t.x + 9, z: bookAt(tr, 0).t.z - 4 } };
+    const off = offBetween(shown, bookAt(tr, 0))!;
+    expect(off).not.toBeNull();
+    const b = withOff(tr, off);
+    close(bookAt(b, 0), shown);
+    // 가운데(OFF_T/2)에서 차이의 반
+    const mid = bookAt(b, OFF_T / 2);
+    const base = bookAt(tr, OFF_T / 2);
+    expect(mid.t.x - base.t.x).toBeCloseTo(4.5, 6);
+    expect(mid.roll - base.roll).toBeCloseTo(1, 6);
+    for (const t of [OFF_T, 0.6, 1]) close(bookAt(b, t), bookAt(tr, t));
+    // 진행이 늘수록 차이는 줄기만 한다
+    let last = Infinity;
+    for (let i = 0; i <= 20; i++) {
+      const t = (OFF_T * i) / 20;
+      const d = Math.abs(bookAt(b, t).t.x - bookAt(tr, t).t.x);
+      expect(d).toBeLessThanOrEqual(last + 1e-9);
+      last = d;
+    }
+  });
+
+  it('멈춰 있던 트랙도 차이가 줄어드는 동안은 움직이는 트랙으로, 끝에는 그 자리', () => {
+    const rest = next.find((x) => x.id === 'B')!;
+    const h = holdTrack(rest);
+    const off = offBetween({ ...rest, t: { ...rest.t, x: rest.t.x - 3 } }, rest)!;
+    const b = withOff(h, off);
+    expect(b.moving).toBe(true);
+    expect(bookAt(b, 0).t.x).toBeCloseTo(rest.t.x - 3, 6);
+    close(bookAt(b, 1), rest);
+    // 거의 같은 자세면 잇지 않는다
+    expect(offBetween(rest, { ...rest, t: { ...rest.t, x: rest.t.x + 0.01 } })).toBeNull();
+  });
+
+  it('세로로 옮긴 경로(남는 경로)에도 같은 차이가 그대로 간다', () => {
+    const off = offBetween({ ...bookAt(tr, 0), t: { ...bookAt(tr, 0).t, y: bookAt(tr, 0).t.y + 5 } }, bookAt(tr, 0))!;
+    const a = shiftTrack(withOff(tr, off), -200);
+    expect(bookAt(a, 0).t.y).toBeCloseTo(bookAt(tr, 0).t.y + 5 - 200, 6);
+    expect(bookAt(a, 1).t.y).toBeCloseTo(bookAt(tr, 1).t.y - 200, 6);
   });
 });

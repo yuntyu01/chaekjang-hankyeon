@@ -7,24 +7,45 @@
 // 워클릿은 만들어질 때 쓰는 함수를 붙잡으므로, 쓰이는 함수를 먼저 정의한다.
 import { makeMutable, type SharedValue } from 'react-native-reanimated';
 
-import { corners, depthKey, drawOrder, frontOf, type Book3 } from '@/domain/book3';
+import { corners, depthKey, drawOrder, frontOf, toWorld, type Book3 } from '@/domain/book3';
 import { hull } from '@/domain/box';
 import { toPx, type Affine, type Cam, type Point } from '@/domain/camera';
 import { SHELF, SHELF_DEPTH, SHELF_FRONT, SHELF_THICK, SHELF_X0, SHELF_X1 } from '@/domain/geometry';
 import { pointInPoly } from '@/domain/shelf-scene';
 import { bookAt, holdTrack, type Track } from '@/domain/transition';
+import { silhouette } from '@/ui/book3d/face-geometry';
+import { RIBBON_OUT } from '@/ui/shelf/metrics';
 
 export type Tracks = Record<string, Track>;
+// 막 다른 줄로 떠난 책이 이 줄에 남기는 경로(이 줄 좌표): 그 책이 지금 있는 줄의 경로를 세로로 옮긴 것과 그 진행 시각.
+// t0: 경로가 출발한 이 줄 시계(awayT) 값(출발 전이면 Infinity = 출발 자세), dur·out: 그 책이 있는 줄 경로와 같은 길이·감속,
+// k: 그림자가 더는 이 줄에 없는 진행(실제 시간 비율). 책마다 따로 시각을 가져, 한 줄에서 여러 권이 떠나거나 가는 줄이 경로를 다시 짜도
+// 서로의 진행을 건드리지 않는다.
+export type AwayEntry = { tr: Track; t0: number; dur: number; out: boolean; k: number };
+export type Aways = Record<string, AwayEntry>;
 // 한 줄의 움직임: 책마다 경로(트랙)와 줄 전체가 함께 쓰는 진행률 t(0→1).
-// away: 막 다른 줄로 떠난 책의 경로를 이 줄 좌표로 옮긴 것(진행은 awayT, 가는 줄의 진행률과 같은 시각·감속).
-// 이동 캔버스가 그 책을 미리 그려 두지 않았으면(warm 아님) 이 줄은 그 책이 이 줄 공간 안에 있는 동안 그 자세로 계속 그리고
-// (이동 캔버스가 같은 자세로 위에 겹친다: 이동 캔버스의 첫 그림이 늦어도 빈 프레임이 없게), 그 책이 이 줄에 드리우던
-// 그림자(벽·선반 윗면·틈·이웃 책 면)는 늘 실제 경로를 따라 옅어진다.
-// 그림자가 남지 않는 지점(줄 공간 밖 40DU)에서 멈추고, 이 줄을 새로 짜거나 가는 줄이 경로를 다시 짜면 비운다.
-export type Motion = { tracks: SharedValue<Tracks>; t: SharedValue<number>; away: SharedValue<Tracks>; awayT: SharedValue<number> };
+// away: 막 다른 줄로 떠난 책의 남는 경로(AwayEntry). awayT: 남는 경로가 있는 동안 실제 시간(ms)으로 흐르는 이 줄의 시계.
+// 이동 캔버스가 그 책을 그리고 있지 않으면 이 줄은 그 책이 이 줄 공간 안에 있는 동안 그 자세로 계속 그리고
+// (이동 캔버스의 첫 그림이 늦어도 빈 프레임이 없게), 그 책이 이 줄에 드리우던 그림자(벽·선반 윗면·틈·이웃 책 면)는 늘 실제 경로를 따라 옅어진다.
+// 그 책이 있는 줄이 경로를 다시 짜면 남는 경로도 새 경로로 옮겨 잇는다(그림자가 한 프레임에 사라지지 않게, planner awaysOf).
+export type Motion = { tracks: SharedValue<Tracks>; t: SharedValue<number>; away: SharedValue<Aways>; awayT: SharedValue<number> };
 
 export function makeMotion(init: Book3[]): Motion {
-  return { tracks: makeMutable<Tracks>(Object.fromEntries(init.map((b) => [b.id, holdTrack(b)]))), t: makeMutable(1), away: makeMutable<Tracks>({}), awayT: makeMutable(0) };
+  return { tracks: makeMutable<Tracks>(Object.fromEntries(init.map((b) => [b.id, holdTrack(b)]))), t: makeMutable(1), away: makeMutable<Aways>({}), awayT: makeMutable(0) };
+}
+
+// 경로 진행 감속(Reanimated Easing.out(cubic) / Easing.inOut(cubic)과 같은 식)
+export function easeOf(out: boolean, u: number) {
+  'worklet';
+  if (out) return 1 - Math.pow(1 - u, 3);
+  return u < 0.5 ? 4 * u * u * u : 1 - Math.pow(-2 * u + 2, 3) / 2;
+}
+
+// 남는 경로의 지금 자세(이 줄 시계 clock): 그 책이 있는 줄의 경로와 같은 시각·감속, 그림자가 없어지는 진행 k에서 멈춘다
+export function awayAt(e: AwayEntry, clock: number): Book3 {
+  'worklet';
+  const u = e.t0 === Infinity || !(e.dur > 0) ? 0 : Math.max(0, Math.min(e.k, (clock - e.t0) / e.dur));
+  return bookAt(e.tr, easeOf(e.out, u));
 }
 
 // 이 줄에서 지금 이 책의 자세(없으면 null). 멈춘 책은 늘 같은 객체라, 읽는 쪽 계산이 다시 돌지 않는다.
@@ -40,7 +61,7 @@ export function shadeOf(m: Motion, id: string): Book3 | null {
   const tr = m.tracks.value[id];
   if (tr) return bookAt(tr, m.t.value);
   const a = m.away.value[id];
-  return a ? bookAt(a, m.awayT.value) : null;
+  return a ? awayAt(a, m.awayT.value) : null;
 }
 
 // 줄 위치(UI 스레드용): 콘텐츠 px의 책 기준선, 맨 윗줄 기준 3D 세로 거리 dy(DU, 아래로 +), 그 줄의 3D 줄 간격 space
@@ -70,6 +91,11 @@ export function lowered(b: Book3, dy: number): Book3 {
 // 다른 줄로 막 옮겨 간 책은 새 줄 캔버스에 올라가기 전까지 이동 캔버스가 계속 그린다(캔버스에 책을 올리는 일은 JS에서 늦게 끝난다).
 export type Present = Record<string, Record<string, true>>;
 export const presentSV = makeMutable<Present>({});
+// 실제로 그릴 수 있게 된 캔버스(책 id → 줄 id, 이동 캔버스는 TRANSIT_ROW): 그 캔버스의 책 그림이 첫 그림을 낸 뒤 그 책의 화면 계산이
+// 처음 돈 때 표시한다(ShelfMotion RowBook·ShelfScene TransitBook). present는 캔버스에 올라간 순간(첫 그림 전)이라 그때 넘겨주면
+// 아무도 그리지 않는 프레임이 생길 수 있어, 이동 캔버스가 손을 떼는 판단(transitLead)은 live로 한다.
+export const TRANSIT_ROW = '@transit';
+export const liveSV = makeMutable<Present>({});
 // 미리 그려 둘 책: 끄는 책이 다른 줄 위로 처음 가면(다른 줄로 옮겨 갈 수 있게 되면) 이동 캔버스가 그 책을 줄 그림과 같은 자세로
 // 위에 겹쳐 그려 둔다. 이동 캔버스의 첫 그림(그림·질감을 처음 올리는 비용)이 경로 첫 프레임에 몰리지 않게. 끌기가 끝나면 거둔다.
 export const warmSV = makeMutable<string | null>(null);
@@ -123,7 +149,7 @@ export function drawnOf(m: Motion, id: string, space: number, withAway?: boolean
   if (!tr) {
     const a = withAway === true ? m.away.value[id] : undefined;
     if (!a) return null;
-    const b = bookAt(a, m.awayT.value);
+    const b = awayAt(a, m.awayT.value);
     return outsideRow(b, space) ? null : b;
   }
   if (!tr.moving && tr.rest) return tr.rest;
@@ -141,18 +167,18 @@ export function shadeIn(m: Motion, id: string, space: number): Book3 | null {
 }
 export type Poses = Record<string, Book3 | null>;
 
-// 이동 캔버스가 이 책을 그릴 때: 제 줄 공간 밖에 걸쳐 있거나(옮겨 가는 중), 지금 줄 캔버스에 아직 올라가지 않았거나,
+// 이동 캔버스가 이 책을 그릴 때: 제 줄 공간 밖에 걸쳐 있거나(옮겨 가는 중), 지금 줄 캔버스가 아직 그 책을 그릴 수 없거나(live 전),
 // 미리 그려 두는 책이다(warm, 줄 그림 위에 같은 자세로). 이동 캔버스만 그리는 때(lead)는 앞의 둘이다.
-// present·warm은 부르는 쪽 계산에서 .value로 읽어 넘긴다(계산이 그 값의 변화를 알고 다시 돌게: 함수 안에서 읽으면 모른다).
-export function transitLead(list: SceneMotion[], geo: SceneGeo, id: string, present: Present) {
+// live·warm은 부르는 쪽 계산에서 .value로 읽어 넘긴다(계산이 그 값의 변화를 알고 다시 돌게: 함수 안에서 읽으면 모른다).
+export function transitLead(list: SceneMotion[], geo: SceneGeo, id: string, live: Present) {
   'worklet';
   const at = locate(list, geo, id);
   if (!at) return false;
-  return outsideRow(at.b, at.row.space) || !present[id]?.[at.row.shelfId];
+  return outsideRow(at.b, at.row.space) || !live[id]?.[at.row.shelfId];
 }
-export function transitVisible(list: SceneMotion[], geo: SceneGeo, id: string, present: Present, warm: string | null) {
+export function transitVisible(list: SceneMotion[], geo: SceneGeo, id: string, live: Present, warm: string | null) {
   'worklet';
-  return warm === id ? !!locate(list, geo, id) : transitLead(list, geo, id, present);
+  return warm === id ? !!locate(list, geo, id) : transitLead(list, geo, id, live);
 }
 
 // 화면 투영 범위(설계 단위, 위가 +): 겹칠 수 있는 쌍만 앞뒤를 따진다
@@ -173,10 +199,34 @@ function screenBox(b: Book3, cam: Cam) {
   return { x0, x1, y0, y1 };
 }
 
+// 갈피 끈(책 머리 위로 나온 끈)의 화면 윤곽(콘텐츠 px): BookNode Ribbons와 같은 자리·회전, 끈 폭·길이를 조금 넉넉히
+function ribbonQuad(cam: Cam, aff: Affine, b: Book3, n: number): Point[] {
+  'worklet';
+  const d = b.dims;
+  const o = toPx(cam, aff, toWorld(b, { x: d.T * 0.55, y: d.H, z: d.W * 0.18 }));
+  const half = ((n * 6.8 + (n - 1) * 2.4) / 2 + 0.8) * aff.s;
+  const top = -(RIBBON_OUT + 0.8) * aff.s;
+  const bottom = 1.2 * aff.s;
+  const a = (b.roll * Math.PI) / 180;
+  const c = Math.cos(a);
+  const sn = Math.sin(a);
+  const local = [
+    { x: -half, y: top },
+    { x: half, y: top },
+    { x: half, y: bottom },
+    { x: -half, y: bottom },
+  ];
+  const out: Point[] = [];
+  for (const q of local) out.push({ x: o.x + q.x * c - q.y * sn, y: o.y + q.x * sn + q.y * c });
+  return out;
+}
+
 // 옮겨 가는 책(shelfId 줄의 id) 앞에 있는 것들(다른 책·선반 판, 모든 줄)의 화면 윤곽(콘텐츠 px).
 // 이동 캔버스는 모든 줄 캔버스 위에 있으므로, 그 책은 이 윤곽들 밖에만 그려야 가림이 맞다.
-// 같이 옮겨 가는 다른 책은 빼고(이동 캔버스 안에서 서로의 순서로 그린다) 겹칠 수 있는 것만 분리축으로 앞뒤를 가린다.
-export function frontOccluders(list: SceneMotion[], geo: SceneGeo, cam: Cam, shelfId: string, id: string): Point[][] {
+// 책은 줄 캔버스가 실제로 그리는 둥근 윤곽(face-geometry silhouette)으로 자른다(상자 꼭짓점 윤곽이면 모서리에 틈이 남는다).
+// 앞 책의 갈피 끈(ribbons: 책 id → 끈 수)도 그 책과 같은 깊이로 앞을 가린다. 같이 옮겨 가는 다른 책(transit: 이동 캔버스에 올라간 책)은
+// 줄 공간 밖에 있어도 넣어, 이동 캔버스 안에서 그리는 순서(id 순)와 상관없이 실제 깊이로 서로 가린다.
+export function frontOccluders(list: SceneMotion[], geo: SceneGeo, cam: Cam, shelfId: string, id: string, ribbons?: Record<string, number>, transit?: Record<string, true>): Point[][] {
   'worklet';
   const out: Point[][] = [];
   let B: Book3 | null = null;
@@ -192,12 +242,6 @@ export function frontOccluders(list: SceneMotion[], geo: SceneGeo, cam: Cam, she
   const bb = screenBox(B, cam);
   for (const row of geo.rows) {
     const aff = rowPx(geo, row);
-    const test = (b: Book3) => {
-      const L = lowered(b, row.dy);
-      const lb = screenBox(L, cam);
-      if (lb.x1 < bb.x0 - 0.5 || bb.x1 < lb.x0 - 0.5 || lb.y1 < bb.y0 - 0.5 || bb.y1 < lb.y0 - 0.5) return;
-      if (frontOf(L, B!, cam) < 0) out.push(hull(corners(b).map((q) => toPx(cam, aff, q))));
-    };
     for (const e of list) {
       if (e.shelfId !== row.shelfId) continue;
       const tracks = e.m.tracks.value;
@@ -205,11 +249,22 @@ export function frontOccluders(list: SceneMotion[], geo: SceneGeo, cam: Cam, she
       for (const k in tracks) {
         if (row.shelfId === shelfId && k === id) continue;
         const b = bookAt(tracks[k], t);
-        if (outsideRow(b, row.space)) continue;
-        test(b);
+        if (outsideRow(b, row.space) && !(transit && transit[k])) continue;
+        const L = lowered(b, row.dy);
+        const lb = screenBox(L, cam);
+        const n = ribbons ? ribbons[k] ?? 0 : 0;
+        const up = n > 0 ? RIBBON_OUT + 2 : 0; // 갈피 끈이 머리 위로 나온 만큼 위로 넓혀 본다(DU)
+        if (lb.x1 < bb.x0 - 0.5 || bb.x1 < lb.x0 - 0.5 || lb.y1 + up < bb.y0 - 0.5 || bb.y1 < lb.y0 - 0.5) continue;
+        if (frontOf(L, B, cam) >= 0) continue;
+        out.push(silhouette(cam, b, aff));
+        if (n > 0) out.push(ribbonQuad(cam, aff, b, n));
       }
     }
-    test(plankBody(row.shelfId, 0));
+    const pb = plankBody(row.shelfId, 0);
+    const PL = lowered(pb, row.dy);
+    const pbb = screenBox(PL, cam);
+    if (pbb.x1 < bb.x0 - 0.5 || bb.x1 < pbb.x0 - 0.5 || pbb.y1 < bb.y0 - 0.5 || bb.y1 < pbb.y0 - 0.5) continue;
+    if (frontOf(PL, B, cam) < 0) out.push(hull(corners(pb).map((q) => toPx(cam, aff, q))));
   }
   return out;
 }
@@ -236,7 +291,7 @@ export function sceneOrder(list: SceneMotion[], geo: SceneGeo, cam: Cam, drawnOn
         const away = m.away.value;
         for (const id in away) {
           if (tracks[id]) continue;
-          const b = bookAt(away[id], m.awayT.value);
+          const b = awayAt(away[id], m.awayT.value);
           if (!outsideRow(b, row.space)) bs.push(lowered(b, row.dy));
         }
       }

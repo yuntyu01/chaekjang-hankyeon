@@ -70,8 +70,8 @@ import { placementStore, usePlacementStore } from '@/store/placement-store';
 import { useBookShared } from '@/ui/book3d/art';
 import { CONTENT_TOP, computeRows, LAYOUT, rowAffine, rowAt, toContent, useShelfMetrics, type RowGeom } from '@/ui/shelf/metrics';
 import { benchProjection, type BenchRow } from '@/ui/shelf/ShelfMotion';
-import { displayedPoses, flushApply, lastPlan, previewInto, PULL_MS, settleInto } from '@/ui/shelf/planner';
-import { makeMotion, pickAt, plankFrontBand, rowPx, warmSV, type Motion, type Pick, type SceneGeo, type SceneMotion } from '@/ui/shelf/scene';
+import { displayedPoses, flushApply, lastPlan, previewInto, PULL_MS, settleInto, WAIT_MAX } from '@/ui/shelf/planner';
+import { liveSV, makeMotion, pickAt, plankFrontBand, rowPx, TRANSIT_ROW, warmSV, type Motion, type Pick, type SceneGeo, type SceneMotion } from '@/ui/shelf/scene';
 import { HANDLE_HIT, handlePoint, SHELF_CAST_EXTENT, ShelfScene, type DropHint, type SceneRowProps } from '@/ui/shelf/ShelfScene';
 import { ANIM, frameStats, logChunks, MENU_FLAGS, PERF_DETAIL, PERF_ENABLED, PERF_LEVELS, PUSH_DEBUG, setPerfLevel, TL, tl, tlEv, tlOn, tlu, TRANSIT_DEBUG, setShelfMode, setShelfView, SHELF_MODES, SHELF_VIEWS, type PerfLevel, type ShelfMode } from '@/ui/perf';
 import type { FrontState } from '@/domain/front-pose';
@@ -101,6 +101,7 @@ type Drag = {
   startVx: number;
   startCenterDU: number;
   widthDU: number; // 끄는 항목(더미면 더미)의 3D 폭: 다른 선반에 놓을 때 왼쪽 끝 = 가운데 - 폭/2
+  members: string[]; // 함께 옮겨 가는 책(더미 받침을 잡으면 더미 전체, 아니면 잡은 책 하나)
 };
 
 type Toast = { text: string; action?: 'undo' | 'retry' } | null;
@@ -188,11 +189,42 @@ export function HomeScreen() {
   const [shelfMenuOpen, setShelfMenuOpen] = useState(false);
   const [toast, setToast] = useState<Toast>(null);
   const dragRef = useRef<Drag | null>(null);
-  // 끄는 책을 미리 올려 둔 줄(원래 줄 + 손가락이 지나간 줄). 다른 줄로 놓을 자리가 정해지는 순간 그 줄 캔버스를 다시 기록하지 않게
-  // 지나가는 동안 올려 두고, 놓은 뒤 경로가 끝날 무렵 내린다
-  const [ghost, setGhost] = useState<{ id: string; rows: string[] } | null>(null);
-  const ghostRef = useRef(ghost);
-  ghostRef.current = ghost;
+  // 다른 줄로 옮겨 갈 수 있는 책을 미리 올려 둔 줄(책 id → 줄들: 원래 줄 + 손가락이 지나간 줄). 다른 줄로 놓을 자리가 정해지는 순간
+  // 그 줄 캔버스를 다시 기록하지 않게 지나가는 동안 올려 두고, 원래 줄에서는 떠난 뒤에도 남는 경로(그림자)가 이어지게 붙잡아 둔다.
+  // 끌기(더미면 더미 전체)·메뉴 이동·되돌리기가 쓰고, 놓은 뒤 경로가 끝날 무렵(기다림 최대치 포함) 내린다.
+  const [holds, setHolds] = useState<Record<string, string[]>>({});
+  const holdsRef = useRef(holds);
+  holdsRef.current = holds;
+  // 책마다 붙잡은 횟수(세대): 내리는 타이머는 자기가 잡은 세대일 때만 내린다. 앞선 놓기의 타이머가 그 뒤 되돌리기·다시 끌기로
+  // 다시 붙잡은 책을 경로 도중에 내리면 원래 줄이 그 책을 빼고 다시 기록되어 그 책 그림자가 한 프레임에 사라진다.
+  const holdGen = useRef(new Map<string, number>());
+  const holdRows = useCallback((ids: string[], rows: string[]) => {
+    for (const id of ids) holdGen.current.set(id, (holdGen.current.get(id) ?? 0) + 1);
+    setHolds((h) => {
+      const next = { ...h };
+      for (const id of ids) next[id] = [...new Set([...(next[id] ?? []), ...rows])];
+      return next;
+    });
+  }, []);
+  // 놓은 뒤(또는 메뉴·되돌리기 뒤) 경로가 끝날 무렵 내린다: 다른 줄 경로는 도착 줄 캔버스를 기다리느라 최대 WAIT_MAX 늦게 출발할 수 있다.
+  // 붙잡는 쪽은 모두 마지막 holdRows 뒤에 이것을 부르므로, 가장 나중 타이머가 늘 내린다.
+  const releaseLater = useCallback((ids: string[]) => {
+    const gen = ids.map((id) => holdGen.current.get(id) ?? 0);
+    setTimeout(() => {
+      setHolds((h) => {
+        const busy = dragRef.current?.members ?? [];
+        let changed = false;
+        const next = { ...h };
+        ids.forEach((id, i) => {
+          if (next[id] && !busy.includes(id) && (holdGen.current.get(id) ?? 0) === gen[i]) {
+            delete next[id];
+            changed = true;
+          }
+        });
+        return changed ? next : h;
+      });
+    }, WAIT_MAX + PULL_MS * ANIM.slow + 600);
+  }, []);
   const lastDragEnd = useRef(0);
   const popScroll = useRef(0); // 정보 상자를 연 순간의 스크롤(렌더 중에 공유값을 읽지 않으려고)
 
@@ -289,15 +321,15 @@ export function HomeScreen() {
       const dy = (dst.baseline - src.baseline) / m.scale;
       (out[p.shelfId] ??= {})[p.bookId] = { ...pose, t: { x: pose.t.x, y: pose.t.y + dy, z: pose.t.z } };
       moves.current.push({ id: p.bookId, from: q.shelfId });
-      // 옮겨 가는 동안 이동 캔버스에 올려 둔다(경로가 끝나고 조금 뒤 내린다)
-      transitRef.current.set(p.bookId, Date.now() + PULL_MS * ANIM.slow + 400);
+      // 옮겨 가는 동안 이동 캔버스에 올려 둔다(경로가 끝나고 조금 뒤 내린다. 도착 줄 캔버스를 기다리는 최대치까지 넉넉히)
+      transitRef.current.set(p.bookId, Date.now() + WAIT_MAX + PULL_MS * ANIM.slow + 400);
     }
     return out;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [shown]);
   // 이번 배치에서 다른 줄로 옮겨 가는 책(같은 배열이면 같은 객체)
   const leaving = useMemo(
-    () => moves.current.filter((mv) => !(ghost && ghost.id === mv.id && ghost.rows.includes(mv.from))),
+    () => moves.current.filter((mv) => !holds[mv.id]?.includes(mv.from)),
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [arrivals],
   );
@@ -308,12 +340,14 @@ export function HomeScreen() {
     const now = Date.now();
     for (const [id, until] of transitRef.current) if (until < now) transitRef.current.delete(id);
     const ids = new Set(transitRef.current.keys());
-    if (drag) ids.add(drag.bookId);
+    if (drag) for (const id of drag.members) ids.add(id);
+    // 붙잡아 둔 책(끌기·메뉴·되돌리기로 다른 줄로 갈 수 있는 책): 옮기기 전에 이동 캔버스에 올려 두어야 넘겨줄 때 그릴 수 있다
+    for (const id of Object.keys(holds)) ids.add(id);
     if (editing && editId) ids.add(editId);
     if (popId) ids.add(popId);
     return [...ids].sort();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [arrivals, transitTick, drag?.bookId, editing, editId, popId]);
+  }, [arrivals, transitTick, drag?.bookId, holds, editing, editId, popId]);
   useEffect(() => {
     if (!transitRef.current.size) return;
     const next = Math.min(...transitRef.current.values()) - Date.now();
@@ -497,6 +531,8 @@ export function HomeScreen() {
       lo = Math.min(lo, c.x);
       hi = Math.max(hi, c.x);
     }
+    // 더미 받침을 잡으면 더미 전체가 함께 옮겨 간다(moveBook → moveStack)
+    const members = item && item.stacked && item.bookIds[0] === pick.bookId ? [...item.bookIds] : [pick.bookId];
     const d: Drag = {
       bookId: pick.bookId,
       shelfId: p.shelfId,
@@ -504,6 +540,7 @@ export function HomeScreen() {
       startVx: x,
       startCenterDU: (lo + hi) / 2,
       widthDU: item ? itemWidth(item, layout, books) : hi - lo,
+      members,
     };
     vpOrigin.value = { x: absX - x, y: absY - (y - scroll) };
     pointer.value = { x, y: y - scroll };
@@ -511,7 +548,7 @@ export function HomeScreen() {
     autoScroll.setActive(true);
     if (settingsStore.get().haptics) void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
     setSelectedId(null);
-    setGhost({ id: pick.bookId, rows: [p.shelfId] });
+    holdRows(members, [p.shelfId]);
     updateDrag(d);
     if (PERF_ENABLED) dragPerfStart();
   };
@@ -530,10 +567,10 @@ export function HomeScreen() {
       const c0 = PERF_ENABLED ? performance.now() : 0;
       const preview = computePreview(d, mv.vx, mv.vy, mv.scroll);
       if (PERF_ENABLED) dragJs.current.preview.push(performance.now() - c0);
-      const g = ghostRef.current;
-      if (preview.shelfId && g && g.id === d.bookId && !g.rows.includes(preview.shelfId)) {
+      const h = holdsRef.current;
+      if (preview.shelfId && h[d.bookId] && !h[d.bookId].includes(preview.shelfId)) {
         if (TL.on) tl(`ghost ${d.bookId}@${preview.shelfId}`);
-        setGhost({ id: g.id, rows: [...g.rows, preview.shelfId] });
+        holdRows(d.members, [preview.shelfId]);
         // 다른 줄로 옮겨 갈 수 있게 됐다: 이동 캔버스가 이 책을 미리 그려 둔다(경로 첫 프레임에 첫 그림 비용이 몰리지 않게)
         warmSV.value = d.bookId;
       }
@@ -549,9 +586,9 @@ export function HomeScreen() {
     cancelAnimationFrame(moveFrame.current);
     moveFrame.current = 0;
     autoScroll.setActive(false);
-    const gid = dragRef.current?.bookId;
+    const members = dragRef.current?.members ?? [];
     warmSV.value = null;
-    setTimeout(() => setGhost((g) => (g && g.id === gid && dragRef.current?.bookId !== gid ? null : g)), PULL_MS * ANIM.slow + 600);
+    releaseLater(members);
     updateDrag(null);
     if (PERF_ENABLED) dragPerfStop();
   };
@@ -584,12 +621,20 @@ export function HomeScreen() {
     setDropTick((k) => k + 1);
   };
 
-  // 화면 이탈·앱 비활성화: 임시 배치를 버리고 확정 상태 유지
+  // 화면 이탈·앱 비활성화: 임시 배치를 버리고 확정 상태 유지(미리 그리기·자동 스크롤·붙잡아 둔 줄·측정도 끝낸다)
   const cancelDrag = useCallback(() => {
     if (!dragRef.current) return;
     active.value = false;
     lastDragEnd.current = Date.now();
+    cancelAnimationFrame(moveFrame.current);
+    moveFrame.current = 0;
+    autoScroll.setActive(false);
+    warmSV.value = null;
+    releaseLater(dragRef.current.members);
     updateDrag(null);
+    // 측정 번들: 끌기를 시작할 때 늘 측정을 켜므로(beginDrag) 여기서도 늘 끈다
+    if (PERF_ENABLED) dragPerfStop();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [active]);
   useFocusEffect(useCallback(() => cancelDrag, [cancelDrag]));
   useEffect(() => {
@@ -797,7 +842,19 @@ export function HomeScreen() {
   const [shelfView, setShelfViewState] = useState<(typeof SHELF_VIEWS)[number]>('전체');
   // 측정 번들에서만: chaekjang:///?sv=0~4 로 선반 보기를 바로 고른다(비교 캡처용)
   // lv=<그리기 단계>(예: full, cast)로 단계만 바꿔 같은 화면을 비교한다
-  const { sv, lv, sh, cam: camDebug, pitch: pitchParam, slow, transit, geom, pushdbg } = useLocalSearchParams<{ sv?: string; lv?: string; sh?: string; cam?: string; pitch?: string; slow?: string; transit?: string; geom?: string; pushdbg?: string }>();
+  const { sv, lv, sh, cam: camDebug, pitch: pitchParam, slow, transit, geom, pushdbg, mark } = useLocalSearchParams<{ sv?: string; lv?: string; sh?: string; cam?: string; pitch?: string; slow?: string; transit?: string; geom?: string; pushdbg?: string; mark?: string }>();
+  // 측정 번들: ?mark=b11,b12 처럼 고른 책을 한 가지 색(자홍, 둘째는 청록)으로만 그린다. 화면 녹화에서 그 책이 프레임마다 몇 군데에
+  // 얼마나 보이는지 세어 빈 프레임·두 권 보임을 찾는다(장면에 넘기는 그림용 사본만 바꾼다. 배치 계산·저장은 그대로).
+  const sceneBooks = useMemo(() => {
+    if (!PERF_ENABLED || !mark) return books;
+    const out = { ...books };
+    mark.split(',').forEach((id, i) => {
+      const b = books[id];
+      const c = i === 0 ? '#FF00FF' : '#00FFFF';
+      if (b) out[id] = { ...b, themeColor: c, body: undefined, quotes: 0, art: { ...b.art, inkColor: c, ribbon: c } };
+    });
+    return out;
+  }, [books, mark]);
   // 측정 번들: ?geom=1 로 형상 보기(3D 상자 모서리·받침·계산상 선반)를 켜고 끈다(캡처 스크립트용)
   useEffect(() => {
     if (PERF_ENABLED && geom !== undefined) setDebugGeom(geom === '1');
@@ -887,7 +944,28 @@ export function HomeScreen() {
     c.done(performance.now() - c.t0);
   }, [view.pitch]);
   // 책 끌기 한 번(집기 ~ 놓고 자리 잡기)의 프레임 간격
+  // 측정 번들: 시간표 세션(끌기·되돌리기). 끝내면 3.5초 뒤(놓은 뒤 자리 잡는 동안까지) 한 번에 낸다. 그 사이 새 세션이 시작되면
+  // (앞 세션 자료는 새 세션이 비웠다) 앞 세션의 타이머는 아무것도 하지 않는다: 새 세션 도중에 시간표를 끄지 않게.
+  const tlSession = useRef(0);
+  const tlFlushLater = () => {
+    const s = tlSession.current;
+    setTimeout(() => {
+      if (tlSession.current !== s) return;
+      tl('tl-end');
+      tlOn.value = false;
+      setTimeout(() => {
+        if (tlSession.current !== s) return;
+        perfFrames.setActive(false);
+        TL.on = false;
+        logChunks('[mv-js]', TL.js);
+        logChunks('[mv-ui]', tlEv.value);
+        logChunks('[mv-fr]', perfStamps.value.map(String));
+        TL.js = [];
+      }, 150);
+    }, 3500);
+  };
   const dragPerfStart = () => {
+    tlSession.current += 1;
     perfDts.value = [];
     perfStamps.value = [];
     tlEv.value = [];
@@ -920,18 +998,24 @@ export function HomeScreen() {
     lastPlan.log = null;
     // 시간표: 놓은 뒤 자리 잡는 동안(3.5초)까지 적고 한 번에 낸다
     tl('drag-stop');
-    setTimeout(() => {
-      tl('tl-end');
-      tlOn.value = false;
-      setTimeout(() => {
-        perfFrames.setActive(false);
-        TL.on = false;
-        logChunks('[mv-js]', TL.js);
-        logChunks('[mv-ui]', tlEv.value);
-        logChunks('[mv-fr]', perfStamps.value.map(String));
-        TL.js = [];
-      }, 150);
-    }, 3500);
+    tlFlushLater();
+  };
+  // 측정 번들: 되돌리기 한 번의 시간표(끌기 시간표가 아직 켜져 있으면 거기에 이어 적는다). 되돌리기는 손가락 없이 저절로 가는 경로라
+  // '자동 이동 경로'를 따로 잰다.
+  const undoPerfStart = (ids: string) => {
+    if (TL.on) {
+      tl(`undo ${ids}`);
+      return;
+    }
+    tlSession.current += 1;
+    perfStamps.value = [];
+    tlEv.value = [];
+    TL.js = [];
+    TL.on = true;
+    tlOn.value = true;
+    tl(`undo ${ids}`);
+    perfFrames.setActive(true);
+    tlFlushLater();
   };
   const runPerf = async (level: PerfLevel) => {
     const wait = (ms: number) => new Promise((r) => setTimeout(r, ms));
@@ -1067,14 +1151,44 @@ export function HomeScreen() {
     if (i < 0 || i >= shelves.length) return null;
     // 끌기처럼 원래 줄에 경로가 끝날 때까지 올려 둔다: 그 줄 캔버스를 다시 기록하지 않고 이동 캔버스로 넘겨주며, 떠나는 책의 그림자가 이어진다.
     // 이동 캔버스는 누른 순간부터 그 책을 미리 그려 둔다(도착 줄 캔버스를 기록하는 동안 첫 그림을 치른다)
-    setGhost({ id, rows: [p.shelfId] });
+    holdRows([id], [p.shelfId]);
     warmSV.value = id;
+    releaseLater([id]);
     setTimeout(() => {
-      setGhost((g) => (g && g.id === id && dragRef.current?.bookId !== id ? null : g));
       if (warmSV.value === id && dragRef.current?.bookId !== id) warmSV.value = null;
-    }, PULL_MS * ANIM.slow + 600);
+    }, WAIT_MAX + PULL_MS * ANIM.slow + 600);
     return commit(moveToShelf(layout, books, id, shelves[i].id));
   };
+
+  // 되돌리기: 다른 줄로 옮겨 가는 책이 있으면 끌기·메뉴 이동처럼 원래 줄에 붙잡아 두고(그 줄 캔버스를 다시 기록하지 않아 떠나는 책과
+  // 그 그림자가 이어진다) 이동 캔버스에 그 책을 올려 실제로 그릴 수 있게 된 뒤(live) 되돌린다. 넘겨줄 이동 캔버스 그림이 없는 채로
+  // 원래 줄이 그 책을 내리면 아무도 그리지 않는 프레임이 생긴다. 이동 캔버스 준비는 길어야 0.5초만 기다린다.
+  const undoMoves = useCallback(async (): Promise<boolean> => {
+    const st = placementStore.get();
+    if (!st.undo) return false;
+    const now = st.layout;
+    const back = st.undo;
+    const moved: { id: string; from: string }[] = [];
+    for (const q of back.placements) {
+      const cur = now.placements.find((x) => x.bookId === q.bookId);
+      if (cur && cur.shelfId !== q.shelfId) moved.push({ id: q.bookId, from: cur.shelfId });
+    }
+    if (PERF_ENABLED) undoPerfStart(moved.map((mv) => mv.id).join(','));
+    if (moved.length) {
+      for (const mv of moved) holdRows([mv.id], [mv.from]);
+      const ids = moved.map((mv) => mv.id);
+      for (let i = 0; i < 30; i++) {
+        const live = liveSV.value;
+        if (ids.every((id) => live[id]?.[TRANSIT_ROW])) break;
+        await new Promise((r) => setTimeout(r, 16));
+      }
+      if (TL.on) tl(`undo-ready ${ids.join(',')}`);
+      releaseLater(ids);
+      // 기다리는 동안 다른 조작이 확정됐으면(되돌릴 대상이 바뀜) 그 조작을 대신 되돌리지 않는다
+      if (placementStore.get().undo !== back) return false;
+    }
+    return placementStore.undo();
+  }, [holdRows, releaseLater]);
 
   // 자세·기울기 바꾸기: 제자리에서 돌 수 없으면(옆 책에 걸리면) 경로 계획이 선반 앞으로 빼서 돌려 넣는다(planner).
   const commitPath = (r: Result): string | null => commit(r);
@@ -1338,14 +1452,18 @@ export function HomeScreen() {
   // 표지 책 머리 손잡이: 꾸미기에서 고른 표지 책(끄는 중이 아닐 때)
   const handleOn = editing && !drag && editId && placementOf(layout, editId)?.pose === 'front' ? { shelfId: placementOf(layout, editId)!.shelfId, bookId: editId } : null;
   // 미리 올려 둘 책의 자세(올릴 때 한 번 쓰는 자리 표시용): 지금 있는 줄의 프레임
-  const ghostRest = useMemo(() => {
-    if (!ghost) return null;
-    for (const fs of frames.values()) {
-      const f = fs.find((q) => q.bookId === ghost.id);
-      if (f) return fromPlaced(f.box);
-    }
-    return null;
-  }, [ghost, frames]);
+  const holdRest = useMemo(() => {
+    const out: Record<string, Book3> = {};
+    for (const id of Object.keys(holds))
+      for (const fs of frames.values()) {
+        const f = fs.find((q) => q.bookId === id);
+        if (f) {
+          out[id] = fromPlaced(f.box);
+          break;
+        }
+      }
+    return out;
+  }, [holds, frames]);
   const sceneRows: SceneRowProps[] = useMemo(
     () =>
       shownShelves.flatMap((sh) => {
@@ -1354,14 +1472,16 @@ export function HomeScreen() {
         const fs = frames.get(sh.id) ?? [];
         // 끄는 책을 미리 올려 둔 줄: 그 책이 이 줄 배치에 없으면 캔버스에만 올려 두고, 끄는 책 표시·선택 빛도 이 줄에 둔다
         // (줄을 오갈 때 표시가 옮겨 다니며 캔버스를 다시 기록하지 않게)
-        const held = !!ghost && ghost.rows.includes(sh.id);
-        const ghosts = held && ghostRest && !fs.some((f) => f.bookId === ghost!.id) ? [{ id: ghost!.id, rest: ghostRest }] : undefined;
-        const dragHere = dragShelf === sh.id || (held && !!drag && drag.bookId === ghost!.id);
-        const glowHere = glowShelf === sh.id || (held && glowId === ghost!.id);
+        const gs = Object.keys(holds)
+          .filter((id) => holds[id].includes(sh.id) && !fs.some((f) => f.bookId === id) && holdRest[id])
+          .map((id) => ({ id, rest: holdRest[id] }));
+        const ghosts = gs.length ? gs : undefined;
+        const dragHere = dragShelf === sh.id || (!!drag && !!holds[drag.bookId]?.includes(sh.id));
+        const glowHere = glowShelf === sh.id || (!!glowId && !!holds[glowId]?.includes(sh.id));
         return [{ shelfId: sh.id, row, frames: fs, arrive: arrivals[sh.id], dragId: dragHere ? drag!.bookId : null, glowId: glowHere ? glowId : null, hint: hintFor(sh.id), ghosts }];
       }),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [shownShelves, rowOf, frames, arrivals, dragShelf, glowShelf, glowId, drag?.bookId, drag?.preview, ghost, ghostRest],
+    [shownShelves, rowOf, frames, arrivals, dragShelf, glowShelf, glowId, drag?.bookId, drag?.preview, holds, holdRest],
   );
   const contentHeight = Math.max(vpH, (rows.at(-1) ? rows.at(-1)!.top + rows.at(-1)!.height : CONTENT_TOP) + (SHELF_CAST_EXTENT + 8) * m.scale + (editing ? panelH : tailPad));
 
@@ -1402,7 +1522,9 @@ export function HomeScreen() {
             <>
               <Pressable
                 onPress={() => {
-                  if (placementStore.undo()) setEditMsg(null);
+                  void undoMoves().then((done) => {
+                    if (done) setEditMsg(null);
+                  });
                 }}
                 disabled={!store.undo}
                 hitSlop={10}
@@ -1467,7 +1589,7 @@ export function HomeScreen() {
                 rows={sceneRows}
                 motions={motions}
                 geo={geoSV}
-                books={books}
+                books={sceneBooks}
                 m={m}
                 width={winW}
                 height={contentHeight}
@@ -1546,7 +1668,9 @@ export function HomeScreen() {
                 hitSlop={10}
                 onPress={() => {
                   if (toast.action === 'undo') {
-                    if (placementStore.undo()) setToast({ text: ko.undone });
+                    void undoMoves().then((done) => {
+                      if (done) setToast({ text: ko.undone });
+                    });
                   } else {
                     placementStore.retrySave();
                     setToast(null);

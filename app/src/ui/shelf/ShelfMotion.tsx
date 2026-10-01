@@ -27,7 +27,7 @@ import { TL, tl, tlOn, tlu } from '@/ui/perf';
 import { scheduleOnUI } from 'react-native-worklets';
 
 import { tryApplyPending } from './planner';
-import { bodyOf, drawnOf, OUT_SHADE_MAX, outsideDist, presentSV, shadeIn, shadeOf, warmSV, type Motion, type Poses } from './scene';
+import { bodyOf, drawnOf, liveSV, OUT_SHADE_MAX, outsideDist, presentSV, shadeIn, shadeOf, TRANSIT_ROW, warmSV, type Motion, type Poses } from './scene';
 
 export type CamSV = Readonly<SharedValue<Cam>>;
 type Order = Readonly<SharedValue<Record<string, number>>>;
@@ -42,7 +42,7 @@ const zOf = (order: Order, key: string, off = 0) => {
 // 줄의 그림자용 자세 모음(책 id → 자세, 그림자가 없으면 null). 어느 한 권이라도 자세가 바뀔 때만 새 값이 된다:
 // 줄의 진행률이 도는 동안에도 바뀐 책이 없으면(멈춘 책은 같은 객체, 다른 줄로 멀리 가 있는 책은 null) 그림자 계산과
 // 줄 캔버스 다시 그리기가 돌지 않는다. 그림자를 그리는 쪽(벽·선반 윗면·틈·접촉·기대기·받는 그림자)은 모두 이것만 읽는다.
-export function useShadePoses(m: Motion, ids: string[], space: number): Readonly<SharedValue<Poses>> {
+export function useShadePoses(m: Motion, ids: string[], space: number, shelfId = ''): Readonly<SharedValue<Poses>> {
   const init = useMemo(() => {
     const out: Poses = {};
     for (const id of ids) out[id] = shadeIn(m, id, space);
@@ -53,6 +53,18 @@ export function useShadePoses(m: Motion, ids: string[], space: number): Readonly
     () => ids.map((id) => shadeIn(m, id, space)),
     (cur, prev) => {
       if (prev && prev.length === cur.length && cur.every((b, i) => b === prev[i])) return;
+      // 측정 번들: 그림자가 아직 이 줄 가까이(줄 공간 밖 OUT_SHADE_MAX보다 안쪽)에 있는데 한 프레임에 없어진 경우를 적는다.
+      // 자세 자체가 없어졌으면 drop(사라짐), 경로를 따라 한 프레임에 그림자 범위 밖까지 움직였으면 exit(프레임 간격이 길 때 생긴다)
+      if (tlOn.value && prev && prev.length === cur.length)
+        for (let i = 0; i < cur.length; i++) {
+          const was = prev[i];
+          if (!was || cur[i]) continue;
+          const d = outsideDist(was, space);
+          if (d >= OUT_SHADE_MAX - 4) continue;
+          const now = shadeOf(m, ids[i]);
+          if (now) tlu(`shade-exit ${ids[i]}@${shelfId} d=${d.toFixed(1)}>${outsideDist(now, space).toFixed(1)}`);
+          else tlu(`shade-drop ${ids[i]}@${shelfId} d=${d.toFixed(1)}`);
+        }
       const old = poses.value;
       let same = Object.keys(old).length === ids.length;
       const next: Poses = {};
@@ -174,9 +186,23 @@ const RowBook = memo(
     // 이 줄이 그리는 자세(안 그리면 null). 안 그리는 동안은 멈춘 자리 표시 자세라 책 그림 계산이 돌지 않는다.
     // 막 다른 줄로 떠난 책도 이 줄 공간 안에 있는 동안은 그린다(이동 캔버스가 같은 자세로 위에 겹친다). 이동 캔버스가 그 책을
     // 미리 그려 두고 있었으면(warm) 이미 화면에 있으므로 이 줄은 바로 내린다(같은 책을 두 캔버스가 그리는 비용을 아낀다)
-    const vis = useDerivedValue(() => drawnOf(m, id, space, warmSV.value !== id));
+    // 이동 캔버스가 이 책을 미리 그려 두었거나(warm) 이동 캔버스의 이 책 그림이 이미 그릴 수 있으면(live) 떠난 책은 이동 캔버스가 맡는다
+    // (같은 책을 두 캔버스가 함께 그리지 않는다). 그렇지 않을 때만 이 줄이 떠난 책을 줄 공간을 벗어날 때까지 그린다.
+    const vis = useDerivedValue(() => drawnOf(m, id, space, warmSV.value !== id && !liveSV.value[id]?.[TRANSIT_ROW]));
     const state = useDerivedValue(() => vis.value ?? first);
     const clip = useDerivedValue<SkRect>(() => (vis.value ? SHOW_ALL : SHOW_NONE));
+    // 이 줄 캔버스가 이 책을 실제로 그릴 수 있게 된 때(첫 그림을 낸 뒤 이 책의 화면 계산이 처음 돈 때) 알린다: 이동 캔버스는 이때부터
+    // 이 줄에 넘겨준다(올라간 순간 바로 넘기면 아직 그리지 못하는 프레임이 생긴다)
+    const announced = useSharedValue(false);
+    useAnimatedReaction(
+      () => vis.value,
+      () => {
+        if (announced.value) return;
+        announced.value = true;
+        liveSV.value = { ...liveSV.value, [id]: { ...(liveSV.value[id] ?? {}), [shelfId]: true } };
+        if (tlOn.value) tlu(`live ${id}@${shelfId}`);
+      },
+    );
     // 캔버스 안 레이아웃 효과는 그 캔버스를 다시 기록해 첫 그림을 UI로 보낸 바로 뒤에 돈다: 이때부터 이 줄이 이 책을 그린다.
     // (useEffect는 캔버스 쪽 React가 다음 변경을 받을 때까지 미뤄질 수 있어, 다른 줄로 옮기는 경로가 그만큼 늦게 출발했다)
     useLayoutEffect(() => {
@@ -192,10 +218,17 @@ const RowBook = memo(
         scheduleOnUI(() => {
           'worklet';
           const cur = presentSV.value[id];
-          if (!cur?.[shelfId]) return;
-          const rest = { ...cur };
-          delete rest[shelfId];
-          presentSV.value = { ...presentSV.value, [id]: rest };
+          if (cur?.[shelfId]) {
+            const rest = { ...cur };
+            delete rest[shelfId];
+            presentSV.value = { ...presentSV.value, [id]: rest };
+          }
+          const lv = liveSV.value[id];
+          if (lv?.[shelfId]) {
+            const rest = { ...lv };
+            delete rest[shelfId];
+            liveSV.value = { ...liveSV.value, [id]: rest };
+          }
         });
       };
     }, [id, shelfId]);
@@ -220,7 +253,7 @@ export const RowBooks = memo(function RowBooks({ m, shelfId, st, books, glowId =
         <RowBook key={id} m={m} shelfId={shelfId} id={id} dims={st.dims[id]} rest={st.rest[id]} book={books[id]} cam={cam} px={px} shared={shared} recv={recv} order={order} space={space} />
       ))}
       {/* 끄는 책이 놓일 가로 범위: 선반 앞턱에 얇게(끄는 동안만) */}
-      {dragId && ids.includes(dragId) ? <LipRange m={m} id={dragId} cam={cam} px={px} order={order} space={space} /> : null}
+      {dragId && ids.includes(dragId) ? <LipRange m={m} id={dragId} shelfId={shelfId} cam={cam} px={px} order={order} space={space} /> : null}
       {glowId && ids.includes(glowId) ? <SelectGlow m={m} id={glowId} cam={cam} px={px} order={order} space={space} /> : null}
       {debug ? ids.map((id) => <DebugGeom key={`dbg${id}`} m={m} id={id} cam={cam} px={px} />) : null}
       {debug ? <DebugShelf cam={cam} px={px} /> : null}
@@ -232,8 +265,9 @@ export const RowBooks = memo(function RowBooks({ m, shelfId, st, books, glowId =
 
 // 끄는 책이 놓일 가로 범위: 책 바닥의 좌우 끝을 선반 앞턱(판 앞 윗모서리) 바로 아래에 얇은 선으로.
 // 3°처럼 앞 책에 가려 자리가 잘 안 보일 때도 어디에 놓이는지 읽히게. 끄는 동안만(상시 선택 막대가 아니다).
-function LipRange({ m, id, cam, px, order, space }: { m: Motion; id: string; cam: CamSV; px: Affine; order: Order; space: number }) {
-  const z = useDerivedValue(() => zOf(order, id, 8));
+function LipRange({ m, id, shelfId, cam, px, order, space }: { m: Motion; id: string; shelfId: string; cam: CamSV; px: Affine; order: Order; space: number }) {
+  // 선반 앞면 위의 선이라 판 바로 다음(판 위 그림자·접촉보다 위, 판 위에 선 책들보다 아래): 선반 앞으로 빼낸 책이 있으면 그 책이 가린다
+  const z = useDerivedValue(() => zOf(order, `plank:${shelfId}`, 6));
   const body = useDerivedValue(() => drawnOf(m, id, space));
   const path = useDerivedValue(() => {
     const b = body.value;
@@ -577,26 +611,26 @@ export function BookReceives({ vis, poses, id, ids, cam, px, space, plankAbove, 
   const castPlank = SHOW.castPlank;
   // 이 책 자세와 가리개 후보(드리울 수 있는 범위의 이웃)가 하나라도 바뀔 때만 다시 계산한다(멈춘 책은 같은 객체라 비교가 싸다).
   // 옮긴 책과 그 그림자를 받는 이웃만 다시 계산되고, 줄의 다른 책은 끄는 동안에도 계산하지 않는다. 그리지 않는 동안(vis 없음)은 비운다.
-  // (결과를 담는 값을 같은 계산 안에서 쓰면 움직이는 책이 있을 때 계산이 자기 자신을 계속 다시 불러, 반응으로 나눈다)
-  // 처음 값(마운트할 때 한 번): 반응이 UI에서 처음 돌기 전 한 프레임도 그림자가 비지 않게
+  // 파생 값으로 계산해 그리는 쪽과 같은 프레임에 나온다: 반응으로 따로 두면 그리는 쪽 계산이 먼저 돌아(반응이 쓰는 값은 순서에 들어가지
+  // 않는다) 이동 캔버스에서 이 줄로 넘겨받는 프레임에 받는 그림자가 비어 책 면이 한 프레임 밝아졌다.
+  // 지난 계산의 열쇠·결과는 따로 담아 두고 같으면 그대로 돌려준다(담는 값을 바꾸면 이 계산이 다음 프레임에 한 번 더 돌지만 같은 결과로 멈춘다).
   const init = useMemo(() => {
     const b = vis.value;
-    return b ? receivedShadow3(b, occludersIn(poses.value, b, id, ids), px.s, space, plankAbove, castPlank) : null;
+    if (!b) return { key: [] as Book3[], r: null as Recv3 };
+    const occ = occludersIn(poses.value, b, id, ids);
+    return { key: [b, ...occ], r: receivedShadow3(b, occ, px.s, space, plankAbove, castPlank) };
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
-  const r3 = useSharedValue<Recv3>(init);
-  const used = useSharedValue<Book3[]>([]); // 마지막 계산에 쓴 [이 책, 가리개...]
-  useAnimatedReaction(
-    () => ({ b: vis.value, map: poses.value }),
-    (cur, prev) => {
-      if (prev && prev.b === cur.b && prev.map === cur.map) return;
-      const occ = cur.b ? occludersIn(cur.map, cur.b, id, ids) : [];
-      const key = cur.b ? [cur.b, ...occ] : [];
-      const u = used.value;
-      if (u.length === key.length && u.every((q, i) => q === key[i]) && (key.length || !r3.value)) return;
-      used.value = key;
-      r3.value = cur.b ? receivedShadow3(cur.b, occ, px.s, space, plankAbove, castPlank) : null;
-    },
-  );
+  const memo = useSharedValue<{ key: Book3[]; r: Recv3 }>(init);
+  const r3 = useDerivedValue<Recv3>(() => {
+    const b = vis.value;
+    const last = memo.value;
+    if (!b) return null;
+    const occ = occludersIn(poses.value, b, id, ids);
+    if (last.key.length === occ.length + 1 && last.key[0] === b && occ.every((q, i) => q === last.key[i + 1])) return last.r;
+    const r = receivedShadow3(b, occ, px.s, space, plankAbove, castPlank);
+    memo.value = { key: [b, ...occ], r };
+    return r;
+  });
   return (
     <Group>
       {Array.from({ length: RECV_SLOTS }, (_, slot) => (

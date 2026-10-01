@@ -13,7 +13,7 @@ import { Canvas, Group, Path, Rect, Skia, type SkPath } from '@shopify/react-nat
 import { memo, useLayoutEffect, useMemo } from 'react';
 import { PixelRatio, StyleSheet, Text, View } from 'react-native';
 import { GestureDetector, type PanGesture } from 'react-native-gesture-handler';
-import Animated, { useAnimatedReaction, useAnimatedStyle, useDerivedValue, useSharedValue, type SharedValue } from 'react-native-reanimated';
+import Animated, { ReduceMotion, useAnimatedReaction, useAnimatedStyle, useDerivedValue, useSharedValue, withDelay, withTiming, type SharedValue } from 'react-native-reanimated';
 import { scheduleOnUI } from 'react-native-worklets';
 
 import { corners, fromPlaced, toWorld, type Book3 } from '@/domain/book3';
@@ -32,7 +32,7 @@ import { colors, fonts } from '@/ui/theme';
 
 import { rowAffine, type RowGeom, type ShelfMetrics } from './metrics';
 import { useRowPlanner } from './planner';
-import { bodyOf, frontOccluders, locate, lowered, outsideDist, plankBody, presentSV, sceneOrder, transitLead, transitVisible, warmSV, type Motion, type SceneGeo, type SceneMotion } from './scene';
+import { bodyOf, frontOccluders, liveSV, locate, lowered, outsideDist, plankBody, presentSV, sceneOrder, TRANSIT_ROW, transitLead, transitVisible, warmSV, type Motion, type SceneGeo, type SceneMotion } from './scene';
 import { GlowOf, makeStruct, occludersOf, ReceivedShadow, RowBooks, RowContacts, RowShadows, structKeyOf, useShadePoses, Z_WALL, type CamSV, type Ghost, type RowStruct } from './ShelfMotion';
 import { SHELF_CAST_EXTENT, ShelfBoard, ShelfShadowDebug, ShelfWallShadow } from './ShelfPlank';
 
@@ -81,14 +81,23 @@ function TransitMark({ items }: { items: { id: string; from: string }[] }) {
     scheduleOnUI(() => {
       'worklet';
       const next = { ...presentSV.value };
+      const live = { ...liveSV.value };
       for (const it of items) {
         const cur = next[it.id];
-        if (!cur?.[it.from]) continue;
-        const rest = { ...cur };
-        delete rest[it.from];
-        next[it.id] = rest;
+        if (cur?.[it.from]) {
+          const rest = { ...cur };
+          delete rest[it.from];
+          next[it.id] = rest;
+        }
+        const lv = live[it.id];
+        if (lv?.[it.from]) {
+          const rest = { ...lv };
+          delete rest[it.from];
+          live[it.id] = rest;
+        }
       }
       presentSV.value = next;
+      liveSV.value = live;
     });
   }, [items]);
   return null;
@@ -126,7 +135,7 @@ const RowLayers = memo(function RowLayers({ r, st, mo, order, px, books, cam, sh
   const plankZ = useDerivedValue(() => (order.value[`plank:${r.shelfId}`] ?? 0) * 10);
   const space = r.row.space;
   // 그림자는 모두 줄의 그림자용 자세 모음만 읽는다(바뀐 책이 있을 때만 다시 계산·다시 그리기)
-  const poses = useShadePoses(mo, st.ids, space);
+  const poses = useShadePoses(mo, st.ids, space, r.shelfId);
   return (
     <>
       {RENDER.books && (SHOW.wall || SHOW.gap) ? <RowShadows poses={poses} ids={st.ids} cam={cam} px={px} space={space} /> : null}
@@ -224,24 +233,15 @@ function nearRow(motions: SceneMotion[], g: SceneGeo, id: string) {
 // 결과는 맨 윗줄 좌표로 옮겨 이동 캔버스의 변환(px0)으로 그린다.
 function TransitReceives({ id, motions, geo, cam, px0, vis }: { id: string; motions: SceneMotion[]; geo: Readonly<SharedValue<SceneGeo>>; cam: Readonly<SharedValue<Cam>>; px0: Affine; vis: Readonly<SharedValue<boolean>> }) {
   const castPlank = SHOW.castPlank;
-  const r3 = useSharedValue<Recv3>(null);
-  // 준비 함수는 지켜볼 값(보임·줄 정보·줄 움직임)을 직접 읽는다. Reanimated는 준비 함수가 붙잡은 공유 값(배열·일반 객체 안까지)만
-  // 지켜보고 함수 안에서 읽는 값은 보지 않아, 다른 함수를 거쳐서만 읽으면 처음 한 번만 계산되고 다시 계산되지 않는다.
-  useAnimatedReaction(
-    () => {
-      if (!vis.value) return '';
-      const n = nearRow(motions, geo.value, id);
-      if (!n) return '';
-      let sig = `${n.row.shelfId}|`;
-      for (const q of [n.b, ...n.occ]) sig += `${q.id}:${q.t.x.toFixed(2)},${q.t.y.toFixed(2)},${q.t.z.toFixed(2)},${q.roll.toFixed(2)},${q.yaw.toFixed(2)},${(q.spin ?? 0).toFixed(2)},${(q.pitch ?? 0).toFixed(2)};`;
-      return sig;
-    },
-    (sig, prev) => {
-      if (sig === prev) return;
-      const n = sig ? nearRow(motions, geo.value, id) : null;
-      r3.value = n ? shiftRecv(receivedShadow3(n.b, n.occ, px0.s, n.row.space, n.idx > 0, castPlank), -n.row.dy) : null;
-    },
-  );
+  // 보이는 동안 매 프레임 같은 계산(이 책·가리개 자세가 바뀔 때만 다시 돈다). 반응(reaction)으로 두면 계산이 그리기보다 한 프레임 늦어
+  // 이동 캔버스가 처음 보이는 프레임에 받는 그림자가 비었다(책 면이 한 프레임 밝아짐).
+  // motions·geo는 이 계산이 직접 붙잡아 지켜본다(다른 함수를 거쳐서만 읽으면 처음 한 번만 계산된다).
+  const r3 = useDerivedValue<Recv3>(() => {
+    if (!vis.value) return null;
+    const g = geo.value;
+    const n = nearRow(motions, g, id);
+    return n ? shiftRecv(receivedShadow3(n.b, n.occ, px0.s, n.row.space, n.idx > 0, castPlank), -n.row.dy) : null;
+  });
   return (
     <Group>
       {Array.from({ length: RECV_SLOTS }, (_, slot) => (
@@ -251,8 +251,8 @@ function TransitReceives({ id, motions, geo, cam, px0, vis }: { id: string; moti
   );
 }
 
-function TransitBook({ id, book, dims, frozen, motions, geo, cam, px0, shared, glow, dbg }: { id: string; book: Book; dims: Book3['dims']; frozen: Book3; motions: SceneMotion[]; geo: Readonly<SharedValue<SceneGeo>>; cam: CamSV; px0: Affine; shared: Shared; glow: boolean; dbg: boolean }) {
-  const vis = useDerivedValue(() => transitVisible(motions, geo.value, id, presentSV.value, warmSV.value));
+function TransitBook({ id, book, dims, frozen, motions, geo, cam, px0, shared, glow, dbg, ribbons, transit }: { id: string; book: Book; dims: Book3['dims']; frozen: Book3; motions: SceneMotion[]; geo: Readonly<SharedValue<SceneGeo>>; cam: CamSV; px0: Affine; shared: Shared; glow: boolean; dbg: boolean; ribbons: Record<string, number>; transit: Record<string, true> }) {
+  const vis = useDerivedValue(() => transitVisible(motions, geo.value, id, liveSV.value, warmSV.value));
   // 보이지 않는 동안은 같은 값(책 그림 계산이 돌지 않게). 보이면 맨 윗줄 좌표로 내린 지금 자세.
   const state = useDerivedValue(() => {
     if (!vis.value) return frozen;
@@ -265,7 +265,7 @@ function TransitBook({ id, book, dims, frozen, motions, geo, cam, px0, shared, g
     if (!vis.value) return HIDE_ALL;
     const at = locate(motions, geo.value, id);
     if (!at) return HIDE_ALL;
-    const polys = frontOccluders(motions, geo.value, cam.value, at.row.shelfId, id);
+    const polys = frontOccluders(motions, geo.value, cam.value, at.row.shelfId, id, ribbons, transit);
     if (!polys.length) return EMPTY_CLIP;
     const pb = Skia.PathBuilder.Make();
     for (const pts of polys) {
@@ -274,12 +274,37 @@ function TransitBook({ id, book, dims, frozen, motions, geo, cam, px0, shared, g
     }
     return pb.detach();
   });
-  // 선택 빛은 이동 캔버스만 그 책을 그릴 때만(미리 그려 두는 동안은 줄 그림의 빛이 이웃 책 뒤로 알맞게 가려진 채 보인다)
-  const body = useDerivedValue(() => (vis.value && transitLead(motions, geo.value, id, presentSV.value) ? state.value : null));
+  // 이 이동 캔버스가 이 책을 실제로 그릴 수 있게 된 때(첫 그림 뒤 이 책의 계산이 처음 돈 때) 알린다: 그 뒤로는 떠나는 책을 원래 줄이
+  // 겹쳐 그리지 않는다(ShelfMotion RowBook). 내려갈 때 지운다.
+  const announced = useSharedValue(false);
+  useAnimatedReaction(
+    () => vis.value,
+    () => {
+      if (announced.value) return;
+      announced.value = true;
+      liveSV.value = { ...liveSV.value, [id]: { ...(liveSV.value[id] ?? {}), [TRANSIT_ROW]: true } };
+    },
+  );
+  useLayoutEffect(
+    () => () => {
+      scheduleOnUI(() => {
+        'worklet';
+        const lv = liveSV.value[id];
+        if (!lv?.[TRANSIT_ROW]) return;
+        const rest = { ...lv };
+        delete rest[TRANSIT_ROW];
+        liveSV.value = { ...liveSV.value, [id]: rest };
+      });
+    },
+    [id],
+  );
+  // 선택 빛은 이동 캔버스만 그 책을 그릴 때만(미리 그려 두는 동안은 줄 그림의 빛이 이웃 책 뒤로 알맞게 가려진 채 보인다).
+  // 빛은 책보다 먼저(책 아래) 그린다: 맨 윗줄 아래 줄의 책은 깊이 키가 음수라 0이면 빛이 책 위에 덮였다.
+  const body = useDerivedValue(() => (vis.value && transitLead(motions, geo.value, id, liveSV.value) ? state.value : null));
   return (
     <>
       <Group clip={clip} invertClip>
-        {glow ? <GlowOf body={body} cam={camT} px={px0} z={0} /> : null}
+        {glow ? <GlowOf body={body} cam={camT} px={px0} z={-1e9} /> : null}
         <BookNode book={book} dims={dims} state={state} cam={camT} px={px0} shared={shared} under={SHOW.cast ? <TransitReceives id={id} motions={motions} geo={geo} cam={camT} px0={px0} vis={vis} /> : null} />
       </Group>
       {dbg ? <Path path={clip} style="stroke" strokeWidth={2} color="rgba(220,30,30,0.9)" /> : null}
@@ -300,24 +325,43 @@ const TransitCanvas = memo(function TransitCanvas({ ids, rows, motions, geo, boo
   const px0 = useMemo(() => (top ? rowAffine(m, top, 0) : { s: m.scale, tx: 0, ty: 0 }), [m, top]);
   const dbg = TRANSIT_DEBUG.on;
   const idList = useMemo(() => ids, [ids.join('|')]); // eslint-disable-line react-hooks/exhaustive-deps
+  // 앞을 가리는 갈피 끈(책 id → 끈 수)과 함께 옮겨 가는 책(서로 실제 깊이로 가린다)
+  const ribbons = useMemo(() => {
+    const out: Record<string, number> = {};
+    for (const [id, b] of Object.entries(books)) if ((b.quotes ?? 0) > 0) out[id] = Math.min(2, b.quotes ?? 0);
+    return out;
+  }, [books]);
+  const transit = useMemo(() => Object.fromEntries(idList.map((id) => [id, true as const])), [idList]);
   if (TL.on) tl(`transit-render ${ids.join(',')}`);
   useLayoutEffect(() => {
     if (TL.on) tl('transit-commit');
   });
-  // 하나라도 그리는 동안만 보이게(나머지 시간에는 합성하지 않는다)
-  const style = useAnimatedStyle(() => {
-    if (dbg) return { opacity: 1 };
-    const present = presentSV.value;
+  // 하나라도 그리는 동안만 보이게(나머지 시간에는 합성하지 않는다). 숨길 때만 두 프레임 늦춘다: 보기 투명도는 그 프레임에 바로
+  // 바뀌지만 줄 캔버스의 새 그림은 다음 프레임에 보여, 넘겨주는 순간 한 프레임 동안 아무도 그리지 않는 일이 없게(숨겨진 책은 이미
+  // 이 캔버스 그림에서 빠져 있어 늦게 숨겨도 두 권으로 보이지 않는다).
+  const anyVisible = useDerivedValue(() => {
+    if (dbg) return true;
+    const live = liveSV.value;
     const warm = warmSV.value;
-    for (const id of idList) if (transitVisible(motions, geo.value, id, present, warm)) return { opacity: 1 };
-    return { opacity: 0 };
+    for (const id of idList) if (transitVisible(motions, geo.value, id, live, warm)) return true;
+    return false;
   });
+  const shown = useSharedValue(0);
+  useAnimatedReaction(
+    () => anyVisible.value,
+    (v, prev) => {
+      if (v === prev) return;
+      // 기기 '애니메이션 줄이기'가 켜져 있어도 늦춤은 지킨다(늦춤이 빠지면 넘겨주는 프레임에 아무도 그리지 않는다)
+      shown.value = v ? 1 : withDelay(40, withTiming(0, { duration: 0 }), ReduceMotion.Never);
+    },
+  );
+  const style = useAnimatedStyle(() => ({ opacity: shown.value }));
   return (
     <Animated.View style={[{ position: 'absolute', left: 0, top: 0, width, height }, style]} pointerEvents="none">
       <Canvas style={{ width, height }} pointerEvents="none">
         {dbg ? <Rect x={0} y={0} width={width} height={height} color="rgba(255,0,0,0.08)" /> : null}
         {items.map((it) => (
-          <TransitBook key={it.id} id={it.id} book={books[it.id]} dims={it.dims} frozen={it.frozen} motions={motions} geo={geo} cam={cam} px0={px0} shared={shared} glow={glowId === it.id} dbg={dbg} />
+          <TransitBook key={it.id} id={it.id} book={books[it.id]} dims={it.dims} frozen={it.frozen} motions={motions} geo={geo} cam={cam} px0={px0} shared={shared} glow={glowId === it.id} dbg={dbg} ribbons={ribbons} transit={transit} />
         ))}
       </Canvas>
     </Animated.View>
