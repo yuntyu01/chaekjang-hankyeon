@@ -893,7 +893,7 @@ export function HomeScreen() {
   if (PERF_ENABLED && menutl !== undefined) MENU_FLAGS.translucent = menutl === '1';
   useEffect(() => {
     if (!PERF_ENABLED || demoboot === undefined) return;
-    void Storage.setItem(DEMO_BOOT_KEY, demoboot === '1' ? '1' : '0');
+    void Storage.setItem(DEMO_BOOT_KEY, demoboot === '1' || demoboot === 'mockup' ? demoboot : '0');
   }, [demoboot]);
   useEffect(() => {
     if (!PERF_ENABLED || !sh || !SHELF_MODES.includes(sh as ShelfMode)) return;

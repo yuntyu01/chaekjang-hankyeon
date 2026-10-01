@@ -13,7 +13,8 @@ import { viewStore } from './view-store';
 import { bootMark } from '@/ui/boot-trace';
 import { PERF_ENABLED } from '@/ui/perf';
 
-// 측정 번들: 예시 18권 책장으로 시작(저장하지 않는 메모리 전용). ?demoboot=1 로 켜고 0으로 끈다
+// 측정 번들: 예시 18권 책장으로 시작(저장하지 않는 메모리 전용). ?demoboot=1 로 켜고 0으로 끈다.
+// ?demoboot=mockup 은 같은 자리·치수에 시안 책장의 제목·색·표지 그림을 입힌 비교 책장
 export const DEMO_BOOT_KEY = 'perf-demo-boot';
 
 export function shelfBooks(lib: Library): BookMap {
@@ -35,7 +36,10 @@ export function bootStores() {
     let lib = libraryStore.get().lib;
     await placementStore.load(shelfBooks(lib));
     bootMark('layout-loaded');
-    if (PERF_ENABLED && (await Storage.getItem(DEMO_BOOT_KEY)) === '1') placementStore.setDemo(true);
+    if (PERF_ENABLED) {
+      const demo = await Storage.getItem(DEMO_BOOT_KEY);
+      if (demo === '1' || demo === 'mockup') placementStore.setDemo(true, demo === 'mockup' ? 'mockup' : 'sample');
+    }
     libraryStore.subscribe(() => {
       const next = libraryStore.get().lib;
       if (next === lib) return;

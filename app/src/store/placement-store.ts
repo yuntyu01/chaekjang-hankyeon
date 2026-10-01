@@ -6,6 +6,7 @@ import Storage from 'expo-sqlite/kv-store';
 import { addBook as placeNewBook, addShelf, applySwapTarget, bookXs, ensureShelves, findSwapTarget, fitToShelf, migrate, moveToDrawer, normalize, placeFromDrawer, pruneEmptyShelves, setDepth, validate, withNormalizedX, type BookMap } from '@/domain/layout-engine';
 import { withLeans } from '@/domain/shelf-scene';
 import { SHELF_DEPTH, SHELF_FRONT } from '@/domain/geometry';
+import { MOCKUP_BOOKS, MOCKUP_LAYOUT } from '@/domain/mockup-sample';
 import { SAMPLE_BOOKS, SAMPLE_LAYOUT } from '@/domain/onboarding-sample';
 import type { ShelfLayout, ShelfLayoutV1 } from '@/domain/types';
 
@@ -29,6 +30,8 @@ export const EMPTY_LAYOUT: ShelfLayout = ensureShelves({ version: 2, shelves: []
 
 let state: State = { books: {}, layout: EMPTY_LAYOUT, undo: null, save: 'idle', loaded: false, notice: null, demo: false };
 let userSnapshot: { books: BookMap; layout: ShelfLayout } | null = null;
+export type DemoKind = 'sample' | 'mockup';
+let demoKind: DemoKind = 'sample';
 const listeners = new Set<() => void>();
 
 function set(patch: Partial<State>) {
@@ -164,11 +167,15 @@ export const placementStore = {
   },
 
   // 측정 번들 전용: 예시 18권 책장(메모리에만). 끄면 내 책장으로 돌아간다.
-  setDemo(on: boolean) {
-    if (on === state.demo) return;
+  // kind 'mockup': 같은 자리·치수에 시안 책장의 제목·색·표지 그림을 입힌 비교 책장(domain/mockup-sample).
+  setDemo(on: boolean, kind: DemoKind = 'sample') {
+    if (on === state.demo && (!on || kind === demoKind)) return;
     if (on) {
-      userSnapshot = { books: state.books, layout: state.layout };
-      set({ demo: true, books: Object.fromEntries(SAMPLE_BOOKS.map((b) => [b.id, b])), layout: withLeans(SAMPLE_LAYOUT, Object.fromEntries(SAMPLE_BOOKS.map((b) => [b.id, b]))), undo: null });
+      if (!state.demo) userSnapshot = { books: state.books, layout: state.layout };
+      demoKind = kind;
+      const [list, layout] = kind === 'mockup' ? [MOCKUP_BOOKS, MOCKUP_LAYOUT] : [SAMPLE_BOOKS, SAMPLE_LAYOUT];
+      const books = Object.fromEntries(list.map((b) => [b.id, b]));
+      set({ demo: true, books, layout: withLeans(layout, books), undo: null });
     } else {
       const snap = userSnapshot ?? { books: {}, layout: EMPTY_LAYOUT };
       userSnapshot = null;
