@@ -56,7 +56,7 @@ function grow(poly: Point[], i: number, j: number, dir: Point): Point[] {
 // 층마다 판의 그 부분이 벽에 떨어뜨린 모양이라, 오른쪽 끝 너머 벽에는 먼 층(옅은 것)만 닿는다.
 // 벽 중 판 뒤에 가려지는 부분은 판을 나중에 그려 덮는다.
 const LIGHT = travelOf(light.dir);
-const SW = shadow.cast.shelfWall;
+const SW = shadow.cast.plank;
 // 그림자가 판 앞면 아래로 보이는 최대 길이(DU)
 export const SHELF_CAST_EXTENT = SW.layers[SW.layers.length - 1] * Math.abs(LIGHT.y) + SW.blurPad;
 
@@ -70,7 +70,7 @@ function WallLayer({ cam, px, k }: { cam: RO<Camera>; px: Affine; k: number }) {
     return pathOf(hull(pts.map((q) => toPx(c, px, q))));
   });
   return (
-    <Path path={path} color={rgba(SW.color, SW.opacity[k])}>
+    <Path path={path} color={rgba(shadow.recv.wall, SW.opacity[k])}>
       {SHOW.shelfBlur ? <BlurMask blur={((SW.near + SW.perDU * SW.layers[k]) * px.s) / 2} style="normal" /> : null}
     </Path>
   );
@@ -113,24 +113,26 @@ export function ShelfShadowDebug({ cam, px }: { cam: RO<Camera>; px: Affine }) {
   );
 }
 
-// 판 → 벽 그림자 + 판 앞면 바로 아래 좁은 어둠(벽 단계: 모든 판·책보다 먼저 그린다)
+// 판 → 벽 그림자 + 판이 벽에 닿는 선 바로 아래 좁은 어둠(벽 단계: 모든 판·책보다 먼저 그린다)
 export function ShelfWallShadow({ cam, px, zIndex }: { cam: RO<Camera>; px: Affine; zIndex: number }) {
-  const s = px.s;
+  // 접촉선(판 뒤 아래 모서리, 벽 평면 위)에서 아래로 shelfLip.height까지의 벽 띠와 그 위·아래 끝(그라데이션 방향)
   const lip = useDerivedValue(() => {
-    const f = shelfFaces(cam.value);
-    const P = (q: Point) => ({ x: q.x * s + px.tx, y: q.y * s + px.ty });
-    const lfb = P(f.corners.LFB);
-    const rfb = P(f.corners.RFB);
-    const d = shadow.ao.shelfLip.dy * s * 2;
-    return pathOf([lfb, rfb, { x: rfb.x, y: rfb.y + d }, { x: lfb.x, y: lfb.y + d }]);
+    const c = cam.value;
+    const v = shelfVertices();
+    const down = (q: { x: number; y: number; z: number }) => ({ x: q.x, y: q.y - shadow.ao.shelfLip.height, z: q.z });
+    const P = (q: { x: number; y: number; z: number }) => toPx(c, px, q);
+    return { poly: pathOf([P(v.LBB), P(v.RBB), P(down(v.RBB)), P(down(v.LBB))]), a: P(v.LBB), b: P(down(v.LBB)) };
   });
+  const lipPath = useDerivedValue(() => lip.value.poly);
+  const lipA = useDerivedValue(() => vec(lip.value.a.x, lip.value.a.y));
+  const lipB = useDerivedValue(() => vec(lip.value.b.x, lip.value.b.y));
   return (
     <Group zIndex={zIndex}>
       {SHOW.shelf ? SW.layers.map((_, k) => <WallLayer key={k} cam={cam} px={px} k={k} />) : null}
-      {/* 주변광 차폐: 판 앞면 바로 아래 좁은 어둠(벽 위). 아래 줄 책이 앞에 오면 가린다 */}
+      {/* 주변광 차폐: 판이 벽에 닿는 선 바로 아래(벽 위 3D 띠). 아래 줄 책이 앞에 오면 가린다 */}
       {SHOW.shelfAO ? (
-        <Path path={lip} color={rgba(shadow.ao.shelfLip.color, shadow.ao.shelfLip.opacity)}>
-          <BlurMask blur={(shadow.ao.shelfLip.blur / 2) * s} style="normal" />
+        <Path path={lipPath}>
+          <LinearGradient start={lipA} end={lipB} colors={[rgba(shadow.recv.wall, shadow.ao.shelfLip.opacity), rgba(shadow.recv.wall, 0)]} />
         </Path>
       ) : null}
     </Group>

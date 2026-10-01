@@ -1,5 +1,6 @@
 // 책 면이 받는 그림자: 가리개가 받는 면보다 빛 쪽에 있을 때만, 경계는 가리개를 따라 움직이고 받는 책 위치와는 무관하다.
 import { corners, faceCorners, faceNormal, rot, type Book3 } from '../book3';
+import { hull } from '../shadow-shape';
 import { shadowOnPlane, travelOf } from '../cast-shadow';
 import { SHELF_FRONT } from '../geometry';
 import { applySwapTarget, bookXs, findSwapTarget, moveBook, placementOf, setDepth, type BookMap, type Result } from '../layout-engine';
@@ -7,10 +8,12 @@ import { SAMPLE_BOOKS, SAMPLE_LAYOUT } from '../onboarding-sample';
 import { bodiesOf } from '../shelf-scene';
 import type { ShelfLayout } from '../types';
 import { light } from '@/ui/lighting';
-import { receivedShadow3, RECV_PARTS } from '../received3';
+import { NL_MAX, receivedShadow3, type Face3 } from '../received3';
+import { shadow } from '@/ui/lighting';
 
 const books: BookMap = Object.fromEntries(SAMPLE_BOOKS.map((b) => [b.id, b]));
 const L = travelOf(light.dir);
+const LIGHT_Z = -L.z; // 빛이 받는 면(앞면, 법선 -z)으로 들어오는 성분
 const ok = (r: Result) => {
   if (!r.ok) throw new Error(r.reason);
   return r.layout;
@@ -114,39 +117,94 @@ describe('채식주의자 → 뒤로 민 월든 표지', () => {
 });
 
 
-describe('받는 그림자 칸', () => {
+describe('받는 그림자: 가리개 모델 하나(벽·선반과 같은 빛 길이 층)', () => {
   // 받는 책(가운데)의 책등 면에 왼쪽 앞의 키 큰 책 둘과 윗선반 판이 모두 그림자를 드리우는 배치
   const box = (id: string, x: number, z: number, T: number, H: number): Book3 => ({ id, dims: { T, H, W: 100 }, roll: 0, yaw: 0, t: { x, y: 0, z } });
   const recv = box('r', 100, 0, 24, 120);
   const near1 = box('o1', 74, -18, 22, 175);
   const near2 = box('o2', 50, -30, 20, 178);
   const space = 132; // 윗선반 판 아랫면이 받는 책 머리 바로 위
+  const faceOf = (r: ReturnType<typeof receivedShadow3>, f: string) => r!.faces.find((q) => q.f === f);
+  // 그림자 다각형이 실제로 보이는 넓이: 면 좌표(u·v)의 볼록 껍질을 면 사각형으로 잘라 잰다(그리기도 면 모양으로 자른다)
+  const area = (fa: Face3, pts: { x: number; y: number; z: number }[]) => {
+    const [o, a1, , a3] = fa.fc;
+    const e1 = { x: a1.x - o.x, y: a1.y - o.y, z: a1.z - o.z };
+    const e2 = { x: a3.x - o.x, y: a3.y - o.y, z: a3.z - o.z };
+    const l1 = Math.hypot(e1.x, e1.y, e1.z);
+    const l2 = Math.hypot(e2.x, e2.y, e2.z);
+    let poly = hull(pts.map((q) => ({ x: ((q.x - o.x) * e1.x + (q.y - o.y) * e1.y + (q.z - o.z) * e1.z) / l1, y: ((q.x - o.x) * e2.x + (q.y - o.y) * e2.y + (q.z - o.z) * e2.z) / l2 })));
+    // 사각형 [0, l1] × [0, l2]로 자르기(Sutherland–Hodgman)
+    const clip = (inside: (p: { x: number; y: number }) => boolean, cut: (a: { x: number; y: number }, b: { x: number; y: number }) => { x: number; y: number }) => {
+      const out: { x: number; y: number }[] = [];
+      for (let i = 0; i < poly.length; i++) {
+        const a = poly[i];
+        const b = poly[(i + 1) % poly.length];
+        if (inside(b)) {
+          if (!inside(a)) out.push(cut(a, b));
+          out.push(b);
+        } else if (inside(a)) out.push(cut(a, b));
+      }
+      poly = out;
+    };
+    const atX = (X: number) => (a: { x: number; y: number }, b: { x: number; y: number }) => ({ x: X, y: a.y + ((b.y - a.y) * (X - a.x)) / (b.x - a.x) });
+    const atY = (Y: number) => (a: { x: number; y: number }, b: { x: number; y: number }) => ({ x: a.x + ((b.x - a.x) * (Y - a.y)) / (b.y - a.y), y: Y });
+    clip((q) => q.x >= 0, atX(0));
+    clip((q) => q.x <= l1, atX(l1));
+    clip((q) => q.y >= 0, atY(0));
+    clip((q) => q.y <= l2, atY(l2));
+    let A = 0;
+    for (let i = 0; i < poly.length; i++) A += poly[i].x * poly[(i + 1) % poly.length].y - poly[(i + 1) % poly.length].x * poly[i].y;
+    return Math.abs(A) / 2;
+  };
 
-  it('윗선반 판은 가까운 책 둘에 밀려 빠지지 않고, 판 + 책 둘 세 가리개가 모두 남는다', () => {
+  it('가리개 수에 제한이 없다: 판 + 가까운 책 둘이 한 면에 모두 남는다(이 배치에서는 머리 윗면)', () => {
     const r = receivedShadow3(recv, [near1, near2], 3, space, true);
-    // 가리개마다 [가까운 층, 전체 층]. 세 가리개가 모두 닿는 면(이 배치에서는 뒤표지 쪽 면)에서 전체 층(1, 3, 5)이 모두 있다
-    for (const f of r!.faces) expect(f.parts.length === 0 || f.parts.length === RECV_PARTS).toBe(true);
-    const full = r!.faces.filter((f) => [1, 3, 5].every((i) => f.parts[i]));
-    expect(full.length).toBeGreaterThan(0);
-    // 판은 늘 첫 칸: 판 그림자의 그라데이션은 세로(판 가장자리에 수직)
-    for (const f of full) expect(Math.abs(f.parts[1]!.far.x - f.parts[1]!.near.x)).toBeLessThan(1e-6);
-    // 판이 닿는 면에서 판은 빠지지 않는다(예전: 가까운 책 둘이 있으면 판이 먼저 빠졌다)
-    const spine = r!.faces.find((f) => f.f === 'spine')!;
-    expect(spine.parts[1]).not.toBeNull();
-    expect(Math.abs(spine.parts[1]!.far.x - spine.parts[1]!.near.x)).toBeLessThan(1e-6);
+    const all3 = r!.faces.filter((fa) => fa.book[fa.book.length - 1].polys.length === 2 && fa.plank.some((l) => l.polys.length === 1));
+    expect(all3.map((fa) => fa.f)).toContain('head');
   });
 
-  it('긴 가리개(선반 판)의 그라데이션은 판 가장자리에 수직이라 받는 책의 가로 위치와 상관없다', () => {
-    const axis = (x: number) => {
+  it('판 그림자의 경계는 판 가장자리에 평행해, 받는 책의 가로 위치와 상관없다', () => {
+    const lowest = (x: number) => {
       const r = receivedShadow3(box('r', x, 0, 24, 120), [], 3, space, true);
-      const p = r!.faces.find((f) => f.f === 'spine')!.parts[1]!; // 판의 전체 층
-      return { dx: p.far.x - p.near.x, dy: p.far.y - p.near.y };
+      return faceOf(r, 'spine')!.plank.map((l) => (l.polys.length ? Math.min(...l.polys[0].map((q) => q.y)) : null));
     };
-    for (const x of [10, 150, 300]) {
-      const a = axis(x);
-      // 판 앞 아래 모서리(가로 방향)에 수직: 가로 성분이 없다
-      expect(Math.abs(a.dx)).toBeLessThan(1e-6);
-      expect(a.dy).toBeLessThan(0);
+    const a = lowest(10);
+    expect(a.some((v) => v !== null)).toBe(true);
+    for (const x of [150, 300]) lowest(x).forEach((v, k) => (v === null ? expect(a[k]).toBeNull() : expect(v).toBeCloseTo(a[k]!, 6)));
+  });
+
+  it('책 가리개는 벽·선반 그림자와 같은 빛 길이 문턱을 쓰고, 다가올 때 층이 한 번에 나타나지 않는다', () => {
+    // 받는 책 앞(받는 면 평면 z=0보다 완전히 앞)에 선 책을 0.5DU씩 밀어 넣는다. 층 k는 가장 가까운 빛 길이가 문턱 L_k 안에 들 때만 있고,
+    // 처음 나타날 때는 점에서부터 자란다(ramp): 한 걸음 변화가 그 층 최종 넓이의 일부일 뿐이다
+    const L = shadow.cast.book.layers;
+    const series: { d: number; areas: number[] }[] = [];
+    for (let z = -260; z <= -100.5; z += 0.5) {
+      const o = box('o', 92, z, 22, 170);
+      const r = receivedShadow3(recv, [o], 3, space, false);
+      const spine = faceOf(r, 'spine');
+      const d = -(z + 100) / -LIGHT_Z; // 가리개 뒷면 → 받는 면 평면까지 빛 길이
+      series.push({ d, areas: L.map((_, k) => (spine ? spine.book[k].polys.reduce((acc, poly) => acc + area(spine, poly), 0) : 0)) });
     }
+    L.forEach((Lk, k) => {
+      const fin = Math.max(...series.map((q) => q.areas[k]));
+      expect(fin).toBeGreaterThan(0);
+      for (let i = 1; i < series.length; i++) {
+        // 문턱 밖이면 없다
+        if (series[i].d > Lk + 0.6) expect(series[i].areas[k]).toBe(0);
+        // 한 걸음(0.5DU)에 그 층의 보이는 넓이가 한꺼번에 생기지 않는다(문턱에 들어오면 약 3DU에 걸쳐 자란다)
+        expect(Math.abs(series[i].areas[k] - series[i - 1].areas[k])).toBeLessThan(fin * 0.25);
+      }
+    });
+  });
+
+  it('받는 면의 방향: 윗면(머리)은 앞면보다 빛을 더 받아 진하게, 빛을 등진 옆면은 받지 않는다', () => {
+    const r = receivedShadow3(recv, [near1, near2], 3, space, true);
+    const head = faceOf(r, 'head');
+    const spine = faceOf(r, 'spine')!;
+    expect(spine.nl).toBeCloseTo(1, 6);
+    if (head) expect(head.nl).toBeGreaterThan(spine.nl);
+    expect(head?.nl ?? NL_MAX).toBeLessThanOrEqual(NL_MAX);
+    // 오른쪽 옆면(법선 +x, 빛은 왼쪽에서): 없다
+    for (const f of r!.faces) expect(['cover']).not.toContain(f.f);
   });
 });

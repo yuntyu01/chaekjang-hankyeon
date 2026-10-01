@@ -2,7 +2,7 @@
 // 기대기는 방향만 고르고 각도는 옆 책과의 틈으로 계산한다. 기댈 책이 없는 방향은 처음부터 누를 수 없게 표시한다.
 import { useRef, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
-import { Gesture, GestureDetector } from 'react-native-gesture-handler';
+import { Gesture, GestureDetector, State } from 'react-native-gesture-handler';
 import Animated, { FadeInDown, FadeOutDown } from 'react-native-reanimated';
 import Svg, { Path, Rect } from 'react-native-svg';
 
@@ -10,6 +10,7 @@ import { DU_PER_MM, MAX_SPIN, SHELF_DEPTH, SHELF_FRONT } from '@/domain/geometry
 import type { Pose } from '@/domain/types';
 import { ko } from '@/i18n/ko';
 import { colors, fonts } from '@/ui/theme';
+import { PERF_ENABLED } from '@/ui/perf';
 
 export type LeanDir = -1 | 0 | 1;
 
@@ -31,16 +32,31 @@ type Props = {
   angles?: string | null; // 표지 책: 지금 좌우·뒤로 각도
 };
 
-// 눕힌 책 돌리기: 연속 조절 막대(-MAX ~ +MAX). 0 근처에서는 살짝 붙는다. 가능한 각도는 부모가 되돌려 준 값(spin)으로 표시.
+// 돌리기: 연속 조절 막대(-MAX ~ +MAX). 가능한 각도는 부모가 되돌려 준 값(spin)으로 표시.
+// 손잡이(동그라미)를 잡으면 지금 각도에서 끈 거리만큼만 바뀐다(잡는 순간 튀지 않는다).
+// 손잡이 밖 빈 트랙을 누르면 그 자리 값으로 옮긴 뒤 이어서 끈 만큼 바뀐다. 0 근처에서는 살짝 붙는다.
+const THUMB_HIT = 22; // 손잡이 둘레로 잡았다고 보는 거리(dp, 손잡이 지름 22)
 function SpinSlider({ value, onChange }: { value: number; onChange: (deg: number, done: boolean) => number }) {
   const [w, setW] = useState(1);
   const [live, setLive] = useState<number | null>(null); // 끄는 동안 실제로 된 각도
   const last = useRef<number | null>(null);
   const pending = useRef<number | null>(null);
   const frame = useRef(0);
+  const grab = useRef<{ x0: number; v0: number } | null>(null); // 잡은 x와 그때 각도
+  const shownRef = useRef(value);
+  const snap = (d: number) => {
+    const c = Math.max(-MAX_SPIN, Math.min(MAX_SPIN, d));
+    return Math.abs(c) < 0.75 ? 0 : Math.round(c * 2) / 2;
+  };
   const toDeg = (x: number) => {
     const d = Math.max(-1, Math.min(1, (x / w) * 2 - 1)) * MAX_SPIN;
     return Math.abs(d) < 1.5 ? 0 : Math.round(d * 2) / 2;
+  };
+  // 잡은 자리에서 끈 만큼(움직이지 않았으면 그 각도 그대로)
+  const along = (x: number) => {
+    const g = grab.current;
+    if (!g) return shownRef.current;
+    return Math.abs(x - g.x0) < 1 ? g.v0 : snap(g.v0 + ((x - g.x0) / w) * 2 * MAX_SPIN);
   };
   // 계산은 한 프레임에 한 번, 마지막 각도만(밀린 중간 값은 버린다)
   const send = (deg: number, done: boolean) => {
@@ -48,6 +64,7 @@ function SpinSlider({ value, onChange }: { value: number; onChange: (deg: number
       cancelAnimationFrame(frame.current);
       frame.current = 0;
       last.current = null;
+      grab.current = null;
       onChange(deg, true);
       setLive(null);
       return;
@@ -65,14 +82,36 @@ function SpinSlider({ value, onChange }: { value: number; onChange: (deg: number
   const pan = Gesture.Pan()
     .minDistance(0)
     .runOnJS(true)
-    .onBegin((e) => send(toDeg(e.x), false))
-    .onUpdate((e) => send(toDeg(e.x), false))
-    .onEnd((e) => send(toDeg(e.x), true))
-    // 다른 제스처에 넘어가거나 취소되면 조작 전 각도로 확정(미리보기 자세가 남지 않게)
-    .onFinalize((_e, success) => {
-      if (!success) send(value, true);
+    .onBegin((e) => {
+      const cur = shownRef.current;
+      const thumb = ((cur / MAX_SPIN + 1) / 2) * w;
+      if (Math.abs(e.x - thumb) <= THUMB_HIT) {
+        grab.current = { x0: e.x, v0: cur };
+        if (PERF_ENABLED) console.log('[spin]', 'thumb', e.x.toFixed(1), thumb.toFixed(1), cur);
+        return;
+      }
+      const v = toDeg(e.x);
+      grab.current = { x0: e.x, v0: v };
+      if (PERF_ENABLED) console.log('[spin]', 'track', e.x.toFixed(1), thumb.toFixed(1), v);
+      send(v, false);
+    })
+    .onUpdate((e) => send(along(e.x), false))
+    .onEnd((e) => {
+      if (PERF_ENABLED) console.log('[spin]', 'end', e.x.toFixed(1), along(e.x));
+      send(along(e.x), true);
+    })
+    // 움직이지 않고 뗀 탭은 끌기가 시작되지 않은 채(FAILED) 끝난다: 누른 값 그대로 확정(손잡이 탭은 지금 각도, 빈 트랙 탭은 그 자리 값).
+    // 다른 제스처에 넘어가 취소되면(CANCELLED) 조작 전 각도로 확정(미리보기 자세가 남지 않게).
+    .onFinalize((e, success) => {
+      if (!success) {
+        const tap = e.state === State.FAILED && grab.current;
+        if (PERF_ENABLED) console.log('[spin]', tap ? 'tap' : 'cancel', grab.current?.v0 ?? null);
+        send(tap ? grab.current!.v0 : value, true);
+      }
+      grab.current = null;
     });
   const shown = live ?? value;
+  shownRef.current = shown;
   const pos = ((shown / MAX_SPIN + 1) / 2) * w;
   return (
     <>

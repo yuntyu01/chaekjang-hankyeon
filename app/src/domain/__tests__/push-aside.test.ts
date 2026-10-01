@@ -89,6 +89,17 @@ describe('한쪽 우선 비키기', () => {
     expect(validate(l, books, Object.keys(books))).toEqual([]);
   });
 
+  it('끄는 동안 미리보기 배치는 손대지 않은 줄을 바꾸지 않는다(저장 위치가 없던 예시 배치에서도)', () => {
+    const l0 = withLeans(SAMPLE_LAYOUT, books);
+    const same = (a: typeof l0, b: typeof l0, shelf: string) => JSON.stringify(a.placements.filter((p) => p.shelfId === shelf)) === JSON.stringify(b.placements.filter((p) => p.shelfId === shelf));
+    // 같은 줄 안에서(둘째 줄)
+    const inRow = ok(moveBook(l0, books, 'b18', { kind: 'insert', shelfId: 'shelf-2', index: 3, x: bookXs(l0, books).get('b18')! - 20 }));
+    expect(same(l0, inRow, 'shelf-1') && same(l0, inRow, 'shelf-3')).toBe(true);
+    // 다른 줄로(둘째 → 셋째): 첫째 줄은 그대로
+    const cross = ok(moveBook(l0, books, 'b18', findDropTarget(detach(l0, 'b18', books), books, 'shelf-3', 340, 'spine', 25)));
+    expect(same(l0, cross, 'shelf-1')).toBe(true);
+  });
+
   it('양쪽 다 공간이 없으면 자리 없음(옮긴 책을 옆으로 비켜 끼우지 않는다)', () => {
     expect(moveBook(SAMPLE_LAYOUT, books, 'b07', { kind: 'insert', shelfId: 'shelf-3', index: 1, x: 190 })).toEqual({ ok: false, reason: 'no-space' });
   });

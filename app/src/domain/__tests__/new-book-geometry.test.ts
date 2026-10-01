@@ -44,7 +44,7 @@ describe('예시 이미지가 없는 새 책의 공통 배치와 그림자', () 
     for (let k = 1; k < b.layers.length; k++) expect(b.layers[k]).toBeGreaterThan(b.layers[k - 1]);
     // 선반 → 벽: 빛 길이 층은 멀수록 길다. 층은 서로 포개지므로(먼 층이 가까운 부분도 덮는다) 판 바로 아래가 가장 진하다.
     // 세기는 시안 판 아래 수치(벽 대비 +4px 약 45%, +44px 약 19%, 따뜻한 갈색)에 맞춘다: 층 하나는 0.25 이하, 모두 겹친 곳은 0.6 이하
-    const w = shadow.cast.shelfWall;
+    const w = shadow.cast.plank;
     for (let k = 1; k < w.layers.length; k++) expect(w.layers[k]).toBeGreaterThan(w.layers[k - 1]);
     for (const o of w.opacity) expect(o).toBeLessThanOrEqual(0.25);
     expect(w.opacity.reduce((a, b) => a + b, 0)).toBeLessThanOrEqual(0.6);

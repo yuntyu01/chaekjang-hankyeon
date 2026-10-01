@@ -5,7 +5,7 @@ import { CAMERA, SHELF_FRONT } from '../geometry';
 import { moveBook, moveToDrawer, placementOf, rotateStep, setPose, setTilt, type BookMap, type Result } from '../layout-engine';
 import { SAMPLE_BOOKS, SAMPLE_LAYOUT } from '../onboarding-sample';
 import { bodiesOf, PLANK_BOUNDS, withLeans } from '../shelf-scene';
-import { bookAt, firstOverlap, planTransition, PULL_LIFT } from '../transition';
+import { awayTrack, bookAt, firstOverlap, planTransition, PULL_LIFT, shiftTrack } from '../transition';
 import type { Book, BookPlacement, ShelfLayout, Tilt } from '../types';
 
 const all: BookMap = Object.fromEntries(SAMPLE_BOOKS.map((b) => [b.id, b]));
@@ -283,6 +283,30 @@ describe('경로 계획은 늘 결과를 준다(null 없음)', () => {
       if (Math.abs(x - xRange(from).lo) < 1e-6 || Math.abs(x - xRange(target).lo) < 1e-6) continue;
       expect(Math.max(...corners(body).map((c) => c.z))).toBeLessThanOrEqual(-SHELF_FRONT); // 옆·아래로 가는 동안은 판 앞
     }
+    // 떠난 줄에 남는 그림자 경로: 같은 경로를 떠난 줄 좌표로(세로만 다르다). 출발은 떠난 줄에서 보이던 자세 그대로.
+    const away = shiftTrack(tr, -190);
+    for (let k = 0; k <= 20; k++) {
+      const p = bookAt(tr, k / 20);
+      const q = bookAt(away, k / 20);
+      expect([q.t.x, q.t.y + 190, q.t.z, q.roll, q.yaw]).toEqual([p.t.x, p.t.y, p.t.z, p.roll, p.yaw].map((v) => expect.closeTo(v, 9)));
+    }
+    expect(bookAt(away, 0).t.y).toBeCloseTo(target.t.y, 6);
+    // 떠난 줄에 남는 그림자 경로는 떠날 때 자세에서 출발하고, 그림자가 사라지는 첫 진행(k)까지만 쓴다
+    const src: Book3 = { ...from, t: { ...from.t, y: from.t.y - 190 } };
+    const ease = (u: number) => (u < 0.5 ? 4 * u * u * u : 1 - Math.pow(-2 * u + 2, 3) / 2);
+    // 앱의 판정(줄 공간 위·아래 밖으로 40DU 넘게)과 같게: 줄 공간 높이 190DU
+    const gone = (b: Book3) => {
+      const ys = corners(b).map((c) => c.y);
+      return Math.min(...ys) < -41 || Math.max(...ys) > 190 + 41;
+    };
+    const aw = awayTrack(tr, src, ease, gone)!;
+    expect(bookAt(aw.track, 0).t).toEqual({ x: expect.closeTo(src.t.x, 9), y: expect.closeTo(src.t.y, 9), z: expect.closeTo(src.t.z, 9) });
+    expect(aw.k).toBeGreaterThan(0);
+    expect(aw.k).toBeLessThan(1);
+    expect(gone(bookAt(aw.track, ease(aw.k)))).toBe(true);
+    expect(gone(bookAt(aw.track, ease(aw.k - 1 / 48)))).toBe(false);
+    // 다른 책(가로 자리가 다른 출발)이면 남는 경로가 없다
+    expect(awayTrack(tr, { ...src, t: { ...src.t, x: src.t.x + 5 } }, ease, gone)).toBeNull();
   });
 });
 

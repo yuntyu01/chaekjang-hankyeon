@@ -11,28 +11,29 @@
 // 구성 비교(2026-10-01 측정): 세 줄을 캔버스 하나에 그리면 시점 전환은 비슷하고 끌기 프레임이 약 2배 느렸다(끄는 줄만 바뀌어도 전부 다시 그림).
 import { Canvas, Group, Path, Rect, Skia, type SkPath } from '@shopify/react-native-skia';
 import { memo, useLayoutEffect, useMemo } from 'react';
-import { StyleSheet, Text, View } from 'react-native';
+import { PixelRatio, StyleSheet, Text, View } from 'react-native';
 import { GestureDetector, type PanGesture } from 'react-native-gesture-handler';
-import Animated, { useAnimatedStyle, useDerivedValue, type SharedValue } from 'react-native-reanimated';
+import Animated, { useAnimatedReaction, useAnimatedStyle, useDerivedValue, useSharedValue, type SharedValue } from 'react-native-reanimated';
 import { scheduleOnUI } from 'react-native-worklets';
 
 import { corners, fromPlaced, toWorld, type Book3 } from '@/domain/book3';
 import { hull } from '@/domain/box';
 import { BASE_CAM, camAt, kyOf, toPx, VIEW_PITCH_MAX, type Affine, type Cam } from '@/domain/camera';
 import { SHELF, SHELF_DEPTH, SHELF_FRONT } from '@/domain/geometry';
+import { RECV_SLOTS, receivedShadow3, shiftRecv, type Recv3 } from '@/domain/received3';
 import { frameBBox, type BookFrame } from '@/domain/shelf-scene';
 import type { Book } from '@/domain/types';
 import { ko } from '@/i18n/ko';
 import type { Shared } from '@/ui/book3d/art';
 import { BookNode } from '@/ui/book3d/BookNode';
-import { RENDER, TRANSIT_DEBUG } from '@/ui/perf';
+import { RENDER, TL, tl, TRANSIT_DEBUG } from '@/ui/perf';
 import { SHOW } from '@/ui/shelf/shadow-debug';
 import { colors, fonts } from '@/ui/theme';
 
 import { rowAffine, type RowGeom, type ShelfMetrics } from './metrics';
 import { useRowPlanner } from './planner';
-import { bodyOf, frontOccluders, locate, lowered, plankBody, presentSV, sceneOrder, transitVisible, type Motion, type SceneGeo, type SceneMotion } from './scene';
-import { GlowOf, makeStruct, RowBooks, RowContacts, RowShadows, structKeyOf, Z_WALL, type CamSV, type RowStruct } from './ShelfMotion';
+import { bodyOf, frontOccluders, locate, lowered, outsideDist, plankBody, presentSV, sceneOrder, transitLead, transitVisible, warmSV, type Motion, type SceneGeo, type SceneMotion } from './scene';
+import { GlowOf, makeStruct, occludersOf, ReceivedShadow, RowBooks, RowContacts, RowShadows, structKeyOf, useShadePoses, Z_WALL, type CamSV, type Ghost, type RowStruct } from './ShelfMotion';
 import { SHELF_CAST_EXTENT, ShelfBoard, ShelfShadowDebug, ShelfWallShadow } from './ShelfPlank';
 
 export type DropHint = { text: string; bad: boolean } | null;
@@ -45,6 +46,7 @@ export type SceneRowProps = {
   dragId: string | null; // 끄는 중인 책(선반 앞턱에 놓일 범위 표시)
   glowId: string | null; // 고른 책(윤곽 빛)
   hint: DropHint;
+  ghosts?: Ghost[]; // 이 줄 배치에는 없지만 캔버스에 미리 올려 둘 책(끄는 책이 지나간 줄). 이 줄 트랙이 생길 때까지 그리지 않는다
 };
 
 type Props = {
@@ -60,28 +62,35 @@ type Props = {
   reduceMotion: boolean;
   planBudgetMs: number;
   debug: boolean;
-  handle?: { gesture: PanGesture; shelfId: string; bookId: string } | null; // 표지 책 머리 손잡이(꾸미기에서 고른 표지 책)
+  handle?: { gesture: PanGesture; shelfId: string; bookId: string; offX: SharedValue<number>; offY: SharedValue<number> } | null; // 표지 책 머리 손잡이(꾸미기에서 고른 표지 책). off: 끄는 동안 손잡이를 옮길 거리(dp)
   a11yLabelOf: (bookId: string) => string;
   onA11y: (bookId: string, action: string) => void;
   viewPitch: number; // 확정된 보기 각(접근성 칸 위치를 그 각의 정지 자세로)
   transitIds: string[]; // 다른 줄로 옮겨 갈 수 있는 책(방금 줄이 바뀐 책, 끄는 책). 이동 캔버스에 미리 올려 둔다
   glowId: string | null;
-  leaving: string[]; // 이번 배치에서 다른 줄로 옮겨 가는 책
+  leaving: { id: string; from: string }[]; // 이번 배치에서 다른 줄로 옮겨 가며 원래 줄 캔버스에서 내려가는 책(미리 올려 둔 줄은 빼고)
 };
 
-// 옮겨 가는 책: 원래 줄 캔버스가 그 책을 뺀 그림을 내기 전에 '어느 줄에도 올라가 있지 않음'으로 표시해, 이동 캔버스가
+// 옮겨 가는 책: 원래 줄 캔버스가 그 책을 뺀 그림을 내기 전에 그 줄에서 '올라가 있지 않음'으로 표시해, 이동 캔버스가
 // 그 순간부터 제자리의 책을 이어 그리게 한다(원래 줄은 곧 빠지고 도착 줄은 아직 올라가지 않은 사이가 비지 않게).
-function TransitMark({ ids }: { ids: string[] }) {
+// 원래 줄에 미리 올려 둔 채 남는 책(끄는 동안)은 여기 오지 않는다: 그 줄은 트랙이 남아 있는 동안 계속 그린다.
+function TransitMark({ items }: { items: { id: string; from: string }[] }) {
   // 배치가 바뀔 때마다(같은 책이 다시 옮겨 가도) 새 배열이 온다
   useLayoutEffect(() => {
-    if (!ids.length) return;
+    if (!items.length) return;
     scheduleOnUI(() => {
       'worklet';
       const next = { ...presentSV.value };
-      for (const id of ids) next[id] = '';
+      for (const it of items) {
+        const cur = next[it.id];
+        if (!cur?.[it.from]) continue;
+        const rest = { ...cur };
+        delete rest[it.from];
+        next[it.id] = rest;
+      }
       presentSV.value = next;
     });
-  }, [ids]);
+  }, [items]);
   return null;
 }
 
@@ -91,7 +100,7 @@ export function ShelfScene(p: Props) {
   return (
     <>
       {/* 줄 캔버스들이 다시 기록되기 전에(형제 순서상 먼저 도는 효과) 옮겨 가는 책을 이동 캔버스에 넘긴다 */}
-      <TransitMark ids={p.leaving} />
+      <TransitMark items={p.leaving} />
       {p.rows.map((r, i) => {
         const mo = motionOf(p.motions, r.shelfId);
         return mo ? <RowCanvas key={r.shelfId} r={r} upper={i > 0 ? p.rows[i - 1].row : null} mo={mo} books={p.books} m={p.m} width={p.width} cam={p.cam} shared={p.shared} debug={p.debug} /> : null;
@@ -102,27 +111,29 @@ export function ShelfScene(p: Props) {
         if (!mo) return null;
         return <RowOverlay key={r.shelfId} r={r} mo={mo} m={p.m} reduceMotion={p.reduceMotion} planBudgetMs={p.planBudgetMs} a11yLabelOf={p.a11yLabelOf} onA11y={p.onA11y} viewPitch={p.viewPitch} />;
       })}
-      {p.handle ? <HeadHandle key={p.handle.bookId} mo={motionOf(p.motions, p.handle.shelfId)} row={p.rows.find((r) => r.shelfId === p.handle!.shelfId)} id={p.handle.bookId} cam={p.cam} m={p.m} gesture={p.handle.gesture} /> : null}
+      {p.handle ? <HeadHandle key={p.handle.bookId} mo={motionOf(p.motions, p.handle.shelfId)} row={p.rows.find((r) => r.shelfId === p.handle!.shelfId)} id={p.handle.bookId} cam={p.cam} m={p.m} gesture={p.handle.gesture} offX={p.handle.offX} offY={p.handle.offY} /> : null}
     </>
   );
 }
 
 // 캔버스에 닿는 값: 줄 구조(책·쌓임·치수)와 표시(끄는 책·고른 책), 줄 위치. 자세는 트랙으로만 흐른다.
 const sameRowDraw = (a: SceneRowProps, b: SceneRowProps) =>
-  a.shelfId === b.shelfId && (a.frames === b.frames || structKeyOf(a.frames) === structKeyOf(b.frames)) && a.dragId === b.dragId && a.glowId === b.glowId &&
+  a.shelfId === b.shelfId && ((a.frames === b.frames && a.ghosts === b.ghosts) || structKeyOf(a.frames, a.ghosts) === structKeyOf(b.frames, b.ghosts)) && a.dragId === b.dragId && a.glowId === b.glowId &&
   a.row.baseline === b.row.baseline && a.row.space === b.row.space && a.row.top === b.row.top && a.row.height === b.row.height;
 
 // 한 줄의 그림(캔버스 안): 벽 단계 + 판 + 판 위 그림자 + 책(그 줄의 분리축 순서로 zIndex).
 const RowLayers = memo(function RowLayers({ r, st, mo, order, px, books, cam, shared, debug, top }: { r: SceneRowProps; st: RowStruct; mo: Motion; order: Readonly<SharedValue<Record<string, number>>>; px: Affine; books: Record<string, Book>; cam: CamSV; shared: Shared; debug: boolean; top: boolean }) {
   const plankZ = useDerivedValue(() => (order.value[`plank:${r.shelfId}`] ?? 0) * 10);
   const space = r.row.space;
+  // 그림자는 모두 줄의 그림자용 자세 모음만 읽는다(바뀐 책이 있을 때만 다시 계산·다시 그리기)
+  const poses = useShadePoses(mo, st.ids, space);
   return (
     <>
-      {RENDER.books && (SHOW.wall || SHOW.gap) ? <RowShadows m={mo} ids={st.ids} cam={cam} px={px} space={space} /> : null}
+      {RENDER.books && (SHOW.wall || SHOW.gap) ? <RowShadows poses={poses} ids={st.ids} cam={cam} px={px} space={space} /> : null}
       <ShelfWallShadow cam={cam} px={px} zIndex={Z_WALL} />
       {SHOW.shelfBoard ? <ShelfBoard px={px} cam={cam} zIndex={plankZ} /> : null}
-      {RENDER.books && (SHOW.shelfCast || SHOW.contact) ? <RowContacts m={mo} ids={st.ids} cam={cam} px={px} order={order} shelfId={r.shelfId} /> : null}
-      {RENDER.books ? <RowBooks m={mo} shelfId={r.shelfId} st={st} books={books} glowId={r.glowId} dragId={r.dragId} cam={cam} px={px} space={space} shared={shared} order={order} debug={debug} plankAbove={!top} /> : null}
+      {RENDER.books && (SHOW.shelfCast || SHOW.contact) ? <RowContacts poses={poses} ids={st.ids} cam={cam} px={px} order={order} shelfId={r.shelfId} /> : null}
+      {RENDER.books ? <RowBooks m={mo} shelfId={r.shelfId} st={st} books={books} glowId={r.glowId} dragId={r.dragId} cam={cam} px={px} space={space} shared={shared} order={order} poses={poses} debug={debug} plankAbove={!top} /> : null}
       {SHOW.shelfDebug ? <ShelfShadowDebug cam={cam} px={px} /> : null}
     </>
   );
@@ -143,20 +154,28 @@ function hullPath(pts: { x: number; y: number }[]): SkPath {
 
 const RowCanvas = memo(
   function RowCanvas({ r, upper, mo, books, m, width, cam, shared, debug }: { r: SceneRowProps; upper: RowGeom | null; mo: Motion; books: Record<string, Book>; m: ShelfMetrics; width: number; cam: CamSV; shared: Shared; debug: boolean }) {
-    const y0 = Math.max(0, r.row.top - HEAD_DU * m.scale);
+    // 캔버스 위쪽 끝은 물리 픽셀에 맞춘다: 레이아웃은 뷰 위치를 픽셀로 반올림하는데 그림의 변환은 y0 그대로라, 맞추지 않으면 이 줄 그림이
+    // 이동 캔버스(맨 위 0)와 반 픽셀까지 어긋나 같은 책을 넘겨줄 때 글자·그림 가장자리가 흔들린다
+    const y0 = PixelRatio.roundToNearestPixel(Math.max(0, r.row.top - HEAD_DU * m.scale));
     const height = r.row.top + r.row.height + SHELF_CAST_EXTENT * m.scale - y0;
     const px = useMemo(() => rowAffine(m, r.row, y0), [m, r.row, y0]);
     const upx = useMemo(() => (upper ? rowAffine(m, upper, y0) : null), [m, upper, y0]);
-    const skey = structKeyOf(r.frames);
+    const skey = structKeyOf(r.frames, r.ghosts);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    const st = useMemo(() => makeStruct(r.frames, r.arrive), [skey]);
+    const st = useMemo(() => makeStruct(r.frames, r.arrive, r.ghosts), [skey]);
     const shelfId = r.shelfId;
     const s = m.scale;
-    // 이 줄의 그리는 순서: 이 줄 책 + 이 줄 판
-    const order = useDerivedValue(() => sceneOrder([{ shelfId, m: mo }], { rows: [{ shelfId, baseline: 0, dy: 0, space: 0 }], s, originX: 0 }, cam.value));
+    // 이 줄의 그리는 순서: 이 줄이 그리는 책 + 이 줄 판
+    const space = r.row.space;
+    const order = useDerivedValue(() => sceneOrder([{ shelfId, m: mo }], { rows: [{ shelfId, baseline: 0, dy: 0, space }], s, originX: 0 }, cam.value, true));
     const upperId = upper?.shelfId ?? '';
     // 윗선반 판의 화면 윤곽(이 캔버스 px): 이 줄의 모든 그림은 이 밖에만
     const clip = useDerivedValue(() => (upx ? hullPath(hull(corners(plankBody(upperId, 0)).map((c) => toPx(cam.value, upx, c)))) : EMPTY_CLIP));
+    // 측정 번들 시간표: 이 줄 캔버스가 다시 그려지는 때(렌더 → 캔버스 기록이 끝난 커밋)
+    if (TL.on) tl(`row-render ${shelfId} n=${st.ids.length}`);
+    useLayoutEffect(() => {
+      if (TL.on) tl(`row-commit ${shelfId}`);
+    });
     return (
       <Canvas style={{ position: 'absolute', left: 0, top: y0, width, height }} pointerEvents="none">
         <Group clip={clip} invertClip>
@@ -176,8 +195,64 @@ const RowCanvas = memo(
 // 그리는 때: 제 줄 공간 밖에 걸쳐 있거나, 도착한 줄 캔버스에 아직 올라가지 않았을 때. 그 밖에는 멈춰 있다(계산도 멈춤).
 const HIDE_ALL = Skia.PathBuilder.Make().addRect(Skia.XYWHRect(-1e5, -1e5, 2e5, 2e5)).detach();
 
+// 이동 캔버스의 책이 받는 그림자의 기준: 지금 가장 가까운 줄과 그 줄 좌표의 이 책·가리개
+function nearRow(motions: SceneMotion[], g: SceneGeo, id: string) {
+  'worklet';
+  const at = locate(motions, g, id);
+  if (!at) return null;
+  const top = lowered(at.b, at.row.dy);
+  let best = -1;
+  let bd = Infinity;
+  for (let i = 0; i < g.rows.length; i++) {
+    const d = outsideDist(lowered(top, -g.rows[i].dy), g.rows[i].space);
+    if (d < bd - 1e-6 || (Math.abs(d - bd) <= 1e-6 && g.rows[i].shelfId === at.row.shelfId)) {
+      bd = d;
+      best = i;
+    }
+  }
+  const row = g.rows[best];
+  let m: Motion | null = null;
+  for (const e of motions) if (e.shelfId === row.shelfId) m = e.m;
+  if (!m) return null;
+  const b = lowered(top, -row.dy);
+  const ids = Object.keys(m.tracks.value).concat(Object.keys(m.away.value));
+  return { row, idx: best, b, occ: occludersOf(m, b, id, ids) };
+}
+
+// 이동 캔버스의 책이 받는 그림자: 줄 캔버스와 같은 계산(같은 가리개 모델·같은 이웃 고르기)을, 책이 가장 가까이 있는 줄의 책·윗 선반 판으로.
+// 넘겨받는 순간(원래 줄 안, 같은 자세)과 도착 줄에 들어가는 순간 줄 그림과 같은 그림자라, 캔버스가 바뀌어도 책 면 명암이 이어진다.
+// 결과는 맨 윗줄 좌표로 옮겨 이동 캔버스의 변환(px0)으로 그린다.
+function TransitReceives({ id, motions, geo, cam, px0, vis }: { id: string; motions: SceneMotion[]; geo: Readonly<SharedValue<SceneGeo>>; cam: Readonly<SharedValue<Cam>>; px0: Affine; vis: Readonly<SharedValue<boolean>> }) {
+  const castPlank = SHOW.castPlank;
+  const r3 = useSharedValue<Recv3>(null);
+  // 준비 함수는 지켜볼 값(보임·줄 정보·줄 움직임)을 직접 읽는다. Reanimated는 준비 함수가 붙잡은 공유 값(배열·일반 객체 안까지)만
+  // 지켜보고 함수 안에서 읽는 값은 보지 않아, 다른 함수를 거쳐서만 읽으면 처음 한 번만 계산되고 다시 계산되지 않는다.
+  useAnimatedReaction(
+    () => {
+      if (!vis.value) return '';
+      const n = nearRow(motions, geo.value, id);
+      if (!n) return '';
+      let sig = `${n.row.shelfId}|`;
+      for (const q of [n.b, ...n.occ]) sig += `${q.id}:${q.t.x.toFixed(2)},${q.t.y.toFixed(2)},${q.t.z.toFixed(2)},${q.roll.toFixed(2)},${q.yaw.toFixed(2)},${(q.spin ?? 0).toFixed(2)},${(q.pitch ?? 0).toFixed(2)};`;
+      return sig;
+    },
+    (sig, prev) => {
+      if (sig === prev) return;
+      const n = sig ? nearRow(motions, geo.value, id) : null;
+      r3.value = n ? shiftRecv(receivedShadow3(n.b, n.occ, px0.s, n.row.space, n.idx > 0, castPlank), -n.row.dy) : null;
+    },
+  );
+  return (
+    <Group>
+      {Array.from({ length: RECV_SLOTS }, (_, slot) => (
+        <ReceivedShadow key={slot} r3={r3} cam={cam} px={px0} slot={slot} />
+      ))}
+    </Group>
+  );
+}
+
 function TransitBook({ id, book, dims, frozen, motions, geo, cam, px0, shared, glow, dbg }: { id: string; book: Book; dims: Book3['dims']; frozen: Book3; motions: SceneMotion[]; geo: Readonly<SharedValue<SceneGeo>>; cam: CamSV; px0: Affine; shared: Shared; glow: boolean; dbg: boolean }) {
-  const vis = useDerivedValue(() => transitVisible(motions, geo.value, id, presentSV.value));
+  const vis = useDerivedValue(() => transitVisible(motions, geo.value, id, presentSV.value, warmSV.value));
   // 보이지 않는 동안은 같은 값(책 그림 계산이 돌지 않게). 보이면 맨 윗줄 좌표로 내린 지금 자세.
   const state = useDerivedValue(() => {
     if (!vis.value) return frozen;
@@ -199,12 +274,13 @@ function TransitBook({ id, book, dims, frozen, motions, geo, cam, px0, shared, g
     }
     return pb.detach();
   });
-  const body = useDerivedValue(() => (vis.value ? state.value : null));
+  // 선택 빛은 이동 캔버스만 그 책을 그릴 때만(미리 그려 두는 동안은 줄 그림의 빛이 이웃 책 뒤로 알맞게 가려진 채 보인다)
+  const body = useDerivedValue(() => (vis.value && transitLead(motions, geo.value, id, presentSV.value) ? state.value : null));
   return (
     <>
       <Group clip={clip} invertClip>
         {glow ? <GlowOf body={body} cam={camT} px={px0} z={0} /> : null}
-        <BookNode book={book} dims={dims} state={state} cam={camT} px={px0} shared={shared} />
+        <BookNode book={book} dims={dims} state={state} cam={camT} px={px0} shared={shared} under={SHOW.cast ? <TransitReceives id={id} motions={motions} geo={geo} cam={camT} px0={px0} vis={vis} /> : null} />
       </Group>
       {dbg ? <Path path={clip} style="stroke" strokeWidth={2} color="rgba(220,30,30,0.9)" /> : null}
     </>
@@ -224,11 +300,16 @@ const TransitCanvas = memo(function TransitCanvas({ ids, rows, motions, geo, boo
   const px0 = useMemo(() => (top ? rowAffine(m, top, 0) : { s: m.scale, tx: 0, ty: 0 }), [m, top]);
   const dbg = TRANSIT_DEBUG.on;
   const idList = useMemo(() => ids, [ids.join('|')]); // eslint-disable-line react-hooks/exhaustive-deps
+  if (TL.on) tl(`transit-render ${ids.join(',')}`);
+  useLayoutEffect(() => {
+    if (TL.on) tl('transit-commit');
+  });
   // 하나라도 그리는 동안만 보이게(나머지 시간에는 합성하지 않는다)
   const style = useAnimatedStyle(() => {
     if (dbg) return { opacity: 1 };
     const present = presentSV.value;
-    for (const id of idList) if (transitVisible(motions, geo.value, id, present)) return { opacity: 1 };
+    const warm = warmSV.value;
+    for (const id of idList) if (transitVisible(motions, geo.value, id, present, warm)) return { opacity: 1 };
     return { opacity: 0 };
   });
   return (
@@ -248,7 +329,7 @@ const TransitCanvas = memo(function TransitCanvas({ ids, rows, motions, geo, boo
 
 // 줄 하나의 RN 쪽: 경로 계획, 접근성 칸(보이지 않는 버튼), 끄는 동안 안내
 const RowOverlay = memo(function RowOverlay({ r, mo, m, reduceMotion, planBudgetMs, a11yLabelOf, onA11y, viewPitch }: { r: SceneRowProps; mo: Motion; m: ShelfMetrics; reduceMotion: boolean; planBudgetMs: number; a11yLabelOf: (bookId: string) => string; onA11y: (bookId: string, action: string) => void; viewPitch: number }) {
-  useRowPlanner(mo, r.shelfId, r.frames, reduceMotion, r.arrive, planBudgetMs);
+  useRowPlanner(mo, r.shelfId, r.frames, reduceMotion, r.arrive, planBudgetMs, r.row.space);
   const s = m.scale;
   return (
     <>
@@ -300,27 +381,38 @@ export function handlePoint(mo: Motion, id: string, cam: Cam, px: Affine) {
   return toPx(cam, px, { x: head.x, y: head.y + HANDLE_LIFT_DU, z: head.z });
 }
 
-function HeadHandle({ mo, row, id, cam, m, gesture }: { mo?: Motion; row?: SceneRowProps; id: string; cam: CamSV; m: ShelfMetrics; gesture: PanGesture }) {
+function HeadHandle({ mo, row, id, cam, m, gesture, offX, offY }: { mo?: Motion; row?: SceneRowProps; id: string; cam: CamSV; m: ShelfMetrics; gesture: PanGesture; offX: SharedValue<number>; offY: SharedValue<number> }) {
   const px = useMemo(() => (row ? rowAffine(m, row.row, 0) : { s: 1, tx: 0, ty: 0 }), [m, row]);
   const s = m.scale;
+  // 손잡이: 머리 위 한 점 + 끄는 동안 축 방향으로 실제로 된 각도만큼(손가락을 따라간다)
   const st = useAnimatedStyle(() => {
     const p = mo ? handlePoint(mo, id, cam.value, px) : null;
     if (!p) return { opacity: 0, transform: [{ translateX: -1000 }, { translateY: -1000 }] };
-    return { opacity: 1, transform: [{ translateX: p.x - HANDLE_HIT / 2 }, { translateY: p.y - HANDLE_HIT / 2 }] };
+    return { opacity: 1, transform: [{ translateX: p.x + offX.value - HANDLE_HIT / 2 }, { translateY: p.y + offY.value - HANDLE_HIT / 2 }] };
+  });
+  // 끄는 동안 머리 위 제자리와 손잡이를 잇는 가는 선(무엇을 젖히거나 돌리는지 보이게)
+  const tether = useAnimatedStyle(() => {
+    const p = mo ? handlePoint(mo, id, cam.value, px) : null;
+    const len = Math.hypot(offX.value, offY.value);
+    if (!p || len < 2) return { opacity: 0, width: 0, transform: [{ translateX: -1000 }, { translateY: -1000 }, { rotate: '0rad' }] };
+    return { opacity: 1, width: len, transform: [{ translateX: p.x }, { translateY: p.y - 0.75 }, { rotate: `${Math.atan2(offY.value, offX.value)}rad` }] };
   });
   if (!mo || !row) return null;
   return (
-    <GestureDetector gesture={gesture}>
-      <Animated.View
-        collapsable={false}
-        accessibilityRole="adjustable"
-        accessibilityLabel={ko.decoratePanel.head}
-        style={[{ position: 'absolute', left: 0, top: 0, width: HANDLE_HIT, height: HANDLE_HIT, alignItems: 'center', justifyContent: 'center' }, st]}>
-        <View style={[styles.knob, { width: 16 * s, height: 16 * s, borderRadius: 8 * s }]}>
-          <View style={[styles.knobDot, { width: 5 * s, height: 5 * s, borderRadius: 2.5 * s }]} />
-        </View>
-      </Animated.View>
-    </GestureDetector>
+    <>
+      <Animated.View pointerEvents="none" style={[styles.tether, tether]} />
+      <GestureDetector gesture={gesture}>
+        <Animated.View
+          collapsable={false}
+          accessibilityRole="adjustable"
+          accessibilityLabel={ko.decoratePanel.head}
+          style={[{ position: 'absolute', left: 0, top: 0, width: HANDLE_HIT, height: HANDLE_HIT, alignItems: 'center', justifyContent: 'center' }, st]}>
+          <View style={[styles.knob, { width: 16 * s, height: 16 * s, borderRadius: 8 * s }]}>
+            <View style={[styles.knobDot, { width: 5 * s, height: 5 * s, borderRadius: 2.5 * s }]} />
+          </View>
+        </Animated.View>
+      </GestureDetector>
+    </>
   );
 }
 
@@ -330,6 +422,7 @@ export { SHELF_CAST_EXTENT };
 const styles = StyleSheet.create({
   knob: { backgroundColor: 'rgba(255, 252, 246, 0.95)', borderWidth: 1, borderColor: 'rgba(160, 120, 88, 0.55)', alignItems: 'center', justifyContent: 'center', shadowColor: '#3B3330', shadowOpacity: 0.18, shadowRadius: 3, shadowOffset: { width: 0, height: 1 }, elevation: 2 },
   knobDot: { backgroundColor: 'rgba(160, 110, 70, 0.8)' },
+  tether: { position: 'absolute', left: 0, top: 0, height: 1.5, borderRadius: 1, backgroundColor: 'rgba(160, 120, 88, 0.55)', transformOrigin: 'left center' },
   hint: {
     position: 'absolute',
     alignSelf: 'center',

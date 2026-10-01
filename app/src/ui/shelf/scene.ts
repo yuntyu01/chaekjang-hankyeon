@@ -15,11 +15,16 @@ import { pointInPoly } from '@/domain/shelf-scene';
 import { bookAt, holdTrack, type Track } from '@/domain/transition';
 
 export type Tracks = Record<string, Track>;
-// 한 줄의 움직임: 책마다 경로(트랙)와 줄 전체가 함께 쓰는 진행률 t(0→1)
-export type Motion = { tracks: SharedValue<Tracks>; t: SharedValue<number> };
+// 한 줄의 움직임: 책마다 경로(트랙)와 줄 전체가 함께 쓰는 진행률 t(0→1).
+// away: 막 다른 줄로 떠난 책의 경로를 이 줄 좌표로 옮긴 것(진행은 awayT, 가는 줄의 진행률과 같은 시각·감속).
+// 이동 캔버스가 그 책을 미리 그려 두지 않았으면(warm 아님) 이 줄은 그 책이 이 줄 공간 안에 있는 동안 그 자세로 계속 그리고
+// (이동 캔버스가 같은 자세로 위에 겹친다: 이동 캔버스의 첫 그림이 늦어도 빈 프레임이 없게), 그 책이 이 줄에 드리우던
+// 그림자(벽·선반 윗면·틈·이웃 책 면)는 늘 실제 경로를 따라 옅어진다.
+// 그림자가 남지 않는 지점(줄 공간 밖 40DU)에서 멈추고, 이 줄을 새로 짜거나 가는 줄이 경로를 다시 짜면 비운다.
+export type Motion = { tracks: SharedValue<Tracks>; t: SharedValue<number>; away: SharedValue<Tracks>; awayT: SharedValue<number> };
 
 export function makeMotion(init: Book3[]): Motion {
-  return { tracks: makeMutable<Tracks>(Object.fromEntries(init.map((b) => [b.id, holdTrack(b)]))), t: makeMutable(1) };
+  return { tracks: makeMutable<Tracks>(Object.fromEntries(init.map((b) => [b.id, holdTrack(b)]))), t: makeMutable(1), away: makeMutable<Tracks>({}), awayT: makeMutable(0) };
 }
 
 // 이 줄에서 지금 이 책의 자세(없으면 null). 멈춘 책은 늘 같은 객체라, 읽는 쪽 계산이 다시 돌지 않는다.
@@ -27,6 +32,15 @@ export function bodyOf(m: Motion, id: string): Book3 | null {
   'worklet';
   const tr = m.tracks.value[id];
   return tr ? bookAt(tr, m.t.value) : null;
+}
+
+// 이 줄에 그림자를 드리우는 자세: 이 줄의 책, 또는 막 다른 줄로 떠난 책(away, 이 줄 좌표)
+export function shadeOf(m: Motion, id: string): Book3 | null {
+  'worklet';
+  const tr = m.tracks.value[id];
+  if (tr) return bookAt(tr, m.t.value);
+  const a = m.away.value[id];
+  return a ? bookAt(a, m.awayT.value) : null;
 }
 
 // 줄 위치(UI 스레드용): 콘텐츠 px의 책 기준선, 맨 윗줄 기준 3D 세로 거리 dy(DU, 아래로 +), 그 줄의 3D 줄 간격 space
@@ -51,9 +65,14 @@ export function lowered(b: Book3, dy: number): Book3 {
   return dy ? { ...b, t: { x: b.t.x, y: b.t.y - dy, z: b.t.z } } : b;
 }
 
-// 줄 캔버스에 실제로 올라간 책(책 id → 줄). 줄 캔버스의 책이 첫 그림을 낸 뒤 표시된다(ShelfMotion RowBook).
+// 줄 캔버스에 실제로 올라간 책(책 id → 올라간 줄들). 줄 캔버스의 책이 첫 그림을 낸 뒤 표시된다(ShelfMotion RowBook).
+// 한 책이 여러 줄에 올라가 있을 수 있다: 끄는 책은 손가락이 지나간 줄에 미리 올려 둔다(그 줄의 트랙이 생기면 바로 그 줄이 그린다).
 // 다른 줄로 막 옮겨 간 책은 새 줄 캔버스에 올라가기 전까지 이동 캔버스가 계속 그린다(캔버스에 책을 올리는 일은 JS에서 늦게 끝난다).
-export const presentSV = makeMutable<Record<string, string>>({});
+export type Present = Record<string, Record<string, true>>;
+export const presentSV = makeMutable<Present>({});
+// 미리 그려 둘 책: 끄는 책이 다른 줄 위로 처음 가면(다른 줄로 옮겨 갈 수 있게 되면) 이동 캔버스가 그 책을 줄 그림과 같은 자세로
+// 위에 겹쳐 그려 둔다. 이동 캔버스의 첫 그림(그림·질감을 처음 올리는 비용)이 경로 첫 프레임에 몰리지 않게. 끌기가 끝나면 거둔다.
+export const warmSV = makeMutable<string | null>(null);
 
 // 이 책의 지금 줄과 자세: 모든 줄 움직임 가운데 이 책 트랙이 있는 줄(한 줄뿐이다)
 export function locate(list: SceneMotion[], geo: SceneGeo, id: string): { row: SceneRow; b: Book3 } | null {
@@ -80,13 +99,60 @@ export function outsideRow(b: Book3, space: number) {
   return lo < -1 || hi > space + 1;
 }
 
-// 이동 캔버스가 이 책을 그릴 때: 제 줄 공간 밖에 걸쳐 있거나(옮겨 가는 중), 지금 줄 캔버스에 아직 올라가지 않았다.
-// present는 부르는 쪽 계산에서 presentSV.value로 읽어 넘긴다(계산이 그 값의 변화를 알고 다시 돌게: 함수 안에서 읽으면 모른다).
-export function transitVisible(list: SceneMotion[], geo: SceneGeo, id: string, present: Record<string, string>) {
+// 줄 공간 밖으로 이만큼(DU) 넘게 나간 책은 그 줄에 그림자를 드리우지 않는다(그 안에서는 거리에 따라 옅어진다)
+export const OUT_SHADE_MAX = 40;
+
+// 제 줄 공간 밖으로 벗어난 거리(DU, 안이면 0). 옮겨 가는 동안 그 책의 줄 그림자를 거리에 따라 옅게 하는 데 쓴다.
+export function outsideDist(b: Book3, space: number) {
+  'worklet';
+  let lo = Infinity;
+  let hi = -Infinity;
+  for (const c of corners(b)) {
+    lo = Math.min(lo, c.y);
+    hi = Math.max(hi, c.y);
+  }
+  return Math.max(0, -1 - lo, hi - space - 1);
+}
+
+// 이 줄이 그리는 자세: 이 줄 트랙이 있고 줄 공간 안일 때만(아니면 null). 멈춘 책은 늘 같은 객체라 읽는 쪽 계산이 다시 돌지 않고,
+// 다른 줄로 옮겨 가며 줄 공간 밖에 있는 동안(이동 캔버스가 그린다)도 null로 멈춰 있어 이 줄 캔버스가 매 프레임 다시 그려지지 않는다.
+// withAway: 막 떠난 책(away)도 이 줄 공간 안에 있는 동안은 그린다(책 그림에만. 선택 빛·놓일 범위는 지금 이 줄의 책만)
+export function drawnOf(m: Motion, id: string, space: number, withAway?: boolean): Book3 | null {
+  'worklet';
+  const tr = m.tracks.value[id];
+  if (!tr) {
+    const a = withAway === true ? m.away.value[id] : undefined;
+    if (!a) return null;
+    const b = bookAt(a, m.awayT.value);
+    return outsideRow(b, space) ? null : b;
+  }
+  if (!tr.moving && tr.rest) return tr.rest;
+  const b = bookAt(tr, m.t.value);
+  return outsideRow(b, space) ? null : b;
+}
+
+// 이 줄 그림자에 쓰는 자세(shadeOf): 줄 공간 밖으로 OUT_SHADE_MAX 넘게 떨어진 책은 그림자가 없으므로 null로 멈춘다
+export function shadeIn(m: Motion, id: string, space: number): Book3 | null {
+  'worklet';
+  const tr = m.tracks.value[id];
+  if (tr && !tr.moving && tr.rest) return tr.rest;
+  const b = shadeOf(m, id);
+  return b && outsideDist(b, space) <= OUT_SHADE_MAX ? b : null;
+}
+export type Poses = Record<string, Book3 | null>;
+
+// 이동 캔버스가 이 책을 그릴 때: 제 줄 공간 밖에 걸쳐 있거나(옮겨 가는 중), 지금 줄 캔버스에 아직 올라가지 않았거나,
+// 미리 그려 두는 책이다(warm, 줄 그림 위에 같은 자세로). 이동 캔버스만 그리는 때(lead)는 앞의 둘이다.
+// present·warm은 부르는 쪽 계산에서 .value로 읽어 넘긴다(계산이 그 값의 변화를 알고 다시 돌게: 함수 안에서 읽으면 모른다).
+export function transitLead(list: SceneMotion[], geo: SceneGeo, id: string, present: Present) {
   'worklet';
   const at = locate(list, geo, id);
   if (!at) return false;
-  return outsideRow(at.b, at.row.space) || present[id] !== at.row.shelfId;
+  return outsideRow(at.b, at.row.space) || !present[id]?.[at.row.shelfId];
+}
+export function transitVisible(list: SceneMotion[], geo: SceneGeo, id: string, present: Present, warm: string | null) {
+  'worklet';
+  return warm === id ? !!locate(list, geo, id) : transitLead(list, geo, id, present);
 }
 
 // 화면 투영 범위(설계 단위, 위가 +): 겹칠 수 있는 쌍만 앞뒤를 따진다
@@ -149,7 +215,10 @@ export function frontOccluders(list: SceneMotion[], geo: SceneGeo, cam: Cam, she
 }
 
 // 장면 전체의 그리는 순서(키 → 순위, 작을수록 먼저 = 뒤). 책 키는 책 id, 판은 'plank:선반id'.
-export function sceneOrder(list: SceneMotion[], geo: SceneGeo, cam: Cam): Record<string, number> {
+// drawnOnly: 줄 캔버스 한 줄의 순서(그 줄이 그리는 책만). 다른 줄로 옮겨 가며 줄 공간 밖에 있는 책(이동 캔버스가 그린다)은 빼서,
+// 그 책이 움직이는 동안 이 줄 순위가 바뀌어 줄 캔버스가 다시 그려지지 않게 한다. 막 떠난 책(away)은 이 줄 공간 안에 있는 동안
+// 이 줄이 그리므로 넣는다.
+export function sceneOrder(list: SceneMotion[], geo: SceneGeo, cam: Cam, drawnOnly?: boolean): Record<string, number> {
   'worklet';
   const bs: Book3[] = [];
   for (const row of geo.rows) {
@@ -158,7 +227,19 @@ export function sceneOrder(list: SceneMotion[], geo: SceneGeo, cam: Cam): Record
     if (m) {
       const tracks = m.tracks.value;
       const t = m.t.value;
-      for (const id in tracks) bs.push(lowered(bookAt(tracks[id], t), row.dy));
+      for (const id in tracks) {
+        const b = bookAt(tracks[id], t);
+        if (drawnOnly === true && outsideRow(b, row.space)) continue;
+        bs.push(lowered(b, row.dy));
+      }
+      if (drawnOnly === true) {
+        const away = m.away.value;
+        for (const id in away) {
+          if (tracks[id]) continue;
+          const b = bookAt(away[id], m.awayT.value);
+          if (!outsideRow(b, row.space)) bs.push(lowered(b, row.dy));
+        }
+      }
     }
     bs.push(plankBody(row.shelfId, row.dy));
   }

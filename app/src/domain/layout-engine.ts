@@ -444,10 +444,12 @@ export function migrate(saved: ShelfLayout | ShelfLayoutV1): ShelfLayout {
 }
 
 // 책을 자리에서 빼낸다. 옆 책들은 제자리에 남고 빈자리가 생긴다(books가 없으면 위치 보존 없이 뺀다).
-// 그룹에서 빼면 나머지는 빈틈 없이 내려앉는다.
+// 그룹에서 빼면 나머지는 빈틈 없이 내려앉는다. 다시 맞추는 것은 그 책이 있던 줄뿐이다: 다른 줄까지 맞추면 저장 위치가 없던 줄
+// (예시 배치·옛 저장본)에 반올림한 위치가 붙어, 끄는 동안 상관없는 줄의 자세가 미세하게 바뀌고 경로를 다시 짜게 된다.
 export function detach(layout: ShelfLayout, bookId: string, books?: BookMap): ShelfLayout {
+  const from = layout.placements.find((p) => p.bookId === bookId)?.shelfId;
   const removed = normalize({ ...layout, placements: layout.placements.filter((p) => p.bookId !== bookId) });
-  return books ? settle(removed, books, bookXs(layout, books)) : removed;
+  return books ? settle(removed, books, bookXs(layout, books), from) : removed;
 }
 
 function withOrders(layout: ShelfLayout, shelfId: string, items: ShelfItem[]): BookPlacement[] {

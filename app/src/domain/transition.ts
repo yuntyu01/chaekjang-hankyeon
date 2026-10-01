@@ -266,6 +266,23 @@ export function holdTrack(b: State): Track {
   return { id: b.id, dims: b.dims, segs: hold(b), moving: false, rest: b };
 }
 
+// 경로 전체를 세로로 dy만큼 옮긴 것(다른 줄 좌표로 볼 때: 줄 사이는 세로 거리만 다르다)
+export function shiftTrack(tr: Track, dy: number): Track {
+  const segs = tr.segs.map((s) => (s.kind === 1 ? { ...s, b0: s.b0 + dy, b1: s.b1 + dy } : { ...s, w0: { ...s.w0, y: s.w0.y + dy }, w1: { ...s.w1, y: s.w1.y + dy } }));
+  return { ...tr, segs, rest: tr.rest ? { ...tr.rest, t: { ...tr.rest.t, y: tr.rest.t.y + dy } } : undefined };
+}
+
+// 다른 줄로 떠난 책이 떠난 줄에 남기는 그림자 경로(떠난 줄 좌표): 도착 줄 경로 tr을 세로로 옮겨 출발 자세가 떠날 때 자세 src와 같게 한다.
+// k: 실제 시간 비율 u(0~1, 진행은 ease(u))에서 그 줄에 그림자가 더는 없는(gone) 첫 u. 끝까지 남으면 1.
+// 출발 자세가 가로·깊이로 어긋나면(같은 책의 경로가 아니면) null.
+export function awayTrack(tr: Track, src: Book3, ease: (u: number) => number, gone: (b: Book3) => boolean): { track: Track; k: number } | null {
+  const start = bookAt(tr, 0);
+  if (Math.abs(start.t.x - src.t.x) > 0.5 || Math.abs(start.t.z - src.t.z) > 0.5) return null;
+  const track = shiftTrack(tr, src.t.y - start.t.y);
+  for (let i = 1; i <= 48; i++) if (gone(bookAt(track, ease(i / 48)))) return { track, k: i / 48 };
+  return { track, k: 1 };
+}
+
 // ---------- 앞으로 빼서 옮기기 ----------
 // 다른 줄에서 들어오는 책, 또는 같은 줄에서 다른 경로가 모두 막혔을 때: 살짝 들고 → 선반 앞(판 앞 끝 밖)으로 빼고 →
 // 그 앞에서 옮기며(자세를 바꿔야 하면 여기서 돈다) → 목표 자리 앞에서 밀어 넣고 → 내려놓는다.
