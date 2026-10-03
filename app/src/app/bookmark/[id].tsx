@@ -1,12 +1,12 @@
 // 갈피 상세(문학잡지형): 같은 책의 갈피를 좌우로 넘기며 읽는다. 카드는 길면 세로로 스크롤.
 // 아래 막대: 책장한켠 · 수정 · 공유. 오른쪽 위 더 보기: 연결된 책 열기 · 삭제.
-// 공유 이미지는 화면과 같은 카드를 뜬 것(개인 메모는 기본 제외, 미리보기에서 넣을 수 있다).
+// 공유는 같은 카드를 이미지로 만들어 기기의 공유창을 바로 연다. 개인 메모는 기본 제외.
 import { makeImageFromView } from '@shopify/react-native-skia';
 import * as FS from 'expo-file-system/legacy';
 import { router, useLocalSearchParams } from 'expo-router';
 import * as Sharing from 'expo-sharing';
 import { useMemo, useRef, useState } from 'react';
-import { Alert, FlatList, Image, Modal, Pressable, ScrollView, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
+import { ActivityIndicator, Alert, FlatList, Modal, Pressable, ScrollView, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { ymd } from '@/features/book/labels';
@@ -15,7 +15,7 @@ import { bookmarksOf, toShelfBook, type Bookmark, type Library } from '@/domain/
 import { dropImage } from '@/store/files';
 import { libraryStore, useLibrary } from '@/store/library-store';
 import { ChevronLeft, MoreHorizontal, PenLine, Share } from '@/ui/icons';
-import { Btn, Chip, Empty, Field, ListItem, Row, Screen } from '@/ui/kit';
+import { Btn, Empty, Field, ListItem, Row, Screen } from '@/ui/kit';
 import { colors, fonts, screenTheme } from '@/ui/screenTheme';
 import { PaperSurface } from '@/ui/PaperSurface';
 
@@ -49,9 +49,9 @@ export default function BookmarkDetail() {
   const cur = list[index] ?? first;
   const [menu, setMenu] = useState(false);
   const [editing, setEditing] = useState<Bookmark | null>(null);
-  const [share, setShare] = useState<{ withMemo: boolean; uri: string | null } | null>(null);
+  const [share, setShare] = useState<{ withMemo: boolean; data: BookmarkCardData; seed: string } | null>(null);
   const [busy, setBusy] = useState(false);
-  const [making, setMaking] = useState(false);
+  const sharing = useRef(false);
   const shotRef = useRef<View>(null);
   const coverReady = useRef(false);
 
@@ -61,11 +61,18 @@ export default function BookmarkDetail() {
 
   // 공유: 화면 밖에 그린 같은 카드를 이미지로 뜬다
   const shoot = async (withMemo: boolean) => {
-    if (!share) coverReady.current = false;
-    // 새 이미지를 만드는 동안 이전 미리보기를 그대로 두고(창이 사라지지 않게), 실패하면 알린다
-    setShare((sh) => ({ withMemo, uri: sh?.uri ?? null }));
-    setMaking(true);
+    if (sharing.current || !curData) return;
+    sharing.current = true;
+    coverReady.current = false;
+    setBusy(true);
+    // 넘기기 중에도 누른 갈피의 내용과 표지를 함께 고정한다.
+    setShare({ withMemo, data: curData, seed: cur.id });
+    let imageReady = false;
     try {
+      if (!(await Sharing.isAvailableAsync())) {
+        Alert.alert('공유할 수 없어요', '이 기기에서 공유 창을 열 수 없어요.');
+        return;
+      }
       for (let i = 0; i < 30 && curData?.book && !coverReady.current; i++) await new Promise((r) => setTimeout(r, 100));
       if (curData?.book && !coverReady.current) throw new Error('책 표지가 준비되지 않았어요. 다시 시도해 주세요.');
       let img = null;
@@ -76,12 +83,14 @@ export default function BookmarkDetail() {
       if (!img) throw new Error('카드 이미지를 뜨지 못했어요');
       const uri = `${FS.cacheDirectory}gallpi_${Date.now().toString(36)}.png`;
       await FS.writeAsStringAsync(uri, img.encodeToBase64(), { encoding: FS.EncodingType.Base64 });
-      setShare({ withMemo, uri });
+      imageReady = true;
+      await Sharing.shareAsync(uri, { mimeType: 'image/png', UTI: 'public.png', dialogTitle: '갈피 공유' });
     } catch (e) {
-      setShare(null);
-      Alert.alert('공유 이미지를 만들지 못했어요', String((e as Error)?.message ?? e));
+      Alert.alert(imageReady ? '공유 창을 열지 못했어요' : '공유 이미지를 만들지 못했어요', String((e as Error)?.message ?? e));
     } finally {
-      setMaking(false);
+      setShare(null);
+      setBusy(false);
+      sharing.current = false;
     }
   };
 
@@ -139,58 +148,28 @@ export default function BookmarkDetail() {
             <PenLine size={22} color={colors.ink} strokeWidth={1.4} />
             <Text style={{ fontSize: 13, color: colors.ink }}>수정</Text>
           </Pressable>
-          <Pressable onPress={() => shoot(false)} hitSlop={10} accessibilityRole="button" accessibilityLabel="이미지로 공유" style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-            <Share size={22} color={colors.ink} strokeWidth={1.4} />
-            <Text style={{ fontSize: 13, color: colors.ink }}>공유</Text>
+          <Pressable onPress={() => shoot(false)} disabled={busy} hitSlop={10} accessibilityRole="button" accessibilityLabel={busy ? '공유 준비 중' : '이미지로 공유'} accessibilityState={{ disabled: busy, busy }} style={{ flexDirection: 'row', alignItems: 'center', gap: 6, minHeight: 44 }}>
+            {busy ? <ActivityIndicator size="small" color={colors.ink} /> : <Share size={22} color={colors.ink} strokeWidth={1.4} />}
+            <Text style={{ fontSize: 13, color: colors.ink }}>{busy ? '준비 중' : '공유'}</Text>
           </Pressable>
         </View>
       </View>
 
       {/* 공유 이미지용(화면 뒤에 같은 카드) */}
-      {share && curData ? (
+      {share ? (
         <View pointerEvents="none" style={{ position: 'absolute', left: 0, top: 0, zIndex: -1 }}>
           <View ref={shotRef} collapsable={false} style={{ width: SHARE_W, backgroundColor: PAGE_BG, paddingTop: 24, paddingBottom: 30, alignItems: 'center' }}>
-            <BookmarkCard data={curData} showMemo={share.withMemo} width={SHARE_W} seed={cur.id} rasterizeBook onCoverReady={() => { coverReady.current = true; }} />
+            <BookmarkCard data={share.data} showMemo={share.withMemo} width={SHARE_W} seed={share.seed} rasterizeBook onCoverReady={() => { coverReady.current = true; }} />
             <Text style={[st.brand, { marginTop: 4 }]}>책장 한켠</Text>
           </View>
         </View>
       ) : null}
 
-      <Modal visible={!!share?.uri} transparent animationType="fade" onRequestClose={() => setShare(null)}>
-        <View style={st.dim}>
-          <ScrollView style={{ maxHeight: '90%' }} contentContainerStyle={st.sheet}>
-            <Text style={st.sheetTitle}>공유 이미지</Text>
-            {share?.uri ? <Image source={{ uri: share.uri }} style={{ width: '100%', aspectRatio: 0.62, maxHeight: 460 }} resizeMode="contain" accessibilityLabel="공유 이미지 미리보기" /> : null}
-            {cur.memo ? (
-              <Row style={{ marginTop: 10 }}>
-                <Chip label={making ? '만드는 중…' : share?.withMemo ? '메모 포함' : '메모 빼고'} on={!!share?.withMemo} onPress={() => !making && shoot(!share?.withMemo)} />
-              </Row>
-            ) : null}
-            <View style={{ gap: 8, marginTop: 14 }}>
-              <Btn
-                label="공유하기"
-                busy={busy || making}
-                onPress={async () => {
-                  if (!share?.uri) return;
-                  setBusy(true);
-                  try {
-                    if (await Sharing.isAvailableAsync()) await Sharing.shareAsync(share.uri, { mimeType: 'image/png', dialogTitle: '갈피 공유' });
-                    else Alert.alert('공유할 수 없어요', '이 기기에서 공유 창을 열 수 없어요.');
-                  } finally {
-                    setBusy(false);
-                  }
-                }}
-              />
-              <Btn label="닫기" kind="ghost" onPress={() => setShare(null)} />
-            </View>
-          </ScrollView>
-        </View>
-      </Modal>
-
       <Modal visible={menu} transparent animationType="fade" onRequestClose={() => setMenu(false)}>
         <Pressable style={{ flex: 1, backgroundColor: 'rgba(20,18,15,0.3)' }} onPress={() => setMenu(false)} />
         <View style={[st.menu, { paddingBottom: insets.bottom + 16 }]}>
           <ListItem label="수정" onPress={() => { setMenu(false); setEditing(cur); }} />
+          {cur.memo ? <ListItem label="메모 포함해 공유" onPress={() => { setMenu(false); void shoot(true); }} /> : null}
           <ListItem label="연결된 책 열기" onPress={() => { setMenu(false); router.push(`/book/${cur.myBookId}`); }} />
           <ListItem
             label="삭제"
@@ -250,8 +229,5 @@ const st = StyleSheet.create({
   count: { fontFamily: fonts.serif, fontSize: 12, lineHeight: 21, color: '#9D958B', includeFontPadding: false },
   bottom: { flexDirection: 'row', flexWrap: 'wrap', gap: 16, alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 24, paddingTop: 12 },
   brand: { fontFamily: fonts.serifMedium, fontSize: 15, color: '#68524A', includeFontPadding: false },
-  dim: { flex: 1, backgroundColor: 'rgba(20,18,15,0.45)', justifyContent: 'center', padding: 20 },
-  sheet: { backgroundColor: colors.bg, borderRadius: 16, padding: 18 },
-  sheetTitle: { fontFamily: fonts.serif, fontSize: 18, color: colors.ink, marginBottom: 10 },
   menu: { backgroundColor: colors.bg, borderTopLeftRadius: 20, borderTopRightRadius: 20, paddingHorizontal: 22, paddingTop: 8 },
 });
