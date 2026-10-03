@@ -2,7 +2,7 @@
 // 움직임은 보이는 동안(animate)만 프레임을 돌린다(화면을 나가거나 동작 줄이기면 멈춘 한 장면).
 import { Canvas, Circle, Group, LinearGradient, Path, RadialGradient, Rect, Skia, vec } from '@shopify/react-native-skia';
 import { useEffect, useMemo } from 'react';
-import { Image, useWindowDimensions } from 'react-native';
+import { Image, View, useWindowDimensions } from 'react-native';
 import { useDerivedValue, useFrameCallback, useSharedValue } from 'react-native-reanimated';
 
 import type { SceneId } from '@/store/settings-store';
@@ -18,7 +18,14 @@ export function Scene({ id, animate, height }: { id: SceneId; animate: boolean; 
     cb.setActive(animate && id !== 'rain');
     return () => cb.setActive(false);
   }, [animate, cb, id]);
-  if (id === 'rain') return <Image source={require('../../../assets/scenes/rain-window-reference-v2.png')} resizeMode="cover" style={{ position: 'absolute', left: 0, top: 0, width: W, height: H }} accessibilityIgnoresInvertColors />;
+  if (id === 'rain') {
+    // The extracted artwork retains its original canvas. Clip its transparent UI area,
+    // sizing against the illustrated 853 × 1208 region so the scene never stretches.
+    const scale = Math.max(W / 853, H / 1208);
+    return <View pointerEvents="none" style={{ position: 'absolute', left: 0, top: 0, width: W, height: H, overflow: 'hidden' }}>
+      <Image source={require('../../../assets/scenes/rain-window-reference-v3.png')} resizeMode="stretch" style={{ position: 'absolute', left: (W - 853 * scale) / 2, top: 0, width: 853 * scale, height: 1843 * scale }} accessibilityIgnoresInvertColors />
+    </View>;
+  }
   return (
     <Canvas style={{ position: 'absolute', left: 0, top: 0, width: W, height: H }} pointerEvents="none">
       {id === 'fire' ? <Fire W={W} H={H} t={t} /> : <Room W={W} H={H} t={t} />}
