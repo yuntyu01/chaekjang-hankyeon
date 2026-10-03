@@ -8,13 +8,15 @@
 import { makeMutable, type SharedValue } from 'react-native-reanimated';
 
 import { corners, depthKey, drawOrder, frontOf, toWorld, type Book3 } from '@/domain/book3';
+import { bookViewCam } from '@/domain/book-view';
+import { shelfViewCam } from '@/domain/shelf-view';
 import { hull } from '@/domain/box';
 import { toPx, type Affine, type Cam, type Point } from '@/domain/camera';
 import { SHELF, SHELF_DEPTH, SHELF_FRONT, SHELF_THICK, SHELF_X0, SHELF_X1 } from '@/domain/geometry';
 import { pointInPoly } from '@/domain/shelf-scene';
 import { bookAt, holdTrack, type Track } from '@/domain/transition';
 import { silhouette } from '@/ui/book3d/face-geometry';
-import { RIBBON_OUT, RIBBON_W } from '@/ui/shelf/metrics';
+import type { RibbonDesign } from '@/domain/ribbon-design';
 
 export type Tracks = Record<string, Track>;
 // 막 다른 줄로 떠난 책이 이 줄에 남기는 경로(이 줄 좌표): 그 책이 지금 있는 줄의 경로를 세로로 옮긴 것과 그 진행 시각.
@@ -200,22 +202,22 @@ function screenBox(b: Book3, cam: Cam) {
 }
 
 // 갈피 끈(책 머리 위로 나온 끈)의 화면 윤곽(콘텐츠 px): BookNode Ribbons와 같은 자리·회전, 끈 폭·길이를 조금 넉넉히
-function ribbonQuad(cam: Cam, aff: Affine, b: Book3, n: number): Point[] {
+function ribbonQuad(cam: Cam, aff: Affine, b: Book3, ribbon: RibbonDesign): Point[] {
   'worklet';
   const d = b.dims;
-  const o = toPx(cam, aff, toWorld(b, { x: d.T * 0.55, y: d.H, z: d.W * 0.18 }));
-  // 끈 한 가닥(폭 RIBBON_W, BookNode·art Ribbons)
-  const half = (n > 0 ? RIBBON_W / 2 + 0.8 : 0) * aff.s;
-  const top = -(RIBBON_OUT + 0.8) * aff.s;
-  const bottom = 1.2 * aff.s;
+  const o = toPx(cam, aff, toWorld(b, { x: d.T * 0.55, y: d.H, z: d.W * 0.8 }));
+  const half = (ribbon.width / 2 + 0.8) * aff.s;
+  const top = (-ribbon.out + ribbon.y - 0.8) * aff.s;
+  const bottom = (1.2 + ribbon.y) * aff.s;
+  const x = ribbon.x * aff.s;
   const a = (b.roll * Math.PI) / 180;
   const c = Math.cos(a);
   const sn = Math.sin(a);
   const local = [
-    { x: -half, y: top },
-    { x: half, y: top },
-    { x: half, y: bottom },
-    { x: -half, y: bottom },
+    { x: x - half, y: top },
+    { x: x + half, y: top },
+    { x: x + half, y: bottom },
+    { x: x - half, y: bottom },
   ];
   const out: Point[] = [];
   for (const q of local) out.push({ x: o.x + q.x * c - q.y * sn, y: o.y + q.x * sn + q.y * c });
@@ -227,7 +229,7 @@ function ribbonQuad(cam: Cam, aff: Affine, b: Book3, n: number): Point[] {
 // 책은 줄 캔버스가 실제로 그리는 둥근 윤곽(face-geometry silhouette)으로 자른다(상자 꼭짓점 윤곽이면 모서리에 틈이 남는다).
 // 앞 책의 갈피 끈(ribbons: 책 id → 끈 수)도 그 책과 같은 깊이로 앞을 가린다. 같이 옮겨 가는 다른 책(transit: 이동 캔버스에 올라간 책)은
 // 줄 공간 밖에 있어도 넣어, 이동 캔버스 안에서 그리는 순서(id 순)와 상관없이 실제 깊이로 서로 가린다.
-export function frontOccluders(list: SceneMotion[], geo: SceneGeo, cam: Cam, shelfId: string, id: string, ribbons?: Record<string, number>, transit?: Record<string, true>): Point[][] {
+export function frontOccluders(list: SceneMotion[], geo: SceneGeo, cam: Cam, shelfId: string, id: string, ribbons?: Record<string, RibbonDesign>, transit?: Record<string, true>): Point[][] {
   'worklet';
   const out: Point[][] = [];
   let B: Book3 | null = null;
@@ -253,19 +255,19 @@ export function frontOccluders(list: SceneMotion[], geo: SceneGeo, cam: Cam, she
         if (outsideRow(b, row.space) && !(transit && transit[k])) continue;
         const L = lowered(b, row.dy);
         const lb = screenBox(L, cam);
-        const n = ribbons ? ribbons[k] ?? 0 : 0;
-        const up = n > 0 ? RIBBON_OUT + 2 : 0; // 갈피 끈이 머리 위로 나온 만큼 위로 넓혀 본다(DU)
+        const ribbon = ribbons?.[k];
+        const up = ribbon ? ribbon.out - ribbon.y + 2 : 0;
         if (lb.x1 < bb.x0 - 0.5 || bb.x1 < lb.x0 - 0.5 || lb.y1 + up < bb.y0 - 0.5 || bb.y1 < lb.y0 - 0.5) continue;
         if (frontOf(L, B, cam) >= 0) continue;
-        out.push(silhouette(cam, b, aff));
-        if (n > 0) out.push(ribbonQuad(cam, aff, b, n));
+        out.push(silhouette(bookViewCam(cam, b), b, aff));
+        if (ribbon) out.push(ribbonQuad(cam, aff, b, ribbon));
       }
     }
     const pb = plankBody(row.shelfId, 0);
     const PL = lowered(pb, row.dy);
     const pbb = screenBox(PL, cam);
     if (pbb.x1 < bb.x0 - 0.5 || bb.x1 < pbb.x0 - 0.5 || pbb.y1 < bb.y0 - 0.5 || bb.y1 < pbb.y0 - 0.5) continue;
-    if (frontOf(PL, B, cam) < 0) out.push(hull(corners(pb).map((q) => toPx(cam, aff, q))));
+    if (frontOf(PL, B, cam) < 0) out.push(hull(corners(pb).map((q) => toPx(shelfViewCam(cam), aff, q))));
   }
   return out;
 }
@@ -335,7 +337,7 @@ export function pickAt(list: SceneMotion[], geo: SceneGeo, cam: Cam, x: number, 
   let nearRank = -1;
   for (const row of geo.rows) {
     const aff = rowPx(geo, row);
-    const px = (q: { x: number; y: number; z: number }) => toPx(cam, aff, q);
+    const px = (q: { x: number; y: number; z: number }) => toPx(shelfViewCam(cam), aff, q);
     // 판: 앞에 있으면 그 뒤 책은 가려진다
     const plank = plankBody(row.shelfId, 0);
     const pr = order[plank.id] ?? -1;
@@ -351,7 +353,7 @@ export function pickAt(list: SceneMotion[], geo: SceneGeo, cam: Cam, x: number, 
     const t = m.t.value;
     for (const id in tracks) {
       const b = bookAt(tracks[id], t);
-      const poly = hull(corners(b).map(px));
+      const poly = hull(corners(b).map((q) => toPx(bookViewCam(cam, b), aff, q)));
       const r = order[id] ?? 0;
       if (pointInPoly({ x, y }, poly)) {
         if (r > bestRank) {

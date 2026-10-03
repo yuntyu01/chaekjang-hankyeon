@@ -2,11 +2,13 @@
 // 서재가 바뀔 때마다 책장에 그릴 책 모양을 다시 만든다(배치는 배치 저장소가 따로 저장).
 import Storage from 'expo-sqlite/kv-store';
 
-import type { BookMap } from '@/domain/layout-engine';
-import { toShelfBook, type Library } from '@/domain/library';
+import { migrate, type BookMap } from '@/domain/layout-engine';
+import type { Library } from '@/domain/library';
+import { referenceHomeBooks, type HomeReferenceProfile } from '@/domain/home-reference';
 
 import { libraryStore } from './library-store';
-import { placementStore } from './placement-store';
+import { EMPTY_LAYOUT, placementStore } from './placement-store';
+import { installReferenceHome } from './home-reference-install';
 import { readingStore } from './reading-store';
 import { settingsStore } from './settings-store';
 import { viewStore } from './view-store';
@@ -16,14 +18,10 @@ import { PERF_ENABLED } from '@/ui/perf';
 // 측정 번들: 예시 18권 책장으로 시작(저장하지 않는 메모리 전용). ?demoboot=1 로 켜고 0으로 끈다.
 // ?demoboot=mockup 은 같은 자리·치수에 시안 책장의 제목·색·표지 그림을 입힌 비교 책장
 export const DEMO_BOOT_KEY = 'perf-demo-boot';
+let homeProfile: HomeReferenceProfile = {};
 
 export function shelfBooks(lib: Library): BookMap {
-  const out: BookMap = {};
-  for (const id of Object.keys(lib.books)) {
-    const b = toShelfBook(lib, id);
-    if (b) out[id] = b;
-  }
-  return out;
+  return referenceHomeBooks(lib, homeProfile);
 }
 
 let started: Promise<void> | null = null;
@@ -33,6 +31,19 @@ export function bootStores() {
     bootMark('boot-start');
     await libraryStore.load();
     bootMark('library-loaded', Object.keys(libraryStore.get().lib.books).length);
+    if (!libraryStore.get().error) {
+      try {
+        const saved = (await Storage.getItem('shelf-layout')) ?? (await Storage.getItem('shelf-layout:v1'));
+        homeProfile = await installReferenceHome(libraryStore.get().lib, saved ? migrate(JSON.parse(saved)) : EMPTY_LAYOUT, {
+          getItem: key => Storage.getItem(key),
+          setItem: (key, value) => Storage.setItem(key, value),
+          saveLibrary: library => libraryStore.replaceAll(library),
+        });
+      } catch (error) {
+        // 백업/설치 실패는 다음 시작 때 재시도한다. 기존 서재는 계속 열 수 있다.
+        console.warn('홈 시안 구성 저장 실패', error);
+      }
+    }
     let lib = libraryStore.get().lib;
     await placementStore.load(shelfBooks(lib));
     bootMark('layout-loaded');

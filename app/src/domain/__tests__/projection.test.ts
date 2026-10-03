@@ -2,6 +2,8 @@
 import { faceMatrix } from '@/ui/book3d/face-geometry';
 
 import { corners, faceCorners, faceFrame, fromPlaced, lowest } from '../book3';
+import { bookViewCam } from '../book-view';
+import { facePanel } from '../book-parts';
 import { project } from '../box';
 import { camAt, VIEW_KX } from '../camera';
 import { CAMERA, SHELF_DEPTH, SHELF_FRONT, VIEW_PITCH_MAX, VIEW_PITCH_MIN } from '../geometry';
@@ -97,6 +99,48 @@ describe('눕힌 책 한 권 돌리기(-12 / 0 / +12)', () => {
 
   it('책은 선반 윗면(y=0)에 닿아 있다: 뜨거나 파고들지 않음', () => {
     for (const d of [-12, 0, 12]) expect(lowest(at(d).b)).toBeCloseTo(0, 9);
+  });
+
+  it('눕힌 표지의 원근 변환은 돌린 책에서도 그림과 몸체의 네 모서리가 일치한다', () => {
+    const px = { s: 2.2, tx: 26, ty: 630 };
+    for (const d of [-12, 0, 12]) {
+      const { b } = at(d);
+      const cam = bookViewCam(CAMERA, b);
+      for (const face of ['spine', 'cover', 'back'] as const) {
+        const matrix = faceMatrix(b, face, cam, px);
+        const fr = facePanel(b.dims, face);
+        const pts = faceCorners(face).map(i => project(cam, corners(b)[i]));
+        for (const [u, v] of [[0, 0], [fr.w * px.s, 0], [fr.w * px.s, fr.h * px.s], [0, fr.h * px.s]]) {
+          const den = matrix[6] * u + matrix[7] * v + matrix[8];
+          const x = (matrix[0] * u + matrix[1] * v + matrix[2]) / den;
+          const y = (matrix[3] * u + matrix[4] * v + matrix[5]) / den;
+          expect(pts.some(p => Math.abs(p.x * px.s + px.tx - x) < 1e-6 && Math.abs(p.y * px.s + px.ty - y) < 1e-6)).toBe(true);
+        }
+      }
+    }
+  });
+
+  it('눕힌 책의 모든 모서리는 선반·그림자와 같은 카메라를 쓴다', () => {
+    for (const spin of [-12, 0, 12]) {
+      const { b } = at(spin);
+      const base = corners(b).map(p => project(CAMERA, p));
+      const view = bookViewCam(CAMERA, b);
+      const shown = corners(b).map(p => project(view, p));
+      expect(Math.min(...shown.map(p => p.x))).toBeCloseTo(Math.min(...base.map(p => p.x)), 8);
+      expect(Math.max(...shown.map(p => p.x))).toBeCloseTo(Math.max(...base.map(p => p.x)), 8);
+      expect(shown).toEqual(base);
+      // The cover remains parallel to the floor at precisely the book thickness.
+      for (const p of corners(b).filter(p => Math.abs(p.y - b.dims.T) < 1e-6)) {
+        const cover = project(view, p);
+        const floor = project(CAMERA, { ...p, y: 0 });
+        expect(cover.x).toBeCloseTo(floor.x, 8);
+        expect(floor.y - cover.y).toBeCloseTo(b.dims.T, 8);
+      }
+    }
+    for (const f of computeShelf(SAMPLE_LAYOUT, books, 'shelf-3').frames) {
+      const b = fromPlaced(f.box);
+      expect(bookViewCam(CAMERA, b)).toBe(CAMERA);
+    }
   });
 });
 

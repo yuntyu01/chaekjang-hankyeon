@@ -1,7 +1,9 @@
 // 온보딩 예시 18권(첫 실행 때 보여주는 책장). 실제 책이며 크기는 판형·쪽수로 계산한다.
 // 판형·쪽수는 공개 서지 정보 기준 대략값이다. 국립중앙도서관 서지 API가 연결되면 그 값으로 바뀐다.
 // 몸체 색·모티프·표지 그림은 시안에서 뽑은 임시 재료(body-art.generated.ts)이며, 책 자체가 아니라 앱의 재장정이다.
-import { BODY_ART, COVER_ART } from './body-art.generated';
+import { BODY_ART } from './body-art.generated';
+import { jacketColor, LANDSCAPES } from './book-design';
+import { REFERENCE_JACKETS } from './jacket-proportions';
 import type { Book, BookPlacement, HeightClass, Physical, ShelfLayout, ThicknessClass } from './types';
 
 type Meta = {
@@ -45,8 +47,9 @@ const heightClass = (hMm: number): HeightClass => (hMm < 180 ? 'short' : hMm < 2
 const thicknessClass = (pages: number): ThicknessClass => (pages < 220 ? 'thin' : pages < 420 ? 'medium' : 'thick');
 
 function toBook(m: Meta): Book {
-  const body = BODY_ART[m.id];
-  const cover = COVER_ART[m.id];
+  const original = BODY_ART[m.id];
+  const body = original ? { ...original, face: jacketColor(original.face) } : undefined;
+  const cover = m.id === 'b04' ? LANDSCAPES.night : m.id === 'b07' ? LANDSCAPES.forest : m.id === 'b16' ? LANDSCAPES.sunset : undefined;
   return {
     id: m.id,
     title: m.title,
@@ -56,6 +59,7 @@ function toBook(m: Meta): Book {
     thicknessClass: thicknessClass(m.physical.pages),
     coverAspectRatio: m.physical.widthMm / m.physical.heightMm,
     physical: m.physical,
+    dims: REFERENCE_JACKETS[m.id],
     art: { motif: m.motif, ribbon: m.ribbon },
     publisher: m.publisher,
     publishedAt: m.publishedAt,

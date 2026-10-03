@@ -14,7 +14,8 @@ export type Affine = { s: number; tx: number; ty: number };
 // 보이지 않는 면의 행렬(그림을 화면 밖 한 점으로): 그룹 불투명도만으로는 기록된 그림이 얇은 선으로 남는다
 export const HIDDEN_MATRIX = [0, 0, -1e4, 0, 0, -1e4, 0, 0, 1];
 
-// 조각 그림 px → 캔버스 px 행렬(3×3, 행 우선). 투영이 선형(직교)이라 조각의 원점·두 변으로 정해지는 affine이 곧 조각 전체의 투영이다.
+// 조각 그림 px → 캔버스 px 행렬(3×3, 행 우선). 눕힌 책의 작은 원근 보정도
+// 동차 좌표로 포함해 그림, 속지, 윤곽이 같은 네 꼭짓점에 정확히 붙는다.
 // 그림은 조각 w×h(DU)를 배율 s로 기록한 것(그림 px = DU × s).
 export function panelMatrix(b: Book3, p: Panel, cam: Cam, px: Affine) {
   'worklet';
@@ -22,6 +23,22 @@ export function panelMatrix(b: Book3, p: Panel, cam: Cam, px: Affine) {
   const U = rot(b.roll, b.yaw, p.U, b.spin ?? 0, b.pitch ?? 0);
   const V = rot(b.roll, b.yaw, p.V, b.spin ?? 0, b.pitch ?? 0);
   const s = px.s;
+  if (cam.taper) {
+    const o = toWorld(b, p.O);
+    const t = cam.taper;
+    const d0 = 1 + (o.z - t.z) * t.strength;
+    const du = U.z * t.strength / (p.w * s);
+    const dv = V.z * t.strength / (p.h * s);
+    return [
+      (U.x + U.z * cam.kx + t.x * U.z * t.strength) / p.w + px.tx * du,
+      (V.x + V.z * cam.kx + t.x * V.z * t.strength) / p.h + px.tx * dv,
+      O.x * s * d0 + px.tx * d0,
+      (-(U.y + U.z * cam.ky) + t.y * U.z * t.strength) / p.w + px.ty * du,
+      (-(V.y + V.z * cam.ky) + t.y * V.z * t.strength) / p.h + px.ty * dv,
+      O.y * s * d0 + px.ty * d0,
+      du, dv, d0,
+    ];
+  }
   const ux = (U.x + U.z * cam.kx) / p.w;
   const uy = -(U.y + U.z * cam.ky) / p.w;
   const vx = (V.x + V.z * cam.kx) / p.h;
@@ -106,15 +123,10 @@ function insetConvex(pts: Point[], r: number): Point[] {
 // r만큼 다시 넓힌다(민코프스키). 3°에서 머리 쪽은 짧은 변 두세 개가 몰려 있어 꼭짓점마다 깎으면 반지름이 거의 사라졌다
 // (시안 책등 위 모서리 약 2.6~4.3DU 둥글기가 1~2px로만 보였다). 이렇게 하면 그 짧은 변들을 한 번에 둥글린다.
 // 윤곽이 너무 얇아(폭 < 2r) 줄인 모양이 없어지면 반지름을 줄여 다시 하고, 그래도 안 되면 껍질 그대로.
-export function silhouette(cam: Cam, b: Book3, px: Affine): Point[] {
+// Shared by the book and shelf silhouettes; never grows beyond the original hull.
+export function roundedPolygon(pts: Point[], radius: number): Point[] {
   'worklet';
-  const pts = hull(
-    corners(b).map((c) => {
-      const q = project(cam, c);
-      return { x: q.x * px.s + px.tx, y: q.y * px.s + px.ty };
-    }),
-  );
-  let r = CORNER_R * px.s;
+  let r = radius;
   let core: Point[] = [];
   for (let k = 0; k < 3; k++, r /= 2) {
     core = insetConvex(pts, r);
@@ -155,6 +167,15 @@ export function silhouette(cam: Cam, b: Book3, px: Affine): Point[] {
     }
   }
   return out;
+}
+
+export function silhouette(cam: Cam, b: Book3, px: Affine): Point[] {
+  'worklet';
+  const pts = hull(corners(b).map((c) => {
+    const q = project(cam, c);
+    return { x: q.x * px.s + px.tx, y: q.y * px.s + px.ty };
+  }));
+  return roundedPolygon(pts, CORNER_R * px.s);
 }
 
 export const seedOf = (id: string, f: string) => [...id].reduce((h, c) => h + c.charCodeAt(0), 0) * 0.37 + f.length;

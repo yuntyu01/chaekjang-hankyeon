@@ -7,7 +7,7 @@ import type { Book, BookPlacement, HeightClass, ThicknessClass } from './types';
 export { kyOf, VIEW_KX, VIEW_PITCH_MAX, VIEW_PITCH_MIN };
 
 export const DESIGN_WIDTH = 390;
-export const PLANK_INSET = 2;
+export const PLANK_INSET = 10;
 
 const USABLE_LEFT = 12;
 const USABLE_W = DESIGN_WIDTH - USABLE_LEFT * 2;
@@ -21,19 +21,19 @@ export const SHELF_FRONT_MM = 70;
 export const SHELF_DEPTH_MM = SHELF_TOTAL_DEPTH_MM - SHELF_FRONT_MM;
 export const SHELF_DEPTH = SHELF_DEPTH_MM * DU_MM;
 export const SHELF_FRONT = SHELF_FRONT_MM * DU_MM;
-// 판 두께(앞면 높이): 예전 선반 그림 비율에서 잰 값(8.81DU)을 mm로 고정
-export const SHELF_THICK_MM = 11.554;
+// 시안처럼 두툼하고 둥근 선반 앞면: 약 16.4DU.
+export const SHELF_THICK_MM = 21.5;
 export const SHELF_THICK = SHELF_THICK_MM * DU_MM;
 // 판 좌우 끝(선반 공간 x). 책 줄(0 ~ 사용 폭)을 덮고, 기본 사선(kx)으로 투영했을 때
 // 앞 왼쪽 모서리와 뒤 오른쪽 모서리가 화면 양 끝에서 PLANK_INSET 안쪽에 오도록 정한 길이(kx는 보기 각과 무관한 상수).
 export const SHELF_X0 = PLANK_INSET - USABLE_LEFT + SHELF_FRONT * VIEW_KX;
-export const SHELF_X1 = DESIGN_WIDTH - PLANK_INSET - USABLE_LEFT - SHELF_DEPTH * VIEW_KX;
+export const SHELF_X1 = DESIGN_WIDTH - PLANK_INSET - USABLE_LEFT - SHELF_DEPTH * VIEW_KX + 2.8;
 
 export const SHELF = {
   sideMargin: USABLE_LEFT, // 선반 공간 x=0의 화면 설계 좌표
   innerLeft: 0,
   innerRight: 0,
-  gap: 0, // 책 사이 기본 간격(시안: 서로 맞닿음)
+  gap: 2.1, // 옆면 투영 약 1.2DU + 벽색이 보이는 약 0.9DU(853px에서 2px)
   rowTopPad: 2, // 가장 높은 책(갈피 포함) 위 여백(기본 3°에서): 시안처럼 위 선반 바로 밑까지
   minClear: 110,
 };
@@ -45,9 +45,9 @@ export const SHELF_USABLE_WIDTH = USABLE_W - SHELF.innerLeft - SHELF.innerRight;
 // 어느 기기에서든 한 선반에 들어가는 책 수가 같다.
 export const SHELF_LENGTH_MM = 480;
 export const DU_PER_MM = SHELF_USABLE_WIDTH / SHELF_LENGTH_MM;
-// 두께: 얇은 책(10mm 이하)도 세로 제목이 들어가게 최소 22DU로 두고(상자 모델은 앞면 전체가 책등이라 제목 폭이 넉넉하다),
-// 그보다 두꺼운 만큼은 실제 두께 차이 그대로 늘린다(실제 비율 1.0배). 300쪽 ≈ 29DU, 450쪽 ≈ 36DU.
-export const MIN_SPINE_DU = 22;
+// 얇은 책도 제목과 작은 그림이 들어가게 최소 30DU. 그보다 두꺼운 만큼은
+// 실제 두께 차이를 반영한다. 300쪽 ≈ 37DU, 450쪽 ≈ 44DU.
+export const MIN_SPINE_DU = 30;
 export const MIN_SPINE_MM = 10;
 export const THICKNESS_GROWTH = 1.0;
 // 종이 한 쪽 두께(mm, 일반 도서 용지 약 0.12mm/장)와 앞뒤 표지 두께
@@ -141,10 +141,9 @@ export function spunExtent(book: Book, spin = 0) {
 
 // ---------- 표지 전시 책의 벽 기대기 ----------
 // 뒤쪽 아래 모서리(z = depth + 두께)는 사용자가 둔 자리 그대로 선반에, 뒤쪽 윗모서리는 벽(z = SHELF_DEPTH)에 닿는다:
-//   sin(각) = 벽까지 틈 / 책 높이. 벽에서 멀어질수록 더 기운다. 틈이 커서 각이 WALL_LEAN_MAX를 넘으면 벽에서 떨어져 똑바로 선다.
-// 선 책은 틈이 WALL_LEAN_ENTER 각에 해당하는 거리 안으로 들어와야 기대기 시작한다(두 경계 사이에서는 지금 상태 유지).
+//   sin(각) = 벽까지 틈 / 책 높이. 벽에서 멀어질수록 더 기울고, 닿지 못하면 바닥에 눕는다.
+// 선 책은 WALL_LEAN_ENTER 각에 해당하는 거리 안으로 들어와야 기대기 시작한다.
 export const WALL_LEAN_ENTER = 16;
-export const WALL_LEAN_MAX = 20;
 export function wallGap(book: Book, depth: number) {
   return SHELF_DEPTH - (depth + bookThickness(book));
 }
@@ -194,16 +193,18 @@ export function singleFootprint(book: Book, p: Pick<BookPlacement, 'pose' | 'til
 
 // 쌓기 그룹: 폭은 (어긋남 포함) 가장 긴 책, 높이는 두께의 합.
 // 쌓인 책의 왼쪽 어긋남(DU). 아래 책보다 짧은 책은 아래 책 안쪽(가운데보다 조금 오른쪽)에 올린다(시안).
+// 짧은 위 책은 아래 책의 오른쪽 끝에 맞춘다(시안의 두 권 더미).
 // 길이가 같은 책은 아래 책에 맞춰 올린다(어긋나면 받침 밖으로 나가 쌓을 수 없다: 받침 판정 support.ts와 같은 규칙).
 // 더 긴 책은 정해진 어긋남(STACK_OFFSETS)을 쓴다.
 const SAME_LENGTH = 0.5; // DU: 이만큼 차이는 같은 판형으로 본다
-export function stackOffsets(books: Book[]) {
+export function stackOffsets(books: Book[], spins: number[] = []) {
   const out: number[] = [];
   books.forEach((b, i) => {
     if (i === 0) return out.push(0);
     const below = bookHeight(books[i - 1]);
     const d = below - bookHeight(b);
-    out.push(d > SAME_LENGTH ? out[i - 1] + d * 0.6 : d >= -SAME_LENGTH ? out[i - 1] : (STACK_OFFSETS[i] ?? 0));
+    const align = Math.abs(spins[i] ?? 0) + Math.abs(spins[i-1] ?? 0) > 0.01 ? 0.6 : 1;
+    out.push(d > SAME_LENGTH ? out[i - 1] + d * align : d >= -SAME_LENGTH ? out[i - 1] : (STACK_OFFSETS[i] ?? 0));
   });
   return out;
 }
@@ -212,7 +213,7 @@ export function stackFootprint(books: Book[], spins: number[] = [], ky = BASE_CA
   let width = 0;
   let height = LYING_BACK_Z * ky;
   let depth = 0;
-  const offs = stackOffsets(books);
+  const offs = stackOffsets(books, spins);
   books.forEach((b, i) => {
     width = Math.max(width, spunExtent(b, spins[i]).w + offs[i]);
     height += bookThickness(b);

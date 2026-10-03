@@ -23,6 +23,7 @@ import { SHELF, SHELF_DEPTH, SHELF_FRONT } from '@/domain/geometry';
 import { RECV_SLOTS, receivedShadow3, shiftRecv, type Recv3 } from '@/domain/received3';
 import { frameBBox, type BookFrame } from '@/domain/shelf-scene';
 import type { Book } from '@/domain/types';
+import { ribbonDesign, type RibbonDesign } from '@/domain/ribbon-design';
 import { ko } from '@/i18n/ko';
 import type { Shared } from '@/ui/book3d/art';
 import { BookNode } from '@/ui/book3d/BookNode';
@@ -112,7 +113,7 @@ export function ShelfScene(p: Props) {
       <TransitMark items={p.leaving} />
       {p.rows.map((r, i) => {
         const mo = motionOf(p.motions, r.shelfId);
-        return mo ? <RowCanvas key={r.shelfId} r={r} upper={i > 0 ? p.rows[i - 1].row : null} mo={mo} books={p.books} m={p.m} width={p.width} cam={p.cam} shared={p.shared} debug={p.debug} /> : null;
+        return mo ? <RowCanvas key={r.shelfId} rowIndex={i} r={r} upper={i > 0 ? p.rows[i - 1].row : null} mo={mo} books={p.books} m={p.m} width={p.width} cam={p.cam} shared={p.shared} debug={p.debug} /> : null;
       })}
       <TransitCanvas ids={p.transitIds} rows={p.rows} motions={p.motions} geo={p.geo} books={p.books} m={p.m} width={p.width} height={p.height} cam={p.cam} shared={p.shared} glowId={p.glowId} />
       {p.rows.map((r) => {
@@ -131,7 +132,7 @@ const sameRowDraw = (a: SceneRowProps, b: SceneRowProps) =>
   a.row.baseline === b.row.baseline && a.row.space === b.row.space && a.row.top === b.row.top && a.row.height === b.row.height;
 
 // 한 줄의 그림(캔버스 안): 벽 단계 + 판 + 판 위 그림자 + 책(그 줄의 분리축 순서로 zIndex).
-const RowLayers = memo(function RowLayers({ r, st, mo, order, px, books, cam, shared, debug, top }: { r: SceneRowProps; st: RowStruct; mo: Motion; order: Readonly<SharedValue<Record<string, number>>>; px: Affine; books: Record<string, Book>; cam: CamSV; shared: Shared; debug: boolean; top: boolean }) {
+const RowLayers = memo(function RowLayers({ r, st, mo, order, px, books, cam, shared, debug, top, rowIndex }: { r: SceneRowProps; st: RowStruct; mo: Motion; order: Readonly<SharedValue<Record<string, number>>>; px: Affine; books: Record<string, Book>; cam: CamSV; shared: Shared; debug: boolean; top: boolean; rowIndex: number }) {
   const plankZ = useDerivedValue(() => (order.value[`plank:${r.shelfId}`] ?? 0) * 10);
   const space = r.row.space;
   // 그림자는 모두 줄의 그림자용 자세 모음만 읽는다(바뀐 책이 있을 때만 다시 계산·다시 그리기)
@@ -139,7 +140,7 @@ const RowLayers = memo(function RowLayers({ r, st, mo, order, px, books, cam, sh
   return (
     <>
       {RENDER.books && (SHOW.wall || SHOW.gap) ? <RowShadows poses={poses} ids={st.ids} cam={cam} px={px} space={space} /> : null}
-      <ShelfWallShadow cam={cam} px={px} zIndex={Z_WALL} />
+      <ShelfWallShadow cam={cam} px={px} zIndex={Z_WALL} row={rowIndex} />
       {SHOW.shelfBoard ? <ShelfBoard px={px} cam={cam} zIndex={plankZ} /> : null}
       {RENDER.books && (SHOW.shelfCast || SHOW.contact) ? <RowContacts poses={poses} ids={st.ids} cam={cam} px={px} order={order} shelfId={r.shelfId} /> : null}
       {RENDER.books ? <RowBooks m={mo} shelfId={r.shelfId} st={st} books={books} glowId={r.glowId} dragId={r.dragId} cam={cam} px={px} space={space} shared={shared} order={order} poses={poses} debug={debug} plankAbove={!top} /> : null}
@@ -162,7 +163,7 @@ function hullPath(pts: { x: number; y: number }[]): SkPath {
 }
 
 const RowCanvas = memo(
-  function RowCanvas({ r, upper, mo, books, m, width, cam, shared, debug }: { r: SceneRowProps; upper: RowGeom | null; mo: Motion; books: Record<string, Book>; m: ShelfMetrics; width: number; cam: CamSV; shared: Shared; debug: boolean }) {
+  function RowCanvas({ r, upper, mo, books, m, width, cam, shared, debug, rowIndex }: { r: SceneRowProps; upper: RowGeom | null; mo: Motion; books: Record<string, Book>; m: ShelfMetrics; width: number; cam: CamSV; shared: Shared; debug: boolean; rowIndex: number }) {
     // 캔버스 위쪽 끝은 물리 픽셀에 맞춘다: 레이아웃은 뷰 위치를 픽셀로 반올림하는데 그림의 변환은 y0 그대로라, 맞추지 않으면 이 줄 그림이
     // 이동 캔버스(맨 위 0)와 반 픽셀까지 어긋나 같은 책을 넘겨줄 때 글자·그림 가장자리가 흔들린다
     const y0 = PixelRatio.roundToNearestPixel(Math.max(0, r.row.top - HEAD_DU * m.scale));
@@ -188,13 +189,13 @@ const RowCanvas = memo(
     return (
       <Canvas style={{ position: 'absolute', left: 0, top: y0, width, height }} pointerEvents="none">
         <Group clip={clip} invertClip>
-          <RowLayers r={r} st={st} mo={mo} order={order} px={px} books={books} cam={cam} shared={shared} debug={debug} top={!upper} />
+          <RowLayers r={r} st={st} mo={mo} order={order} px={px} books={books} cam={cam} shared={shared} debug={debug} top={!upper} rowIndex={rowIndex} />
         </Group>
       </Canvas>
     );
   },
   (a, b) =>
-    sameRowDraw(a.r, b.r) && a.upper?.baseline === b.upper?.baseline && a.upper?.shelfId === b.upper?.shelfId && a.mo === b.mo && a.books === b.books && a.m === b.m && a.width === b.width && a.cam === b.cam && a.shared === b.shared && a.debug === b.debug,
+    sameRowDraw(a.r, b.r) && a.rowIndex === b.rowIndex && a.upper?.baseline === b.upper?.baseline && a.upper?.shelfId === b.upper?.shelfId && a.mo === b.mo && a.books === b.books && a.m === b.m && a.width === b.width && a.cam === b.cam && a.shared === b.shared && a.debug === b.debug,
 );
 
 // ---------- 이동 캔버스 ----------
@@ -251,7 +252,7 @@ function TransitReceives({ id, motions, geo, cam, px0, vis }: { id: string; moti
   );
 }
 
-function TransitBook({ id, book, dims, frozen, motions, geo, cam, px0, shared, glow, dbg, ribbons, transit }: { id: string; book: Book; dims: Book3['dims']; frozen: Book3; motions: SceneMotion[]; geo: Readonly<SharedValue<SceneGeo>>; cam: CamSV; px0: Affine; shared: Shared; glow: boolean; dbg: boolean; ribbons: Record<string, number>; transit: Record<string, true> }) {
+function TransitBook({ id, book, dims, frozen, motions, geo, cam, px0, shared, glow, dbg, ribbons, transit }: { id: string; book: Book; dims: Book3['dims']; frozen: Book3; motions: SceneMotion[]; geo: Readonly<SharedValue<SceneGeo>>; cam: CamSV; px0: Affine; shared: Shared; glow: boolean; dbg: boolean; ribbons: Record<string, RibbonDesign>; transit: Record<string, true> }) {
   const vis = useDerivedValue(() => transitVisible(motions, geo.value, id, liveSV.value, warmSV.value));
   // 보이지 않는 동안은 같은 값(책 그림 계산이 돌지 않게). 보이면 맨 윗줄 좌표로 내린 지금 자세.
   const state = useDerivedValue(() => {
@@ -325,10 +326,10 @@ const TransitCanvas = memo(function TransitCanvas({ ids, rows, motions, geo, boo
   const px0 = useMemo(() => (top ? rowAffine(m, top, 0) : { s: m.scale, tx: 0, ty: 0 }), [m, top]);
   const dbg = TRANSIT_DEBUG.on;
   const idList = useMemo(() => ids, [ids.join('|')]); // eslint-disable-line react-hooks/exhaustive-deps
-  // 앞을 가리는 갈피 끈(책 id → 끈 수)과 함께 옮겨 가는 책(서로 실제 깊이로 가린다)
+  // 앞을 가리는 갈피의 실제 치수와 함께 옮겨 가는 책(서로 실제 깊이로 가린다)
   const ribbons = useMemo(() => {
-    const out: Record<string, number> = {};
-    for (const [id, b] of Object.entries(books)) if ((b.quotes ?? 0) > 0) out[id] = 1;
+    const out: Record<string, RibbonDesign> = {};
+    for (const [id, b] of Object.entries(books)) if ((b.quotes ?? 0) > 0) out[id] = ribbonDesign(b);
     return out;
   }, [books]);
   const transit = useMemo(() => Object.fromEntries(idList.map((id) => [id, true as const])), [idList]);

@@ -111,6 +111,8 @@ describe('수평 쌓기 받침', () => {
     const lower = fromPlaced(boxes[0]);
     expect(boxes[1].y).toBeCloseTo(Math.max(...corners(lower).map((c) => c.y)), 6);
     expect(gap(lower, fromPlaced(boxes[1]))).toBeGreaterThan(-TOL);
+    const right = (box: typeof boxes[number]) => Math.max(...corners(fromPlaced(box)).map(c=>c.x));
+    expect(right(boxes[1])).toBeCloseTo(right(boxes[0]),6);
   });
 
   it('큰 책을 작은 책 위에는 받쳐지지 않는다(부분 돌출 불허)', () => {

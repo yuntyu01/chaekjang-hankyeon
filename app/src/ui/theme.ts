@@ -3,8 +3,8 @@ import { CAMERA } from '@/domain/geometry';
 // 디자인 토큰. 색은 책이 주인공이라 화면 자체는 아이보리·크림·먹색만 쓴다.
 // 색은 시안(docs/design/home-reference.png)에서 채취했다.
 export const colors = {
-  bg: '#FBF7F0', // 벽
-  wall: '#FBF7F0',
+  bg: '#FCF8F1', // 시안의 따뜻한 아이보리 벽
+  wall: '#FCF8F1',
   ink: '#1F2533',
   selectGlow: '#E7B574', // 꾸미기에서 고른 책 둘레의 얇은 선·좁은 번짐(따뜻한 꿀색, 크림 벽에서도 읽히게)
   dropRange: 'rgba(196, 128, 64, 0.85)', // 끄는 동안 선반 앞턱에 놓일 가로 범위
@@ -24,8 +24,8 @@ export const colors = {
   homeTitle: '#4A3C3A', // 홈 머리글 '나의 책장'(시안의 따뜻한 짙은 갈색)
   homeSummary: '#918880', // 홈 머리글 연도(시안의 따뜻한 회색)
   circle: '#D8CFC4',
-  tabActive: '#141D2B',
-  tabInactive: '#7E8187',
+  tabActive: '#574946',
+  tabInactive: '#93897F',
   danger: '#A5483A',
   dropOk: 'rgba(60, 70, 60, 0.12)',
   dropBad: 'rgba(165, 72, 58, 0.16)',
@@ -43,7 +43,7 @@ export const fonts = {
   round: 'NanumSquareRoundB',
 };
 
-export const navigation = { height: 56, iconSize: 25 };
+export const navigation = { height: 78, bottomAir: 22, iconSize: 25 };
 
 // 글자 크기. 제목은 명조(serif), 메뉴·숫자는 고딕. 숫자는 "16권"처럼 단위와 함께 작게.
 export const typeScale = {

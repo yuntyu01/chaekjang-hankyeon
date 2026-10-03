@@ -6,7 +6,7 @@
     "orientation": "portrait",
     "scheme": "chaekjang",
     "userInterfaceStyle": "light",
-    "backgroundColor": "#F7F1E6",
+    "backgroundColor": "#FCF8F1",
     "ios": {
       "bundleIdentifier": "com.chaekjang.app",
       "supportsTablet": true
@@ -22,7 +22,7 @@
       [
         "expo-splash-screen",
         {
-          "backgroundColor": "#F7F1E6"
+          "backgroundColor": "#FCF8F1"
         }
       ],
       "expo-sharing",

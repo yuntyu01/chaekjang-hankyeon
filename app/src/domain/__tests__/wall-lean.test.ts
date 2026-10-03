@@ -1,6 +1,6 @@
-// 표지 전시 책의 벽 기대기: 벽 가까이에서 뒤쪽 아래 모서리는 선반, 뒤쪽 윗모서리는 벽. 당기면 더 기울고, 범위를 넘으면 똑바로.
+// 벽에 기댄 책은 당길수록 더 기울고, 벽이 닿지 않는 거리에서는 바닥에 눕는다.
 import { corners, gap, lowest } from '../book3';
-import { bookHeight, bookThickness, SHELF_DEPTH, WALL_LEAN_ENTER, WALL_LEAN_MAX, wallPitch } from '../geometry';
+import { bookHeight, bookThickness, SHELF_DEPTH, WALL_LEAN_ENTER, wallPitch } from '../geometry';
 import { boxOf, depthRange, frontRelease, frontSpin, frontStateOf, frontTilt, normalize, placementOf, setDepth, type BookMap, type Result } from '../layout-engine';
 import { SAMPLE_BOOKS, SAMPLE_LAYOUT } from '../onboarding-sample';
 import { bodiesOf } from '../shelf-scene';
@@ -31,7 +31,7 @@ const footZ = (l: ShelfLayout) => boxOf(l, books, ID)!.z + T; // 뒤쪽 아래 �
 // 벽에서 z만큼 떨어진 자리(뒤쪽 아래 모서리 기준)
 const depthAtGap = (g: number) => SHELF_DEPTH - T - g;
 
-it('떨어져 서기 → 벽 가까이 오면 기댐 → 당기면 더 기울고 → 밀면 곧게 → 멀리 당기면 똑바로', () => {
+it('벽에 기댄 책을 당기면 20°를 넘어도 더 기울며 벽과 바닥 접촉을 유지한다', () => {
   let l = lone(depthAtGap(H * 0.6)); // 멀리
   expect(body(l).pitch ?? 0).toBe(0);
   const steps = [H * Math.sin((10 * Math.PI) / 180), H * Math.sin((15 * Math.PI) / 180), H * Math.sin((5 * Math.PI) / 180), H * 0.6];
@@ -51,7 +51,7 @@ it('떨어져 서기 → 벽 가까이 오면 기댐 → 당기면 더 기울고
   expect(pitches[0]).toBeCloseTo(10, 1);
   expect(pitches[1]).toBeCloseTo(15, 1);
   expect(pitches[2]).toBeCloseTo(5, 1);
-  expect(pitches[3]).toBe(0);
+  expect(pitches[3]).toBeCloseTo(Math.asin(0.6) * 180 / Math.PI, 1);
 });
 
 it('각도는 책 높이·두께·거리에서: 같은 틈이면 키가 큰 책이 덜 기운다', () => {
@@ -61,8 +61,8 @@ it('각도는 책 높이·두께·거리에서: 같은 틈이면 키가 큰 책�
   expect(wallPitch(tall, SHELF_DEPTH - bookThickness(tall) - g, true)).toBeLessThan(wallPitch(B, depthAtGap(g), true));
 });
 
-it('경계에 여유: 들어갈 때는 ENTER 안쪽, 풀릴 때는 MAX 바깥에서(그 사이는 지금 상태 유지)', () => {
-  const mid = H * Math.sin((((WALL_LEAN_ENTER + WALL_LEAN_MAX) / 2) * Math.PI) / 180);
+it('서 있던 책은 가까워야 기대기 시작하고 기댄 책은 먼 곳까지 연속해서 넘어간다', () => {
+  const mid = H * Math.sin(((WALL_LEAN_ENTER + 10) * Math.PI) / 180);
   // 서 있던 책은 그 틈에서 기대지 않는다
   const standing = ok(setDepth(lone(depthAtGap(H * 0.6)), books, ID, depthAtGap(mid)));
   expect(placementOf(standing, ID)!.pitch ?? 0).toBe(0);

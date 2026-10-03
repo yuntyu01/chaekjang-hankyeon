@@ -46,7 +46,7 @@ function draw(motif: MotifId, c: string): string {
         `<path d="M19 10 L19.6 12.4 L22 13 L19.6 13.6 L19 16 L18.4 13.6 L16 13 L18.4 12.4 Z" fill="${c}" opacity="0.8"/><circle cx="6" cy="44" r="0.9" fill="${c}"/>`
       );
     case 'wave':
-      return [22, 30, 38]
+      return [27, 32]
         .map((y, i) => `<path d="M2 ${y} q5 -5 10 0 t10 0" stroke="${c}" stroke-width="1.6" fill="none" stroke-linecap="round" opacity="${1 - i * 0.2}"/>`)
         .join('');
     case 'flower':
@@ -84,5 +84,16 @@ function draw(motif: MotifId, c: string): string {
 
 // 폭 24, 높이 60 기준 SVG 문서
 export function motifSvg(motif: string, color: string) {
-  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 60" width="24" height="60">${draw(devMotifFor(motif), color)}</svg>`;
+  const special: Record<string, string> = {
+    daisy: `<path d="M12 57 Q14 41 12 26" stroke="${color}" stroke-width="1.2" fill="none"/>${leafPair(49, 0.8, color)}${[0, 60, 120, 180, 240, 300].map((a) => `<ellipse cx="12" cy="12" rx="2.3" ry="4.8" transform="rotate(${a} 12 19)" fill="#EDBB63"/>`).join('')}<circle cx="12" cy="19" r="3" fill="#D6A149"/>`,
+    sprig: `<path d="M9 57 Q11 39 17 16" stroke="${color}" stroke-width="1.1" fill="none"/><path d="M11 48 Q1 45 3 37 Q9 38 11 48 M12 39 Q3 34 6 27 Q12 30 12 39 M13 43 Q22 40 23 31 Q16 34 13 43 M15 32 Q24 27 23 20 Q17 23 15 32 M17 25 Q12 17 18 11 Q22 17 17 25" fill="${color}"/>`,
+    blossom: `<path d="M12 57 Q12 33 12 13 M12 39 L5 31 M12 31 L19 24" fill="none" stroke="${color}" stroke-width="1.2"/>${leafPair(51, 0.8, color)}${leafPair(39, 0.65, color)}<ellipse cx="12" cy="10" rx="3.5" ry="4.2" fill="#EFA55D"/><ellipse cx="19" cy="23" rx="2.6" ry="3.2" fill="#EFA55D"/>`,
+    seedling: `<path d="M12 57 L12 22 M12 46 L5 35 M12 40 L19 30" stroke="${color}" stroke-width="1.2" fill="none"/><ellipse cx="12" cy="19" rx="3.2" ry="4.4" fill="${color}"/><ellipse cx="4" cy="33" rx="3" ry="4" transform="rotate(-25 4 33)" fill="${color}"/><ellipse cx="20" cy="28" rx="3" ry="4" transform="rotate(25 20 28)" fill="${color}"/>`,
+    feather: `<path d="M1 39 Q0 23 25 11 Q25 30 1 39 Z" fill="${color}"/><path d="M-2 44 L23 14 M6 35 L5 27 M11 30 L21 28 M16 24 L16 18" stroke="#FBF0DB" stroke-width="0.8" fill="none"/>`,
+    asterisk: `<path d="M12 16 V42 M-1 29 H25 M3 20 L21 38 M3 38 L21 20" stroke="${color}" stroke-width="1.5" stroke-linecap="round"/>`,
+    cloud: `<path d="M4 36 C-1 36 -1 28 5 28 C5 19 17 19 18 27 C25 25 28 36 20 36 Z" fill="${color}"/>`,
+    book: `<path d="M2 19 Q7 17 11 20 L11 40 Q7 37 2 39 Z M13 20 Q17 17 22 19 L22 39 Q17 37 13 40 Z" fill="${color}"/>`,
+    'star-solid': `<path d="M12 18 L15 26 L24 27 L17 33 L19 42 L12 37 L5 42 L7 33 L0 27 L9 26 Z" fill="${color}"/>`,
+  };
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 60" width="24" height="60">${special[motif] ?? draw(devMotifFor(motif), color)}</svg>`;
 }

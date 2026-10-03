@@ -9,6 +9,7 @@
 // - Bookmark(갈피): 연결 책, 문장, 쪽수, 메모, 날짜
 // - Binding(재장정 자산): 책등 색, 모티프, 그림 파일, 생성 상태(기본 장정 / AI)
 import { formatMm } from './catalog';
+import { illustratedDimensions } from './jacket-proportions';
 import type { Book, HeightClass, MotifId, ThicknessClass } from './types';
 
 export type ReadStatus = 'want' | 'reading' | 'read' | 'paused';
@@ -268,6 +269,7 @@ export function toShelfBook(lib: Library, myBookId: string): Book | null {
     thicknessClass: thicknessClass(pages),
     coverAspectRatio: size.widthMm / size.heightMm,
     physical: { widthMm: size.widthMm, heightMm: size.heightMm, pages },
+    dims: illustratedDimensions({ widthMm: size.widthMm, heightMm: size.heightMm, pages }),
     // 갈피가 있으면 책 위로 작은 종이 탭(최대 두 장, art.tsx Ribbons)
     art: { motif: bd?.motif ?? 'none', ribbon: marks ? PAPER_TAB : undefined },
     startedAt: r?.startedAt,

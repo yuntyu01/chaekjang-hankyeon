@@ -8,6 +8,8 @@ import { useAnimatedReaction, useDerivedValue, useSharedValue, type SharedValue 
 
 import { corners, faceCorners, faceNormal, FACE_IDS, fromPlaced, gap, lowest, rot, type Book3, type FaceId, type Vec3 } from '@/domain/book3';
 import { project, toPx, type Affine, type Cam } from '@/domain/camera';
+import { bookViewCam } from '@/domain/book-view';
+import { shelfViewCam } from '@/domain/shelf-view';
 import { SHELF_DEPTH, SHELF_FRONT, SHELF_X0, SHELF_X1, VIEW_KX } from '@/domain/geometry';
 import { shelfFaces } from '@/domain/shelf-geom';
 import { BOX_EDGES, bookCast, type BookCast } from '@/domain/cast-shadow';
@@ -43,12 +45,9 @@ const zOf = (order: Order, key: string, off = 0) => {
 // 줄의 진행률이 도는 동안에도 바뀐 책이 없으면(멈춘 책은 같은 객체, 다른 줄로 멀리 가 있는 책은 null) 그림자 계산과
 // 줄 캔버스 다시 그리기가 돌지 않는다. 그림자를 그리는 쪽(벽·선반 윗면·틈·접촉·기대기·받는 그림자)은 모두 이것만 읽는다.
 export function useShadePoses(m: Motion, ids: string[], space: number, shelfId = ''): Readonly<SharedValue<Poses>> {
-  const init = useMemo(() => {
-    const out: Poses = {};
-    for (const id of ids) out[id] = shadeIn(m, id, space);
-    return out;
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
-  const poses = useSharedValue<Poses>(init);
+  // Initialize on the UI thread through the reaction below. Reading tracks in
+  // React render produced a warning over the shelf whenever a row remounted.
+  const poses = useSharedValue<Poses>({});
   useAnimatedReaction(
     () => ids.map((id) => shadeIn(m, id, space)),
     (cur, prev) => {
@@ -113,7 +112,7 @@ function DebugGeom({ m, id, cam: camSV, px }: { m: Motion; id: string; cam: CamS
 function DebugShelf({ cam: camSV, px }: { cam: CamSV; px: Affine }) {
   const path = useDerivedValue(() => {
     const cam = camSV.value;
-    const f = shelfFaces(cam);
+    const f = shelfFaces(shelfViewCam(cam));
     const P = (q: Point) => ({ x: q.x * px.s + px.tx, y: q.y * px.s + px.ty });
     const p = Skia.PathBuilder.Make();
     for (const fc of [f.top, f.front, f.side]) {
@@ -232,7 +231,8 @@ const RowBook = memo(
         });
       };
     }, [id, shelfId]);
-    const under = recv ? <BookReceives vis={vis} poses={recv.poses} id={id} ids={recv.ids} cam={cam} px={px} space={recv.space} plankAbove={recv.plankAbove} debug={recv.debug} /> : null;
+    const artCam = useDerivedValue(() => bookViewCam(cam.value, state.value));
+    const under = recv ? <BookReceives vis={vis} poses={recv.poses} id={id} ids={recv.ids} cam={artCam} px={px} space={recv.space} plankAbove={recv.plankAbove} debug={recv.debug} /> : null;
     const z = useDerivedValue(() => zOf(order, id));
     return <BookNode book={book} dims={dims} state={state} cam={cam} px={px} shared={shared} under={under} order={z} clip={clip} />;
   },
@@ -427,7 +427,7 @@ function GapShade({ gaps, band }: { gaps: Readonly<SharedValue<{ rect: Point[]; 
     }
     return pathOf(polys);
   });
-  return <Path path={path} color={rgba(shadow.color, shadow.ao.gap.max * ((band + 0.5) / 4))} />;
+  return <Path path={path} color={rgba(shadow.ao.gap.color, shadow.ao.gap.max * ((band + 0.5) / 4))} />;
 }
 
 // 기댄 책이 받치는 책에 닿는 곳: 닿는 점에 좁고 진한 어둠, 그 아래 벌어진 틈은 넓어지며 부드럽게 옅어진다.
@@ -781,7 +781,7 @@ export const RowContacts = memo(function RowContacts({ poses, ids, cam, px, orde
   const foot = useDerivedValue(() => shapes.value.foot);
   // 선반 윗면(투영된 실제 윗면 다각형) 안에만(받는 면 클리핑)
   const clip = useDerivedValue(() => {
-    const f = shelfFaces(cam.value);
+    const f = shelfFaces(shelfViewCam(cam.value));
     return pathOf([f.top.poly.map((q) => ({ x: q.x * px.s + px.tx, y: q.y * px.s + px.ty }))]);
   });
   return (

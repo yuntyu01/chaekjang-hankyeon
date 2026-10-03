@@ -7,13 +7,30 @@ import { light } from '@/ui/lighting';
 import { normalize, setSpin, type BookMap } from '../layout-engine';
 import { SAMPLE_BOOKS, SAMPLE_LAYOUT } from '../onboarding-sample';
 import { computeShelf } from '../shelf-scene';
-import { shelfBoxCorners, shelfFaces, shelfVertices } from '../shelf-geom';
+import { faceTextureMatrix, shelfBoxCorners, shelfFaces, shelfVertices } from '../shelf-geom';
+import { shelfViewCam } from '../shelf-view';
 
 const books: BookMap = Object.fromEntries(SAMPLE_BOOKS.map((b) => [b.id, b]));
 const eq = (a: { x: number; y: number }, b: { x: number; y: number }) => {
   expect(a.x).toBeCloseTo(b.x, 9);
   expect(a.y).toBeCloseTo(b.y, 9);
 };
+
+it('시안 선반의 앞 가장자리는 고정되고 원근 질감 네 모서리가 판에 붙는다', () => {
+  const original = shelfFaces(CAMERA);
+  const view = shelfFaces(shelfViewCam(CAMERA));
+  eq(view.corners.LFT, original.corners.LFT);
+  eq(view.corners.RFT, original.corners.RFT);
+  expect(view.corners.LBT.x).toBeGreaterThan(original.corners.LBT.x);
+  expect(view.corners.RBT.x).toBeLessThan(original.corners.RBT.x);
+  for (const f of [view.top, view.front, view.side!]) {
+    const m = faceTextureMatrix(f, 300, 80, 2.2, 20, 400);
+    for (const [i, [u,v]] of [[0,0],[300,0],[300,80],[0,80]].entries()) {
+      const den = m[6]*u+m[7]*v+m[8];
+      eq({x:(m[0]*u+m[1]*v+m[2])/den,y:(m[3]*u+m[4]*v+m[5])/den},{x:f.poly[i].x*2.2+20,y:f.poly[i].y*2.2+400});
+    }
+  }
+});
 
 it('깊이 기준: 앞 끝 0 → 책 기준선 70mm → 벽 230mm(기준선 뒤 160mm), 한 번만 더한다', () => {
   expect(SHELF_TOTAL_DEPTH_MM).toBe(230);

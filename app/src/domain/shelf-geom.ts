@@ -72,5 +72,19 @@ export function shelfFaces(cam: Camera): ShelfFaces {
 // 텍스처 그림(w × h px) → 화면 px 행렬(3×3 행 우선): 그림 (0,0)=O, (w,0)=O+U, (0,h)=O+V. 화면 px = 설계 단위 × s + (tx, ty).
 export function faceTextureMatrix(f: ShelfFace, w: number, h: number, s: number, tx: number, ty: number) {
   'worklet';
-  return [(f.U.x * s) / w, (f.V.x * s) / h, f.O.x * s + tx, (f.U.y * s) / w, (f.V.y * s) / h, f.O.y * s + ty, 0, 0, 1];
+  const [a, b, c, d] = f.poly;
+  const dx = a.x - b.x + c.x - d.x;
+  const dy = a.y - b.y + c.y - d.y;
+  if (Math.abs(dx) + Math.abs(dy) < 1e-8) return [(f.U.x * s) / w, (f.V.x * s) / h, f.O.x * s + tx, (f.U.y * s) / w, (f.V.y * s) / h, f.O.y * s + ty, 0, 0, 1];
+  const x1 = b.x - c.x, x2 = d.x - c.x, y1 = b.y - c.y, y2 = d.y - c.y;
+  const det = x1 * y2 - x2 * y1;
+  const g = (dx * y2 - x2 * dy) / det;
+  const k = (x1 * dy - dx * y1) / det;
+  return [
+    (s * (b.x - a.x + g * b.x) + tx * g) / w,
+    (s * (d.x - a.x + k * d.x) + tx * k) / h, s * a.x + tx,
+    (s * (b.y - a.y + g * b.y) + ty * g) / w,
+    (s * (d.y - a.y + k * d.y) + ty * k) / h, s * a.y + ty,
+    g / w, k / h, 1,
+  ];
 }

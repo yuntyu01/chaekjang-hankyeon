@@ -1,0 +1,9 @@
+<!doctype html><html lang="ko"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>홈 화면 시안 비교</title><style>
+body{margin:0;background:#e9e3db;color:#443d37;font:15px/1.6 system-ui}main{max-width:1280px;margin:auto;padding:28px}h1{font-size:24px;margin:0 0 8px}p{max-width:860px}section{display:flex;gap:24px;align-items:flex-start;overflow:auto}figure{margin:0;flex:0 0 390px}figcaption{padding:12px 0;font-weight:650}.frame{width:390px;height:843px;position:relative;overflow:hidden;background:#fcf8f1;border-radius:10px;box-shadow:0 6px 24px #68524420}.frame img{width:390px;display:block}.native img{position:absolute;top:-55px}a{color:inherit}
+</style><main><h1>홈 화면 · 18권 시안 구성</h1>
+<p>원본과 같은 책 제목·순서·색·앞표지 3권·눕힌 책 2권·기대기·가름끈을 실제 책장에 적용했습니다. 기존 책과 갈피 기록을 보존하고 배치 변경 전 백업을 저장합니다. 비교는 가로 390px 기준이며, 앱 캡처는 창 제목과 상단 시스템 영역을 제외했습니다.</p>
+<section><figure><figcaption>원본 시안</figcaption><div class="frame"><img src="../../../app/assets/reference/bookshelf-original.png" alt="원본 책장 시안"></div></figure>
+<figure><figcaption>적용 후 · Android 실제 화면</figcaption><div class="frame native"><img src="home-after.png" alt="18권 구성이 적용된 실제 홈"></div></figure>
+<figure><figcaption>적용 전 · 기존 8권 배치</figcaption><div class="frame native"><img src="home-before.png" alt="수정 전 홈"></div></figure></section>
+<p>검증: 32개 테스트 묶음 / 284개 테스트, TypeScript 검사, Android export 통과. 실제 앱에서 재시작 후 배치 유지와 책 선택·상세 연결을 확인했습니다. 시안은 일러스트이므로 책을 움직일 수 있는 공통 3D 투영과 원본의 국소 원근에는 차이가 남습니다.</p></main></html>

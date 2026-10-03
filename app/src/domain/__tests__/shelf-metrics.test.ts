@@ -1,32 +1,34 @@
-import { computeRows, makeMetrics, RIBBON_OUT, ROW_CLEARANCE, rowAt, toContent, toScene } from '@/ui/shelf/metrics';
+import { computeRows, makeMetrics, LAYOUT, RIBBON_OUT, ROW_CLEARANCE, ROW_CLEARANCES, rowAt, toContent, toScene } from '@/ui/shelf/metrics';
 import { BASE_CAM, project } from '../camera';
 import { bookHeight, SHELF_FRONT, SHELF_THICK } from '../geometry';
 import { addShelf, moveToShelf, setPose, threeShelfLayout, validate, type BookMap } from '../layout-engine';
-import { SAMPLE_BOOKS, SAMPLE_LAYOUT } from '../onboarding-sample';
+import { SAMPLE_BOOKS, SAMPLE_LAYOUT } from '../test-fixtures/interaction-books';
 import { computeShelf, frameBBox } from '../shelf-scene';
 
 const books: BookMap = Object.fromEntries(SAMPLE_BOOKS.map((b) => [b.id, b]));
 
-it('세 선반의 간격은 같고 헤더와 하단 아이콘 사이에서 중앙 정렬된다', () => {
+it('선반 칸은 이어지고 헤더 아래 여백과 하단 공간을 둔다', () => {
   const rows = computeRows(SAMPLE_LAYOUT, books, 1, 800, 70);
   expect(rows).toHaveLength(3);
-  expect(rows[1].top - rows[0].top).toBeCloseTo(rows[2].top - rows[1].top);
-  expect(rows[0].top).toBeCloseTo(800 - 70 - (rows[2].top + rows[2].height));
+  expect(rows[1].top).toBeCloseTo(rows[0].top + rows[0].height);
+  expect(rows[2].top).toBeCloseTo(rows[1].top + rows[1].height);
+  const free = 800 - 70 - rows.reduce((n, r) => n + r.height, 0);
+  expect(rows[0].top).toBeCloseTo(free * LAYOUT.topGap / 2);
   for (const row of rows) {
     for (const frame of computeShelf(SAMPLE_LAYOUT, books, row.shelfId).frames) {
-      // 책 윗끝(기본 3° 투영, 기준선 원점)이 줄 칸 위 끝에서 8DU 이상 아래
+      // 가장 촘촘한 마지막 줄도 책 머리가 윗선반 아래를 침범하지 않는다.
       const top = frameBBox(frame, BASE_CAM).minY + row.clear;
-      expect(top).toBeGreaterThanOrEqual(8);
+      expect(top).toBeGreaterThanOrEqual(0);
     }
   }
 });
 
-it('줄 간격은 3D 값: 보기 각은 입력이 아니고, 모든 줄이 같으며 = 가장 키 큰 책(갈피 포함) + 여유', () => {
+it('줄 간격은 각 선반의 가장 키 큰 책과 갈피에 맞추며 자세 변경에는 고정된다', () => {
   const m = makeMetrics(390);
   const rows = computeRows(SAMPLE_LAYOUT, books, m.scale, 800, 70);
-  const tallest = Math.max(...SAMPLE_LAYOUT.placements.map((p) => bookHeight(books[p.bookId]) + ((books[p.bookId].quotes ?? 0) > 0 ? RIBBON_OUT : 0)));
   for (const row of rows) {
-    expect(row.space).toBeCloseTo(tallest + ROW_CLEARANCE, 9);
+    const tallest = Math.max(...SAMPLE_LAYOUT.placements.filter((p) => p.shelfId === row.shelfId).map((p) => bookHeight(books[p.bookId]) + ((books[p.bookId].quotes ?? 0) > 0 ? RIBBON_OUT : 0)));
+    expect(row.space).toBeCloseTo(tallest + (ROW_CLEARANCES[rows.indexOf(row)] ?? ROW_CLEARANCE), 9);
     expect(row.height).toBeCloseTo((row.space + SHELF_THICK) * m.scale, 9);
     // 책 기준선(선반 공간 원점)이 row.baseline, 칸 아래 끝 = 이 줄 판 앞면 아래 모서리를 기본 3°로 본 자리
     expect(toContent(m, row, { x: 0, y: 0 }).y).toBeCloseTo(row.baseline, 9);
@@ -38,13 +40,15 @@ it('줄 간격은 3D 값: 보기 각은 입력이 아니고, 모든 줄이 같�
   expect(computeRows(front.layout, books, m.scale, 800, 70)).toEqual(rows);
 });
 
-it('키 큰 책을 다른 선반으로 옮겨도 간격과 선반 위치가 흔들리지 않는다', () => {
+it('키 큰 책을 빈 선반으로 옮기면 필요한 칸만 커지고 나머지 줄의 높이는 유지된다', () => {
   const layout = addShelf(SAMPLE_LAYOUT, 'empty');
   const before = computeRows(layout, books, 1);
   const result = moveToShelf(layout, books, 'b02', 'empty');
   if (!result.ok) throw new Error(result.reason);
   const after = computeRows(result.layout, books, 1);
-  expect(after).toEqual(before);
+  expect(after[3].space).toBeGreaterThan(before[3].space);
+  expect(after[1].space).toBe(before[1].space);
+  expect(after[2].space).toBe(before[2].space);
   expect(after[3].top).toBeCloseTo(after[2].top + after[2].height);
 });
 

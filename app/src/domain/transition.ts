@@ -93,7 +93,16 @@ function segPose(tr: Track, t: number): Book3 {
     };
   }
   const w = { x: s.w0.x + (s.w1.x - s.w0.x) * u, y: s.w0.y + (s.w1.y - s.w0.y) * u, z: s.w0.z + (s.w1.z - s.w0.z) * u };
-  return { id: tr.id, dims: tr.dims, roll, yaw, spin, pitch, t: sub3(w, rot(roll, yaw, s.a, spin, pitch)) };
+  const b = { id: tr.id, dims: tr.dims, roll, yaw, spin, pitch, t: sub3(w, rot(roll, yaw, s.a, spin, pitch)) };
+  if (s.kind === 2) {
+    // Sliding a leaning foot is curved: linear angle/depth interpolation puts
+    // the head through the wall. Keep the foot on the floor and slide it out
+    // just enough to preserve wall contact throughout the turn.
+    let back = -Infinity;
+    for (const c of corners(b)) back = Math.max(back, c.z);
+    if (back > SHELF_DEPTH) b.t.z -= back - SHELF_DEPTH;
+  }
+  return b;
 }
 
 export function bookAt(tr: Track, t: number): Book3 {
@@ -281,7 +290,9 @@ export function build(prev: State[], next: State[], c: Candidate): Track[] {
     if (posed(from, to)) segs = poseSegs(from, to, c.turn[0], c.turn[1], c.al, c.order);
     else if (onlyPitch(from, to)) {
       // 벽에 기대기·떼기: 뒤쪽 아래 모서리를 축으로 젖히며, 그 축은 바닥을 따라 새 자리로
-      segs = [pivotSeg(from, to, c.turn[0], c.turn[1], wallPivot(to))];
+      const seg = pivotSeg(from, to, c.turn[0], c.turn[1], wallPivot(to));
+      if (near(from.yaw, 90) && near(from.roll, 0) && Math.abs(seg.w0.z - seg.w1.z) > 0.02) seg.kind = 2;
+      segs = [seg];
     } else if (sameRY(from, to) && !sameRot(from, to)) {
       // 수직축으로만 돌기(눕힌 책을 비스듬히): 가운데를 축으로, 자리 이동은 함께
       const ctr = { x: to.dims.T / 2, y: to.dims.H / 2, z: to.dims.W / 2 };
@@ -605,7 +616,11 @@ function pullPlan(prev: State[], next: State[], arriving: Set<string>, resting: 
   };
   const movers = new Set<string>(arriving);
   const moved = next.filter((b) => before.has(b.id));
-  for (const b of moved) if (posed(before.get(b.id)!, b)) movers.add(b.id);
+  for (const b of moved) {
+    const from = before.get(b.id)!;
+    // Interrupted pulls still need their return corridor, even if rotation is done.
+    if (posed(from, b) || box3(from).z0 < -SHELF_FRONT) movers.add(b.id);
+  }
   // 순서가 바뀌는 책: 앞뒤 자세의 가운데 x 순서가 다른 쌍에 든 책 중 더 많이 움직인 쪽
   for (let i = 0; i < moved.length; i++)
     for (let j = i + 1; j < moved.length; j++) {
@@ -695,6 +710,8 @@ function pullPlan(prev: State[], next: State[], arriving: Set<string>, resting: 
     const from = before.get(to.id);
     if (!from || same(from, to)) return holdTrack(from ?? to);
     // 제자리에서 밀리는 책: 빼낸 책이 모두 선반 앞에 있는 동안
-    return { id: to.id, dims: to.dims, segs: moveSegs(from, to, OUT, IN), moving: true };
+    // All neighbours slide at the same rate. A lifted neighbour must not finish
+    // its horizontal move early while the next book is still halfway across.
+    return { id: to.id, dims: to.dims, segs: [pivotSeg(from, to, OUT, IN, ZERO)], moving: true };
   });
 }

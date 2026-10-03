@@ -1,9 +1,30 @@
 // 책 면 그림(캔버스 없이, 면 그림 좌표 0..w, 0..h). 상자 렌더러(ui/book3d)가 Skia Picture로 기록해 면 변환에 태워 그린다.
 // 책등 면: 책 색 한 가지(균일한 무광). 표지 면: 표지 그림(없으면 책 색 + 모티프) + 제본 홈. 제목은 따로 그린다(세움·눕힘 조판을 자세에 따라 고른다).
-// 거친 붓결·얼룩 질감과 책등 장식 그림은 그리지 않는다. 둥근 모서리·빛 받는 모서리는 여기서 굽지 않는다: 자세와 공통 광원으로 매 프레임 덧그린다(BookNode).
-import { BlurMask, Group, Image as SkImage, LinearGradient, Rect, Skia, vec, type SkImage as SkImageType } from '@shopify/react-native-skia';
+// 면마다 둥근 윤곽을 사용한다. 빛 받는 모서리와 자세에 따른 명암은 BookNode에서 덧그린다.
+import { BlurMask, Group, Image as SkImage, LinearGradient, Path, Rect, Skia, vec, type SkImage as SkImageType } from '@shopify/react-native-skia';
 
-import { GROOVE } from '@/domain/book-parts';
+import { CORNER_R, GROOVE } from '@/domain/book-parts';
+
+// Each board has its own rounded outline, in book coordinates, so the corner
+// stays rounded when the book is turned or laid flat.
+export function bookFacePath(w: number, h: number, s: number, spine = false) {
+  const p = Skia.PathBuilder.Make();
+  const r = Math.min(CORNER_R * s, w * 0.18, h * 0.18);
+  if (!spine) {
+    p.addRRect(Skia.RRectXY(Skia.XYWHRect(0, 0, w, h), r, r));
+    return p.detach();
+  }
+  p.moveTo(0, r);
+  p.quadTo(0, s * 0.9, r, s * 0.5);
+  p.quadTo(w / 2, -s * 0.5, w - r, s * 0.5);
+  p.quadTo(w, s * 0.9, w, r);
+  p.lineTo(w, h - r);
+  p.quadTo(w, h - s * 0.5, w - r, h - s * 0.3);
+  p.quadTo(w / 2, h + s * 0.3, r, h - s * 0.3);
+  p.quadTo(0, h - s * 0.5, 0, h - r);
+  p.close();
+  return p.detach();
+}
 
 // 속지(종이 단면) 색: 밝은 아이보리(시안 책장 책 머리의 속지 평균). 표지색·판 그늘은 섞지 않는다(속지 면에만).
 export const PAGE_BASE = '#FBF2E2'; // 시안 속지 약 (253,243,226)
@@ -45,9 +66,19 @@ export function litTone(tone: string) {
   return mix(tone, LIGHT_TINT, 0.5);
 }
 
-// 책등 면(제목 제외): 책 색 한 가지. 장식 그림·질감 없이 균일한 무광 면이고, 명암은 그릴 때 광원으로 덧칠한다.
-export function SpineFaceArt({ w, h, face }: { w: number; h: number; face: string }) {
-  return <Rect x={0} y={0} width={w} height={h} color={face} />;
+// 책등 바탕: 따뜻한 무광 색에 아주 옅은 밝기 차이를 더한다.
+export function SpineFaceArt({ w, h, face, s = 1 }: { w: number; h: number; face: string; s?: number }) {
+  return (
+    <Group>
+      <Rect x={0} y={0} width={w} height={h} color={face} />
+      <Rect x={0} y={0} width={w} height={h}>
+        <LinearGradient start={vec(0, 0)} end={vec(w, h * 0.8)} colors={[withAlpha(LIGHT_TINT, 0.045), withAlpha(face, 0), withAlpha(scaleColor(face, 0.7), 0.045)]} positions={[0, 0.45, 1]} />
+      </Rect>
+      <Path path={bookFacePath(w, h, s, true)} style="stroke" strokeWidth={0.75 * s} color={withAlpha(scaleColor(face, 0.78), 0.28)} />
+      <Rect x={1.2 * s} y={2.5 * s} width={1.05 * s} height={h - 5 * s} color={withAlpha(LIGHT_TINT, 0.24)} />
+      <Rect x={w - 0.6 * s} y={3 * s} width={0.6 * s} height={h - 6 * s} color={withAlpha(scaleColor(face, 0.38), 0.60)} />
+    </Group>
+  );
 }
 
 // 표지 그림 왼쪽(제본 쪽)을 면 밖으로 미는 비율(아래 CoverFaceArt 설명)
@@ -78,7 +109,7 @@ export function CoverFaceArt({
     mw = fw * 0.5;
   }
   return (
-    <Group clip={Skia.XYWHRect(0, 0, fw, h)}>
+    <Group clip={bookFacePath(fw, h, s)}>
       <Rect x={0} y={0} width={fw} height={h} color={face} />
       {/* 표지 그림 왼쪽(제본 쪽) 끝 약 1%에는 시안에서 뽑을 때 따라온 어두운 윤곽 한 줄이 있다(b04 50 vs 안쪽 82). 제본 홈·가장자리 명암은
           코드가 그리므로 그림을 1.5% 왼쪽으로 밀어 그 줄을 면 밖으로 보낸다 */}

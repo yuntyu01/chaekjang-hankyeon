@@ -6,7 +6,7 @@
 // 보기 각(pitch)은 카메라만 바꾼다: 책 배치·충돌·줄 간격(3D)은 카메라를 읽지 않는다.
 // 워클릿은 만들어질 때 쓰는 함수를 붙잡으므로, 쓰이는 함수를 먼저 정의한다.
 
-export type Cam = { kx: number; ky: number };
+export type Cam = { kx: number; ky: number; taper?: { x: number; y: number; z: number; strength: number } };
 export type Point = { x: number; y: number };
 export type Vec3 = { x: number; y: number; z: number };
 
@@ -14,7 +14,7 @@ export type Vec3 = { x: number; y: number; z: number };
 export const VIEW_PITCH_MIN = 3;
 export const VIEW_PITCH_MAX = 8;
 // 옆면을 조금 보이게 하는 사선(카메라 좌우 회전이 아니다). 모든 책이 같은 쪽 옆면을 보인다.
-export const VIEW_KX = 0.035;
+export const VIEW_KX = 0.012;
 
 export function kyOf(deg: number) {
   'worklet';
@@ -37,7 +37,14 @@ export const BASE_CAM: Cam = camAt(VIEW_PITCH_MIN);
 // 선반 공간 → 화면 방향(설계 단위, 원점 = 책 기준선 왼쪽 끝, 아래가 +)
 export function project(cam: Cam, v: Vec3): Point {
   'worklet';
-  return { x: v.x + v.z * cam.kx, y: -(v.y + v.z * cam.ky) };
+  let x = v.x + v.z * cam.kx;
+  let y = -(v.y + v.z * cam.ky);
+  if (cam.taper) {
+    const t = cam.taper;
+    const d = 1 + (v.z - t.z) * t.strength;
+    x=t.x+(x-t.x)/d; y=t.y+(y-t.y)/d;
+  }
+  return {x,y};
 }
 
 // 설계 단위 → 캔버스 px: X = x·s + tx, Y = y·s + ty. 한 줄의 tx·ty = 그 줄 책 기준선 왼쪽 끝의 캔버스 위치.
@@ -45,7 +52,8 @@ export type Affine = { s: number; tx: number; ty: number };
 
 export function toPx(cam: Cam, px: Affine, v: Vec3): Point {
   'worklet';
-  return { x: (v.x + v.z * cam.kx) * px.s + px.tx, y: -(v.y + v.z * cam.ky) * px.s + px.ty };
+  const q = project(cam, v);
+  return { x: q.x * px.s + px.tx, y: q.y * px.s + px.ty };
 }
 
 // 방향(길이 있는 벡터)의 화면 변화량(설계 단위): 면 그림 행렬·가림 순서가 쓴다

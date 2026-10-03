@@ -1,4 +1,4 @@
-// 480mm 선반, 두께 2배(최소 30DU) 규칙과 자세별 점유 폭
+// 480mm 선반, 최소 두께 30DU 규칙과 자세별 점유 폭
 import { bookHeight, bookThickness, DU_PER_MM, frontWidth, MIN_SPINE_DU, mm, spineDU, SHELF_LENGTH_MM, SHELF_USABLE_WIDTH, singleFootprint, stackFootprint, thicknessMm } from '../geometry';
 import { checkSpace, shelfItems, usedWidth, type BookMap } from '../layout-engine';
 import { SAMPLE_BOOKS, SAMPLE_LAYOUT } from '../onboarding-sample';
@@ -28,10 +28,10 @@ describe('단위', () => {
     expect(frontWidth(b)).toBeCloseTo(mm(152), 6);
     expect(bookThickness(b)).toBeCloseTo(spineDU(thicknessMm(600)), 6);
     expect(bookThickness(book('thin', 110, 175, 100))).toBe(MIN_SPINE_DU);
-    // 두꺼울수록 늘고, 300쪽은 약 35DU
+    // 두꺼울수록 늘고, 300쪽은 약 37DU
     const t300 = bookThickness(book('a', 140, 210, 300));
-    expect(t300).toBeGreaterThan(27);
-    expect(t300).toBeLessThan(31);
+    expect(t300).toBeGreaterThan(36);
+    expect(t300).toBeLessThan(39);
     expect(bookThickness(book('b', 140, 210, 450))).toBeGreaterThan(t300);
   });
 
@@ -55,9 +55,9 @@ describe('선반 용량', () => {
       placements: Array.from({ length: n }, (_, i) => ({ bookId: `b${i}`, shelfId: 's', order: i, pose: 'spine' as const, tilt: 0 as const })),
     });
     for (let i = 0; i < 20; i++) books[`b${i}`] = book(`b${i}`, 140, 210, 300);
-    // 300쪽 ≈ 29DU, 선반 366DU → 12권
+    // 300쪽 ≈ 37DU, 선반 366DU → 9권
     const fit = Math.floor(SHELF_USABLE_WIDTH / bookThickness(books.b0));
-    expect(fit).toBe(12);
+    expect(fit).toBe(9);
     expect(checkSpace(layout(fit), books)).toBeNull();
     expect(checkSpace(layout(fit + 1), books)).toBe('no-space');
   });

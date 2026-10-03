@@ -26,6 +26,13 @@ export type BookArt = {
   accentColor?: string;
   // 갈피(가름끈) 색. 저장된 문장이 있는 책(Book.quotes > 0)에만 표시된다.
   ribbon?: string;
+  // 장정에 포함된 가름끈. 문장 기록 수를 꾸며내지 않고 장식만 표시한다.
+  ribbonVisible?: boolean;
+  // 장정별 인쇄 위치. 없으면 제목 길이에 맞춘 자동 조판을 사용한다.
+  titleTop?: number;
+  motifScale?: number;
+  motifBottom?: number;
+  plainCover?: boolean;
 };
 
 // 이미지 자산: 앱 번들(require 결과 숫자) 또는 원격 URI
@@ -40,7 +47,11 @@ export type Physical = {
 
 // 코드로 그리는 몸체에 입힐 평평한 재료
 export type BodyArt = import('./body-art.generated').BodyArt;
-export type CoverArt = import('./body-art.generated').CoverArt;
+export type CoverArt = import('./body-art.generated').CoverArt & {
+  sourceRect?: { x: number; y: number; width: number; height: number };
+  printedTitle?: string;
+  titleRect?: { x: number; y: number; width: number; height: number; cleanX: number };
+};
 
 export type Book = {
   id: string;
@@ -91,7 +102,7 @@ export type BookPlacement = {
   stackDz?: number;
   // (예전 저장본) 표지 전시 책이 벽에 기대 있는지. 지금은 pitch로 저장한다.
   wallLean?: boolean;
-  // 표지 전시 책의 뒤로 젖힘(도, 0 = 똑바로). 저장된 값 > 0이면 벽에 기대 있다(받침 없는 젖힘은 저장하지 않는다).
+  // 뒤로 젖힘(도, 0 = 똑바로, 90 = 뒤로 넘어져 바닥에 놓임). 중간 각도는 벽이나 다른 책이 받친다.
   // 표지 책의 좌우 돌리기는 spin(도)을 같이 쓴다.
   pitch?: number;
   // 저장 시 기록하는 정규화 위치(선반 사용 폭 대비 왼쪽 끝, 0~1). 복원의 기준은 order이고 이 값은 참고·동기화용.

@@ -5,6 +5,6 @@ export function tabBarStyle(bottom: number) {
   return {
     position: 'absolute' as const, backgroundColor: 'transparent', borderTopWidth: 0,
     elevation: 0, shadowOpacity: 0, height: navigation.height + bottom,
-    paddingBottom: bottom, paddingTop: 0,
+    paddingBottom: bottom + navigation.bottomAir, paddingTop: 0, paddingHorizontal: 18,
   };
 }

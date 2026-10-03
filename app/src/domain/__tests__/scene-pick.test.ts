@@ -7,6 +7,7 @@ import { computeRows, makeMetrics, toContent, type RowGeom } from '@/ui/shelf/me
 import { makeMotion, pickAt, sceneOrder, type SceneGeo, type SceneMotion } from '@/ui/shelf/scene';
 
 import { corners, fromPlaced, type Book3 } from '../book3';
+import { bookViewCam } from '../book-view';
 import { hull, type Placed } from '../box';
 import { BASE_CAM, camAt, project, type Cam, type Vec3 } from '../camera';
 import { SHELF_DEPTH, SHELF_FRONT, SHELF_THICK, VIEW_PITCH_MAX } from '../geometry';
@@ -51,6 +52,19 @@ describe('쌓인 책과 빈 곳', () => {
     expect(pick({ x: top.x + 20, y: top.y + top.size.h / 2, z: top.z })).toEqual({ shelfId: 'shelf-3', bookId: 'b13' });
     expect(pick({ x: bottom.x + 20, y: 8, z: bottom.z })).toEqual({ shelfId: 'shelf-3', bookId: 'b12' });
     expect(pick({ x: 340, y: 168, z: 0 })).toBeNull(); // 책 위 빈 곳
+  });
+
+  it('눕힌 표지도 실제 투영 윤곽 안에서 선택되고 바닥선은 선반과 일치한다', () => {
+    const top = boxOf(SAMPLE_LAYOUT, 'shelf-3', 'b13');
+    const b = fromPlaced(top);
+    const cam = bookViewCam(BASE_CAM, b);
+    const cover = { x: top.x + top.size.w / 2, y: top.y + top.size.h, z: top.z + top.size.d * 0.8 };
+    const p = at(row, cam, cover);
+    const oldOutline = hull(corners(b).map(q => at(row, BASE_CAM, q)));
+    expect(pointInPoly(p, oldOutline)).toBe(true);
+    expect(pickAt(list, geo, BASE_CAM, p.x, p.y, 0)).toEqual({ shelfId: 'shelf-3', bookId: 'b13' });
+    const front = { x: top.x, y: top.y, z: top.z };
+    expect(at(row, cam, front)).toEqual(at(row, BASE_CAM, front));
   });
 
   it('윤곽 밖이면 손가락 여유(slop) 안에서 가장 가까운 책', () => {
@@ -127,10 +141,10 @@ describe('윗선반 판이 아래 줄 책 머리를 가린다', () => {
   };
   const { rows, geo, list } = sceneOf(l);
   const box = boxOf(l, 'low', 'b07');
-  const head = { x: box.x + box.size.w / 2, y: box.size.h, z: box.z + box.size.d * 0.85 }; // 책 머리(윗면) 뒤쪽 한 점
+  const head = { x: box.x + box.size.w / 2, y: box.size.h, z: box.z + box.size.d * 0.95 }; // 책 머리의 벽 가까운 점
 
   it('아래 줄은 3D 줄 간격(판 윗면 → 윗선반 아랫면 + 판 두께)만큼 아래', () => {
-    expect(geo.rows[1].dy).toBeCloseTo(rows[0].space + SHELF_THICK, 9);
+    expect(geo.rows[1].dy).toBeCloseTo(rows[1].space + SHELF_THICK, 9);
   });
 
   it('8°: 윗선반 판 뒤로 들어간 책 머리는 책이 아니다(같은 책 앞면은 잡힌다)', () => {

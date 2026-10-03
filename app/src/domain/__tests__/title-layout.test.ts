@@ -64,16 +64,17 @@ describe('책등 제목 한 열 우선', () => {
 });
 
 describe('앞표지 제목(장정 규칙)', () => {
-  it('짧은 제목은 한 줄, 글자는 표지 폭의 약 0.135배(시안 느린 계절 잉크 높이 0.107~0.12W), 14DU를 넘지 않는다', () => {
+  it('짧은 제목은 한 줄, 표지 폭에 맞추되 16DU를 넘지 않는다', () => {
     const r = coverTitleLayout('느린 계절', 102.9, 152.5);
     expect(r.lines).toEqual(['느린 계절']);
     expect(r.fontSize).toBeCloseTo(102.9 * 0.135, 0);
-    expect(coverTitleLayout('월든', 116, 172)).toEqual({ lines: ['월든'], fontSize: 14 });
+    expect(coverTitleLayout('월든', 116, 172)).toEqual({ lines: ['월든'], fontSize: 15.7 });
+    expect(coverTitleLayout('월든', 160, 190).fontSize).toBe(16);
   });
   it('긴 제목은 단어를 깨지 않고 고르게 두 줄(시안과 같은 줄 나눔), 긴 줄이 표지 폭의 0.72를 넘지 않게', () => {
     const r = coverTitleLayout('우리가 빛의 속도로 갈 수 없다면', 103, 152);
     expect(r.lines).toEqual(['우리가 빛의 속도로', '갈 수 없다면']);
-    expect(r.fontSize).toBeCloseTo(103 * 0.095, 0); // 시안 약 0.09W
+    expect(r.fontSize).toBeCloseTo(103 * 0.09, 0);
     expect(r.fontSize).toBeLessThan(coverTitleLayout('느린 계절', 103, 152).fontSize);
   });
 });
@@ -81,14 +82,14 @@ describe('앞표지 제목(장정 규칙)', () => {
 describe('책등 제목(장정 규칙)', () => {
   it('글자는 책등 폭의 약 40%(시안 잉크 높이 ≈ 책 높이의 0.064), 읽을 수 있는 8.5DU 아래로는 줄이지 않는다', () => {
     expect(spineTitleLayout('모순', 188, 27.7, 0.5).fontSize).toBe(11);
-    expect(spineTitleLayout('흰', 188, 21, 0.5).fontSize).toBe(8.5);
+    expect(spineTitleLayout('흰', 188, 21, 0.5).fontSize).toBe(9);
   });
   it('글자 간격은 시안처럼 글자 크기의 약 1.1배(짧은 제목 1.16), 긴 제목은 간격부터 줄인다', () => {
     expect(spineTitleLayout('데미안', 225, 24.6, 0.5).pitch).toBe(1.16);
     expect(spineTitleLayout('달러구트 꿈 백화점', 205, 27.5, 0.65).pitch).toBeLessThan(1.16);
   });
-  it('첫 글자는 책 높이의 약 0.215에서 시작한다(시안 잉크 위 끝 약 0.23H)', () => {
-    expect(spineTitleLayout('데미안', 225, 24.6, 0.9).textTop).toBe(0.215);
+  it('짧은 제목은 둥글게 감싼 머리 아래 약 1/4에서 시작한다', () => {
+    expect(spineTitleLayout('데미안', 225, 24.6, 0.9).textTop).toBe(0.255);
   });
 });
 
@@ -116,6 +117,11 @@ describe('눕힌 책등 제목(가로 한 줄)', () => {
   });
   it('띄어쓰기는 하나로 모은다(앞뒤 공백 제거)', () => {
     expect(lyingTitleLayout('  아무튼,   서재 ', 133, 22).text).toBe('아무튼, 서재');
+  });
+  it('눕힌 책의 끝 장식 영역에는 긴 제목이 들어가지 않는다', () => {
+    const r = lyingTitleLayout('좋은 문장은 이렇게 온다', 156, 36, 0.25);
+    expect(r.text).toBe('좋은 문장은 이렇게 온다');
+    expect(span(r.text, r.fontSize)).toBeLessThanOrEqual(156 * 0.61);
   });
 });
 

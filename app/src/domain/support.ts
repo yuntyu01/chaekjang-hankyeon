@@ -21,7 +21,7 @@ export function stackBoxes(
   members: { bookId: string; book: Book; spin?: number; depth?: number; dx?: number; dz?: number }[],
   x: number,
 ): Placed[] {
-  const offs = stackOffsets(members.map((m) => m.book));
+  const offs = stackOffsets(members.map((m) => m.book), members.map(m=>m.spin ?? 0));
   const out: Placed[] = [];
   members.forEach((m, i) => {
     const size = boxSize(m.book, 'horizontal');

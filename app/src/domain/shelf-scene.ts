@@ -2,6 +2,7 @@
 // 매 프레임 같은 카메라로 투영해 쓴다(투영 결과를 여기 저장하지 않는다).
 import { boxSize, collide, CONTACT, frontPoly, hull, solveLean, type Placed } from './box';
 import { corners, fromPlaced, type Book3 } from './book3';
+import { bookViewCam } from './book-view';
 import { project, type Cam, type Point } from './camera';
 import { SHELF_X0, SHELF_X1 } from './geometry';
 import { itemBoxes, itemPositions, placementOf, shelfItems, type BookMap } from './layout-engine';
@@ -138,6 +139,7 @@ export function pointInPoly(pt: Point, poly: Point[]) {
 // 상자를 카메라로 투영한 외곽(설계 단위, 원점 = 책 기준선 왼쪽 끝)
 export function outlineOf(cam: Cam, b: Book3): Point[] {
   'worklet';
+  cam = bookViewCam(cam, b);
   const out: Point[] = [];
   for (const c of corners(b)) out.push(project(cam, c));
   return hull(out);

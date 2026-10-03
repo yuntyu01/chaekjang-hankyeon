@@ -4,7 +4,7 @@ import { hull } from '../shadow-shape';
 import { shadowOnPlane, travelOf } from '../cast-shadow';
 import { SHELF_FRONT } from '../geometry';
 import { applySwapTarget, bookXs, findSwapTarget, moveBook, placementOf, setDepth, type BookMap, type Result } from '../layout-engine';
-import { SAMPLE_BOOKS, SAMPLE_LAYOUT } from '../onboarding-sample';
+import { SAMPLE_BOOKS, SAMPLE_LAYOUT } from '../test-fixtures/interaction-books';
 import { bodiesOf } from '../shelf-scene';
 import type { ShelfLayout } from '../types';
 import { light } from '@/ui/lighting';

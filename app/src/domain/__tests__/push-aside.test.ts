@@ -2,7 +2,7 @@
 // 왼쪽 공간이 모자라면 드래그 시작 배치에서 오른쪽으로. 둘 다 안 되면 양쪽 이웃을 각자 바깥으로 나눠 비키고,
 // 그것도 안 되면 자리 없음. 빈틈·무관한 책은 그대로.
 import { bookXs, detach, findDropTarget, itemWidth, moveBook, placementOf, setDepth, shelfItems, validate, type BookMap, type Result } from '../layout-engine';
-import { SAMPLE_BOOKS, SAMPLE_LAYOUT } from '../onboarding-sample';
+import { SAMPLE_BOOKS, SAMPLE_LAYOUT } from '../test-fixtures/interaction-books';
 import { computeShelf, withLeans } from '../shelf-scene';
 
 const books: BookMap = Object.fromEntries(SAMPLE_BOOKS.map((b) => [b.id, b]));
@@ -30,9 +30,9 @@ describe('한쪽 우선 비키기', () => {
 
   it('왼쪽 공간이 모자라면 시작 배치에서 오른쪽으로(왼쪽 결과에 덧붙이지 않는다), 가리킨 자리는 그대로', () => {
     // 3번 선반 맨 왼쪽: 더미와 부딪히고 더미 왼쪽 여유가 없다 → 더미부터 오른쪽으로 연쇄
-    const l = ok(moveBook(SAMPLE_LAYOUT, books, 'b03', { kind: 'insert', shelfId: 'shelf-3', index: 0, x: 21 }));
+    const l = ok(moveBook(SAMPLE_LAYOUT, books, 'b03', { kind: 'insert', shelfId: 'shelf-3', index: 0, x: 12 }));
     const xs = bookXs(l, books);
-    expect(xs.get('b03')).toBeCloseTo(21, 1);
+    expect(xs.get('b03')).toBeCloseTo(12, 1);
     expect(order(l, 'shelf-3')[0]).toBe('b03');
     const d = xs.get('b12')! - x0('b12');
     expect(d).toBeGreaterThan(0);

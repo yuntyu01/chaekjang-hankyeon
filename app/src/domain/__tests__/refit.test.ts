@@ -27,6 +27,16 @@ function expectInside(l: ShelfLayout, bm: BookMap, shelf = 's') {
 }
 const spinOf = (l: ShelfLayout, id: string) => placementOf(l, id)!.spin ?? 0;
 
+it('미세 여백을 추가해도 이미 선반을 채운 책 네 권은 서랍으로 이동하지 않는다', () => {
+  const bm = Object.fromEntries(['A', 'B', 'C', 'D'].map((id) => [id, book(id, 188, SHELF_USABLE_WIDTH / 4, 128)]));
+  const l = layoutOf(...Object.keys(bm).map((id, i) => place(id, i, i * SHELF_USABLE_WIDTH / 4)));
+  const result = fitToShelf(l, bm);
+  expect(result.moved).toEqual([]);
+  expect(result.layout.drawer).toEqual([]);
+  expect(result.layout.placements.map((p) => p.bookId)).toEqual(['A', 'B', 'C', 'D']);
+  expectInside(result.layout, bm);
+});
+
 describe('188mm 눕힌 책 돌리기', () => {
   it('공간이 있으면 원하는 각도 그대로, 깊이만 필요한 만큼 앞으로', () => {
     const l = layoutOf(place('L', 0, 100, { pose: 'horizontal' }));

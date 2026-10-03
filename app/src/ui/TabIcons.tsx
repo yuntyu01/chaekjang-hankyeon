@@ -4,7 +4,7 @@ import Svg, { Path, Rect } from 'react-native-svg';
 export function ShelfIcon({ color, size = 26, filled }: { color: string; size?: number; filled?: boolean }) {
   const fill = filled ? color : 'none';
   return (
-    <Svg width={size} height={size} viewBox="0 0 26 26">
+    <Svg width={size} height={size} viewBox="0.8 -0.7 26 26">
       <Rect x={3} y={6} width={5} height={16} rx={1.2} fill={fill} stroke={color} strokeWidth={1.6} />
       <Rect x={10} y={4} width={5} height={18} rx={1.2} fill={fill} stroke={color} strokeWidth={1.6} />
       <Path d="M17.2 7.4 L21.4 6.4 L24.6 20.8 L20.4 21.8 Z" fill={fill} stroke={color} strokeWidth={1.6} strokeLinejoin="round" />
@@ -45,7 +45,7 @@ export function MyIcon({ color, size = 26, filled }: { color: string; size?: num
 // 갈피: 끝이 갈라진 가름끈 종이(선택되면 속이 참)
 export function BookmarkTabIcon({ color, size = 26, filled }: { color: string; size?: number; filled?: boolean }) {
   return (
-    <Svg width={size} height={size} viewBox="0 0 26 26">
+    <Svg width={size} height={size} viewBox="-0.5 -1.2 26 26">
       <Path d="M7.5 3.8 H18.5 A1.4 1.4 0 0 1 19.9 5.2 V22.4 L13 17.6 L6.1 22.4 V5.2 A1.4 1.4 0 0 1 7.5 3.8 Z" fill={filled ? color : 'none'} stroke={color} strokeWidth={1.6} strokeLinejoin="round" />
     </Svg>
   );
@@ -55,7 +55,7 @@ export function BookmarkTabIcon({ color, size = 26, filled }: { color: string; s
 export function ReadTabIcon({ color, size = 26, filled, bg }: { color: string; size?: number; filled?: boolean; bg: string }) {
   const f = filled ? color : 'none';
   return (
-    <Svg width={size} height={size} viewBox="0 0 26 26">
+    <Svg width={size * 1.2} height={size * 1.05} viewBox="0 -0.7 26 26" preserveAspectRatio="none">
       <Path d="M13 7.2 C10.6 5.4 7.2 4.8 3.6 5.4 V20.4 C7.2 19.8 10.6 20.4 13 22.2 Z" fill={f} stroke={color} strokeWidth={1.6} strokeLinejoin="round" />
       <Path d="M13 7.2 C15.4 5.4 18.8 4.8 22.4 5.4 V20.4 C18.8 19.8 15.4 20.4 13 22.2 Z" fill={f} stroke={color} strokeWidth={1.6} strokeLinejoin="round" />
       {filled ? <Path d="M13 8 V21.2" stroke={bg} strokeWidth={1.2} /> : null}

@@ -9,9 +9,9 @@ import type { Book3, FaceId, Vec3 } from './book3';
 
 type Dims = Book3['dims'];
 
-export const BOARD = { min: 1.1, max: 1.8, k: 0.08 }; // 판 두께 = 책 두께 × k (DU, 범위 안)
-export const SQUARE = 1.2; // 판이 속지보다 나온 길이(DU): 속지 묶음이 판보다 조금 안쪽에 들어가 있다
-export const CORNER_R = 2.6; // 보이는 윤곽 모서리 둥글기(DU): 모든 책·모든 자세에 같은 규칙(작게 둥글린 모서리. 시안 책등 위 약 2.6~4.3DU, 3뷰 약 2.9DU). 윤곽 전체를 같은 반지름으로 둥글린다(face-geometry silhouette)
+export const BOARD = { min: 0.95, max: 1.7, k: 0.047 }; // 표지판을 속지와 구별할 수 있는 두께(DU)
+export const SQUARE = 1.35; // 속지는 판 끝보다 안쪽: 얇은 판 턱과 밝은 종이 단면을 분리한다
+export const CORNER_R = 4; // 시안의 약 7~10px 둥근 모서리를 390DU로 환산
 // 표지 판의 제본 홈: 책등 쪽 변에서 at(DU) 안쪽의 좁은 그늘(dark 폭)과 그 바로 뒤(gap)의 가는 밝음(lit 폭).
 // 앞표지 그림과 판 면(뒤표지·비스듬한 앞표지 덮개)이 같은 규칙을 쓴다.
 // 시안 표지: 책등 쪽에서 표지 폭의 약 6.5% 안쪽에 가는 밝은 줄(약 2DU), 그 바깥(책등 쪽)은 조금 어둡다.

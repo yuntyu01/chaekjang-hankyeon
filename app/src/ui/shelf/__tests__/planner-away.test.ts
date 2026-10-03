@@ -22,7 +22,7 @@ jest.mock('react-native-worklets', () => ({
 import { fromPlaced, type Book3 } from '@/domain/book3';
 import { SHELF_THICK } from '@/domain/geometry';
 import { moveToShelf, type BookMap, type Result } from '@/domain/layout-engine';
-import { SAMPLE_BOOKS, SAMPLE_LAYOUT } from '@/domain/onboarding-sample';
+import { SAMPLE_BOOKS, SAMPLE_LAYOUT } from '@/domain/test-fixtures/interaction-books';
 import { bodiesOf, computeShelf, withLeans } from '@/domain/shelf-scene';
 import { bookAt, type Track } from '@/domain/transition';
 import type { ShelfLayout } from '@/domain/types';

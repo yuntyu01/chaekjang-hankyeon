@@ -16,7 +16,7 @@ jest.mock('expo-sqlite/kv-store', () => ({
 }));
 
 import { bookXs, depthRange, detach, findDropTarget, frontRelease, frontSpin, frontStateOf, frontTilt, itemWidth, moveBook, placementOf, setDepth, setTilt, shelfItems, type BookMap, type Result } from '@/domain/layout-engine';
-import { SAMPLE_BOOKS, SAMPLE_LAYOUT } from '@/domain/onboarding-sample';
+import { SAMPLE_BOOKS, SAMPLE_LAYOUT } from '@/domain/test-fixtures/interaction-books';
 import { computeShelf, withLeans } from '@/domain/shelf-scene';
 import type { ShelfLayout } from '@/domain/types';
 

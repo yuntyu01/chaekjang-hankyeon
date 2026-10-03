@@ -31,7 +31,7 @@ import {
 import { fromPlaced, gap, xRange } from '../book3';
 import { boxSize } from '../box';
 import { bodiesOf } from '../shelf-scene';
-import { SAMPLE_BOOKS, SAMPLE_LAYOUT } from '../onboarding-sample';
+import { SAMPLE_BOOKS, SAMPLE_LAYOUT } from '../test-fixtures/interaction-books';
 import type { Book, ShelfLayout } from '../types';
 
 const books: BookMap = Object.fromEntries(SAMPLE_BOOKS.map((b) => [b.id, b]));

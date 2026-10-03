@@ -12,7 +12,8 @@ import { frameBBox, standaloneFrame, type BookFrame } from '@/domain/shelf-scene
 import { bookAt, holdTrack, planTransition } from '@/domain/transition';
 import type { Book, Pose } from '@/domain/types';
 
-import { RIBBON_OUT, useBookShared } from './art';
+import { useBookShared } from './art';
+import { hasRibbon, ribbonDesign } from '@/domain/ribbon-design';
 import { BookNode } from './BookNode';
 
 export const BOOK_PAD = 4; // 캔버스 여백(DU): 갈피·가장자리가 잘리지 않게
@@ -21,7 +22,8 @@ export const BOOK_PAD = 4; // 캔버스 여백(DU): 갈피·가장자리가 잘�
 export function FrameBook({ book, frame, scale: s, from, canvasRef }: { book: Book; frame: BookFrame; scale: number; from?: Book3 | null; canvasRef?: Ref<CanvasRef> }) {
   const bb = frameBBox(frame, BASE_CAM);
   const rest = useMemo(() => fromPlaced(frame.box), [frame]);
-  const top = BOOK_PAD + ((book.quotes ?? 0) > 0 ? RIBBON_OUT : 0);
+  const ribbon = ribbonDesign(book);
+  const top = BOOK_PAD + (hasRibbon(book) ? ribbon.out - ribbon.y : 0);
   const px = useMemo(() => ({ s, tx: (BOOK_PAD - bb.minX) * s, ty: (top - bb.minY) * s }), [s, bb.minX, bb.minY, top]);
   const track = useMemo(() => {
     if (!from) return holdTrack(rest);

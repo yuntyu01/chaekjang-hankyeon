@@ -36,7 +36,7 @@ describe('예시 이미지가 없는 새 책의 공통 배치와 그림자', () 
     }
   });
 
-  it('그림자는 따뜻한 회색이고 실제 그림자·주변광 차폐가 나뉘어 있다', () => {
+  it('넓은 그림자는 옅고 좁은 책 사이 차폐는 별도의 따뜻한 색을 쓴다', () => {
     expect(shadow.color).not.toBe('#000000');
     // 책 그림자(벽·선반 윗면 한 모델) 한 층은 옅게(층이 겹쳐 가까운 곳만 진해진다). 문턱은 멀수록 길다
     const b = shadow.cast.book;
@@ -50,6 +50,11 @@ describe('예시 이미지가 없는 새 책의 공통 배치와 그림자', () 
     expect(w.opacity.reduce((a, b) => a + b, 0)).toBeLessThanOrEqual(0.6);
     void travelOf;
     void SHELF_THICK;
-    expect(shadow.ao.gap.max).toBeLessThanOrEqual(0.15);
+    // 시안의 짙은 틈은 넓은 벽 그림자와 다르다. 불투명도 범위를 지키고
+    // 좁은 간격에서만 적용해 떨어진 책 사이 전체를 어둡게 만들지 않는다.
+    expect(shadow.ao.gap.max).toBeGreaterThan(0);
+    expect(shadow.ao.gap.max).toBeLessThanOrEqual(1);
+    expect(shadow.ao.gap.color).not.toBe('#000000');
+    expect(shadow.ao.gap.fadeAt).toBeLessThanOrEqual(12);
   });
 });

@@ -7,6 +7,7 @@ import { BlurMask, Group, ImageShader, LinearGradient, Path, Skia, useImage, vec
 import { useDerivedValue, type SharedValue } from 'react-native-reanimated';
 
 import { toPx, type Affine } from '@/domain/camera';
+import { shelfViewCam } from '@/domain/shelf-view';
 
 import type { Camera } from '@/domain/box';
 import { shadowOnPlane, travelOf } from '@/domain/cast-shadow';
@@ -18,6 +19,7 @@ import { SHOW } from '@/ui/shelf/shadow-debug';
 import { light, shadow } from '@/ui/lighting';
 import { shadeColor } from '@/ui/book3d/BookFaces';
 import { litTone, withAlpha } from '@/ui/book/BookBody';
+import { roundedPolygon } from '@/ui/book3d/face-geometry';
 
 type RO<T> = Readonly<SharedValue<T>>;
 
@@ -114,7 +116,7 @@ export function ShelfShadowDebug({ cam, px }: { cam: RO<Camera>; px: Affine }) {
 }
 
 // 판 → 벽 그림자 + 판이 벽에 닿는 선 바로 아래 좁은 어둠(벽 단계: 모든 판·책보다 먼저 그린다)
-export function ShelfWallShadow({ cam, px, zIndex }: { cam: RO<Camera>; px: Affine; zIndex: number }) {
+export function ShelfWallShadow({ cam, px, zIndex }: { cam: RO<Camera>; px: Affine; zIndex: number; row?: number }) {
   // 접촉선(판 뒤 아래 모서리, 벽 평면 위)에서 아래로 shelfLip.height까지의 벽 띠와 그 위·아래 끝(그라데이션 방향)
   const lip = useDerivedValue(() => {
     const c = cam.value;
@@ -139,10 +141,11 @@ export function ShelfWallShadow({ cam, px, zIndex }: { cam: RO<Camera>; px: Affi
   );
 }
 
-function Face({ poly, matrix, image, children }: { poly: RO<SkPath>; matrix: RO<number[]>; image: ReturnType<typeof useImage>; children?: React.ReactNode }) {
+function Face({ poly, matrix, image, tone, children }: { poly: RO<SkPath>; matrix: RO<number[]>; image: ReturnType<typeof useImage>; tone: string; children?: React.ReactNode }) {
   return (
     <Group clip={poly}>
-      <Path path={poly} color={PLANK_TONE}>
+      <Path path={poly} color={tone} />
+      <Path path={poly} opacity={0.22} blendMode="softLight">
         {image ? <ImageShader image={image} tx="clamp" ty="clamp" matrix={matrix} /> : null}
       </Path>
       {children}
@@ -165,9 +168,10 @@ const K_FRONT = lambert({ x: 0, y: 0, z: -1 });
 const K_SIDE = lambert({ x: 1, y: 0, z: 0 });
 const K_SIDE_EDGE = lambert({ x: 1, y: 1, z: 0 }); // 윗면·오른쪽 옆면 사이 모서리(두 면 사이 밝기로 이어진다)
 // 윗면·앞면 사이 둥근 모서리: 책 모서리(BookNode bevelColor)와 같은 규칙. 모서리 법선이 앞면보다 빛을 더 받는 만큼 판 색을 밝힌 얇은 밝음
-const PLANK_TONE = '#F3DDC3';
+const PLANK_TONE = '#F2DABE';
+const PLANK_TOP = '#FCECD5';
 // 앞면·옆면 질감(평균 약 (229,196,165))을 시안 앞면 (242,220,194) 쪽으로 밝히는 크림빛 덮기. 옆면 끝은 어둡게 하지 않는다(시안에 어두운 끝면이 없다)
-const PLANK_CREAM = 'rgba(255,246,232,0.45)';
+const PLANK_CREAM = 'rgba(255,246,232,0.035)';
 const EDGE_LIT = (() => {
   const d = light.dir;
   const l = Math.hypot(d.x, d.y, d.z) || 1;
@@ -187,16 +191,17 @@ export function ShelfBoard({ px, cam, zIndex }: { px: Affine; cam: RO<Camera>; z
   const fh = front?.height() ?? 1;
   // 지금 카메라로 판 면을 투영(시점을 끄는 동안에도 매 프레임)
   const g = useDerivedValue(() => {
-    const f = shelfFaces(cam.value);
+    const f = shelfFaces(shelfViewCam(cam.value));
     const t = px;
     const P = (q: Point) => ({ x: q.x * s + t.tx, y: q.y * s + t.ty });
     const topPoly = f.top.poly.map(P);
     // 앞면은 위 변(윗면과 공유)을 위로, 옆면은 왼쪽 변(윗면·앞면과 공유)을 왼쪽으로 조금 덮는다
     const frontPoly = grow(f.front.poly.map(P), 0, 1, { x: 0, y: -1 });
-    const sidePoly = f.side ? grow(f.side.poly.map(P), 0, 3, { x: -1, y: 0 }) : [];
+    const sidePoly: Point[] = [];
     const lfb = P(f.corners.LFB);
     const fTop = P(f.corners.LFT).y;
     return {
+      outline: pathOf(roundedPolygon(hull([...topPoly, ...frontPoly, ...sidePoly]), 3.8 * s)),
       top: pathOf(topPoly),
       front: pathOf(frontPoly),
       side: pathOf(sidePoly),
@@ -204,41 +209,46 @@ export function ShelfBoard({ px, cam, zIndex }: { px: Affine; cam: RO<Camera>; z
       frontM: faceTextureMatrix(f.front, fw, fh, s, t.tx, t.ty),
       sideM: f.side ? faceTextureMatrix(f.side, fw, fh, s, t.tx, t.ty) : [1, 0, 0, 0, 1, 0, 0, 0, 1],
       edge: linePath(P(f.corners.LFT), P(f.corners.RFT)),
+      bottomEdge: linePath(P(f.corners.LFB), P(f.corners.RFB)),
       sideEdge: linePath(P(f.corners.RFT), P(f.corners.RBT)),
-      g0: vec(0, lfb.y - (lfb.y - fTop) * 0.35),
+      g0: vec(0, fTop),
       g1: vec(0, lfb.y),
     };
   });
   const topP = useDerivedValue(() => g.value.top);
+  const outline = useDerivedValue(() => g.value.outline);
   const frontP = useDerivedValue(() => g.value.front);
   const sideP = useDerivedValue(() => g.value.side);
   const topM = useDerivedValue(() => g.value.topM);
   const frontM = useDerivedValue(() => g.value.frontM);
   const sideM = useDerivedValue(() => g.value.sideM);
   const edge = useDerivedValue(() => g.value.edge);
+  const bottomEdge = useDerivedValue(() => g.value.bottomEdge);
   const sideEdge = useDerivedValue(() => g.value.sideEdge);
   const g0 = useDerivedValue(() => g.value.g0);
   const g1 = useDerivedValue(() => g.value.g1);
   return (
-      <Group zIndex={zIndex}>
+      <Group zIndex={zIndex} clip={outline}>
         {/* 윗면: 나무 질감 + 공통 광원 밝기 */}
-        <Face poly={topP} matrix={topM} image={top}>
+        <Face poly={topP} matrix={topM} image={top} tone={PLANK_TOP}>
           {SHOW.shelfShade ? <Path path={topP} color={shadeColor(K_TOP)} /> : null}
         </Face>
         {/* 앞면: 질감 + 공통 광원 밝기, 아래 가장자리로 둥글게 말려 들어가는 곳만 살짝 어둡게 */}
-        <Face poly={frontP} matrix={frontM} image={front}>
+        <Face poly={frontP} matrix={frontM} image={front} tone={PLANK_TONE}>
           {SHOW.shelfShade ? (
             <>
               <Path path={frontP} color={PLANK_CREAM} />
               <Path path={frontP} color={shadeColor(K_FRONT)} />
               <Path path={frontP}>
-                <LinearGradient start={g0} end={g1} colors={['rgba(110,75,45,0)', 'rgba(110,75,45,0.10)']} />
+                <LinearGradient start={g0} end={g1}
+                  colors={['rgba(255,248,229,0.18)', 'rgba(255,248,229,0)', 'rgba(168,119,77,0.035)', 'rgba(168,119,77,0.15)']}
+                  positions={[0,0.24,0.78,1]} />
               </Path>
             </>
           ) : null}
         </Face>
         {/* 오른쪽 옆면: 공통 광원(빛 반대쪽) */}
-        <Face poly={sideP} matrix={sideM} image={front}>
+        <Face poly={sideP} matrix={sideM} image={front} tone={PLANK_TONE}>
           {SHOW.shelfSide && SHOW.shelfShade ? (
             <>
               <Path path={sideP} color={PLANK_CREAM} />
@@ -247,12 +257,14 @@ export function ShelfBoard({ px, cam, zIndex }: { px: Affine; cam: RO<Camera>; z
           ) : null}
         </Face>
         {/* 둥글게 깎인 모서리: 두 면 사이 법선의 밝기(빛 쪽이면 조금 밝게) */}
-        <Path path={edge} style="stroke" strokeWidth={0.8 * s} strokeCap="round" color={EDGE_LIT}>
+        <Path path={edge} style="stroke" strokeWidth={1.1 * s} strokeCap="round" color={EDGE_LIT}>
           <BlurMask blur={0.35 * s} style="normal" />
         </Path>
         <Path path={sideEdge} style="stroke" strokeWidth={0.6 * s} strokeCap="round" color={shadeColor(K_SIDE_EDGE)}>
           <BlurMask blur={0.35 * s} style="normal" />
         </Path>
+        <Path path={bottomEdge} style="stroke" strokeWidth={1.1 * s} strokeCap="round" color="rgba(179,131,90,0.24)" />
+        <Path path={outline} style="stroke" strokeWidth={0.8 * s} color="rgba(192,144,99,0.22)" />
       </Group>
   );
 }

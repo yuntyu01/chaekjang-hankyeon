@@ -13,7 +13,7 @@ import { ambient, SCENES, useAmbient } from '@/services/ambient';
 import { useLibrary } from '@/store/library-store';
 import { readingStore, useReading } from '@/store/reading-store';
 import { settingsStore, useSettings } from '@/store/settings-store';
-import { colors, fonts, screenTheme } from '@/ui/screenTheme';
+import { colors, fonts } from '@/ui/screenTheme';
 import { LibraryCover } from '@/ui/BookVisual';
 import { BookPicker } from '@/features/bookmark/BookPicker';
 import { Btn, Row } from '@/ui/kit';
@@ -41,7 +41,6 @@ export function ReadingScreen({ initialBookId, soundOnly = false, inTab = false 
   const [draftBookId, setDraftBookId] = useState<string | undefined>(initialBookId);
   const selectedBookId = active ? active.myBookId : draftBookId;
   const bookId = selectedBookId && lib.books[selectedBookId] ? selectedBookId : undefined;
-  const canFold = !!active || soundOnly || audio.playing;
   const { height } = useWindowDimensions();
   const [viewportHeight, setViewportHeight] = useState(height);
   const [panelHeight, setPanelHeight] = useState(310);
@@ -99,26 +98,26 @@ export function ReadingScreen({ initialBookId, soundOnly = false, inTab = false 
       </View>
       {/* Preserve the cover canvas and paper surface while folded. */}
         <View pointerEvents={open ? 'auto' : 'none'} onLayout={(e) => { if (open) setPanelHeight(e.nativeEvent.layout.height); }} style={[st.panel, { maxHeight: height * 0.65, display: open ? 'flex' : 'none' }]}>
-          <PaperSurface color={screenTheme.paper} radius={23} grain={0.04} />
+          <PaperSurface color="#FCF8F1" radius={23} grain={0.04} shaded={false} />
           <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingHorizontal: 26, paddingTop: 17, paddingBottom: insets.bottom + 22 }}>
             <View style={st.bookRow}>
               <Pressable onPress={() => setBookPicker(true)} accessibilityRole="button" accessibilityLabel={bookId ? '책 변경' : '책 연결하기'} style={st.bookPicker}>
                 {!soundOnly && bookId && lib.books[bookId] ? <LibraryCover lib={lib} id={bookId} width={58} /> : <View style={st.emptyCover}><BookOpen size={25} color="#A49788" strokeWidth={1.2} /></View>}
                 <View style={{ flex: 1, gap: 4 }}>
-                  <Text style={st.book}>{soundOnly ? '소리와 함께 쉬어 가요' : bookTitle(lib, bookId) ?? '책 연결하기'}</Text>
+                  <Text style={st.book} numberOfLines={2}>{soundOnly ? '소리와 함께 쉬어 가요' : bookTitle(lib, bookId) ?? '책 연결하기'}</Text>
                   <Text style={st.changeBook}>{soundOnly ? '독서 시간은 기록하지 않아요' : bookId ? '책 변경' : '책 없이 시작해도 좋아요'}</Text>
                 </View>
               </Pressable>
-              {canFold ? <Pressable onPress={() => setOpen(false)} style={st.fold} accessibilityRole="button" accessibilityLabel="조작부 접기"><ChevronDown size={23} color={colors.ink} strokeWidth={1.8} /><Text style={st.foldText}>접기</Text></Pressable> : null}
+              <Pressable onPress={() => setOpen(false)} style={st.fold} accessibilityRole="button" accessibilityLabel="조작부 접기"><ChevronDown size={23} color={colors.ink} strokeWidth={1.8} /><Text style={st.foldText}>접기</Text></Pressable>
             </View>
             {!soundOnly ? <Pressable onPress={() => setControls('goal')} accessibilityRole="button" accessibilityLabel={`목표 시간 설정, ${settings.goalMin ? settings.goalMin + '분' : '자유롭게 시간 재기'}`} style={{ alignItems: 'center', marginTop: 0 }}>
               <Text style={st.sub}>{active ? running ? '읽은 시간' : '일시정지' : '읽은 시간'}</Text>
               <Text style={st.time} accessibilityLabel={`읽은 시간 ${clock(ms)}`}>{clock(ms)}</Text>
-              {goalMs ? <Text style={st.goal}>{ms >= goalMs ? `목표 ${settings.goalMin}분을 채웠어요` : `목표 ${settings.goalMin}분`}</Text> : !active ? <Text style={st.goal}>자유롭게 시간 재기 · 목표 설정</Text> : null}
+              <Text style={st.goal}>{goalMs ? ms >= goalMs ? `목표 ${settings.goalMin}분을 채웠어요` : `목표 ${settings.goalMin}분` : '자유롭게 시간 재기 · 목표 설정'}</Text>
             </Pressable> : null}
             <View style={st.controls}>
               <Pressable onPress={() => setControls('sound')} style={st.control} accessibilityRole="button" accessibilityLabel="소리 설정"><AudioLines size={30} color={colors.ink} strokeWidth={1.8} /><Text style={st.controlText}>소리</Text></Pressable>
-              <Pressable onPress={soundOnly ? () => audio.playing ? ambient.pause() : void ambient.play(scene) : !active ? start : () => running ? readingStore.pause() : readingStore.resume()} style={st.round} accessibilityRole="button" accessibilityLabel={soundOnly ? audio.playing ? '소리 멈추기' : '소리 재생' : !active ? '독서 시작' : running ? '일시정지' : '다시 읽기'}>
+              <Pressable onPress={soundOnly ? () => audio.playing ? ambient.pause() : void ambient.play(scene) : !active ? start : () => running ? readingStore.pause() : readingStore.resume()} style={({ pressed }) => [st.round, pressed && st.roundPressed]} accessibilityRole="button" accessibilityLabel={soundOnly ? audio.playing ? '소리 멈추기' : '소리 재생' : !active ? '독서 시작' : running ? '일시정지' : '다시 읽기'}>
                 <ButtonShading radius={40} />
                 {(soundOnly ? audio.playing : running) ? <View style={{ flexDirection: 'row', gap: 7 }}><View style={st.pauseStroke} /><View style={st.pauseStroke} /></View> : <Play size={30} color={LIGHT} fill={LIGHT} style={{ marginLeft: 3 }} />}
               </Pressable>
@@ -175,8 +174,9 @@ const st = StyleSheet.create({
   time: { color: '#403027', fontSize: 54, lineHeight: 69, fontWeight: '400', fontVariant: ['tabular-nums'], letterSpacing: 0.5, includeFontPadding: false, marginTop: 4 },
   sub: { color: colors.inkSoft, fontFamily: fonts.round, fontSize: 12, lineHeight: 19, textAlign: 'center' },
   controls: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-evenly', marginTop: 16 },
-  round: { width: 80, height: 80, borderRadius: 40, backgroundColor: '#81573E', borderTopWidth: 0.8, borderTopColor: '#B1937A', alignItems: 'center', justifyContent: 'center', boxShadow: [{ offsetX: 0, offsetY: 8, blurRadius: 11, color: 'rgba(130,92,53,0.14)' }] },
-  goal: { fontSize: 11, color: '#A09282', marginTop: 2 },
+  round: { width: 80, height: 80, borderRadius: 40, backgroundColor: '#81573E', borderTopWidth: 0.8, borderTopColor: '#B1937A', alignItems: 'center', justifyContent: 'center', boxShadow: [{ offsetX: 0, offsetY: 5, blurRadius: 9, color: 'rgba(130,92,53,0.11)' }] },
+  roundPressed: { transform: [{ scale: 0.96 }], opacity: 0.9 },
+  goal: { fontSize: 11, lineHeight: 16, minHeight: 16, color: '#8E8175', marginTop: 2, textAlign: 'center' },
   goalHelp: { fontSize: 14, color: colors.inkSoft, lineHeight: 23 },
   pauseStroke: { width: 6, height: 27, borderRadius: 3, backgroundColor: '#FFFCF4' },
   control: { alignItems: 'center', justifyContent: 'center', gap: 7, minWidth: 64, minHeight: 58, paddingVertical: 8 },

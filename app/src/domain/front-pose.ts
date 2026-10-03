@@ -5,7 +5,7 @@
 // 벽 접촉은 asin 공식이 아니라 회전한 상자의 꼭짓점 중 가장 벽 쪽(z 최대)으로 판정한다(두께·두 회전 모두 반영).
 import { corners, frontBook3, type Dims, type Vec3 } from './book3';
 
-export const FRONT_MAX_PITCH = 25; // 머리 손잡이로 젖힐 수 있는 최대 각(도). 앞뒤 막대의 자동 기대기는 WALL_LEAN_MAX(20°)까지
+export const FRONT_MAX_PITCH = 25; // 손으로 새로 젖히는 범위. 중력으로 넘어지는 자세는 90°까지.
 export const WALL_TOUCH = 0.3; // 이만큼(DU) 안이면 벽에 닿은 것으로 본다
 
 export type FrontState = { depth: number; pitch: number; spin: number };
@@ -53,7 +53,7 @@ export function pitchForWall(dims: Dims, depth: number, spin: number, wall: numb
 // 머리 젖히기 한 걸음: 벽에 닿기 전에는 바닥 고정, 닿은 뒤 더 젖히면 윗부분은 벽에 대고 바닥을 앞으로,
 // 벽에 닿은 채 세우면 바닥을 뒤로(벽 접촉 유지). 벽에서 떨어져 있으면 바닥 고정으로 세운다.
 export function tiltStep(dims: Dims, cur: FrontState, pitch: number, wall: number): FrontState {
-  const p = Math.max(0, Math.min(FRONT_MAX_PITCH, pitch));
+  const p = Math.max(0, Math.min(Math.max(FRONT_MAX_PITCH, cur.pitch), pitch));
   const touching = cur.pitch > 0 && wallReach(dims, cur) >= wall - WALL_TOUCH;
   const r = wallReach(dims, { ...cur, pitch: p });
   let depth = cur.depth;
@@ -71,9 +71,18 @@ export function spinStep(dims: Dims, cur: FrontState, spin: number, wall: number
   return { depth, pitch: cur.pitch, spin: s };
 }
 
-// 받침 없이 기운 자세인지(손을 놓으면 서야 한다)
+// 벽에서 떨어져 손으로만 받치고 있는 자세인지.
 export function unsupported(dims: Dims, s: FrontState, wall: number) {
   return s.pitch > 0.05 && wallReach(dims, s) < wall - WALL_TOUCH - 0.2;
+}
+
+// The centre of mass decides which way an unsupported book tips. The rear
+// bottom edge stays on the shelf; the wall or the floor stops the fall.
+export function releasedPitch(dims: Dims, s: FrontState, wall: number) {
+  if (!unsupported(dims, s, wall) || s.pitch >= 90) return s.pitch;
+  const tipping = Math.atan2(dims.T, dims.H) * 180 / Math.PI;
+  if (s.pitch <= tipping) return 0;
+  return pitchForWall(dims, s.depth, s.spin, wall, 90) ?? 90;
 }
 
 export type { Vec3 };

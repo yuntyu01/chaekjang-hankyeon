@@ -5,7 +5,7 @@
 // 놓을 곳이 없으면 책은 제자리에 있고 안내만 뜬다(따로 떠 있는 끌기 그림 없음). 화면 가장자리에서 자동 스크롤.
 import { router, useFocusEffect, useLocalSearchParams, useNavigation } from 'expo-router';
 import * as Haptics from 'expo-haptics';
-import { BookMarked, ChartNoAxesColumn, Eraser, Menu, Paintbrush, Plus, Search, Settings, Undo2 } from '@/ui/icons';
+import { BookMarked, ChartNoAxesColumn, Eraser, Paintbrush, Plus, Search, Settings, Undo2 } from '@/ui/icons';
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { AppState, Modal, PixelRatio, Pressable, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
@@ -68,6 +68,7 @@ import Storage from 'expo-sqlite/kv-store';
 import { bootMark, watchResponsive } from '@/ui/boot-trace';
 import { placementStore, usePlacementStore } from '@/store/placement-store';
 import { useBookShared } from '@/ui/book3d/art';
+import { ReferenceUI } from '@/ui/ReferenceUI';
 import { CONTENT_TOP, computeRows, LAYOUT, rowAffine, rowAt, toContent, useShelfMetrics, type RowGeom } from '@/ui/shelf/metrics';
 import { benchProjection, type BenchRow } from '@/ui/shelf/ShelfMotion';
 import { displayedPoses, flushApply, lastPlan, previewInto, PULL_MS, settleInto, WAIT_MAX } from '@/ui/shelf/planner';
@@ -894,6 +895,7 @@ export function HomeScreen() {
   useEffect(() => {
     if (!PERF_ENABLED || demoboot === undefined) return;
     void Storage.setItem(DEMO_BOOT_KEY, demoboot === '1' || demoboot === 'mockup' ? demoboot : '0');
+    placementStore.setDemo(demoboot === '1' || demoboot === 'mockup', demoboot === 'mockup' ? 'mockup' : 'sample');
   }, [demoboot]);
   useEffect(() => {
     if (!PERF_ENABLED || !sh || !SHELF_MODES.includes(sh as ShelfMode)) return;
@@ -1208,6 +1210,7 @@ export function HomeScreen() {
 
   // 꾸미기 조작부: 자세와 기대기(방향만 고르고 각도는 옆 책과의 틈으로)
   const editPlacement = editId ? placementOf(layout, editId) ?? null : null;
+  const editDisplayPose = editPlacement?.pose === 'front' && (editPlacement.pitch ?? 0) >= 89.95 ? 'horizontal' : editPlacement?.pose ?? null;
   const canLean = useMemo(() => {
     const out = { [-1]: false, 1: false } as { [-1]: boolean; 1: boolean };
     if (!editId || editPlacement?.pose !== 'spine') return out;
@@ -1222,7 +1225,7 @@ export function HomeScreen() {
     return out;
   }, [editId, editPlacement, layout, books]);
   const editPose = (pose: Pose) => {
-    if (!editId || editPlacement?.pose === pose) return;
+    if (!editId || editDisplayPose === pose) return;
     setEditMsg(commitPath(setPose(layout, books, editId, pose)));
   };
   const editLean = (d: -1 | 0 | 1) => {
@@ -1299,7 +1302,7 @@ export function HomeScreen() {
     headOffX.value = withTiming(0, back);
     headOffY.value = withTiming(0, back);
     if (!h.last) return;
-    // 벽에 기대 있으면 그대로, 받침 없이 기울었으면 제자리에서 선다. 설 수 없거나 저장이 안 되면 조작 전으로.
+    // 받침을 잃으면 무게중심에 따라 넘어져 벽·책·바닥에서 멈춘 자세를 저장한다.
     const fin = frontRelease(layout, books, h.id, h.cur, h.qx);
     const err = fin ? commitPath({ ok: true, layout: fin }) : ko.fail['no-space'];
     settleShelf(h.shelfId, fin && !err ? fin : layout);
@@ -1395,7 +1398,8 @@ export function HomeScreen() {
       const b = books[bookId];
       const p = placementOf(layout, bookId);
       if (!p) return b.title;
-      const parts = [b.title, b.author, ko.poseState[p.pose], ko.tiltState[String(p.tilt) as '0']];
+      const restingPose = p.pose === 'front' && (p.pitch ?? 0) >= 89.95 ? 'horizontal' : p.pose;
+      const parts = [b.title, b.author, ko.poseState[restingPose], ko.tiltState[String(p.tilt) as '0']];
       if (p.stackId) {
         const n = layout.placements.filter((q) => q.stackId === p.stackId).length;
         parts.push(ko.stacked((p.stackOrder ?? 0) + 1, n));
@@ -1494,16 +1498,13 @@ export function HomeScreen() {
       ) : null}
       {/* 시안 비율: 제목은 작고 둥근 고딕(잉크 약 86×21.5DU, 따뜻한 짙은 갈색), 연도 잉크 높이 약 11.9DU·제목 잉크 위 끝에서 약 30DU 아래,
           원형 버튼 32DU, 좌우 여백 23/18DU */}
-      <View style={[styles.header, { paddingLeft: 23 * m.scale + m.originX, paddingRight: 18 * m.scale + m.originX, paddingTop: 20 * m.scale, height: 84 * m.scale }]}>
-        <View style={{ flex: 1 }}>
-          <Text
-            style={[styles.title, { fontSize: 22.5 * m.scale, lineHeight: 29 * m.scale }]}
-            accessibilityRole="header"
-            numberOfLines={1}
-            adjustsFontSizeToFit
-            minimumFontScale={0.7}>
-            {ko.title}
-          </Text>
+      <View style={[styles.header, { paddingLeft: 26 * m.scale + m.originX, paddingRight: 22 * m.scale + m.originX, paddingTop: 55 * m.scale, height: 104 * m.scale }]}>
+        <Pressable style={{ flex: 1 }} onPress={() => setShelfMenuOpen(true)} accessibilityRole="button" accessibilityLabel={ko.menu.title}>
+          <View style={{ height: 29*m.scale }} accessibilityRole="header" accessibilityLabel={ko.title}>
+            <View style={{ position:'absolute', left:-0.4*m.scale, top:3.065*m.scale }}>
+              <ReferenceUI name="heading" width={191*390/853*m.scale} height={51*390/853*m.scale}/>
+            </View>
+          </View>
           <Pressable
             onPress={() => setSelectedYear(years[(years.indexOf(year) + 1) % years.length])}
             disabled={years.length < 2}
@@ -1511,14 +1512,14 @@ export function HomeScreen() {
             accessibilityRole="button"
             accessibilityLabel={ko.yearA11y(year, count)}
             style={{ alignSelf: 'flex-start' }}>
-            <Text style={[styles.summary, { fontSize: 13.5 * m.scale, marginTop: 4 * m.scale }]}>
+            <Text style={[styles.summary, { fontSize: 12.25 * m.scale, marginTop: 5.1 * m.scale }]}>
               {ko.year(year)}
               {years.length > 1 ? ' ▾' : ''}
               {editing ? ` · ${ko.decorating}` : ''}
             </Text>
           </Pressable>
-        </View>
-        <View style={[styles.actions, { gap: 8 * m.scale, marginTop: -14 * m.scale }]}>
+        </Pressable>
+        <View style={[styles.actions, { gap: 8 * m.scale, marginTop: -18 * m.scale }]}>
           {editing ? (
             <>
               <Pressable
@@ -1540,24 +1541,9 @@ export function HomeScreen() {
             </>
           ) : (
             <>
-              <Pressable
-                onPress={() => {
-                  setPopId(null);
-                  setSelectedId(null);
-                  setEditingKeep(true);
-                }}
-                accessibilityRole="button"
-                accessibilityLabel={ko.decorate}
-                style={[styles.pill, { height: 32 * m.scale, paddingHorizontal: 12 * m.scale, flexDirection: 'row', gap: 4 * m.scale }]}>
-                <Paintbrush size={13.5 * m.scale} color={colors.homeTitle} strokeWidth={1.8} />
-                <Text style={[styles.pillText, { fontSize: 13 * m.scale }]}>{ko.decorate}</Text>
-              </Pressable>
               {/* 시안: 둥근 테두리 원 버튼(약 33DU)과 따뜻한 짙은 갈색의 굵은 더하기 */}
-              <HeaderButton size={32 * m.scale} label={ko.add} onPress={() => router.push('/book/add')}>
+              <HeaderButton size={33.5 * m.scale} label={ko.add} onPress={() => router.push('/book/add')}>
                 <Plus size={18 * m.scale} color={colors.homeTitle} strokeWidth={1.9} />
-              </HeaderButton>
-              <HeaderButton size={32 * m.scale} label={ko.menu.title} onPress={() => setShelfMenuOpen(true)}>
-                <Menu size={16 * m.scale} color={colors.homeTitle} strokeWidth={1.8} />
               </HeaderButton>
             </>
           )}
@@ -1689,7 +1675,7 @@ export function HomeScreen() {
       {editing && !drag ? (
         <DecoratePanel
           title={editId ? books[editId]?.title ?? null : null}
-          pose={editPlacement?.pose ?? null}
+          pose={editDisplayPose}
           lean={(Math.sign(editPlacement?.tilt ?? 0) as -1 | 0 | 1)}
           canLean={canLean}
           msg={editMsg}
@@ -1710,6 +1696,9 @@ export function HomeScreen() {
         <Pressable style={styles.menuBackdrop} onPress={() => setShelfMenuOpen(false)} accessibilityLabel="닫기" />
         <View style={[styles.menuSheet, { paddingBottom: insets.bottom + 24 }]}>
           <Text style={styles.menuTitle}>{ko.menu.title}</Text>
+          <Pressable accessibilityRole="button" style={styles.menuItem} onPress={() => { setShelfMenuOpen(false); setPopId(null); setSelectedId(null); setEditingKeep(true); }}>
+            <Paintbrush size={20} color={colors.ink} strokeWidth={1.6} /><Text style={styles.menuText}>{ko.decorate}</Text>
+          </Pressable>
           <Pressable accessibilityRole="button" style={styles.menuItem} onPress={() => { setShelfMenuOpen(false); router.push('/search'); }}>
             <Search size={20} color={colors.ink} strokeWidth={1.6} /><Text style={styles.menuText}>{ko.menu.search}</Text>
           </Pressable>

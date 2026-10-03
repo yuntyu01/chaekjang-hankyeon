@@ -224,7 +224,7 @@ function EditBookmark({ m, onDone }: { m: Bookmark; onDone: () => void }) {
 
 const st = StyleSheet.create({
   header: { minHeight: 62, paddingTop: 16, paddingBottom: 12, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 16 },
-  headerTitle: { fontFamily: fonts.round, fontSize: 20, color: colors.ink },
+  headerTitle: { fontFamily: fonts.serifMedium, fontSize: 21, lineHeight: 28, includeFontPadding: false, color: colors.ink },
   dot: { width: 7, height: 7, borderRadius: 3.5, backgroundColor: '#C9C2B6' },
   count: { fontFamily: fonts.serif, fontSize: 12, lineHeight: 21, color: '#9D958B', includeFontPadding: false },
   bottom: { flexDirection: 'row', flexWrap: 'wrap', gap: 16, alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 24, paddingTop: 12 },

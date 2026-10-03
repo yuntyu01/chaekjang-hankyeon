@@ -5,13 +5,14 @@
 import { useMemo } from 'react';
 import { useWindowDimensions } from 'react-native';
 
+import { hasRibbon } from '@/domain/ribbon-design';
 import { BASE_CAM, type Point } from '@/domain/camera';
 import { bookHeight, DESIGN_WIDTH, SHELF, SHELF_FRONT, SHELF_THICK } from '@/domain/geometry';
 import { sortedShelves, type BookMap } from '@/domain/layout-engine';
 import type { ShelfLayout } from '@/domain/types';
 
 export const MAX_LAYOUT_WIDTH = 520;
-export const CONTENT_TOP = 4;
+export const CONTENT_TOP = 10; // 시안의 첫 책 머리/선반 기준선에 맞춘 최소 상단 여백
 
 export type ShelfMetrics = { scale: number; originX: number };
 
@@ -35,10 +36,11 @@ export function useShelfMetrics() {
   return useMemo(() => makeMetrics(width), [width]);
 }
 
-export const RIBBON_OUT = 12;
-export const RIBBON_W = 8.5; // 갈피 끈 한 가닥 폭(DU, 시안 7.2~9.6DU). art.tsx와 같은 값
+export const RIBBON_OUT = 12; // 줄 간격에 예약하는 평균 갈피 높이. 실제 모양은 ribbon-design.
 // 가장 키 큰 책(갈피 포함) 머리 위의 3D 여유(DU). 기본 3° 보기에서 예전 줄 간격(가장 큰 책의 투영 높이 + 2DU)과 같아지는 값.
-export const ROW_CLEARANCE = 10.1;
+export const ROW_CLEARANCE = 22;
+// 시안의 둘째 줄 위 여백은 조금 넓고, 마지막 줄 위 여백은 더 촘촘하다.
+export const ROW_CLEARANCES = [26.1, 27.85, 10.55];
 // 줄 칸(화면)의 기준 보기는 기본 3°다: 칸 경계 = 윗선반 앞면 아래 모서리를 3°로 본 자리(기본 보기에서 예전과 같은 위치).
 // 칸은 줄을 고르는 터치 띠·세로 가운데 정렬에만 쓰고, 그리기·가림은 실제 카메라로 한다.
 const REF_KY = BASE_CAM.ky;
@@ -46,8 +48,8 @@ const REF_KY = BASE_CAM.ky;
 const MIN_SPACE = 110 + SHELF.rowTopPad + SHELF_FRONT * REF_KY;
 
 // 헤더 아래 빈 공간 비율(1 = 세 줄을 가운데 정렬). 측정 번들에서 비교할 때만 바꾼다
-// rowFit(비교안, 기본 0): 줄마다 그 줄에 필요한 높이로 3D 줄 간격을 이 비율만큼 줄인다
-export const LAYOUT = { topGap: 1, rowFit: 0 };
+// rowFit(기본 1): 각 줄에 필요한 높이로 3D 줄 간격을 맞춘다.
+export const LAYOUT = { topGap: 0.34, rowFit: 1 };
 
 // 한 선반에 놓인 책 중 가장 높은 머리(갈피 포함, DU). 자세와 무관하게 책 세로 길이로 잰다(자세를 바꿔도 줄이 움직이지 않게).
 function tallestOn(layout: ShelfLayout, books: BookMap, shelfId: string) {
@@ -56,15 +58,15 @@ function tallestOn(layout: ShelfLayout, books: BookMap, shelfId: string) {
     if (p.shelfId !== shelfId) continue;
     const b = books[p.bookId];
     if (!b) continue;
-    top = Math.max(top, bookHeight(b) + ((b.quotes ?? 0) > 0 ? RIBBON_OUT : 0));
+    top = Math.max(top, bookHeight(b) + (hasRibbon(b) ? RIBBON_OUT : 0));
   }
   return top;
 }
 
-// 3D 줄 간격(판 윗면 → 윗선반 아랫면, DU): 선반에 놓인 가장 키 큰 책 + 여유. 모든 줄이 같다(rowFit이면 줄마다 줄어든다).
+// 3D 줄 간격(판 윗면 → 윗선반 아랫면, DU): 해당 선반의 가장 키 큰 책 + 여유.
 export function rowSpaces(layout: ShelfLayout, books: BookMap): Map<string, number> {
   const shelves = sortedShelves(layout);
-  const need = new Map(shelves.map((s) => [s.id, tallestOn(layout, books, s.id) + ROW_CLEARANCE]));
+  const need = new Map(shelves.map((s, i) => [s.id, tallestOn(layout, books, s.id) + (shelves.length === 3 ? ROW_CLEARANCES[i] : ROW_CLEARANCE)]));
   const space = Math.max(MIN_SPACE, ...need.values());
   return new Map(shelves.map((s) => [s.id, space - LAYOUT.rowFit * (space - Math.max(MIN_SPACE, need.get(s.id)!))]));
 }

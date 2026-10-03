@@ -152,7 +152,7 @@ describe('자세 변경 경로', () => {
   });
 
   it('세움 → 눕힘(좌우 돌리기 끝 단계)과 다시 세우기: 뒤표지가 받침', () => {
-    const base = roomy();
+    const base = ok(moveToDrawer(roomy(), 'b08', all)); // 넓어진 표지와 눕힌 책을 위한 공간
     const leaned = withLeans(ok(rotateStep(base, all, 'b09', -1)), all);
     expectClean(base, leaned, all, 'shelf-2');
     const lying = ok(rotateStep(leaned, all, 'b09', -1));
@@ -235,7 +235,7 @@ describe('경로 계획은 늘 결과를 준다(null 없음)', () => {
   it('제자리 경로가 모두 막혀도(다른 책을 건너가야) 앞으로 빼서 옮긴다: 옆으로 가는 동안은 판 앞 끝보다 앞, 들어 올린 채', () => {
     const l0 = start();
     // A를 B·C 너머 오른쪽 빈자리로: 제자리 경로는 모두 B·C를 뚫는다
-    const l1 = withLeans(ok(moveBook(l0, trio, 'A', { kind: 'insert', shelfId: 's', index: 2, x: 184 })), trio);
+    const l1 = withLeans(ok(moveBook(l0, trio, 'A', { kind: 'insert', shelfId: 's', index: 2, x: 200 })), trio);
     const a = bodiesOf(l0, trio, 's');
     const b = bodiesOf(l1, trio, 's');
     const plan = planTransition(a, b, PLANK_BOUNDS, NO_RUSH);

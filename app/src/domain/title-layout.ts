@@ -69,12 +69,12 @@ export function spineTitleLayout(title: string, hDU: number, faceDU: number, art
   const MIN = 8.5;
   // 글자 크기: 책등 폭의 0.4, 8.5~11DU. 우리 책등은 실제 두께라 시안보다 좁아 폭 비율(시안 약 0.30)보다
   // 책 높이 비율(시안 잉크 높이 ≈ 책 높이의 0.064)을 맞춘다(0.37로 줄이면 시안보다 눈에 띄게 작았다)
-  const base = Math.max(MIN, Math.min(11, Math.round(faceDU * 0.4 * 2) / 2));
+  const base = Math.max(MIN, Math.min(11, Math.round(faceDU * 0.42 * 2) / 2));
   const all: number[] = [];
   for (let v = base; v >= MIN - 1e-9; v -= 0.5) all.push(Math.round(v * 10) / 10);
   const short = units(title) <= 3;
   const pitches = short ? [1.16, 1.1, 1.04] : [1.1, 1.05, 1.0];
-  const tops = [0.215, 0.17, 0.12];
+  const tops = [0.255, 0.23, 0.20];
   const tryIt = (sizes: number[], maxArt: number) => {
     const hi = Math.max(artTop0, maxArt);
     for (let top = artTop0; top <= hi + 1e-9; top += 0.02) {
@@ -126,9 +126,9 @@ const LYING_END = 0.08;
 export const LYING_TRACK = 0.02;
 const lineUnits = (s: string) => [...s].reduce((n, ch) => n + (ch === ' ' ? 0.32 : 1), 0) * (1 + LYING_TRACK);
 export type LyingTitle = { fontSize: number; text: string; start: number };
-export function lyingTitleLayout(title: string, hDU: number, tDU: number): LyingTitle {
+export function lyingTitleLayout(title: string, hDU: number, tDU: number, endReserve = LYING_END): LyingTitle {
   const text0 = title.trim().replace(/\s+/g, ' ');
-  const room = hDU * (1 - LYING_START - LYING_END);
+  const room = hDU * (1 - LYING_START - endReserve);
   const target = Math.max(7.5, Math.min(11, tDU * 0.38));
   const fit = room / Math.max(1, lineUnits(text0));
   if (fit >= target) return { fontSize: Math.round(target * 10) / 10, text: text0, start: LYING_START };
@@ -151,13 +151,13 @@ export function lyingTitleLayout(title: string, hDU: number, tDU: number): Lying
 // 자간 0, 띄어쓰기 0.33(단어 사이가 시안처럼 또렷하게). 글자 폭은 한글 한 글자 0.91(글꼴 값)로 셈한다.
 export const COVER_LINE_H = 1.46;
 export const COVER_TRACK = 0;
-export const COVER_SPACE = 0.33;
+export const COVER_SPACE = 0.45;
 const COVER_ADV = 0.91;
 export function coverTitleLayout(title: string, wDU: number, hDU: number): { lines: string[]; fontSize: number } {
   const words = title.trim().split(/\s+/);
   const width = (line: string) => [...line].reduce((n, ch) => n + (ch === ' ' ? COVER_SPACE : COVER_ADV + COVER_TRACK), 0);
   const sizeFor = (n: number, w: number) =>
-    Math.min((n === 1 ? 0.135 : 0.1) * wDU, 14, ((n === 1 ? 0.56 : 0.72) * wDU) / w, (0.3 * hDU) / (n * COVER_LINE_H));
+    Math.min((n === 1 ? 0.135 : 0.1) * wDU, 16, ((n === 1 ? 0.56 : 0.72) * wDU) / w, (0.3 * hDU) / (n * COVER_LINE_H));
   const splits = (n: number): string[][] => {
     if (n === 1) return [[words.join(' ')]];
     const out: string[][] = [];
