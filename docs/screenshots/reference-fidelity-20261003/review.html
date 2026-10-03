@@ -1,47 +1,162 @@
-<!doctype html><html lang="ko"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>책장 한켠 · 원본 비교</title><style>body{margin:0;background:#fef9f3;color:#54433c;font:16px/1.7 system-ui,sans-serif}main{max-width:1160px;margin:auto;padding:32px 24px}h1{font-size:28px}h2{margin:46px 0 8px;font-size:23px}p{max-width:900px}nav{display:flex;flex-wrap:wrap;gap:16px}a{color:#765b51}section{scroll-margin-top:20px}.pair{display:grid;grid-template-columns:1fr 1fr;gap:18px;align-items:start}figure{margin:0}figcaption{padding:8px 0;color:#8c8077}img{display:block;width:100%;border-radius:8px;border:1px solid #e6dac9}details{margin:28px 0}li{margin:7px 0}.note{padding:16px 20px;border:1px solid #e6dac9;border-radius:12px}table{border-collapse:collapse}td,th{padding:10px 16px;text-align:left;border-bottom:1px solid #e6dac9}@media(max-width:640px){main{padding:18px 12px}.pair{gap:8px}figcaption{font-size:13px}}</style><main><h1>원본과 실제 앱 비교</h1><p>2026-10-03 · box-model · C:\dev\chaekjang-hankyeon\app · Expo Go / Android API 36 · 실제 앱 화면 1080 × 2400</p><p class="note">왼쪽은 원본 시안, 오른쪽은 실제 화면 경로에서 캡처한 앱입니다. 비교를 위해 가로 폭만 같게 표시했습니다. Android 상태·내비게이션 바, 화면 비율, 실제 책·검색 결과와 읽기 상태는 시안과 다릅니다.</p><p>책 상세의 표지·제목·저자·읽던 쪽수·버튼 위치를 원본과 대조해 보정했습니다. 화면 아래로 갈수록 누렇게 변하던 배경을 원본의 균일한 크림색에 맞추고, 종이 카드에만 재질 음영을 남겼습니다. <a href="background-comparison.json">배경색 측정</a></p><p>캡처는 기존 화면 경로에 임시 비교 데이터를 넣어 촬영했습니다. 확인 후 임시 책·갈피·독서 기록을 제거했으며 원래 책 8권과 전체 도서 데이터·배치·설정은 작업 전과 동일합니다. 확인용 코드도 제거했습니다.</p><nav><a href="#s0">책 상세</a><a href="#s1">갈피 목록</a><a href="#s2">갈피 상세</a><a href="#s3">책 추가</a><a href="#s4">읽기 타이머</a></nav><section id="s0"><h2>책 상세</h2><p>표지 위치·크기, 제목과 저자 간격, 읽기 상태 배지, 쪽수와 하단 버튼의 높이를 보정했습니다.</p><div class="pair"><figure><figcaption>원본</figcaption><a href="../design-integration-20261003/reference-book-detail.png"><img loading="lazy" src="../design-integration-20261003/reference-book-detail.png" alt="책 상세 원본"></a></figure><figure><figcaption>실제 앱</figcaption><a href="book-detail-final.png"><img loading="lazy" src="book-detail-final.png" alt="책 상세 실제 앱"></a></figure></div></section><section id="s1"><h2>갈피 목록</h2><p>헤더, 세 탭, 문장과 출처 간격, 둥근 종이 가장자리와 접촉 그림자. 아껴둔 표시는 실제 로컬 저장과 연결했습니다.</p><div class="pair"><figure><figcaption>원본</figcaption><a href="../design-integration-20261003/reference-bookmarks.png"><img loading="lazy" src="../design-integration-20261003/reference-bookmarks.png" alt="갈피 목록 원본"></a></figure><figure><figcaption>실제 앱</figcaption><a href="bookmarks-final.png"><img loading="lazy" src="bookmarks-final.png" alt="갈피 목록 실제 앱"></a></figure></div></section><section id="s2"><h2>갈피 상세</h2><p>문장 크기와 행간, 뒤 종이의 각도·크기, 출처 정보와 메모의 조판을 보정했습니다.</p><div class="pair"><figure><figcaption>원본</figcaption><a href="../design-integration-20261003/reference-bookmark-detail.png"><img loading="lazy" src="../design-integration-20261003/reference-bookmark-detail.png" alt="갈피 상세 원본"></a></figure><figure><figcaption>실제 앱</figcaption><a href="bookmark-final.png"><img loading="lazy" src="bookmark-final.png" alt="갈피 상세 실제 앱"></a></figure></div></section><section id="s3"><h2>책 추가</h2><p>검색창·헤더 위치를 맞췄습니다. 캡처의 검색 결과는 실제 Open Library 응답이므로 시안과 책 내용이 다릅니다.</p><div class="pair"><figure><figcaption>원본</figcaption><a href="../design-integration-20261003/reference-add.png"><img loading="lazy" src="../design-integration-20261003/reference-add.png" alt="책 추가 원본"></a></figure><figure><figcaption>실제 앱</figcaption><a href="add-search-final.png"><img loading="lazy" src="add-search-final.png" alt="책 추가 실제 앱"></a></figure></div></section><section id="s4"><h2>읽기 타이머</h2><p>원본 구도를 보존한 창가 장면을 분리했습니다. 책·시간·버튼은 실제 UI이며 진입 시에는 00:00과 시작 버튼을 보여줍니다.</p><div class="pair"><figure><figcaption>원본</figcaption><a href="../design-integration-20261003/reference-timer.png"><img loading="lazy" src="../design-integration-20261003/reference-timer.png" alt="읽기 타이머 원본"></a></figure><figure><figcaption>실제 앱</figcaption><a href="timer-connected-final.png"><img loading="lazy" src="timer-connected-final.png" alt="읽기 타이머 실제 앱"></a></figure></div></section><h2>공유 버튼에서 바로 대상 선택</h2><p>앱 안의 중간 미리보기 창을 제거했습니다. 하단 공유 버튼을 누르면 갈피 이미지를 만든 뒤 휴대폰 기본 공유창을 바로 엽니다. 메모는 기본 제외하며, 더 보기의 ‘메모 포함해 공유’로 함께 보낼 수 있습니다. 에뮬레이터에는 추천 연락처가 없으며 실제 추천 상대와 앱 목록은 기기에 따라 달라집니다. 외부로 실제 전송하지 않았습니다.</p><div class="pair"><figure><figcaption>기본 공유 · 메모 제외</figcaption><a href="share-sheet-final.png"><img loading="lazy" src="share-sheet-final.png" alt="하단에 열린 Android 기본 공유창"></a></figure><figure><figcaption>더 보기 · 메모 포함</figcaption><a href="share-with-memo-final.png"><img loading="lazy" src="share-with-memo-final.png" alt="메모를 포함한 이미지 공유"></a></figure></div><h2>직접 확인한 동작</h2><ul><li>아껴둔 갈피 저장·필터·해제·빈 목록과 재실행 후 유지.</li><li>읽기 탭의 대기 상태, 책 없이 시작, 접기·펼치기, 일시정지, 장면 변경 시 시간 유지, 소리 설정.</li><li>강제 종료 후 일시정지 시간 복구, 종료 시 책 연결과 독서 기록 저장.</li><li>글자 크기 150%에서 긴 책 제목·저자 줄바꿈, 책 상세 버튼까지 스크롤, 긴 갈피 스크롤, 타이머 시작 버튼 접근.</li><li>기본 공유창 열기·취소 후 다시 열기와 메모 포함 이미지 생성.</li></ul><p>개별 결과: <a href="data-preservation.json">원본 데이터 대조</a> · <a href="tests.json">테스트</a> · <a href="scene-asset-comparison.json">장면 자산 비교</a></p><h2>검사와 성능</h2><p>31개 테스트 모음, 277개 테스트가 통과했습니다. 이후 배경 보정과 직접 공유 변경은 타입 검사 및 실제 화면에서 추가 확인했습니다. 작업 전부터 수정되어 있던 56개 추적 파일은 모두 바이트 단위로 보존했습니다. <a href="source-preservation.json">소스 보존 대조</a> · <a href="native-checks.json">실제 동작 검사</a></p><p>창가 자산은 원본 구도를 유지했습니다. UI를 제외한 그림 영역의 RGB 평균 절대 오차가 32.085에서 5.318로 줄었고, 파일 용량은 1,955,102에서 1,460,859바이트로 약 25.3% 줄었습니다. 디코딩 메모리는 약 6.29MB로 거의 같습니다. 이 수치는 전체 화면 일치율이 아닙니다.</p><table><tr><th>접기·펼치기 4회</th><th>수정 전</th><th>수정 후</th></tr><tr><td>측정 프레임</td><td>15</td><td>11</td></tr><tr><td>프레임 시간 p50</td><td>20ms</td><td>36ms</td></tr><tr><td>프레임 시간 p95</td><td>150ms</td><td>53ms</td></tr></table><p>p50은 늘고 p95는 줄었습니다. 작은 표본의 에뮬레이터 개발 번들 측정이므로 전반적인 성능 향상으로 결론 내리지 않았습니다. 측정은 장면·종이 재질 변경을 대상으로 했으며 후속 정적 배경색과 공유 흐름 변경은 별도 성능 측정하지 않았습니다.</p><h2>남은 차이와 확인 범위</h2><p>완전 동일하거나 99.9% 일치한다고 판정하지 않았습니다. 저장된 장정과 3D 렌더러를 공유하므로 표지의 질감·제목 인쇄·광택은 원본과 미세한 차이가 있습니다. 겹친 종이의 질감과 그림자도 UI로 근사한 표현입니다. 책장 3D 좌표·카메라·충돌·쌓기·기대기·드래그·저장 구조는 이번에 변경하지 않았습니다. 벽난로·조용한 방은 기존 임시 장면을 유지했습니다. 실기기·iOS·더 작은 화면·실제 소리 품질과 공유 대상에게 최종 전송하는 과정은 확인하지 않았습니다. 목표 시간 기능은 이번 반복에서 다시 검사하지 않았습니다.</p><details><summary>performance-before-fold.json</summary><pre>{
-  &quot;label&quot;: &quot;before-fold&quot;,
-  &quot;durationSeconds&quot;: 12.14,
-  &quot;metrics&quot;: {
-    &quot;Total frames rendered&quot;: &quot;15&quot;,
-    &quot;Janky frames&quot;: &quot;14 (93.33%)&quot;,
-    &quot;Janky frames (legacy)&quot;: &quot;5 (33.33%)&quot;,
-    &quot;50th percentile&quot;: &quot;20ms&quot;,
-    &quot;90th percentile&quot;: &quot;150ms&quot;,
-    &quot;95th percentile&quot;: &quot;150ms&quot;,
-    &quot;99th percentile&quot;: &quot;150ms&quot;,
-    &quot;Number Missed Vsync&quot;: &quot;0&quot;,
-    &quot;Number Slow UI thread&quot;: &quot;8&quot;,
-    &quot;Number Slow bitmap uploads&quot;: &quot;0&quot;,
-    &quot;50th gpu percentile&quot;: &quot;10ms&quot;,
-    &quot;90th gpu percentile&quot;: &quot;24ms&quot;,
-    &quot;95th gpu percentile&quot;: &quot;4950ms&quot;,
-    &quot;99th gpu percentile&quot;: &quot;4950ms&quot;
-  },
-  &quot;workload&quot;: &quot;Warm up; 4 fold/unfold cycles, native taps and 1200ms waits. End screen checked for the fold control. Same 11 books and QA fixtures. Only Scene, PaperSurface and BookmarkCard swapped against turn-start baseline.&quot;,
-  &quot;environment&quot;: &quot;Android API36 emulator; Expo Go development bundle; QA polling. One sample per version, not a device-wide speed claim.&quot;,
-  &quot;validForComparison&quot;: true,
-  &quot;summaryScope&quot;: &quot;First aggregate block in dumpsys gfxinfo. Includes emulator overhead; small sample and mixed p50/p95 results do not establish a general speedup.&quot;
-}</pre></details><details><summary>performance-after-fold.json</summary><pre>{
-  &quot;label&quot;: &quot;after-fold&quot;,
-  &quot;durationSeconds&quot;: 11.51,
-  &quot;metrics&quot;: {
-    &quot;Total frames rendered&quot;: &quot;11&quot;,
-    &quot;Janky frames&quot;: &quot;10 (90.91%)&quot;,
-    &quot;Janky frames (legacy)&quot;: &quot;7 (63.64%)&quot;,
-    &quot;50th percentile&quot;: &quot;36ms&quot;,
-    &quot;90th percentile&quot;: &quot;53ms&quot;,
-    &quot;95th percentile&quot;: &quot;53ms&quot;,
-    &quot;99th percentile&quot;: &quot;53ms&quot;,
-    &quot;Number Missed Vsync&quot;: &quot;0&quot;,
-    &quot;Number Slow UI thread&quot;: &quot;9&quot;,
-    &quot;Number Slow bitmap uploads&quot;: &quot;1&quot;,
-    &quot;50th gpu percentile&quot;: &quot;10ms&quot;,
-    &quot;90th gpu percentile&quot;: &quot;18ms&quot;,
-    &quot;95th gpu percentile&quot;: &quot;22ms&quot;,
-    &quot;99th gpu percentile&quot;: &quot;22ms&quot;
-  },
-  &quot;workload&quot;: &quot;Warm up; 4 fold/unfold cycles, native taps and 1200ms waits. End screen checked for the fold control. Same 11 books and QA fixtures. Only Scene, PaperSurface and BookmarkCard swapped against turn-start baseline.&quot;,
-  &quot;environment&quot;: &quot;Android API36 emulator; Expo Go development bundle; QA polling. One sample per version, not a device-wide speed claim.&quot;,
-  &quot;validForComparison&quot;: true,
-  &quot;summaryScope&quot;: &quot;First aggregate block in dumpsys gfxinfo. Includes emulator overhead; small sample and mixed p50/p95 results do not establish a general speedup.&quot;
-}</pre></details><p>프레임 측정은 에뮬레이터 개발 번들의 제한된 표본입니다. 초기 장면·소리 창 반복 측정은 자동 조작이 화면 밖으로 이탈하여 제외했습니다. GPU 4950ms 값은 정상적인 성능값으로 해석하지 않았습니다.</p><h2>임시 확인 코드 제거 후 실제 탭</h2><nav><a href="home-restored-final.png">원래 책 8권의 책장</a><a href="bookmarks-empty-final.png">갈피 탭의 빈 목록</a><a href="timer-idle-final.png">읽기 탭의 00:00 대기 화면</a><a href="edge-book-actions.png">글자 150% 책 상세</a><a href="edge-bookmark-scrolled.png">긴 갈피 스크롤</a><a href="edge-timer.png">긴 책 제목 타이머</a></nav><p>로컬 커밋: 9c771e8 디자인·아껴둔 갈피, ffea3e9 창가 자산·구도, e0a370a 기본 공유창 연결. push하지 않았습니다.</p></main></html>
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light">
+  <title>책장 한켠 · 최신 화면 비교</title>
+  <style>
+    :root { --bg:#fef9f3; --ink:#54433c; --muted:#8c7d73; --line:#e5d9ca; --accent:#82645e; }
+    * { box-sizing:border-box; }
+    body { margin:0; background:var(--bg); color:var(--ink); font:16px/1.7 system-ui,-apple-system,sans-serif; }
+    main { max-width:1120px; margin:auto; padding:40px 28px 56px; }
+    h1,h2,h3,p,figure { margin:0; }
+    h1 { font-size:clamp(27px,4vw,38px); line-height:1.35; letter-spacing:-.04em; margin:8px 0 14px; }
+    h2 { font-size:24px; letter-spacing:-.03em; line-height:1.5; }
+    h3 { font-size:18px; margin:22px 0 8px; }
+    a { color:inherit; text-underline-offset:4px; }
+    button { font:inherit; cursor:pointer; color:inherit; }
+    a:focus-visible,button:focus-visible,summary:focus-visible { outline:3px solid #7694a4; outline-offset:4px; }
+    .eyebrow { color:var(--muted); font-size:13px; letter-spacing:.1em; }
+    .intro { max-width:750px; }
+    .meta { margin-top:16px; font-size:13px; color:var(--muted); }
+    .navigation { display:flex; gap:8px; flex-wrap:wrap; margin:28px 0 24px; }
+    .navigation a { text-decoration:none; padding:9px 16px; border:1px solid var(--line); border-radius:24px; font-size:14px; }
+    .navigation a[aria-current="page"] { background:var(--ink); border-color:var(--ink); color:var(--bg); }
+    .viewer { border-top:1px solid var(--line); padding-top:24px; }
+    .screen { scroll-margin-top:20px; }
+    .screen + .screen { margin-top:44px; }
+    body.enhanced .screen { margin-top:0; }
+    .screen p { max-width:840px; margin:8px 0 22px; }
+    .pair { display:grid; grid-template-columns:1fr 1fr; gap:24px; align-items:start; justify-items:center; }
+    figure { width:100%; max-width:370px; min-width:0; }
+    figcaption { color:var(--muted); font-size:14px; margin-bottom:10px; }
+    .image-link { display:block; border:1px solid var(--line); border-radius:18px; overflow:hidden; background:#f4ebde; }
+    img { display:block; width:100%; height:auto; }
+    .image-open { display:inline-block; margin-top:9px; color:var(--muted); font-size:13px; }
+    .toolbar { display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:12px; margin:0 0 20px; }
+    .toolbar p { color:var(--muted); font-size:13px; }
+    .modes { display:flex; gap:4px; padding:4px; background:#f1e9de; border-radius:12px; }
+    .modes button { border:0; background:transparent; padding:7px 10px; border-radius:8px; font-size:13px; }
+    .modes button[aria-pressed="true"] { background:var(--bg); box-shadow:0 1px 3px #54433c16; }
+    .viewer[data-mode="actual"] .comparison .reference,.viewer[data-mode="reference"] .comparison .actual { display:none; }
+    .viewer[data-mode="actual"] .comparison .pair,.viewer[data-mode="reference"] .comparison .pair { grid-template-columns:1fr; }
+    [hidden] { display:none !important; }
+    .evidence { border-top:1px solid var(--line); margin-top:42px; padding-top:25px; }
+    .evidence > p { color:var(--muted); margin:8px 0 20px; }
+    details { padding:17px 0; border-bottom:1px solid var(--line); }
+    summary { cursor:pointer; font-weight:600; }
+    details p { margin:12px 0; }
+    ul { padding-left:22px; margin:12px 0; }
+    li { margin:7px 0; }
+    .links { display:flex; flex-wrap:wrap; gap:8px 20px; margin:14px 0; }
+    table { width:100%; max-width:620px; border-collapse:collapse; margin:18px 0; font-size:14px; }
+    th,td { text-align:left; border-bottom:1px solid var(--line); padding:10px 8px; }
+    footer { font-size:13px; color:var(--muted); margin-top:30px; }
+    @media(max-width:600px) { main { padding:25px 16px 36px; } .pair { gap:12px; } .navigation { gap:6px; } .navigation a { padding:7px 12px; } h2 { font-size:21px; } figcaption,.image-open { font-size:12px; } .image-link { border-radius:10px; } }
+  </style>
+</head>
+<body>
+<main>
+  <header>
+    <p class="eyebrow">책장 한켠 · DESIGN REVIEW</p>
+    <h1>최신 앱 화면을 한눈에.</h1>
+    <p class="intro">공유 버튼에서 바로 휴대폰 기본 공유창이 열립니다. 화면을 선택하면 원본 시안과 실제 앱 캡처를 나란히 볼 수 있습니다.</p>
+    <p class="meta">2026.10.03 캡처 · box-model · Android API 36 / Expo Go · 실제 화면 1080 × 2400</p>
+  </header>
+  <nav class="navigation" aria-label="비교할 화면">
+    <a href="#sharing" data-screen="sharing" aria-current="page">공유 방식</a>
+    <a href="#book" data-screen="book">책 상세</a>
+    <a href="#bookmarks" data-screen="bookmarks">갈피 목록</a>
+    <a href="#bookmark" data-screen="bookmark">갈피 상세</a>
+    <a href="#add" data-screen="add">책 추가</a>
+    <a href="#timer" data-screen="timer">읽기</a>
+    <a href="#home" data-screen="home">책장</a>
+  </nav>
+  <div class="viewer" data-mode="pair">
+    <div class="toolbar" hidden>
+      <p>같은 가로 폭으로 비교합니다. 이미지를 누르면 크게 열립니다.</p>
+      <div class="modes" role="group" aria-label="비교 보기 방식">
+        <button type="button" data-mode="pair" aria-pressed="true">나란히</button>
+        <button type="button" data-mode="actual" aria-pressed="false">실제 앱</button>
+        <button type="button" data-mode="reference" aria-pressed="false">원본</button>
+      </div>
+    </div>
+    <section class="screen" id="sharing" aria-labelledby="sharing-title">
+      <h2 id="sharing-title">공유를 누르면, 바로 보낼 곳 선택</h2>
+      <p>하단의 공유 버튼을 누르면 갈피 이미지를 만든 뒤 기본 공유창이 올라옵니다. 메모는 기본 제외하며, ‘더 보기 → 메모 포함해 공유’로 함께 보낼 수 있습니다. 표시되는 앱과 추천 상대는 휴대폰 환경에 따라 달라집니다.</p>
+      <div class="pair">
+<figure class="actual"><figcaption>기본 공유 · 메모 제외</figcaption><a class="image-link" href="share-sheet-final.png" target="_blank" rel="noopener" aria-label="기본 공유 · 메모 제외 크게 열기"><img src="share-sheet-final.png" alt="기본 공유 · 메모 제외" loading="eager"></a><a class="image-open" href="share-sheet-final.png" target="_blank" rel="noopener">원본 크기로 열기 ↗</a></figure><figure class="actual"><figcaption>더 보기 · 메모 포함</figcaption><a class="image-link" href="share-with-memo-final.png" target="_blank" rel="noopener" aria-label="더 보기 · 메모 포함 크게 열기"><img src="share-with-memo-final.png" alt="더 보기 · 메모 포함" loading="eager"></a><a class="image-open" href="share-with-memo-final.png" target="_blank" rel="noopener">원본 크기로 열기 ↗</a></figure></div></section>
+<section class="screen comparison" id="book" aria-labelledby="book-title"><h2 id="book-title">책 상세</h2><p>표지 크기와 위치, 제목·저자 사이 간격, 읽기 상태, 쪽수와 하단 버튼의 높이를 원본에 맞춰 보정했습니다.</p><div class="pair"><figure class="reference"><figcaption>책 상세 · 원본 시안</figcaption><a class="image-link" href="../design-integration-20261003/reference-book-detail.png" target="_blank" rel="noopener" aria-label="책 상세 · 원본 시안 크게 열기"><img src="../design-integration-20261003/reference-book-detail.png" alt="책 상세 · 원본 시안" loading="lazy"></a><a class="image-open" href="../design-integration-20261003/reference-book-detail.png" target="_blank" rel="noopener">원본 크기로 열기 ↗</a></figure><figure class="actual"><figcaption>책 상세 · 실제 앱</figcaption><a class="image-link" href="book-detail-final.png" target="_blank" rel="noopener" aria-label="책 상세 · 실제 앱 크게 열기"><img src="book-detail-final.png" alt="책 상세 · 실제 앱" loading="lazy"></a><a class="image-open" href="book-detail-final.png" target="_blank" rel="noopener">원본 크기로 열기 ↗</a></figure></div></section>
+<section class="screen comparison" id="bookmarks" aria-labelledby="bookmarks-title"><h2 id="bookmarks-title">갈피 목록</h2><p>문장과 출처를 가까이 배치하고 종이 가장자리·그림자를 다듬었습니다. 아껴둔 갈피는 실제 저장·필터·해제와 연결됩니다.</p><div class="pair"><figure class="reference"><figcaption>갈피 목록 · 원본 시안</figcaption><a class="image-link" href="../design-integration-20261003/reference-bookmarks.png" target="_blank" rel="noopener" aria-label="갈피 목록 · 원본 시안 크게 열기"><img src="../design-integration-20261003/reference-bookmarks.png" alt="갈피 목록 · 원본 시안" loading="lazy"></a><a class="image-open" href="../design-integration-20261003/reference-bookmarks.png" target="_blank" rel="noopener">원본 크기로 열기 ↗</a></figure><figure class="actual"><figcaption>갈피 목록 · 실제 앱</figcaption><a class="image-link" href="bookmarks-final.png" target="_blank" rel="noopener" aria-label="갈피 목록 · 실제 앱 크게 열기"><img src="bookmarks-final.png" alt="갈피 목록 · 실제 앱" loading="lazy"></a><a class="image-open" href="bookmarks-final.png" target="_blank" rel="noopener">원본 크기로 열기 ↗</a></figure></div></section>
+<section class="screen comparison" id="bookmark" aria-labelledby="bookmark-title"><h2 id="bookmark-title">갈피 상세</h2><p>문장의 크기와 행간, 뒤 종이의 각도·크기, 책 정보와 메모의 간격을 조정했습니다. 모든 화면에서 같은 저장된 장정과 표지를 사용합니다.</p><div class="pair"><figure class="reference"><figcaption>갈피 상세 · 원본 시안</figcaption><a class="image-link" href="../design-integration-20261003/reference-bookmark-detail.png" target="_blank" rel="noopener" aria-label="갈피 상세 · 원본 시안 크게 열기"><img src="../design-integration-20261003/reference-bookmark-detail.png" alt="갈피 상세 · 원본 시안" loading="lazy"></a><a class="image-open" href="../design-integration-20261003/reference-bookmark-detail.png" target="_blank" rel="noopener">원본 크기로 열기 ↗</a></figure><figure class="actual"><figcaption>갈피 상세 · 실제 앱</figcaption><a class="image-link" href="bookmark-final.png" target="_blank" rel="noopener" aria-label="갈피 상세 · 실제 앱 크게 열기"><img src="bookmark-final.png" alt="갈피 상세 · 실제 앱" loading="lazy"></a><a class="image-open" href="bookmark-final.png" target="_blank" rel="noopener">원본 크기로 열기 ↗</a></figure></div></section>
+<section class="screen comparison" id="add" aria-labelledby="add-title"><h2 id="add-title">책 추가</h2><p>검색창과 헤더 위치를 조정했습니다. 실제 검색 결과를 보여주므로 시안과 책 내용은 다릅니다.</p><div class="pair"><figure class="reference"><figcaption>책 추가 · 원본 시안</figcaption><a class="image-link" href="../design-integration-20261003/reference-add.png" target="_blank" rel="noopener" aria-label="책 추가 · 원본 시안 크게 열기"><img src="../design-integration-20261003/reference-add.png" alt="책 추가 · 원본 시안" loading="lazy"></a><a class="image-open" href="../design-integration-20261003/reference-add.png" target="_blank" rel="noopener">원본 크기로 열기 ↗</a></figure><figure class="actual"><figcaption>책 추가 · 실제 앱</figcaption><a class="image-link" href="add-search-final.png" target="_blank" rel="noopener" aria-label="책 추가 · 실제 앱 크게 열기"><img src="add-search-final.png" alt="책 추가 · 실제 앱" loading="lazy"></a><a class="image-open" href="add-search-final.png" target="_blank" rel="noopener">원본 크기로 열기 ↗</a></figure></div></section>
+<section class="screen comparison" id="timer" aria-labelledby="timer-title"><h2 id="timer-title">읽기</h2><p>창가 장면의 원본 구도를 살리고, 책·시간·버튼은 실제 UI로 구현했습니다. 읽기 탭은 자동 측정 없이 00:00과 시작 버튼으로 열립니다.</p><div class="pair"><figure class="reference"><figcaption>읽기 · 원본 시안</figcaption><a class="image-link" href="../design-integration-20261003/reference-timer.png" target="_blank" rel="noopener" aria-label="읽기 · 원본 시안 크게 열기"><img src="../design-integration-20261003/reference-timer.png" alt="읽기 · 원본 시안" loading="lazy"></a><a class="image-open" href="../design-integration-20261003/reference-timer.png" target="_blank" rel="noopener">원본 크기로 열기 ↗</a></figure><figure class="actual"><figcaption>읽기 · 실제 앱</figcaption><a class="image-link" href="timer-connected-final.png" target="_blank" rel="noopener" aria-label="읽기 · 실제 앱 크게 열기"><img src="timer-connected-final.png" alt="읽기 · 실제 앱" loading="lazy"></a><a class="image-open" href="timer-connected-final.png" target="_blank" rel="noopener">원본 크기로 열기 ↗</a></figure></div></section>
+<section class="screen comparison" id="home" aria-labelledby="home-title"><h2 id="home-title">책장</h2><p>기존 책 8권과 저장된 배치를 유지한 화면입니다. 이번 변경에서 3D 좌표·카메라·충돌·쌓기·기대기·드래그 구조는 수정하지 않았습니다.</p><div class="pair"><figure class="reference"><figcaption>책장 · 원본 시안</figcaption><a class="image-link" href="../design-integration-20261003/reference-home.png" target="_blank" rel="noopener" aria-label="책장 · 원본 시안 크게 열기"><img src="../design-integration-20261003/reference-home.png" alt="책장 · 원본 시안" loading="lazy"></a><a class="image-open" href="../design-integration-20261003/reference-home.png" target="_blank" rel="noopener">원본 크기로 열기 ↗</a></figure><figure class="actual"><figcaption>책장 · 실제 앱</figcaption><a class="image-link" href="home-restored-final.png" target="_blank" rel="noopener" aria-label="책장 · 실제 앱 크게 열기"><img src="home-restored-final.png" alt="책장 · 실제 앱" loading="lazy"></a><a class="image-open" href="home-restored-final.png" target="_blank" rel="noopener">원본 크기로 열기 ↗</a></figure></div></section>
+  </div>
+  <section class="evidence" aria-labelledby="evidence-title">
+    <h2 id="evidence-title">확인한 내용과 남은 차이</h2>
+    <p>캡처는 실제 앱 경로에서 촬영했습니다. 비교용 데이터를 제거한 뒤 기존 책 8권·도서 데이터·배치·설정이 작업 전과 같은지 대조했습니다.</p>
+    <details>
+      <summary>디자인에서 달라진 부분</summary>
+      <ul><li>화면 아래로 갈수록 누렇게 변하던 배경을 균일한 밝은 크림색으로 보정했습니다.</li><li>책 상세의 표지·제목·저자·읽던 쪽수·버튼 위치, 갈피의 문장 조판과 겹친 종이 표현을 다듬었습니다.</li><li>창가 그림은 원본 구도를 보존한 별도 자산으로 바꿨습니다. 글자·버튼·목록은 실제 UI입니다.</li></ul>
+      <div class="links"><a href="background-comparison.json">배경색 측정</a><a href="scene-asset-comparison.json">창가 자산 측정</a></div>
+    </details>
+    <details>
+      <summary>기능·데이터 보존과 검사 결과</summary>
+      <ul><li>아껴둔 갈피 저장·필터·해제·재실행 유지.</li><li>읽기 탭의 00:00 대기, 책 없이 시작, 접기·펼치기, 일시정지, 장면 변경 시 시간 유지, 종료할 때 책 연결과 기록 저장.</li><li>강제 종료 후 일시정지 시간 복구.</li><li>글자 크기 150%에서 긴 제목·저자 줄바꿈, 책 상세 버튼과 긴 갈피 스크롤.</li><li>기본 공유창 열기·취소 후 다시 열기, 메모 포함 이미지 생성. 외부로 실제 전송하지 않았습니다.</li></ul>
+      <p>기존 작업을 포함한 앱에서 31개 테스트 모음·277개 테스트가 통과했습니다. 이후 배경과 공유 변경은 타입 검사와 실제 화면에서 확인했습니다. 작업 전 미커밋 파일 56개도 바이트 단위로 보존했습니다.</p>
+      <p>push할 커밋만 분리한 환경에서도 타입 검사와 30개 테스트 모음·263개 테스트가 통과했습니다. 캡처에는 기존 미커밋 3D 디자인 작업이 포함되어 있으며, 해당 작업은 이번 push에 포함하지 않았습니다.</p>
+      <div class="links"><a href="tests.json">기존 앱 테스트</a><a href="push-validation.json">push 대상 검사</a><a href="native-checks.json">실제 동작 검사</a><a href="data-preservation.json">데이터 대조</a><a href="source-preservation.json">기존 소스 보존</a></div>
+      <div class="links"><a href="bookmarks-empty-final.png">빈 갈피 목록</a><a href="timer-idle-final.png">책 없이 읽기 대기</a><a href="edge-book-actions.png">글자 150% 책 상세</a><a href="edge-bookmark-scrolled.png">긴 갈피</a><a href="edge-timer.png">긴 제목 타이머</a></div>
+    </details>
+    <details>
+      <summary>측정한 성능 변화</summary>
+      <table><thead><tr><th scope="col">접기·펼치기 4회</th><th scope="col">수정 전</th><th scope="col">수정 후</th></tr></thead><tbody><tr><th scope="row">측정 프레임</th><td>15</td><td>11</td></tr><tr><th scope="row">프레임 시간 p50</th><td>20ms</td><td>36ms</td></tr><tr><th scope="row">프레임 시간 p95</th><td>150ms</td><td>53ms</td></tr></tbody></table>
+      <p>p50은 늘고 p95는 줄었습니다. 에뮬레이터 개발 번들의 작은 표본이므로 전반적인 속도 향상으로 단정하지 않았습니다. 장면·종이 재질 변경을 측정했으며 후속 배경색·공유 흐름은 별도 성능 측정하지 않았습니다.</p>
+      <p>창가 그림의 RGB 평균 절대 오차는 32.085 → 5.318, 파일 크기는 약 25.3% 감소했습니다. 디코딩 메모리는 약 6.29MB로 거의 같습니다. 이는 전체 화면 일치율이 아닙니다.</p>
+      <div class="links"><a href="performance-before-fold.json">수정 전 측정</a><a href="performance-after-fold.json">수정 후 측정</a></div>
+      <p>초기 반복 측정은 자동 조작이 화면 밖으로 이탈하여 제외했습니다. GPU 4950ms 값은 정상적인 성능값으로 해석하지 않았습니다.</p>
+    </details>
+    <details>
+      <summary>남은 차이·임시 자산·미확인 항목</summary>
+      <p>표지의 질감·제목 인쇄·광택과 종이 그림자에는 차이가 남습니다. 상태 표시줄, 화면 비율, 실제 데이터와 읽기 상태도 시안과 다릅니다. 완전 동일하거나 99.9% 일치한다고 판정하지 않았습니다.</p>
+      <p>벽난로·조용한 방은 기존 임시 장면입니다. 실기기·iOS·더 작은 화면·실제 소리 품질·공유 최종 전송은 미확인입니다. 목표 시간은 이번 반복에서 다시 검사하지 않았습니다.</p>
+    </details>
+  </section>
+  <footer>
+    <p><a href="https://github.com/yuntyu01/chaekjang-hankyeon/tree/box-model" target="_blank" rel="noopener">GitHub · box-model ↗</a> · 실제 앱 경로: C:\dev\chaekjang-hankyeon\app</p>
+    <p>이 페이지는 실제 화면 캡처를 비교하는 문서입니다. 화면 속 버튼은 앱에서 조작할 수 있습니다.</p>
+  </footer>
+</main>
+<script>
+(() => {
+  const viewer = document.querySelector('.viewer');
+  const toolbar = document.querySelector('.toolbar');
+  const screens = [...document.querySelectorAll('.screen')];
+  const links = [...document.querySelectorAll('[data-screen]')];
+  const modes = [...document.querySelectorAll('button[data-mode]')];
+  // Keep old links into the previous comparison document working.
+  const aliases = { s0:'book', s1:'bookmarks', s2:'bookmark', s3:'add', s4:'timer' };
+  function showScreen() {
+    const hash = location.hash.slice(1);
+    const requested = aliases[hash] || hash;
+    const current = screens.find(screen => screen.id === requested) || screens[0];
+    screens.forEach(screen => { screen.hidden = screen !== current; });
+    links.forEach(link => {
+      if (link.dataset.screen === current.id) link.setAttribute('aria-current','page');
+      else link.removeAttribute('aria-current');
+    });
+    toolbar.hidden = !current.classList.contains('comparison');
+  }
+  modes.forEach(button => button.addEventListener('click', () => {
+    viewer.dataset.mode = button.dataset.mode;
+    modes.forEach(mode => mode.setAttribute('aria-pressed', String(mode === button)));
+  }));
+  document.body.classList.add('enhanced');
+  window.addEventListener('hashchange', showScreen);
+  showScreen();
+})();
+</script>
+</body>
+</html>
