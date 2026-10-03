@@ -18,10 +18,12 @@ export const BookVisual = memo(function BookVisual({ book, width, rasterize = fa
   const scale = width / (bbox.width + BOOK_PAD * 2);
   const canvas = useCanvasRef();
   const shared = useBookShared();
+  // Some renderers also load reference glyphs; the base renderer only needs its font.
+  const referenceReady = !('original' in shared) || !!shared.original;
   const [uri, setUri] = useState<string | null>(null);
   const revision = JSON.stringify(book);
   useEffect(() => {
-    if (!rasterize || !shared.regular || !shared.original) return;
+    if (!rasterize || !shared.regular || !referenceReady) return;
     let live = true;
     setUri(null);
     const timer = setTimeout(() => {
@@ -30,7 +32,7 @@ export const BookVisual = memo(function BookVisual({ book, width, rasterize = fa
       }).catch(() => {});
     }, 300);
     return () => { live = false; clearTimeout(timer); };
-  }, [rasterize, revision, width, shared.regular, shared.original, canvas]);
+  }, [rasterize, revision, width, shared.regular, referenceReady, canvas]);
   const edge = BOOK_PAD * scale;
   return <View accessible accessibilityLabel={`${book.title} 표지`}>
     <View pointerEvents="none" style={{ position: 'absolute', left: edge + 1, right: Math.max(0, edge - width * 0.018), top: edge + 3, bottom: edge, borderRadius: width * 0.025, backgroundColor: '#E8D8C0', borderRightWidth: 1, borderRightColor: '#F7ECDB', boxShadow: [{ offsetX: 1, offsetY: width * 0.043, blurRadius: width * 0.072, color: 'rgba(124,85,48,0.19)' }, { offsetX: 0, offsetY: 1, blurRadius: 1.2, color: 'rgba(87,63,40,0.18)' }] }} />
