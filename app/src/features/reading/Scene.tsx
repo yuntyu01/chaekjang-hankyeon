@@ -2,24 +2,26 @@
 // 움직임은 보이는 동안(animate)만 프레임을 돌린다(화면을 나가거나 동작 줄이기면 멈춘 한 장면).
 import { Canvas, Circle, Group, LinearGradient, Path, RadialGradient, Rect, Skia, vec } from '@shopify/react-native-skia';
 import { useEffect, useMemo } from 'react';
-import { useWindowDimensions } from 'react-native';
+import { Image, useWindowDimensions } from 'react-native';
 import { useDerivedValue, useFrameCallback, useSharedValue } from 'react-native-reanimated';
 
 import type { SceneId } from '@/store/settings-store';
 
-export function Scene({ id, animate }: { id: SceneId; animate: boolean }) {
-  const { width: W, height: H } = useWindowDimensions();
+export function Scene({ id, animate, height }: { id: SceneId; animate: boolean; height?: number }) {
+  const { width: W, height: windowHeight } = useWindowDimensions();
+  const H = height ?? windowHeight;
   const t = useSharedValue(0);
   const cb = useFrameCallback((f) => {
     t.value = f.timeSinceFirstFrame / 1000;
   }, false);
   useEffect(() => {
-    cb.setActive(animate);
+    cb.setActive(animate && id !== 'rain');
     return () => cb.setActive(false);
-  }, [animate, cb]);
+  }, [animate, cb, id]);
+  if (id === 'rain') return <Image source={require('../../../assets/scenes/rain-window-reference-v1.png')} resizeMode="cover" style={{ position: 'absolute', left: 0, top: 0, width: W, height: H }} accessibilityIgnoresInvertColors />;
   return (
     <Canvas style={{ position: 'absolute', left: 0, top: 0, width: W, height: H }} pointerEvents="none">
-      {id === 'rain' ? <Rain W={W} H={H} t={t} /> : id === 'fire' ? <Fire W={W} H={H} t={t} /> : <Room W={W} H={H} t={t} />}
+      {id === 'fire' ? <Fire W={W} H={H} t={t} /> : <Room W={W} H={H} t={t} />}
     </Canvas>
   );
 }
