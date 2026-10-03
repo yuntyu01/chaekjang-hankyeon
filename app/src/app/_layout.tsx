@@ -11,6 +11,7 @@ import { bootStores } from '@/store/boot';
 import { bootMark } from '@/ui/boot-trace';
 import { BookArtProvider } from '@/ui/book3d/art';
 import { PaperBackground } from '@/ui/PaperBackground';
+import { LoadingScreen } from '@/ui/LoadingScreen';
 import { colors } from '@/ui/theme';
 
 // 홈 머리글의 작고 둥근 고딕(나눔스퀘어라운드, assets/fonts/README.md)
@@ -43,7 +44,7 @@ export default function RootLayout() {
       void SplashScreen.hideAsync();
     }
   }, [ready]);
-  if (!ready) return null;
+  if (!ready) return <LoadingScreen />;
   return (
     <GestureHandlerRootView style={{ flex: 1, backgroundColor: colors.bg }}>
       <SafeAreaProvider>

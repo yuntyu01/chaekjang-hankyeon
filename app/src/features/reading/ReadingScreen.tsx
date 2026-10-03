@@ -120,7 +120,7 @@ export function ReadingScreen({ initialBookId, soundOnly = false, inTab = false 
               <Pressable onPress={() => setControls('sound')} style={st.control} accessibilityRole="button" accessibilityLabel="소리 설정"><AudioLines size={30} color={colors.ink} strokeWidth={1.8} /><Text style={st.controlText}>소리</Text></Pressable>
               <Pressable onPress={soundOnly ? () => audio.playing ? ambient.pause() : void ambient.play(scene) : !active ? start : () => running ? readingStore.pause() : readingStore.resume()} style={st.round} accessibilityRole="button" accessibilityLabel={soundOnly ? audio.playing ? '소리 멈추기' : '소리 재생' : !active ? '독서 시작' : running ? '일시정지' : '다시 읽기'}>
                 <ButtonShading radius={40} />
-                {!active && !soundOnly ? <Text style={st.startLabel}>시작</Text> : (soundOnly ? audio.playing : running) ? <View style={{ flexDirection: 'row', gap: 7 }}><View style={st.pauseStroke} /><View style={st.pauseStroke} /></View> : <Play size={30} color={LIGHT} fill={LIGHT} />}
+                {(soundOnly ? audio.playing : running) ? <View style={{ flexDirection: 'row', gap: 7 }}><View style={st.pauseStroke} /><View style={st.pauseStroke} /></View> : <Play size={30} color={LIGHT} fill={LIGHT} style={{ marginLeft: 3 }} />}
               </Pressable>
               <Pressable onPress={() => setControls('scene')} style={st.control} accessibilityRole="button" accessibilityLabel="장면 변경"><ImageIcon size={27} color={colors.ink} strokeWidth={1.8} /><Text style={st.controlText}>장면</Text></Pressable>
             </View>
@@ -176,7 +176,6 @@ const st = StyleSheet.create({
   sub: { color: colors.inkSoft, fontFamily: fonts.round, fontSize: 12, lineHeight: 19, textAlign: 'center' },
   controls: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-evenly', marginTop: 16 },
   round: { width: 80, height: 80, borderRadius: 40, backgroundColor: '#81573E', borderTopWidth: 0.8, borderTopColor: '#B1937A', alignItems: 'center', justifyContent: 'center', boxShadow: [{ offsetX: 0, offsetY: 8, blurRadius: 11, color: 'rgba(130,92,53,0.14)' }] },
-  startLabel: { fontFamily: fonts.round, fontSize: 16, color: '#FFFCF4' },
   goal: { fontSize: 11, color: '#A09282', marginTop: 2 },
   goalHelp: { fontSize: 14, color: colors.inkSoft, lineHeight: 23 },
   pauseStroke: { width: 6, height: 27, borderRadius: 3, backgroundColor: '#FFFCF4' },
