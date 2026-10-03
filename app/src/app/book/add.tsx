@@ -251,7 +251,6 @@ export default function AddBook() {
 function FindStep({ initial, notice, onPick, onPhoto, onManual }: { initial?: string; notice: string | null; onPick: (c: BookCandidate) => void; onPhoto: (from: 'camera' | 'library') => void; onManual: (q: string) => void }) {
   const [q, setQ] = useState(initial ?? '');
   const [items, setItems] = useState<BookCandidate[] | null>(null);
-  const [provider, setProvider] = useState<string | undefined>(undefined);
   const [err, setErr] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const ctrl = useRef<AbortController | null>(null);
@@ -267,7 +266,6 @@ function FindStep({ initial, notice, onPick, onPhoto, onManual }: { initial?: st
     setBusy(false);
     if (r.ok) {
       setItems(r.items);
-      setProvider(r.provider);
     } else {
       setErr(r.message);
       setItems(null);
@@ -281,7 +279,7 @@ function FindStep({ initial, notice, onPick, onPhoto, onManual }: { initial?: st
   return (
     <Screen title="책 추가">
       <View style={st.searchBox}>
-        <Pressable onPress={() => run()} accessibilityRole="button" accessibilityLabel="검색" style={st.searchAction}><Search size={21} color={colors.inkSoft} strokeWidth={1.6} /></Pressable>
+        <Pressable onPress={() => run()} accessibilityRole="button" accessibilityLabel="검색" style={st.searchAction}><Search size={23} color={colors.ink} strokeWidth={1.6} /></Pressable>
         <TextInput
           value={q}
           onChangeText={setQ}
@@ -292,12 +290,12 @@ function FindStep({ initial, notice, onPick, onPhoto, onManual }: { initial?: st
           style={st.searchInput}
           accessibilityLabel="제목이나 저자로 찾기"
         />
-        {busy ? <ActivityIndicator size="small" color={colors.inkSoft} /> : q ? <Pressable onPress={() => { ctrl.current?.abort(); setBusy(false); setQ(''); setItems(null); setErr(null); }} accessibilityRole="button" accessibilityLabel="검색어 지우기" style={st.searchAction}><X size={18} color={colors.inkSoft} /></Pressable> : null}
+        {busy ? <ActivityIndicator size="small" color={colors.inkSoft} /> : q ? <Pressable onPress={() => { ctrl.current?.abort(); setBusy(false); setQ(''); setItems(null); setErr(null); }} accessibilityRole="button" accessibilityLabel="검색어 지우기" style={st.searchAction}><View style={st.clear}><X size={16} color={colors.inkSoft} /></View></Pressable> : null}
       </View>
       <View style={st.findMethods}>
-        <Pressable accessibilityRole="button" accessibilityLabel="사진으로 찾기" onPress={() => Alert.alert('사진으로 찾기', '표지 사진을 선택해 주세요.', [{ text: '사진 찍기', onPress: () => onPhoto('camera') }, { text: '사진 고르기', onPress: () => onPhoto('library') }, { text: '취소', style: 'cancel' }])} style={st.method}><Camera size={20} color={colors.inkSoft} /><Text style={st.methodText}>사진으로 찾기</Text></Pressable>
+        <Pressable accessibilityRole="button" accessibilityLabel="사진으로 찾기" onPress={() => Alert.alert('사진으로 찾기', '표지 사진을 선택해 주세요.', [{ text: '사진 찍기', onPress: () => onPhoto('camera') }, { text: '사진 고르기', onPress: () => onPhoto('library') }, { text: '취소', style: 'cancel' }])} style={st.method}><Camera size={24} color={colors.ink} strokeWidth={1.5} /><Text style={st.methodText}>사진으로 찾기</Text></Pressable>
         <View style={{ width: 1, height: 22, backgroundColor: screenTheme.border }} />
-        <Pressable accessibilityRole="button" accessibilityLabel="직접 입력" onPress={() => onManual(q)} style={st.method}><PenLine size={19} color={colors.inkSoft} /><Text style={st.methodText}>직접 입력</Text></Pressable>
+        <Pressable accessibilityRole="button" accessibilityLabel="직접 입력" onPress={() => onManual(q)} style={st.method}><PenLine size={24} color={colors.ink} strokeWidth={1.5} /><Text style={st.methodText}>직접 입력</Text></Pressable>
       </View>
       {notice ? <Muted style={{ marginTop: 8, lineHeight: 19 }}>{notice}</Muted> : null}
 
@@ -311,16 +309,16 @@ function FindStep({ initial, notice, onPick, onPhoto, onManual }: { initial?: st
       ) : null}
       {items && !items.length ? <Empty title="찾는 책이 없어요" body="검색어를 바꾸거나 위의 직접 입력으로 추가해 주세요." /> : null}
       {items?.length ? (
-        <View style={{ marginTop: 24 }}><Row gap={8}><Text style={st.resultHeading}>검색 결과</Text><Muted>{items.length}</Muted></Row><Muted style={{ marginTop: 5 }}>{provider ?? '도서 검색'}</Muted>
+        <View style={{ marginTop: 27 }}><Row gap={13}><Text style={st.resultHeading}>검색 결과</Text><Text style={st.resultCount}>{items.length}권</Text></Row>
           {items.map((c) => (
             <Pressable key={c.key} onPress={() => onPick(c)} style={({ pressed }) => [st.result, pressed && { opacity: 0.7 }]} accessibilityRole="button" accessibilityLabel={`${c.title}, ${c.authors.join(', ')}`}>
-              <RealCover uri={c.coverUrl} title={c.title} color="#B8ADA0" width={78} />
-              <View style={{ flex: 1, gap: 7 }}>
+              <View style={st.coverShadow}><RealCover uri={c.coverUrl} title={c.title} color="#B8ADA0" width={94} ratio={0.77} /></View>
+              <View style={{ flex: 1, gap: 6 }}>
                 <Text style={st.rTitle}>{c.title}</Text>
                 {c.authors.length ? <Text style={st.rAuthor}>{c.authors.join(', ')}</Text> : null}
-                <Text style={st.rMeta}>{[c.publisher, c.publishedAt?.slice(0, 4)].filter(Boolean).join(' · ')}</Text>
+                <Text style={st.rMeta}>{[c.publisher, c.publishedAt?.match(/\b\d{4}\b/)?.[0]].filter(Boolean).join(' · ')}</Text>
               </View>
-              <View style={st.add}><Text style={{ color: colors.ink, fontSize: 13 }}>추가</Text></View>
+              <View style={st.add}><Text style={{ color: colors.ink, fontSize: 15 }}>추가</Text></View>
             </Pressable>
           ))}
         </View>
@@ -330,17 +328,20 @@ function FindStep({ initial, notice, onPick, onPhoto, onManual }: { initial?: st
 }
 
 const st = StyleSheet.create({
-  searchBox: { minHeight: 54, marginTop: 16, borderRadius: 13, borderWidth: 1, borderColor: screenTheme.border, backgroundColor: '#F6F0E7', flexDirection: 'row', alignItems: 'center', paddingHorizontal: 4, gap: 2 },
-  searchAction: { width: 44, minHeight: 48, alignItems: 'center', justifyContent: 'center' },
-  searchInput: { flex: 1, fontSize: 16, color: colors.ink, paddingVertical: 12 },
-  findMethods: { flexDirection: 'row', alignItems: 'center', marginTop: 12, paddingBottom: 16, borderBottomWidth: 1, borderBottomColor: screenTheme.border },
-  method: { flex: 1, flexDirection: 'row', gap: 8, alignItems: 'center', justifyContent: 'center', paddingVertical: 16, minHeight: 48 },
-  methodText: { fontSize: 14, color: colors.ink, flexShrink: 1 },
-  resultHeading: { fontFamily: fonts.round, fontSize: 20, color: colors.ink },
-  result: { flexDirection: 'row', alignItems: 'center', gap: 14, paddingVertical: 24, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: screenTheme.border },
-  add: { backgroundColor: '#EFE5D5', borderRadius: 9, minWidth: 46, paddingVertical: 10, paddingHorizontal: 10, alignItems: 'center' },
-  rTitle: { fontFamily: fonts.serifBold, fontSize: 18, lineHeight: 27, color: colors.ink },
-  rAuthor: { fontSize: 14, color: colors.inkSoft },
-  rMeta: { fontSize: 12, lineHeight: 19, color: colors.inkFaint },
+  searchBox: { minHeight: 51, marginTop: 16, borderRadius: 15, backgroundColor: '#F4EEE5', flexDirection: 'row', alignItems: 'center', paddingHorizontal: 5, gap: 1 },
+  searchAction: { width: 43, minHeight: 48, alignItems: 'center', justifyContent: 'center' },
+  clear: { width: 24, height: 24, borderRadius: 12, backgroundColor: '#DDD6CC', alignItems: 'center', justifyContent: 'center' },
+  searchInput: { flex: 1, fontFamily: fonts.serif, fontSize: 18, lineHeight: 28, color: colors.ink, paddingVertical: 10, includeFontPadding: false },
+  findMethods: { flexDirection: 'row', alignItems: 'center', marginTop: 9 },
+  method: { flex: 1, flexDirection: 'row', gap: 10, alignItems: 'center', justifyContent: 'center', paddingVertical: 13, minHeight: 50 },
+  methodText: { fontSize: 14.5, color: colors.ink, flexShrink: 1 },
+  resultHeading: { fontFamily: fonts.roundTitle, fontSize: 22, color: colors.ink },
+  resultCount: { fontSize: 15, color: colors.inkSoft },
+  result: { flexDirection: 'row', alignItems: 'center', gap: 16, paddingHorizontal: 7, paddingVertical: 17, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: '#E4DCD2' },
+  coverShadow: { borderRadius: 3, boxShadow: [{ offsetX: 0, offsetY: 5, blurRadius: 6, color: 'rgba(118,77,38,0.16)' }] },
+  add: { backgroundColor: '#F5E7D6', borderRadius: 13, minWidth: 64, minHeight: 38, paddingVertical: 9, paddingHorizontal: 10, alignItems: 'center' },
+  rTitle: { fontFamily: fonts.serifMedium, fontSize: 18, lineHeight: 28, color: '#27231F', includeFontPadding: false },
+  rAuthor: { fontSize: 14, lineHeight: 22, color: '#756B63' },
+  rMeta: { fontSize: 12.5, lineHeight: 20, color: colors.inkFaint },
   doneTitle: { fontFamily: fonts.serif, fontSize: 20, lineHeight: 30, color: colors.ink, marginTop: 20 },
 });
