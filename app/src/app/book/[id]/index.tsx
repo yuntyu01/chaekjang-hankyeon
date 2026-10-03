@@ -1,7 +1,7 @@
 // 책 상세: 실제 표지·기본 정보 / 이 책 읽기·갈피 남기기·읽기 상태 / 내 기록(회차·별점·감상·누적 시간·갈피·현재 쪽수).
 // 날짜·쪽수·별점은 모두 선택 입력. 완독 여부는 사용자가 정한다(타이머로 자동 판정하지 않는다).
 import { router, useLocalSearchParams } from 'expo-router';
-import { BookOpen, Bookmark, MoreHorizontal } from '@/ui/icons';
+import { BookOpen, Bookmark, MoreHorizontal, ChevronRight, ChevronDown } from '@/ui/icons';
 import { useState } from 'react';
 import { Alert, Modal, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -14,7 +14,8 @@ import { placementStore, usePlacementStore } from '@/store/placement-store';
 import { uiBus } from '@/store/ui-bus';
 import { dropImage } from '@/store/files';
 import { Btn, Card, Chip, Empty, H2, ListItem, Muted, RealCover, Row, Screen, Stars, ui } from '@/ui/kit';
-import { colors, fonts } from '@/ui/theme';
+import { colors, fonts, screenTheme } from '@/ui/screenTheme';
+import { LibraryCover } from '@/ui/BookVisual';
 
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
 
@@ -23,6 +24,9 @@ export default function BookDetailScreen() {
   const { lib } = useLibrary();
   const place = usePlacementStore();
   const [menu, setMenu] = useState(false);
+  const [records, setRecords] = useState(false);
+  const [pageEdit, setPageEdit] = useState(false);
+  const [statusEdit, setStatusEdit] = useState(false);
   const insets = useSafeAreaInsets();
   const b = lib.books[id];
   const e = b && lib.editions[b.editionId];
@@ -64,34 +68,45 @@ export default function BookDetailScreen() {
 
   return (
     <Screen
-      title=""
+      title="책 정보"
       right={
         <Pressable onPress={() => setMenu(true)} hitSlop={10} accessibilityRole="button" accessibilityLabel="더 보기">
           <MoreHorizontal size={24} color={colors.ink} strokeWidth={1.6} />
         </Pressable>
       }>
-      <Row style={{ alignItems: 'flex-start', flexWrap: 'nowrap' }} gap={18}>
-        <RealCover uri={e.coverUri} title={e.title} color={color} width={110} ratio={e.size ? e.size.widthMm / e.size.heightMm : 0.68} />
-        <View style={{ flex: 1, gap: 6 }}>
-          <Text style={st.title}>{e.title}</Text>
-          {e.authors.length ? <Text style={st.author}>{e.authors.join(', ')}</Text> : null}
-          <Text style={st.meta}>{[e.publisher, e.publishedAt?.slice(0, 4)].filter(Boolean).join(' · ')}</Text>
-          <View style={[st.statusBadge, { borderColor: color }]}>
-            <Text style={st.statusText}>{STATUS_LABEL[b.status]}</Text>
-          </View>
-        </View>
-      </Row>
-      <View style={{ marginTop: 14, gap: 2 }}>
-        <Muted>ISBN {e.isbn13 ?? '확인 전'}</Muted>
-        <Muted>쪽수 {e.pageCount ? `${e.pageCount}쪽` : '확인 전'} · 판형 {e.size ? `${e.size.widthMm}×${e.size.heightMm}mm` : '확인 전(책장에는 기본 크기로 보여요)'}</Muted>
-        <Muted>{e.source === 'search' ? `도서 정보: ${e.sourceName ?? '검색'}` : e.source === 'photo' ? '사진으로 추가' : '직접 입력'}</Muted>
+      <View style={st.hero}>
+        <LibraryCover lib={lib} id={id} width={178} />
+        <Text style={st.title}>{e.title}</Text>
+        {e.authors.length ? <Text style={st.author}>{e.authors.join(', ')}</Text> : null}
+        <Pressable onPress={() => setStatusEdit(!statusEdit)} accessibilityRole="button" accessibilityLabel="읽기 상태 변경" style={st.statusBadge}>
+          <Text style={st.statusText}>{STATUS_LABEL[b.status]}</Text><ChevronDown size={14} color={colors.inkSoft} />
+        </Pressable>
       </View>
-
-      <Row style={{ marginTop: 18, flexWrap: 'nowrap' }}>
-        <Btn label="이 책 읽기" icon={<BookOpen size={17} color={colors.bg} strokeWidth={1.7} />} onPress={() => router.push({ pathname: '/read', params: { book: id } })} style={{ flex: 1 }} />
-        <Btn label="갈피 남기기" kind="secondary" icon={<Bookmark size={16} color={colors.ink} strokeWidth={1.7} />} onPress={() => router.push({ pathname: '/bookmark/new', params: { book: id } })} style={{ flex: 1 }} />
-      </Row>
-
+      {statusEdit ? <Row style={{ justifyContent: 'center', marginBottom: 18 }}>{READ_STATUSES.map((s) => <Chip key={s} label={STATUS_LABEL[s]} on={b.status === s} onPress={() => { libraryStore.setStatus(id, s); setStatusEdit(false); }} />)}</Row> : null}
+      <View style={st.progressSection}>
+        <Row style={{ justifyContent: 'space-between', alignItems: 'baseline' }}>
+          <Text style={st.page}><Text style={{ fontWeight: '600' }}>{b.currentPage ?? 0}</Text><Text style={st.meta}> / {e.pageCount ? `${e.pageCount}쪽` : '전체 쪽수 미입력'}</Text></Text>
+          {e.pageCount ? <Text style={st.meta}>{Math.min(100, Math.round((b.currentPage ?? 0) / e.pageCount * 100))}%</Text> : null}
+        </Row>
+        <View style={st.track}><View style={[st.fill, { width: `${e.pageCount ? Math.min(100, (b.currentPage ?? 0) / e.pageCount * 100) : 0}%` }]} /></View>
+        <Pressable onPress={() => setPageEdit(!pageEdit)} accessibilityRole="button" style={st.pageEdit}><Text style={st.meta}>읽은 쪽수 수정</Text><ChevronRight size={15} color={colors.inkSoft} /></Pressable>
+        {pageEdit ? <TextInput accessibilityLabel="읽은 쪽수" autoFocus defaultValue={b.currentPage ? String(b.currentPage) : ''} placeholder="읽은 쪽수" placeholderTextColor={colors.inkFaint} keyboardType="number-pad" returnKeyType="done" onEndEditing={(ev) => { const n = Number(ev.nativeEvent.text); libraryStore.updateBook(id, { currentPage: Number.isFinite(n) && n > 0 ? Math.round(n) : undefined }); setPageEdit(false); }} style={st.input} /> : null}
+      </View>
+      <View style={st.links}>
+        <Pressable onPress={() => router.push({ pathname: '/bookmarks', params: { book: id } })} accessibilityRole="button" style={st.linkRow}>
+          <Bookmark size={19} color={colors.inkSoft} strokeWidth={1.5} /><Text style={st.linkLabel}>갈피 <Text style={st.meta}>{marks.length}개</Text></Text><ChevronRight size={19} color={colors.inkSoft} />
+        </Pressable>
+        <View style={st.divider} />
+        <Pressable onPress={() => router.push({ pathname: '/stats', params: { book: id } })} accessibilityRole="button" style={st.linkRow}>
+          <BookOpen size={19} color={colors.inkSoft} strokeWidth={1.5} /><Text style={st.linkLabel}>독서 기록 <Text style={st.meta}>{sessions}회</Text></Text><ChevronRight size={19} color={colors.inkSoft} />
+        </Pressable>
+      </View>
+      <Btn label="이어서 읽기" onPress={() => router.push({ pathname: '/read', params: { book: id } })} style={{ marginTop: 26 }} />
+      <Btn label="갈피 남기기" kind="ghost" onPress={() => router.push({ pathname: '/bookmark/new', params: { book: id } })} style={{ marginTop: 4 }} />
+      <Pressable onPress={() => setRecords(!records)} accessibilityRole="button" accessibilityState={{ expanded: records }} style={[st.linkRow, { justifyContent: 'center', marginTop: 18 }]}><Text style={st.meta}>내 기록 · 책 정보</Text><ChevronDown size={16} color={colors.inkSoft} /></Pressable>
+      {records ? <View>
+      <Muted>{[e.publisher, e.publishedAt?.slice(0, 4)].filter(Boolean).join(' · ')}</Muted>
+      <Muted>ISBN {e.isbn13 ?? '미입력'} · {e.pageCount ? `${e.pageCount}쪽` : '쪽수 미입력'}</Muted>
       <H2>읽기 상태</H2>
       <Row>
         {READ_STATUSES.map((s) => (
@@ -141,19 +156,6 @@ export default function BookDetailScreen() {
         maxLength={140}
       />
 
-      <H2>지금 읽은 쪽수 (선택)</H2>
-      <TextInput
-        defaultValue={b.currentPage ? String(b.currentPage) : ''}
-        placeholder={e.pageCount ? `전체 ${e.pageCount}쪽` : '쪽'}
-        placeholderTextColor={colors.inkFaint}
-        keyboardType="number-pad"
-        onEndEditing={(ev) => {
-          const n = Number(ev.nativeEvent.text);
-          libraryStore.updateBook(id, { currentPage: Number.isFinite(n) && n > 0 ? Math.round(n) : undefined });
-        }}
-        style={[st.input, { width: 140 }]}
-      />
-
       <H2>남긴 갈피 {marks.length ? `· ${marks.length}` : ''}</H2>
       {marks.length ? (
         <View style={{ gap: 10 }}>
@@ -170,6 +172,8 @@ export default function BookDetailScreen() {
       ) : (
         <Empty title="아직 남긴 갈피가 없어요" action="첫 갈피 남기기" onAction={() => router.push({ pathname: '/bookmark/new', params: { book: id } })} />
       )}
+
+      </View> : null}
 
       <Modal visible={menu} transparent animationType="fade" onRequestClose={() => setMenu(false)}>
         <Pressable style={st.backdrop} onPress={() => setMenu(false)} accessibilityLabel="닫기" />
@@ -222,11 +226,21 @@ function RoundCard({ idx, startedAt, finishedAt, paused, onSave }: { idx: number
 }
 
 const st = StyleSheet.create({
-  title: { fontFamily: fonts.serif, fontSize: 22, lineHeight: 30, color: colors.ink },
-  author: { fontSize: 14.5, color: colors.ink },
+  hero: { alignItems: 'center', paddingTop: 20, gap: 8 },
+  title: { fontFamily: fonts.serifBold, fontSize: 26, lineHeight: 37, color: colors.ink, textAlign: 'center', marginTop: 12 },
+  author: { fontSize: 15.5, color: colors.ink },
   meta: { fontSize: 13, color: colors.inkSoft },
-  statusBadge: { alignSelf: 'flex-start', borderWidth: 1.5, borderRadius: 12, paddingHorizontal: 10, paddingVertical: 3, marginTop: 4 },
-  statusText: { fontSize: 12.5, color: colors.ink },
+  statusBadge: { flexDirection: 'row', alignItems: 'center', gap: 6, borderRadius: 16, paddingHorizontal: 14, paddingVertical: 7, marginTop: 6, backgroundColor: screenTheme.blueLight },
+  statusText: { fontSize: 13, color: '#687D83' },
+  progressSection: { marginTop: 28 },
+  page: { fontSize: 19, color: colors.ink },
+  track: { height: 6, borderRadius: 3, backgroundColor: '#EAE3D7', marginTop: 10, overflow: 'hidden' },
+  fill: { height: 6, borderRadius: 3, backgroundColor: screenTheme.blue },
+  pageEdit: { alignSelf: 'flex-end', minHeight: 44, flexDirection: 'row', alignItems: 'center', gap: 3 },
+  links: { borderWidth: 1, borderColor: screenTheme.border, borderRadius: 12, paddingHorizontal: 16, marginTop: 10, backgroundColor: 'rgba(255,253,248,0.5)' },
+  linkRow: { flexDirection: 'row', alignItems: 'center', gap: 10, minHeight: 58, paddingVertical: 12 },
+  linkLabel: { flex: 1, color: colors.ink, fontSize: 16 },
+  divider: { height: StyleSheet.hairlineWidth, backgroundColor: screenTheme.border },
   k: { fontSize: 14, color: colors.inkSoft },
   v: { fontSize: 15, color: colors.ink, fontVariant: ['tabular-nums'] },
   input: { minHeight: 44, borderRadius: 10, borderWidth: 1, borderColor: '#E3D9C9', backgroundColor: ui.card, paddingHorizontal: 12, fontSize: 15, color: colors.ink, marginTop: 4 },

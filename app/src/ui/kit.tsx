@@ -5,19 +5,20 @@ import { useState, type ReactNode } from 'react';
 import { ActivityIndicator, Image, Pressable, ScrollView, StyleSheet, Text, TextInput, View, type StyleProp, type TextInputProps, type ViewStyle } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { colors, fonts } from '@/ui/theme';
+import { colors, fonts, screenTheme } from '@/ui/screenTheme';
 
 export const ui = {
-  pad: 20,
+  pad: 24,
   radius: 12,
   card: '#FFFDF8',
   soft: '#F3ECE0',
-  accent: '#1F2533',
+  accent: screenTheme.primary,
 };
 
 // 화면 틀: 위 안전 영역 + 머리줄(뒤로·제목·오른쪽 행동) + 스크롤 본문
 export function Screen({
   title,
+  subtitle,
   right,
   back = true,
   scroll = true,
@@ -26,6 +27,7 @@ export function Screen({
   bottomPad = 0,
 }: {
   title?: string;
+  subtitle?: string;
   right?: ReactNode;
   back?: boolean;
   scroll?: boolean;
@@ -43,16 +45,19 @@ export function Screen({
   );
   return (
     <View style={{ flex: 1, paddingTop: insets.top }}>
-      <View style={s.header}>
+      <View style={[s.header, !back && { paddingTop: 12, paddingBottom: 18 }]}>
         {back ? (
           <Pressable onPress={() => (router.canGoBack() ? router.back() : router.replace('/'))} hitSlop={12} accessibilityRole="button" accessibilityLabel="뒤로" style={s.back}>
             <ChevronLeft size={24} color={colors.ink} strokeWidth={1.6} />
           </Pressable>
         ) : null}
-        <Text style={[s.title, !back && { marginLeft: ui.pad }]} numberOfLines={1} accessibilityRole="header">
+        <View style={{ flex: 1, paddingLeft: back ? 0 : ui.pad }}>
+        <Text style={[s.title, !back && { fontSize: 30, textAlign: 'left' }]} accessibilityRole="header">
           {title ?? ''}
         </Text>
-        <View style={s.right}>{right}</View>
+        {subtitle ? <Text style={[s.muted, { marginTop: 7 }]}>{subtitle}</Text> : null}
+        </View>
+        <View style={[s.right, back && { minWidth: 44 }]}>{right}</View>
       </View>
       {body}
       {footer ? <View style={{ paddingHorizontal: ui.pad, paddingTop: 10, paddingBottom: 12 + insets.bottom, backgroundColor: 'rgba(251,247,240,0.96)' }}>{footer}</View> : null}
@@ -99,7 +104,7 @@ export function Btn({
       accessibilityState={{ disabled: !!disabled }}
       style={({ pressed }) => [
         s.btn,
-        primary && { backgroundColor: colors.ink, borderColor: colors.ink },
+        primary && { backgroundColor: screenTheme.primary, borderColor: screenTheme.primary },
         kind === 'ghost' && { borderColor: 'transparent', backgroundColor: 'transparent' },
         kind === 'danger' && { borderColor: colors.danger },
         (disabled || busy) && { opacity: 0.4 },
@@ -202,22 +207,22 @@ export function ListItem({ label, value, onPress, danger }: { label: string; val
 }
 
 export const s = StyleSheet.create({
-  header: { height: 52, flexDirection: 'row', alignItems: 'center', paddingRight: ui.pad - 4 },
+  header: { minHeight: 58, flexDirection: 'row', alignItems: 'center', paddingRight: 6, paddingVertical: 6 },
   back: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center', marginLeft: 6 },
-  title: { flex: 1, fontFamily: fonts.serif, fontSize: 19, color: colors.ink },
-  right: { flexDirection: 'row', alignItems: 'center', gap: 10 },
-  h2: { fontFamily: fonts.serif, fontSize: 17, color: colors.ink },
+  title: { fontFamily: fonts.roundTitle, fontSize: 20, color: colors.ink, textAlign: 'center' },
+  right: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 10 },
+  h2: { fontFamily: fonts.round, fontSize: 18, color: colors.ink },
   muted: { fontSize: 13, color: colors.inkSoft },
-  btn: { minHeight: 46, borderRadius: 23, borderWidth: 1, borderColor: '#CFC6B8', paddingHorizontal: 18, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, backgroundColor: ui.card },
-  btnText: { fontSize: 15, color: colors.ink },
+  btn: { minHeight: 50, borderRadius: 14, borderWidth: 1, borderColor: screenTheme.border, paddingHorizontal: 18, paddingVertical: 12, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, backgroundColor: ui.card },
+  btnText: { fontSize: 16, color: colors.ink, flexShrink: 1, textAlign: 'center' },
   label: { fontSize: 12.5, color: colors.inkSoft, marginBottom: 6 },
   input: { minHeight: 46, borderRadius: 10, borderWidth: 1, borderColor: '#E3D9C9', backgroundColor: ui.card, paddingHorizontal: 12, fontSize: 15, color: colors.ink },
-  chip: { height: 34, borderRadius: 17, borderWidth: 1, borderColor: '#D8CEBF', paddingHorizontal: 13, flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: ui.card },
+  chip: { minHeight: 36, paddingVertical: 8, borderRadius: 18, borderWidth: 1, borderColor: '#D8CEBF', paddingHorizontal: 13, flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: ui.card },
   chipText: { fontSize: 13.5, color: colors.ink },
   dot: { width: 10, height: 10, borderRadius: 5 },
   card: { backgroundColor: ui.card, borderRadius: ui.radius, borderWidth: StyleSheet.hairlineWidth, borderColor: '#E6DCCB', padding: 16, overflow: 'hidden' },
   stripe: { position: 'absolute', left: 0, top: 0, bottom: 0, width: 5 },
   item: { minHeight: 52, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: '#E6DCCB' },
-  itemLabel: { fontSize: 15, color: colors.ink },
-  itemValue: { fontSize: 14, color: colors.inkSoft },
+  itemLabel: { fontSize: 15, color: colors.ink, flexShrink: 1, paddingVertical: 12 },
+  itemValue: { fontSize: 14, color: colors.inkSoft, flexShrink: 1, textAlign: 'right', marginLeft: 12 },
 });
