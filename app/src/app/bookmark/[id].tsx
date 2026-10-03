@@ -52,6 +52,7 @@ export default function BookmarkDetail() {
   const [busy, setBusy] = useState(false);
   const [making, setMaking] = useState(false);
   const shotRef = useRef<View>(null);
+  const coverReady = useRef(false);
 
   if (!cur) return <Screen title="갈피"><Empty title="갈피를 찾을 수 없어요" /></Screen>;
   if (editing) return <EditBookmark m={editing} onDone={() => setEditing(null)} />;
@@ -59,10 +60,13 @@ export default function BookmarkDetail() {
 
   // 공유: 화면 밖에 그린 같은 카드를 이미지로 뜬다
   const shoot = async (withMemo: boolean) => {
+    if (!share) coverReady.current = false;
     // 새 이미지를 만드는 동안 이전 미리보기를 그대로 두고(창이 사라지지 않게), 실패하면 알린다
     setShare((sh) => ({ withMemo, uri: sh?.uri ?? null }));
     setMaking(true);
     try {
+      for (let i = 0; i < 30 && curData?.book && !coverReady.current; i++) await new Promise((r) => setTimeout(r, 100));
+      if (curData?.book && !coverReady.current) throw new Error('책 표지가 준비되지 않았어요. 다시 시도해 주세요.');
       let img = null;
       for (let k = 0; k < 3 && !img; k++) {
         await new Promise((r) => setTimeout(r, 400));
@@ -144,7 +148,7 @@ export default function BookmarkDetail() {
       {share && curData ? (
         <View pointerEvents="none" style={{ position: 'absolute', left: 0, top: 0, zIndex: -1 }}>
           <View ref={shotRef} collapsable={false} style={{ width: SHARE_W, backgroundColor: PAGE_BG, paddingTop: 24, paddingBottom: 30, alignItems: 'center' }}>
-            <BookmarkCard data={curData} showMemo={share.withMemo} width={SHARE_W} seed={cur.id} />
+            <BookmarkCard data={curData} showMemo={share.withMemo} width={SHARE_W} seed={cur.id} rasterizeBook onCoverReady={() => { coverReady.current = true; }} />
             <Text style={[st.brand, { marginTop: 4 }]}>책장한켠</Text>
           </View>
         </View>
@@ -152,7 +156,7 @@ export default function BookmarkDetail() {
 
       <Modal visible={!!share?.uri} transparent animationType="fade" onRequestClose={() => setShare(null)}>
         <View style={st.dim}>
-          <View style={st.sheet}>
+          <ScrollView style={{ maxHeight: '90%' }} contentContainerStyle={st.sheet}>
             <Text style={st.sheetTitle}>공유 이미지</Text>
             {share?.uri ? <Image source={{ uri: share.uri }} style={{ width: '100%', aspectRatio: 0.62, maxHeight: 460 }} resizeMode="contain" accessibilityLabel="공유 이미지 미리보기" /> : null}
             {cur.memo ? (
@@ -177,7 +181,7 @@ export default function BookmarkDetail() {
               />
               <Btn label="닫기" kind="ghost" onPress={() => setShare(null)} />
             </View>
-          </View>
+          </ScrollView>
         </View>
       </Modal>
 

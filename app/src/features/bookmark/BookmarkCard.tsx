@@ -22,7 +22,7 @@ export function WordWrap({ text, style, maxLines }: { text: string; style: Style
   return <Text style={style} numberOfLines={maxLines} textBreakStrategy="highQuality">{text}</Text>;
 }
 
-export function BookmarkCard({ data, showMemo, width, seed, compact = false }: { data: BookmarkCardData; showMemo: boolean; width: number; seed: string; compact?: boolean }) {
+export function BookmarkCard({ data, showMemo, width, seed, compact = false, rasterizeBook = false, onCoverReady }: { data: BookmarkCardData; showMemo: boolean; width: number; seed: string; compact?: boolean; rasterizeBook?: boolean; onCoverReady?: () => void }) {
   const qt = compact ? { size: 21, lh: 34 } : quoteType(data.text);
   const cardW = width - (compact ? 14 : 48);
   const coverW = compact ? 47 : 74;
@@ -39,7 +39,7 @@ export function BookmarkCard({ data, showMemo, width, seed, compact = false }: {
         </View>
         <View style={[st.rule, { marginVertical: compact ? 18 : 26 }]} />
         <View style={st.srcRow}>
-          {data.book ? <BookVisual book={data.book} width={coverW} /> : <RealCover uri={data.coverUri} title={data.title} color={data.color} width={coverW} />}
+          {data.book ? <BookVisual book={data.book} width={coverW} rasterize={rasterizeBook} onReady={onCoverReady} /> : <RealCover uri={data.coverUri} title={data.title} color={data.color} width={coverW} />}
           <View style={{ flex: 1, gap: 5, paddingTop: 3 }}>
             <Text style={[st.srcTitle, { fontSize: compact ? 15 : 17 }]} numberOfLines={compact ? 2 : undefined}>{data.title}</Text>
             {data.author ? <Text style={st.meta}>{data.author}</Text> : null}

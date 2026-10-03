@@ -107,6 +107,8 @@ export default function BookDetailScreen() {
       {records ? <View>
       <Muted>{[e.publisher, e.publishedAt?.slice(0, 4)].filter(Boolean).join(' · ')}</Muted>
       <Muted>ISBN {e.isbn13 ?? '미입력'} · {e.pageCount ? `${e.pageCount}쪽` : '쪽수 미입력'}</Muted>
+      <Muted>판형 {e.size ? `${e.size.widthMm}×${e.size.heightMm}mm` : '확인 전 · 책장에는 기본 크기로 표시'}</Muted>
+      <Muted>{e.source === 'search' ? `도서 정보: ${e.sourceName ?? '검색'}` : e.source === 'photo' ? '사진으로 추가' : '직접 입력'}</Muted>
       <H2>읽기 상태</H2>
       <Row>
         {READ_STATUSES.map((s) => (
