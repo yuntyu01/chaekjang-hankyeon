@@ -16,12 +16,15 @@ import { colors } from '@/ui/theme';
 // 홈 머리글의 작고 둥근 고딕(나눔스퀘어라운드, assets/fonts/README.md)
 const NanumSquareRoundEB = require('../../assets/fonts/NanumSquareRoundEB.ttf');
 const NanumSquareRoundB = require('../../assets/fonts/NanumSquareRoundB.ttf');
+const ReadingSerif = require('../../assets/fonts/NotoSerifKR-Regular.otf');
+const ReadingSerifMedium = require('../../assets/fonts/NotoSerifKR-Medium.otf');
+const ReadingSerifSemiBold = require('../../assets/fonts/NotoSerifKR-SemiBold.otf');
 
 bootMark('js-layout-module');
 void SplashScreen.preventAutoHideAsync();
 
 export default function RootLayout() {
-  const [loaded, error] = useFonts({ GowunBatang_400Regular, GowunBatang_700Bold, NanumSquareRoundEB, NanumSquareRoundB });
+  const [loaded, error] = useFonts({ GowunBatang_400Regular, GowunBatang_700Bold, NanumSquareRoundEB, NanumSquareRoundB, ReadingSerif, ReadingSerifMedium, ReadingSerifSemiBold });
   const [booted, setBooted] = useState(false);
   useEffect(() => {
     // 저장소를 다 불러온 뒤 첫 화면을 그린다(빈 책장이 잠깐 보였다가 책이 나타나지 않게)

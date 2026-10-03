@@ -1,7 +1,7 @@
 // 책 상세: 실제 표지·기본 정보 / 이 책 읽기·갈피 남기기·읽기 상태 / 내 기록(회차·별점·감상·누적 시간·갈피·현재 쪽수).
 // 날짜·쪽수·별점은 모두 선택 입력. 완독 여부는 사용자가 정한다(타이머로 자동 판정하지 않는다).
 import { router, useLocalSearchParams } from 'expo-router';
-import { BookOpen, Bookmark, MoreHorizontal, ChevronRight, ChevronDown } from '@/ui/icons';
+import { FileText, Bookmark, MoreHorizontal, ChevronRight, ChevronDown } from '@/ui/icons';
 import { useState } from 'react';
 import { Alert, Modal, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -75,34 +75,35 @@ export default function BookDetailScreen() {
         </Pressable>
       }>
       <View style={st.hero}>
-        <LibraryCover lib={lib} id={id} width={178} />
+        <LibraryCover lib={lib} id={id} width={192} />
         <Text style={st.title}>{e.title}</Text>
         {e.authors.length ? <Text style={st.author}>{e.authors.join(', ')}</Text> : null}
         <Pressable onPress={() => setStatusEdit(!statusEdit)} accessibilityRole="button" accessibilityLabel="읽기 상태 변경" style={st.statusBadge}>
-          <Text style={st.statusText}>{STATUS_LABEL[b.status]}</Text><ChevronDown size={14} color={colors.inkSoft} />
+          <Text style={st.statusText}>{STATUS_LABEL[b.status]}</Text>
         </Pressable>
       </View>
       {statusEdit ? <Row style={{ justifyContent: 'center', marginBottom: 18 }}>{READ_STATUSES.map((s) => <Chip key={s} label={STATUS_LABEL[s]} on={b.status === s} onPress={() => { libraryStore.setStatus(id, s); setStatusEdit(false); }} />)}</Row> : null}
       <View style={st.progressSection}>
+        <Text style={st.progressLabel}>읽던 곳</Text>
         <Row style={{ justifyContent: 'space-between', alignItems: 'baseline' }}>
-          <Text style={st.page}><Text style={{ fontWeight: '600' }}>{b.currentPage ?? 0}</Text><Text style={st.meta}> / {e.pageCount ? `${e.pageCount}쪽` : '전체 쪽수 미입력'}</Text></Text>
+          <Text style={st.page}>{b.currentPage ?? 0}<Text style={st.pageTotal}> / {e.pageCount ? `${e.pageCount}쪽` : '전체 쪽수 미입력'}</Text></Text>
           {e.pageCount ? <Text style={st.meta}>{Math.min(100, Math.round((b.currentPage ?? 0) / e.pageCount * 100))}%</Text> : null}
         </Row>
         <View style={st.track}><View style={[st.fill, { width: `${e.pageCount ? Math.min(100, (b.currentPage ?? 0) / e.pageCount * 100) : 0}%` }]} /></View>
-        <Pressable onPress={() => setPageEdit(!pageEdit)} accessibilityRole="button" style={st.pageEdit}><Text style={st.meta}>읽은 쪽수 수정</Text><ChevronRight size={15} color={colors.inkSoft} /></Pressable>
+        <Pressable onPress={() => setPageEdit(!pageEdit)} accessibilityRole="button" style={st.pageEdit}><Text style={[st.meta, { textDecorationLine: 'underline', color: '#896E62' }]}>쪽수 기록</Text><ChevronRight size={17} color={colors.inkSoft} /></Pressable>
         {pageEdit ? <TextInput accessibilityLabel="읽은 쪽수" autoFocus defaultValue={b.currentPage ? String(b.currentPage) : ''} placeholder="읽은 쪽수" placeholderTextColor={colors.inkFaint} keyboardType="number-pad" returnKeyType="done" onEndEditing={(ev) => { const n = Number(ev.nativeEvent.text); libraryStore.updateBook(id, { currentPage: Number.isFinite(n) && n > 0 ? Math.round(n) : undefined }); setPageEdit(false); }} style={st.input} /> : null}
       </View>
       <View style={st.links}>
         <Pressable onPress={() => router.push({ pathname: '/bookmarks', params: { book: id } })} accessibilityRole="button" style={st.linkRow}>
-          <Bookmark size={19} color={colors.inkSoft} strokeWidth={1.5} /><Text style={st.linkLabel}>갈피 <Text style={st.meta}>{marks.length}개</Text></Text><ChevronRight size={19} color={colors.inkSoft} />
+          <Bookmark size={22} color={colors.ink} strokeWidth={1.5} /><Text style={st.linkLabel}>갈피</Text><Text style={st.meta}>{marks.length}개</Text><ChevronRight size={20} color={colors.inkSoft} />
         </Pressable>
         <View style={st.divider} />
         <Pressable onPress={() => router.push({ pathname: '/stats', params: { book: id } })} accessibilityRole="button" style={st.linkRow}>
-          <BookOpen size={19} color={colors.inkSoft} strokeWidth={1.5} /><Text style={st.linkLabel}>독서 기록 <Text style={st.meta}>{sessions}회</Text></Text><ChevronRight size={19} color={colors.inkSoft} />
+          <FileText size={22} color={colors.ink} strokeWidth={1.5} /><Text style={st.linkLabel}>독서 기록</Text><Text style={st.meta}>{sessions}회</Text><ChevronRight size={20} color={colors.inkSoft} />
         </Pressable>
       </View>
-      <Btn label="이어서 읽기" onPress={() => router.push({ pathname: '/read', params: { book: id } })} style={{ marginTop: 26 }} />
-      <Btn label="갈피 남기기" kind="ghost" onPress={() => router.push({ pathname: '/bookmark/new', params: { book: id } })} style={{ marginTop: 4 }} />
+      <Btn label="이어서 읽기" onPress={() => router.push({ pathname: '/read', params: { book: id } })} style={st.continueButton} />
+      <Pressable onPress={() => router.push({ pathname: '/bookmark/new', params: { book: id } })} accessibilityRole="button" style={st.bookmarkButton}><Text style={st.bookmarkLabel}>갈피 남기기</Text></Pressable>
       <Pressable onPress={() => setRecords(!records)} accessibilityRole="button" accessibilityState={{ expanded: records }} style={[st.linkRow, { justifyContent: 'center', marginTop: 18 }]}><Text style={st.meta}>내 기록 · 책 정보</Text><ChevronDown size={16} color={colors.inkSoft} /></Pressable>
       {records ? <View>
       <Muted>{[e.publisher, e.publishedAt?.slice(0, 4)].filter(Boolean).join(' · ')}</Muted>
@@ -228,21 +229,26 @@ function RoundCard({ idx, startedAt, finishedAt, paused, onSave }: { idx: number
 }
 
 const st = StyleSheet.create({
-  hero: { alignItems: 'center', paddingTop: 20, gap: 8 },
-  title: { fontFamily: fonts.serifBold, fontSize: 26, lineHeight: 37, color: colors.ink, textAlign: 'center', marginTop: 12 },
-  author: { fontSize: 15.5, color: colors.ink },
-  meta: { fontSize: 13, color: colors.inkSoft },
-  statusBadge: { flexDirection: 'row', alignItems: 'center', gap: 6, borderRadius: 16, paddingHorizontal: 14, paddingVertical: 7, marginTop: 6, backgroundColor: screenTheme.blueLight },
-  statusText: { fontSize: 13, color: '#687D83' },
-  progressSection: { marginTop: 28 },
-  page: { fontSize: 19, color: colors.ink },
-  track: { height: 6, borderRadius: 3, backgroundColor: '#EAE3D7', marginTop: 10, overflow: 'hidden' },
-  fill: { height: 6, borderRadius: 3, backgroundColor: screenTheme.blue },
+  hero: { alignItems: 'center', paddingTop: 29 },
+  title: { fontFamily: fonts.serifBold, fontSize: 26, lineHeight: 38, color: colors.ink, textAlign: 'center', marginTop: 20, includeFontPadding: false },
+  author: { fontFamily: fonts.serif, fontSize: 16, lineHeight: 26, color: colors.inkSoft, marginTop: 5, includeFontPadding: false },
+  meta: { fontSize: 15, color: colors.inkSoft },
+  statusBadge: { borderRadius: 16, paddingHorizontal: 17, paddingVertical: 5, marginTop: 9, backgroundColor: screenTheme.blueLight },
+  statusText: { fontSize: 13, color: '#668AA7' },
+  progressSection: { marginTop: 14, paddingHorizontal: 10 },
+  progressLabel: { fontFamily: fonts.serif, fontSize: 14, color: '#74695F', marginBottom: 4, includeFontPadding: false },
+  page: { fontFamily: fonts.serifMedium, fontSize: 25, lineHeight: 34, color: colors.ink, includeFontPadding: false },
+  pageTotal: { fontFamily: fonts.serif, fontSize: 17, color: colors.inkSoft },
+  track: { height: 10, borderRadius: 5, backgroundColor: '#EEE7DF', marginTop: 8, overflow: 'hidden' },
+  fill: { height: 10, borderRadius: 5, backgroundColor: screenTheme.blue, borderTopWidth: 0.5, borderTopColor: '#A6BBCB' },
   pageEdit: { alignSelf: 'flex-end', minHeight: 44, flexDirection: 'row', alignItems: 'center', gap: 3 },
-  links: { borderWidth: 1, borderColor: screenTheme.border, borderRadius: 12, paddingHorizontal: 16, marginTop: 10, backgroundColor: 'rgba(255,253,248,0.5)' },
-  linkRow: { flexDirection: 'row', alignItems: 'center', gap: 10, minHeight: 58, paddingVertical: 12 },
+  links: { borderWidth: 0.8, borderColor: '#E6DDD3', borderRadius: 15, paddingHorizontal: 15, marginTop: 6, backgroundColor: 'rgba(255,253,248,0.18)' },
+  linkRow: { flexDirection: 'row', alignItems: 'center', gap: 15, minHeight: 59, paddingVertical: 14 },
   linkLabel: { flex: 1, color: colors.ink, fontSize: 16 },
   divider: { height: StyleSheet.hairlineWidth, backgroundColor: screenTheme.border },
+  continueButton: { marginTop: 19, minHeight: 58, borderRadius: 14, borderTopColor: '#A18579', borderBottomColor: '#765A54', boxShadow: [{ offsetX: 0, offsetY: 1, blurRadius: 1, color: 'rgba(83,61,49,0.05)' }] },
+  bookmarkButton: { alignItems: 'center', justifyContent: 'center', minHeight: 54, marginTop: 8 },
+  bookmarkLabel: { fontSize: 15, color: '#80665B', textDecorationLine: 'underline' },
   k: { fontSize: 14, color: colors.inkSoft },
   v: { fontSize: 15, color: colors.ink, fontVariant: ['tabular-nums'] },
   input: { minHeight: 44, borderRadius: 10, borderWidth: 1, borderColor: '#E3D9C9', backgroundColor: ui.card, paddingHorizontal: 12, fontSize: 15, color: colors.ink, marginTop: 4 },

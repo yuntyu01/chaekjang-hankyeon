@@ -26,3 +26,5 @@ export { default as Volume2 } from 'lucide-react-native/icons/volume-2';
 export { default as VolumeX } from 'lucide-react-native/icons/volume-x';
 export { default as X } from 'lucide-react-native/icons/x';
 export { default as Share } from 'lucide-react-native/icons/share';
+export { default as FileText } from 'lucide-react-native/icons/file-text';
+export { default as AudioLines } from 'lucide-react-native/icons/audio-lines';

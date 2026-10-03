@@ -6,9 +6,10 @@ import { ActivityIndicator, Image, Pressable, ScrollView, StyleSheet, Text, Text
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { colors, fonts, screenTheme } from '@/ui/screenTheme';
+import { ButtonShading, PaperSurface } from '@/ui/PaperSurface';
 
 export const ui = {
-  pad: 24,
+  pad: 20,
   radius: 12,
   card: '#FFFDF8',
   soft: '#F3ECE0',
@@ -44,7 +45,8 @@ export function Screen({
     <View style={{ flex: 1, paddingHorizontal: ui.pad }}>{children}</View>
   );
   return (
-    <View style={{ flex: 1, paddingTop: insets.top }}>
+    <View style={{ flex: 1, paddingTop: insets.top, backgroundColor: colors.bg }}>
+      <PaperSurface color={colors.bg} radius={0} grain={0.035} />
       <View style={[s.header, !back && { paddingTop: 12, paddingBottom: 18 }]}>
         {back ? (
           <Pressable onPress={() => (router.canGoBack() ? router.back() : router.replace('/'))} hitSlop={12} accessibilityRole="button" accessibilityLabel="뒤로" style={s.back}>
@@ -111,6 +113,7 @@ export function Btn({
         pressed && { opacity: 0.75 },
         style,
       ]}>
+      {primary ? <ButtonShading /> : null}
       {busy ? <ActivityIndicator color={primary ? colors.bg : colors.ink} size="small" /> : icon}
       <Text style={[s.btnText, primary && { color: colors.bg }, kind === 'danger' && { color: colors.danger }]}>{label}</Text>
     </Pressable>
@@ -209,12 +212,12 @@ export function ListItem({ label, value, onPress, danger }: { label: string; val
 export const s = StyleSheet.create({
   header: { minHeight: 58, flexDirection: 'row', alignItems: 'center', paddingRight: 6, paddingVertical: 6 },
   back: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center', marginLeft: 6 },
-  title: { fontFamily: fonts.roundTitle, fontSize: 20, color: colors.ink, textAlign: 'center' },
+  title: { fontFamily: fonts.round, fontSize: 20, color: colors.ink, textAlign: 'center', includeFontPadding: false },
   right: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 10 },
   h2: { fontFamily: fonts.round, fontSize: 18, color: colors.ink },
   muted: { fontSize: 13, color: colors.inkSoft },
   btn: { minHeight: 50, borderRadius: 14, borderWidth: 1, borderColor: screenTheme.border, paddingHorizontal: 18, paddingVertical: 12, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, backgroundColor: ui.card },
-  btnText: { fontSize: 16, color: colors.ink, flexShrink: 1, textAlign: 'center' },
+  btnText: { fontFamily: fonts.round, fontSize: 16, color: colors.ink, flexShrink: 1, textAlign: 'center' },
   label: { fontSize: 12.5, color: colors.inkSoft, marginBottom: 6 },
   input: { minHeight: 46, borderRadius: 10, borderWidth: 1, borderColor: '#E3D9C9', backgroundColor: ui.card, paddingHorizontal: 12, fontSize: 15, color: colors.ink },
   chip: { minHeight: 36, paddingVertical: 8, borderRadius: 18, borderWidth: 1, borderColor: '#D8CEBF', paddingHorizontal: 13, flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: ui.card },
