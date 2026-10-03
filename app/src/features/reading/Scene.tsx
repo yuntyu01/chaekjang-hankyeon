@@ -18,7 +18,7 @@ export function Scene({ id, animate, height }: { id: SceneId; animate: boolean; 
     cb.setActive(animate && id !== 'rain');
     return () => cb.setActive(false);
   }, [animate, cb, id]);
-  if (id === 'rain') return <Image source={require('../../../assets/scenes/rain-window-reference-v1.png')} resizeMode="cover" style={{ position: 'absolute', left: 0, top: 0, width: W, height: H }} accessibilityIgnoresInvertColors />;
+  if (id === 'rain') return <Image source={require('../../../assets/scenes/rain-window-reference-v2.png')} resizeMode="cover" style={{ position: 'absolute', left: 0, top: 0, width: W, height: H }} accessibilityIgnoresInvertColors />;
   return (
     <Canvas style={{ position: 'absolute', left: 0, top: 0, width: W, height: H }} pointerEvents="none">
       {id === 'fire' ? <Fire W={W} H={H} t={t} /> : <Room W={W} H={H} t={t} />}

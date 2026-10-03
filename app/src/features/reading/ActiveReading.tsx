@@ -43,7 +43,7 @@ export function ReadingPill() {
   const { lib } = useLibrary();
   const path = usePathname();
   const insets = useSafeAreaInsets();
-  const hidden = !active || path.startsWith('/reading');
+  const hidden = !active || path === '/read' || path.startsWith('/reading');
   const ms = useElapsed(!hidden && !!active?.runningSince);
   if (hidden) return null;
   const title = bookTitle(lib, active!.myBookId);

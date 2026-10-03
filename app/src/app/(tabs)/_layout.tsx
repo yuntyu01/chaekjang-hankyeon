@@ -43,7 +43,7 @@ export default function TabsLayout() {
         name="read"
         options={{
           // 책장 밖 화면은 탭 바에 종이 바탕을 깐다(내용이 비쳐 보이지 않게)
-          tabBarStyle: { ...tabBarStyle(insets.bottom), backgroundColor: colors.tabBar, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.line },
+          tabBarStyle: { display: 'none' },
           title: ko.tabs.read,
           tabBarAccessibilityLabel: ko.tabs.read,
           tabBarIcon: ({ color, focused }) => <ReadTabIcon color={String(color)} bg={colors.bg} size={navigation.iconSize} filled={focused} />,
