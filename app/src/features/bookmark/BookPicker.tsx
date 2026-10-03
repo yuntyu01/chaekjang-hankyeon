@@ -47,7 +47,7 @@ export function BookPicker({ lib, visible, allowNone, onPick, onClose }: { lib: 
               <Pressable key={id} style={st.item} onPress={() => onPick(id)} accessibilityRole="button" accessibilityLabel={e?.title}>
                 <View style={[st.spine, { backgroundColor: color ?? '#B7AE9F' }]} />
                 <View style={{ flex: 1 }}>
-                  <Text style={st.itemTitle} numberOfLines={1}>
+                  <Text style={st.itemTitle} numberOfLines={2}>
                     {e?.title}
                   </Text>
                   <Text style={st.itemSub} numberOfLines={1}>
@@ -68,9 +68,9 @@ export function BookPicker({ lib, visible, allowNone, onPick, onClose }: { lib: 
 const st = StyleSheet.create({
   backdrop: { flex: 1, backgroundColor: 'rgba(20,18,15,0.3)' },
   sheet: { backgroundColor: colors.bg, borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: 20 },
-  title: { fontFamily: fonts.serif, fontSize: 19, color: colors.ink, marginBottom: 10 },
-  input: { height: 44, borderRadius: 10, borderWidth: 1, borderColor: '#E3D9C9', backgroundColor: ui.card, paddingHorizontal: 12, fontSize: 15, color: colors.ink, marginBottom: 8 },
-  item: { flexDirection: 'row', alignItems: 'center', gap: 12, minHeight: 54, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: '#E6DCCB' },
+  title: { fontFamily: fonts.round, fontSize: 19, color: colors.ink, marginBottom: 10 },
+  input: { minHeight: 44, paddingVertical: 10, borderRadius: 10, borderWidth: 1, borderColor: '#E3D9C9', backgroundColor: ui.card, paddingHorizontal: 12, fontSize: 15, color: colors.ink, marginBottom: 8 },
+  item: { flexDirection: 'row', alignItems: 'center', gap: 12, minHeight: 54, paddingVertical: 10, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: '#E6DCCB' },
   spine: { width: 8, height: 36, borderRadius: 2 },
   itemTitle: { fontFamily: fonts.serif, fontSize: 15, color: colors.ink },
   itemSub: { fontSize: 12.5, color: colors.inkSoft },

@@ -1,69 +1,86 @@
 import { StyleSheet, Text, View, type StyleProp, type TextStyle } from 'react-native';
+import Svg, { Path } from 'react-native-svg';
 import type { Book } from '@/domain/types';
 import { BookVisual } from '@/ui/BookVisual';
 import { RealCover } from '@/ui/kit';
-import { mix } from '@/ui/book/BookBody';
+import { PaperSurface } from '@/ui/PaperSurface';
 import { colors, fonts, screenTheme } from '@/ui/screenTheme';
 
-export const CARD_PAPER = '#FFFCF5';
+export const CARD_PAPER = screenTheme.paper;
 export const PAGE_BG = colors.bg;
 export type BookmarkCardData = { text: string; title: string; author?: string; page?: number; date: string; memo?: string; color: string; coverUri?: string; book?: Book };
 
 export function quoteType(text: string) {
   const n = text.replace(/\s+/g, '').length;
-  if (n <= 36) return { size: 27, lh: 44 };
+  if (n <= 36) return { size: 26, lh: 43 };
   if (n <= 80) return { size: 24, lh: 40 };
   if (n <= 160) return { size: 21, lh: 36 };
   return { size: 19, lh: 33 };
 }
 
-// Native text keeps line limits correct when the system font size changes.
 export function WordWrap({ text, style, maxLines }: { text: string; style: StyleProp<TextStyle>; maxLines?: number }) {
   return <Text style={style} numberOfLines={maxLines} textBreakStrategy="highQuality">{text}</Text>;
 }
 
+function paperTone(color: string) {
+  const c = /^#([\da-f]{6})$/i.exec(color)?.[1];
+  if (!c) return { paper: '#ABC3D4', tape: '#9BBAD3', ink: '#739BB8' };
+  const [r, g, b] = [0, 2, 4].map((i) => parseInt(c.slice(i, i + 2), 16));
+  if (g > r && g > b) return { paper: '#BBC6AA', tape: '#B4C19D', ink: '#728366' };
+  if (b > r || b > g) return { paper: '#ABC3D4', tape: '#9BBAD3', ink: '#739BB8' };
+  return { paper: '#EFBEA6', tape: '#EDB49B', ink: '#D9967B' };
+}
+
 export function BookmarkCard({ data, showMemo, width, seed, compact = false, rasterizeBook = false, onCoverReady }: { data: BookmarkCardData; showMemo: boolean; width: number; seed: string; compact?: boolean; rasterizeBook?: boolean; onCoverReady?: () => void }) {
-  const qt = compact ? { size: 21, lh: 34 } : quoteType(data.text);
-  const cardW = width - (compact ? 14 : 48);
-  const coverW = compact ? 47 : 74;
-  const accent = mix(data.color, '#A3B8C5', 0.7);
+  const qt = compact ? { size: 23.5, lh: 36 } : quoteType(data.text);
+  const cardW = compact ? width - 8 : width * 0.874;
+  const coverW = compact ? 67 : 97;
+  const tone = paperTone(data.color);
+  const date = compact ? data.date.replace(/^\d{4}[.\-/](\d{1,2})[.\-/](\d{1,2}).*$/, (_, m, d) => `${Number(m)}월 ${Number(d)}일`) : data.date;
   return (
-    <View style={{ width, paddingTop: compact ? 14 : 42, paddingBottom: compact ? 18 : 40, alignItems: 'center' }}>
-      <View style={[st.sheet, { width: cardW - 8, backgroundColor: '#EAE1D2', transform: [{ rotate: compact ? '-1.5deg' : '-6deg' }], top: compact ? 14 : 30, bottom: compact ? 13 : 26 }]} />
-      <View style={[st.sheet, { width: cardW - 4, backgroundColor: mix(accent, '#FCF8F1', 0.5), transform: [{ rotate: compact ? '1.5deg' : '5deg' }], top: compact ? 10 : 25, bottom: compact ? 19 : 43 }]} />
-      <View style={[st.card, { width: cardW, padding: compact ? 23 : 28, paddingBottom: compact ? 21 : 32 }]}>
-        <View style={[st.tape, { backgroundColor: accent, width: compact ? 22 : 30, height: compact ? 32 : 44 }]} />
-        <View style={st.pageRow}><View style={[st.bar, { backgroundColor: accent }]} /><Text style={st.pageTop}>{data.page ? `p. ${data.page}` : '남긴 문장'}</Text></View>
-        <View style={{ marginTop: compact ? 16 : 25 }}>
-          <WordWrap text={data.text} style={[st.quote, { fontSize: qt.size, lineHeight: qt.lh }]} maxLines={compact ? 5 : undefined} />
+    <View style={{ width, paddingTop: compact ? 17 : 37, paddingBottom: compact ? 15 : 38, alignItems: 'center' }}>
+      <View style={[st.sheet, { width: cardW - (compact ? 5 : 20), transform: [{ rotate: compact ? '-3deg' : '-10deg' }], top: compact ? 23 : 39, bottom: compact ? 18 : 28, backgroundColor: '#F3E4CE' }]}>
+        <PaperSurface pigmented color="#F3E4CE" grain={0.08} radius={8} />
+      </View>
+      <View style={[st.sheet, { width: cardW - (compact ? -1 : 17), transform: [{ rotate: compact ? '2.5deg' : '7deg' }], top: compact ? 15 : 38, bottom: compact ? 16 : 40, backgroundColor: tone.paper }]}>
+        <PaperSurface pigmented color={tone.paper} grain={0.12} radius={8} />
+      </View>
+      <View style={[st.card, { width: cardW, paddingHorizontal: compact ? 28 : 32, paddingTop: compact ? 23 : 40, paddingBottom: compact ? 12 : 38, transform: [{ translateX: compact ? 0 : 8 }, { rotate: compact ? '-0.7deg' : '-1deg' }] }]}>
+        <PaperSurface grain={0.065} radius={10} />
+        <View style={[st.tape, { backgroundColor: tone.tape, width: compact ? 39 : 44, height: compact ? 41 : 45, right: compact ? 20 : 16, top: compact ? -16 : -13 }]}>
+          <PaperSurface pigmented color={tone.tape} grain={0.19} radius={2} />
+          <Svg pointerEvents="none" width="100%" height={2} viewBox="0 0 44 2" preserveAspectRatio="none" style={{ position: 'absolute', bottom: -0.8 }}><Path d="M0 0H44V.4L40 .8L36 .5L32 1.2L27 .6L23 1L19 .4L15 .9L10 .5L6 1.1L2 .6L0 .8Z" fill={tone.tape} /></Svg>
         </View>
-        <View style={[st.rule, { marginVertical: compact ? 18 : 26 }]} />
-        <View style={st.srcRow}>
+        <View style={[st.pageRow, compact && { minHeight: 24 }]}><View style={[st.bar, { backgroundColor: tone.ink, height: compact ? 19 : 27 }]} /><Text style={st.pageTop}>{data.page ? `p. ${data.page}` : '남긴 문장'}</Text></View>
+        <View style={{ marginTop: compact ? 16 : 34 }}>
+          <WordWrap text={data.text} style={[st.quote, { fontSize: qt.size, lineHeight: qt.lh }]} maxLines={compact ? 4 : undefined} />
+        </View>
+        <View style={[st.rule, { marginTop: compact ? 18 : 32, marginBottom: compact ? 10 : 18 }]} />
+        <View style={[st.srcRow, { gap: compact ? 13 : 16 }]}>
           {data.book ? <BookVisual book={data.book} width={coverW} rasterize={rasterizeBook} onReady={onCoverReady} /> : <RealCover uri={data.coverUri} title={data.title} color={data.color} width={coverW} />}
-          <View style={{ flex: 1, gap: 5, paddingTop: 3 }}>
-            <Text style={[st.srcTitle, { fontSize: compact ? 15 : 17 }]} numberOfLines={compact ? 2 : undefined}>{data.title}</Text>
-            {data.author ? <Text style={st.meta}>{data.author}</Text> : null}
+          <View style={{ flex: 1, gap: compact ? 5 : 10 }}>
+            <Text style={[st.srcTitle, { fontSize: compact ? 14 : 15 }]} numberOfLines={compact ? 2 : undefined}>{data.title}{data.author ? ` · ${data.author}` : ''}</Text>
             {!compact && data.page ? <Text style={st.meta}>p. {data.page}</Text> : null}
-            <Text style={[st.meta, { marginTop: compact ? 3 : 6 }]}>{data.date}</Text>
+            <Text style={st.meta}>{date}</Text>
           </View>
         </View>
-        {showMemo && data.memo ? <><View style={st.rule} /><WordWrap text={data.memo} style={st.memo} /></> : null}
+        {showMemo && data.memo ? <><View style={[st.rule, { marginTop: 18, marginBottom: 20 }]} /><WordWrap text={data.memo} style={st.memo} /></> : null}
       </View>
     </View>
   );
 }
 
 const st = StyleSheet.create({
-  sheet: { position: 'absolute', borderRadius: 9 },
-  card: { backgroundColor: CARD_PAPER, borderWidth: 1, borderColor: '#FFFDF8', borderRadius: 10, ...screenTheme.shadow },
-  tape: { position: 'absolute', right: 22, top: -7, opacity: 0.9, borderBottomLeftRadius: 2, borderBottomRightRadius: 2 },
-  pageRow: { flexDirection: 'row', alignItems: 'center', gap: 12 },
-  bar: { width: 3, height: 21, borderRadius: 1 },
-  pageTop: { fontSize: 13, color: colors.inkSoft },
-  quote: { fontFamily: fonts.serif, color: colors.ink, letterSpacing: -0.3 },
-  rule: { height: StyleSheet.hairlineWidth, backgroundColor: screenTheme.border, marginVertical: 24 },
-  srcRow: { flexDirection: 'row', gap: 15, alignItems: 'center' },
-  srcTitle: { fontFamily: fonts.serifBold, color: colors.ink, lineHeight: 25 },
-  meta: { fontSize: 12.5, color: colors.inkSoft },
-  memo: { fontFamily: fonts.serif, fontSize: 16, lineHeight: 28, color: colors.inkSoft },
+  sheet: { position: 'absolute', borderRadius: 8, borderTopWidth: 0.75, borderLeftWidth: 0.75, borderColor: 'rgba(255,255,255,0.8)', boxShadow: [{ offsetX: 0, offsetY: 3, blurRadius: 4, color: 'rgba(128,89,47,0.08)' }, { offsetX: 1, offsetY: 10, blurRadius: 14, color: 'rgba(141,98,55,0.07)' }] },
+  card: { backgroundColor: CARD_PAPER, borderWidth: 0.8, borderTopWidth: 1, borderColor: '#FFFDFA', borderRadius: 10, boxShadow: [{ offsetX: 0, offsetY: 2, blurRadius: 2, color: 'rgba(118,78,42,0.10)' }, { offsetX: 1, offsetY: 10, blurRadius: 15, color: 'rgba(123,79,37,0.12)' }] },
+  tape: { position: 'absolute', borderRadius: 2, borderTopWidth: 0.8, borderLeftWidth: 0.5, borderColor: 'rgba(255,255,255,0.55)', transform: [{ rotate: '0.7deg' }], boxShadow: [{ offsetX: 0, offsetY: 2, blurRadius: 1.5, color: 'rgba(83,68,42,0.12)' }, { offsetX: 0, offsetY: 5, blurRadius: 4, color: 'rgba(118,84,44,0.12)' }] },
+  pageRow: { flexDirection: 'row', alignItems: 'center', gap: 17, minHeight: 28, marginLeft: -9 },
+  bar: { width: 3, borderRadius: 1.5 },
+  pageTop: { fontFamily: fonts.serif, fontSize: 13, lineHeight: 22, color: '#9D958E', includeFontPadding: false },
+  quote: { fontFamily: fonts.serif, color: '#292725', letterSpacing: -0.45, includeFontPadding: false },
+  rule: { height: StyleSheet.hairlineWidth, backgroundColor: '#D4CDC4' },
+  srcRow: { flexDirection: 'row', alignItems: 'center', marginLeft: -3 },
+  srcTitle: { fontFamily: fonts.serif, color: '#34302C', lineHeight: 24, includeFontPadding: false, letterSpacing: -0.2 },
+  meta: { fontFamily: fonts.serif, fontSize: 13, lineHeight: 20, color: '#A09891', includeFontPadding: false },
+  memo: { fontFamily: fonts.serif, fontSize: 15, lineHeight: 26, color: '#38332D', includeFontPadding: false },
 });

@@ -16,7 +16,8 @@ import { dropImage } from '@/store/files';
 import { libraryStore, useLibrary } from '@/store/library-store';
 import { ChevronLeft, MoreHorizontal, PenLine, Share } from '@/ui/icons';
 import { Btn, Chip, Empty, Field, ListItem, Row, Screen } from '@/ui/kit';
-import { colors, fonts } from '@/ui/screenTheme';
+import { colors, fonts, screenTheme } from '@/ui/screenTheme';
+import { PaperSurface } from '@/ui/PaperSurface';
 
 export function cardData(lib: Library, m: Bookmark): BookmarkCardData | null {
   const b = lib.books[m.myBookId];
@@ -40,7 +41,7 @@ const SHARE_W = 380;
 export default function BookmarkDetail() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const { lib } = useLibrary();
-  const { width } = useWindowDimensions();
+  const { width, height, fontScale } = useWindowDimensions();
   const insets = useSafeAreaInsets();
   const first = lib.bookmarks[id];
   const list = useMemo(() => (first ? bookmarksOf(lib, first.myBookId).reverse() : []), [lib, first]);
@@ -86,6 +87,7 @@ export default function BookmarkDetail() {
 
   return (
     <View style={{ flex: 1, backgroundColor: PAGE_BG, paddingTop: insets.top }}>
+      <PaperSurface color={PAGE_BG} radius={0} grain={0.035} />
       <View style={st.header}>
         <Pressable onPress={() => router.back()} hitSlop={12} accessibilityRole="button" accessibilityLabel="뒤로">
           <ChevronLeft size={26} color={colors.ink} strokeWidth={1.4} />
@@ -108,7 +110,7 @@ export default function BookmarkDetail() {
         renderItem={({ item }) => {
           const d = cardData(lib, item);
           return (
-            <ScrollView style={{ width }} contentContainerStyle={{ alignItems: 'center', paddingTop: 16, paddingBottom: 24 }} showsVerticalScrollIndicator={false}>
+            <ScrollView style={{ width }} contentContainerStyle={{ alignItems: 'center', paddingTop: fontScale > 1.2 ? 18 : Math.max(28, Math.min(66, height * 0.073)), paddingBottom: 4 }} showsVerticalScrollIndicator={false}>
               {d ? <BookmarkCard data={d} showMemo width={Math.min(width, 440)} seed={item.id} /> : null}
             </ScrollView>
           );
@@ -116,20 +118,20 @@ export default function BookmarkDetail() {
       />
 
       {list.length > 1 ? (
-        <View style={{ alignItems: 'center', gap: 8, paddingBottom: 8 }}>
+        <View style={{ alignItems: 'center', gap: 12, paddingTop: 6, paddingBottom: height * 0.047 }}>
           <Row gap={10} style={{ justifyContent: 'center' }}>
             {list.slice(0, 12).map((m, i) => (
-              <View key={m.id} style={[st.dot, i === index && { backgroundColor: colors.ink }]} />
+              <View key={m.id} style={[st.dot, i === index && { backgroundColor: screenTheme.blue, width: 10, height: 10, borderRadius: 5 }]} />
             ))}
           </Row>
           <Text style={st.count}>{list.length}개의 갈피</Text>
         </View>
       ) : null}
 
-      <View style={[st.bottom, { paddingBottom: insets.bottom + 10 }]}>
+      <View style={[st.bottom, { paddingBottom: insets.bottom + height * 0.044 }]}>
         <View>
           <View style={{ height: StyleSheet.hairlineWidth, width: 70, backgroundColor: '#A8A195', marginBottom: 6 }} />
-          <Text style={st.brand}>책장한켠</Text>
+          <Text style={st.brand}>책장 한켠</Text>
         </View>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 22 }}>
           <View style={{ width: StyleSheet.hairlineWidth, height: 36, backgroundColor: '#CFC7B9' }} />
@@ -149,7 +151,7 @@ export default function BookmarkDetail() {
         <View pointerEvents="none" style={{ position: 'absolute', left: 0, top: 0, zIndex: -1 }}>
           <View ref={shotRef} collapsable={false} style={{ width: SHARE_W, backgroundColor: PAGE_BG, paddingTop: 24, paddingBottom: 30, alignItems: 'center' }}>
             <BookmarkCard data={curData} showMemo={share.withMemo} width={SHARE_W} seed={cur.id} rasterizeBook onCoverReady={() => { coverReady.current = true; }} />
-            <Text style={[st.brand, { marginTop: 4 }]}>책장한켠</Text>
+            <Text style={[st.brand, { marginTop: 4 }]}>책장 한켠</Text>
           </View>
         </View>
       ) : null}
@@ -243,11 +245,11 @@ function EditBookmark({ m, onDone }: { m: Bookmark; onDone: () => void }) {
 
 const st = StyleSheet.create({
   header: { minHeight: 58, paddingVertical: 12, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 24 },
-  headerTitle: { fontFamily: fonts.roundTitle, fontSize: 20, color: colors.ink },
+  headerTitle: { fontFamily: fonts.round, fontSize: 20, color: colors.ink },
   dot: { width: 7, height: 7, borderRadius: 3.5, backgroundColor: '#C9C2B6' },
-  count: { fontFamily: fonts.serif, fontSize: 13, color: '#8C877E' },
+  count: { fontFamily: fonts.serif, fontSize: 12, lineHeight: 21, color: '#9D958B', includeFontPadding: false },
   bottom: { flexDirection: 'row', flexWrap: 'wrap', gap: 16, alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 24, paddingTop: 12 },
-  brand: { fontFamily: fonts.serif, fontSize: 16, color: '#8C877E', letterSpacing: 1 },
+  brand: { fontFamily: fonts.serifMedium, fontSize: 15, color: '#68524A', includeFontPadding: false },
   dim: { flex: 1, backgroundColor: 'rgba(20,18,15,0.45)', justifyContent: 'center', padding: 20 },
   sheet: { backgroundColor: colors.bg, borderRadius: 16, padding: 18 },
   sheetTitle: { fontFamily: fonts.serif, fontSize: 18, color: colors.ink, marginBottom: 10 },
