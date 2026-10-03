@@ -187,5 +187,9 @@ export function coverTitleLayout(title: string, wDU: number, hDU: number): { lin
     if (!pick || fs > pick.fontSize * 1.15) pick = { lines: best, fontSize: fs };
   }
   const f = pick ?? { lines: [title], fontSize: 7.5 };
-  return { lines: f.lines, fontSize: Math.max(7.5, Math.round(f.fontSize * 10) / 10) };
+  const desired = Math.max(7.5, Math.round(f.fontSize * 10) / 10);
+  // Extremely long titles must still fit inside the cover. The normal reading
+  // minimum cannot override the available print area; the UI shows the full title.
+  const fit = Math.min((wDU * 0.86) / Math.max(1, ...f.lines.map(width)), (hDU * 0.3) / (f.lines.length * COVER_LINE_H));
+  return { lines: f.lines, fontSize: desired <= fit ? desired : Math.floor(fit * 10) / 10 };
 }
