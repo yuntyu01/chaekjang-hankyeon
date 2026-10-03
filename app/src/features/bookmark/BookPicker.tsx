@@ -6,7 +6,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { STATUS_LABEL } from '@/features/book/labels';
 import type { Library } from '@/domain/library';
 import { Btn, ui } from '@/ui/kit';
-import { colors, fonts } from '@/ui/theme';
+import { colors, fonts } from '@/ui/screenTheme';
 
 export function recentBookIds(lib: Library) {
   const last = new Map<string, string>();

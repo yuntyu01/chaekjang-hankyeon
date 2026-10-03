@@ -12,7 +12,7 @@ import { useLibrary } from '@/store/library-store';
 import { usePlacementStore } from '@/store/placement-store';
 import { uiBus } from '@/store/ui-bus';
 import { Chip, Empty, Muted, Row, Screen, s as kit } from '@/ui/kit';
-import { colors } from '@/ui/theme';
+import { colors } from '@/ui/screenTheme';
 
 export default function SearchMine() {
   const { lib } = useLibrary();

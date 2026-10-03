@@ -8,7 +8,7 @@ import { exportShare, exportToFolder, readBackupFile, restoreBackup } from '@/st
 import { PERF_ENABLED } from '@/ui/perf';
 import { settingsStore, useSettings } from '@/store/settings-store';
 import { Btn, Card, Chip, H2, ListItem, Muted, Row, Screen } from '@/ui/kit';
-import { colors } from '@/ui/theme';
+import { colors } from '@/ui/screenTheme';
 
 export default function SettingsScreen() {
   const s = useSettings();

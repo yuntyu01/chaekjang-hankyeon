@@ -9,7 +9,7 @@ import type { Book, MotifId } from '@/domain/types';
 import { aiBinding } from '@/services/connectors';
 import { StandaloneBook } from '@/ui/book3d/StandaloneBook';
 import { Btn, Chip, H2, Muted, Row } from '@/ui/kit';
-import { colors } from '@/ui/theme';
+import { colors } from '@/ui/screenTheme';
 
 export type BindingDraft = Pick<Binding, 'spineColor' | 'motif' | 'seed' | 'source'>;
 

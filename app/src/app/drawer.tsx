@@ -9,7 +9,7 @@ import { READ_STATUSES, type ReadStatus } from '@/domain/library';
 import { useLibrary } from '@/store/library-store';
 import { placementStore, usePlacementStore } from '@/store/placement-store';
 import { Btn, Chip, Empty, Muted, Row, Screen, s as kit } from '@/ui/kit';
-import { colors } from '@/ui/theme';
+import { colors } from '@/ui/screenTheme';
 
 export default function Drawer() {
   const place = usePlacementStore();

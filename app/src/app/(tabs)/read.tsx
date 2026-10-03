@@ -12,7 +12,8 @@ import { useLibrary } from '@/store/library-store';
 import { readingStore, useReading } from '@/store/reading-store';
 import { settingsStore, useSettings } from '@/store/settings-store';
 import { Btn, Card, Chip, H2, Muted, Row, Screen } from '@/ui/kit';
-import { colors, fonts, navigation } from '@/ui/theme';
+import { colors, fonts } from '@/ui/screenTheme';
+import { navigation } from '@/ui/theme';
 
 const GOALS = [null, 15, 30, 60] as const;
 

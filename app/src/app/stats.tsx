@@ -11,7 +11,7 @@ import { formatDuration, monthPeriod, periodStats, sessionDay, yearPeriod } from
 import { useLibrary } from '@/store/library-store';
 import { usePlacementStore } from '@/store/placement-store';
 import { Card, Chip, Empty, H2, Muted, Row, Screen } from '@/ui/kit';
-import { colors, fonts } from '@/ui/theme';
+import { colors, fonts } from '@/ui/screenTheme';
 
 export default function Stats() {
   const params = useLocalSearchParams<{ book?: string }>();

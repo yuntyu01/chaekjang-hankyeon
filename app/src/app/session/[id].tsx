@@ -7,7 +7,7 @@ import { BookPicker } from '@/features/bookmark/BookPicker';
 import { formatDuration } from '@/domain/library';
 import { libraryStore, useLibrary } from '@/store/library-store';
 import { Btn, Card, Empty, Field, Muted, Row, Screen } from '@/ui/kit';
-import { colors, fonts } from '@/ui/theme';
+import { colors, fonts } from '@/ui/screenTheme';
 
 const pad = (n: number) => String(n).padStart(2, '0');
 const localParts = (iso: string) => {

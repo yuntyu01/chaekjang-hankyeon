@@ -5,7 +5,7 @@ import { Pressable, StyleSheet, Text, View } from 'react-native';
 import type { Book } from '@/domain/types';
 import { StandaloneBook } from '@/ui/book3d/StandaloneBook';
 import { ui } from '@/ui/kit';
-import { colors, fonts } from '@/ui/theme';
+import { colors, fonts } from '@/ui/screenTheme';
 
 export const BookRow = memo(function BookRow({ book, sub, right, onPress }: { book: Book; sub?: string; right?: React.ReactNode; onPress?: () => void }) {
   return (

@@ -11,7 +11,7 @@ import { ambient } from '@/services/ambient';
 import { libraryStore, useLibrary } from '@/store/library-store';
 import { readingStore, useReading } from '@/store/reading-store';
 import { Btn, Card, Empty, Field, Muted, Row, Screen } from '@/ui/kit';
-import { colors, fonts } from '@/ui/theme';
+import { colors, fonts } from '@/ui/screenTheme';
 
 export default function Finish() {
   const { pending } = useReading();

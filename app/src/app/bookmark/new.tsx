@@ -12,7 +12,7 @@ import { deniedMessage, pickPhoto } from '@/services/photos';
 import { keepImage } from '@/store/files';
 import { libraryStore, useLibrary } from '@/store/library-store';
 import { Btn, Card, Chip, Field, Muted, Row, Screen } from '@/ui/kit';
-import { colors, fonts } from '@/ui/theme';
+import { colors, fonts } from '@/ui/screenTheme';
 
 export default function NewBookmark() {
   const { book, text: initialText, page: initialPage } = useLocalSearchParams<{ book?: string; text?: string; page?: string }>();

@@ -9,7 +9,8 @@ import { formatDuration } from '@/domain/library';
 import { useLibrary } from '@/store/library-store';
 import { elapsedMs, readingStore, useReading } from '@/store/reading-store';
 import { Btn } from '@/ui/kit';
-import { colors, fonts, navigation } from '@/ui/theme';
+import { colors, fonts } from '@/ui/screenTheme';
+import { navigation } from '@/ui/theme';
 
 export function clock(ms: number) {
   const t = Math.floor(ms / 1000);
