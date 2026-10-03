@@ -75,7 +75,7 @@ export default function BookDetailScreen() {
         </Pressable>
       }>
       <View style={st.hero}>
-        <LibraryCover lib={lib} id={id} width={192} />
+        <LibraryCover lib={lib} id={id} width={194} />
         <Text style={st.title}>{e.title}</Text>
         {e.authors.length ? <Text style={st.author}>{e.authors.join(', ')}</Text> : null}
         <Pressable onPress={() => setStatusEdit(!statusEdit)} accessibilityRole="button" accessibilityLabel="읽기 상태 변경" style={st.statusBadge}>
@@ -229,15 +229,15 @@ function RoundCard({ idx, startedAt, finishedAt, paused, onSave }: { idx: number
 }
 
 const st = StyleSheet.create({
-  hero: { alignItems: 'center', paddingTop: 29 },
-  title: { fontFamily: fonts.serifBold, fontSize: 26, lineHeight: 38, color: colors.ink, textAlign: 'center', marginTop: 20, includeFontPadding: false },
-  author: { fontFamily: fonts.serif, fontSize: 16, lineHeight: 26, color: colors.inkSoft, marginTop: 5, includeFontPadding: false },
+  hero: { alignItems: 'center', paddingTop: 27.5 },
+  title: { fontFamily: fonts.serifBold, fontSize: 26, lineHeight: 38, color: colors.ink, textAlign: 'center', marginTop: 15, includeFontPadding: false },
+  author: { fontFamily: fonts.serif, fontSize: 16, lineHeight: 26, color: colors.inkSoft, marginTop: 1, includeFontPadding: false },
   meta: { fontSize: 15, color: colors.inkSoft },
-  statusBadge: { borderRadius: 16, paddingHorizontal: 17, paddingVertical: 5, marginTop: 9, backgroundColor: screenTheme.blueLight },
-  statusText: { fontSize: 13, color: '#668AA7' },
-  progressSection: { marginTop: 14, paddingHorizontal: 10 },
-  progressLabel: { fontFamily: fonts.serif, fontSize: 14, color: '#74695F', marginBottom: 4, includeFontPadding: false },
-  page: { fontFamily: fonts.serifMedium, fontSize: 25, lineHeight: 34, color: colors.ink, includeFontPadding: false },
+  statusBadge: { borderRadius: 16, paddingHorizontal: 17, paddingVertical: 4, marginTop: 7, backgroundColor: screenTheme.blueLight },
+  statusText: { fontSize: 13, lineHeight: 18, color: '#668AA7', includeFontPadding: false },
+  progressSection: { marginTop: 11.5, paddingHorizontal: 10 },
+  progressLabel: { fontFamily: fonts.serif, fontSize: 14, color: '#74695F', marginBottom: 0, includeFontPadding: false },
+  page: { fontFamily: fonts.serifMedium, fontSize: 22, lineHeight: 30, color: colors.ink, includeFontPadding: false },
   pageTotal: { fontFamily: fonts.serif, fontSize: 17, color: colors.inkSoft },
   track: { height: 10, borderRadius: 5, backgroundColor: '#EEE7DF', marginTop: 8, overflow: 'hidden' },
   fill: { height: 10, borderRadius: 5, backgroundColor: screenTheme.blue, borderTopWidth: 0.5, borderTopColor: '#A6BBCB' },
@@ -247,8 +247,8 @@ const st = StyleSheet.create({
   linkLabel: { flex: 1, color: colors.ink, fontSize: 16 },
   divider: { height: StyleSheet.hairlineWidth, backgroundColor: screenTheme.border },
   continueButton: { marginTop: 19, minHeight: 58, borderRadius: 14, borderTopColor: '#A18579', borderBottomColor: '#765A54', boxShadow: [{ offsetX: 0, offsetY: 1, blurRadius: 1, color: 'rgba(83,61,49,0.05)' }] },
-  bookmarkButton: { alignItems: 'center', justifyContent: 'center', minHeight: 54, marginTop: 8 },
-  bookmarkLabel: { fontSize: 15, color: '#80665B', textDecorationLine: 'underline' },
+  bookmarkButton: { alignItems: 'center', justifyContent: 'center', minHeight: 54, marginTop: 5 },
+  bookmarkLabel: { fontSize: 13.5, color: '#80665B', textDecorationLine: 'underline' },
   k: { fontSize: 14, color: colors.inkSoft },
   v: { fontSize: 15, color: colors.ink, fontVariant: ['tabular-nums'] },
   input: { minHeight: 44, borderRadius: 10, borderWidth: 1, borderColor: '#E3D9C9', backgroundColor: ui.card, paddingHorizontal: 12, fontSize: 15, color: colors.ink, marginTop: 4 },

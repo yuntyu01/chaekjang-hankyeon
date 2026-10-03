@@ -328,7 +328,7 @@ function FindStep({ initial, notice, onPick, onPhoto, onManual }: { initial?: st
 }
 
 const st = StyleSheet.create({
-  searchBox: { minHeight: 51, marginTop: 16, borderRadius: 15, backgroundColor: '#F4EEE5', flexDirection: 'row', alignItems: 'center', paddingHorizontal: 5, gap: 1 },
+  searchBox: { minHeight: 51, marginTop: 12, borderRadius: 15, backgroundColor: '#F4EEE5', flexDirection: 'row', alignItems: 'center', paddingHorizontal: 5, gap: 1 },
   searchAction: { width: 43, minHeight: 48, alignItems: 'center', justifyContent: 'center' },
   clear: { width: 24, height: 24, borderRadius: 12, backgroundColor: '#DDD6CC', alignItems: 'center', justifyContent: 'center' },
   searchInput: { flex: 1, fontFamily: fonts.serif, fontSize: 18, lineHeight: 28, color: colors.ink, paddingVertical: 10, includeFontPadding: false },

@@ -3,7 +3,7 @@ import { colors as shelfColors, fonts as shelfFonts } from './theme';
 // Screen UI only: shelf materials, lighting and geometry retain their own tokens.
 export const colors = {
   ...shelfColors,
-  bg: '#FCF6EE',
+  bg: '#FEF9F3',
   ink: '#54433C',
   inkSoft: '#8C8077',
   inkFaint: '#A3978E',

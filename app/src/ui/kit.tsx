@@ -46,18 +46,18 @@ export function Screen({
   );
   return (
     <View style={{ flex: 1, paddingTop: insets.top, backgroundColor: colors.bg }}>
-      <PaperSurface color={colors.bg} radius={0} grain={0.035} />
-      <View style={[s.header, !back && { paddingTop: 12, paddingBottom: 18 }]}>
+      <PaperSurface color={colors.bg} radius={0} grain={0.035} shaded={false} />
+      <View style={[s.header, !back && { paddingTop: 28, paddingBottom: 6 }]}>
         {back ? (
           <Pressable onPress={() => (router.canGoBack() ? router.back() : router.replace('/'))} hitSlop={12} accessibilityRole="button" accessibilityLabel="뒤로" style={s.back}>
-            <ChevronLeft size={24} color={colors.ink} strokeWidth={1.6} />
+            <ChevronLeft size={30} color={colors.ink} strokeWidth={1.6} />
           </Pressable>
         ) : null}
-        <View style={{ flex: 1, paddingLeft: back ? 0 : ui.pad }}>
-        <Text style={[s.title, !back && { fontSize: 30, textAlign: 'left' }]} accessibilityRole="header">
+        <View style={{ flex: 1, paddingLeft: back ? 0 : 24 }}>
+        <Text style={[s.title, !back && { fontSize: 26, textAlign: 'left' }]} accessibilityRole="header">
           {title ?? ''}
         </Text>
-        {subtitle ? <Text style={[s.muted, { marginTop: 7 }]}>{subtitle}</Text> : null}
+        {subtitle ? <Text style={[s.muted, { marginTop: back ? 3 : 7 }]}>{subtitle}</Text> : null}
         </View>
         <View style={[s.right, back && { minWidth: 44 }]}>{right}</View>
       </View>
@@ -210,7 +210,7 @@ export function ListItem({ label, value, onPress, danger }: { label: string; val
 }
 
 export const s = StyleSheet.create({
-  header: { minHeight: 58, flexDirection: 'row', alignItems: 'center', paddingRight: 6, paddingVertical: 6 },
+  header: { minHeight: 62, flexDirection: 'row', alignItems: 'center', paddingRight: 6, paddingTop: 10, paddingBottom: 2 },
   back: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center', marginLeft: 6 },
   title: { fontFamily: fonts.round, fontSize: 20, color: colors.ink, textAlign: 'center', includeFontPadding: false },
   right: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 10 },

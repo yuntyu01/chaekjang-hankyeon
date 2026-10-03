@@ -17,9 +17,9 @@ export const PaperSurface = memo(function PaperSurface({ color = '#FCF5EC', radi
     <Svg width="100%" height="100%">
       <Defs>
         <LinearGradient id={`${id}wash`} x1="0" y1="0" x2="100%" y2="100%">
-          <Stop offset="0" stopColor="#FFFFFF" stopOpacity={pigmented ? 0.08 : 0.38} />
+          <Stop offset="0" stopColor="#FFFFFF" stopOpacity={pigmented ? 0.13 : 0.38} />
           <Stop offset="0.38" stopColor="#FFFFFF" stopOpacity="0.02" />
-          <Stop offset="1" stopColor="#AB8056" stopOpacity="0.035" />
+          <Stop offset="1" stopColor={pigmented ? '#536574' : '#AB8056'} stopOpacity={pigmented ? 0.085 : 0.035} />
         </LinearGradient>
         <Pattern id={`${id}fiber`} width="64" height="64" patternUnits="userSpaceOnUse">
           <Path d={fibers} stroke="#6F5641" strokeWidth="0.3" strokeOpacity={grain} />
@@ -30,13 +30,13 @@ export const PaperSurface = memo(function PaperSurface({ color = '#FCF5EC', radi
       {shaded ? <Rect width="100%" height="100%" fill={`url(#${id}wash)`} /> : null}
       <Rect width="100%" height="100%" fill={`url(#${id}fiber)`} />
     </Svg>
-    <Image source={require('../../assets/bookshelf/paper-background.png')} resizeMode="cover" style={[StyleSheet.absoluteFill, { opacity: pigmented ? 0.035 : Math.min(0.17, grain * 1.8) }]} />
+    <Image source={require('../../assets/bookshelf/paper-background.png')} resizeMode="cover" style={[StyleSheet.absoluteFill, { opacity: pigmented ? 0.035 : Math.min(0.28, grain * 3) }]} />
   </View>;
 });
 
 export const ButtonShading = memo(function ButtonShading({ radius = 14 }: { radius?: number }) {
   const id = useId().replace(/:/g, '');
   return <View pointerEvents="none" style={[StyleSheet.absoluteFill, { borderRadius: radius, overflow: 'hidden' }]}>
-    <Svg width="100%" height="100%"><Defs><LinearGradient id={id} x1="0" y1="0" x2="100%" y2="100%"><Stop offset="0" stopColor="#FFFFFF" stopOpacity="0.035" /><Stop offset="0.55" stopColor="#492C24" stopOpacity="0.02" /><Stop offset="1" stopColor="#FFFFFF" stopOpacity="0.055" /></LinearGradient></Defs><Rect width="100%" height="100%" fill={`url(#${id})`} /></Svg>
+    <Svg width="100%" height="100%"><Defs><LinearGradient id={id} x1="0" y1="0" x2="100%" y2="100%"><Stop offset="0" stopColor="#573F4C" stopOpacity="0.09" /><Stop offset="0.45" stopColor="#FFFFFF" stopOpacity="0.012" /><Stop offset="1" stopColor="#E1C9AC" stopOpacity={radius > 25 ? 0.065 : 0.16} /></LinearGradient></Defs><Rect width="100%" height="100%" fill={`url(#${id})`} /></Svg>
   </View>;
 });

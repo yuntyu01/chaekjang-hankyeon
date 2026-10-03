@@ -87,10 +87,10 @@ export default function BookmarkDetail() {
 
   return (
     <View style={{ flex: 1, backgroundColor: PAGE_BG, paddingTop: insets.top }}>
-      <PaperSurface color={PAGE_BG} radius={0} grain={0.035} />
+      <PaperSurface color={PAGE_BG} radius={0} grain={0.035} shaded={false} />
       <View style={st.header}>
         <Pressable onPress={() => router.back()} hitSlop={12} accessibilityRole="button" accessibilityLabel="뒤로">
-          <ChevronLeft size={26} color={colors.ink} strokeWidth={1.4} />
+          <ChevronLeft size={30} color={colors.ink} strokeWidth={1.4} />
         </Pressable>
         <Text style={st.headerTitle}>갈피</Text>
         <Pressable onPress={() => setMenu(true)} hitSlop={12} accessibilityRole="button" accessibilityLabel="더 보기">
@@ -110,7 +110,7 @@ export default function BookmarkDetail() {
         renderItem={({ item }) => {
           const d = cardData(lib, item);
           return (
-            <ScrollView style={{ width }} contentContainerStyle={{ alignItems: 'center', paddingTop: fontScale > 1.2 ? 18 : Math.max(28, Math.min(66, height * 0.073)), paddingBottom: 4 }} showsVerticalScrollIndicator={false}>
+            <ScrollView style={{ width }} contentContainerStyle={{ alignItems: 'center', paddingTop: fontScale > 1.2 ? 18 : Math.max(24, Math.min(62, height * 0.073 - 4)), paddingBottom: 4 }} showsVerticalScrollIndicator={false}>
               {d ? <BookmarkCard data={d} showMemo width={Math.min(width, 440)} seed={item.id} /> : null}
             </ScrollView>
           );
@@ -244,7 +244,7 @@ function EditBookmark({ m, onDone }: { m: Bookmark; onDone: () => void }) {
 }
 
 const st = StyleSheet.create({
-  header: { minHeight: 58, paddingVertical: 12, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 24 },
+  header: { minHeight: 62, paddingTop: 16, paddingBottom: 12, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 16 },
   headerTitle: { fontFamily: fonts.round, fontSize: 20, color: colors.ink },
   dot: { width: 7, height: 7, borderRadius: 3.5, backgroundColor: '#C9C2B6' },
   count: { fontFamily: fonts.serif, fontSize: 12, lineHeight: 21, color: '#9D958B', includeFontPadding: false },
