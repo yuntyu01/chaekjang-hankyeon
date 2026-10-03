@@ -11,12 +11,12 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { ymd } from '@/features/book/labels';
 import { BookmarkCard, PAGE_BG, type BookmarkCardData } from '@/features/bookmark/BookmarkCard';
-import { bookmarksOf, type Bookmark, type Library } from '@/domain/library';
+import { bookmarksOf, toShelfBook, type Bookmark, type Library } from '@/domain/library';
 import { dropImage } from '@/store/files';
 import { libraryStore, useLibrary } from '@/store/library-store';
 import { ChevronLeft, MoreHorizontal, PenLine, Share } from '@/ui/icons';
 import { Btn, Chip, Empty, Field, ListItem, Row, Screen } from '@/ui/kit';
-import { colors, fonts } from '@/ui/theme';
+import { colors, fonts } from '@/ui/screenTheme';
 
 export function cardData(lib: Library, m: Bookmark): BookmarkCardData | null {
   const b = lib.books[m.myBookId];
@@ -31,6 +31,7 @@ export function cardData(lib: Library, m: Bookmark): BookmarkCardData | null {
     memo: m.memo,
     color: (b.bindingId && lib.bindings[b.bindingId]?.spineColor) || '#8A8378',
     coverUri: e.coverUri,
+    book: toShelfBook(lib, b.id) ?? undefined,
   };
 }
 
@@ -128,8 +129,9 @@ export default function BookmarkDetail() {
         </View>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 22 }}>
           <View style={{ width: StyleSheet.hairlineWidth, height: 36, backgroundColor: '#CFC7B9' }} />
-          <Pressable onPress={() => setEditing(cur)} hitSlop={10} accessibilityRole="button" accessibilityLabel="수정">
+          <Pressable onPress={() => setEditing(cur)} hitSlop={10} accessibilityRole="button" accessibilityLabel="수정" style={{ flexDirection: 'row', alignItems: 'center', gap: 6, minHeight: 44 }}>
             <PenLine size={22} color={colors.ink} strokeWidth={1.4} />
+            <Text style={{ fontSize: 13, color: colors.ink }}>수정</Text>
           </Pressable>
           <Pressable onPress={() => shoot(false)} hitSlop={10} accessibilityRole="button" accessibilityLabel="이미지로 공유" style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
             <Share size={22} color={colors.ink} strokeWidth={1.4} />
@@ -236,11 +238,11 @@ function EditBookmark({ m, onDone }: { m: Bookmark; onDone: () => void }) {
 }
 
 const st = StyleSheet.create({
-  header: { height: 56, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 20 },
-  headerTitle: { fontFamily: fonts.serif, fontSize: 18, color: colors.ink },
+  header: { minHeight: 58, paddingVertical: 12, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 24 },
+  headerTitle: { fontFamily: fonts.roundTitle, fontSize: 20, color: colors.ink },
   dot: { width: 7, height: 7, borderRadius: 3.5, backgroundColor: '#C9C2B6' },
   count: { fontFamily: fonts.serif, fontSize: 13, color: '#8C877E' },
-  bottom: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 24, paddingTop: 12 },
+  bottom: { flexDirection: 'row', flexWrap: 'wrap', gap: 16, alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 24, paddingTop: 12 },
   brand: { fontFamily: fonts.serif, fontSize: 16, color: '#8C877E', letterSpacing: 1 },
   dim: { flex: 1, backgroundColor: 'rgba(20,18,15,0.45)', justifyContent: 'center', padding: 20 },
   sheet: { backgroundColor: colors.bg, borderRadius: 16, padding: 18 },
