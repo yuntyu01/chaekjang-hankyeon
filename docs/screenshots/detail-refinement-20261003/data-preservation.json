@@ -1,0 +1,27 @@
+{
+  "lib": true,
+  "layout": true,
+  "settings": true,
+  "reading": true,
+  "counts": {
+    "books": 8,
+    "editions": 8,
+    "bindings": 8,
+    "bookmarks": 0,
+    "sessions": 0
+  },
+  "removedFixtureBooks": [
+    "bk_mus3bm5cgthyft",
+    "bk_mus4qr0slee17s",
+    "bk_mus5flz9iw64uq"
+  ],
+  "removedFixtureSessions": [
+    "ss_mus3bm6ry3axc8",
+    "ss_mus3bm6s9kncne",
+    "ss_mus3bm70m3rz85",
+    "ss_mus3bm71k4eujs",
+    "ss_mus3bm71qhl9u7",
+    "ss_mus43ojnddau0j"
+  ],
+  "finalRecheckAfterPerformanceAndOverflowFix": true
+}

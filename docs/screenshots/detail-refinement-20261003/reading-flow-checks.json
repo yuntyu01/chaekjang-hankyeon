@@ -1,0 +1,408 @@
+{
+  "entering-tab-does-not-start": {
+    "passed": true,
+    "evidence": [
+      {
+        "active": null,
+        "pending": null,
+        "ms": 0,
+        "audio": {
+          "scene": null,
+          "playing": false,
+          "error": null
+        },
+        "settings": {
+          "sound": true,
+          "haptics": true,
+          "reduceMotion": "system",
+          "goalMin": null,
+          "scene": "rain",
+          "volume": 0.6,
+          "muted": false
+        }
+      },
+      {
+        "active": null,
+        "pending": null,
+        "ms": 0,
+        "audio": {
+          "scene": null,
+          "playing": false,
+          "error": null
+        },
+        "settings": {
+          "sound": true,
+          "haptics": true,
+          "reduceMotion": "system",
+          "goalMin": null,
+          "scene": "rain",
+          "volume": 0.6,
+          "muted": false
+        }
+      }
+    ]
+  },
+  "book-selection-before-start-is-draft": {
+    "passed": true,
+    "evidence": null
+  },
+  "sound-without-timer": {
+    "passed": true,
+    "evidence": {
+      "active": null,
+      "pending": null,
+      "ms": 0,
+      "audio": {
+        "scene": "rain",
+        "playing": true,
+        "error": null
+      },
+      "settings": {
+        "sound": true,
+        "haptics": true,
+        "reduceMotion": "system",
+        "goalMin": null,
+        "scene": "rain",
+        "volume": 0.6,
+        "muted": false
+      }
+    }
+  },
+  "optional-goal-does-not-start": {
+    "passed": true,
+    "evidence": {
+      "active": null,
+      "pending": null,
+      "ms": 0,
+      "audio": {
+        "scene": "rain",
+        "playing": false,
+        "error": null
+      },
+      "settings": {
+        "sound": true,
+        "haptics": true,
+        "reduceMotion": "system",
+        "goalMin": 15,
+        "scene": "rain",
+        "volume": 0.6,
+        "muted": false
+      }
+    }
+  },
+  "explicit-start-without-book": {
+    "passed": true,
+    "evidence": {
+      "active": {
+        "id": "ss_mus43ojnddau0j",
+        "startedAt": "2026-10-03T08:10:23.363Z",
+        "accumulatedMs": 0,
+        "runningSince": 1791015023363,
+        "lastBeat": 1791015023363
+      },
+      "pending": null,
+      "ms": 766,
+      "audio": {
+        "scene": "rain",
+        "playing": true,
+        "error": null
+      },
+      "settings": {
+        "sound": true,
+        "haptics": true,
+        "reduceMotion": "system",
+        "goalMin": null,
+        "scene": "rain",
+        "volume": 0.6,
+        "muted": false
+      }
+    }
+  },
+  "scene-keeps-time-벽난로": {
+    "passed": true,
+    "evidence": {
+      "active": {
+        "id": "ss_mus43ojnddau0j",
+        "startedAt": "2026-10-03T08:10:23.363Z",
+        "accumulatedMs": 0,
+        "runningSince": 1791015023363,
+        "lastBeat": 1791015038402
+      },
+      "pending": null,
+      "ms": 18382,
+      "audio": {
+        "scene": "fire",
+        "playing": false,
+        "error": null
+      },
+      "settings": {
+        "sound": true,
+        "haptics": true,
+        "reduceMotion": "system",
+        "goalMin": null,
+        "scene": "fire",
+        "volume": 0.6,
+        "muted": false
+      }
+    }
+  },
+  "scene-keeps-time-조용한 방": {
+    "passed": true,
+    "evidence": {
+      "active": {
+        "id": "ss_mus43ojnddau0j",
+        "startedAt": "2026-10-03T08:10:23.363Z",
+        "accumulatedMs": 0,
+        "runningSince": 1791015023363,
+        "lastBeat": 1791015053644
+      },
+      "pending": null,
+      "ms": 33509,
+      "audio": {
+        "scene": "room",
+        "playing": false,
+        "error": null
+      },
+      "settings": {
+        "sound": true,
+        "haptics": true,
+        "reduceMotion": "system",
+        "goalMin": null,
+        "scene": "room",
+        "volume": 0.6,
+        "muted": false
+      }
+    }
+  },
+  "scene-keeps-time-창가의 빗소리": {
+    "passed": true,
+    "evidence": {
+      "active": {
+        "id": "ss_mus43ojnddau0j",
+        "startedAt": "2026-10-03T08:10:23.363Z",
+        "accumulatedMs": 0,
+        "runningSince": 1791015023363,
+        "lastBeat": 1791015078624
+      },
+      "pending": null,
+      "ms": 56290,
+      "audio": {
+        "scene": "rain",
+        "playing": true,
+        "error": null
+      },
+      "settings": {
+        "sound": true,
+        "haptics": true,
+        "reduceMotion": "system",
+        "goalMin": null,
+        "scene": "rain",
+        "volume": 0.6,
+        "muted": false
+      }
+    }
+  },
+  "fold-keeps-running": {
+    "passed": true,
+    "evidence": {
+      "active": {
+        "id": "ss_mus43ojnddau0j",
+        "startedAt": "2026-10-03T08:10:23.363Z",
+        "accumulatedMs": 0,
+        "runningSince": 1791015023363,
+        "lastBeat": 1791015090143
+      },
+      "pending": null,
+      "ms": 70653,
+      "audio": {
+        "scene": "rain",
+        "playing": true,
+        "error": null
+      },
+      "settings": {
+        "sound": true,
+        "haptics": true,
+        "reduceMotion": "system",
+        "goalMin": null,
+        "scene": "rain",
+        "volume": 0.6,
+        "muted": false
+      }
+    }
+  },
+  "pause-excludes-time": {
+    "passed": true,
+    "evidence": [
+      {
+        "active": {
+          "id": "ss_mus43ojnddau0j",
+          "startedAt": "2026-10-03T08:10:23.363Z",
+          "accumulatedMs": 79973,
+          "runningSince": null,
+          "lastBeat": 1791015103336
+        },
+        "pending": null,
+        "ms": 79973,
+        "audio": {
+          "scene": "rain",
+          "playing": true,
+          "error": null
+        },
+        "settings": {
+          "sound": true,
+          "haptics": true,
+          "reduceMotion": "system",
+          "goalMin": null,
+          "scene": "rain",
+          "volume": 0.6,
+          "muted": false
+        }
+      },
+      {
+        "active": {
+          "id": "ss_mus43ojnddau0j",
+          "startedAt": "2026-10-03T08:10:23.363Z",
+          "accumulatedMs": 79973,
+          "runningSince": null,
+          "lastBeat": 1791015103336
+        },
+        "pending": null,
+        "ms": 79973,
+        "audio": {
+          "scene": "rain",
+          "playing": true,
+          "error": null
+        },
+        "settings": {
+          "sound": true,
+          "haptics": true,
+          "reduceMotion": "system",
+          "goalMin": null,
+          "scene": "rain",
+          "volume": 0.6,
+          "muted": false
+        }
+      }
+    ]
+  },
+  "linking-preserves-timer": {
+    "passed": true,
+    "evidence": {
+      "active": {
+        "id": "ss_mus43ojnddau0j",
+        "myBookId": "bk_mus3bm5cgthyft",
+        "startedAt": "2026-10-03T08:10:23.363Z",
+        "accumulatedMs": 79973,
+        "runningSince": null,
+        "lastBeat": 1791015103336
+      },
+      "pending": null,
+      "ms": 79973,
+      "audio": {
+        "scene": "rain",
+        "playing": true,
+        "error": null
+      },
+      "settings": {
+        "sound": true,
+        "haptics": true,
+        "reduceMotion": "system",
+        "goalMin": null,
+        "scene": "rain",
+        "volume": 0.6,
+        "muted": false
+      }
+    }
+  },
+  "tab-return-preserves-timer": {
+    "passed": true,
+    "evidence": {
+      "active": {
+        "id": "ss_mus43ojnddau0j",
+        "myBookId": "bk_mus3bm5cgthyft",
+        "startedAt": "2026-10-03T08:10:23.363Z",
+        "accumulatedMs": 79973,
+        "runningSince": 1791015125765,
+        "lastBeat": 1791015147700
+      },
+      "pending": null,
+      "ms": 101950,
+      "audio": {
+        "scene": "rain",
+        "playing": true,
+        "error": null
+      },
+      "settings": {
+        "sound": true,
+        "haptics": true,
+        "reduceMotion": "system",
+        "goalMin": null,
+        "scene": "rain",
+        "volume": 0.6,
+        "muted": false
+      }
+    }
+  },
+  "finish-keeps-unlinked-draft": {
+    "passed": true,
+    "evidence": {
+      "active": null,
+      "pending": {
+        "id": "ss_mus43ojnddau0j",
+        "startedAt": "2026-10-03T08:10:23.363Z",
+        "endedAt": "2026-10-03T08:12:40.868Z",
+        "durationMs": 115076
+      },
+      "ms": 0,
+      "audio": {
+        "scene": "rain",
+        "playing": true,
+        "error": null
+      },
+      "settings": {
+        "sound": true,
+        "haptics": true,
+        "reduceMotion": "system",
+        "goalMin": null,
+        "scene": "rain",
+        "volume": 0.6,
+        "muted": false
+      }
+    }
+  },
+  "connect-on-finish-and-save": {
+    "passed": true,
+    "evidence": {
+      "roundId": "rd_mus3bm5gjqcc4q",
+      "createdAt": "2026-10-03T08:12:56.483Z",
+      "updatedAt": "2026-10-03T08:12:56.483Z",
+      "id": "ss_mus43ojnddau0j",
+      "myBookId": "bk_mus3bm5cgthyft",
+      "startedAt": "2026-10-03T08:10:23.363Z",
+      "endedAt": "2026-10-03T08:12:40.868Z",
+      "durationMs": 115076
+    }
+  },
+  "return-to-idle-after-save": {
+    "passed": true,
+    "evidence": {
+      "active": null,
+      "pending": null,
+      "ms": 0,
+      "audio": {
+        "scene": null,
+        "playing": false,
+        "error": null
+      },
+      "settings": {
+        "sound": true,
+        "haptics": true,
+        "reduceMotion": "system",
+        "goalMin": null,
+        "scene": "rain",
+        "volume": 0.6,
+        "muted": false
+      }
+    }
+  }
+}
