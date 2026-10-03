@@ -1,0 +1,24 @@
+{
+  "label": "after-fold",
+  "durationSeconds": 11.51,
+  "metrics": {
+    "Total frames rendered": "11",
+    "Janky frames": "10 (90.91%)",
+    "Janky frames (legacy)": "7 (63.64%)",
+    "50th percentile": "36ms",
+    "90th percentile": "53ms",
+    "95th percentile": "53ms",
+    "99th percentile": "53ms",
+    "Number Missed Vsync": "0",
+    "Number Slow UI thread": "9",
+    "Number Slow bitmap uploads": "1",
+    "50th gpu percentile": "10ms",
+    "90th gpu percentile": "18ms",
+    "95th gpu percentile": "22ms",
+    "99th gpu percentile": "22ms"
+  },
+  "workload": "Warm up; 4 fold/unfold cycles, native taps and 1200ms waits. End screen checked for the fold control. Same 11 books and QA fixtures. Only Scene, PaperSurface and BookmarkCard swapped against turn-start baseline.",
+  "environment": "Android API36 emulator; Expo Go development bundle; QA polling. One sample per version, not a device-wide speed claim.",
+  "validForComparison": true,
+  "summaryScope": "First aggregate block in dumpsys gfxinfo. Includes emulator overhead; small sample and mixed p50/p95 results do not establish a general speedup."
+}

@@ -1,0 +1,24 @@
+{
+  "label": "after",
+  "durationSeconds": 40.92,
+  "metrics": {
+    "Total frames rendered": "42",
+    "Janky frames": "32 (76.19%)",
+    "Janky frames (legacy)": "33 (78.57%)",
+    "50th percentile": "53ms",
+    "90th percentile": "450ms",
+    "95th percentile": "650ms",
+    "99th percentile": "950ms",
+    "Number Missed Vsync": "9",
+    "Number Slow UI thread": "23",
+    "Number Slow bitmap uploads": "2",
+    "50th gpu percentile": "11ms",
+    "90th gpu percentile": "4950ms",
+    "95th gpu percentile": "4950ms",
+    "99th gpu percentile": "4950ms"
+  },
+  "workload": "Warm up; 4 cycles of fold/unfold/scene sheet/back/sound sheet/back; coordinate taps and 700ms waits. Same 11 books and QA fixtures. Only Scene, PaperSurface and BookmarkCard swapped against turn-start baseline.",
+  "environment": "Android API36 emulator; Expo Go development bundle; QA polling. One sample per version, not a device-wide speed claim.",
+  "validForComparison": false,
+  "reason": "Unpaired initial workload; the after run navigated out of the timer while closing overlays. Replaced by guarded before-fold/after-fold captures."
+}

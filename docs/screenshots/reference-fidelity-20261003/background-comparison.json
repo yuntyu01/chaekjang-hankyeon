@@ -1,0 +1,56 @@
+{
+  "method": "Median RGB in blank left-edge patches at x=4..20 and y=200/1000/1750, normalized to 853px width. No image modifications.",
+  "samples": {
+    "reference": {
+      "top": [
+        254.0,
+        250.0,
+        244.0
+      ],
+      "middle": [
+        254.0,
+        250.0,
+        244.0
+      ],
+      "bottom": [
+        254.0,
+        250.0,
+        244.0
+      ]
+    },
+    "beforeBackgroundCorrection": {
+      "top": [
+        253.0,
+        249.0,
+        243.0
+      ],
+      "middle": [
+        252.0,
+        246.0,
+        238.0
+      ],
+      "bottom": [
+        250.0,
+        244.0,
+        236.0
+      ]
+    },
+    "final": {
+      "top": [
+        254.0,
+        249.0,
+        243.0
+      ],
+      "middle": [
+        254.0,
+        249.0,
+        243.0
+      ],
+      "bottom": [
+        254.0,
+        249.0,
+        243.0
+      ]
+    }
+  }
+}

@@ -1,0 +1,14 @@
+{
+  "success": true,
+  "suitesPassed": 31,
+  "suitesTotal": 31,
+  "testsPassed": 277,
+  "testsTotal": 277,
+  "typecheck": "passed",
+  "commands": [
+    "npm.cmd run typecheck",
+    "npm.cmd test -- --runInBand"
+  ],
+  "environment": "Existing working tree on box-model, including preserved preexisting changes.",
+  "scope": "277 tests passed after material, favorite-store and scene changes. Later static background corrections and direct sharing were typechecked; direct sharing and cancellation were also checked in the native app."
+}

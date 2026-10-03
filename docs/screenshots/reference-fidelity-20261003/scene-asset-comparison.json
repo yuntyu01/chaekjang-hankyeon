@@ -1,0 +1,21 @@
+{
+  "v2": {
+    "size": [
+      1051,
+      1497
+    ],
+    "fileBytes": 1955102,
+    "decodedRgbaBytes": 6293388,
+    "illustrationRgbMeanAbsoluteError": 32.085
+  },
+  "v3": {
+    "size": [
+      853,
+      1843
+    ],
+    "fileBytes": 1460859,
+    "decodedRgbaBytes": 6288316,
+    "illustrationRgbMeanAbsoluteError": 5.318
+  },
+  "method": "Art-only color difference at 853px width; y=220..1199, avoiding all native labels and control panel. v2 resized to the reference illustrated region; v3 kept at its original canvas scale. Not a screen similarity percentage."
+}
