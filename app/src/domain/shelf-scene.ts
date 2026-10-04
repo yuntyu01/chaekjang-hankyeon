@@ -1,20 +1,15 @@
-// 선반 한 칸의 책 프레임 계산(순수). 렌더링·터치 판정·그림자가 모두 이 결과를 쓴다.
-// 좌표: 설계 단위, x는 선반 판 안쪽 왼쪽 끝 기준, y는 아래로 증가하며 선반 바닥이 SHELF.clearHeight.
-import {
-  bookHeight,
-  bookThickness,
-  FRONT_SIDE,
-  frontWidth,
-  SHELF,
-  stackOffsets,
-  LYING_BACK,
-  TOP_FACE,
-} from './geometry';
-import { itemPositions, placementOf, shelfItems, type BookMap } from './layout-engine';
-import { contactAngle, firstContact, MAX_LEAN, overlaps } from './lean';
+// 선반 한 칸의 책 프레임 계산(순수). 프레임 = 선반 공간의 3D 상자(카메라와 무관). 그리기·터치·그림자는 이 상자를
+// 매 프레임 같은 카메라로 투영해 쓴다(투영 결과를 여기 저장하지 않는다).
+import { boxSize, collide, CONTACT, frontPoly, hull, solveLean, type Placed } from './box';
+import { corners, fromPlaced, type Book3 } from './book3';
+import { bookViewCam } from './book-view';
+import { project, type Cam, type Point } from './camera';
+import { SHELF_X0, SHELF_X1 } from './geometry';
+import { itemBoxes, itemPositions, placementOf, shelfItems, type BookMap } from './layout-engine';
+import { firstContact, MAX_LEAN } from './lean';
 import type { Book, Pose, ShelfLayout, Tilt } from './types';
 
-export type Point = { x: number; y: number };
+export type { Point };
 
 export type BookFrame = {
   bookId: string;
@@ -22,149 +17,69 @@ export type BookFrame = {
   shelfId: string;
   pose: Pose;
   tilt: Tilt;
-  // 회전 전 렌더 박스
-  left: number;
-  top: number;
-  width: number;
-  height: number;
-  rotate: number;
-  origin: 'left bottom' | 'right bottom';
-  // 실제 책 윤곽(회전 후). 터치 판정과 그림자에 쓴다. 그림자 영역은 포함하지 않는다.
-  poly: Point[];
   stackIndex: number;
   // 기대려 했지만 닿을 곳이 없어(또는 선반 밖이라) 바로 선 책
   leanFailed?: boolean;
   // 기댄 상대 책
   leanOn?: string;
+  // 선반 공간 상자(그리기·충돌의 원본). 기댄 책은 기울어진 상자(angle)
+  box: Placed;
 };
 
 export type ItemFrame = { key: string; x: number; width: number; bookIds: string[] };
 
-const FLOOR = SHELF.clearHeight;
-const rad = (d: number) => (d * Math.PI) / 180;
+// 선반 판 좌우 끝(선반 공간 x). 이 밖으로 쓰러지거나 지나가면 안 된다(판 3D 상자와 같은 값).
+export const PLANK_BOUNDS = { min: SHELF_X0, max: SHELF_X1 };
 
-function rotateAround(p: Point, c: Point, deg: number): Point {
-  const t = rad(deg);
-  const dx = p.x - c.x;
-  const dy = p.y - c.y;
-  return { x: c.x + dx * Math.cos(t) - dy * Math.sin(t), y: c.y + dx * Math.sin(t) + dy * Math.cos(t) };
+function frameOf(p: Placed, bookId: string, itemKey: string, shelfId: string, tilt: Tilt, stackIndex: number): BookFrame {
+  return { bookId, itemKey, shelfId, pose: p.pose, tilt, stackIndex, box: p };
 }
 
-function rectPoly(left: number, top: number, w: number, h: number): Point[] {
-  return [
-    { x: left, y: top },
-    { x: left + w, y: top },
-    { x: left + w, y: top + h },
-    { x: left, y: top + h },
-  ];
-}
-
-// 세운 책 기울이기: 발(footX)은 제자리, 기대는 쪽 바닥 모서리를 축으로 angle(도, 부호=방향)만큼 돌린다.
-export function leanFrame(book: Book, footX: number, angle: number) {
-  const w = bookThickness(book);
-  const h = bookHeight(book);
-  const left = footX;
-  const top = FLOOR - h;
-  const origin = angle > 0 ? ('right bottom' as const) : ('left bottom' as const);
-  const pivot = { x: angle > 0 ? left + w : left, y: FLOOR };
-  const base = rectPoly(left, top, w, h);
-  let poly = angle ? base.map((p) => rotateAround(p, pivot, angle)) : base;
-  const dy = FLOOR - Math.max(...poly.map((p) => p.y));
-  poly = poly.map((p) => ({ x: p.x, y: p.y + dy }));
-  return { left, top: top + dy, width: w, height: h, rotate: angle || 0, origin, poly };
-}
-
-// 예전 테스트·호출 호환: 고정 각도로 기울인 모양
-export function tiltedFrame(footX: number, w: number, h: number, tilt: Tilt) {
-  const t = rad(Math.abs(tilt));
-  const top = FLOOR - h;
-  if (tilt === 0) return { left: footX, top, rotate: 0, origin: 'left bottom' as const, poly: rectPoly(footX, top, w, h) };
-  const left = tilt > 0 ? footX - w * (1 - Math.cos(t)) : footX + h * Math.sin(t);
-  const pivot = tilt > 0 ? { x: left + w, y: FLOOR } : { x: left, y: FLOOR };
-  const poly = rectPoly(left, top, w, h).map((p) => rotateAround(p, pivot, tilt));
-  return { left, top, rotate: tilt, origin: tilt > 0 ? ('right bottom' as const) : ('left bottom' as const), poly };
-}
-
-// 선반 판 좌우 끝(장면 좌표). 이 밖으로 쓰러지면 바로 선다.
-export const PLANK_BOUNDS = { min: -SHELF.sideMargin + 2, max: 390 - SHELF.sideMargin - 2 };
-
+// 선반 한 칸의 상자 배치와 프레임. 충돌·기대기는 선반 공간(가로·깊이·회전).
 export function computeShelf(layout: ShelfLayout, books: BookMap, shelfId: string) {
   const positions = itemPositions(shelfItems(layout, shelfId), layout, books);
   const frames: BookFrame[] = [];
   const items: ItemFrame[] = [];
   for (const { item, x, width } of positions) {
     items.push({ key: item.key, x, width, bookIds: item.bookIds });
-    if (item.stacked) {
-      let bottom = FLOOR - LYING_BACK;
-      const offs = stackOffsets(item.bookIds.map((id) => books[id]));
-      item.bookIds.forEach((id, i) => {
-        const b = books[id];
-        const len = bookHeight(b);
-        const t = bookThickness(b);
-        const left = x + offs[i];
-        const top = bottom - t - TOP_FACE;
-        frames.push({
-          bookId: id, itemKey: item.key, shelfId, pose: 'horizontal', tilt: 0,
-          left, top, width: len, height: t + TOP_FACE, rotate: 0, origin: 'left bottom',
-          poly: rectPoly(left, top, len, t + TOP_FACE), stackIndex: i,
-        });
-        bottom -= t;
-      });
-      continue;
-    }
-    const id = item.bookIds[0];
-    const b = books[id];
-    const p = placementOf(layout, id)!;
-    if (p.pose === 'spine') {
-      const f = leanFrame(b, x, 0);
-      frames.push({ bookId: id, itemKey: item.key, shelfId, pose: 'spine', tilt: p.tilt, stackIndex: 0, ...f });
-    } else if (p.pose === 'horizontal') {
-      const len = bookHeight(b);
-      const hh = bookThickness(b) + TOP_FACE;
-      frames.push({
-        bookId: id, itemKey: item.key, shelfId, pose: 'horizontal', tilt: 0,
-        left: x, top: FLOOR - LYING_BACK - hh, width: len, height: hh, rotate: 0, origin: 'left bottom',
-        poly: rectPoly(x, FLOOR - LYING_BACK - hh, len, hh), stackIndex: 0,
-      });
-    } else {
-      const w = frontWidth(b) + FRONT_SIDE;
-      const h = bookHeight(b);
-      frames.push({
-        bookId: id, itemKey: item.key, shelfId, pose: 'front', tilt: 0,
-        left: x, top: FLOOR - h, width: w, height: h, rotate: 0, origin: 'left bottom',
-        poly: rectPoly(x, FLOOR - h, w, h), stackIndex: 0,
-      });
-    }
+    itemBoxes(item, layout, books, x).forEach((box, i) => {
+      const p = placementOf(layout, box.bookId)!;
+      frames.push(frameOf(box, box.bookId, item.key, shelfId, item.stacked || p.pose !== 'spine' ? 0 : p.tilt, item.stacked ? i : 0));
+    });
   }
-  solveLeans(frames, books, layout);
+  solveLeans(frames, layout);
   return { frames, items };
 }
 
-const inside = (poly: Point[]) => poly.every((p) => p.x >= PLANK_BOUNDS.min - 0.01 && p.x <= PLANK_BOUNDS.max + 0.01);
+// 앞면 윤곽(깊이 밀림 없이 선반 공간 x, 바닥 0·위가 -). 테스트의 접촉·겹침 확인용
+export function frontOutline(f: BookFrame): Point[] {
+  return frontPoly(f.box).map((q) => ({ x: q.x, y: -q.y }));
+}
 
-// 기대는 책들의 각도. 저장된 결과(각도·상대)가 아직 맞으면 그대로 쓰고(사용자가 꾸민 모습 유지),
-// 상대가 바뀌었거나 더 이상 닿지 않거나 파고들면 옆 책의 실제 윤곽에 닿을 때까지 다시 구한다.
-// 순서: 오른쪽으로 기대는 책은 오른쪽 이웃이 먼저 정해져야 하므로 오른쪽부터, 왼쪽으로 기대는 책은 왼쪽부터.
-// 서로 마주 기대거나 연쇄로 기대는 경우를 위해 몇 번 반복한다.
-function solveLeans(frames: BookFrame[], books: BookMap, layout: ShelfLayout) {
+const inside = (poly: { x: number }[]) => poly.every((p) => p.x >= PLANK_BOUNDS.min - 0.01 && p.x <= PLANK_BOUNDS.max + 0.01);
+
+// 기대는 책들의 각도(선반 공간). 저장된 결과(각도·상대)가 아직 맞으면 그대로 쓰고(사용자가 꾸민 모습 유지),
+// 상대가 바뀌었거나 더 이상 닿지 않거나 파고들면 옆 상자에 처음 닿는 각도를 다시 구한다(0.5도 탐색 + 이분 탐색).
+// 깊이 구간이 겹치는 상자만 장애물이다(뒤에 놓인 눕힌 책은 화면에서 겹쳐도 닿지 않는다).
+// 순서: 오른쪽으로 기대는 책은 오른쪽 이웃부터, 왼쪽으로 기대는 책은 왼쪽부터. 연쇄를 위해 몇 번 반복한다.
+function solveLeans(frames: BookFrame[], layout: ShelfLayout) {
   const leaners = frames.filter((f) => f.pose === 'spine' && f.tilt !== 0);
   if (!leaners.length) return;
-  const foot = new Map(leaners.map((f) => [f.bookId, f.left]));
-  const ordered = [...leaners].sort((a, b) => a.left - b.left);
-  // 마주 보고 기대는 두 권(오른쪽으로 기대는 책 바로 오른쪽에 왼쪽으로 기대는 책)은 같은 각도로 함께 기울여 처음 닿는 곳에서 멈춘다.
-  // 한 권씩 풀면 먼저 푼 책이 빈틈을 다 차지하기 때문이다.
+  const set = (f: BookFrame, angle: number, extra: Partial<BookFrame>) => {
+    Object.assign(f, { box: { ...f.box, angle } }, extra);
+  };
+  const ordered = [...leaners].sort((a, b) => a.box!.x - b.box!.x);
+  // 마주 보고 기대는 두 권은 같은 각도로 함께 기울여 처음 닿는 곳에서 멈춘다(한 권씩 풀면 먼저 푼 책이 빈틈을 다 차지한다).
   const paired = new Set<string>();
-  const byLeft = [...frames].filter((f) => f.stackIndex === 0).sort((a, b) => a.left - b.left);
+  const byLeft = [...frames].filter((f) => f.stackIndex === 0).sort((a, b) => a.box!.x - b.box!.x);
   for (let i = 0; i + 1 < byLeft.length; i++) {
     const a = byLeft[i];
     const b = byLeft[i + 1];
     if (!(a.pose === 'spine' && b.pose === 'spine' && a.tilt > 0 && b.tilt < 0)) continue;
-    const ba = books[a.bookId];
-    const bb = books[b.bookId];
-    const c = firstContact((d) => overlaps(leanFrame(ba, a.left, d).poly, leanFrame(bb, b.left, -d).poly));
+    const c = firstContact((d) => collide({ ...a.box!, angle: d }, { ...b.box!, angle: -d }, CONTACT));
     if (!c.found || c.angle === 0) continue;
-    Object.assign(a, leanFrame(ba, a.left, c.angle), { leanFailed: false, leanOn: b.bookId });
-    Object.assign(b, leanFrame(bb, b.left, -c.angle), { leanFailed: false, leanOn: a.bookId });
+    set(a, c.angle, { leanFailed: false, leanOn: b.bookId });
+    set(b, -c.angle, { leanFailed: false, leanOn: a.bookId });
     paired.add(a.bookId).add(b.bookId);
   }
   const passes = [ordered.filter((f) => f.tilt < 0), [...ordered].reverse().filter((f) => f.tilt > 0)].map((pass) =>
@@ -173,53 +88,45 @@ function solveLeans(frames: BookFrame[], books: BookMap, layout: ShelfLayout) {
   for (let iter = 0; iter < 3; iter++) {
     for (const pass of passes) {
       for (const f of pass) {
-        const dir = Math.sign(f.tilt);
-        const book = books[f.bookId];
-        const x0 = foot.get(f.bookId)!;
-        const mid = x0 + bookThickness(book) / 2;
-        const side = frames
-          .filter((o) => o !== f)
-          .filter((o) => (dir > 0 ? Math.max(...o.poly.map((p) => p.x)) > mid : Math.min(...o.poly.map((p) => p.x)) < mid));
-        const obstacles = side.map((o) => o.poly);
-        const at = (deg: number) => leanFrame(book, x0, dir * deg).poly;
+        const dir = Math.sign(f.tilt) as -1 | 1;
+        const base = { ...f.box, angle: 0 };
+        const others = frames.filter((o) => o !== f).map((o) => o.box!);
         const stored = placementOf(layout, f.bookId)?.lean;
-        const partner = stored && side.find((o) => o.bookId === stored.on);
-        if (
-          stored &&
-          partner &&
-          Math.sign(stored.angle) === dir &&
-          Math.abs(stored.angle) <= MAX_LEAN &&
-          !obstacles.some((o) => overlaps(at(Math.abs(stored.angle)), o)) &&
-          overlaps(at(Math.abs(stored.angle) + 0.6), partner.poly) &&
-          inside(at(Math.abs(stored.angle)))
-        ) {
-          Object.assign(f, leanFrame(book, x0, stored.angle), { leanFailed: false, leanOn: stored.on });
-          continue;
+        const partner = stored && others.find((o) => o.bookId === stored.on);
+        if (stored && partner && Math.sign(stored.angle) === dir && Math.abs(stored.angle) <= MAX_LEAN) {
+          const q = { ...base, angle: stored.angle };
+          const touching = collide({ ...base, angle: stored.angle + dir * 0.6 }, partner, CONTACT);
+          if (touching && !others.some((o) => collide(q, o)) && inside(frontPoly(q))) {
+            set(f, stored.angle, { leanFailed: false, leanOn: stored.on });
+            continue;
+          }
         }
-        const r = contactAngle(at, obstacles, PLANK_BOUNDS);
-        const on = r.supported && r.angle > 0 ? side.find((o) => overlaps(at(r.angle + 0.6), o.poly))?.bookId : undefined;
-        Object.assign(f, leanFrame(book, x0, dir * r.angle), { leanFailed: !r.supported, leanOn: on });
+        const r = solveLean(base, dir, others, PLANK_BOUNDS);
+        set(f, r.angle, { leanFailed: !r.supported, leanOn: r.on });
       }
     }
   }
 }
 
 // 확정할 때 기대기 결과를 저장한다. 기댈 곳이 없던 책은 놓은 자리에서 바로 선다(tilt 0).
-export function withLeans(layout: ShelfLayout, books: BookMap): ShelfLayout {
+// only: 그 선반의 기대기만 다시 푼다(나머지 선반은 그대로 둔다)
+export function withLeans(layout: ShelfLayout, books: BookMap, only?: string): ShelfLayout {
   const result = new Map<string, BookFrame>();
-  for (const shelf of layout.shelves) for (const f of computeShelf(layout, books, shelf.id).frames) result.set(f.bookId, f);
+  for (const shelf of layout.shelves) if (!only || shelf.id === only) for (const f of computeShelf(layout, books, shelf.id).frames) result.set(f.bookId, f);
   return {
     ...layout,
     placements: layout.placements.map((p) => {
+      if (only && p.shelfId !== only) return p;
       const f = result.get(p.bookId);
       if (!f || p.pose !== 'spine' || p.tilt === 0) return p.lean ? { ...p, lean: undefined } : p;
       if (f.leanFailed) return { ...p, tilt: 0 as Tilt, lean: undefined };
-      return { ...p, lean: f.leanOn ? { angle: Math.round(f.rotate * 1000) / 1000, on: f.leanOn } : undefined };
+      return { ...p, lean: f.leanOn ? { angle: Math.round(f.box.angle * 1000) / 1000, on: f.leanOn } : undefined };
     }),
   };
 }
 
 export function pointInPoly(pt: Point, poly: Point[]) {
+  'worklet';
   let inside = false;
   for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
     const a = poly[i];
@@ -229,16 +136,32 @@ export function pointInPoly(pt: Point, poly: Point[]) {
   return inside;
 }
 
-// 위에 그려진 책(쌓기 위쪽)을 먼저 맞힌다. slop은 손가락 여유(설계 단위).
-export function hitTest(frames: BookFrame[], pt: Point, slop = 3): BookFrame | null {
-  const ordered = [...frames].sort((a, b) => b.stackIndex - a.stackIndex);
-  for (const f of ordered) if (pointInPoly(pt, f.poly)) return f;
-  for (const f of ordered) {
-    const xs = f.poly.map((p) => p.x);
-    const ys = f.poly.map((p) => p.y);
-    if (pt.x >= Math.min(...xs) - slop && pt.x <= Math.max(...xs) + slop && pt.y >= Math.min(...ys) - slop && pt.y <= Math.max(...ys) + slop) {
-      return f;
-    }
-  }
-  return null;
+// 상자를 카메라로 투영한 외곽(설계 단위, 원점 = 책 기준선 왼쪽 끝)
+export function outlineOf(cam: Cam, b: Book3): Point[] {
+  'worklet';
+  cam = bookViewCam(cam, b);
+  const out: Point[] = [];
+  for (const c of corners(b)) out.push(project(cam, c));
+  return hull(out);
+}
+
+// 프레임의 화면 외곽 경계 상자(설계 단위): 접근성 칸·정보 상자 자리처럼 정지한 자세로 충분한 곳
+export function frameBBox(f: BookFrame, cam: Cam) {
+  const poly = outlineOf(cam, fromPlaced(f.box));
+  const xs = poly.map((p) => p.x);
+  const ys = poly.map((p) => p.y);
+  const minX = Math.min(...xs);
+  const minY = Math.min(...ys);
+  return { minX, minY, width: Math.max(...xs) - minX, height: Math.max(...ys) - minY };
+}
+
+// 선반 밖에서 한 권만 그릴 때(서랍·상세): 똑바로 선 상자 하나의 프레임. 바닥 = FLOOR, 왼쪽 = 0.
+export function standaloneFrame(book: Book, pose: Pose): BookFrame {
+  const box: Placed = { bookId: book.id, pose, size: boxSize(book, pose), x: 0, y: 0, z: 0, angle: 0 };
+  return frameOf(box, book.id, book.id, '', 0, 0);
+}
+
+// 선반 한 칸의 3D 자세(그리기·전환 경로의 입력)
+export function bodiesOf(layout: ShelfLayout, books: BookMap, shelfId: string): Book3[] {
+  return computeShelf(layout, books, shelfId).frames.map((f) => fromPlaced(f.box));
 }

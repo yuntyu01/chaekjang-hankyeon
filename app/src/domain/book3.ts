@@ -1,0 +1,418 @@
+// 책 상자의 3D 자세(순수, UI 스레드 워클릿에서도 쓴다).
+// 책 좌표: 세운 책(책등이 앞)을 기준으로 x = 두께 T(왼쪽 뒤표지 → 오른쪽 앞표지), y = 세로 H(아래 → 위), z = 표지 폭 W(앞 책등 → 뒤 책배).
+// 방향(합성 순서 고정): ① 책 세로축으로 yaw(+90 = 앞표지가 앞으로 오고 책등은 왼쪽) → ② 앞뒤축으로 roll(+ = 시계 방향, 오른쪽으로 기울기)
+//   → ③ 선반의 수직축으로 spin(+ = 오른쪽 끝이 벽 쪽으로 물러남, 위에서 보아 반시계). 기대기(roll)·자세(yaw/roll)·비스듬히 놓기(spin)는 따로 다룬다.
+//   세움 = (roll 기대기 각, yaw 0), 눕힘 = (roll -90: 책등이 앞, 앞표지가 위, 뒤표지가 받침, 머리가 왼쪽), 표지 전시 = (roll 0, yaw 90: 앞표지가 앞, 아래 면이 받침).
+// 선반 공간(월드): x 오른쪽, y 위, z 벽 쪽. 월드 점 = R·책좌표 + t.
+// 워클릿은 만들어질 때 쓰는 함수를 붙잡으므로, 쓰이는 함수를 먼저 정의한다.
+import type { Cam, Vec3 } from './camera';
+import type { Placed } from './box';
+import type { Pose } from './types';
+
+export type { Cam, Vec3 };
+export type Dims = { T: number; H: number; W: number };
+export type Book3 = { id: string; dims: Dims; roll: number; yaw: number; t: Vec3; spin?: number; pitch?: number };
+
+// ④ pitch: 선반 좌우축(월드 x)으로 뒤로 젖히기(+ = 윗부분이 벽 쪽으로). 표지 전시 책이 벽에 기댈 때. spin보다 먼저.
+export function rot(roll: number, yaw: number, v: Vec3, spin = 0, pitch = 0): Vec3 {
+  'worklet';
+  if (spin || pitch) {
+    let r = rot(roll, yaw, v, 0, 0);
+    if (pitch) {
+      const c = (pitch * Math.PI) / 180;
+      const cs = Math.cos(c);
+      const sn = Math.sin(c);
+      r = { x: r.x, y: r.y * cs - r.z * sn, z: r.z * cs + r.y * sn };
+    }
+    if (spin) {
+      const c = (spin * Math.PI) / 180;
+      const cs = Math.cos(c);
+      const sn = Math.sin(c);
+      r = { x: r.x * cs - r.z * sn, y: r.y, z: r.x * sn + r.z * cs };
+    }
+    return r;
+  }
+  const b = (yaw * Math.PI) / 180;
+  const cb = Math.cos(b);
+  const sb = Math.sin(b);
+  const x1 = v.x * cb + v.z * sb;
+  const z1 = -v.x * sb + v.z * cb;
+  const a = (-roll * Math.PI) / 180; // 시계 방향 + → 수학 각은 -
+  const ca = Math.cos(a);
+  const sa = Math.sin(a);
+  return { x: x1 * ca - v.y * sa, y: x1 * sa + v.y * ca, z: z1 };
+}
+
+export function add(a: Vec3, b: Vec3): Vec3 {
+  'worklet';
+  return { x: a.x + b.x, y: a.y + b.y, z: a.z + b.z };
+}
+
+export function sub3(a: Vec3, b: Vec3): Vec3 {
+  'worklet';
+  return { x: a.x - b.x, y: a.y - b.y, z: a.z - b.z };
+}
+
+export function toWorld(b: Book3, v: Vec3): Vec3 {
+  'worklet';
+  return add(rot(b.roll, b.yaw, v, b.spin ?? 0, b.pitch ?? 0), b.t);
+}
+
+// 꼭짓점 번호 = xi + 2*yi + 4*zi (xi: 0이면 x=0, 1이면 x=T …)
+export function cornerLocal(d: Dims, i: number): Vec3 {
+  'worklet';
+  return { x: i & 1 ? d.T : 0, y: i & 2 ? d.H : 0, z: i & 4 ? d.W : 0 };
+}
+
+export function corners(b: Book3): Vec3[] {
+  'worklet';
+  const out: Vec3[] = [];
+  for (let i = 0; i < 8; i++) out.push(toWorld(b, cornerLocal(b.dims, i)));
+  return out;
+}
+
+// 면: 책 좌표의 바깥 법선, 꼭짓점 네 개, 그림을 붙일 때의 원점·가로(U)·세로(V) 축(그림 픽셀 → 책 좌표)
+export type FaceId = 'spine' | 'cover' | 'back' | 'head' | 'tail' | 'fore';
+export const FACE_IDS: FaceId[] = ['spine', 'cover', 'back', 'head', 'tail', 'fore'];
+
+export function faceNormal(f: FaceId): Vec3 {
+  'worklet';
+  if (f === 'spine') return { x: 0, y: 0, z: -1 };
+  if (f === 'cover') return { x: 1, y: 0, z: 0 };
+  if (f === 'back') return { x: -1, y: 0, z: 0 };
+  if (f === 'head') return { x: 0, y: 1, z: 0 };
+  if (f === 'tail') return { x: 0, y: -1, z: 0 };
+  return { x: 0, y: 0, z: 1 };
+}
+
+export function faceCorners(f: FaceId): number[] {
+  'worklet';
+  if (f === 'spine') return [0, 1, 3, 2];
+  if (f === 'cover') return [1, 5, 7, 3];
+  if (f === 'back') return [0, 2, 6, 4];
+  if (f === 'head') return [2, 3, 7, 6];
+  if (f === 'tail') return [0, 4, 5, 1];
+  return [4, 6, 7, 5];
+}
+
+// 그림 좌표계(원점 = 그림 왼쪽 위, U = 그림 가로 끝까지, V = 그림 세로 끝까지). 책등: 두께×세로, 앞표지: 표지 폭×세로(책등 쪽이 왼쪽).
+export function faceFrame(d: Dims, f: 'spine' | 'cover'): { O: Vec3; U: Vec3; V: Vec3; w: number; h: number } {
+  'worklet';
+  if (f === 'spine') return { O: { x: 0, y: d.H, z: 0 }, U: { x: d.T, y: 0, z: 0 }, V: { x: 0, y: -d.H, z: 0 }, w: d.T, h: d.H };
+  return { O: { x: d.T, y: d.H, z: 0 }, U: { x: 0, y: 0, z: d.W }, V: { x: 0, y: -d.H, z: 0 }, w: d.W, h: d.H };
+}
+
+// 카메라(domain/camera, 직교 + 사선): 깊이 1이 화면 오른쪽 kx, 위 ky. 보이는 면 = 법선이 (kx, ky, -1) 쪽을 향함.
+export function facing(cam: Cam, b: Book3, f: FaceId) {
+  'worklet';
+  const n = rot(b.roll, b.yaw, faceNormal(f), b.spin ?? 0, b.pitch ?? 0);
+  const l = Math.hypot(cam.kx, cam.ky, 1);
+  return (n.x * cam.kx + n.y * cam.ky - n.z) / l;
+}
+
+// 광원(램버트): 밝기 = ambient + diffuse·(n·L), [min, max]로 제한
+export type Light = { dir: Vec3; ambient: number; diffuse: number; min: number; max: number };
+
+export function brightness(light: Light, b: Book3, f: FaceId) {
+  'worklet';
+  const n = rot(b.roll, b.yaw, faceNormal(f), b.spin ?? 0, b.pitch ?? 0);
+  const d = light.dir;
+  const l = Math.hypot(d.x, d.y, d.z) || 1;
+  const k = light.ambient + light.diffuse * ((n.x * d.x + n.y * d.y + n.z * d.z) / l);
+  return Math.max(light.min, Math.min(light.max, k));
+}
+
+// ---------- 놓인 상자(Placed, 정지 자세) ↔ 3D 자세 ----------
+
+export function dimsOf(p: Placed): Dims {
+  if (p.pose === 'spine') return { T: p.size.w, H: p.size.h, W: p.size.d };
+  if (p.pose === 'front') return { T: p.size.d, H: p.size.h, W: p.size.w };
+  return { T: p.size.h, H: p.size.w, W: p.size.d };
+}
+
+export function orientOf(pose: Pose, angle: number) {
+  'worklet';
+  if (pose === 'horizontal') return { roll: -90, yaw: 0 };
+  if (pose === 'front') return { roll: 0, yaw: 90 };
+  return { roll: angle, yaw: 0 };
+}
+
+// 회전 기준점(책 좌표): 기울기·눕히기는 기우는 쪽 바닥 모서리, 표지로 돌기는 바닥 가운데(세로 중심축)
+export function pivotLocal(d: Dims, roll: number): Vec3 {
+  'worklet';
+  return roll > 0 ? { x: d.T, y: 0, z: 0 } : { x: 0, y: 0, z: 0 };
+}
+
+export const axisLocal = (d: Dims): Vec3 => {
+  'worklet';
+  return { x: d.T / 2, y: 0, z: d.W / 2 };
+};
+
+// 놓인 상자의 원점 정의: (x, y, z) = 선반 공간에서 책이 차지하는 축 정렬 상자(AABB)의 최솟값 모서리.
+// 예외: 기댄 세운 책은 x가 "똑바로 섰을 때 왼쪽 면"이고, 기우는 쪽 바닥 모서리(발)가 제자리에 있다.
+// 표지 전시 책(뒤로 젖힘 + 좌우 돌리기). 자리·축 설명은 domain/front-pose.
+export function frontBook3(id: string, dims: Dims, qx: number, depth: number, pitch = 0, spin = 0): Book3 {
+  // 표지 전시: yaw 90(책 좌표 x = 두께 → 월드 -z, z = 표지 폭 → 월드 x)
+  const F = { x: qx, y: 0, z: depth + dims.T }; // 뒤쪽 아래 모서리 가운데(젖힘 축 위)
+  const Q = { x: qx, y: 0, z: depth + dims.T / 2 }; // 바닥 가운데(돌리기 축 위)
+  const c = (spin * Math.PI) / 180;
+  const d = { x: F.x - Q.x, z: F.z - Q.z };
+  const spun = { x: d.x * Math.cos(c) - d.z * Math.sin(c), y: 0, z: d.x * Math.sin(c) + d.z * Math.cos(c) };
+  const r = rot(0, 90, { x: 0, y: 0, z: dims.W / 2 }, spin, pitch);
+  return { id, dims, roll: 0, yaw: 90, pitch, spin, t: { x: Q.x + spun.x - r.x, y: -r.y, z: Q.z + spun.z - r.z } };
+}
+
+export function fromPlaced(p: Placed): Book3 {
+  const dims = dimsOf(p);
+  const o = orientOf(p.pose, p.angle);
+  const spin = p.pose === 'horizontal' ? p.spin ?? 0 : 0;
+  const b: Book3 = { id: p.bookId, dims, roll: o.roll, yaw: o.yaw, spin, t: { x: 0, y: 0, z: 0 } };
+  if (p.pose === 'front' && (p.pitch || p.spin)) {
+    // 뒤로 젖힘·좌우 돌리기(domain/front-pose): z = 똑바로 섰을 때 앞면, x = 상자의 왼쪽 끝(축 정렬)
+    const f = frontBook3(p.bookId, dims, 0, p.z, p.pitch ?? 0, p.spin ?? 0);
+    let minX = Infinity;
+    for (const c of corners(f)) minX = Math.min(minX, c.x);
+    f.t = { x: f.t.x + p.x - minX, y: f.t.y + p.y, z: f.t.z };
+    return f;
+  }
+  if (p.pose === 'spine' && p.angle) {
+    const foot = { x: p.angle > 0 ? p.x + p.size.w : p.x, y: p.y, z: p.z };
+    b.t = sub3(foot, rot(o.roll, o.yaw, pivotLocal(dims, o.roll)));
+    return b;
+  }
+  const c = corners(b);
+  const min = { x: Math.min(...c.map((q) => q.x)), y: Math.min(...c.map((q) => q.y)), z: Math.min(...c.map((q) => q.z)) };
+  b.t = { x: p.x - min.x, y: p.y - min.y, z: p.z - min.z };
+  return b;
+}
+
+// 선반 위(XZ 평면)에서 본 바닥·윗면 다각형: 받침·쌓기 판정용
+export function footprintXZ(b: Book3): { x: number; z: number }[] {
+  const c = corners(b);
+  const lo = Math.min(...c.map((q) => q.y));
+  const hi = Math.max(...c.map((q) => q.y));
+  const base = c.filter((q) => q.y < lo + 0.5);
+  const top = c.filter((q) => q.y > hi - 0.5);
+  const pts = (base.length >= 3 ? base : top).map((q) => ({ x: q.x, z: q.z }));
+  return hullXZ(pts);
+}
+export function topXZ(b: Book3): { x: number; z: number }[] {
+  const c = corners(b);
+  const hi = Math.max(...c.map((q) => q.y));
+  return hullXZ(c.filter((q) => q.y > hi - 0.5).map((q) => ({ x: q.x, z: q.z })));
+}
+export function topY(b: Book3) {
+  return Math.max(...corners(b).map((q) => q.y));
+}
+function hullXZ(pts: { x: number; z: number }[]) {
+  const p = [...pts].sort((a, b) => a.x - b.x || a.z - b.z);
+  if (p.length < 3) return p;
+  const cross = (o: { x: number; z: number }, a: { x: number; z: number }, b: { x: number; z: number }) => (a.x - o.x) * (b.z - o.z) - (a.z - o.z) * (b.x - o.x);
+  const lower: typeof p = [];
+  for (const q of p) {
+    while (lower.length >= 2 && cross(lower[lower.length - 2], lower[lower.length - 1], q) <= 0) lower.pop();
+    lower.push(q);
+  }
+  const upper: typeof p = [];
+  for (const q of [...p].reverse()) {
+    while (upper.length >= 2 && cross(upper[upper.length - 2], upper[upper.length - 1], q) <= 0) upper.pop();
+    upper.push(q);
+  }
+  return [...lower.slice(0, -1), ...upper.slice(0, -1)];
+}
+// 볼록 다각형 inner가 outer 안에 있는지(tol만큼 삐져나오는 것은 허용)
+export function containsXZ(outer: { x: number; z: number }[], inner: { x: number; z: number }[], tol = 0.3) {
+  for (let i = 0; i < outer.length; i++) {
+    const a = outer[i];
+    const b = outer[(i + 1) % outer.length];
+    const ex = b.x - a.x;
+    const ez = b.z - a.z;
+    const len = Math.hypot(ex, ez) || 1;
+    for (const q of inner) {
+      const cr = (ex * (q.z - a.z) - ez * (q.x - a.x)) / len; // 반시계 다각형이면 안쪽이 +
+      if (cr < -tol) return false;
+    }
+  }
+  return true;
+}
+
+// ---------- 3D 충돌(분리축, 상자 두 개) ----------
+
+function dot(a: Vec3, b: Vec3) {
+  'worklet';
+  return a.x * b.x + a.y * b.y + a.z * b.z;
+}
+
+function cross(a: Vec3, b: Vec3): Vec3 {
+  'worklet';
+  return { x: a.y * b.z - a.z * b.y, y: a.z * b.x - a.x * b.z, z: a.x * b.y - a.y * b.x };
+}
+
+export function obb(b: Book3) {
+  'worklet';
+  const d = b.dims;
+  const c = toWorld(b, { x: d.T / 2, y: d.H / 2, z: d.W / 2 });
+  return {
+    c,
+    ax: [rot(b.roll, b.yaw, { x: 1, y: 0, z: 0 }, b.spin ?? 0, b.pitch ?? 0), rot(b.roll, b.yaw, { x: 0, y: 1, z: 0 }, b.spin ?? 0, b.pitch ?? 0), rot(b.roll, b.yaw, { x: 0, y: 0, z: 1 }, b.spin ?? 0, b.pitch ?? 0)],
+    h: [d.T / 2, d.H / 2, d.W / 2],
+  };
+}
+
+// 두 상자 사이 간격(분리축 중 가장 큰 틈, 음수면 그만큼 파고듦). 맞닿음은 0 근처.
+export function gap(a: Book3, b: Book3) {
+  'worklet';
+  const A = obb(a);
+  const B = obb(b);
+  const axes: Vec3[] = [A.ax[0], A.ax[1], A.ax[2], B.ax[0], B.ax[1], B.ax[2]];
+  for (let i = 0; i < 3; i++)
+    for (let j = 0; j < 3; j++) {
+      const c = cross(A.ax[i], B.ax[j]);
+      const l = Math.hypot(c.x, c.y, c.z);
+      if (l > 1e-6) axes.push({ x: c.x / l, y: c.y / l, z: c.z / l });
+    }
+  const d = sub3(B.c, A.c);
+  let best = -Infinity;
+  for (const n of axes) {
+    const ra = A.h[0] * Math.abs(dot(A.ax[0], n)) + A.h[1] * Math.abs(dot(A.ax[1], n)) + A.h[2] * Math.abs(dot(A.ax[2], n));
+    const rb = B.h[0] * Math.abs(dot(B.ax[0], n)) + B.h[1] * Math.abs(dot(B.ax[1], n)) + B.h[2] * Math.abs(dot(B.ax[2], n));
+    const g = Math.abs(dot(d, n)) - ra - rb;
+    if (g > best) best = g;
+  }
+  return best;
+}
+
+// 깊이 키(예전 그리는 순서, 지금은 순환일 때만 쓴다):  뒤(깊이 큰) → 앞, 아래 → 위, 왼쪽 → 오른쪽
+export function depthKey(b: Book3) {
+  'worklet';
+  const c = corners(b);
+  let z = Infinity;
+  let y = Infinity;
+  let x0 = Infinity;
+  let x1 = -Infinity;
+  for (const q of c) {
+    z = Math.min(z, q.z);
+    y = Math.min(y, q.y);
+    x0 = Math.min(x0, q.x);
+    x1 = Math.max(x1, q.x);
+  }
+  const x = (x0 + x1) / 2;
+  // 뒤(깊이 큰) → 앞, 아래 → 위, 옆면이 보이는 쪽 반대편부터(오른쪽 옆면이 보이면 왼쪽 책부터: 오른쪽 이웃 앞면이 가린다)
+  // 쌓인 책(y > 0)은 받침 책보다 깊이가 조금 뒤여도 위에 얹혀 있으므로 나중에 그린다(y 가중이 깊이보다 크다)
+  return -z * 10 + y * 20 + x * 0.0001;
+}
+
+// ---------- 가림 순서(그리는 순서) ----------
+// 직교 카메라의 시선 방향(화면의 한 점으로 모이는 3D 방향, 사용자 → 벽): 화면 x = x + z·kx, 화면 y ∝ -(y + z·ky)이므로 (-kx, -ky, 1).
+// 서로 파고들지 않는 두 볼록 상자는 분리 평면으로 나뉘고, 시선이 먼저 지나는 쪽(카메라 쪽)이 앞이다.
+// 반환: -1 = a가 앞, 1 = b가 앞, 0 = 화면에서 겹칠 수 없어 상관없음. 살짝 파고든(맞닿은) 경우는 가장 덜 파고든 축으로 판단한다.
+export function frontOf(a: Book3, b: Book3, cam: Cam): number {
+  'worklet';
+  const A = obb(a);
+  const B = obb(b);
+  const axes: Vec3[] = [A.ax[0], A.ax[1], A.ax[2], B.ax[0], B.ax[1], B.ax[2]];
+  for (let i = 0; i < 3; i++)
+    for (let j = 0; j < 3; j++) {
+      const c = cross(A.ax[i], B.ax[j]);
+      const l = Math.hypot(c.x, c.y, c.z);
+      if (l > 1e-6) axes.push({ x: c.x / l, y: c.y / l, z: c.z / l });
+    }
+  const v = { x: -cam.kx, y: -cam.ky, z: 1 };
+  const d = sub3(B.c, A.c);
+  // 나누는 축 가운데 시선과 가장 덜 나란한 것(판단이 가장 안정적)을 고른다. 나누는 축이 없으면 가장 덜 파고든 축.
+  let best = -Infinity;
+  let pick = 0;
+  let bestSep = -Infinity;
+  let pickSep = 0;
+  for (const n of axes) {
+    const ra = A.h[0] * Math.abs(dot(A.ax[0], n)) + A.h[1] * Math.abs(dot(A.ax[1], n)) + A.h[2] * Math.abs(dot(A.ax[2], n));
+    const rb = B.h[0] * Math.abs(dot(B.ax[0], n)) + B.h[1] * Math.abs(dot(B.ax[1], n)) + B.h[2] * Math.abs(dot(B.ax[2], n));
+    const dn = dot(d, n);
+    const g = Math.abs(dn) - ra - rb;
+    const nv = dot(n, v);
+    const side = Math.sign(dn) * nv; // > 0: 시선을 따라가면 a를 먼저 지난다
+    if (g > -0.3 && Math.abs(nv) > bestSep) {
+      bestSep = Math.abs(nv);
+      pickSep = side;
+    }
+    if (g > best) {
+      best = g;
+      pick = side;
+    }
+  }
+  const s = bestSep > 1e-6 ? pickSep : pick;
+  if (Math.abs(s) < 1e-9) return 0;
+  return s > 0 ? -1 : 1;
+}
+
+// 한 줄 책들의 그리는 순서(작을수록 먼저 = 뒤). 화면에서 겹칠 수 있는 쌍만 앞뒤를 정하고(위상 정렬),
+// 순환이 생기면(세 권 이상이 서로 걸친 드문 경우) 그 안에서는 깊이 키로 정한다.
+export function drawOrder(bs: Book3[], cam: Cam, key: (b: Book3) => number): number[] {
+  'worklet';
+  const n = bs.length;
+  const box = bs.map((b) => {
+    let x0 = Infinity;
+    let x1 = -Infinity;
+    let y0 = Infinity;
+    let y1 = -Infinity;
+    for (const c of corners(b)) {
+      const px = c.x + c.z * cam.kx;
+      const py = c.y + c.z * cam.ky;
+      x0 = Math.min(x0, px);
+      x1 = Math.max(x1, px);
+      y0 = Math.min(y0, py);
+      y1 = Math.max(y1, py);
+    }
+    return { x0, x1, y0, y1 };
+  });
+  const after: number[][] = bs.map(() => []); // i 다음에 그려야 하는 것들
+  const indeg = bs.map(() => 0);
+  for (let i = 0; i < n; i++)
+    for (let j = i + 1; j < n; j++) {
+      const a = box[i];
+      const b = box[j];
+      if (a.x1 < b.x0 - 0.5 || b.x1 < a.x0 - 0.5 || a.y1 < b.y0 - 0.5 || b.y1 < a.y0 - 0.5) continue;
+      const f = frontOf(bs[i], bs[j], cam);
+      if (f < 0) {
+        after[j].push(i);
+        indeg[i]++;
+      } else if (f > 0) {
+        after[i].push(j);
+        indeg[j]++;
+      }
+    }
+  const keys = bs.map(key);
+  const rank = bs.map(() => -1);
+  const done = bs.map(() => false);
+  for (let r = 0; r < n; r++) {
+    // 들어오는 간선이 없는 것 중 깊이 키가 가장 작은 것(순환이면 남은 것 중 키가 가장 작은 것)
+    let pick = -1;
+    for (let i = 0; i < n; i++) if (!done[i] && indeg[i] === 0 && (pick < 0 || keys[i] < keys[pick])) pick = i;
+    if (pick < 0) for (let i = 0; i < n; i++) if (!done[i] && (pick < 0 || keys[i] < keys[pick])) pick = i;
+    done[pick] = true;
+    rank[pick] = r;
+    for (const k of after[pick]) indeg[k]--;
+  }
+  return rank;
+}
+
+// 선반 판 위(y ≥ 0)에 있는지, 가장 낮은 점
+export function lowest(b: Book3) {
+  'worklet';
+  const c = corners(b);
+  let m = Infinity;
+  for (const q of c) m = Math.min(m, q.y);
+  return m;
+}
+
+export function xRange(b: Book3) {
+  'worklet';
+  const c = corners(b);
+  let lo = Infinity;
+  let hi = -Infinity;
+  for (const q of c) {
+    lo = Math.min(lo, q.x);
+    hi = Math.max(hi, q.x);
+  }
+  return { lo, hi };
+}

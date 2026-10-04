@@ -1,0 +1,48 @@
+{
+  "branch": "box-model",
+  "baseCommit": "b970bc0",
+  "runtime": "C:/dev/chaekjang-hankyeon/app :8082",
+  "backup": "C:/dev/chaekjang-design-baseline-20261003",
+  "references": [
+    {
+      "source": "따뜻한 플랫 일러스트 책장.png",
+      "file": "reference-home.png",
+      "purpose": "책장: 기존 3D 유지, 공통 UI 기준"
+    },
+    {
+      "source": "책장한견_갈피.png",
+      "file": "reference-bookmark-detail.png",
+      "purpose": "갈피 상세: 겹친 종이, 문장 중심 조판"
+    },
+    {
+      "source": "갈피에 담은 따뜻한 문장-1.png",
+      "file": "reference-bookmarks.png",
+      "purpose": "갈피 목록: 문장, 책 정보와 색 갈피"
+    },
+    {
+      "source": "느린 계절 책 정보-2.png",
+      "file": "reference-book-detail.png",
+      "purpose": "책 정보: 큰 표지, 진행률, 기록, 읽기"
+    },
+    {
+      "source": "책장 한켠의 계절 검색-3.png",
+      "file": "reference-add.png",
+      "purpose": "책 추가: 검색, 사진/수동, 결과 목록"
+    },
+    {
+      "source": "창가의 빗소리 독서 타이머.png",
+      "file": "reference-timer.png",
+      "purpose": "타이머: 창가 장면, 하단 크림 조작부"
+    }
+  ],
+  "beforeDifferences": [
+    "기존 책 상세는 작은 원본 표지와 입력 항목이 상단에 모여 있었음",
+    "갈피 목록과 상세가 서로 다른 표지와 각진 종이 표현을 사용함",
+    "책 추가에 검색/사진/수동 버튼이 중복됨",
+    "타이머는 임시 기하 도형과 어두운 조작부를 사용함"
+  ],
+  "constraints": [
+    "3D 및 저장 구조 변경 없음",
+    "기존 미커밋 파일을 변경하지 않고 UI 파일을 분리해 커밋"
+  ]
+}

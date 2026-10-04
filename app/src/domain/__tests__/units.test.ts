@@ -1,4 +1,4 @@
-// 480mm 선반, 두께 2배(최소 30DU) 규칙과 자세별 점유 폭
+// 480mm 선반, 최소 두께 30DU 규칙과 자세별 점유 폭
 import { bookHeight, bookThickness, DU_PER_MM, frontWidth, MIN_SPINE_DU, mm, spineDU, SHELF_LENGTH_MM, SHELF_USABLE_WIDTH, singleFootprint, stackFootprint, thicknessMm } from '../geometry';
 import { checkSpace, shelfItems, usedWidth, type BookMap } from '../layout-engine';
 import { SAMPLE_BOOKS, SAMPLE_LAYOUT } from '../onboarding-sample';
@@ -28,25 +28,25 @@ describe('단위', () => {
     expect(frontWidth(b)).toBeCloseTo(mm(152), 6);
     expect(bookThickness(b)).toBeCloseTo(spineDU(thicknessMm(600)), 6);
     expect(bookThickness(book('thin', 110, 175, 100))).toBe(MIN_SPINE_DU);
-    // 두꺼울수록 늘고, 300쪽은 약 35DU
+    // 두꺼울수록 늘고, 300쪽은 약 37DU
     const t300 = bookThickness(book('a', 140, 210, 300));
-    expect(t300).toBeGreaterThan(33);
-    expect(t300).toBeLessThan(37);
+    expect(t300).toBeGreaterThan(36);
+    expect(t300).toBeLessThan(39);
     expect(bookThickness(book('b', 140, 210, 450))).toBeGreaterThan(t300);
   });
 
-  it('자세별 점유 폭: 세움=두께, 누움=책 높이, 표지=표지 폭(+옆면), 쌓기=가장 긴 책', () => {
+  it('자세별 점유 폭(상자 앞면): 세움=두께, 누움=책 높이, 표지=표지 폭, 쌓기=가장 긴 책', () => {
     const b = book('x', 140, 210, 300);
     expect(singleFootprint(b, { pose: 'spine', tilt: 0 }).width).toBeCloseTo(bookThickness(b), 6);
     expect(singleFootprint(b, { pose: 'horizontal', tilt: 0 }).width).toBeCloseTo(mm(210), 6);
-    expect(singleFootprint(b, { pose: 'front', tilt: 0 }).width).toBeGreaterThan(mm(140));
+    expect(singleFootprint(b, { pose: 'front', tilt: 0 }).width).toBeCloseTo(mm(140), 6);
     const long = book('y', 152, 225, 300);
     expect(stackFootprint([b, long]).width).toBeGreaterThanOrEqual(mm(225));
   });
 });
 
 describe('선반 용량', () => {
-  it('보통 책(300쪽)은 세워서 10권까지, 11권째에서 넘친다', () => {
+  it('보통 책(300쪽)은 선반 폭을 두께로 나눈 만큼 세워지고, 한 권 더면 넘친다', () => {
     const books: BookMap = {};
     const layout = (n: number): ShelfLayout => ({
       version: 2,
@@ -55,9 +55,11 @@ describe('선반 용량', () => {
       placements: Array.from({ length: n }, (_, i) => ({ bookId: `b${i}`, shelfId: 's', order: i, pose: 'spine' as const, tilt: 0 as const })),
     });
     for (let i = 0; i < 20; i++) books[`b${i}`] = book(`b${i}`, 140, 210, 300);
-    // 300쪽 ≈ 35DU, 선반 366DU → 10권
-    expect(checkSpace(layout(10), books)).toBeNull();
-    expect(checkSpace(layout(11), books)).toBe('no-space');
+    // 300쪽 ≈ 37DU, 선반 366DU → 9권
+    const fit = Math.floor(SHELF_USABLE_WIDTH / bookThickness(books.b0));
+    expect(fit).toBe(9);
+    expect(checkSpace(layout(fit), books)).toBeNull();
+    expect(checkSpace(layout(fit + 1), books)).toBe('no-space');
   });
 
   it('예시 책장 세 줄이 모두 선반 안에 들어간다', () => {

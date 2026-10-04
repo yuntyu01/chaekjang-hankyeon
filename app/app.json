@@ -6,15 +6,44 @@
     "orientation": "portrait",
     "scheme": "chaekjang",
     "userInterfaceStyle": "light",
-    "backgroundColor": "#F7F1E6",
-    "ios": { "bundleIdentifier": "com.chaekjang.app", "supportsTablet": true },
-    "android": { "package": "com.chaekjang.app", "predictiveBackGestureEnabled": false },
+    "backgroundColor": "#FCF8F1",
+    "ios": {
+      "bundleIdentifier": "com.chaekjang.app",
+      "supportsTablet": true
+    },
+    "android": {
+      "package": "com.chaekjang.app",
+      "predictiveBackGestureEnabled": false
+    },
     "plugins": [
       "expo-router",
       "expo-sqlite",
       "expo-font",
-      ["expo-splash-screen", { "backgroundColor": "#F7F1E6" }]
+      [
+        "expo-splash-screen",
+        {
+          "backgroundColor": "#FCF8F1"
+        }
+      ],
+      "expo-sharing",
+      [
+        "expo-audio",
+        {
+          "microphonePermission": false,
+          "recordAudioAndroid": false
+        }
+      ],
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "책을 확인하고 장정을 만들 때 참고할 사진을 고르기 위해 사진 보관함에 접근합니다.",
+          "cameraPermission": "책 표지나 페이지를 찍어 책을 찾고 갈피를 남기기 위해 카메라를 사용합니다.",
+          "microphonePermission": false
+        }
+      ]
     ],
-    "experiments": { "typedRoutes": true }
+    "experiments": {
+      "typedRoutes": false
+    }
   }
 }

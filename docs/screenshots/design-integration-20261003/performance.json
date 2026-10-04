@@ -1,0 +1,16 @@
+{
+  "method": "Android API 36 emulator, Expo Go dev bundle :8082, 1080x2400 / 420dpi, 8-second running timer stationary capture; same QA polling bridge. Before: animated procedural rain. After: static generated scene plus ticking clock. One sample each, not a release/device latency or battery benchmark.",
+  "before": {
+    "frames": 326,
+    "p50Ms": 30,
+    "p95Ms": 97,
+    "jank": "87 (26.69%)"
+  },
+  "after": {
+    "frames": 9,
+    "p50Ms": 18,
+    "p95Ms": 44,
+    "jank": "9 (100.00%)"
+  },
+  "interpretation": "Continuous scene repainting eliminated. After has only 9 frames; the jank percentage is worse (100%) and too few frames for a responsiveness conclusion. No claim of improved touch latency."
+}

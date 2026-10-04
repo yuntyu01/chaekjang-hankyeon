@@ -1,0 +1,13 @@
+{
+  "preexistingModifiedFilesChecked": 56,
+  "preexistingChangesPreserved": true,
+  "unexpectedChanges": [],
+  "sharedFileException": "StandaloneBook.tsx: optional canvas ref API only; preexisting ribbon changes preserved and left unstaged. No transform, material, collision, shadow, layout or storage rule changed.",
+  "temporaryBridgeRemoved": true,
+  "typecheck": "passed after final implementation",
+  "tests": {
+    "suites": 29,
+    "passed": 272
+  },
+  "push": false
+}

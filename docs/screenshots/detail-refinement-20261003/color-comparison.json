@@ -1,0 +1,129 @@
+{
+  "note": "Median sampled RGB of selected flat material areas only. Not whole-screen similarity or a 99.9% match metric. Coordinates manually selected in native PNG pixels.",
+  "regions": {
+    "frontPaper": {
+      "referenceRGB": [
+        253,
+        247,
+        239
+      ],
+      "beforeRGB": [
+        252,
+        249,
+        243
+      ],
+      "afterRGB": [
+        253,
+        247,
+        240
+      ],
+      "meanAbsoluteRGBDifferenceBefore": 2.3333333333333335,
+      "meanAbsoluteRGBDifferenceAfter": 0.3333333333333333,
+      "referenceRegion": [
+        130,
+        410,
+        630,
+        470
+      ],
+      "nativeRegion": [
+        200,
+        510,
+        700,
+        560
+      ]
+    },
+    "backPaper": {
+      "referenceRGB": [
+        177,
+        200,
+        218
+      ],
+      "beforeRGB": [
+        212,
+        225,
+        232
+      ],
+      "afterRGB": [
+        179,
+        201,
+        216
+      ],
+      "meanAbsoluteRGBDifferenceBefore": 24.666666666666668,
+      "meanAbsoluteRGBDifferenceAfter": 1.6666666666666667,
+      "referenceRegion": [
+        145,
+        350,
+        220,
+        365
+      ],
+      "nativeRegion": [
+        180,
+        455,
+        250,
+        470
+      ]
+    },
+    "tab": {
+      "referenceRGB": [
+        159,
+        188,
+        213
+      ],
+      "beforeRGB": [
+        174,
+        199,
+        216
+      ],
+      "afterRGB": [
+        160,
+        189,
+        213
+      ],
+      "meanAbsoluteRGBDifferenceBefore": 9.666666666666666,
+      "meanAbsoluteRGBDifferenceAfter": 0.6666666666666666,
+      "referenceRegion": [
+        697,
+        370,
+        754,
+        412
+      ],
+      "nativeRegion": [
+        884,
+        456,
+        950,
+        505
+      ]
+    },
+    "page": {
+      "referenceRGB": [
+        253,
+        248,
+        241
+      ],
+      "beforeRGB": [
+        253,
+        250,
+        245
+      ],
+      "afterRGB": [
+        253,
+        248,
+        242
+      ],
+      "meanAbsoluteRGBDifferenceBefore": 2.0,
+      "meanAbsoluteRGBDifferenceAfter": 0.3333333333333333,
+      "referenceRegion": [
+        250,
+        150,
+        450,
+        250
+      ],
+      "nativeRegion": [
+        250,
+        150,
+        450,
+        250
+      ]
+    }
+  }
+}

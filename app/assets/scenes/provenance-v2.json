@@ -1,0 +1,7 @@
+{
+  "mode": "built-in imagegen edit",
+  "reference": "창가의 빗소리 독서 타이머.png",
+  "prompt": "Use case: precise-object-edit. Edit target: the supplied Korean reading-timer design. Extract its EXACT upper illustration as a production app scene asset. Keep the illustration's original geometry, shapes, perspective, brush texture and colors: blue rainy window, moon at upper right, mountain silhouettes, lake town, frame, books left, mug lower left, desk lamp right, open book at bottom. Remove ONLY UI lettering and icons (back arrow, 읽기, 끝내기, audio waveform, 창가의 빗소리), filling those small areas with the surrounding original image. Remove the cream control panel entirely by cropping to the illustrated scene above it; reconstruct the tiny hidden bottom corner slivers of the desk if necessary. Do not redesign, zoom or reframe any illustration content. Exact same positions and relative sizes as the reference: moon around x64% y24% of the scene, book on desk spanning x18%-89% in bottom 19%, town horizon halfway down the scene. Output ONLY the clean illustration, approximately 853:1215 width:height aspect ratio. No app UI, no text, no timer, no borders. Preserve source detail as closely as possible.",
+  "asset": "rain-window-reference-v2.png",
+  "status": "Reference scene isolated with UI removed by imagegen. Reconstructed asset, not pixel-identical original. Existing v1 retained for provenance. UI is native code."
+}

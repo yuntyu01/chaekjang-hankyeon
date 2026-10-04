@@ -1,0 +1,7 @@
+{
+  "foldedPanelStaysFunctional": true,
+  "sameTimerAfterFoldAndSheets": true,
+  "removedBookReturnsToConnectBook": true,
+  "fullDataSnapshotUnchanged": true,
+  "coverOverflowScreenshot": "long-cover-fixed.png"
+}

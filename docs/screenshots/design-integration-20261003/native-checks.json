@@ -1,0 +1,28 @@
+{
+  "pauseKeepsElapsed": true,
+  "bookChange": true,
+  "sceneChange": true,
+  "audioPlayingControl": true,
+  "soundSettings": {
+    "sound": true,
+    "haptics": true,
+    "reduceMotion": "on",
+    "goalMin": null,
+    "scene": "rain",
+    "volume": 0.4,
+    "muted": true,
+    "loaded": true
+  },
+  "foldKeepsRunning": true,
+  "timerId": "ss_mus10agozrvzfj",
+  "savedSession": {
+    "roundId": "rd_mus0n9ocmde7om",
+    "createdAt": "2026-10-03T06:53:05.932Z",
+    "updatedAt": "2026-10-03T06:53:05.932Z",
+    "id": "ss_mus10agozrvzfj",
+    "myBookId": "bk_mus0n9o73bzgzd",
+    "startedAt": "2026-10-03T06:43:46.295Z",
+    "endedAt": "2026-10-03T06:52:58.018Z",
+    "durationMs": 204921
+  }
+}

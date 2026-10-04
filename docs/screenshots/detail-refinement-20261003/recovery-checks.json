@@ -1,0 +1,56 @@
+{
+  "passed": true,
+  "before": {
+    "active": {
+      "id": "ss_mus4vgrhl9iydf",
+      "startedAt": "2026-10-03T08:31:59.645Z",
+      "accumulatedMs": 0,
+      "runningSince": 1791016319645,
+      "lastBeat": 1791016324658
+    },
+    "interrupted": null,
+    "pending": null,
+    "pendingRestored": false,
+    "loaded": true
+  },
+  "after": {
+    "active": {
+      "id": "ss_mus4vgrhl9iydf",
+      "startedAt": "2026-10-03T08:31:59.645Z",
+      "accumulatedMs": 5013,
+      "runningSince": null,
+      "lastBeat": 1791016324658,
+      "interruptedAt": 1791016324658
+    },
+    "interrupted": {
+      "active": {
+        "id": "ss_mus4vgrhl9iydf",
+        "startedAt": "2026-10-03T08:31:59.645Z",
+        "accumulatedMs": 5013,
+        "runningSince": null,
+        "lastBeat": 1791016324658,
+        "interruptedAt": 1791016324658
+      },
+      "countedMs": 5013,
+      "lastBeat": 1791016324658,
+      "gapMs": 38976
+    },
+    "pending": null,
+    "pendingRestored": false,
+    "loaded": true
+  },
+  "paused": {
+    "active": {
+      "id": "ss_mus4vgrhl9iydf",
+      "startedAt": "2026-10-03T08:31:59.645Z",
+      "accumulatedMs": 5013,
+      "runningSince": null,
+      "lastBeat": 1791016324658,
+      "interruptedAt": 1791016324658
+    },
+    "interrupted": null,
+    "pending": null,
+    "pendingRestored": false,
+    "loaded": true
+  }
+}

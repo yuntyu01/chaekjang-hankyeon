@@ -1,0 +1,45 @@
+{
+  "favorites": {
+    "save": true,
+    "filter": true,
+    "remove": true,
+    "empty": true
+  },
+  "favoritePreservedAfterAppRestart": true,
+  "timer": {
+    "enteredWithoutAutoStart": true,
+    "startedWithoutBook": true,
+    "foldUnfold": true,
+    "pausedMs": 33658,
+    "sceneChangePreservedPausedMs": true,
+    "pausedTimePreservedAfterAppRestart": true,
+    "linkedBookAtFinish": true,
+    "savedExactlyOnce": true
+  },
+  "accessibility": {
+    "androidFontScale": 1.5,
+    "longTitleBookAndAuthorWrapped": true,
+    "bookActionsReachedByScroll": true,
+    "longBookmarkScrolled": true,
+    "timerStartVisibleWithLongTitle": true
+  },
+  "notVerified": [
+    "physical device",
+    "iOS",
+    "audible sound quality",
+    "small viewport below the tested 1080x2400 emulator"
+  ],
+  "sharing": {
+    "footerOpensNativeSheetDirectly": true,
+    "defaultImageExcludesMemo": true,
+    "menuCanShareWithMemo": true,
+    "cancelThenShareAgain": true,
+    "recipientOrExternalAppSelected": false,
+    "platform": "Android API 36 emulator"
+  },
+  "afterTemporaryQACodeRemoved": {
+    "homeShowsOriginal8Books": true,
+    "bookmarkTabShowsOriginalEmptyState": true,
+    "readingTabOpensIdleTimer": true
+  }
+}

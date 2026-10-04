@@ -1,0 +1,28 @@
+{
+  "scope": "Committed files at d6dd34f plus the BookVisual optional reference-ready guard, isolated from 56 preexisting modified files. Uses the same installed dependencies.",
+  "typecheck": "passed",
+  "workingTreeTypecheck": "passed",
+  "success": true,
+  "suitesPassed": 30,
+  "suitesTotal": 30,
+  "testsPassed": 263,
+  "testsTotal": 263,
+  "fix": "The base book renderer has no reference-glyph resource. Sharing waits for it only when the renderer exposes it.",
+  "nativeScreenshots": "Captured in the main working tree with its preserved preexisting 3D/design changes. Clean committed baseline rendering was not recaptured.",
+  "htmlBrowserCheck": {
+    "desktopViewport": [
+      1280,
+      1100
+    ],
+    "mobileViewport": [
+      390,
+      844
+    ],
+    "all7ScreensLoaded": true,
+    "comparisonModes": true,
+    "oldComparisonLinks": true,
+    "noHorizontalOverflowAt390": true,
+    "missingLocalLinks": [],
+    "consoleErrors": []
+  }
+}

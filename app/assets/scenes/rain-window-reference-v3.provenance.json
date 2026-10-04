@@ -1,0 +1,10 @@
+{
+  "asset": "rain-window-reference-v3.png",
+  "mode": "edit",
+  "tool": "image_gen.imagegen",
+  "date": "2026-10-03",
+  "reference": "docs/screenshots/design-integration-20261003/reference-timer.png",
+  "originalGeneratedPath": "C:/Users/yun63/.codex/generated_images/01a0fa72-1733-7de0-953d-a7f9d763067c/exec-578f6f4d-ab5d-4c43-8d0c-a1c8f429e9cd.png",
+  "prompt": "Use case: precise-object-edit. This is an exact object-removal edit of the attached image, not a new illustration. Keep the FULL original 853:1844 canvas aspect ratio and keep the rainy-window artwork in exactly the same pixel positions and scale. DO NOT CROP OR REFRAME OR RESCALE THE ARTWORK. Remove ONLY the white app labels/icons above the illustration (back arrow, 읽기, 끝내기, waveform, 창가의 빗소리) by filling their very small masks with matching surrounding window/rain pixels. Make the entire lower cream UI control panel area transparent starting at its original upper edge around y=1208, and fill only the tiny cream rounded corner pixels at x<46 and x>807 y1208-1250 with adjacent desk texture. All remaining output below y=1250 should be transparent. Do not move the original moon, mountains, towns, lamps, books, rain, mug, or desk even one pixel; retain the original brush grain, original shapes and exact colors. No text, no icons, no UI or new objects. Preserve original illustration, especially lamp bulb and book's open page silhouette. Maintain FULL ORIGINAL CANVAS so object removal does not trigger recomposition. The transparent lower portion will be clipped by native app code; do not crop it yourself.",
+  "usage": "Illustration only. Native Scene clips the transparent lower canvas. All labels, timer and controls remain interactive native UI."
+}

@@ -1,0 +1,22 @@
+{
+  "label": "after",
+  "durationSeconds": 22.53,
+  "metrics": {
+    "Total frames rendered": "41",
+    "Janky frames": "30 (73.17%)",
+    "Janky frames (legacy)": "36 (87.80%)",
+    "50th percentile": "36ms",
+    "90th percentile": "65ms",
+    "95th percentile": "85ms",
+    "99th percentile": "121ms",
+    "Number Missed Vsync": "4",
+    "Number Slow UI thread": "27",
+    "Number Slow bitmap uploads": "3",
+    "50th gpu percentile": "11ms",
+    "90th gpu percentile": "23ms",
+    "95th gpu percentile": "24ms",
+    "99th gpu percentile": "4950ms"
+  },
+  "workload": "Warm-up, then 4 cycles: fold, unfold, scene sheet, back, sound sheet, back. Native coordinate taps with 750 ms waits. No UI hierarchy queries within measured interval.",
+  "environment": "Android API 36 emulator; Expo Go dev bundle; local QA polling; single sample per implementation."
+}

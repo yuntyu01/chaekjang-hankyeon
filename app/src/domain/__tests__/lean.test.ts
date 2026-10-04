@@ -1,11 +1,11 @@
 // 기대기: 먼저 "똑바로 선 책 + 기대는 책 한 권", 그다음 연쇄·마주 기대기, 마지막으로 높이·두께가 다른 세 권의 이동·저장·복원.
-import { bookHeight, bookThickness, SHELF } from '../geometry';
+import { corners, fromPlaced, lowest } from '../book3';
+import { bookHeight, bookThickness } from '../geometry';
 import { bookXs, moveBook, normalize, setTilt, shelfItems, type BookMap } from '../layout-engine';
 import { MAX_LEAN, overlaps } from '../lean';
-import { computeShelf, leanFrame, withLeans, type BookFrame } from '../shelf-scene';
+import { computeShelf, frontOutline, withLeans, type BookFrame } from '../shelf-scene';
 import type { Book, BookPlacement, ShelfLayout } from '../types';
 
-const FLOOR = SHELF.clearHeight;
 const rad = (d: number) => (d * Math.PI) / 180;
 
 const book = (id: string, height: number, thickness: number): Book => ({
@@ -14,7 +14,7 @@ const book = (id: string, height: number, thickness: number): Book => ({
   themeColor: '#CCBBAA',
   heightClass: 'medium',
   thicknessClass: 'medium',
-  coverAspectRatio: 0.7,
+  coverAspectRatio: 0.7, // A는 표지 폭이 기준선 뒤 깊이보다 커서 기준선 앞으로 조금 나와 선다(크기는 그대로)
   art: { motif: 'leaf' },
   dims: { height, thickness },
 });
@@ -29,23 +29,29 @@ const place = (bookId: string, order: number, pos: number, tilt: -7 | 0 | 7 = 0)
 const layoutOf = (...placements: BookPlacement[]): ShelfLayout => ({ version: 2, shelves: [{ id: 's', order: 0 }], placements, drawer: [] });
 const frameOf = (l: ShelfLayout, id: string) => computeShelf(l, books, 's').frames.find((f) => f.bookId === id)!;
 const allFrames = (l: ShelfLayout) => computeShelf(l, books, 's').frames;
+// 기운 정도(도, 방향 무시): 0이면 똑바로 선다(왼쪽으로 기대려다 선 책은 -0일 수 있다)
+const leanOf = (f: BookFrame) => Math.abs(f.box.angle);
 
 function expectSeated(f: BookFrame) {
-  // 가장 낮은 점이 선반 바닥에 닿고, 축 모서리가 바닥에 있다
-  expect(Math.max(...f.poly.map((p) => p.y))).toBeCloseTo(FLOOR, 6);
-  if (f.rotate) {
-    const pivotX = f.rotate > 0 ? f.left + f.width : f.left;
-    expect(f.poly.some((p) => Math.abs(p.x - pivotX) < 1e-6 && Math.abs(p.y - FLOOR) < 1e-6)).toBe(true);
+  // 3D에서: 가장 낮은 점이 선반 윗면(y=0)에 닿고, 기울었으면 축 모서리(발)가 윗면에 있다.
+  // (앞으로 나온 책은 화면에서 조금 아래에 보이므로 화면 바닥선으로 재지 않는다)
+  const b = fromPlaced(f.box);
+  const cs = corners(b);
+  expect(lowest(b)).toBeCloseTo(0, 6);
+  if (f.box.angle) {
+    const footX = f.box.angle > 0 ? f.box.x + f.box.size.w : f.box.x;
+    expect(cs.some((c) => Math.abs(c.x - footX) < 1e-6 && Math.abs(c.y) < 1e-6)).toBe(true);
   }
 }
 function expectNoOverlap(frames: BookFrame[]) {
   for (let i = 0; i < frames.length; i++)
-    for (let j = i + 1; j < frames.length; j++) expect(overlaps(frames[i].poly, frames[j].poly, 0.2)).toBe(false);
+    for (let j = i + 1; j < frames.length; j++) expect(overlaps(frontOutline(frames[i]), frontOutline(frames[j]), 0.2)).toBe(false);
 }
 function expectTouching(f: BookFrame, other: BookFrame) {
-  const dir = Math.sign(f.rotate);
-  const more = leanFrame(books[f.bookId], f.left, f.rotate + dir * 0.6).poly;
-  expect(overlaps(more, other.poly)).toBe(true);
+  // 같은 발(축 모서리)로 0.6도만 더 기울이면 옆 책 앞면에 파고든다 = 지금 닿아 있다
+  const dir = Math.sign(f.box.angle);
+  const more = frontOutline({ ...f, box: { ...f.box, angle: f.box.angle + dir * 0.6 } });
+  expect(overlaps(more, frontOutline(other))).toBe(true);
 }
 
 describe('한 권이 똑바로 선 책에 기댄다', () => {
@@ -55,7 +61,7 @@ describe('한 권이 똑바로 선 책에 기댄다', () => {
     const l = layoutOf(place('A', 0, 0), place('B', 1, 40 + g, -7));
     const b = frameOf(l, 'B');
     const a = frameOf(l, 'A');
-    expect(b.rotate).toBeCloseTo(-Math.asin(g / bookHeight(B)) * (180 / Math.PI), 0);
+    expect(b.box.angle).toBeCloseTo(-Math.asin(g / bookHeight(B)) * (180 / Math.PI), 0);
     expect(b.leanOn).toBe('A');
     expectSeated(b);
     expectSeated(a);
@@ -67,7 +73,7 @@ describe('한 권이 똑바로 선 책에 기댄다', () => {
     const g = 20;
     const l = layoutOf(place('C', 0, 0), place('A', 1, 34 + g, -7));
     const a = frameOf(l, 'A');
-    expect(Math.abs(a.rotate)).toBeCloseTo(Math.atan(g / bookHeight(C)) * (180 / Math.PI), 0);
+    expect(Math.abs(a.box.angle)).toBeCloseTo(Math.atan(g / bookHeight(C)) * (180 / Math.PI), 0);
     expectSeated(a);
     expectNoOverlap(allFrames(l));
     expectTouching(a, frameOf(l, 'C'));
@@ -77,31 +83,31 @@ describe('한 권이 똑바로 선 책에 기댄다', () => {
     const g = 12;
     const l = layoutOf(place('B', 0, 0, 7), place('A', 1, 28 + g));
     const b = frameOf(l, 'B');
-    expect(b.rotate).toBeGreaterThan(0);
-    expect(b.rotate).toBeCloseTo(Math.asin(g / bookHeight(B)) * (180 / Math.PI), 0);
+    expect(b.box.angle).toBeGreaterThan(0);
+    expect(b.box.angle).toBeCloseTo(Math.asin(g / bookHeight(B)) * (180 / Math.PI), 0);
     expectSeated(b);
     expectNoOverlap(allFrames(l));
   });
 
   it('빈틈이 없으면 그대로 선다', () => {
     const l = layoutOf(place('A', 0, 0), place('B', 1, 40, -7));
-    expect(frameOf(l, 'B').rotate).toBe(0);
+    expect(leanOf(frameOf(l, 'B'))).toBe(0);
   });
 
   it('기댈 책이 없거나 최대 각도를 넘으면 바로 선다', () => {
     const alone = layoutOf(place('B', 0, 100, 7));
     const f = frameOf(alone, 'B');
-    expect(f.rotate).toBe(0);
+    expect(leanOf(f)).toBe(0);
     expect(f.leanFailed).toBe(true);
     const far = bookHeight(B) * Math.sin(rad(MAX_LEAN + 3));
     const wide = layoutOf(place('A', 0, 0), place('B', 1, 40 + far, -7));
-    expect(frameOf(wide, 'B').rotate).toBe(0);
+    expect(leanOf(frameOf(wide, 'B'))).toBe(0);
     expect(frameOf(wide, 'B').leanFailed).toBe(true);
   });
 
   it('선반 밖으로 쓰러지는 쪽이면 바로 선다', () => {
     const edge = layoutOf(place('B', 0, 0, -7));
-    expect(frameOf(edge, 'B').rotate).toBe(0);
+    expect(leanOf(frameOf(edge, 'B'))).toBe(0);
   });
 });
 
@@ -112,7 +118,7 @@ describe('메뉴로 기울이기', () => {
     const r = setTilt(noPos, books, 'C', -7);
     if (!r.ok) throw new Error(r.reason);
     const c = frameOf(r.layout, 'C');
-    expect(c.rotate).toBeLessThan(-3);
+    expect(c.box.angle).toBeLessThan(-3);
     expect(c.leanOn).toBe('B');
   });
 });
@@ -132,8 +138,8 @@ describe('여러 권', () => {
     const frames = allFrames(l);
     for (const f of frames) expectSeated(f);
     expectNoOverlap(frames);
-    expect(frameOf(l, 'A').rotate).toBeGreaterThan(0);
-    expect(frameOf(l, 'B').rotate).toBeLessThan(0);
+    expect(frameOf(l, 'A').box.angle).toBeGreaterThan(0);
+    expect(frameOf(l, 'B').box.angle).toBeLessThan(0);
   });
 });
 
@@ -162,8 +168,9 @@ describe('세 권: 세우고, 옮기고, 기대게 하고, 저장 후 복원', (
     const again = allFrames(restored);
     for (const f of frames) {
       const g = again.find((q) => q.bookId === f.bookId)!;
-      expect(g.left).toBeCloseTo(f.left, 4);
-      expect(g.rotate).toBeCloseTo(f.rotate, 3);
+      expect(g.box.x).toBeCloseTo(f.box.x, 4); // 똑바로 섰을 때 왼쪽 면(발 위치)
+      expect(g.box.z).toBeCloseTo(f.box.z, 4);
+      expect(g.box.angle).toBeCloseTo(f.box.angle, 3);
     }
     // 기댄 상대가 없어지면 다시 계산해 바로 선다
     const noA = withLeans({ ...restored, placements: restored.placements.filter((p) => p.bookId !== 'A') }, books);

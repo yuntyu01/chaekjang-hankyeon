@@ -24,7 +24,7 @@ export const PaperBackground = memo(function PaperBackground() {
         <Image
           key={i}
           source={PAPER}
-          style={{ position: 'absolute', left: (i % cols) * tile, top: Math.floor(i / cols) * tile, width: tile, height: tile, opacity: 0.38 }}
+          style={{ position: 'absolute', left: (i % cols) * tile, top: Math.floor(i / cols) * tile, width: tile, height: tile, opacity: 0.20 }}
         />
       ))}
     </View>
