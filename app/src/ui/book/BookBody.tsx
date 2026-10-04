@@ -1,9 +1,9 @@
 // 책 면 그림(캔버스 없이, 면 그림 좌표 0..w, 0..h). 상자 렌더러(ui/book3d)가 Skia Picture로 기록해 면 변환에 태워 그린다.
 // 책등 면: 책 색 한 가지(균일한 무광). 표지 면: 표지 그림(없으면 책 색 + 모티프) + 제본 홈. 제목은 따로 그린다(세움·눕힘 조판을 자세에 따라 고른다).
 // 면마다 둥근 윤곽을 사용한다. 빛 받는 모서리와 자세에 따른 명암은 BookNode에서 덧그린다.
-import { BlurMask, Group, Image as SkImage, LinearGradient, Rect, Skia, vec, type SkImage as SkImageType } from '@shopify/react-native-skia';
+import { Group, Image as SkImage, LinearGradient, Rect, Skia, vec, type SkImage as SkImageType } from '@shopify/react-native-skia';
 
-import { CORNER_R, GROOVE } from '@/domain/book-parts';
+import { CORNER_R } from '@/domain/book-parts';
 
 // Each board has its own rounded outline, in book coordinates, so the corner
 // stays rounded when the book is turned or laid flat.
@@ -113,14 +113,7 @@ export function CoverFaceArt({
           코드가 그리므로 그림을 1.5% 왼쪽으로 밀어 그 줄을 면 밖으로 보낸다 */}
       {image ? <SkImage image={image} x={-fw * COVER_ART_TRIM} y={0} width={fw * (1 + COVER_ART_TRIM)} height={h} fit="cover" /> : null}
       {!image && motif ? <SkImage image={motif} x={fw / 2 - mw / 2} y={h * 0.9 - mh} width={mw} height={mh} fit="contain" /> : null}
-      {/* 제본 홈(책등 쪽에서 GROOVE.at 안쪽): 책 색을 낮춘 좁은 그늘 + 바로 뒤 책 색을 밝힌 가는 밝음(흰·검정 고정색이 아니다) */}
-      <Rect x={0} y={0} width={(GROOVE.at + GROOVE.dark) * s} height={h}>
-        <LinearGradient start={vec(0, 0)} end={vec((GROOVE.at + GROOVE.dark) * s, 0)} colors={[withAlpha(scaleColor(tone, 0.6), 0.09), withAlpha(scaleColor(tone, 0.6), 0.05)]} />
-      </Rect>
-      <Rect x={(GROOVE.at - GROOVE.dark / 2) * s} y={0} width={GROOVE.dark * s} height={h} color={withAlpha(scaleColor(tone, 0.55), 0.14)}>
-        <BlurMask blur={0.45 * s} style="normal" />
-      </Rect>
-      <Rect x={(GROOVE.at + GROOVE.gap) * s} y={0} width={GROOVE.lit * s} height={h} color={withAlpha(litTone(tone), 0.2)} />
+      {/* The live 3D shader supplies the binding depression and edge light. */}
     </Group>
   );
 }

@@ -1,53 +1,76 @@
-import { LinearGradient, Rect, vec } from '@shopify/react-native-skia';
+import { Rect, Shader, Skia } from '@shopify/react-native-skia';
 import { useDerivedValue, type SharedValue } from 'react-native-reanimated';
-import { rot, type Book3, type Vec3 } from '@/domain/book3';
-import { mix, scaleColor, withAlpha } from '@/ui/book/BookBody';
+import { faceNormal, rot, type Book3, type Cam, type Vec3 } from '@/domain/book3';
+import { CORNER_R, GROOVE } from '@/domain/book-parts';
 import { light } from '@/ui/lighting';
 
 type Face = 'spine' | 'cover' | 'back';
-const POSITIONS = [0, 0.26, 0.52, 0.8, 1];
-const ANGLES = [64, 46, 24, 10, 0];
 const lightLength = Math.hypot(light.dir.x, light.dir.y, light.dir.z);
 const L = { x: light.dir.x / lightLength, y: light.dir.y / lightLength, z: light.dir.z / lightLength };
 
-// A rounded binding rolls its normal toward the adjoining face. The light
-// peaks inside that curve, then fades into the flat material, without a stroke.
-function edgeColors(book: Book3, face: Face, edge: number, tone: string, strength: number) {
-  'worklet';
-  const normal: Vec3 = face === 'spine' ? { x: 0, y: 0, z: -1 } : { x: face === 'cover' ? 1 : -1, y: 0, z: 0 };
-  const outward: Vec3 = edge < 2 ? { x: 0, y: edge === 0 ? 1 : -1, z: 0 }
-    : face === 'spine' ? { x: edge === 2 ? -1 : 1, y: 0, z: 0 }
-    : { x: 0, y: 0, z: (edge === 2 ? -1 : 1) * (face === 'back' ? -1 : 1) };
-  const dot = (n: Vec3) => {
-    const v = rot(book.roll, book.yaw, n, book.spin ?? 0, book.pitch ?? 0);
-    return v.x * L.x + v.y * L.y + v.z * L.z;
-  };
-  const base = dot(normal);
-  const rgb = tone.startsWith('#') ? [1, 3, 5].map(i => parseInt(tone.slice(i, i + 2), 16)) : (tone.match(/\d+/g) ?? []).slice(0, 3).map(Number);
-  const lightness = (rgb[0] * 0.3 + rgb[1] * 0.59 + rgb[2] * 0.11) / 255;
-  const lit = mix(tone, '#FFFDF5', 0.9), dark = scaleColor(tone, 0.72);
-  const highlight = 0.25 + 0.6 * Math.max(0, (lightness - 0.45) / 0.55);
-  return ANGLES.map(deg => {
-    const a = deg * Math.PI / 180;
-    const c = Math.cos(a), s = Math.sin(a);
-    const delta = dot({ x: normal.x * c + outward.x * s, y: normal.y * c + outward.y * s, z: normal.z * c + outward.z * s }) - base;
-    return delta >= 0 ? withAlpha(lit, Math.min(highlight, delta * 2.7) * strength)
-      : withAlpha(dark, Math.min(0.17, -delta * 0.32) * strength);
-  });
-}
+// One continuous normal field, not four overlapping strips. Both sides of a
+// jacket join reach the same 45-degree normal. The easing has no slope at the
+// flat material, so there is no second ridge where the bevel stops.
+const source = Skia.RuntimeEffect.Make(`
+  uniform float2 size;
+  uniform float2 radius;
+  uniform float3 lightLocal;
+  uniform float3 viewLocal;
+  uniform float4 lighting;
+  uniform float3 hinge;
+  uniform float strength;
 
-export function JacketEdgeLight({ state, f, w, h, s, tone, strength = 1 }: {
-  state: Readonly<SharedValue<Book3>>; f: Face; w: number; h: number; s: number; tone: string; strength?: number;
+  float roll(float distance, float width) {
+    float t = clamp(1.0 - distance / width, 0.0, 1.0);
+    return t * t * (3.0 - 2.0 * t);
+  }
+  float diffuse(float3 n) {
+    return clamp(lighting.x + lighting.y * dot(n, lightLocal), lighting.z, lighting.w);
+  }
+  float reflection(float3 n) {
+    float3 halfway = normalize(lightLocal + viewLocal);
+    // Broad, weak reflection for a matte paper jacket, using the actual view.
+    return 0.065 * pow(max(0.0, dot(n, halfway)), 14.0)
+      * max(0.0, dot(n, lightLocal));
+  }
+  half4 main(float2 p) {
+    float x = roll(size.x - p.x, radius.x) - roll(p.x, radius.x);
+    float y = roll(size.y - p.y, radius.y) - roll(p.y, radius.y);
+    // A shallow binding depression, lit by the same source instead of a
+    // fixed dark stroke followed by a bright stroke.
+    float d = ((hinge.x > 0.0 ? p.x : size.x - p.x) - hinge.y) / hinge.z;
+    x += hinge.x * 0.16 * d * exp(-d * d);
+    float3 n = normalize(float3(x, y, 1.0));
+    float3 baseNormal = float3(0.0, 0.0, 1.0);
+    float delta = (diffuse(n) - diffuse(baseNormal) + reflection(n) - reflection(baseNormal)) * strength;
+    // Premultiplied alpha: an exact zero at the flat centre, without discrete stops.
+    float alpha = min(0.24, abs(delta) * (delta > 0.0 ? 1.6 : 1.1));
+    float3 tint = delta > 0.0 ? float3(1.0, 0.988, 0.96) : float3(0.176, 0.125, 0.094);
+    return half4(tint * alpha, alpha);
+  }
+`);
+
+export function JacketEdgeLight({ state, cam, f, w, h, s, strength = 1 }: {
+  state: Readonly<SharedValue<Book3>>; cam: Readonly<SharedValue<Cam>>;
+  f: Face; w: number; h: number; s: number; strength?: number;
 }) {
-  const top = useDerivedValue(() => edgeColors(state.value, f, 0, tone, strength));
-  const bottom = useDerivedValue(() => edgeColors(state.value, f, 1, tone, strength));
-  const left = useDerivedValue(() => edgeColors(state.value, f, 2, tone, strength));
-  const right = useDerivedValue(() => edgeColors(state.value, f, 3, tone, strength));
-  const tx = Math.min(w * 0.18, 3.8 * s), ty = Math.min(h * 0.18, 3.8 * s);
-  return <>
-    <Rect x={0} y={0} width={w} height={ty}><LinearGradient start={vec(0, 0)} end={vec(0, ty)} colors={top} positions={POSITIONS} /></Rect>
-    <Rect x={0} y={h - ty} width={w} height={ty}><LinearGradient start={vec(0, h)} end={vec(0, h - ty)} colors={bottom} positions={POSITIONS} /></Rect>
-    <Rect x={0} y={0} width={tx} height={h}><LinearGradient start={vec(0, 0)} end={vec(tx, 0)} colors={left} positions={POSITIONS} /></Rect>
-    <Rect x={w - tx} y={0} width={tx} height={h}><LinearGradient start={vec(w, 0)} end={vec(w - tx, 0)} colors={right} positions={POSITIONS} /></Rect>
-  </>;
+  const uniforms = useDerivedValue(() => {
+    const b = state.value, c = cam.value;
+    const turn = (v: Vec3) => rot(b.roll, b.yaw, v, b.spin ?? 0, b.pitch ?? 0);
+    const u = turn(f === 'spine' ? { x: 1, y: 0, z: 0 } : { x: 0, y: 0, z: f === 'back' ? -1 : 1 });
+    const v = turn({ x: 0, y: -1, z: 0 });
+    const n = turn(faceNormal(f));
+    const viewLength = Math.hypot(c.kx, c.ky, 1);
+    const view = { x: c.kx / viewLength, y: c.ky / viewLength, z: -1 / viewLength };
+    const dot = (a: Vec3, d: Vec3) => a.x * d.x + a.y * d.y + a.z * d.z;
+    return {
+      size: [w, h], radius: [Math.min(w * 0.18, CORNER_R * s), Math.min(h * 0.18, CORNER_R * s)],
+      lightLocal: [dot(u, L), dot(v, L), dot(n, L)],
+      viewLocal: [dot(u, view), dot(v, view), dot(n, view)],
+      lighting: [light.ambient, light.diffuse, light.min, light.max], strength,
+      hinge: [f === 'spine' ? 0 : f === 'cover' ? 1 : -1, GROOVE.at * s, 2.4 * s],
+    };
+  });
+  if (!source) return null;
+  return <Rect x={0} y={0} width={w} height={h}><Shader source={source} uniforms={uniforms} /></Rect>;
 }

@@ -159,10 +159,10 @@ function ArtFace({ f, art, state, cam, px, d, tone, headReveal = 0.35 }: { f: 's
     <Group matrix={m} clip={bookFacePath(w, h, s, f === 'spine')}>
       <Group transform={materialTransform}><Picture picture={f === 'spine' ? art.spine : art.cover} /></Group>
       {f === 'spine' && SHOW.body && !prelit ? <SpineShade state={state} w={w} h={h} s={s} tone={tone} /> : null}
-      {SHOW.body ? <JacketEdgeLight state={state} f={f} w={w} h={h} s={s} tone={tone} strength={prelit ? 0.85 : 1} /> : null}
       {SHOW.faceDebug ? <Rect x={0} y={0} width={w} height={h} color={f === 'spine' ? 'rgba(44,91,208,0.45)' : 'rgba(208,52,44,0.45)'} /> : null}
       {f === 'spine' ? <SpineTitles art={art} state={state} /> : null}
       {SHOW.body ? <Rect x={0} y={0} width={w} height={h} color={shade} /> : null}
+      {SHOW.body ? <JacketEdgeLight state={state} cam={cam} f={f} w={w} h={h} s={s} strength={prelit ? 0.85 : 1} /> : null}
     </Group>
   );
 }

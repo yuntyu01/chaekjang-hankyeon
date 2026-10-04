@@ -8,10 +8,10 @@ import { BlurMask, Group, Path, Picture, Rect, Skia, type SkPath } from '@shopif
 import { useDerivedValue, type SharedValue } from 'react-native-reanimated';
 
 import { brightness, facing, type Book3, type Cam } from '@/domain/book3';
-import { CORNER_R, facePanel, GROOVE } from '@/domain/book-parts';
+import { CORNER_R, facePanel } from '@/domain/book-parts';
 import { hull } from '@/domain/box';
 import type { Point } from '@/domain/camera';
-import { bookFacePath, litTone, PAGE_BASE, scaleColor, withAlpha } from '@/ui/book/BookBody';
+import { bookFacePath, PAGE_BASE, scaleColor, withAlpha } from '@/ui/book/BookBody';
 import { light } from '@/ui/lighting';
 
 import type { BookArt } from './art';
@@ -74,26 +74,14 @@ export function PageFace({ f, state, cam, px, art, tone, closedHead = false }: {
   );
 }
 
-// 판 면 그림(판 색 + 제본 홈). w×h(DU), hingeAt: 제본 홈이 있는 쪽(그림 가로 0 = 왼쪽, 1 = 오른쪽, null = 없음)
-function Board({ w, h, s, tone, hingeAt }: { w: number; h: number; s: number; tone: string; hingeAt: 0 | 1 | null }) {
+// Board material only. Edge and hinge light use the live 3D normal field.
+function Board({ w, h, s, tone }: { w: number; h: number; s: number; tone: string }) {
   const W = w * s;
   const H = h * s;
-  // 제본 홈(GROOVE, 앞표지 그림과 같은 규칙): 책등 쪽 변에서 at 안쪽의 그늘, 그 뒤 gap에 가는 밝음
-  const side = (d: number) => (hingeAt === 1 ? W - d * s : d * s);
-  const gx = side(GROOVE.at);
-  const ex = side(GROOVE.at + GROOVE.gap + GROOVE.lit / 2);
   return (
     <>
       <Rect x={0} y={0} width={W} height={H} color={tone} />
       <MaterialGrain w={W} h={H} s={s} strength={0.12} />
-      {hingeAt !== null ? (
-        <>
-          <Rect x={gx - (GROOVE.dark / 2) * s} y={0} width={GROOVE.dark * s} height={H} color={withAlpha(scaleColor(tone, 0.55), 0.14)}>
-            <BlurMask blur={0.45 * s} style="normal" />
-          </Rect>
-          <Rect x={ex - (GROOVE.lit / 2) * s} y={0} width={GROOVE.lit * s} height={H} color={withAlpha(litTone(tone), 0.2)} />
-        </>
-      ) : null}
     </>
   );
 }
@@ -105,9 +93,9 @@ export function BackFace({ dims: d, state, cam, px, tone }: { dims: Book3['dims'
   const p = facePanel(d, 'back');
   return (
     <Group matrix={m} clip={bookFacePath(p.w * px.s, p.h * px.s, px.s)}>
-      <Board w={p.w} h={p.h} s={px.s} tone={tone} hingeAt={1} />
+      <Board w={p.w} h={p.h} s={px.s} tone={tone} />
       <Rect x={0} y={0} width={p.w * px.s} height={p.h * px.s} color={shade} />
-      <JacketEdgeLight state={state} f="back" w={p.w * px.s} h={p.h * px.s} s={px.s} tone={tone} />
+      <JacketEdgeLight state={state} cam={cam} f="back" w={p.w * px.s} h={p.h * px.s} s={px.s} />
     </Group>
   );
 }
@@ -125,9 +113,9 @@ export function GrazeFace({ f, dims: d, state, cam, px, tone }: { f: 'spine' | '
   const p = facePanel(d, f);
   return (
     <Group matrix={m} opacity={op} clip={bookFacePath(p.w * px.s, p.h * px.s, px.s, f === 'spine')}>
-      <Board w={p.w} h={p.h} s={px.s} tone={tone} hingeAt={f === 'cover' ? 0 : null} />
+      <Board w={p.w} h={p.h} s={px.s} tone={tone} />
       <Rect x={0} y={0} width={p.w * px.s} height={p.h * px.s} color={shade} />
-      <JacketEdgeLight state={state} f={f} w={p.w * px.s} h={p.h * px.s} s={px.s} tone={tone} />
+      <JacketEdgeLight state={state} cam={cam} f={f} w={p.w * px.s} h={p.h * px.s} s={px.s} />
     </Group>
   );
 }

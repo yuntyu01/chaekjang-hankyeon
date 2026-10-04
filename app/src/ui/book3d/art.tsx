@@ -15,9 +15,9 @@ import { bootMark } from '@/ui/boot-trace';
 import { GROOVE, rigOf } from '@/domain/book-parts';
 import { jacketColor, jacketFor, LANDSCAPES } from '@/domain/book-design';
 import { hasRibbon, ribbonDesign } from '@/domain/ribbon-design';
-import { CoverFaceArt, LIGHT_TINT, mix, PAGE_BASE, PAGE_RIM, SpineFaceArt, withAlpha as withAlphaHex } from '@/ui/book/BookBody';
+import { CoverFaceArt, PAGE_BASE, PAGE_RIM, SpineFaceArt, withAlpha as withAlphaHex } from '@/ui/book/BookBody';
 import { ReferenceCover } from './ReferenceCover';
-import { ReferenceBinding, referenceBinding } from './ReferenceBinding';
+import { ReferenceBinding, referenceBinding, bindingSurfaceTone } from './ReferenceBinding';
 import { MaterialGrain } from './MaterialGrain';
 import { ORIGINAL_ART, ReferenceGlyph, ReferenceMotif, ReferencePrint, drawOriginalGlyph, hasOriginalGlyph, hasReferenceMotif, referencePrint } from './ReferencePrint';
 
@@ -183,7 +183,7 @@ function bandColor(img: SkImage, fw: number, fh: number, x0: number, y0: number,
   return rgbHex(r / n, g / n, b / n);
 }
 // 몸체 색(판 두 장·책등이 같은 색). cover 인자는 예전 호출과 맞추려고 남겨 둔다(앞표지·뒤표지·책등이 모두 같은 색).
-export const toneOf = (b: Book, _cover?: boolean) => faceOf(b);
+export const toneOf = (b: Book, _cover?: boolean) => bindingSurfaceTone(faceOf(b));
 
 export const SPINE_FACE = 0.94; // 세운 책등 제목 크기를 정할 때 쓰는 폭(책등 폭의 94%. 글자는 책등 가운데)
 
@@ -253,7 +253,7 @@ async function record(el: ReactNode, w: number, h: number) {
 }
 
 // 그림 기록 키에 넣는 디자인 판(조판·몸체 규칙을 바꾸면 올린다: 빠른 새로고침에서도 예전 규칙으로 기록한 그림을 다시 쓰지 않게)
-const DESIGN_REV = 'soft-jacket-edge-light-9';
+const DESIGN_REV = 'continuous-jacket-light-10';
 const cache = new Map<string, Promise<BookArt>>();
 const done = new Map<string, BookArt>(); // 이미 기록된 것(다시 그릴 때 한 프레임도 비지 않게)
 let queue: Promise<unknown> = Promise.resolve();
@@ -280,7 +280,7 @@ async function buildArt(book: Book, s: number, dims: { T: number; H: number; W: 
   // 끝내서 마지막 글자와 잎·꽃이 겹치지 않도록 공간을 먼저 확보한다.
   const textEnd = book.art.titleTop !== undefined ? 0.79 : book.art.motif === 'none' ? 0.88 : Math.max(0.50, (motifY + (compactMotif ? motifH * 0.28 : 0) - 4 * s) / h);
   const binding = referenceBinding(face);
-  const spine = await record(binding ? <ReferenceBinding material={binding} w={w} h={h} s={s} tone={face} /> : <SpineFaceArt w={w} h={h} face={face} s={s} />, w, h);
+  const spine = await record(binding ? <ReferenceBinding material={binding} w={w} h={h} s={s} /> : <SpineFaceArt w={w} h={h} face={face} s={s} />, w, h);
   const motifGlyph = hasReferenceMotif(book.art.motif) ? <ReferenceMotif image={shared.original!} id={book.art.motif} color={book.art.accentColor ?? (ink === TITLE_LIGHT ? '#F4DCA3' : '#8B9C7C')} /> : spineMotif ? <ImageSVG svg={spineMotif} x={0} y={0} width={24} height={60} /> : null;
   const print = referencePrint(book.title);
   const printV = print?.pose === 'spine' ? print : undefined;
@@ -341,7 +341,7 @@ async function buildArt(book: Book, s: number, dims: { T: number; H: number; W: 
   const retainTitle = originalCover && book.title.replace(/\s/g, '') === cover.printedTitle?.replace(/\s/g, '');
   const coverPic = await record(
     <Group>
-      {originalCover ? <ReferenceCover image={coverImg!} cover={cover} w={cw} h={h} retainTitle={retainTitle} /> : <CoverFaceArt w={cw} h={h} s={s} face={book.art.plainCover ? mix(face, LIGHT_TINT, 0.64) : face} tone={face} image={coverImg} motif={book.body ? motif : null} />}
+      {originalCover ? <ReferenceCover image={coverImg!} cover={cover} w={cw} h={h} retainTitle={retainTitle} /> : <CoverFaceArt w={cw} h={h} s={s} face={toneOf(book)} tone={toneOf(book)} image={coverImg} motif={book.body ? motif : null} />}
       {coverMotif}
       {book.art.plainCover || retainTitle ? null : lineEls}
     </Group>,
