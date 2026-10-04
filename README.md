@@ -3,7 +3,7 @@
 읽은 책을 모아 직접 배치해 꾸미는 책장 앱(가칭). 화면명은 "나의 책장".
 
 - 지시서: `docs/HOME_BRIEF.md`(홈), `docs/BOOKSHELF_ASSET_BRIEF.md`(선반·배경 자산 적용), `docs/SPEC.md`(홈 외, Phase 0~6)
-- 시안: `docs/design/home-reference.png` · 캡처: `docs/screenshots/` (00은 시안과 나란히 비교)
+- 시안: `docs/design/`의 레퍼런스 사진 · 캡처: `docs/screenshots/` (00은 시안과 나란히 비교)
 - 자산 규격·임시/최종 구분: `docs/assets.md`
 
 ## 실행

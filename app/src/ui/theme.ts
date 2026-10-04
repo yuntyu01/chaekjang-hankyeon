@@ -1,5 +1,5 @@
 // 디자인 토큰. 색은 책이 주인공이라 화면 자체는 아이보리·크림·먹색만 쓴다.
-// 색은 시안(docs/design/home-reference.png)에서 채취했다.
+// 색은 레퍼런스 사진(docs/design/)에서 채취했다.
 export const colors = {
   bg: '#FBF7F0', // 벽
   wall: '#FBF7F0',
