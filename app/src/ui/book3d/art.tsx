@@ -253,7 +253,7 @@ async function record(el: ReactNode, w: number, h: number) {
 }
 
 // 그림 기록 키에 넣는 디자인 판(조판·몸체 규칙을 바꾸면 올린다: 빠른 새로고침에서도 예전 규칙으로 기록한 그림을 다시 쓰지 않게)
-const DESIGN_REV = 'rounded-cloth-bindings-8';
+const DESIGN_REV = 'soft-jacket-edge-light-9';
 const cache = new Map<string, Promise<BookArt>>();
 const done = new Map<string, BookArt>(); // 이미 기록된 것(다시 그릴 때 한 프레임도 비지 않게)
 let queue: Promise<unknown> = Promise.resolve();

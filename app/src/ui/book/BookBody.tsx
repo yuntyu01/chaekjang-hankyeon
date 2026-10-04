@@ -1,7 +1,7 @@
 // 책 면 그림(캔버스 없이, 면 그림 좌표 0..w, 0..h). 상자 렌더러(ui/book3d)가 Skia Picture로 기록해 면 변환에 태워 그린다.
 // 책등 면: 책 색 한 가지(균일한 무광). 표지 면: 표지 그림(없으면 책 색 + 모티프) + 제본 홈. 제목은 따로 그린다(세움·눕힘 조판을 자세에 따라 고른다).
 // 면마다 둥근 윤곽을 사용한다. 빛 받는 모서리와 자세에 따른 명암은 BookNode에서 덧그린다.
-import { BlurMask, Group, Image as SkImage, LinearGradient, Path, Rect, Skia, vec, type SkImage as SkImageType } from '@shopify/react-native-skia';
+import { BlurMask, Group, Image as SkImage, LinearGradient, Rect, Skia, vec, type SkImage as SkImageType } from '@shopify/react-native-skia';
 
 import { CORNER_R, GROOVE } from '@/domain/book-parts';
 
@@ -74,9 +74,7 @@ export function SpineFaceArt({ w, h, face, s = 1 }: { w: number; h: number; face
       <Rect x={0} y={0} width={w} height={h}>
         <LinearGradient start={vec(0, 0)} end={vec(w, h * 0.8)} colors={[withAlpha(LIGHT_TINT, 0.045), withAlpha(face, 0), withAlpha(scaleColor(face, 0.7), 0.045)]} positions={[0, 0.45, 1]} />
       </Rect>
-      <Path path={bookFacePath(w, h, s, true)} style="stroke" strokeWidth={0.75 * s} color={withAlpha(scaleColor(face, 0.78), 0.28)} />
-      <Rect x={1.2 * s} y={2.5 * s} width={1.05 * s} height={h - 5 * s} color={withAlpha(LIGHT_TINT, 0.24)} />
-      <Rect x={w - 0.6 * s} y={3 * s} width={0.6 * s} height={h - 6 * s} color={withAlpha(scaleColor(face, 0.38), 0.60)} />
+      {/* Rounded edge light is applied with the book's pose by JacketEdgeLight. */}
     </Group>
   );
 }

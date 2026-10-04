@@ -17,6 +17,7 @@ import { light } from '@/ui/lighting';
 import type { BookArt } from './art';
 import { EMPTY_PAGE, faceMatrix, faceVisible, HIDDEN_MATRIX, pageGeom, roundedPolygon, type Affine } from './face-geometry';
 import { MaterialGrain } from './MaterialGrain';
+import { JacketEdgeLight } from './JacketEdgeLight';
 
 type RO<T> = Readonly<SharedValue<T>>;
 
@@ -65,8 +66,9 @@ export function PageFace({ f, state, cam, px, art, tone, closedHead = false }: {
           <Group matrix={m}><Picture picture={pic} /></Group>
         </Group>
         <Path path={opening} color={paper} />
-        <Path path={walls} color={withAlpha(scaleColor(tone, 0.72), 0.36)} />
-        <Path path={opening} color="rgba(168,144,111,0.20)" style="stroke" strokeWidth={0.45 * px.s} />
+        <Path path={walls} color={withAlpha(scaleColor(tone, 0.72), 0.25)}>
+          <BlurMask blur={0.6 * px.s} style="normal" />
+        </Path>
       </Group>
     </Group>
   );
@@ -105,6 +107,7 @@ export function BackFace({ dims: d, state, cam, px, tone }: { dims: Book3['dims'
     <Group matrix={m} clip={bookFacePath(p.w * px.s, p.h * px.s, px.s)}>
       <Board w={p.w} h={p.h} s={px.s} tone={tone} hingeAt={1} />
       <Rect x={0} y={0} width={p.w * px.s} height={p.h * px.s} color={shade} />
+      <JacketEdgeLight state={state} f="back" w={p.w * px.s} h={p.h * px.s} s={px.s} tone={tone} />
     </Group>
   );
 }
@@ -124,6 +127,7 @@ export function GrazeFace({ f, dims: d, state, cam, px, tone }: { f: 'spine' | '
     <Group matrix={m} opacity={op} clip={bookFacePath(p.w * px.s, p.h * px.s, px.s, f === 'spine')}>
       <Board w={p.w} h={p.h} s={px.s} tone={tone} hingeAt={f === 'cover' ? 0 : null} />
       <Rect x={0} y={0} width={p.w * px.s} height={p.h * px.s} color={shade} />
+      <JacketEdgeLight state={state} f={f} w={p.w * px.s} h={p.h * px.s} s={px.s} tone={tone} />
     </Group>
   );
 }

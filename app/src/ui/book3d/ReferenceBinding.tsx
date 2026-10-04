@@ -1,6 +1,6 @@
-import { Group, LinearGradient, Path, Rect, Skia, vec } from '@shopify/react-native-skia';
+import { Group, LinearGradient, Rect, vec } from '@shopify/react-native-skia';
 import profiles from '@/ui/art/reference-bindings.generated.json';
-import { bookFacePath, litTone, scaleColor, withAlpha } from '@/ui/book/BookBody';
+import { litTone, scaleColor, withAlpha } from '@/ui/book/BookBody';
 import { MaterialGrain } from './MaterialGrain';
 
 type Binding = { colors: string[]; positions: number[]; horizontal: boolean };
@@ -28,10 +28,6 @@ export function referenceBinding(color: string): Binding | undefined {
 // A measured blank strip preserves the reference's matte center and narrow
 // binding edge. The material turns with its book, including a lying spine.
 export function ReferenceBinding({ material, w, h, s, tone }: { material: Binding; w: number; h: number; s: number; tone: string }) {
-  const crown = Skia.PathBuilder.Make();
-  crown.moveTo(0.8 * s, 3.8 * s);
-  crown.quadTo(0.8 * s, 1.25 * s, 4.2 * s, 1.05 * s);
-  crown.quadTo(w / 2, 0.2 * s, w - 3.4 * s, 1.05 * s);
   return <Group>
     <Rect x={0} y={0} width={w} height={h}>
       <LinearGradient start={vec(0,0)} end={vec(w,0)} colors={material.colors} positions={material.positions} />
@@ -42,7 +38,5 @@ export function ReferenceBinding({ material, w, h, s, tone }: { material: Bindin
         positions={[0,0.42,1]} />
     </Rect>
     <MaterialGrain w={w} h={h} s={s} />
-    <Path path={bookFacePath(w,h,s,true)} style="stroke" strokeWidth={0.72*s} color={withAlpha(scaleColor(tone,0.72),0.32)} />
-    <Path path={crown.detach()} style="stroke" strokeCap="round" strokeWidth={0.8*s} color={withAlpha(litTone(tone),0.32)} />
   </Group>;
 }
