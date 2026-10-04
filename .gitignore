@@ -20,6 +20,4 @@ app/ios/
 google-services.json
 service-account*.json
 
-# Go
-server/bin/
 __pycache__/

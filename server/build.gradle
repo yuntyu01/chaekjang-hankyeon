@@ -1,0 +1,41 @@
+plugins {
+	id 'java'
+	id 'org.springframework.boot' version '4.1.1'
+	id 'io.spring.dependency-management' version '1.1.7'
+}
+
+group = 'com.chaekjang'
+version = '0.0.1-SNAPSHOT'
+description = '책장 한켠 API 서버'
+
+java {
+	sourceCompatibility = JavaVersion.VERSION_17
+	targetCompatibility = JavaVersion.VERSION_17
+}
+
+// 설치된 JDK가 17보다 새로워도 Java 17 API·바이트코드로만 컴파일한다.
+tasks.withType(JavaCompile).configureEach {
+	options.release = 17
+	options.encoding = 'UTF-8'
+}
+
+repositories {
+	mavenCentral()
+}
+
+dependencies {
+	implementation 'org.springframework.boot:spring-boot-starter-webmvc'
+	// DB는 DATABASE_URL이 있을 때만 쓰므로 자동설정 스타터 대신 직접 구성한다(DatabaseConfig).
+	implementation 'org.springframework:spring-jdbc'
+	implementation 'com.zaxxer:HikariCP'
+	implementation 'org.flywaydb:flyway-core'
+	implementation 'org.flywaydb:flyway-database-postgresql'
+	runtimeOnly 'org.postgresql:postgresql'
+
+	testImplementation 'org.springframework.boot:spring-boot-starter-webmvc-test'
+	testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
+}
+
+tasks.named('test') {
+	useJUnitPlatform()
+}

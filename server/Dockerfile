@@ -1,11 +1,12 @@
-FROM golang:1.26 AS build
+FROM eclipse-temurin:17-jdk AS build
 WORKDIR /src
-COPY go.mod go.sum ./
-RUN go mod download
-COPY . .
-RUN CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o /out/api ./cmd/api
+COPY gradle gradle
+COPY gradlew build.gradle settings.gradle ./
+COPY src src
+RUN ./gradlew --no-daemon -x test bootJar && cp build/libs/server-*.jar /app.jar
 
-FROM gcr.io/distroless/static-debian12:nonroot
-COPY --from=build /out/api /api
+FROM eclipse-temurin:17-jre
+COPY --from=build /app.jar /app.jar
+USER 1000
 EXPOSE 8080
-ENTRYPOINT ["/api"]
+ENTRYPOINT ["java", "-jar", "/app.jar"]

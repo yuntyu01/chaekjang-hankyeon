@@ -13,8 +13,8 @@ cd app && npm install
 npx expo start --port 8095     # Expo Go(SDK 57)
 npm test && npm run typecheck
 
-cd server && go test ./...
-PORT=8080 go run ./cmd/api     # 키·DB 없으면 메모리 저장소 + 가짜 도서로 뜬다(.env.example 참고)
+cd server && ./gradlew test       # Java 17+, Spring Boot
+PORT=8080 ./gradlew bootRun   # 키·DB 없으면 메모리 저장소 + 가짜 도서로 뜬다(.env.example 참고)
 ```
 
 자산 스크립트: `python3 app/scripts/measure-shelf.py`(선반 측정·배경 이음새 검사), `python3 app/scripts/extract-reference-assets.py`(시안에서 임시 예시 자산 추출).
@@ -28,8 +28,9 @@ PORT=8080 go run ./cmd/api     # 키·DB 없으면 메모리 저장소 + 가짜 
 | `app/src/db/local-db.ts` | 기기 SQLite 캐시(catalog_books, user_books) |
 | `app/src/ui/` | 종이 배경, 책 렌더러, 선반 줄(선반 PNG)·그림자·드래그 오버레이 |
 | `app/src/features/home/` | 홈, 상세·배치 메뉴, 책 서랍 |
-| `server/internal/books` | ISBN 공유 캐시(TTL 갱신, ISBN당 외부 조회·색 추출 1회), 카카오 검색 프록시 |
-| `server/internal/llm` | Gemini·GPT 키 여러 개 순서대로, 한도·토큰·서버 오류 시 다음 키 |
+| `server/src/main/java/.../books` | ISBN 공유 캐시(TTL 갱신, ISBN당 외부 조회·색 추출 1회), 카카오 검색 프록시 |
+| `server/src/main/java/.../llm` | Gemini·GPT 키 여러 개 순서대로, 한도·토큰·서버 오류 시 다음 키 |
+| `server/src/main/resources/db/migration` | Flyway 마이그레이션(`V1__init.sql`) |
 
 ## 상태 (2026-09-27)
 
