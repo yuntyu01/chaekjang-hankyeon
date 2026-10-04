@@ -1,4 +1,4 @@
-package com.chaekjang.server.books;
+package com.chaekjang.server.external;
 
 /** 보강 정보 조회. 없으면 null. */
 public interface Detailer {

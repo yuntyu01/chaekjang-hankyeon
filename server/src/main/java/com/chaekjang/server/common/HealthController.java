@@ -1,4 +1,4 @@
-package com.chaekjang.server;
+package com.chaekjang.server.common;
 
 import java.util.LinkedHashMap;
 import java.util.Map;
@@ -6,7 +6,7 @@ import java.util.Map;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RestController;
 
-import com.chaekjang.server.books.BookService;
+import com.chaekjang.server.book.BookService;
 import com.chaekjang.server.llm.LlmGateway;
 
 @RestController

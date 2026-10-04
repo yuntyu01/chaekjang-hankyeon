@@ -1,4 +1,4 @@
-package com.chaekjang.server.books;
+package com.chaekjang.server.external;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -11,6 +11,8 @@ import org.junit.jupiter.api.Test;
 import com.sun.net.httpserver.HttpServer;
 
 class KakaoSearcherTest {
+
+    static final String ISBN = "9788937460449";
 
     @Test
     void searchAndLookup() throws Exception {
@@ -35,9 +37,9 @@ class KakaoSearcherTest {
             var k = new KakaoSearcher("k1", base, http);
             var items = k.search("데미안");
             assertThat(items).hasSize(1);
-            assertThat(items.get(0).isbn13()).isEqualTo(BookServiceTest.ISBN);
+            assertThat(items.get(0).isbn13()).isEqualTo(ISBN);
             assertThat(items.get(0).publishedAt()).isEqualTo("2000-12-20");
-            assertThat(k.lookupIsbn(BookServiceTest.ISBN).publisher()).isEqualTo("민음사");
+            assertThat(k.lookupIsbn(ISBN).publisher()).isEqualTo("민음사");
             assertThat(k.lookupIsbn("9788996991342")).isNull();
             assertThatThrownBy(() -> new KakaoSearcher("bad", base, http).search("x")).hasMessageContaining("401");
         } finally {

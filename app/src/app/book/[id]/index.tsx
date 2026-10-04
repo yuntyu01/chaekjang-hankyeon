@@ -1,7 +1,7 @@
 // 책 상세: 실제 표지·기본 정보 / 이 책 읽기·갈피 남기기·읽기 상태 / 내 기록(회차·별점·감상·누적 시간·갈피·현재 쪽수).
 // 날짜·쪽수·별점은 모두 선택 입력. 완독 여부는 사용자가 정한다(타이머로 자동 판정하지 않는다).
 import { router, useLocalSearchParams } from 'expo-router';
-import { FileText, Bookmark, MoreHorizontal, ChevronRight, ChevronDown } from '@/ui/icons';
+import { MoreHorizontal, ChevronDown } from '@/ui/icons';
 import { useState } from 'react';
 import { Alert, Modal, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -14,9 +14,10 @@ import { placementStore, usePlacementStore } from '@/store/placement-store';
 import { uiBus } from '@/store/ui-bus';
 import { dropImage } from '@/store/files';
 import { Btn, Card, Chip, Empty, H2, ListItem, Muted, RealCover, Row, Screen, Stars, ui } from '@/ui/kit';
-import { colors, fonts, screenTheme } from '@/ui/screenTheme';
+import { colors, fonts } from '@/ui/screenTheme';
 import { LibraryCover } from '@/ui/BookVisual';
 
+const STAR = '#A8865F';
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
 
 export default function BookDetailScreen() {
@@ -26,7 +27,6 @@ export default function BookDetailScreen() {
   const [menu, setMenu] = useState(false);
   const [records, setRecords] = useState(false);
   const [pageEdit, setPageEdit] = useState(false);
-  const [statusEdit, setStatusEdit] = useState(false);
   const insets = useSafeAreaInsets();
   const b = lib.books[id];
   const e = b && lib.editions[b.editionId];
@@ -78,33 +78,27 @@ export default function BookDetailScreen() {
         <LibraryCover lib={lib} id={id} width={194} />
         <Text style={st.title}>{e.title}</Text>
         {e.authors.length ? <Text style={st.author}>{e.authors.join(', ')}</Text> : null}
-        <Pressable onPress={() => setStatusEdit(!statusEdit)} accessibilityRole="button" accessibilityLabel="읽기 상태 변경" style={st.statusBadge}>
-          <Text style={st.statusText}>{STATUS_LABEL[b.status]}</Text>
-        </Pressable>
       </View>
-      {statusEdit ? <Row style={{ justifyContent: 'center', marginBottom: 18 }}>{READ_STATUSES.map((s) => <Chip key={s} label={STATUS_LABEL[s]} on={b.status === s} onPress={() => { libraryStore.setStatus(id, s); setStatusEdit(false); }} />)}</Row> : null}
       <View style={st.progressSection}>
-        <Text style={st.progressLabel}>읽던 곳</Text>
-        <Row style={{ justifyContent: 'space-between', alignItems: 'baseline' }}>
-          <Text style={st.page}>{b.currentPage ?? 0}<Text style={st.pageTotal}> / {e.pageCount ? `${e.pageCount}쪽` : '전체 쪽수 미입력'}</Text></Text>
-          {e.pageCount ? <Text style={st.meta}>{Math.min(100, Math.round((b.currentPage ?? 0) / e.pageCount * 100))}%</Text> : null}
-        </Row>
-        <View style={st.track}><View style={[st.fill, { width: `${e.pageCount ? Math.min(100, (b.currentPage ?? 0) / e.pageCount * 100) : 0}%` }]} /></View>
-        <Pressable onPress={() => setPageEdit(!pageEdit)} accessibilityRole="button" style={st.pageEdit}><Text style={[st.meta, { textDecorationLine: 'underline', color: '#896E62' }]}>쪽수 기록</Text><ChevronRight size={17} color={colors.inkSoft} /></Pressable>
-        {pageEdit ? <TextInput accessibilityLabel="읽은 쪽수" autoFocus defaultValue={b.currentPage ? String(b.currentPage) : ''} placeholder="읽은 쪽수" placeholderTextColor={colors.inkFaint} keyboardType="number-pad" returnKeyType="done" onEndEditing={(ev) => { const n = Number(ev.nativeEvent.text); libraryStore.updateBook(id, { currentPage: Number.isFinite(n) && n > 0 ? Math.round(n) : undefined }); setPageEdit(false); }} style={st.input} /> : null}
-      </View>
-      <View style={st.links}>
-        <Pressable onPress={() => router.push({ pathname: '/bookmarks', params: { book: id } })} accessibilityRole="button" style={st.linkRow}>
-          <Bookmark size={22} color={colors.ink} strokeWidth={1.5} /><Text style={st.linkLabel}>갈피</Text><Text style={st.meta}>{marks.length}개</Text><ChevronRight size={20} color={colors.inkSoft} />
+        <Pressable onPress={() => setPageEdit(!pageEdit)} accessibilityRole="button" accessibilityLabel="읽은 쪽수 기록">
+          <Text style={st.page}>{b.currentPage ?? 0}<Text style={st.pageTotal}>  /  {e.pageCount ? `${e.pageCount}쪽` : '전체 쪽수 미입력'}</Text></Text>
         </Pressable>
-        <View style={st.divider} />
-        <Pressable onPress={() => router.push({ pathname: '/stats', params: { book: id } })} accessibilityRole="button" style={st.linkRow}>
-          <FileText size={22} color={colors.ink} strokeWidth={1.5} /><Text style={st.linkLabel}>독서 기록</Text><Text style={st.meta}>{sessions}회</Text><ChevronRight size={20} color={colors.inkSoft} />
+        {pageEdit ? <TextInput accessibilityLabel="읽은 쪽수" autoFocus defaultValue={b.currentPage ? String(b.currentPage) : ''} placeholder="읽은 쪽수" placeholderTextColor={colors.inkFaint} keyboardType="number-pad" returnKeyType="done" onEndEditing={(ev) => { const n = Number(ev.nativeEvent.text); libraryStore.updateBook(id, { currentPage: Number.isFinite(n) && n > 0 ? Math.round(n) : undefined }); setPageEdit(false); }} style={[st.input, st.pageInput]} /> : null}
+        <View style={st.stars}><Stars value={b.rating} onChange={(v) => libraryStore.updateBook(id, { rating: v })} size={22} color={STAR} /></View>
+        {b.note ? <Text style={st.note}>{b.note}</Text> : null}
+      </View>
+      <View style={st.stats}>
+        <Pressable onPress={() => router.push({ pathname: '/stats', params: { book: id } })} accessibilityRole="button" style={st.statCell}>
+          <Text style={st.statLabel}>독서 기록</Text><Text style={st.statValue}>{sessions}회</Text>
+        </Pressable>
+        <View style={st.statDivider} />
+        <Pressable onPress={() => router.push({ pathname: '/bookmarks', params: { book: id } })} accessibilityRole="button" style={st.statCell}>
+          <Text style={st.statLabel}>갈피</Text><Text style={st.statValue}>{marks.length}개</Text>
         </Pressable>
       </View>
       <Btn label="이어서 읽기" onPress={() => router.push({ pathname: '/read', params: { book: id } })} style={st.continueButton} />
       <Pressable onPress={() => router.push({ pathname: '/bookmark/new', params: { book: id } })} accessibilityRole="button" style={st.bookmarkButton}><Text style={st.bookmarkLabel}>갈피 남기기</Text></Pressable>
-      <Pressable onPress={() => setRecords(!records)} accessibilityRole="button" accessibilityState={{ expanded: records }} style={[st.linkRow, { justifyContent: 'center', marginTop: 18 }]}><Text style={st.meta}>내 기록 · 책 정보</Text><ChevronDown size={16} color={colors.inkSoft} /></Pressable>
+      <Pressable onPress={() => setRecords(!records)} accessibilityRole="button" accessibilityState={{ expanded: records }} style={st.recordsToggle}><Text style={st.meta}>내 기록 · 책 정보</Text><ChevronDown size={16} color={colors.inkSoft} /></Pressable>
       {records ? <View>
       <Muted>{[e.publisher, e.publishedAt?.slice(0, 4)].filter(Boolean).join(' · ')}</Muted>
       <Muted>ISBN {e.isbn13 ?? '미입력'} · {e.pageCount ? `${e.pageCount}쪽` : '쪽수 미입력'}</Muted>
@@ -229,24 +223,23 @@ function RoundCard({ idx, startedAt, finishedAt, paused, onSave }: { idx: number
 }
 
 const st = StyleSheet.create({
-  hero: { alignItems: 'center', paddingTop: 27.5 },
-  title: { fontFamily: fonts.serifBold, fontSize: 26, lineHeight: 38, color: colors.ink, textAlign: 'center', marginTop: 15, includeFontPadding: false },
-  author: { fontFamily: fonts.serif, fontSize: 16, lineHeight: 26, color: colors.inkSoft, marginTop: 1, includeFontPadding: false },
+  hero: { alignItems: 'center', paddingTop: 84 },
+  title: { fontFamily: fonts.round, fontSize: 26, lineHeight: 38, color: colors.ink, textAlign: 'center', marginTop: 20, includeFontPadding: false },
+  author: { fontSize: 17, lineHeight: 26, color: colors.inkSoft, marginTop: 4, includeFontPadding: false },
   meta: { fontSize: 15, color: colors.inkSoft },
-  statusBadge: { borderRadius: 16, paddingHorizontal: 17, paddingVertical: 4, marginTop: 7, backgroundColor: screenTheme.blueLight },
-  statusText: { fontSize: 13, lineHeight: 18, color: '#668AA7', includeFontPadding: false },
-  progressSection: { marginTop: 11.5, paddingHorizontal: 10 },
-  progressLabel: { fontFamily: fonts.serif, fontSize: 14, color: '#74695F', marginBottom: 0, includeFontPadding: false },
-  page: { fontFamily: fonts.serifMedium, fontSize: 22, lineHeight: 30, color: colors.ink, includeFontPadding: false },
-  pageTotal: { fontFamily: fonts.serif, fontSize: 17, color: colors.inkSoft },
-  track: { height: 10, borderRadius: 5, backgroundColor: '#EEE7DF', marginTop: 8, overflow: 'hidden' },
-  fill: { height: 10, borderRadius: 5, backgroundColor: screenTheme.blue, borderTopWidth: 0.5, borderTopColor: '#A6BBCB' },
-  pageEdit: { alignSelf: 'flex-end', minHeight: 44, flexDirection: 'row', alignItems: 'center', gap: 3 },
-  links: { borderWidth: 0.8, borderColor: '#E6DDD3', borderRadius: 15, paddingHorizontal: 15, marginTop: 6, backgroundColor: 'rgba(255,253,248,0.18)' },
-  linkRow: { flexDirection: 'row', alignItems: 'center', gap: 15, minHeight: 59, paddingVertical: 14 },
-  linkLabel: { flex: 1, color: colors.ink, fontSize: 16 },
-  divider: { height: StyleSheet.hairlineWidth, backgroundColor: screenTheme.border },
-  continueButton: { marginTop: 19, minHeight: 58, borderRadius: 14, borderTopColor: '#A18579', borderBottomColor: '#765A54', boxShadow: [{ offsetX: 0, offsetY: 1, blurRadius: 1, color: 'rgba(83,61,49,0.05)' }] },
+  progressSection: { marginTop: 47, alignItems: 'center' },
+  page: { fontSize: 38, lineHeight: 48, fontWeight: '400', color: colors.ink, includeFontPadding: false },
+  pageTotal: { fontSize: 22, fontWeight: '400', color: colors.inkSoft },
+  pageInput: { alignSelf: 'stretch', textAlign: 'center' },
+  stars: { marginTop: 8 },
+  note: { fontSize: 14, lineHeight: 22, color: colors.inkSoft, marginTop: 8, textAlign: 'center' },
+  stats: { flexDirection: 'row', alignItems: 'center', marginTop: 48 },
+  statCell: { flex: 1, flexDirection: 'row', alignItems: 'baseline', justifyContent: 'center', gap: 10, minHeight: 44 },
+  recordsToggle: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, minHeight: 44, marginTop: 14 },
+  statLabel: { fontFamily: fonts.round, fontSize: 18, color: colors.ink, includeFontPadding: false },
+  statValue: { fontSize: 15, color: colors.inkSoft, includeFontPadding: false },
+  statDivider: { width: StyleSheet.hairlineWidth * 2, height: 34, backgroundColor: '#D9CCC4' },
+  continueButton: { marginTop: 17, minHeight: 58, borderRadius: 14, borderTopColor: '#A18579', borderBottomColor: '#765A54', boxShadow: [{ offsetX: 0, offsetY: 1, blurRadius: 1, color: 'rgba(83,61,49,0.05)' }] },
   bookmarkButton: { alignItems: 'center', justifyContent: 'center', minHeight: 54, marginTop: 5 },
   bookmarkLabel: { fontSize: 13.5, color: '#80665B', textDecorationLine: 'underline' },
   k: { fontSize: 14, color: colors.inkSoft },

@@ -1,14 +1,12 @@
-package com.chaekjang.server.books;
+package com.chaekjang.server.book;
 
-import java.time.Instant;
 import java.util.List;
 
-import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.annotation.JsonInclude.Include;
 
-/** books 테이블 한 줄(전 사용자 공유). 비어 있는 선택 필드는 JSON에서 뺀다. */
-public record Book(
+/** GET /books/{isbn13} 응답. 비어 있는 선택 필드는 JSON에서 뺀다. */
+public record BookResponse(
         String isbn13,
         String title,
         List<String> authors,
@@ -23,11 +21,11 @@ public record Book(
         String heightClass,
         String thicknessClass,
         String defaultMotifId,
-        String source,
-        @JsonIgnore Instant updatedAt) {
+        String source) {
 
-    public Book withUpdatedAt(Instant t) {
-        return new Book(isbn13, title, authors, publisher, publishedAt, pageCount, format, coverUrl, coverThumbUrl,
-                description, themeColor, heightClass, thicknessClass, defaultMotifId, source, t);
+    static BookResponse of(Book b) {
+        return new BookResponse(b.isbn13(), b.title(), b.authors(), b.publisher(), b.publishedAt(), b.pageCount(),
+                b.format(), b.coverUrl(), b.coverThumbUrl(), b.description(), b.themeColor(), b.heightClass(),
+                b.thicknessClass(), b.defaultMotifId(), b.source());
     }
 }

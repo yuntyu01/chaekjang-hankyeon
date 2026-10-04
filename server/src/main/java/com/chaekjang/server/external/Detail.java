@@ -1,4 +1,4 @@
-package com.chaekjang.server.books;
+package com.chaekjang.server.external;
 
 /**
  * 카카오 검색에 없는 정보(고해상도 표지, 쪽수, 판형)를 보강한다.

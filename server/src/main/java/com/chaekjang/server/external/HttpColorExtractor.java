@@ -1,4 +1,4 @@
-package com.chaekjang.server.books;
+package com.chaekjang.server.external;
 
 import java.awt.image.BufferedImage;
 import java.io.ByteArrayInputStream;
@@ -51,7 +51,7 @@ public class HttpColorExtractor implements ColorExtractor {
     public static String dominantColor(BufferedImage img) {
         Acc best = pick(img, true);
         if (best == null) best = pick(img, false);
-        if (best == null) return BookClasses.fallbackColor("");
+        if (best == null) return ""; // 못 고르면 비워 두고 BookService가 기본색을 쓴다
         return String.format("#%02X%02X%02X", best.r / best.n, best.g / best.n, best.b / best.n);
     }
 

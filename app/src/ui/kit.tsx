@@ -187,12 +187,12 @@ export function RealCover({ uri, title, color, width, ratio = 0.68 }: { uri?: st
   );
 }
 
-export function Stars({ value, onChange, size = 24 }: { value?: number; onChange?: (v: number | undefined) => void; size?: number }) {
+export function Stars({ value, onChange, size = 24, color = colors.ink }: { value?: number; onChange?: (v: number | undefined) => void; size?: number; color?: string }) {
   return (
     <Row gap={4}>
       {[1, 2, 3, 4, 5].map((n) => (
         <Pressable key={n} disabled={!onChange} onPress={() => onChange?.(value === n ? undefined : n)} hitSlop={6} accessibilityRole="button" accessibilityLabel={`별점 ${n}점`}>
-          <Star size={size} color={colors.ink} fill={value && n <= value ? colors.ink : 'transparent'} strokeWidth={1.3} />
+          <Star size={size} color={color} fill={value && n <= value ? color : 'transparent'} strokeWidth={1.3} />
         </Pressable>
       ))}
     </Row>

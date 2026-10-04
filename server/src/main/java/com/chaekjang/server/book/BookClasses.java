@@ -1,4 +1,4 @@
-package com.chaekjang.server.books;
+package com.chaekjang.server.book;
 
 import java.util.List;
 import java.util.Locale;

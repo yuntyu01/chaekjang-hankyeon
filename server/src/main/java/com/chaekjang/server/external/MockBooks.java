@@ -1,4 +1,4 @@
-package com.chaekjang.server.books;
+package com.chaekjang.server.external;
 
 import java.util.List;
 import java.util.Map;
@@ -9,7 +9,7 @@ public final class MockBooks {
     private MockBooks() {
     }
 
-    static final List<SearchItem> BOOKS = List.of(
+    public static final List<SearchItem> BOOKS = List.of(
             mock("9790000000018", "여름의 숲", List.of("가짜 작가"), "샘플 출판", "2021-06-01"),
             mock("9790000000025", "여름의 숲", List.of("가짜 작가"), "샘플 출판 개정판", "2025-03-15"),
             mock("9790000000032", "달과 나", List.of("시험 저자"), "개발 문고", "2019-11-20"),
@@ -24,6 +24,11 @@ public final class MockBooks {
     }
 
     public static class MockSearcher implements Searcher {
+        @Override
+        public String source() {
+            return "mock";
+        }
+
         @Override
         public List<SearchItem> search(String q) {
             return BOOKS.stream()

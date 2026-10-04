@@ -1,4 +1,4 @@
-package com.chaekjang.server.books;
+package com.chaekjang.server.book;
 
 import java.util.List;
 import java.util.Map;
@@ -7,6 +7,8 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
+
+import com.chaekjang.server.external.SearchItem;
 
 @RestController
 public class BookController {
@@ -23,7 +25,7 @@ public class BookController {
     }
 
     @GetMapping("/books/{isbn13}")
-    Book get(@PathVariable String isbn13) {
-        return books.get(isbn13);
+    BookResponse get(@PathVariable String isbn13) {
+        return BookResponse.of(books.get(isbn13));
     }
 }

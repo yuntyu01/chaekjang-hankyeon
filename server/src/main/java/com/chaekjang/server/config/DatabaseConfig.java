@@ -4,24 +4,19 @@ import java.net.URI;
 import java.net.URLDecoder;
 import java.nio.charset.StandardCharsets;
 
-import javax.sql.DataSource;
-
 import org.flywaydb.core.Flyway;
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.boot.autoconfigure.condition.ConditionalOnExpression;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
-import org.springframework.jdbc.core.JdbcTemplate;
 
 import com.zaxxer.hikari.HikariConfig;
 import com.zaxxer.hikari.HikariDataSource;
 
 /**
- * DATABASE_URL이 있을 때만 Postgres에 붙고 마이그레이션(Flyway)을 돌린다.
- * 없으면 이 설정은 통째로 빠지고 메모리 저장소로 뜬다.
+ * DATABASE_URL(Postgres)로 연결 풀을 만들고, 풀을 JPA에 넘기기 전에 마이그레이션(Flyway)을 돌린다.
+ * DB가 없으면 서버는 뜨지 않는다.
  */
 @Configuration
-@ConditionalOnExpression("!'${DATABASE_URL:}'.isEmpty()")
 public class DatabaseConfig {
 
     @Bean(destroyMethod = "close")
@@ -34,19 +29,10 @@ public class DatabaseConfig {
             cfg.setPassword(user[1]);
         }
         cfg.setConnectionTimeout(10_000); // 시작 때 DB에 못 붙으면 빨리 실패한다
-        return new HikariDataSource(cfg);
-    }
-
-    @Bean
-    Flyway flyway(DataSource dataSource) {
-        Flyway flyway = Flyway.configure().dataSource(dataSource).locations("classpath:db/migration").load();
-        flyway.migrate();
-        return flyway;
-    }
-
-    @Bean
-    JdbcTemplate jdbcTemplate(DataSource dataSource, Flyway flywayMigrated) {
-        return new JdbcTemplate(dataSource); // Flyway 빈에 의존해 마이그레이션 뒤에 만들어지게 한다
+        HikariDataSource ds = new HikariDataSource(cfg);
+        // JPA(스키마 검증)가 이 풀을 쓰기 전에 테이블이 만들어져 있어야 한다.
+        Flyway.configure().dataSource(ds).locations("classpath:db/migration").load().migrate();
+        return ds;
     }
 
     /**

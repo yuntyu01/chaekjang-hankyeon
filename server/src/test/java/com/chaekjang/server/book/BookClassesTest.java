@@ -1,4 +1,4 @@
-package com.chaekjang.server.books;
+package com.chaekjang.server.book;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -13,6 +13,8 @@ import java.util.regex.Pattern;
 
 import org.junit.jupiter.api.Assumptions;
 import org.junit.jupiter.api.Test;
+
+import com.chaekjang.server.external.HttpColorExtractor;
 
 class BookClassesTest {
 

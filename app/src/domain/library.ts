@@ -264,6 +264,8 @@ export function toShelfBook(lib: Library, myBookId: string): Book | null {
     publisher: e.publisher,
     publishedAt: e.publishedAt,
     originalCoverUri: e.coverUri,
+    coverArtUri: bd?.coverArtUri,
+    spineArtUri: bd?.spineArtUri,
     themeColor: bd?.spineColor ?? SPINE_PALETTE[0],
     heightClass: heightClass(size.heightMm),
     thicknessClass: thicknessClass(pages),

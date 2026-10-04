@@ -1,4 +1,4 @@
-package com.chaekjang.server.books;
+package com.chaekjang.server.external;
 
 /** 표지 이미지에서 주조색을 뽑는다. */
 public interface ColorExtractor {

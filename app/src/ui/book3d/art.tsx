@@ -4,7 +4,7 @@
 //   둘 다 책등 면 그림 좌표에 고정되어 몸체와 함께 돈다(글자를 따로 돌리지 않는다). 어느 쪽을 보일지는 자세가 정한다(BookNode).
 // - 표지 면: 표지 그림(달·풍경 등) + 제목(시안처럼 제목만. 저자는 표지에 쓰지 않는다)
 // - 갈피: 머리 뒤에서 나오는 끈(원점 = 아래 가운데)
-import { BlurMask, ColorType, AlphaType, Group, LinearGradient, PaintStyle, StrokeJoin, ImageSVG, Path, Picture, Rect, Skia, Text, vec, drawAsPicture, useImage, useTypeface, type SkFont, type SkImage, type SkPicture, type SkTypeface } from '@shopify/react-native-skia';
+import { BlurMask, ColorType, AlphaType, Group, Image as SkiaImage, LinearGradient, PaintStyle, StrokeJoin, ImageSVG, Path, Picture, Rect, Skia, Text, vec, drawAsPicture, useImage, useTypeface, type SkFont, type SkImage, type SkPicture, type SkTypeface } from '@shopify/react-native-skia';
 import { createContext, useContext, useEffect, useState, type ReactNode } from 'react';
 
 import { rgbHex, shade, TITLE_LIGHT, titleInk } from '@/domain/color';
@@ -15,7 +15,7 @@ import { bootMark } from '@/ui/boot-trace';
 import { GROOVE, rigOf } from '@/domain/book-parts';
 import { jacketColor, jacketFor, LANDSCAPES } from '@/domain/book-design';
 import { hasRibbon, ribbonDesign } from '@/domain/ribbon-design';
-import { CoverFaceArt, PAGE_BASE, PAGE_RIM, SpineFaceArt, withAlpha as withAlphaHex } from '@/ui/book/BookBody';
+import { bookFacePath, CoverFaceArt, PAGE_BASE, PAGE_RIM, SpineFaceArt, withAlpha as withAlphaHex } from '@/ui/book/BookBody';
 import { ReferenceCover } from './ReferenceCover';
 import { ReferenceBinding, referenceBinding, bindingSurfaceTone } from './ReferenceBinding';
 import { MaterialGrain } from './MaterialGrain';
@@ -262,7 +262,10 @@ let pendingArt = 0;
 let builtArt = 0;
 let artMs = 0;
 
-async function buildArt(book: Book, s: number, dims: { T: number; H: number; W: number }, shared: Shared, motif: SkImage | null, coverImg: SkImage | null): Promise<BookArt> {
+// 서버에서 받은 책 전체 그림(표지·책등). 있으면 코드로 그리는 장정 대신 이 그림을 그대로 쓴다(제목·장식도 그림 안에 있다).
+type MadeArt = { cover: SkImage | null; spine: SkImage | null };
+
+async function buildArt(book: Book, s: number, dims: { T: number; H: number; W: number }, shared: Shared, motif: SkImage | null, coverImg: SkImage | null, made: MadeArt): Promise<BookArt> {
   const regular = shared.regular!;
   const face = faceOf(book);
   const ink = inkOf(book);
@@ -280,19 +283,21 @@ async function buildArt(book: Book, s: number, dims: { T: number; H: number; W: 
   // 끝내서 마지막 글자와 잎·꽃이 겹치지 않도록 공간을 먼저 확보한다.
   const textEnd = book.art.titleTop !== undefined ? 0.79 : book.art.motif === 'none' ? 0.88 : Math.max(0.50, (motifY + (compactMotif ? motifH * 0.28 : 0) - 4 * s) / h);
   const binding = referenceBinding(face);
-  const spine = await record(binding ? <ReferenceBinding material={binding} w={w} h={h} s={s} /> : <SpineFaceArt w={w} h={h} face={face} s={s} />, w, h);
+  const spine = await record(made.spine
+    ? <Group clip={bookFacePath(w, h, s, true)}><SkiaImage image={made.spine} x={0} y={0} width={w} height={h} fit="fill" /></Group>
+    : binding ? <ReferenceBinding material={binding} w={w} h={h} s={s} /> : <SpineFaceArt w={w} h={h} face={face} s={s} />, w, h);
   const motifGlyph = hasReferenceMotif(book.art.motif) ? <ReferenceMotif image={shared.original!} id={book.art.motif} color={book.art.accentColor ?? (ink === TITLE_LIGHT ? '#F4DCA3' : '#8B9C7C')} /> : spineMotif ? <ImageSVG svg={spineMotif} x={0} y={0} width={24} height={60} /> : null;
   const print = referencePrint(book.title);
   const printV = print?.pose === 'spine' ? print : undefined;
   const printH = print?.pose === 'horizontal' ? print : undefined;
   const accent = book.art.accentColor ?? (ink === TITLE_LIGHT ? '#F4DCA3' : '#8B9C7C');
-  const titleV = await record(<Group>
+  const titleV = made.spine ? await record(<Group />, w, h) : await record(<Group>
     {printV ? <ReferencePrint image={shared.original!} template={printV} w={w} h={h} ink={ink} accent={accent} decoration={printV.motif === book.art.motif} /> : <Picture picture={verticalTitlePicture(book.title, dims, s, regular, ink, shared.original!, book.art.titleTop, textEnd)} />}
     {printV?.motif === book.art.motif ? null : <Group transform={[{ translateX: (w - motifW) / 2 }, { translateY: motifY }, { scale: motifW / 24 }]}>{motifGlyph}</Group>}
   </Group>, w, h);
   // Counter-rotate the small illustration so it stays upright on a lying spine.
   const lyingMotifW = Math.min(12.5 * s, w * 0.39) * (book.art.motifScale ?? 1);
-  const titleH = await record(<Group>
+  const titleH = made.spine ? await record(<Group />, w, h) : await record(<Group>
     {printH ? <ReferencePrint image={shared.original!} template={printH} w={w} h={h} ink={ink} accent={accent} decoration={printH.motif === book.art.motif} /> : <Picture picture={lyingTitlePicture(book.title, dims, s, regular, ink, shared.original!, !!spineMotif)} />}
     {printH?.motif === book.art.motif ? null : <Group transform={[{ translateX: w / 2 }, { translateY: h * 0.89 }, { rotate: Math.PI / 2 }]}>
       <Group transform={[{ translateX: -lyingMotifW / 2 }, { translateY: -lyingMotifW * 1.25 }, { scale: lyingMotifW / 24 }]}>{motifGlyph}</Group>
@@ -337,9 +342,10 @@ async function buildArt(book: Book, s: number, dims: { T: number; H: number; W: 
     const mw = Math.min(cw * 0.4, (mH * 24) / 60);
     if (svg) coverMotif = <ImageSVG svg={svg} x={cw / 2 - mw / 2} y={h * 0.9 - (mw * 60) / 24} width={mw} height={(mw * 60) / 24} />;
   }
-  const originalCover = !!coverImg && !!cover.sourceRect;
+  const originalCover = !made.cover && !!coverImg && !!cover.sourceRect;
   const retainTitle = originalCover && book.title.replace(/\s/g, '') === cover.printedTitle?.replace(/\s/g, '');
   const coverPic = await record(
+    made.cover ? <Group clip={bookFacePath(cw, h, s)}><SkiaImage image={made.cover} x={0} y={0} width={cw} height={h} fit="cover" /></Group> :
     <Group>
       {originalCover ? <ReferenceCover image={coverImg!} cover={cover} w={cw} h={h} retainTitle={retainTitle} /> : <CoverFaceArt w={cw} h={h} s={s} face={toneOf(book)} tone={toneOf(book)} image={coverImg} motif={book.body ? motif : null} />}
       {coverMotif}
@@ -354,7 +360,7 @@ async function buildArt(book: Book, s: number, dims: { T: number; H: number; W: 
   const pw = dims.T - 2 * rig.bd;
   const pageEnd = await record(<PageArt w={pw} h={dims.W - rig.sq - rig.sp} s={s} spineBand />, pw * s, (dims.W - rig.sq - rig.sp) * s);
   const pageFore = await record(<PageArt w={pw} h={dims.H - 2 * rig.sq} s={s} spineBand={false} />, pw * s, (dims.H - 2 * rig.sq) * s);
-  return { spine, titleV, titleH, cover: coverPic, ribbons, pageEnd, pageFore, prelitCover: originalCover, prelitSpine: !!binding, spineHorizontal: binding?.horizontal ?? false };
+  return { spine, titleV, titleH, cover: coverPic, ribbons, pageEnd, pageFore, prelitCover: originalCover, prelitSpine: !!binding && !made.spine, spineHorizontal: binding?.horizontal ?? false };
 }
 
 // 책 한 권의 기록된 그림(없으면 null → 다음 렌더에서 채워진다)
@@ -367,9 +373,16 @@ export function useBookArt(book: Book, s: number, dims: { T: number; H: number; 
   const motif = useImage(needMotif ? (book.body?.motif ?? null) : null);
   const customCoverImg = useImage(book.art.plainCover || cover.sourceRect ? null : cover.image);
   const coverImg = book.art.plainCover ? null : cover.sourceRect ? shared.original : customCoverImg;
-  const ready = shared.regular && shared.original && (!needMotif || motif) && (!needCover || coverImg);
+  // 서버가 만든 표지·책등 그림(주소). 못 읽으면 코드로 그리는 장정으로 돌아간다.
+  const [badCover, setBadCover] = useState(false);
+  const [badSpine, setBadSpine] = useState(false);
+  const madeCoverUri = badCover ? null : book.coverArtUri ?? null;
+  const madeSpineUri = badSpine ? null : book.spineArtUri ?? null;
+  const madeCover = useImage(madeCoverUri, () => setBadCover(true));
+  const madeSpine = useImage(madeSpineUri, () => setBadSpine(true));
+  const ready = shared.regular && shared.original && (!needMotif || motif) && (!needCover || coverImg) && (!madeCoverUri || madeCover) && (!madeSpineUri || madeSpine);
   // 장정(책 색·모티프)·저자가 바뀌면 다시 기록한다(같은 책 id라도)
-  const key = `${DESIGN_REV}|${book.id}|${s.toFixed(4)}|${dims.T.toFixed(3)}|${dims.H.toFixed(3)}|${dims.W.toFixed(3)}|${book.title}|${book.quotes ?? 0}|${faceOf(book)}|${book.art.motif}|${book.art.ribbonVisible ?? 'auto'}|${book.art.ribbon ?? ''}|${book.art.accentColor ?? ''}|${book.art.titleTop ?? ''}|${book.art.motifScale ?? ''}|${book.art.motifBottom ?? ''}|${book.art.plainCover ?? false}|${inkOf(book)}|${cover.image}|${cover.titleTop}|${JSON.stringify(cover.sourceRect)}`;
+  const key = `${DESIGN_REV}|${book.id}|${s.toFixed(4)}|${dims.T.toFixed(3)}|${dims.H.toFixed(3)}|${dims.W.toFixed(3)}|${book.title}|${book.quotes ?? 0}|${faceOf(book)}|${book.art.motif}|${book.art.ribbonVisible ?? 'auto'}|${book.art.ribbon ?? ''}|${book.art.accentColor ?? ''}|${book.art.titleTop ?? ''}|${book.art.motifScale ?? ''}|${book.art.motifBottom ?? ''}|${book.art.plainCover ?? false}|${inkOf(book)}|${cover.image}|${cover.titleTop}|${JSON.stringify(cover.sourceRect)}|${madeCoverUri ?? ''}|${madeSpineUri ?? ''}`;
   const [art, setArt] = useState<{ key: string; art: BookArt } | null>(() => (done.has(key) ? { key, art: done.get(key)! } : null));
   useEffect(() => {
     if (!ready) return;
@@ -379,7 +392,7 @@ export function useBookArt(book: Book, s: number, dims: { T: number; H: number; 
       pendingArt++;
       p = queue.then(async () => {
         const t0 = Date.now();
-        const a = await buildArt(book, s, dims, shared, motif, coverImg);
+        const a = await buildArt(book, s, dims, shared, motif, coverImg, { cover: madeCoverUri ? madeCover : null, spine: madeSpineUri ? madeSpine : null });
         artMs += Date.now() - t0;
         builtArt++;
         pendingArt--;

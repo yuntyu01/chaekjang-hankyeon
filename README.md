@@ -14,7 +14,7 @@ npx expo start --port 8095     # Expo Go(SDK 57)
 npm test && npm run typecheck
 
 cd server && ./gradlew test       # Java 17+, Spring Boot
-PORT=8080 ./gradlew bootRun   # 키·DB 없으면 메모리 저장소 + 가짜 도서로 뜬다(.env.example 참고)
+PORT=8080 ./gradlew bootRun   # DATABASE_URL(Postgres)이 필요하다. 카카오 키가 없으면 가짜 도서로 뜬다(server/.env.example 참고)
 ```
 
 자산 스크립트: `python3 app/scripts/measure-shelf.py`(선반 측정·배경 이음새 검사), `python3 app/scripts/extract-reference-assets.py`(시안에서 임시 예시 자산 추출).
@@ -38,7 +38,7 @@ PORT=8080 ./gradlew bootRun   # 키·DB 없으면 메모리 저장소 + 가짜 �
 
 **시각 품질:** 예시 18권은 목표 이미지의 개별 책 윤곽을 SVG로 표시하고 실제 윤곽에 맞춰 밀착 배치한다. 3개 선반을 균등 간격으로 중앙 정렬하고, 책·선반의 접촉/확산 그림자를 Skia로 표시한다. 하단은 라벨 없이 채워진 아이콘만 두고 투명하게 겹쳐 그림자가 이어지게 한다. 실제 생성 이미지와 사진 등록 흐름은 아직 연결되지 않았다. 변경 근거·검증·제약은 `docs/HOME_VISUAL_REVIEW.md` 참고.
 
-**서버·외부 연동:** 카카오·Gemini·GPT는 코드와 가짜 서버 테스트만 있고 **실제 키로 호출하지 않았다**(키 없음). 알라딘 Open API는 2026-10-30 종료 공지(신규 키 발급 9/4 종료)라 쓰지 않는다 → 고해상도 표지·쪽수 대체 출처 결정 필요. Postgres 저장소는 로컬 DB가 없어 실행하지 못했다(`TEST_DATABASE_URL`로 도는 테스트만 있음). KoDeploy 배포 전(Dockerfile만).
+**서버·외부 연동:** 카카오·Gemini·GPT는 코드와 가짜 서버 테스트만 있고 **실제 키로 호출하지 않았다**(키 없음). 알라딘 Open API는 2026-10-30 종료 공지(신규 키 발급 9/4 종료)라 쓰지 않는다 → 고해상도 표지·쪽수 대체 출처 결정 필요. 저장소는 JPA(Flyway로 스키마 생성, 시작 때 검증)이고, 시험은 내장 Postgres로 `./gradlew test`에서 돈다. 배포용 실제 DB에서는 실행해 보지 못했다. KoDeploy 배포 전(Dockerfile만).
 
 **미구현:** 등록·재장정 흐름(사진 → 식별 확인 → 재장정 → 배치, SPEC Phase 1·3), 로그인·동기화.
 

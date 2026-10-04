@@ -1,4 +1,4 @@
-package com.chaekjang.server.books;
+package com.chaekjang.server.book;
 
 import java.time.Clock;
 import java.time.Duration;
@@ -10,24 +10,33 @@ import java.util.concurrent.locks.ReentrantLock;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.ObjectProvider;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
+import org.springframework.stereotype.Service;
 
 import com.chaekjang.server.common.ApiException;
+import com.chaekjang.server.external.ColorExtractor;
+import com.chaekjang.server.external.Detail;
+import com.chaekjang.server.external.Detailer;
+import com.chaekjang.server.external.SearchItem;
+import com.chaekjang.server.external.Searcher;
 
 /**
  * ISBN당 외부 조회·색 추출을 한 번만 하고 공유 캐시에 넣는다.
  * 카카오 운영정책(캐시는 최신 데이터로 유지)에 맞춰 TTL이 지나면 다시 조회한다.
  */
+@Service
 public class BookService {
 
     private static final Logger log = LoggerFactory.getLogger(BookService.class);
     private static final int SEARCH_CACHE_MAX = 500;
 
-    private final BookStore store;
+    private final BookRepository repo;
     private final Searcher searcher;
     private final Detailer detailer; // null 가능
     private final ColorExtractor colors;
-    private final String source; // kakao | mock
     private final Duration ttl; // books 캐시 갱신 주기
     private final Duration searchTtl; // 검색 결과 메모리 캐시
     private final Clock clock;
@@ -38,20 +47,25 @@ public class BookService {
     private record SearchEntry(List<SearchItem> items, Instant at) {
     }
 
-    public BookService(BookStore store, Searcher searcher, Detailer detailer, ColorExtractor colors, String source,
+    @Autowired
+    public BookService(BookRepository repo, Searcher searcher, ObjectProvider<Detailer> detailer, ColorExtractor colors,
+            @Value("${BOOKS_CACHE_TTL:720h}") Duration ttl, @Value("${SEARCH_CACHE_TTL:10m}") Duration searchTtl) {
+        this(repo, searcher, detailer.getIfAvailable(), colors, ttl, searchTtl, Clock.systemUTC());
+    }
+
+    BookService(BookRepository repo, Searcher searcher, Detailer detailer, ColorExtractor colors,
             Duration ttl, Duration searchTtl, Clock clock) {
-        this.store = store;
+        this.repo = repo;
         this.searcher = searcher;
         this.detailer = detailer;
         this.colors = colors;
-        this.source = source;
         this.ttl = ttl;
         this.searchTtl = searchTtl;
         this.clock = clock;
     }
 
     public String source() {
-        return source;
+        return searcher.source();
     }
 
     public List<SearchItem> search(String q) {
@@ -100,11 +114,11 @@ public class BookService {
         if (!validIsbn13(isbn13)) {
             throw new ApiException(HttpStatus.BAD_REQUEST, "invalid_isbn", "ISBN-13 형식이 아니에요");
         }
-        Book cached = store.get(isbn13);
+        Book cached = repo.findById(isbn13).orElse(null);
         if (fresh(cached)) return cached;
         try (var ignored = locks.lock(isbn13)) {
             // 기다리는 동안 다른 요청이 채웠을 수 있다.
-            Book again = store.get(isbn13);
+            Book again = repo.findById(isbn13).orElse(null);
             if (fresh(again)) return again;
             Book b;
             try {
@@ -114,8 +128,7 @@ public class BookService {
                 log.warn("refresh failed, serving stale isbn={} err={}", isbn13, e.getMessage());
                 return cached;
             }
-            store.put(b);
-            return store.get(isbn13);
+            return repo.save(b);
         }
     }
 
@@ -160,7 +173,8 @@ public class BookService {
         return new Book(isbn13, it.title(), it.authors() == null ? List.of() : it.authors(), it.publisher(),
                 it.publishedAt(), d.pageCount(), d.format(), cover, it.thumbnailUrl(), desc, color,
                 BookClasses.heightFromFormat(d.format()), BookClasses.thicknessFromPages(d.pageCount()),
-                BookClasses.defaultMotifFor(isbn13), source, null);
+                prev != null ? prev.defaultMotifId() : BookClasses.defaultMotifFor(isbn13), searcher.source(),
+                clock.instant());
     }
 
     /** 같은 ISBN 요청이 동시에 와도 외부 조회는 한 번. */

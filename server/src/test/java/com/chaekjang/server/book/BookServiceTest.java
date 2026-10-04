@@ -1,4 +1,4 @@
-package com.chaekjang.server.books;
+package com.chaekjang.server.book;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -17,14 +17,21 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 
+import com.chaekjang.server.PostgresIntegrationTest;
 import com.chaekjang.server.common.ApiException;
 import com.chaekjang.server.common.ApiExceptionHandler;
+import com.chaekjang.server.external.ColorExtractor;
+import com.chaekjang.server.external.MockBooks;
+import com.chaekjang.server.external.SearchItem;
+import com.chaekjang.server.external.Searcher;
 
-class BookServiceTest {
+class BookServiceTest extends PostgresIntegrationTest {
 
     static final String ISBN = "9788937460449";
 
@@ -52,6 +59,11 @@ class BookServiceTest {
         final AtomicBoolean fail = new AtomicBoolean();
 
         @Override
+        public String source() {
+            return "test";
+        }
+
+        @Override
         public List<SearchItem> search(String q) {
             return List.of();
         }
@@ -76,25 +88,19 @@ class BookServiceTest {
         }
     }
 
-    /** 저장 시각을 테스트 시계로 찍는다. */
-    static class ClockStore extends MemBookStore {
-        final MutableClock clock;
-
-        ClockStore(MutableClock clock) {
-            this.clock = clock;
-        }
-
-        @Override
-        public void put(Book b) {
-            super.put(b.withUpdatedAt(clock.now));
-        }
-    }
+    @Autowired
+    BookRepository repo;
 
     final MutableClock clock = new MutableClock();
     final CountingSearcher searcher = new CountingSearcher();
     final CountingColors colors = new CountingColors();
-    final BookService svc = new BookService(new ClockStore(clock), searcher, null, colors, "test",
-            Duration.ofDays(30), Duration.ofMinutes(1), clock);
+    BookService svc;
+
+    @BeforeEach
+    void setUp() {
+        repo.deleteAll();
+        svc = new BookService(repo, searcher, null, colors, Duration.ofDays(30), Duration.ofMinutes(1), clock);
+    }
 
     @Test
     void sameIsbnFetchedOnce() {
@@ -155,7 +161,7 @@ class BookServiceTest {
 
     @Test
     void searchCacheAndValidation() throws Exception {
-        BookService s = new BookService(new MemBookStore(), new MockBooks.MockSearcher(), null, null, "mock",
+        BookService s = new BookService(repo, new MockBooks.MockSearcher(), null, null,
                 Duration.ofDays(30), Duration.ofMinutes(1), clock);
         assertThat(s.search(" 여름의 숲 ")).hasSize(2);
         assertThatThrownBy(() -> s.search("  ")).isSameAs(ApiException.BAD_REQUEST);

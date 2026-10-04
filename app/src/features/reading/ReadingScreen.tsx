@@ -111,17 +111,17 @@ export function ReadingScreen({ initialBookId, soundOnly = false, inTab = false 
               <Pressable onPress={() => setOpen(false)} style={st.fold} accessibilityRole="button" accessibilityLabel="조작부 접기"><ChevronDown size={23} color={colors.ink} strokeWidth={1.8} /><Text style={st.foldText}>접기</Text></Pressable>
             </View>
             {!soundOnly ? <Pressable onPress={() => setControls('goal')} accessibilityRole="button" accessibilityLabel={`목표 시간 설정, ${settings.goalMin ? settings.goalMin + '분' : '자유롭게 시간 재기'}`} style={{ alignItems: 'center', marginTop: 0 }}>
-              <Text style={st.sub}>{active ? running ? '읽은 시간' : '일시정지' : '읽은 시간'}</Text>
+              {active && !running ? <Text style={st.sub}>일시정지</Text> : null}
               <Text style={st.time} accessibilityLabel={`읽은 시간 ${clock(ms)}`}>{clock(ms)}</Text>
-              <Text style={st.goal}>{goalMs ? ms >= goalMs ? `목표 ${settings.goalMin}분을 채웠어요` : `목표 ${settings.goalMin}분` : '자유롭게 시간 재기 · 목표 설정'}</Text>
+              {goalMs ? <Text style={st.goal}>{ms >= goalMs ? `목표 ${settings.goalMin}분을 채웠어요` : `목표 ${settings.goalMin}분`}</Text> : null}
             </Pressable> : null}
             <View style={st.controls}>
-              <Pressable onPress={() => setControls('sound')} style={st.control} accessibilityRole="button" accessibilityLabel="소리 설정"><AudioLines size={30} color={colors.ink} strokeWidth={1.8} /><Text style={st.controlText}>소리</Text></Pressable>
+              <Pressable onPress={() => setControls('sound')} style={st.sideButton} accessibilityRole="button" accessibilityLabel="소리 설정"><AudioLines size={32} color={colors.ink} strokeWidth={1.8} /></Pressable>
               <Pressable onPress={soundOnly ? () => audio.playing ? ambient.pause() : void ambient.play(scene) : !active ? start : () => running ? readingStore.pause() : readingStore.resume()} style={({ pressed }) => [st.round, pressed && st.roundPressed]} accessibilityRole="button" accessibilityLabel={soundOnly ? audio.playing ? '소리 멈추기' : '소리 재생' : !active ? '독서 시작' : running ? '일시정지' : '다시 읽기'}>
                 <ButtonShading radius={40} />
                 {(soundOnly ? audio.playing : running) ? <View style={{ flexDirection: 'row', gap: 7 }}><View style={st.pauseStroke} /><View style={st.pauseStroke} /></View> : <Play size={30} color={LIGHT} fill={LIGHT} style={{ marginLeft: 3 }} />}
               </Pressable>
-              <Pressable onPress={() => setControls('scene')} style={st.control} accessibilityRole="button" accessibilityLabel="장면 변경"><ImageIcon size={27} color={colors.ink} strokeWidth={1.8} /><Text style={st.controlText}>장면</Text></Pressable>
+              <Pressable onPress={() => setControls('scene')} style={st.sideButton} accessibilityRole="button" accessibilityLabel="장면 변경"><ImageIcon size={32} color={colors.ink} strokeWidth={1.8} /></Pressable>
             </View>
             {audio.error ? <Text style={st.error}>{audio.error}</Text> : null}
             {soundOnly ? <Btn label="지금부터 독서 기록" kind="ghost" onPress={() => { start(); router.replace('/read'); }} /> : null}
@@ -173,12 +173,13 @@ const st = StyleSheet.create({
   foldText: { color: colors.inkSoft, fontFamily: fonts.round, fontSize: 12 },
   time: { color: '#403027', fontSize: 54, lineHeight: 69, fontWeight: '400', fontVariant: ['tabular-nums'], letterSpacing: 0.5, includeFontPadding: false, marginTop: 4 },
   sub: { color: colors.inkSoft, fontFamily: fonts.round, fontSize: 12, lineHeight: 19, textAlign: 'center' },
-  controls: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-evenly', marginTop: 16 },
+  controls: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 22, marginTop: 16 },
   round: { width: 80, height: 80, borderRadius: 40, backgroundColor: '#81573E', borderTopWidth: 0.8, borderTopColor: '#B1937A', alignItems: 'center', justifyContent: 'center', boxShadow: [{ offsetX: 0, offsetY: 5, blurRadius: 9, color: 'rgba(130,92,53,0.11)' }] },
   roundPressed: { transform: [{ scale: 0.96 }], opacity: 0.9 },
   goal: { fontSize: 11, lineHeight: 16, minHeight: 16, color: '#8E8175', marginTop: 2, textAlign: 'center' },
   goalHelp: { fontSize: 14, color: colors.inkSoft, lineHeight: 23 },
   pauseStroke: { width: 6, height: 27, borderRadius: 3, backgroundColor: '#FFFCF4' },
+  sideButton: { width: 64, height: 64, alignItems: 'center', justifyContent: 'center' },
   control: { alignItems: 'center', justifyContent: 'center', gap: 7, minWidth: 64, minHeight: 58, paddingVertical: 8 },
   controlText: { color: colors.inkSoft, fontFamily: fonts.round, fontSize: 13, textAlign: 'center' },
   icon: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center' },

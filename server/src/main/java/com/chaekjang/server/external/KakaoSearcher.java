@@ -1,4 +1,4 @@
-package com.chaekjang.server.books;
+package com.chaekjang.server.external;
 
 import java.io.IOException;
 import java.net.URI;
@@ -66,6 +66,11 @@ public class KakaoSearcher implements Searcher {
         d.path("authors").forEach(a -> authors.add(a.asString("")));
         return new SearchItem(isbn13Of(d.path("isbn").asString("")), d.path("title").asString(""), authors,
                 d.path("publisher").asString(""), date, d.path("thumbnail").asString(""), d.path("contents").asString(""));
+    }
+
+    @Override
+    public String source() {
+        return "kakao";
     }
 
     @Override
