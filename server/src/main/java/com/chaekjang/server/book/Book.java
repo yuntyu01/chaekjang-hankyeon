@@ -5,12 +5,14 @@ import java.time.LocalDate;
 import java.time.format.DateTimeParseException;
 import java.util.List;
 
-import org.hibernate.annotations.JdbcTypeCode;
-import org.hibernate.type.SqlTypes;
-
+import jakarta.persistence.CollectionTable;
 import jakarta.persistence.Column;
+import jakarta.persistence.ElementCollection;
 import jakarta.persistence.Entity;
+import jakarta.persistence.FetchType;
 import jakarta.persistence.Id;
+import jakarta.persistence.JoinColumn;
+import jakarta.persistence.OrderColumn;
 import jakarta.persistence.Table;
 
 /**
@@ -27,8 +29,11 @@ public class Book {
     @Column(nullable = false)
     private String title;
 
-    @JdbcTypeCode(SqlTypes.ARRAY)
-    @Column(nullable = false)
+    // 저자는 순서가 있는 별도 표(book_authors)로 정규화했다.
+    @ElementCollection(fetch = FetchType.EAGER)
+    @CollectionTable(name = "book_authors", joinColumns = @JoinColumn(name = "isbn13"))
+    @OrderColumn(name = "position")
+    @Column(name = "name", nullable = false)
     private List<String> authors;
 
     private String publisher;
@@ -67,7 +72,7 @@ public class Book {
             String heightClass, String thicknessClass, String defaultMotifId, String source, Instant updatedAt) {
         this.isbn13 = isbn13;
         this.title = title;
-        this.authors = authors;
+        this.authors = new java.util.ArrayList<>(authors);
         this.publisher = nullIfEmpty(publisher);
         this.publishedAt = parseDate(publishedAt);
         this.pageCount = pageCount > 0 ? pageCount : null;

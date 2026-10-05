@@ -1,8 +1,10 @@
-// 장정 편집: 책등 색·모티프·다시 만들기. 장정만 바뀌고 독서 기록·배치는 그대로다.
+// 장정 편집: 책 색(추천 5)·모티프·책등 조판. 장정만 바뀌고 독서 기록·배치는 그대로다. 저장하면 사용자 오버라이드로 남아 재시작 후에도 유지된다.
 import { router, useLocalSearchParams } from 'expo-router';
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 
 import { BindingEditor, type BindingDraft } from '@/features/book/BindingEditor';
+import { bindingFields, rebindInput } from '@/domain/library';
+import { buildBookArt } from '@/domain/rebinding';
 import { libraryStore, useLibrary } from '@/store/library-store';
 import { Btn, Empty, Screen } from '@/ui/kit';
 
@@ -12,7 +14,9 @@ export default function EditBinding() {
   const b = lib.books[id];
   const e = b && lib.editions[b.editionId];
   const bd = b?.bindingId ? lib.bindings[b.bindingId] : undefined;
-  const [v, setV] = useState<BindingDraft>(() => ({ spineColor: bd?.spineColor ?? '#3D5F57', motif: bd?.motif ?? 'leaf', seed: bd?.seed ?? 0, source: bd?.source ?? 'default' }));
+  // 추천 = 판본에 저장된 계산값(없으면 지금 입력으로 다시 계산)
+  const recommended = useMemo<BindingDraft>(() => ({ ...bindingFields(e?.art ?? buildBookArt(e ? rebindInput(e) : { title: '' })), seed: 0, source: 'default' }), [e]);
+  const [v, setV] = useState<BindingDraft>(() => ({ ...recommended, ...(bd ? { spineColor: bd.spineColor, motif: bd.motif, seed: bd.seed, source: bd.source, inkColor: bd.inkColor ?? recommended.inkColor, accentColor: bd.accentColor ?? recommended.accentColor, layout: bd.layout ?? recommended.layout } : {}) }));
   if (!b || !e) return <Screen title="장정 편집"><Empty title="책을 찾을 수 없어요" /></Screen>;
   return (
     <Screen
@@ -26,7 +30,7 @@ export default function EditBinding() {
           }}
         />
       }>
-      <BindingEditor title={e.title} author={e.authors.join(', ')} size={e.size} pages={e.pageCount} value={v} onChange={setV} />
+      <BindingEditor title={e.title} author={e.authors.join(', ')} size={e.size} pages={e.pageCount} value={v} recommended={recommended} onChange={setV} />
     </Screen>
   );
 }

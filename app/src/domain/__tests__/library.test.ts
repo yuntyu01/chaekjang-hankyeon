@@ -80,12 +80,19 @@ describe('책장용 책 모양', () => {
     expect(b.themeColor).toBe(lib.bindings[lib.books.bk1.bindingId!].spineColor);
   });
 
-  it('기본 장정은 같은 seed면 같고, 다시 만들기(seed+1)는 다른 조합일 수 있다', () => {
+  it('기본 장정(재장정)은 입력이 같으면 같고 제목이 다르면 달라질 수 있다', () => {
     const a = defaultBinding('x', '월든', 0, '');
     const b = defaultBinding('y', '월든', 0, '');
-    expect([a.spineColor, a.motif]).toEqual([b.spineColor, b.motif]);
-    const variants = new Set([0, 1, 2, 3, 4].map((s) => defaultBinding('x', '월든', s, '').spineColor + defaultBinding('x', '월든', s, '').motif));
+    expect([a.spineColor, a.motif, a.layout]).toEqual([b.spineColor, b.motif, b.layout]);
+    const titles = ['월든', '데미안', '어린 왕자', '채식주의자', '작별하지 않는다', '아무튼, 독서'];
+    const variants = new Set(titles.map((t) => { const d = defaultBinding('x', t, 0, ''); return d.spineColor + d.motif; }));
     expect(variants.size).toBeGreaterThan(1);
+  });
+  it('사진 갈피는 사진 파일과 비율을 함께 저장한다', () => {
+    const t = '2026-10-05T00:00:00.000Z';
+    const lib = { ...emptyLibrary(), bookmarks: { m1: { id: 'm1', myBookId: 'bk1', text: '', photoUri: 'file:///p.jpg', photoRatio: 1.33, createdAt: t, updatedAt: t } } };
+    expect(lib.bookmarks.m1.photoUri).toBe('file:///p.jpg');
+    expect(JSON.parse(JSON.stringify(lib)).bookmarks.m1.photoRatio).toBe(1.33);
   });
 });
 

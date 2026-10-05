@@ -6,10 +6,11 @@ import { colors, fonts } from '@/ui/screenTheme';
 import { Bookmark } from '@/ui/icons';
 import { BookmarkPaper } from './BookmarkPaper';
 import { BookmarkTape } from './BookmarkTape';
+import { PhotoPlate } from './PhotoPlate';
 
 export const CARD_PAPER = '#FCF7F0';
 export const PAGE_BG = colors.bg;
-export type BookmarkCardData = { text: string; title: string; author?: string; page?: number; date: string; memo?: string; color: string; coverUri?: string; book?: Book };
+export type BookmarkCardData = { text: string; title: string; author?: string; page?: number; date: string; memo?: string; color: string; coverUri?: string; book?: Book; photoUri?: string; photoRatio?: number };
 
 export function quoteType(text: string) {
   const n = text.replace(/\s+/g, '').length;
@@ -32,11 +33,12 @@ function paperTone(color: string) {
   return { paper: '#EDC0A9', tape: '#ECC0AA', ink: '#E0A08A' };
 }
 
-export function BookmarkCard({ data, showMemo, width, seed, compact = false, rasterizeBook = false, onCoverReady, onOpen, saved = false, onToggleSaved }: { data: BookmarkCardData; showMemo: boolean; width: number; seed: string; compact?: boolean; rasterizeBook?: boolean; onCoverReady?: () => void; onOpen?: () => void; saved?: boolean; onToggleSaved?: () => void }) {
+export function BookmarkCard({ data, showMemo, width, seed, compact = false, rasterizeBook = false, onCoverReady, onPhotoReady, onOpen, saved = false, onToggleSaved }: { data: BookmarkCardData; showMemo: boolean; width: number; seed: string; compact?: boolean; rasterizeBook?: boolean; onCoverReady?: () => void; onPhotoReady?: () => void; onOpen?: () => void; saved?: boolean; onToggleSaved?: () => void }) {
   const qt = compact ? { size: 25, lh: 36 } : quoteType(data.text);
   const cardW = compact ? width - 8 : width * 0.857;
   const coverW = compact ? 67 : 97;
   const tone = paperTone(data.color);
+  const photo = !!data.photoUri;
   const date = compact ? data.date.replace(/^\d{4}[.\-/](\d{1,2})[.\-/](\d{1,2}).*$/, (_, m, d) => `${Number(m)}월 ${Number(d)}일`) : data.date;
   return (
     <View style={{ width, paddingTop: compact ? 17 : 37, paddingBottom: compact ? 15 : 38, alignItems: 'center' }}>
@@ -50,21 +52,34 @@ export function BookmarkCard({ data, showMemo, width, seed, compact = false, ras
       </View>
       <View style={[st.card, compact && st.compactShadow, { width: cardW, borderRadius: compact ? 12 : 9, transform: [{ translateX: compact ? 0 : 8 }, { rotate: compact ? '-0.7deg' : '-1deg' }] }]}>
         <BookmarkPaper color={CARD_PAPER} radius={compact ? 12 : 9} seed={`${seed}-front`} />
-        <Pressable disabled={!onOpen} onPress={onOpen} accessible={!!onOpen} accessibilityRole={onOpen ? 'button' : undefined} accessibilityLabel={onOpen ? `${data.text}, ${data.title}` : undefined} style={({ pressed }) => ({ paddingHorizontal: compact ? 30 : 33, paddingTop: compact ? 20 : 36, paddingBottom: compact ? 12 : 34, opacity: pressed ? 0.75 : 1 })}>
-        <View pointerEvents="none" style={[st.tape, { right: compact ? 20 : 16, top: compact ? -16 : -13 }]}>
+        <Pressable disabled={!onOpen} onPress={onOpen} accessible={!!onOpen} accessibilityRole={onOpen ? 'button' : undefined} accessibilityLabel={onOpen ? `${data.text || "사진 갈피"}, ${data.title}` : undefined} style={({ pressed }) => ({ paddingHorizontal: compact ? 30 : 33, paddingTop: compact ? 20 : 36, paddingBottom: compact ? 12 : 34, opacity: pressed ? 0.75 : 1 })}>
+        {photo ? null : <View pointerEvents="none" style={[st.tape, { right: compact ? 20 : 16, top: compact ? -16 : -13 }]}>
           <BookmarkTape color={tone.tape} seed={`${seed}-tape`} width={compact ? 39 : 44} height={compact ? 43 : 45} paperEdge={compact ? 16 : 13} />
+        </View>}
+        <View style={[st.pageRow, compact && { minHeight: 24 }, photo && { justifyContent: 'space-between', marginRight: -3 }]}>
+          <View style={st.pageLeft}><View style={[st.bar, { backgroundColor: tone.ink, height: compact ? 19 : 27 }]} /><Text style={[st.pageTop, photo && { fontSize: compact ? 15 : 17, color: '#8F8880' }]}>{photo ? '사진 갈피' : data.page ? `p. ${data.page}` : '남긴 문장'}</Text></View>
+          {photo && data.page ? <Text style={st.pageTop}>{data.page}쪽</Text> : null}
         </View>
-        <View style={[st.pageRow, compact && { minHeight: 24 }]}><View style={[st.bar, { backgroundColor: tone.ink, height: compact ? 19 : 27 }]} /><Text style={st.pageTop}>{data.page ? `p. ${data.page}` : '남긴 문장'}</Text></View>
+        {photo ? (
+          <View style={{ marginTop: compact ? 12 : 26 }}>
+            <PhotoPlate uri={data.photoUri!} ratio={data.photoRatio} width={cardW - (compact ? 60 : 66) + 3} seed={seed} compact={compact} onReady={onPhotoReady} />
+            {data.text ? <WordWrap text={data.text} style={[st.photoText, compact && { fontSize: 14, lineHeight: 22 }]} maxLines={compact ? 2 : undefined} /> : null}
+          </View>
+        ) : (
         <View style={{ marginTop: compact ? 16 : 33 }}>
           <WordWrap text={data.text} style={[st.quote, { fontSize: qt.size, lineHeight: qt.lh }]} maxLines={compact ? 4 : undefined} />
-        </View>
+        </View>)}
         <View style={[st.rule, { marginTop: compact ? 15 : 30, marginBottom: compact ? 10 : 17 }]} />
         <View style={[st.srcRow, { gap: compact ? 13 : 16 }]}>
           {data.book ? <BookVisual book={data.book} width={coverW} rasterize={rasterizeBook} onReady={onCoverReady} /> : <RealCover uri={data.coverUri} title={data.title} color={data.color} width={coverW} />}
           <View style={{ flex: 1, gap: compact ? 3 : 8, marginTop: compact ? 0 : -4, paddingRight: compact && onToggleSaved ? 32 : 0 }}>
+            {photo ? <>
+              <Text style={[st.srcTitle, { fontSize: compact ? 16 : 22, lineHeight: compact ? 24 : 32 }]} numberOfLines={compact ? 2 : undefined}>{data.title}</Text>
+              <Text style={st.meta}>{[data.author, date].filter(Boolean).join('  ·  ')}</Text>
+            </> : <>
             <Text style={[st.srcTitle, { fontSize: compact ? 14.5 : 15.5 }]} numberOfLines={compact ? 2 : undefined}>{data.title}{data.author ? ` · ${data.author}` : ''}</Text>
             {!compact && data.page ? <Text style={st.meta}>p. {data.page}</Text> : null}
-            <Text style={st.meta}>{date}</Text>
+            <Text style={st.meta}>{date}</Text></>}
           </View>
         </View>
         {showMemo && data.memo ? <><View style={[st.rule, { marginTop: 18, marginBottom: 20 }]} /><WordWrap text={data.memo} style={st.memo} /></> : null}
@@ -83,7 +98,9 @@ const st = StyleSheet.create({
   compactShadow: { boxShadow: [{ offsetX: 0, offsetY: 1.2, blurRadius: 2.2, color: 'rgba(118,85,55,0.15)' }, { offsetX: 1, offsetY: 7, blurRadius: 16, color: 'rgba(139,101,60,0.20)' }] },
   save: { position: 'absolute', bottom: 14, right: 10, width: 44, height: 44, alignItems: 'center', justifyContent: 'center' },
   tape: { position: 'absolute', transform: [{ rotate: '0.7deg' }] },
-  pageRow: { flexDirection: 'row', alignItems: 'center', gap: 17, minHeight: 28, marginLeft: -9 },
+  pageRow: { flexDirection: 'row', alignItems: 'center', minHeight: 28, marginLeft: -9 },
+  pageLeft: { flexDirection: 'row', alignItems: 'center', gap: 17 },
+  photoText: { fontFamily: fonts.serif, fontSize: 16, lineHeight: 27, color: '#34302C', marginTop: 14, includeFontPadding: false },
   bar: { width: 3, borderRadius: 1.5 },
   pageTop: { fontFamily: fonts.serif, fontSize: 14, lineHeight: 22, color: '#9D958E', includeFontPadding: false },
   quote: { fontFamily: fonts.serif, color: '#292725', letterSpacing: -0.45, includeFontPadding: false },

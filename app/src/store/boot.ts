@@ -10,6 +10,7 @@ import { libraryStore } from './library-store';
 import { EMPTY_LAYOUT, placementStore } from './placement-store';
 import { installReferenceHome } from './home-reference-install';
 import { readingStore } from './reading-store';
+import { initSync } from '@/services/sync';
 import { settingsStore } from './settings-store';
 import { viewStore } from './view-store';
 import { bootMark } from '@/ui/boot-trace';
@@ -57,6 +58,8 @@ export function bootStores() {
       lib = next;
       placementStore.syncBooks(shelfBooks(next));
     });
+    // 서버 동기화(서버 주소가 있을 때만): 서재·배치가 모두 불러와진 뒤 연결한다
+    initSync({ reloadLayout: () => placementStore.load(shelfBooks(libraryStore.get().lib)) });
     // 첫 화면에 필요한 것(설정·시점)만 기다리고, 진행 중 독서 복구는 뒤에서 읽는다(복구 창은 읽힌 뒤 뜬다)
     void readingStore.load().then(() => bootMark('reading-loaded'));
     await Promise.all([settingsStore.load(), viewStore.load()]);

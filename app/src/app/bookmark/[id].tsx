@@ -12,10 +12,12 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { ymd } from '@/features/book/labels';
 import { BookmarkCard, PAGE_BG, type BookmarkCardData } from '@/features/bookmark/BookmarkCard';
 import { bookmarksOf, toShelfBook, type Bookmark, type Library } from '@/domain/library';
-import { dropImage } from '@/store/files';
+import { PhotoPlate } from '@/features/bookmark/PhotoPlate';
+import { deniedMessage, pickPhoto } from '@/services/photos';
+import { dropImage, keepImage } from '@/store/files';
 import { libraryStore, useLibrary } from '@/store/library-store';
 import { ChevronLeft, MoreHorizontal, PenLine, Share } from '@/ui/icons';
-import { Btn, Empty, Field, ListItem, Row, Screen } from '@/ui/kit';
+import { Btn, Chip, Empty, Field, ListItem, Muted, Row, Screen } from '@/ui/kit';
 import { colors, fonts, screenTheme } from '@/ui/screenTheme';
 import { PaperSurface } from '@/ui/PaperSurface';
 
@@ -33,6 +35,8 @@ export function cardData(lib: Library, m: Bookmark): BookmarkCardData | null {
     color: (b.bindingId && lib.bindings[b.bindingId]?.spineColor) || '#8A8378',
     coverUri: e.coverUri,
     book: toShelfBook(lib, b.id) ?? undefined,
+    photoUri: m.photoUri,
+    photoRatio: m.photoRatio,
   };
 }
 
@@ -54,6 +58,7 @@ export default function BookmarkDetail() {
   const sharing = useRef(false);
   const shotRef = useRef<View>(null);
   const coverReady = useRef(false);
+  const photoReady = useRef(false);
 
   if (!cur) return <Screen title="갈피"><Empty title="갈피를 찾을 수 없어요" /></Screen>;
   if (editing) return <EditBookmark m={editing} onDone={() => setEditing(null)} />;
@@ -64,6 +69,7 @@ export default function BookmarkDetail() {
     if (sharing.current || !curData) return;
     sharing.current = true;
     coverReady.current = false;
+    photoReady.current = !curData.photoUri;
     setBusy(true);
     // 넘기기 중에도 누른 갈피의 내용과 표지를 함께 고정한다.
     setShare({ withMemo, data: curData, seed: cur.id });
@@ -75,6 +81,8 @@ export default function BookmarkDetail() {
       }
       for (let i = 0; i < 30 && curData?.book && !coverReady.current; i++) await new Promise((r) => setTimeout(r, 100));
       if (curData?.book && !coverReady.current) throw new Error('책 표지가 준비되지 않았어요. 다시 시도해 주세요.');
+      for (let i = 0; i < 30 && !photoReady.current; i++) await new Promise((r) => setTimeout(r, 100));
+      if (!photoReady.current) throw new Error('갈피 사진을 불러오지 못했어요. 다시 시도해 주세요.');
       let img = null;
       for (let k = 0; k < 3 && !img; k++) {
         await new Promise((r) => setTimeout(r, 400));
@@ -159,7 +167,7 @@ export default function BookmarkDetail() {
       {share ? (
         <View pointerEvents="none" style={{ position: 'absolute', left: 0, top: 0, zIndex: -1 }}>
           <View ref={shotRef} collapsable={false} style={{ width: SHARE_W, backgroundColor: PAGE_BG, paddingTop: 24, paddingBottom: 30, alignItems: 'center' }}>
-            <BookmarkCard data={share.data} showMemo={share.withMemo} width={SHARE_W} seed={share.seed} rasterizeBook onCoverReady={() => { coverReady.current = true; }} />
+            <BookmarkCard data={share.data} showMemo={share.withMemo} width={SHARE_W} seed={share.seed} rasterizeBook onCoverReady={() => { coverReady.current = true; }} onPhotoReady={() => { photoReady.current = true; }} />
             <Text style={[st.brand, { marginTop: 4 }]}>책장 한켠</Text>
           </View>
         </View>
@@ -201,21 +209,49 @@ function EditBookmark({ m, onDone }: { m: Bookmark; onDone: () => void }) {
   const [text, setText] = useState(m.text);
   const [page, setPage] = useState(m.page ? String(m.page) : '');
   const [memo, setMemo] = useState(m.memo ?? '');
+  const [photo, setPhoto] = useState<{ uri?: string; ratio?: number; changed: boolean }>({ uri: m.photoUri, ratio: m.photoRatio, changed: false });
+  const [msg, setMsg] = useState<string | null>(null);
+  const isPhoto = !!photo.uri;
+  const swap = async (from: 'camera' | 'library') => {
+    const r = await pickPhoto(from, { crop: true });
+    if (!r.ok) {
+      if (r.reason === 'denied') setMsg(deniedMessage(from));
+      return;
+    }
+    setPhoto({ uri: r.uri, ratio: r.width && r.height ? r.width / r.height : undefined, changed: true });
+    setMsg(null);
+  };
   return (
     <Screen
-      title="갈피 수정"
+      title={isPhoto ? '사진 갈피 수정' : '갈피 수정'}
       footer={
         <Btn
           label="저장"
-          disabled={!text.trim()}
-          onPress={() => {
+          disabled={!text.trim() && !photo.uri}
+          onPress={async () => {
             const n = Number(page);
-            libraryStore.updateBookmark(m.id, { text: text.trim(), page: Number.isFinite(n) && n > 0 ? Math.round(n) : undefined, memo: memo.trim() || undefined });
+            let photoUri = photo.uri;
+            if (photo.changed) {
+              photoUri = photo.uri ? await keepImage(photo.uri, 'page') : undefined;
+              if (m.photoUri && m.photoUri !== photoUri) void dropImage(m.photoUri);
+            }
+            libraryStore.updateBookmark(m.id, { text: text.trim(), page: Number.isFinite(n) && n > 0 ? Math.round(n) : undefined, memo: memo.trim() || undefined, photoUri, photoRatio: photoUri ? photo.ratio : undefined });
             onDone();
           }}
         />
       }>
-      <Field label="문장 (줄바꿈으로 문단을 나눠요)" value={text} onChangeText={setText} multiline style={{ fontFamily: fonts.serif, fontSize: 16, lineHeight: 28, minHeight: 180 }} />
+      {photo.uri ? (
+        <View style={{ alignItems: 'center', marginBottom: 14 }}>
+          <PhotoPlate uri={photo.uri} ratio={photo.ratio} width={300} seed={m.id} />
+          <Row style={{ marginTop: 10 }}>
+            <Chip label="다시 찍기" onPress={() => swap('camera')} />
+            <Chip label="다른 사진" onPress={() => swap('library')} />
+            {text.trim() ? <Chip label="사진 빼기" onPress={() => setPhoto({ changed: true })} /> : null}
+          </Row>
+          {msg ? <Muted style={{ marginTop: 8 }}>{msg}</Muted> : null}
+        </View>
+      ) : null}
+      <Field label={isPhoto ? '옮겨 적기 (선택)' : '문장 (줄바꿈으로 문단을 나눠요)'} value={text} onChangeText={setText} multiline style={{ fontFamily: fonts.serif, fontSize: 16, lineHeight: 28, minHeight: 180 }} />
       <Field label="쪽수 (선택)" value={page} onChangeText={setPage} keyboardType="number-pad" />
       <Field label="한 줄 메모 (선택, 공유 이미지에는 기본으로 빠져요)" value={memo} onChangeText={setMemo} />
     </Screen>

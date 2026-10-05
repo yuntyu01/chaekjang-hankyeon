@@ -14,7 +14,9 @@ import type { Library } from '@/domain/library';
 
 import { shelfBooks } from './boot';
 import { IMAGE_DIR } from './files';
+import { fullDirty } from '@/domain/sync';
 import { libraryStore } from './library-store';
+import { markAllDirty, noteChange, noteLayoutChange } from './sync-dirty';
 import { placementStore } from './placement-store';
 import { settingsStore, type Settings } from './settings-store';
 import { viewStore } from './view-store';
@@ -147,9 +149,15 @@ async function apply(data: Backup) {
   for (const [name, b64] of Object.entries(data.images ?? {})) await FS.writeAsStringAsync(`${IMAGE_DIR}${name}`, b64, { encoding: FS.EncodingType.Base64 });
   const src = data.library as Partial<Library>;
   const lib = mapImages({ editions: src.editions ?? {}, books: src.books ?? {}, rounds: src.rounds ?? {}, sessions: src.sessions ?? {}, bookmarks: src.bookmarks ?? {}, bindings: src.bindings ?? {} }, fromRef);
+  const before = libraryStore.get().lib;
   await libraryStore.replaceAll(lib);
+  // 서버와도 같은 내용이 되게: 백업에 없는 항목은 삭제로, 있는 항목은 모두 다시 올린다
+  const at = new Date().toISOString();
+  for (const kind of LIB_KINDS) for (const id of Object.keys(before[kind])) if (!(id in lib[kind])) noteChange(kind, id, true, at);
+  markAllDirty(fullDirty(lib));
   if (data.layout) await Storage.setItem(LAYOUT_KEY, data.layout);
   else await Storage.removeItem(LAYOUT_KEY);
+  noteLayoutChange(new Date().toISOString());
   if (data.view) await Storage.setItem(VIEW_KEY, data.view);
   settingsStore.set(data.settings ?? {});
   await placementStore.load(shelfBooks(lib));

@@ -1,12 +1,13 @@
 // 설정: 효과음·진동, 동작 줄이기, 데이터 내보내기·복원(백업 범위 안내), 앱 정보·문의, 개인정보 안내.
 // 계정·클라우드 동기화는 아직 없다(모든 기록은 이 기기에만). 작동하지 않는 로그인 버튼을 두지 않는다.
 import Constants from 'expo-constants';
-import { useState } from 'react';
+import { useState, useSyncExternalStore } from 'react';
 import { Alert, Linking, Switch, Text, View } from 'react-native';
 
 import { exportShare, exportToFolder, readBackupFile, restoreBackup } from '@/store/backup';
 import { PERF_ENABLED } from '@/ui/perf';
 import { settingsStore, useSettings } from '@/store/settings-store';
+import { syncNow, syncStatus } from '@/services/sync';
 import { Btn, Card, Chip, H2, ListItem, Muted, Row, Screen } from '@/ui/kit';
 import { colors } from '@/ui/screenTheme';
 
@@ -126,6 +127,7 @@ export default function SettingsScreen() {
       ) : null}
 
       <H2>앱 정보</H2>
+      <SyncSection />
       <ListItem label="버전" value={Constants.expoConfig?.version ?? ''} />
       <ListItem label="문의" value="yuntyu01@gmail.com" onPress={() => Linking.openURL('mailto:yuntyu01@gmail.com')} />
       <ListItem label="개인정보처리방침 전문" value="웹에서 보기" onPress={() => Linking.openURL('https://midi-broccoli-56c.notion.site/Covebook-3eb50284670881b0a0e2c6029cea29c7')} />
@@ -141,5 +143,21 @@ export default function SettingsScreen() {
         </Card>
       ) : null}
     </Screen>
+  );
+}
+
+// 서버 동기화 상태(서버 주소가 설정된 빌드에서만 켜진다. 없으면 이 기기에만 저장)
+function SyncSection() {
+  const st = useSyncExternalStore(syncStatus.subscribe, syncStatus.get);
+  const label = !syncStatus.available ? '이 기기에만 저장돼요' : st.state === 'syncing' ? '동기화하는 중…' : st.state === 'error' ? '동기화하지 못했어요' : st.lastAt ? `마지막 동기화 ${st.lastAt.slice(5, 16).replace('T', ' ')}` : '아직 동기화 전이에요';
+  return (
+    <View style={{ marginTop: 18 }}>
+      <H2>동기화</H2>
+      <Card>
+        <Text style={{ fontSize: 15, color: '#34302C' }}>{label}</Text>
+        {syncStatus.available ? <Muted style={{ marginTop: 4 }}>{st.pending ? `올리지 못한 변경 ${st.pending}개` : '모든 변경이 서버에 있어요'}{st.error ? `\n${st.error}` : ''}</Muted> : <Muted style={{ marginTop: 4 }}>서버 주소가 없는 빌드예요. 기록은 이 기기에만 있고, 백업 파일로 옮길 수 있어요.</Muted>}
+        {syncStatus.available ? <Btn label="지금 동기화" kind="secondary" style={{ marginTop: 10 }} disabled={st.state === 'syncing'} onPress={() => void syncNow()} /> : null}
+      </Card>
+    </View>
   );
 }

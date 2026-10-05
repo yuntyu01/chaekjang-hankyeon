@@ -13,7 +13,8 @@ cd app && npm install
 npx expo start --port 8095     # Expo Go(SDK 57)
 npm test && npm run typecheck
 
-cd server && ./gradlew test       # Java 17+, Spring Boot
+cd server && ./gradlew test       # Java 17+, Spring Boot (내장 Postgres로 통합 시험)
+cd server && ./gradlew devServer  # 내장 Postgres와 함께 개발용 서버(포트 8080). 앱: EXPO_PUBLIC_API_URL=http://127.0.0.1:8080 (에뮬레이터는 adb reverse tcp:8080 tcp:8080)
 PORT=8080 ./gradlew bootRun   # DATABASE_URL(Postgres)이 필요하다. 카카오 키가 없으면 가짜 도서로 뜬다(server/.env.example 참고)
 ```
 
@@ -43,3 +44,12 @@ PORT=8080 ./gradlew bootRun   # DATABASE_URL(Postgres)이 필요하다. 카카�
 **미구현:** 등록·재장정 흐름(사진 → 식별 확인 → 재장정 → 배치, SPEC Phase 1·3), 로그인·동기화.
 
 **확인하지 않은 것:** iOS, 실제 기기, TalkBack/VoiceOver, 동작 줄이기 설정, 200권 성능(가상화 없음), 저장 실패 경로.
+
+
+## 백엔드·동기화 (2026-10-05)
+
+- **구조:** 앱은 로컬 우선(오프라인 동작)이고, `EXPO_PUBLIC_API_URL`이 있는 빌드에서만 서버와 동기화한다(`app/src/services/sync.ts`, 순수 규칙은 `domain/sync.ts`).
+- **스키마(Flyway V2):** 판본(`editions`+`edition_authors`)·내 책·장정·회차·세션·갈피·파일을 앱 모델 그대로 정규화. 사용자 표는 `(user_id, id)` 복합 키 + 같은 사용자 안 복합 외래키. 공유 카탈로그 `books`는 저자를 `book_authors`로 분리.
+- **API:** `POST /auth/device`(기기 계정·토큰), `GET /me`, `POST /sync/push`, `GET /sync/pull?since=`, `PUT|GET /files/{id}`(사진), 기존 `/books/search`·`/books/{isbn13}`.
+- **충돌·삭제:** `updatedAt`이 더 새로운 쪽이 이김, 삭제는 `deleted_at` 표시로 전달. 한 번 올리기는 한 트랜잭션.
+- **미구현:** 소셜 로그인 검증(표 `auth_identities`만 준비), 요청 제한, 고아 파일 정리, 배포(HTTPS) — 보고서 `docs/REPORT-2026-10-05-photo-bookmark-rebinding.md` 참고.

@@ -6,8 +6,10 @@ import { useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, Alert, Image, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 
 import { BindingEditor, type BindingDraft } from '@/features/book/BindingEditor';
+import { buildBookArt, type BookArtParams, type PaletteEntry } from '@/domain/rebinding';
+import { coverPalette } from '@/services/cover-palette';
 import { STATUS_LABEL } from '@/features/book/labels';
-import { defaultBinding, READ_STATUSES, type ReadStatus, type SizeMm } from '@/domain/library';
+import { bindingFields, READ_STATUSES, rebindInput, type ReadStatus, type SizeMm } from '@/domain/library';
 import { candidateDetails, searchBooks, type BookCandidate } from '@/services/book-search';
 import { photoIdentify } from '@/services/connectors';
 import { deniedMessage, pickPhoto } from '@/services/photos';
@@ -31,6 +33,7 @@ type Draft = {
   height: string;
   coverUri?: string;
   coverSource?: 'api' | 'photo';
+  category?: string;
   source: 'manual' | 'search' | 'photo';
   sourceName?: string;
   status: ReadStatus;
@@ -48,6 +51,7 @@ export default function AddBook() {
   const [step, setStep] = useState<Step>(params.title ? 'confirm' : 'find');
   const [draft, setDraft] = useState<Draft>(() => ({ ...blank('manual'), title: params.title ?? '' }));
   const [binding, setBinding] = useState<BindingDraft | null>(null);
+  const [art, setArt] = useState<BookArtParams | null>(null); // 추천 장정(ISBN당 한 번 계산해 판본에 저장)
   const [notice, setNotice] = useState<string | null>(null);
   const [addedId, setAddedId] = useState<string | null>(null);
   const [placed, setPlaced] = useState<'shelf' | 'drawer' | 'none' | null>(null);
@@ -77,6 +81,7 @@ export default function AddBook() {
       height: c.size ? String(c.size.heightMm) : '',
       coverUri: c.coverUrl,
       coverSource: c.coverUrl ? 'api' : undefined,
+      category: c.category,
       sourceName: c.sourceName,
     }, c.pageCount && c.size ? null : `${c.sourceName} 판본 기록에 ${[c.pageCount ? null : '쪽수', c.size ? null : '판형'].filter(Boolean).join('·')} 정보가 없어요. 알면 적고, 모르면 비워 두세요(장정은 흔한 크기로 만들고 ‘확인 전’으로 표시해요).`);
   };
@@ -110,6 +115,8 @@ export default function AddBook() {
           isbn13: draft.isbn.replace(/[^\dXx]/g, '') || undefined,
           pageCount: num(draft.pages),
           size,
+          category: draft.category,
+          art: art ?? undefined,
           coverUri,
           coverSource: coverUri ? draft.coverSource : undefined,
           source: draft.source,
@@ -148,9 +155,15 @@ export default function AddBook() {
           <Btn
             label="장정 고르기"
             disabled={!draft.title.trim()}
-            onPress={() => {
-              const d = defaultBinding('new', draft.title, 0, '');
-              setBinding((b) => b ?? { spineColor: d.spineColor, motif: d.motif, seed: 0, source: 'default' });
+            busy={saving}
+            onPress={async () => {
+              // 썸네일은 색 추출에만 쓰고(화면에 그리지 않는다) 결과 장정만 저장한다.
+              setSaving(true);
+              const palette: PaletteEntry[] | null = draft.coverSource === 'api' ? await coverPalette(draft.coverUri) : null;
+              const a = buildBookArt(rebindInput({ isbn13: draft.isbn.replace(/[^\dXx]/g, '') || undefined, title: draft.title.trim(), authors: [], publisher: draft.publisher, publishedAt: draft.publishedAt, pageCount: num(draft.pages), size, category: draft.category }, { palette: palette ?? undefined }), new Date().toISOString());
+              setArt(a);
+              setBinding({ ...bindingFields(a), seed: 0, source: 'default' });
+              setSaving(false);
               setStep('binding');
             }}
           />
@@ -209,7 +222,7 @@ export default function AddBook() {
   if (step === 'binding' && binding)
     return (
       <Screen title="장정 미리보기" footer={<Btn label="이 장정으로 추가" busy={saving} onPress={add} />}>
-        <BindingEditor title={draft.title} author={draft.authors} size={size} pages={num(draft.pages)} value={binding} onChange={setBinding} />
+        <BindingEditor title={draft.title} author={draft.authors} size={size} pages={num(draft.pages)} value={binding} recommended={{ ...bindingFields(art ?? buildBookArt({ title: draft.title })), seed: 0, source: 'default' }} onChange={setBinding} />
       </Screen>
     );
 

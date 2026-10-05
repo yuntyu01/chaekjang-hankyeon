@@ -9,7 +9,7 @@ import { createContext, useContext, useEffect, useState, type ReactNode } from '
 
 import { rgbHex, shade, TITLE_LIGHT, titleInk } from '@/domain/color';
 import { COVER_LINE_H, COVER_SPACE, COVER_TRACK, coverTitleLayout, LYING_TRACK, lyingTitleLayout, SPINE_SPACE, spineTitleLayout } from '@/domain/title-layout';
-import type { Book } from '@/domain/types';
+import type { Book, CoverArt } from '@/domain/types';
 import { motifSvg } from '@/ui/art/motifs';
 import { bootMark } from '@/ui/boot-trace';
 import { GROOVE, rigOf } from '@/domain/book-parts';
@@ -253,7 +253,7 @@ async function record(el: ReactNode, w: number, h: number) {
 }
 
 // 그림 기록 키에 넣는 디자인 판(조판·몸체 규칙을 바꾸면 올린다: 빠른 새로고침에서도 예전 규칙으로 기록한 그림을 다시 쓰지 않게)
-const DESIGN_REV = 'continuous-jacket-light-10';
+const DESIGN_REV = 'continuous-jacket-light-11-vector';
 const cache = new Map<string, Promise<BookArt>>();
 const done = new Map<string, BookArt>(); // 이미 기록된 것(다시 그릴 때 한 프레임도 비지 않게)
 let queue: Promise<unknown> = Promise.resolve();
@@ -305,7 +305,8 @@ async function buildArt(book: Book, s: number, dims: { T: number; H: number; W: 
   </Group>, w, h);
   // 표지(앞표지 그림 + 제목). 시안 표지에는 저자가 없다.
   const cw = dims.W * s;
-  const cover = jacketFor(book);
+  const vector = !!book.art.vectorCover && !made.cover;
+  const cover = vector ? ({ titleTop: 0.11 } as CoverArt) : jacketFor(book);
   const ct = coverTitleLayout(book.title, dims.W, dims.H);
   const lines = ct.lines;
   const cfs = ct.fontSize * s;
@@ -321,7 +322,7 @@ async function buildArt(book: Book, s: number, dims: { T: number; H: number; W: 
   // 제목 색: 제목이 놓이는 그림 띠의 실제 색에 대해 공통 규칙으로(밝으면 먹색, 어두우면 따뜻한 밝은색)
   const bandW = Math.min(cw * 0.84, Math.max(...lines.map((l) => cfont.measureText(l).width)) + cfs);
   const band = coverImg && !cover.sourceRect ? bandColor(coverImg, cw, h, cx0 - bandW / 2, top, cx0 + bandW / 2, top + lines.length * lh) : null;
-  const cink = cover.sourceRect ? cover.ink : band ? titleInk(band) : titleInk(face);
+  const cink = vector ? ink : cover.sourceRect ? cover.ink : band ? titleInk(band) : titleInk(face);
   const lineEls = lines.map((line, i) => {
     const chars = [...line];
     const ws = chars.map((c) => (c === ' ' ? cfs * COVER_SPACE : cfont.measureText(c).width));
@@ -338,8 +339,8 @@ async function buildArt(book: Book, s: number, dims: { T: number; H: number; W: 
   let coverMotif: ReactNode = null;
   if (!coverImg && !book.body && !book.art.plainCover && book.art.motif !== 'none') {
     const svg = Skia.SVG.MakeFromString(motifSvg(book.art.motif, book.art.accentColor ?? ink));
-    const mH = h * 0.4;
-    const mw = Math.min(cw * 0.4, (mH * 24) / 60);
+    const mH = h * (vector ? 0.46 : 0.4);
+    const mw = Math.min(cw * (vector ? 0.5 : 0.4), (mH * 24) / 60);
     if (svg) coverMotif = <ImageSVG svg={svg} x={cw / 2 - mw / 2} y={h * 0.9 - (mw * 60) / 24} width={mw} height={(mw * 60) / 24} />;
   }
   const originalCover = !made.cover && !!coverImg && !!cover.sourceRect;
@@ -368,11 +369,12 @@ async function buildArt(book: Book, s: number, dims: { T: number; H: number; W: 
 export function useBookArt(book: Book, s: number, dims: { T: number; H: number; W: number }, shared: Shared): BookArt | null {
   // 기존 비트맵 모티프는 표지용. 책등의 작은 장식은 벡터로 기록한다.
   const needMotif = !!book.body?.motif && !book.cover?.image;
+  const vector = !!book.art.vectorCover;
   const cover = jacketFor(book);
-  const needCover = !!cover.image && !book.art.plainCover;
+  const needCover = !!cover.image && !book.art.plainCover && !vector;
   const motif = useImage(needMotif ? (book.body?.motif ?? null) : null);
-  const customCoverImg = useImage(book.art.plainCover || cover.sourceRect ? null : cover.image);
-  const coverImg = book.art.plainCover ? null : cover.sourceRect ? shared.original : customCoverImg;
+  const customCoverImg = useImage(book.art.plainCover || vector || cover.sourceRect ? null : cover.image);
+  const coverImg = book.art.plainCover || vector ? null : cover.sourceRect ? shared.original : customCoverImg;
   // 서버가 만든 표지·책등 그림(주소). 못 읽으면 코드로 그리는 장정으로 돌아간다.
   const [badCover, setBadCover] = useState(false);
   const [badSpine, setBadSpine] = useState(false);
@@ -382,7 +384,7 @@ export function useBookArt(book: Book, s: number, dims: { T: number; H: number; 
   const madeSpine = useImage(madeSpineUri, () => setBadSpine(true));
   const ready = shared.regular && shared.original && (!needMotif || motif) && (!needCover || coverImg) && (!madeCoverUri || madeCover) && (!madeSpineUri || madeSpine);
   // 장정(책 색·모티프)·저자가 바뀌면 다시 기록한다(같은 책 id라도)
-  const key = `${DESIGN_REV}|${book.id}|${s.toFixed(4)}|${dims.T.toFixed(3)}|${dims.H.toFixed(3)}|${dims.W.toFixed(3)}|${book.title}|${book.quotes ?? 0}|${faceOf(book)}|${book.art.motif}|${book.art.ribbonVisible ?? 'auto'}|${book.art.ribbon ?? ''}|${book.art.accentColor ?? ''}|${book.art.titleTop ?? ''}|${book.art.motifScale ?? ''}|${book.art.motifBottom ?? ''}|${book.art.plainCover ?? false}|${inkOf(book)}|${cover.image}|${cover.titleTop}|${JSON.stringify(cover.sourceRect)}|${madeCoverUri ?? ''}|${madeSpineUri ?? ''}`;
+  const key = `${DESIGN_REV}|${book.id}|${s.toFixed(4)}|${dims.T.toFixed(3)}|${dims.H.toFixed(3)}|${dims.W.toFixed(3)}|${book.title}|${book.quotes ?? 0}|${faceOf(book)}|${book.art.motif}|${book.art.ribbonVisible ?? 'auto'}|${book.art.ribbon ?? ''}|${book.art.accentColor ?? ''}|${book.art.titleTop ?? ''}|${book.art.motifScale ?? ''}|${book.art.motifBottom ?? ''}|${book.art.plainCover ?? false}|${vector}|${inkOf(book)}|${cover.image}|${cover.titleTop}|${JSON.stringify(cover.sourceRect)}|${madeCoverUri ?? ''}|${madeSpineUri ?? ''}`;
   const [art, setArt] = useState<{ key: string; art: BookArt } | null>(() => (done.has(key) ? { key, art: done.get(key)! } : null));
   useEffect(() => {
     if (!ready) return;

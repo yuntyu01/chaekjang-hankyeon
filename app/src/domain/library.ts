@@ -10,7 +10,8 @@
 // - Binding(재장정 자산): 책등 색, 모티프, 그림 파일, 생성 상태(기본 장정 / AI)
 import { formatMm } from './catalog';
 import { illustratedDimensions } from './jacket-proportions';
-import type { Book, HeightClass, MotifId, ThicknessClass } from './types';
+import { buildBookArt, heightClassOf, layoutArt, thicknessClassOf, type BookArtParams, type LayoutVariant, type RebindInput } from './rebinding';
+import type { Book } from './types';
 
 export type ReadStatus = 'want' | 'reading' | 'read' | 'paused';
 export const READ_STATUSES: ReadStatus[] = ['want', 'reading', 'read', 'paused'];
@@ -28,6 +29,9 @@ export type Edition = {
   size?: SizeMm; // 확인된 판형만. 모르면 비움(화면은 기본 크기로 그리되 확인된 값처럼 표시하지 않는다)
   coverUri?: string; // 실제 표지: 도서 API 이미지 주소 또는 사용자 사진 파일
   coverSource?: 'api' | 'photo';
+  category?: string; // KDC 번호나 분류 이름(재장정 모티프 선택용)
+  seriesTitle?: string; // 같은 시리즈는 같은 색 계열로 묶는다
+  art?: BookArtParams; // 재장정 계산값. ISBN당 한 번 계산해 저장한다(썸네일은 색 추출에만 쓰고 저장하지 않는다)
   source: 'manual' | 'search' | 'photo';
   sourceName?: string; // 예: 'Google Books'
   createdAt: string;
@@ -76,7 +80,8 @@ export type Bookmark = {
   text: string;
   page?: number;
   memo?: string;
-  photoUri?: string; // 사진에서 가져온 경우 원본 페이지 사진(선택)
+  photoUri?: string; // 사진 갈피: 페이지 사진(앱 보관 파일). 있으면 '사진 갈피'로 그린다
+  photoRatio?: number; // 사진 가로/세로(카드에서 비율 유지)
   createdAt: string;
   updatedAt: string;
 };
@@ -85,10 +90,13 @@ export type Binding = {
   id: string;
   myBookId: string;
   spineColor: string;
-  motif: MotifId | 'none';
+  motif: string; // 모티프 슬롯 id(motif-slots.ts) 또는 'none'
+  inkColor?: string; // 글자색(바탕 위 대비 4.5:1)
+  accentColor?: string; // 띠·모티프 색
+  layout?: LayoutVariant; // 책등 조판 변형
   coverArtUri?: string; // AI 표지 그림(평평한 그림, 제목 없음)
   spineArtUri?: string; // AI 책등 그림
-  source: 'default' | 'ai';
+  source: 'default' | 'ai' | 'custom'; // custom = 사용자가 색·모티프·조판을 바꿈(추천 장정 대신 적용)
   status: 'ready' | 'generating' | 'failed';
   seed: number;
   createdAt: string;
@@ -120,28 +128,21 @@ export const today = (d = new Date()) => {
 // 책장에 잘 어울리는 차분한 책등 색(시안 책들에서 고른 톤)
 export const SPINE_PALETTE = ['#3D5F57', '#1D426B', '#BE5D47', '#893E41', '#B5C7D7', '#F8C69F', '#E39E8A', '#4E6B60', '#F7E8D5', '#FAEDDE', '#6B5B7A', '#C9A46A'];
 export const PAPER_TAB = '#F1E7D4';
-export const MOTIF_CHOICES: MotifId[] = ['leaf', 'sprig', 'cotton', 'moon', 'star', 'wave', 'flower', 'pine', 'bud'];
 
-function hash(s: string) {
-  let h = 2166136261;
-  for (const ch of s) h = Math.imul(h ^ ch.charCodeAt(0), 16777619) >>> 0;
-  return h;
+// 추천 장정(재장정): buildBookArt 결과를 Binding 값으로. 같은 입력이면 같은 장정(다시 열어도 바뀌지 않는다).
+export function bindingFields(art: BookArtParams): Pick<Binding, 'spineColor' | 'motif' | 'inkColor' | 'accentColor' | 'layout'> {
+  return { spineColor: art.baseColor, motif: art.motifId, inkColor: art.inkColor, accentColor: art.accentColor, layout: art.layoutVariant };
 }
 
-// seed가 같으면 같은 장정(다시 열어도 바뀌지 않는다). '다시 만들기'는 seed만 바꾼다.
-export function defaultBinding(myBookId: string, title: string, seed: number, now: string): Binding {
-  const h = hash(`${title}#${seed}`);
-  return {
-    id: newId('bd'),
-    myBookId,
-    spineColor: SPINE_PALETTE[h % SPINE_PALETTE.length],
-    motif: MOTIF_CHOICES[(h >>> 8) % MOTIF_CHOICES.length],
-    source: 'default',
-    status: 'ready',
-    seed,
-    createdAt: now,
-    updatedAt: now,
-  };
+export function rebindInput(e: Pick<Edition, 'isbn13' | 'title' | 'authors' | 'publisher' | 'publishedAt' | 'pageCount' | 'size' | 'category' | 'seriesTitle'>, extra: Partial<RebindInput> = {}): RebindInput {
+  const year = Number(e.publishedAt?.slice(0, 4));
+  return { isbn: e.isbn13, title: e.title, authors: e.authors, publisher: e.publisher, publishedYear: year > 0 ? year : undefined, pageCount: e.pageCount, heightMm: e.size?.heightMm, widthMm: e.size?.widthMm, category: e.category, seriesTitle: e.seriesTitle, ...extra };
+}
+
+// seed는 '다른 조합' 용도로만 남겨 둔다(0이면 추천 그대로).
+export function defaultBinding(myBookId: string, title: string, seed: number, now: string, input: Partial<RebindInput> = {}): Binding {
+  const art = buildBookArt({ ...input, title: input.title ?? title }, now);
+  return { id: newId('bd'), myBookId, ...bindingFields(art), source: 'default', status: 'ready', seed, createdAt: now, updatedAt: now };
 }
 
 // ---------- 읽기 상태와 회차 ----------
@@ -245,8 +246,6 @@ export function formatDuration(ms: number) {
 export const ESTIMATED_SIZE: SizeMm = { widthMm: 128, heightMm: 188 };
 export const ESTIMATED_PAGES = 250;
 
-const heightClass = (h: number): HeightClass => (h < 180 ? 'short' : h < 215 ? 'medium' : 'tall');
-const thicknessClass = (p: number): ThicknessClass => (p < 220 ? 'thin' : p < 420 ? 'medium' : 'thick');
 
 export function toShelfBook(lib: Library, myBookId: string): Book | null {
   const b = lib.books[myBookId];
@@ -266,14 +265,14 @@ export function toShelfBook(lib: Library, myBookId: string): Book | null {
     originalCoverUri: e.coverUri,
     coverArtUri: bd?.coverArtUri,
     spineArtUri: bd?.spineArtUri,
-    themeColor: bd?.spineColor ?? SPINE_PALETTE[0],
-    heightClass: heightClass(size.heightMm),
-    thicknessClass: thicknessClass(pages),
+    themeColor: bd?.spineColor ?? e.art?.baseColor ?? SPINE_PALETTE[0],
+    heightClass: heightClassOf(size.heightMm),
+    thicknessClass: thicknessClassOf(pages),
     coverAspectRatio: size.widthMm / size.heightMm,
     physical: { widthMm: size.widthMm, heightMm: size.heightMm, pages },
     dims: illustratedDimensions({ widthMm: size.widthMm, heightMm: size.heightMm, pages }),
     // 갈피가 있으면 책 위로 작은 종이 탭(최대 두 장, art.tsx Ribbons)
-    art: { motif: bd?.motif ?? 'none', ribbon: marks ? PAPER_TAB : undefined },
+    art: { motif: bd?.motif ?? e.art?.motifId ?? 'none', inkColor: bd?.inkColor, accentColor: bd?.accentColor, vectorCover: true, ...layoutArt(bd?.layout ?? e.art?.layoutVariant ?? 'spine_a'), ribbon: marks ? PAPER_TAB : undefined },
     startedAt: r?.startedAt,
     finishedAt: b.status === 'read' ? r?.finishedAt : undefined,
     quotes: marks,

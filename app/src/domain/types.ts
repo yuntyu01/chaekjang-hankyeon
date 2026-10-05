@@ -33,6 +33,8 @@ export type BookArt = {
   motifScale?: number;
   motifBottom?: number;
   plainCover?: boolean;
+  // 재장정 정면: 예시 일러스트 대신 바탕색 단색 + 종이 결 + 상단 제목 + 큰 모티프 하나(실제 표지·그림을 쓰지 않는다)
+  vectorCover?: boolean;
 };
 
 // 이미지 자산: 앱 번들(require 결과 숫자) 또는 원격 URI

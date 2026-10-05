@@ -17,6 +17,7 @@ export type BookCandidate = {
   pageCount?: number;
   size?: SizeMm;
   coverUrl?: string;
+  category?: string; // 분류(Google Books categories). 재장정 모티프 선택에 쓴다
   sourceName: string;
   detailRef?: string; // 판본 상세를 읽을 주소(고른 뒤)
 };
@@ -38,6 +39,7 @@ type GVolume = {
     industryIdentifiers?: { type: string; identifier: string }[];
     imageLinks?: { thumbnail?: string; smallThumbnail?: string };
     dimensions?: { height?: string; width?: string };
+    categories?: string[];
   };
 };
 
@@ -72,6 +74,7 @@ function fromGoogle(v: GVolume): BookCandidate {
     pageCount: i.pageCount && i.pageCount > 0 ? i.pageCount : undefined,
     size: h && w ? { widthMm: Math.min(w, h), heightMm: Math.max(w, h) } : undefined,
     coverUrl: thumb?.replace(/^http:/, 'https:').replace('&edge=curl', ''),
+    category: i.categories?.join('>'),
     sourceName: 'Google Books',
     detailRef: `https://www.googleapis.com/books/v1/volumes/${v.id}${GOOGLE_KEY ? `?key=${GOOGLE_KEY}` : ''}`,
   };

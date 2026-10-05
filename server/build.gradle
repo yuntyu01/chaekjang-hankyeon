@@ -41,3 +41,11 @@ dependencies {
 tasks.named('test') {
 	useJUnitPlatform()
 }
+
+// 개발용 서버(내장 Postgres): ./gradlew devServer
+tasks.register('devServer', JavaExec) {
+	group = 'application'
+	description = '내장 Postgres와 함께 서버를 띄운다(개발용)'
+	classpath = sourceSets.test.runtimeClasspath
+	mainClass = 'com.chaekjang.server.dev.DevServer'
+}

@@ -2,6 +2,7 @@
 // 드래그 중 임시 위치는 여기 들어오지 않는다. 확정(commit)될 때만 저장한다.
 import { useSyncExternalStore } from 'react';
 import Storage from 'expo-sqlite/kv-store';
+import { noteLayoutChange } from './sync-dirty';
 
 import { addBook as placeNewBook, addShelf, applySwapTarget, bookXs, ensureShelves, findSwapTarget, fitToShelf, migrate, moveToDrawer, normalize, placeFromDrawer, pruneEmptyShelves, setDepth, validate, withNormalizedX, type BookMap } from '@/domain/layout-engine';
 import { withLeans } from '@/domain/shelf-scene';
@@ -70,6 +71,7 @@ async function persist(layout: ShelfLayout) {
   set({ save: 'saving' });
   try {
     await Storage.setItem(KEY, JSON.stringify(withNormalizedX(layout, state.books)));
+    noteLayoutChange(new Date().toISOString());
     // 저장 도중 다른 변경이 있었으면 그쪽이 다시 저장한다.
     if (state.layout === layout) set({ save: 'idle' });
   } catch {

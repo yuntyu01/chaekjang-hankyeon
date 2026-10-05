@@ -2,12 +2,15 @@
 // 모든 변경은 여기 행동(action)으로만 한다. 책장 배치는 placement-store가 따로 저장한다(배치를 바꿔도 기록은 그대로).
 import { useSyncExternalStore } from 'react';
 
+import { noteChange } from './sync-dirty';
+import type { Merge } from '@/domain/sync';
 import { deleteLib, loadLib, loadLibrary, putLib, replaceLib, type LibKind } from '@/db/local-db';
 import {
   applyStatus,
   bookmarksOf,
   currentRound,
   defaultBinding,
+  rebindInput,
   emptyLibrary,
   newId,
   roundsOf,
@@ -34,10 +37,13 @@ function set(patch: Partial<State>) {
 const now = () => new Date().toISOString();
 
 // 메모리 먼저 바꾸고 표에 기록(실패하면 알림만: 다음 변경 때 다시 쓴다)
+let applyingRemote = false; // 서버에서 받은 변경을 적용하는 중에는 '올릴 변경'으로 세지 않는다
 function write(kind: LibKind, item: { id: string; updatedAt?: string }) {
+  if (!applyingRemote) noteChange(kind, item.id, false, item.updatedAt ?? new Date().toISOString());
   putLib(kind, item).catch((e) => set({ error: String(e?.message ?? e) }));
 }
 function erase(kind: LibKind, id: string) {
+  if (!applyingRemote) noteChange(kind, id, true, new Date().toISOString());
   deleteLib(kind, id).catch((e) => set({ error: String(e?.message ?? e) }));
 }
 
@@ -56,7 +62,7 @@ function commit(next: Library) {
 export type NewBookInput = {
   edition: Omit<Edition, 'id' | 'createdAt' | 'updatedAt'>;
   status: ReadStatus;
-  binding: Pick<Binding, 'spineColor' | 'motif' | 'source' | 'seed' | 'coverArtUri' | 'spineArtUri'>;
+  binding: Pick<Binding, 'spineColor' | 'motif' | 'source' | 'seed' | 'coverArtUri' | 'spineArtUri'> & Partial<Pick<Binding, 'inkColor' | 'accentColor' | 'layout'>>;
 };
 
 export const libraryStore = {
@@ -77,7 +83,7 @@ export const libraryStore = {
         const t = u.createdAt || now();
         const e: Edition = { id: newId('ed'), isbn13: c.isbn13, title: c.title, authors: c.authors, publisher: c.publisher, publishedAt: c.publishedAt, pageCount: c.pageCount, coverUri: c.coverUrl, coverSource: c.coverUrl ? 'api' : undefined, source: 'search', createdAt: t, updatedAt: t };
         const b: MyBook = { id: newId('bk'), editionId: e.id, status: u.status === 'read' ? 'read' : u.status === 'reading' ? 'reading' : 'want', note: u.note, createdAt: t, updatedAt: t };
-        const bd = defaultBinding(b.id, c.title, 0, t);
+        const bd = defaultBinding(b.id, c.title, 0, t, rebindInput({ isbn13: c.isbn13, title: c.title, authors: c.authors, pageCount: c.pageCount, publishedAt: c.publishedAt }, { themeColor: c.themeColor }));
         if (u.customThemeColor) bd.spineColor = u.customThemeColor;
         b.bindingId = bd.id;
         lib = { ...lib, editions: { ...lib.editions, [e.id]: e }, books: { ...lib.books, [b.id]: b }, bindings: { ...lib.bindings, [bd.id]: bd } };
@@ -163,13 +169,13 @@ export const libraryStore = {
     commit(lib);
   },
 
-  addBookmark(input: Pick<Bookmark, 'myBookId' | 'text' | 'page' | 'memo' | 'photoUri'>) {
+  addBookmark(input: Pick<Bookmark, 'myBookId' | 'text' | 'page' | 'memo' | 'photoUri' | 'photoRatio'>) {
     const t = now();
     const m: Bookmark = { id: newId('bm'), createdAt: t, updatedAt: t, ...input };
     commit({ ...state.lib, bookmarks: { ...state.lib.bookmarks, [m.id]: m } });
     return m.id;
   },
-  updateBookmark(id: string, patch: Partial<Pick<Bookmark, 'text' | 'page' | 'memo' | 'myBookId'>>) {
+  updateBookmark(id: string, patch: Partial<Pick<Bookmark, 'text' | 'page' | 'memo' | 'myBookId' | 'photoUri' | 'photoRatio'>>) {
     const m = state.lib.bookmarks[id];
     if (!m) return;
     commit({ ...state.lib, bookmarks: { ...state.lib.bookmarks, [id]: { ...m, ...patch, updatedAt: now() } } });
@@ -203,6 +209,18 @@ export const libraryStore = {
     const next = { ...state.lib.sessions };
     delete next[id];
     commit({ ...state.lib, sessions: next });
+  },
+
+  // 서버에서 받은 변경 적용(올릴 변경으로 세지 않는다)
+  applyRemote(m: Merge) {
+    applyingRemote = true;
+    try {
+      for (const w of m.writes) write(w.kind, w.item);
+      for (const e of m.erases) erase(e.kind, e.id);
+    } finally {
+      applyingRemote = false;
+    }
+    set({ lib: m.lib });
   },
 
   // 백업 복원
