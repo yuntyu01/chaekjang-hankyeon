@@ -45,6 +45,14 @@ jobs:
         working-directory: ./app
 
     steps:
+      # 네이티브 모듈(skia, reanimated, worklets)을 ABI 별로 빌드하면 러너 디스크(약 14GB)가 가득 찬다.
+      # 안 쓰는 큰 도구부터 지워서 자리를 만든다. Android SDK 는 건드리지 않는다.
+      - name: Free disk space
+        working-directory: .
+        run: |
+          sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/share/boost /opt/hostedtoolcache/CodeQL
+          df -h /
+
       - name: Checkout
         uses: actions/checkout@v4
 
@@ -144,6 +152,7 @@ jobs:
             echo "org.gradle.jvmargs=-Xmx3g -XX:MaxMetaspaceSize=768m"
             echo "org.gradle.parallel=false"
             echo "kotlin.compiler.execution.strategy=in-process"
+            echo "reactNativeArchitectures=arm64-v8a,armeabi-v7a"
           } >> android/gradle.properties
 
       - name: Configure Android release signing
