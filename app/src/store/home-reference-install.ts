@@ -1,6 +1,8 @@
 import { buildReferenceHome, type HomeReferenceProfile } from '@/domain/home-reference';
 import type { Library } from '@/domain/library';
 import type { ShelfLayout } from '@/domain/types';
+import { VIEW_PITCH_MIN } from '@/domain/camera';
+import { VIEW_SETTINGS_KEY } from './view-settings-key';
 
 export const HOME_REFERENCE_KEY = 'home-reference:2026-10';
 export const HOME_REFERENCE_BACKUP_KEY = 'home-reference:before-v1';
@@ -21,7 +23,7 @@ export async function installReferenceHome(lib: Library, previous: ShelfLayout, 
   if (!plan) {
     const now = new Date().toISOString();
     if (!await deps.getItem(HOME_REFERENCE_BACKUP_KEY)) {
-      const viewSettings = await deps.getItem('view-settings:v1');
+      const viewSettings = await deps.getItem(VIEW_SETTINGS_KEY);
       await deps.setItem(HOME_REFERENCE_BACKUP_KEY, JSON.stringify({ lib, layout: previous, viewSettings, createdAt: now }));
     }
     plan = { ...buildReferenceHome(lib, previous, now), complete: false };
@@ -37,8 +39,8 @@ export async function installReferenceHome(lib: Library, previous: ShelfLayout, 
   const layout = { ...plan.layout, drawer: [...plan.layout.drawer, ...Object.keys(merged.books).filter(id => !assigned.has(id))] };
   await deps.saveLibrary(merged);
   await deps.setItem('shelf-layout', JSON.stringify(layout));
-  // 책·선반·그림자·터치에 동일한 시점. 누운 책 윗표지와 책머리 단면을 함께 드러낸다.
-  await deps.setItem('view-settings:v1', JSON.stringify({ pitch: 4.5 }));
+  // 책·선반·그림자·터치에 동일한 시점: 시안 구도(기본 보기, 눈높이 ≈ 책 머리)
+  await deps.setItem(VIEW_SETTINGS_KEY, JSON.stringify({ pitch: VIEW_PITCH_MIN }));
   // 완료 후 전체 서재 사본은 백업 키 하나에만 보관한다.
   await deps.setItem(HOME_REFERENCE_KEY, JSON.stringify({ complete: true, profile: plan.profile }));
   return plan.profile;

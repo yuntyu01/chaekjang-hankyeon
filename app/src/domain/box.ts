@@ -2,7 +2,7 @@
 // 선반 공간: x = 선반 판 안쪽 왼쪽에서 오른쪽(DU), y = 선반 바닥에서 위(DU), z = 책 줄 앞선에서 벽 쪽(DU).
 // 카메라는 앱 전체에 하나: 직교 투영 + 고정 사선(깊이 1DU가 화면에서 오른쪽 kx, 위로 ky). 줄·가로 위치로 바뀌지 않는다.
 // 역할: 그리기는 투영(project/faces), 충돌·기대기는 선반 공간(collide/solveLean), 터치는 투영 외곽(silhouette).
-import { project, type Cam } from './camera';
+import { project, viewAt, type Cam } from './camera';
 import { bookHeight, bookThickness, frontWidth } from './geometry';
 import { fromPlaced, gap } from './book3';
 import { firstContact } from './lean';
@@ -130,7 +130,8 @@ export function visibleFaces(cam: Camera, p: Placed): { front: Point[]; sides: F
     const b = f[(i + 1) % 4];
     const nx = b.y - a.y; // 반시계 다각형의 바깥 법선
     const ny = -(b.x - a.x);
-    if (nx * cam.kx + ny * cam.ky <= 1e-9) continue;
+    const k = viewAt(cam, at(a, p.z));
+    if (nx * k.kx + ny * k.ky <= 1e-9) continue;
     const A = project(cam, at(a, p.z));
     const B = project(cam, at(b, p.z));
     const Bb = project(cam, at(b, p.z + p.size.d));

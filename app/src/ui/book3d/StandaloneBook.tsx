@@ -1,5 +1,6 @@
 // 캔버스 하나에 책 한 권(선반 밖: 서랍·상세·장정 편집·통계). 선반과 같은 BookNode로 그린다.
-// 카메라는 기본 보기(3°) 고정: 홈의 보기 각과 상관없이 늘 같은 모습(홈 카메라 값을 복사해 두지 않는다).
+// 카메라는 기본 보기 고정: 홈의 보기 각과 상관없이 늘 같은 모습(홈 카메라 값을 복사해 두지 않는다).
+// 원근 카메라의 눈은 그 책 가운데에 둔다(선반 가운데 책처럼 양옆이 똑같이 보이게).
 // from을 주면 그 자세에서 쉬는 자세로 이어서 움직인다.
 import { Canvas, type CanvasRef } from '@shopify/react-native-skia';
 import { useEffect, useMemo, type Ref } from 'react';
@@ -7,7 +8,7 @@ import { View } from 'react-native';
 import { Easing, useDerivedValue, useSharedValue, withTiming } from 'react-native-reanimated';
 
 import { fromPlaced, type Book3 } from '@/domain/book3';
-import { BASE_CAM } from '@/domain/camera';
+import { BASE_CAM, camCenteredAt, type Cam } from '@/domain/camera';
 import { frameBBox, standaloneFrame, type BookFrame } from '@/domain/shelf-scene';
 import { bookAt, holdTrack, planTransition } from '@/domain/transition';
 import type { Book, Pose } from '@/domain/types';
@@ -18,9 +19,15 @@ import { BookNode } from './BookNode';
 
 export const BOOK_PAD = 4; // 캔버스 여백(DU): 갈피·가장자리가 잘리지 않게
 
+// 한 권만 그리는 카메라: 기본 보기, 눈은 상자 가운데
+export function frameCam(frame: BookFrame): Cam {
+  return camCenteredAt(BASE_CAM, frame.box.x + frame.box.size.w / 2);
+}
+
 // frame의 투영 외곽 왼쪽 위(minX, minY)가 캔버스 (BOOK_PAD, BOOK_PAD + 갈피) 에 오도록 그린다
 export function FrameBook({ book, frame, scale: s, from, canvasRef }: { book: Book; frame: BookFrame; scale: number; from?: Book3 | null; canvasRef?: Ref<CanvasRef> }) {
-  const bb = frameBBox(frame, BASE_CAM);
+  const cam = useMemo(() => frameCam(frame), [frame]);
+  const bb = frameBBox(frame, cam);
   const rest = useMemo(() => fromPlaced(frame.box), [frame]);
   const ribbon = ribbonDesign(book);
   const top = BOOK_PAD + (hasRibbon(book) ? ribbon.out - ribbon.y : 0);
@@ -35,7 +42,10 @@ export function FrameBook({ book, frame, scale: s, from, canvasRef }: { book: Bo
   }, [from, t]);
   const state = useDerivedValue(() => bookAt(track, t.value));
   const shared = useBookShared();
-  const camSV = useSharedValue({ ...BASE_CAM });
+  const camSV = useSharedValue(cam);
+  useEffect(() => {
+    camSV.value = cam;
+  }, [cam, camSV]);
   return (
     <View style={{ width: (bb.width + BOOK_PAD * 2) * s, height: (bb.height + top + BOOK_PAD) * s }} pointerEvents="none">
       <Canvas ref={canvasRef} style={{ flex: 1 }}>

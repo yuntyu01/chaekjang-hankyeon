@@ -30,9 +30,9 @@ it('줄 간격은 각 선반의 가장 키 큰 책과 갈피에 맞추며 자세
     const tallest = Math.max(...SAMPLE_LAYOUT.placements.filter((p) => p.shelfId === row.shelfId).map((p) => bookHeight(books[p.bookId]) + ((books[p.bookId].quotes ?? 0) > 0 ? RIBBON_OUT : 0)));
     expect(row.space).toBeCloseTo(tallest + (ROW_CLEARANCES[rows.indexOf(row)] ?? ROW_CLEARANCE), 9);
     expect(row.height).toBeCloseTo((row.space + SHELF_THICK) * m.scale, 9);
-    // 책 기준선(선반 공간 원점)이 row.baseline, 칸 아래 끝 = 이 줄 판 앞면 아래 모서리를 기본 3°로 본 자리
+    // 책 기준선(선반 공간 원점)이 row.baseline, 칸 아래 끝 = 이 줄 판 앞면 아래 모서리를 기본 보기로 본 자리(원근 d 때문에 0.5DU 안쪽 차이)
     expect(toContent(m, row, { x: 0, y: 0 }).y).toBeCloseTo(row.baseline, 9);
-    expect(row.top + row.height).toBeCloseTo(toContent(m, row, project(BASE_CAM, { x: 0, y: -SHELF_THICK, z: -SHELF_FRONT })).y, 9);
+    expect(Math.abs(row.top + row.height - toContent(m, row, project(BASE_CAM, { x: 0, y: -SHELF_THICK, z: -SHELF_FRONT })).y)).toBeLessThan(0.5 * m.scale);
   }
   // 자세를 바꿔도(가장 키 큰 책을 표지로) 책 세로 길이로 재므로 줄이 움직이지 않는다
   const front = setPose(SAMPLE_LAYOUT, books, 'b02', 'front');

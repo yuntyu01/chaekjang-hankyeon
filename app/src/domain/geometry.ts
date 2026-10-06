@@ -21,13 +21,14 @@ export const SHELF_FRONT_MM = 70;
 export const SHELF_DEPTH_MM = SHELF_TOTAL_DEPTH_MM - SHELF_FRONT_MM;
 export const SHELF_DEPTH = SHELF_DEPTH_MM * DU_MM;
 export const SHELF_FRONT = SHELF_FRONT_MM * DU_MM;
-// 시안처럼 두툼하고 둥근 선반 앞면: 약 16.4DU.
+// 시안 선반 앞면 두께: 853px 시안에서 약 33~35px(1.666px/mm) → 약 21mm. 약 16.4DU.
 export const SHELF_THICK_MM = 21.5;
 export const SHELF_THICK = SHELF_THICK_MM * DU_MM;
-// 판 좌우 끝(선반 공간 x). 책 줄(0 ~ 사용 폭)을 덮고, 기본 사선(kx)으로 투영했을 때
-// 앞 왼쪽 모서리와 뒤 오른쪽 모서리가 화면 양 끝에서 PLANK_INSET 안쪽에 오도록 정한 길이(kx는 보기 각과 무관한 상수).
-export const SHELF_X0 = PLANK_INSET - USABLE_LEFT + SHELF_FRONT * VIEW_KX;
-export const SHELF_X1 = DESIGN_WIDTH - PLANK_INSET - USABLE_LEFT - SHELF_DEPTH * VIEW_KX + 2.8;
+// 판 좌우 끝(선반 공간 x): 책 줄(0 ~ 사용 폭)보다 양쪽으로 PLANK_OVER씩 길다(줄 가운데에 대해 대칭).
+// 원근 카메라에서 판 앞 끝(z = -SHELF_FRONT)은 눈에 가까워 조금 넓게 보인다: 화면에서는 양 끝에서 약 PLANK_INSET - 1.5 안쪽.
+const PLANK_OVER = 1.5;
+export const SHELF_X0 = -PLANK_OVER;
+export const SHELF_X1 = USABLE_W + PLANK_OVER;
 
 export const SHELF = {
   sideMargin: USABLE_LEFT, // 선반 공간 x=0의 화면 설계 좌표
@@ -69,13 +70,13 @@ export const BOOK_THICKNESS: Record<ThicknessClass, number> = { thin: 28, medium
 // 예전 이름(다른 화면 호환). 값이 바뀌지 않는 기본 3° 카메라다. 보기 각은 view-store → 화면 카메라(camSV)로만 바뀐다.
 export const CAMERA = BASE_CAM;
 
-// ---------- 보기 설정: 내려다보는 각(3° ~ 8°) ----------
+// ---------- 보기 설정: 내려다보는 각(VIEW_PITCH_MIN ~ 8°, 원근 카메라의 눈높이) ----------
 // 꾸미기에서 선반 앞면을 위아래로 끌어 바꾼다. 책 배치·광원·줄 간격은 그대로(같은 장면을 다르게 보는 것).
 
-// 시점 끌기를 놓았을 때 정착할 각(3° 또는 8°). home = 잡기 전에 있던(정착 중이었으면 향하던) 시점,
+// 시점 끌기를 놓았을 때 정착할 각(기본 또는 8°). home = 잡기 전에 있던(정착 중이었으면 향하던) 시점,
 // now = 손가락이 끈 만큼의 각, vy = 놓을 때 세로 속도(dp/s, + = 아래로 = 더 내려다보기).
 // 조금만 움직였으면 원래 시점(아주 세게 튕긴 경우만 예외), 빠르게 놓으면 그 방향, 아니면 가까운 쪽.
-export const VIEW_DEG_PER_DP = 0.03; // 약 170dp 끌면 3° → 8°
+export const VIEW_DEG_PER_DP = (VIEW_PITCH_MAX - VIEW_PITCH_MIN) / 170; // 약 170dp 끌면 기본 → 8°
 export const VIEW_SMALL_DEG = 0.8;
 export function viewSettle(home: number, p0: number, now: number, vy: number) {
   'worklet';

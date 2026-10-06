@@ -54,8 +54,9 @@ it('뒤쪽 정면 책 앞에 세운 책을 겹쳐 두면 세운 책이 나중(�
 
 it('깊이 키만으로는 틀리는 경우: 긴 눕힌 책이 앞쪽 좁은 책보다 앞면이 앞에 있어도 옆으로 떨어져 있으면 순서는 옆 관계로', () => {
   // 눕힌 책(앞면 z=-20)과 오른쪽의 세운 책(z=0): 깊이 키는 눕힌 책을 나중에 두지만, 실제로는 x로 나뉘어 세운 책이 오른쪽(나중)
-  const lying: Book3 = { id: 'L', dims: { T: 30, H: 150, W: 100 }, roll: -90, yaw: 0, spin: 0, t: { x: 180, y: 0, z: -20 } };
-  const stand: Book3 = { id: 'S', dims: { T: 25, H: 140, W: 100 }, roll: 0, yaw: 0, spin: 0, t: { x: 181, y: 0, z: 0 } }; // 3D로는 1DU 떨어져 있고 화면에서는 겹친다
+  // 줄 왼쪽(눈보다 왼쪽)이라 눕힌 책의 오른쪽 옆면이 보이고, 그 옆면이 세운 책과 화면에서 겹친다
+  const lying: Book3 = { id: 'L', dims: { T: 30, H: 150, W: 100 }, roll: -90, yaw: 0, spin: 0, t: { x: 100, y: 0, z: -20 } };
+  const stand: Book3 = { id: 'S', dims: { T: 25, H: 140, W: 100 }, roll: 0, yaw: 0, spin: 0, t: { x: 101, y: 0, z: 0 } }; // 3D로는 1DU 떨어져 있고 화면에서는 겹친다
   expect(frontOf(lying, stand, CAMERA)).toBe(1);
   expect(depthKey(lying)).toBeGreaterThan(depthKey(stand));
   const o = orderOf([lying, stand]);

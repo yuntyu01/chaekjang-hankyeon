@@ -7,10 +7,10 @@ import { memo, useLayoutEffect, useMemo } from 'react';
 import { useAnimatedReaction, useDerivedValue, useSharedValue, type SharedValue } from 'react-native-reanimated';
 
 import { corners, faceCorners, faceNormal, FACE_IDS, fromPlaced, gap, lowest, rot, type Book3, type FaceId, type Vec3 } from '@/domain/book3';
-import { project, toPx, type Affine, type Cam } from '@/domain/camera';
+import { camAt, project, toPx, VIEW_PITCH_MAX, VIEW_PITCH_MIN, type Affine, type Cam } from '@/domain/camera';
 import { bookViewCam } from '@/domain/book-view';
 import { shelfViewCam } from '@/domain/shelf-view';
-import { SHELF_DEPTH, SHELF_FRONT, SHELF_X0, SHELF_X1, VIEW_KX } from '@/domain/geometry';
+import { SHELF_DEPTH, SHELF_FRONT, SHELF_X0, SHELF_X1 } from '@/domain/geometry';
 import { shelfFaces } from '@/domain/shelf-geom';
 import { BOX_EDGES, bookCast, type BookCast } from '@/domain/cast-shadow';
 import { hull, rgba } from '@/domain/shadow-shape';
@@ -873,8 +873,8 @@ export function benchProjection(rows: BenchRow[], s: number, n: number) {
   let tRecv = 0;
   let tCast = 0;
   for (let i = 0; i < n; i++) {
-    const deg = 3 + (5 * i) / Math.max(1, n - 1);
-    const cam = { kx: VIEW_KX, ky: Math.tan((deg * Math.PI) / 180) };
+    const deg = VIEW_PITCH_MIN + ((VIEW_PITCH_MAX - VIEW_PITCH_MIN) * i) / Math.max(1, n - 1);
+    const cam = camAt(deg);
     let a = clock();
     for (const q of prep) {
       faceMatrix(q.b, 'spine', cam, q.px);

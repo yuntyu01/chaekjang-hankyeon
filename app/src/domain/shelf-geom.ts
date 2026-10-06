@@ -3,6 +3,7 @@
 // 직교 투영이라 각 면은 평행사변형이고, 면 = 원점 O + 가로 U + 세로 V(화면 좌표, 설계 단위)로 나타낸다.
 // 이웃한 면은 같은 꼭짓점을 쓴다(윗면 앞 변 = 앞면 위 변, 옆면 왼쪽 변 = 윗면 오른쪽 변·앞면 오른쪽 변).
 import { project, type Camera } from './box';
+import { viewAt } from './camera';
 import { SHELF_DEPTH, SHELF_FRONT, SHELF_THICK, SHELF_X0, SHELF_X1 } from './geometry';
 import type { Point } from './shelf-scene';
 
@@ -63,8 +64,8 @@ export function shelfFaces(cam: Camera): ShelfFaces {
     top: face(P.LBT, P.RBT, P.RFT, P.LFT),
     // 앞면: O = 위 왼쪽, U = 위 변, V = 왼쪽 변(→아래)
     front: face(P.LFT, P.RFT, P.RFB, P.LFB),
-    // 오른쪽 옆면: 사선이 오른쪽(kx > 0)이면 보인다. O = 앞 위, U = 위 변(→벽), V = 앞 변(→아래)
-    side: cam.kx > 0 ? face(P.RFT, P.RBT, P.RBB, P.RFB) : null,
+    // 오른쪽 옆면: 그 끝에서 본 사선이 오른쪽(kx > 0)이면 보인다(원근 카메라는 눈이 판 가운데라 보이지 않는다). O = 앞 위, U = 위 변(→벽), V = 앞 변(→아래)
+    side: viewAt(cam, v.RFT).kx > 0 ? face(P.RFT, P.RBT, P.RBB, P.RFB) : null,
     corners: P,
   };
 }

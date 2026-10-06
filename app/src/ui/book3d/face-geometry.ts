@@ -6,7 +6,7 @@
 import { corners, faceNormal, facing, rot, toWorld, type Book3, type Cam, type FaceId, type Vec3 } from '@/domain/book3';
 import { CORNER_R, facePanel, pageFace, type Panel } from '@/domain/book-parts';
 import { hull } from '@/domain/box';
-import { project, type Point } from '@/domain/camera';
+import { project, viewAt, type Point } from '@/domain/camera';
 
 // 장면 좌표 → 캔버스 px: X = x * s + tx, Y = y * s + ty
 export type Affine = { s: number; tx: number; ty: number };
@@ -23,18 +23,21 @@ export function panelMatrix(b: Book3, p: Panel, cam: Cam, px: Affine) {
   const U = rot(b.roll, b.yaw, p.U, b.spin ?? 0, b.pitch ?? 0);
   const V = rot(b.roll, b.yaw, p.V, b.spin ?? 0, b.pitch ?? 0);
   const s = px.s;
-  if (cam.taper) {
+  // 원근 카메라(eye)는 사선 없이 눈 쪽으로 모으는 것과 같다(camera.project): 같은 동차 행렬로 그린다
+  const t = cam.eye ? { x: cam.eye.x, y: -cam.eye.y, z: cam.eye.z, strength: 1 / cam.eye.dist } : cam.taper;
+  const kx = cam.eye ? 0 : cam.kx;
+  const ky = cam.eye ? 0 : cam.ky;
+  if (t) {
     const o = toWorld(b, p.O);
-    const t = cam.taper;
     const d0 = 1 + (o.z - t.z) * t.strength;
     const du = U.z * t.strength / (p.w * s);
     const dv = V.z * t.strength / (p.h * s);
     return [
-      (U.x + U.z * cam.kx + t.x * U.z * t.strength) / p.w + px.tx * du,
-      (V.x + V.z * cam.kx + t.x * V.z * t.strength) / p.h + px.tx * dv,
+      (U.x + U.z * kx + t.x * U.z * t.strength) / p.w + px.tx * du,
+      (V.x + V.z * kx + t.x * V.z * t.strength) / p.h + px.tx * dv,
       O.x * s * d0 + px.tx * d0,
-      (-(U.y + U.z * cam.ky) + t.y * U.z * t.strength) / p.w + px.ty * du,
-      (-(V.y + V.z * cam.ky) + t.y * V.z * t.strength) / p.h + px.ty * dv,
+      (-(U.y + U.z * ky) + t.y * U.z * t.strength) / p.w + px.ty * du,
+      (-(V.y + V.z * ky) + t.y * V.z * t.strength) / p.h + px.ty * dv,
       O.y * s * d0 + px.ty * d0,
       du, dv, d0,
     ];
@@ -72,10 +75,11 @@ export function pageGeom(cam: Cam, b: Book3, f: 'head' | 'tail' | 'fore', px: Af
     return { x: q.x * px.s + px.tx, y: q.y * px.s + px.ty };
   };
   const walls: Point[][] = [];
-  const l = Math.hypot(cam.kx, cam.ky, 1);
   for (const w of pf.walls) {
     const n = rot(b.roll, b.yaw, w.n, b.spin ?? 0, b.pitch ?? 0);
-    if ((n.x * cam.kx + n.y * cam.ky - n.z) / l > 0.002) walls.push(w.pts.map(P));
+    // 원근 카메라는 벽 조각 첫 꼭짓점 자리에서 본다
+    const k = viewAt(cam, toWorld(b, w.pts[0]));
+    if ((n.x * k.kx + n.y * k.ky - n.z) / Math.hypot(k.kx, k.ky, 1) > 0.002) walls.push(w.pts.map(P));
   }
   return { ok: true, opening: pf.opening.map(P), pageM: panelMatrix(b, pf.page, cam, px), rims: pf.rims.map((r) => r.map(P)), walls };
 }

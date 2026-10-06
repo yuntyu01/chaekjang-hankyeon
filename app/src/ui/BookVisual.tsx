@@ -3,18 +3,20 @@ import { Image, StyleSheet, View } from 'react-native';
 import Svg, { Defs, LinearGradient, Rect, Stop } from 'react-native-svg';
 import { useCanvasRef } from '@shopify/react-native-skia';
 import { useBookShared } from '@/ui/book3d/art';
-import { BASE_CAM } from '@/domain/camera';
 import { frameBBox, standaloneFrame } from '@/domain/shelf-scene';
 import { toShelfBook, type Library } from '@/domain/library';
 import type { Book } from '@/domain/types';
-import { BOOK_PAD, StandaloneBook } from '@/ui/book3d/StandaloneBook';
+import { BOOK_PAD, frameCam, StandaloneBook } from '@/ui/book3d/StandaloneBook';
 
 // Every screen uses the same saved book model and renderer as the bookshelf.
 export const BookVisual = memo(function BookVisual({ book, width, rasterize = false, onReady }: { book: Book; width: number; rasterize?: boolean; onReady?: () => void }) {
   // The protruding ribbon is a bookshelf count indicator, not part of a saved cover.
   // Keep the stored binding/art and the 3D engine intact in every presentation.
   const displayBook = useMemo(() => ({ ...book, quotes: 0 }), [book]);
-  const bbox = useMemo(() => frameBBox(standaloneFrame(displayBook, 'front'), BASE_CAM), [displayBook]);
+  const bbox = useMemo(() => {
+    const frame = standaloneFrame(displayBook, 'front');
+    return frameBBox(frame, frameCam(frame));
+  }, [displayBook]);
   const scale = width / (bbox.width + BOOK_PAD * 2);
   const canvas = useCanvasRef();
   const shared = useBookShared();

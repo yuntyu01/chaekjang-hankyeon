@@ -12,8 +12,8 @@ import { Group, LinearGradient, Path, Picture, Rect, Skia, vec, type SkRect } fr
 import type React from 'react';
 import { useDerivedValue, type SharedValue } from 'react-native-reanimated';
 
-import { brightness, corners, depthKey, faceCorners, facing, rot, toWorld, type Book3, type Cam } from '@/domain/book3';
-import { project } from '@/domain/camera';
+import { brightness, corners, depthKey, faceCenter, faceCorners, facing, rot, toWorld, type Book3, type Cam } from '@/domain/book3';
+import { project, viewAt } from '@/domain/camera';
 import { bookViewCam } from '@/domain/book-view';
 import { jacketHeadReveal } from '@/domain/book-design';
 import { titleOpacity } from '@/domain/title-layout';
@@ -129,7 +129,8 @@ function ArtFace({ f, art, state, cam, px, d, tone, headReveal = 0.35 }: { f: 's
       // 위쪽만 감싸며, 눕히거나 돌릴 때는 실제 평면으로 부드럽게 돌아온다.
       const upright = Math.cos(b.roll * Math.PI / 180) ** 2;
       const front = Math.cos(b.yaw * Math.PI / 180) ** 2;
-      const lift = Math.min(9.5, d.W * c.ky) * (1 - headReveal) * upright * front;
+      // 머리가 보이는 만큼(그 책 머리 자리에서 본 기울기: 눈높이의 머리는 거의 0)
+      const lift = Math.max(0, Math.min(9.5, d.W * viewAt(c, faceCenter(b, 'head')).ky)) * (1 - headReveal) * upright * front;
       matrix[2] -= matrix[1] * lift * s;
       matrix[5] -= matrix[4] * lift * s;
       matrix[8] -= matrix[7] * lift * s;
@@ -221,7 +222,7 @@ export function BookNode({ book, dims, state, cam: sceneCam, px, shared, under, 
     const pts = silhouette(cam.value, state.value, px);
     const p = Skia.PathBuilder.Make();
     // A single Bezier crown keeps the closed head smooth at small screen sizes.
-    if (headReveal < 0.05 && state.value.dims.W * cam.value.ky <= 9.6 && Math.abs(state.value.roll) < 0.1 && Math.abs(state.value.yaw) < 0.1) {
+    if (headReveal < 0.05 && state.value.dims.W * viewAt(cam.value, faceCenter(state.value, 'head')).ky <= 9.6 && Math.abs(state.value.roll) < 0.1 && Math.abs(state.value.yaw) < 0.1) {
       const x0=Math.min(...pts.map(q=>q.x)),x1=Math.max(...pts.map(q=>q.x));
       const y0=Math.min(...pts.map(q=>q.y))+(warmBinding?0.4:0.8)*px.s,y1=Math.max(...pts.map(q=>q.y));
       const w=x1-x0,r=Math.min(4*px.s,w*.20),a=1.2*px.s;

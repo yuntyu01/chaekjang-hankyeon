@@ -265,6 +265,9 @@ let artMs = 0;
 // 서버에서 받은 책 전체 그림(표지·책등). 있으면 코드로 그리는 장정 대신 이 그림을 그대로 쓴다(제목·장식도 그림 안에 있다).
 type MadeArt = { cover: SkImage | null; spine: SkImage | null };
 
+// 책등 장식(꽃·별·달 같은 작은 그림)은 일단 그리지 않는다. 다시 켜려면 true.
+const SPINE_MOTIF = false;
+
 async function buildArt(book: Book, s: number, dims: { T: number; H: number; W: number }, shared: Shared, motif: SkImage | null, coverImg: SkImage | null, made: MadeArt): Promise<BookArt> {
   const regular = shared.regular!;
   const face = faceOf(book);
@@ -272,7 +275,7 @@ async function buildArt(book: Book, s: number, dims: { T: number; H: number; W: 
   // 책등: 공통 바탕 + 자세별 제목과 장식. 눕힐 때 장식도 바로 선다.
   const w = dims.T * s;
   const h = dims.H * s;
-  const spineMotif = book.art.motif === 'none' ? null : Skia.SVG.MakeFromString(motifSvg(book.art.motif, book.art.accentColor ?? (ink === TITLE_LIGHT ? '#F4DCA3' : '#8B9C7C')));
+  const spineMotif = !SPINE_MOTIF || book.art.motif === 'none' ? null : Skia.SVG.MakeFromString(motifSvg(book.art.motif, book.art.accentColor ?? (ink === TITLE_LIGHT ? '#F4DCA3' : '#8B9C7C')));
   const compactMotif = ['moon', 'crescent', 'star', 'star-solid', 'asterisk', 'cloud', 'wave', 'book'].includes(book.art.motif);
   const motifCap = ({ asterisk: 12.5, 'star-solid': 12.5, cloud: 15.5, book: 15 } as Record<string, number>)[book.art.motif] ?? (compactMotif ? 17 : 14);
   const motifW = Math.min(w * (compactMotif ? 0.58 : 0.45), motifCap * s) * (book.art.motifScale ?? 1);
@@ -281,25 +284,25 @@ async function buildArt(book: Book, s: number, dims: { T: number; H: number; W: 
   const motifY = compactMotif ? h * motifCenter - motifH / 2 : h * (book.art.motifBottom ?? 0.90) - motifH;
   // 실제 사용자 제목은 길이가 달라진다. 장식의 윗끝보다 먼저 조판을
   // 끝내서 마지막 글자와 잎·꽃이 겹치지 않도록 공간을 먼저 확보한다.
-  const textEnd = book.art.titleTop !== undefined ? 0.79 : book.art.motif === 'none' ? 0.88 : Math.max(0.50, (motifY + (compactMotif ? motifH * 0.28 : 0) - 4 * s) / h);
+  const textEnd = book.art.titleTop !== undefined ? 0.79 : !SPINE_MOTIF || book.art.motif === 'none' ? 0.88 : Math.max(0.50, (motifY + (compactMotif ? motifH * 0.28 : 0) - 4 * s) / h);
   const binding = referenceBinding(face);
   const spine = await record(made.spine
     ? <Group clip={bookFacePath(w, h, s, true)}><SkiaImage image={made.spine} x={0} y={0} width={w} height={h} fit="fill" /></Group>
     : binding ? <ReferenceBinding material={binding} w={w} h={h} s={s} /> : <SpineFaceArt w={w} h={h} face={face} s={s} />, w, h);
-  const motifGlyph = hasReferenceMotif(book.art.motif) ? <ReferenceMotif image={shared.original!} id={book.art.motif} color={book.art.accentColor ?? (ink === TITLE_LIGHT ? '#F4DCA3' : '#8B9C7C')} /> : spineMotif ? <ImageSVG svg={spineMotif} x={0} y={0} width={24} height={60} /> : null;
+  const motifGlyph = !SPINE_MOTIF ? null : hasReferenceMotif(book.art.motif) ? <ReferenceMotif image={shared.original!} id={book.art.motif} color={book.art.accentColor ?? (ink === TITLE_LIGHT ? '#F4DCA3' : '#8B9C7C')} /> : spineMotif ? <ImageSVG svg={spineMotif} x={0} y={0} width={24} height={60} /> : null;
   const print = referencePrint(book.title);
   const printV = print?.pose === 'spine' ? print : undefined;
   const printH = print?.pose === 'horizontal' ? print : undefined;
   const accent = book.art.accentColor ?? (ink === TITLE_LIGHT ? '#F4DCA3' : '#8B9C7C');
   const titleV = made.spine ? await record(<Group />, w, h) : await record(<Group>
-    {printV ? <ReferencePrint image={shared.original!} template={printV} w={w} h={h} ink={ink} accent={accent} decoration={printV.motif === book.art.motif} /> : <Picture picture={verticalTitlePicture(book.title, dims, s, regular, ink, shared.original!, book.art.titleTop, textEnd)} />}
-    {printV?.motif === book.art.motif ? null : <Group transform={[{ translateX: (w - motifW) / 2 }, { translateY: motifY }, { scale: motifW / 24 }]}>{motifGlyph}</Group>}
+    {printV ? <ReferencePrint image={shared.original!} template={printV} w={w} h={h} ink={ink} accent={accent} decoration={SPINE_MOTIF && printV.motif === book.art.motif} /> : <Picture picture={verticalTitlePicture(book.title, dims, s, regular, ink, shared.original!, book.art.titleTop, textEnd)} />}
+    {!SPINE_MOTIF || printV?.motif === book.art.motif ? null : <Group transform={[{ translateX: (w - motifW) / 2 }, { translateY: motifY }, { scale: motifW / 24 }]}>{motifGlyph}</Group>}
   </Group>, w, h);
   // Counter-rotate the small illustration so it stays upright on a lying spine.
   const lyingMotifW = Math.min(12.5 * s, w * 0.39) * (book.art.motifScale ?? 1);
   const titleH = made.spine ? await record(<Group />, w, h) : await record(<Group>
-    {printH ? <ReferencePrint image={shared.original!} template={printH} w={w} h={h} ink={ink} accent={accent} decoration={printH.motif === book.art.motif} /> : <Picture picture={lyingTitlePicture(book.title, dims, s, regular, ink, shared.original!, !!spineMotif)} />}
-    {printH?.motif === book.art.motif ? null : <Group transform={[{ translateX: w / 2 }, { translateY: h * 0.89 }, { rotate: Math.PI / 2 }]}>
+    {printH ? <ReferencePrint image={shared.original!} template={printH} w={w} h={h} ink={ink} accent={accent} decoration={SPINE_MOTIF && printH.motif === book.art.motif} /> : <Picture picture={lyingTitlePicture(book.title, dims, s, regular, ink, shared.original!, !!spineMotif)} />}
+    {!SPINE_MOTIF || printH?.motif === book.art.motif ? null : <Group transform={[{ translateX: w / 2 }, { translateY: h * 0.89 }, { rotate: Math.PI / 2 }]}>
       <Group transform={[{ translateX: -lyingMotifW / 2 }, { translateY: -lyingMotifW * 1.25 }, { scale: lyingMotifW / 24 }]}>{motifGlyph}</Group>
     </Group>}
   </Group>, w, h);

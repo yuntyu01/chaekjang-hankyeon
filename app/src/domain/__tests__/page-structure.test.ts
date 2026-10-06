@@ -3,7 +3,7 @@
 import { CORNER_R, pageFace, rigOf, SQUARE } from '../book-parts';
 import { corners, facing, fromPlaced, toWorld, type Book3 } from '../book3';
 import { hull } from '../box';
-import { camAt, project } from '../camera';
+import { camAt, project, viewAt } from '../camera';
 import { pageGeom, silhouette } from '../../ui/book3d/face-geometry';
 
 const px = { s: 3, tx: 0, ty: 0 };
@@ -45,23 +45,26 @@ describe('책 몸체 구조', () => {
     expect(fore.page.h).toBeCloseTo(dims.H - 2 * sq, 9);
   });
 
-  it('세운 책 머리: 들어간 속지는 3°에서 앞쪽 sq/ky만큼 책등 뒤로 숨고, 8°에서는 더 많이 보인다', () => {
+  it('세운 책 머리: 들어간 속지는 앞쪽 sq/ky(머리 높이에서 본 기울기)만큼 책등 뒤로 숨고, 8°에서는 더 많이 보인다', () => {
     for (const deg of [3, 8]) {
       const cam = camAt(deg);
       const g = pageGeom(cam, standing, 'head', px);
       expect(g.ok).toBe(true);
       const { sp, sq } = rigOf(dims);
-      const hiddenTo = sq / cam.ky; // 이 깊이(책등 면 z = 0부터)까지는 책등 윗모서리보다 아래로 투영된다
+      // 이 깊이(책등 면 z = 0부터)까지는 책등 윗모서리보다 아래로 투영된다. 원근 카메라라 머리 높이에서 본 기울기(눈높이 - 머리) / 거리
+      const kyHead = viewAt(cam, toWorld(standing, { x: dims.T / 2, y: dims.H, z: 0 })).ky;
+      const hiddenTo = sq / kyHead;
       const spineTop = screen(cam, standing, { x: dims.T / 2, y: dims.H, z: 0 }).y;
       const pageAt = (z: number) => screen(cam, standing, { x: dims.T / 2, y: dims.H - sq, z }).y;
       expect(pageAt(hiddenTo - 1)).toBeGreaterThan(spineTop); // 화면 아래(= 책등 면 뒤)
       expect(pageAt(Math.min(dims.W - sq, hiddenTo + 1))).toBeLessThan(spineTop);
-      // 속지 조각 행렬의 원점 = 들어간 평면의 앞 왼쪽 모서리
-      expect(g.pageM[2]).toBeCloseTo(screen(cam, standing, { x: rigOf(dims).bd, y: dims.H - sq, z: sp }).x, 6);
-      expect(g.pageM[5]).toBeCloseTo(screen(cam, standing, { x: rigOf(dims).bd, y: dims.H - sq, z: sp }).y, 6);
+      // 속지 조각 행렬의 원점 = 들어간 평면의 앞 왼쪽 모서리(원근 카메라의 행렬은 동차라 마지막 성분으로 나눈다)
+      expect(g.pageM[2] / g.pageM[8]).toBeCloseTo(screen(cam, standing, { x: rigOf(dims).bd, y: dims.H - sq, z: sp }).x, 6);
+      expect(g.pageM[5] / g.pageM[8]).toBeCloseTo(screen(cam, standing, { x: rigOf(dims).bd, y: dims.H - sq, z: sp }).y, 6);
     }
     // 더 내려다보면(8°) 숨는 깊이가 짧다
-    expect(SQUARE / camAt(8).ky).toBeLessThan(SQUARE / camAt(3).ky);
+    const kyAt = (deg: number) => viewAt(camAt(deg), toWorld(standing, { x: dims.T / 2, y: dims.H, z: 0 })).ky;
+    expect(SQUARE / kyAt(8)).toBeLessThan(SQUARE / kyAt(3));
   });
 
   it('안쪽 벽은 카메라 쪽을 향한 것만 그린다(사선 kx > 0: 왼쪽 판 안쪽 면)', () => {

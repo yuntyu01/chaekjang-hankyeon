@@ -11,7 +11,7 @@ import { corners, depthKey, drawOrder, frontOf, toWorld, type Book3 } from '@/do
 import { bookViewCam } from '@/domain/book-view';
 import { shelfViewCam } from '@/domain/shelf-view';
 import { hull } from '@/domain/box';
-import { toPx, type Affine, type Cam, type Point } from '@/domain/camera';
+import { project, toPx, type Affine, type Cam, type Point } from '@/domain/camera';
 import { SHELF, SHELF_DEPTH, SHELF_FRONT, SHELF_THICK, SHELF_X0, SHELF_X1 } from '@/domain/geometry';
 import { pointInPoly } from '@/domain/shelf-scene';
 import { bookAt, holdTrack, type Track } from '@/domain/transition';
@@ -191,8 +191,9 @@ function screenBox(b: Book3, cam: Cam) {
   let y0 = Infinity;
   let y1 = -Infinity;
   for (const c of corners(b)) {
-    const x = c.x + c.z * cam.kx;
-    const y = c.y + c.z * cam.ky;
+    const q = project(cam, c);
+    const x = q.x;
+    const y = -q.y;
     x0 = Math.min(x0, x);
     x1 = Math.max(x1, x);
     y0 = Math.min(y0, y);

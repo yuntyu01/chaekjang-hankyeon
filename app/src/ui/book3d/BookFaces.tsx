@@ -7,11 +7,11 @@
 import { BlurMask, Group, Path, Picture, Rect, Skia, type SkPath } from '@shopify/react-native-skia';
 import { useDerivedValue, type SharedValue } from 'react-native-reanimated';
 
-import { brightness, facing, type Book3, type Cam } from '@/domain/book3';
+import { brightness, faceCenter, facing, type Book3, type Cam } from '@/domain/book3';
 import { CORNER_R, facePanel } from '@/domain/book-parts';
 import { hull } from '@/domain/box';
-import type { Point } from '@/domain/camera';
-import { bookFacePath, PAGE_BASE, scaleColor, withAlpha } from '@/ui/book/BookBody';
+import { viewAt, type Point } from '@/domain/camera';
+import { bookFacePath, mix, PAGE_BASE, scaleColor, withAlpha } from '@/ui/book/BookBody';
 import { light } from '@/ui/lighting';
 
 import type { BookArt } from './art';
@@ -42,7 +42,7 @@ function polysPath(list: Point[][]): SkPath {
 
 // 종이 단면 면 하나
 export function PageFace({ f, state, cam, px, art, tone, closedHead = false }: { f: 'head' | 'tail' | 'fore'; state: RO<Book3>; cam: RO<Cam>; px: Affine; art: BookArt; tone: string; closedHead?: boolean }) {
-  const g = useDerivedValue(() => f === 'head' && closedHead && state.value.dims.W * cam.value.ky <= 9.6 && Math.abs(state.value.roll) < 1 && Math.abs(Math.cos(state.value.yaw * Math.PI / 180)) > 0.98 ? EMPTY_PAGE : pageGeom(cam.value, state.value, f, px));
+  const g = useDerivedValue(() => f === 'head' && closedHead && state.value.dims.W * viewAt(cam.value, faceCenter(state.value, 'head')).ky <= 9.6 && Math.abs(state.value.roll) < 1 && Math.abs(Math.cos(state.value.yaw * Math.PI / 180)) > 0.98 ? EMPTY_PAGE : pageGeom(cam.value, state.value, f, px));
   const opening = useDerivedValue(() => polysPath(g.value.ok ? [roundedPolygon(hull(g.value.opening), 1.2 * px.s)] : []));
   const cap = useDerivedValue(() => polysPath(g.value.ok ? [roundedPolygon(hull(g.value.rims.flat()), CORNER_R * px.s)] : []));
   const walls = useDerivedValue(() => polysPath(g.value.walls));
@@ -55,13 +55,15 @@ export function PageFace({ f, state, cam, px, art, tone, closedHead = false }: {
     const k = brightness(light, state.value, f);
     return shadeColor(k < 1 ? 1 - (1 - k) * PAPER_SHADE : k);
   });
+  // 속지를 책 색 쪽으로 조금 섞는다(시안의 납작한 종이 그림처럼, 윗면이 하얀 판으로 도드라지지 않게)
+  const pageTone = mix(PAGE_BASE, tone, 0.14);
   const pic = f === 'fore' ? art.pageFore : art.pageEnd;
   return (
     <Group clip={cap}>
       <Path path={cap} color={tone} />
       <Path path={cap} color={shade} />
       <Group>
-        <Path path={opening} color={PAGE_BASE} />
+        <Path path={opening} color={pageTone} />
         <Group clip={opening}>
           <Group matrix={m}><Picture picture={pic} /></Group>
         </Group>

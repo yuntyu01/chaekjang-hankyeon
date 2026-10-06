@@ -1,6 +1,7 @@
 import { Rect, Shader, Skia } from '@shopify/react-native-skia';
 import { useDerivedValue, type SharedValue } from 'react-native-reanimated';
-import { faceNormal, rot, type Book3, type Cam, type Vec3 } from '@/domain/book3';
+import { faceCenter, faceNormal, rot, type Book3, type Cam, type Vec3 } from '@/domain/book3';
+import { viewAt } from '@/domain/camera';
 import { CORNER_R, GROOVE } from '@/domain/book-parts';
 import { light } from '@/ui/lighting';
 
@@ -44,7 +45,7 @@ const source = Skia.RuntimeEffect.Make(`
     float3 baseNormal = float3(0.0, 0.0, 1.0);
     float delta = (diffuse(n) - diffuse(baseNormal) + reflection(n) - reflection(baseNormal)) * strength;
     // Premultiplied alpha: an exact zero at the flat centre, without discrete stops.
-    float alpha = min(0.24, abs(delta) * (delta > 0.0 ? 1.6 : 1.1));
+    float alpha = min(0.2, abs(delta) * (delta > 0.0 ? 1.6 : 1.1));
     float3 tint = delta > 0.0 ? float3(1.0, 0.988, 0.96) : float3(0.176, 0.125, 0.094);
     return half4(tint * alpha, alpha);
   }
@@ -60,8 +61,10 @@ export function JacketEdgeLight({ state, cam, f, w, h, s, strength = 1 }: {
     const u = turn(f === 'spine' ? { x: 1, y: 0, z: 0 } : { x: 0, y: 0, z: f === 'back' ? -1 : 1 });
     const v = turn({ x: 0, y: -1, z: 0 });
     const n = turn(faceNormal(f));
-    const viewLength = Math.hypot(c.kx, c.ky, 1);
-    const view = { x: c.kx / viewLength, y: c.ky / viewLength, z: -1 / viewLength };
+    // 그 면 가운데에서 눈 쪽으로 가는 방향(원근 카메라는 책 자리마다 다르다)
+    const k = viewAt(c, faceCenter(b, f));
+    const viewLength = Math.hypot(k.kx, k.ky, 1);
+    const view = { x: k.kx / viewLength, y: k.ky / viewLength, z: -1 / viewLength };
     const dot = (a: Vec3, d: Vec3) => a.x * d.x + a.y * d.y + a.z * d.z;
     return {
       size: [w, h], radius: [Math.min(w * 0.18, CORNER_R * s), Math.min(h * 0.18, CORNER_R * s)],

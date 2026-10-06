@@ -5,7 +5,7 @@ import { corners, faceCorners, faceFrame, fromPlaced, lowest } from '../book3';
 import { bookViewCam } from '../book-view';
 import { facePanel } from '../book-parts';
 import { project } from '../box';
-import { camAt, VIEW_KX } from '../camera';
+import { camAt, VIEW_KX, type Cam, type Vec3 } from '../camera';
 import { CAMERA, SHELF_DEPTH, SHELF_FRONT, VIEW_PITCH_MAX, VIEW_PITCH_MIN } from '../geometry';
 import { normalize, placementOf, setSpin, type BookMap } from '../layout-engine';
 import { SAMPLE_BOOKS, SAMPLE_LAYOUT } from '../onboarding-sample';
@@ -14,6 +14,12 @@ import { computeShelf } from '../shelf-scene';
 import type { ShelfLayout } from '../types';
 
 const books: BookMap = Object.fromEntries(SAMPLE_BOOKS.map((b) => [b.id, b]));
+
+// 원근 카메라(camera.ts): 깊이 z의 점은 눈(줄 가운데·눈높이) 쪽으로 1/d배 모인다(d = 1 + z / 거리, 책 기준선 z=0에서 1).
+const dOf = (cam: Cam, z: number) => 1 + (z - cam.eye!.z) / cam.eye!.dist;
+// 판 윗면(y = 0) 깊이 z의 화면 높이(아래가 +): 깊이 × ky를 d로 나눈 만큼 기준선 위
+const plankY = (cam: Cam, z: number) => (-z * cam.ky) / dOf(cam, z);
+const screenX = (cam: Cam, w: Vec3) => cam.eye!.x + (w.x - cam.eye!.x) / dOf(cam, w.z);
 
 // 3번째 선반에 나미야 한 권만(나머지는 서랍)
 function lone(depth?: number): ShelfLayout {
@@ -38,7 +44,7 @@ function spineAt(layout: ShelfLayout) {
 describe('공통 카메라', () => {
   it('살짝 내려다보는 한 카메라: ky = tan(내려다보는 각)', () => {
     expect(VIEW_PITCH_MIN).toBeGreaterThan(0);
-    // 기본 카메라(CAMERA)는 가장 얕은 3°. 꾸미기 보기 각(3°~8°)도 같은 식이고 사선 kx는 각과 무관
+    // 기본 카메라(CAMERA)는 가장 얕은 각. 꾸미기 보기 각도 같은 식(눈높이 = 거리 × ky)이고 사선 kx는 없다(옆면은 원근이 정한다)
     expect(CAMERA.ky).toBeCloseTo(Math.tan((VIEW_PITCH_MIN * Math.PI) / 180), 12);
     for (const deg of [VIEW_PITCH_MIN, 5, VIEW_PITCH_MAX]) {
       expect(camAt(deg).ky).toBeCloseTo(Math.tan((deg * Math.PI) / 180), 12);
@@ -47,11 +53,14 @@ describe('공통 카메라', () => {
   });
 
   it('선반 판도 같은 카메라로 투영한 자리: 윗면 뒤 모서리(벽)·앞 모서리', () => {
-    // 원점 = 책 기준선(판 윗면 z=0): 벽 쪽 모서리는 기준선 위(-)로 깊이 × ky, 앞 모서리는 아래(+)로 앞 길이 × ky
+    // 원점 = 책 기준선(판 윗면 z=0): 벽 쪽 모서리는 기준선 위(-)로 깊이 × ky / d, 앞 모서리는 아래(+)로 앞 길이 × ky / d
     const v = shelfVertices();
     for (const cam of [CAMERA, camAt(VIEW_PITCH_MAX)]) {
-      expect(project(cam, v.LBT).y).toBeCloseTo(-SHELF_DEPTH * cam.ky, 9);
-      expect(project(cam, v.LFT).y).toBeCloseTo(SHELF_FRONT * cam.ky, 9);
+      expect(cam.eye!.y).toBeCloseTo(cam.eye!.dist * cam.ky, 9);
+      expect(project(cam, v.LBT).y).toBeCloseTo(plankY(cam, SHELF_DEPTH), 9);
+      expect(project(cam, v.LFT).y).toBeCloseTo(plankY(cam, -SHELF_FRONT), 9);
+      expect(project(cam, v.LBT).y).toBeLessThan(0);
+      expect(project(cam, v.LFT).y).toBeGreaterThan(0);
     }
   });
 });
@@ -67,11 +76,11 @@ describe('눕힌 책 한 권 돌리기(-12 / 0 / +12)', () => {
     for (const d of [-12, 0, 12]) expect(at(d).applied).toBe(d);
   });
 
-  it('앞면 아래 모서리의 화면 높이 차이가 회전 방향에 따라 반대로 바뀌고, 차이 = 깊이 차 × ky', () => {
+  it('앞면 아래 모서리의 화면 높이 차이가 회전 방향에 따라 반대로 바뀌고, 차이 = 깊이 차 × ky(원근 d로 나눈 판 윗면 높이 차)', () => {
     const dy = (d: number) => {
       const { bottom } = at(d);
       const [l, r] = [bottom[0], bottom[bottom.length - 1]];
-      expect(r.s.y - l.s.y).toBeCloseTo((l.w.z - r.w.z) * CAMERA.ky, 9);
+      expect(r.s.y - l.s.y).toBeCloseTo(plankY(CAMERA, r.w.z) - plankY(CAMERA, l.w.z), 9);
       return r.s.y - l.s.y; // 오른쪽 끝이 아래(+)면 오른쪽이 앞으로 나온 것
     };
     expect(dy(0)).toBeCloseTo(0, 9);
@@ -87,7 +96,11 @@ describe('눕힌 책 한 권 돌리기(-12 / 0 / +12)', () => {
       const { b, pts } = at(d);
       const m = faceMatrix(b, 'spine', CAMERA, px);
       const fr = faceFrame(b.dims, 'spine');
-      const map = (u: number, v: number) => ({ x: m[0] * u + m[1] * v + m[2], y: m[3] * u + m[4] * v + m[5] });
+      // 원근 카메라의 그림 행렬은 동차(3행)라 나눈다
+      const map = (u: number, v: number) => {
+        const den = m[6] * u + m[7] * v + m[8];
+        return { x: (m[0] * u + m[1] * v + m[2]) / den, y: (m[3] * u + m[4] * v + m[5]) / den };
+      };
       const w = fr.w * px.s;
       const h = fr.h * px.s;
       // 그림 (0,0)=O, (w,0)=O+U, (0,h)=O+V
@@ -129,12 +142,12 @@ describe('눕힌 책 한 권 돌리기(-12 / 0 / +12)', () => {
       expect(Math.min(...shown.map(p => p.x))).toBeCloseTo(Math.min(...base.map(p => p.x)), 8);
       expect(Math.max(...shown.map(p => p.x))).toBeCloseTo(Math.max(...base.map(p => p.x)), 8);
       expect(shown).toEqual(base);
-      // The cover remains parallel to the floor at precisely the book thickness.
+      // The cover remains parallel to the floor at precisely the book thickness (seen at that depth: T / d).
       for (const p of corners(b).filter(p => Math.abs(p.y - b.dims.T) < 1e-6)) {
         const cover = project(view, p);
         const floor = project(CAMERA, { ...p, y: 0 });
         expect(cover.x).toBeCloseTo(floor.x, 8);
-        expect(floor.y - cover.y).toBeCloseTo(b.dims.T, 8);
+        expect(floor.y - cover.y).toBeCloseTo(b.dims.T / dOf(CAMERA, p.z), 8);
       }
     }
     for (const f of computeShelf(SAMPLE_LAYOUT, books, 'shelf-3').frames) {
@@ -149,6 +162,7 @@ it('같은 높이에서 앞뒤로 옮기면 선반 윗면을 따라 화면 위�
   const b = spineAt(lone(60)).bottom[0];
   expect(b.w.y).toBeCloseTo(a.w.y, 9);
   expect(b.w.z - a.w.z).toBeCloseTo(60, 6);
-  expect(a.s.y - b.s.y).toBeCloseTo(60 * CAMERA.ky, 6); // 벽 쪽일수록 위
-  expect(b.s.x - a.s.x).toBeCloseTo(60 * CAMERA.kx, 6);
+  expect(a.s.y - b.s.y).toBeCloseTo(plankY(CAMERA, a.w.z) - plankY(CAMERA, b.w.z), 6); // 벽 쪽일수록 위
+  expect(a.s.y - b.s.y).toBeGreaterThan(55 * CAMERA.ky);
+  expect(b.s.x - a.s.x).toBeCloseTo(screenX(CAMERA, b.w) - screenX(CAMERA, a.w), 6); // 벽 쪽일수록 줄 가운데로
 });

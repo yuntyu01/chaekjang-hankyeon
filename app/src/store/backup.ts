@@ -14,6 +14,7 @@ import type { Library } from '@/domain/library';
 
 import { shelfBooks } from './boot';
 import { IMAGE_DIR } from './files';
+import { VIEW_SETTINGS_KEY } from './view-settings-key';
 import { fullDirty } from '@/domain/sync';
 import { libraryStore } from './library-store';
 import { markAllDirty, noteChange, noteLayoutChange } from './sync-dirty';
@@ -22,7 +23,7 @@ import { settingsStore, type Settings } from './settings-store';
 import { viewStore } from './view-store';
 
 const LAYOUT_KEY = 'shelf-layout';
-const VIEW_KEY = 'view-settings:v1';
+const VIEW_KEY = VIEW_SETTINGS_KEY;
 const DIR_KEY = 'backup-dir:v1'; // 사용자가 고른 저장 폴더(SAF 주소)
 
 export type Backup = {

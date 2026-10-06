@@ -8,14 +8,15 @@ import { ReferenceUI } from '@/ui/ReferenceUI';
 import { tabBarStyle } from '@/ui/tabBar';
 import { colors, navigation } from '@/ui/theme';
 
-// 하단 탭: 책장 · 갈피 · 읽기. 글자 없이 아이콘만(갈피·읽기는 늘 속이 찬 모양). 아이콘은 책장 장면과 같은 종이 위에 뜬다.
+// 하단 탭: 책장 · 갈피 · 읽기. 시안처럼 아이콘 아래에 글자를 두고, 선택된 탭만 속이 차고 진하게 나머지는 연한 윤곽선. 아이콘은 책장 장면과 같은 종이 위에 뜬다.
 export default function TabsLayout() {
   const insets = useSafeAreaInsets();
   return (
     <Tabs
       screenOptions={{
         headerShown: false,
-        tabBarShowLabel: false,
+        tabBarShowLabel: true,
+        tabBarLabelStyle: { fontSize: 12.5, fontWeight: '600', marginTop: 2 },
         tabBarActiveTintColor: colors.tabActive,
         tabBarInactiveTintColor: colors.tabInactive,
         tabBarStyle: tabBarStyle(insets.bottom),
@@ -36,7 +37,7 @@ export default function TabsLayout() {
           tabBarStyle: { ...tabBarStyle(insets.bottom), backgroundColor: colors.tabBar, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.line },
           title: ko.tabs.bookmarks,
           tabBarAccessibilityLabel: ko.tabs.bookmarks,
-          tabBarIcon: ({ color }) => <BookmarkTabIcon color={String(color)} size={navigation.iconSize} filled />,
+          tabBarIcon: ({ color, focused }) => <BookmarkTabIcon color={String(color)} size={navigation.iconSize} filled={focused} />,
         }}
       />
       <Tabs.Screen
@@ -46,7 +47,7 @@ export default function TabsLayout() {
           tabBarStyle: { display: 'none' },
           title: ko.tabs.read,
           tabBarAccessibilityLabel: ko.tabs.read,
-          tabBarIcon: ({ color }) => <ReadTabIcon color={String(color)} bg={colors.bg} size={navigation.iconSize} filled />,
+          tabBarIcon: ({ color, focused }) => <ReadTabIcon color={String(color)} bg={colors.bg} size={navigation.iconSize} filled={focused} />,
         }}
       />
     </Tabs>

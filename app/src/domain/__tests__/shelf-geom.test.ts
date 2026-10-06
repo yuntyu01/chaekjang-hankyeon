@@ -1,6 +1,7 @@
 // 선반 판 모양: 3D 꼭짓점을 책과 같은 project()로 투영한 면이고, 이웃 면은 꼭짓점을 공유한다. 책은 어디에 놓여도 윗면 위에 있다.
 import { corners, fromPlaced } from '../book3';
 import { project } from '../box';
+import { camCenteredAt, type Cam } from '../camera';
 import { CAMERA, SHELF, SHELF_DEPTH, SHELF_DEPTH_MM, SHELF_FRONT, SHELF_FRONT_MM, SHELF_THICK, SHELF_TOTAL_DEPTH_MM, SHELF_USABLE_WIDTH, SHELF_X0, SHELF_X1 } from '../geometry';
 import { shadowOnPlane, travelOf } from '../cast-shadow';
 import { light } from '@/ui/lighting';
@@ -16,14 +17,20 @@ const eq = (a: { x: number; y: number }, b: { x: number; y: number }) => {
   expect(a.y).toBeCloseTo(b.y, 9);
 };
 
-it('시안 선반의 앞 가장자리는 고정되고 원근 질감 네 모서리가 판에 붙는다', () => {
-  const original = shelfFaces(CAMERA);
-  const view = shelfFaces(shelfViewCam(CAMERA));
-  eq(view.corners.LFT, original.corners.LFT);
-  eq(view.corners.RFT, original.corners.RFT);
-  expect(view.corners.LBT.x).toBeGreaterThan(original.corners.LBT.x);
-  expect(view.corners.RBT.x).toBeLessThan(original.corners.RBT.x);
-  for (const f of [view.top, view.front, view.side!]) {
+it('시안 선반: 원근 카메라 하나로 윗면이 벽 쪽으로 좁아지고 질감 네 모서리가 판에 붙는다', () => {
+  // 원근 카메라는 판에 따로 원근을 덧붙이지 않는다(책·그림자와 같은 카메라)
+  expect(shelfViewCam(CAMERA)).toBe(CAMERA);
+  const view = shelfFaces(CAMERA);
+  // 벽 쪽(뒤) 모서리는 앞 모서리보다 줄 가운데 쪽으로 들어간다(시안: 약 3.6%)
+  expect(view.corners.LBT.x).toBeGreaterThan(view.corners.LFT.x);
+  expect(view.corners.RBT.x).toBeLessThan(view.corners.RFT.x);
+  const front = view.corners.RFT.x - view.corners.LFT.x;
+  const back = view.corners.RBT.x - view.corners.LBT.x;
+  expect(1 - back / front).toBeGreaterThan(0.03);
+  expect(1 - back / front).toBeLessThan(0.06);
+  // 눈이 판 가운데에 있으면 판 양 끝면은 보이지 않는다
+  expect(view.side).toBeNull();
+  for (const f of [view.top, view.front]) {
     const m = faceTextureMatrix(f, 300, 80, 2.2, 20, 400);
     for (const [i, [u,v]] of [[0,0],[300,0],[300,80],[0,80]].entries()) {
       const den = m[6]*u+m[7]*v+m[8];
@@ -38,14 +45,19 @@ it('깊이 기준: 앞 끝 0 → 책 기준선 70mm → 벽 230mm(기준선 뒤 
   expect(SHELF_DEPTH_MM).toBe(160);
   const v = shelfVertices();
   expect(v.LBT.z - v.LFT.z).toBeCloseTo(SHELF_FRONT + SHELF_DEPTH, 9);
-  // 화면에서 윗면 앞 모서리(기준선 아래) → 뒤 모서리(기준선 위) 거리 = 판 전체 깊이 × ky
-  expect(project(CAMERA, v.LFT).y - project(CAMERA, v.LBT).y).toBeCloseTo((SHELF_FRONT + SHELF_DEPTH) * CAMERA.ky, 9);
+  // 화면에서 윗면 앞 모서리(기준선 아래) → 뒤 모서리(기준선 위) 거리 = 각 깊이 × ky를 원근 d로 나눈 높이의 합
+  const d = (z: number) => 1 + z / CAMERA.eye!.dist;
+  expect(project(CAMERA, v.LFT).y - project(CAMERA, v.LBT).y).toBeCloseTo((SHELF_FRONT / d(-SHELF_FRONT) + SHELF_DEPTH / d(SHELF_DEPTH)) * CAMERA.ky, 9);
+  // 시안: 판 윗면 230mm가 약 7mm(판 높이에서 1.8°)로 보인다
+  expect(project(CAMERA, v.LFT).y - project(CAMERA, v.LBT).y).toBeCloseTo((SHELF_FRONT + SHELF_DEPTH) * Math.tan((1.8 * Math.PI) / 180), 0);
 });
 
 it('면 = 3D 꼭짓점의 투영, 이웃 면은 같은 꼭짓점', () => {
-  const f = shelfFaces(CAMERA);
+  // 오른쪽 끝면이 보이도록 눈을 판 오른쪽 바깥에 둔 같은 카메라
+  const cam: Cam = camCenteredAt(CAMERA, SHELF_X1 + 400);
+  const f = shelfFaces(cam);
   const v = shelfVertices();
-  for (const k of Object.keys(v) as (keyof typeof v)[]) eq(f.corners[k], project(CAMERA, v[k]));
+  for (const k of Object.keys(v) as (keyof typeof v)[]) eq(f.corners[k], project(cam, v[k]));
   // 윗면 앞 변 = 앞면 위 변
   eq(f.top.poly[3], f.front.poly[0]);
   eq(f.top.poly[2], f.front.poly[1]);
@@ -53,8 +65,13 @@ it('면 = 3D 꼭짓점의 투영, 이웃 면은 같은 꼭짓점', () => {
   eq(f.side!.poly[0], f.top.poly[2]);
   eq(f.side!.poly[1], f.top.poly[1]);
   eq(f.side!.poly[3], f.front.poly[2]);
-  // 면은 평행사변형: O+U+V = 네 번째 꼭짓점
-  for (const fc of [f.top, f.front, f.side!]) eq({ x: fc.O.x + fc.U.x + fc.V.x, y: fc.O.y + fc.U.y + fc.V.y }, fc.poly[2]);
+  // 앞면은 깊이가 한 값이라 평행사변형(O+U+V = 네 번째 꼭짓점). 윗면·옆면은 원근으로 좁아지는 사각형
+  eq({ x: f.front.O.x + f.front.U.x + f.front.V.x, y: f.front.O.y + f.front.U.y + f.front.V.y }, f.front.poly[2]);
+  for (const fc of [f.top, f.side!]) {
+    const m = faceTextureMatrix(fc, 300, 80, 1, 0, 0);
+    const den = m[6] * 300 + m[7] * 80 + m[8];
+    eq({ x: (m[0] * 300 + m[1] * 80 + m[2]) / den, y: (m[3] * 300 + m[4] * 80 + m[5]) / den }, fc.poly[2]);
+  }
 });
 
 it('판은 책 줄(0 ~ 사용 폭)을 덮고 화면 안에 들어간다', () => {

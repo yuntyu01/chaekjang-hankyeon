@@ -144,7 +144,8 @@ describe('자세 변경 경로', () => {
     let last = -1;
     for (let k = 0; k <= 20; k++) {
       const f = facing(CAMERA, bookAt(tr, k / 20), 'cover');
-      expect(f).toBeGreaterThanOrEqual(last - 1e-6); // 앞표지는 점점 앞을 향한다(엉뚱한 면이 앞으로 오지 않음)
+      // 앞표지는 점점 앞을 향한다(엉뚱한 면이 앞으로 오지 않음). 원근 카메라는 면 가운데에서 눈을 보므로 끝에서 1e-4 안쪽으로 흔들린다
+      expect(f).toBeGreaterThanOrEqual(last - 1e-4);
       expect(facing(CAMERA, bookAt(tr, k / 20), 'back')).toBeLessThanOrEqual(1e-6); // 뒤표지는 한 번도 보이지 않는다
       last = f;
     }

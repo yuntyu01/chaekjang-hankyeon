@@ -5,7 +5,7 @@
 //   세움 = (roll 기대기 각, yaw 0), 눕힘 = (roll -90: 책등이 앞, 앞표지가 위, 뒤표지가 받침, 머리가 왼쪽), 표지 전시 = (roll 0, yaw 90: 앞표지가 앞, 아래 면이 받침).
 // 선반 공간(월드): x 오른쪽, y 위, z 벽 쪽. 월드 점 = R·책좌표 + t.
 // 워클릿은 만들어질 때 쓰는 함수를 붙잡으므로, 쓰이는 함수를 먼저 정의한다.
-import type { Cam, Vec3 } from './camera';
+import { project, viewAt, type Cam, type Vec3 } from './camera';
 import type { Placed } from './box';
 import type { Pose } from './types';
 
@@ -102,12 +102,21 @@ export function faceFrame(d: Dims, f: 'spine' | 'cover'): { O: Vec3; U: Vec3; V:
   return { O: { x: d.T, y: d.H, z: 0 }, U: { x: 0, y: 0, z: d.W }, V: { x: 0, y: -d.H, z: 0 }, w: d.W, h: d.H };
 }
 
-// 카메라(domain/camera, 직교 + 사선): 깊이 1이 화면 오른쪽 kx, 위 ky. 보이는 면 = 법선이 (kx, ky, -1) 쪽을 향함.
+// 면 가운데(월드)
+export function faceCenter(b: Book3, f: FaceId): Vec3 {
+  'worklet';
+  const d = b.dims;
+  const n = faceNormal(f);
+  return toWorld(b, { x: (d.T * (1 + n.x)) / 2, y: (d.H * (1 + n.y)) / 2, z: (d.W * (1 + n.z)) / 2 });
+}
+
+// 카메라(domain/camera): 보이는 면 = 법선이 그 자리에서 눈 쪽 (kx, ky, -1)을 향함(원근 카메라는 면 가운데에서 본 값).
 export function facing(cam: Cam, b: Book3, f: FaceId) {
   'worklet';
   const n = rot(b.roll, b.yaw, faceNormal(f), b.spin ?? 0, b.pitch ?? 0);
-  const l = Math.hypot(cam.kx, cam.ky, 1);
-  return (n.x * cam.kx + n.y * cam.ky - n.z) / l;
+  const k = cam.eye ? viewAt(cam, faceCenter(b, f)) : cam;
+  const l = Math.hypot(k.kx, k.ky, 1);
+  return (n.x * k.kx + n.y * k.ky - n.z) / l;
 }
 
 // 광원(램버트): 밝기 = ambient + diffuse·(n·L), [min, max]로 제한
@@ -317,7 +326,9 @@ export function frontOf(a: Book3, b: Book3, cam: Cam): number {
       const l = Math.hypot(c.x, c.y, c.z);
       if (l > 1e-6) axes.push({ x: c.x / l, y: c.y / l, z: c.z / l });
     }
-  const v = { x: -cam.kx, y: -cam.ky, z: 1 };
+  // 원근 카메라는 두 상자 가운데에서 본 시선
+  const k = cam.eye ? viewAt(cam, { x: (A.c.x + B.c.x) / 2, y: (A.c.y + B.c.y) / 2, z: (A.c.z + B.c.z) / 2 }) : cam;
+  const v = { x: -k.kx, y: -k.ky, z: 1 };
   const d = sub3(B.c, A.c);
   // 나누는 축 가운데 시선과 가장 덜 나란한 것(판단이 가장 안정적)을 고른다. 나누는 축이 없으면 가장 덜 파고든 축.
   let best = -Infinity;
@@ -356,8 +367,9 @@ export function drawOrder(bs: Book3[], cam: Cam, key: (b: Book3) => number): num
     let y0 = Infinity;
     let y1 = -Infinity;
     for (const c of corners(b)) {
-      const px = c.x + c.z * cam.kx;
-      const py = c.y + c.z * cam.ky;
+      const q = project(cam, c);
+      const px = q.x;
+      const py = -q.y;
       x0 = Math.min(x0, px);
       x1 = Math.max(x1, px);
       y0 = Math.min(y0, py);

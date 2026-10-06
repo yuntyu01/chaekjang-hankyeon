@@ -57,15 +57,16 @@ it('각을 바꿔도 책의 3D 자세·자리·공간 판정은 같고, 화면 �
 describe('시점 끌기를 놓았을 때 정착', () => {
   it('조금 움직였다 놓으면 원래 시점(가까운 쪽이 아니라), 아주 세게 튕기면 그 방향', () => {
     expect(viewSettle(VIEW_PITCH_MAX, 8, 7.5, 0)).toBe(VIEW_PITCH_MAX);
-    expect(viewSettle(VIEW_PITCH_MIN, 3, 3.6, 300)).toBe(VIEW_PITCH_MIN);
-    expect(viewSettle(VIEW_PITCH_MIN, 3, 3.6, 2000)).toBe(VIEW_PITCH_MAX);
+    expect(viewSettle(VIEW_PITCH_MIN, VIEW_PITCH_MIN, VIEW_PITCH_MIN + 0.6, 300)).toBe(VIEW_PITCH_MIN);
+    expect(viewSettle(VIEW_PITCH_MIN, VIEW_PITCH_MIN, VIEW_PITCH_MIN + 0.6, 2000)).toBe(VIEW_PITCH_MAX);
   });
 
   it('충분히 끌었으면 가까운 쪽, 빠르게 놓으면 놓는 방향', () => {
-    expect(viewSettle(VIEW_PITCH_MIN, 3, 6, 0)).toBe(VIEW_PITCH_MAX);
-    expect(viewSettle(VIEW_PITCH_MIN, 3, 5, 0)).toBe(VIEW_PITCH_MIN);
-    expect(viewSettle(VIEW_PITCH_MIN, 3, 5, 700)).toBe(VIEW_PITCH_MAX);
-    expect(viewSettle(VIEW_PITCH_MAX, 8, 6, -700)).toBe(VIEW_PITCH_MIN);
+    const mid = (VIEW_PITCH_MIN + VIEW_PITCH_MAX) / 2;
+    expect(viewSettle(VIEW_PITCH_MIN, VIEW_PITCH_MIN, mid + 0.5, 0)).toBe(VIEW_PITCH_MAX);
+    expect(viewSettle(VIEW_PITCH_MIN, VIEW_PITCH_MIN, mid - 0.5, 0)).toBe(VIEW_PITCH_MIN);
+    expect(viewSettle(VIEW_PITCH_MIN, VIEW_PITCH_MIN, mid - 0.5, 700)).toBe(VIEW_PITCH_MAX);
+    expect(viewSettle(VIEW_PITCH_MAX, VIEW_PITCH_MAX, mid + 0.9, -700)).toBe(VIEW_PITCH_MIN);
   });
 
   it('정착 중에 다시 잡고 조금만 움직이면 향하던 시점으로', () => {
@@ -73,7 +74,7 @@ describe('시점 끌기를 놓았을 때 정착', () => {
     expect(viewSettle(VIEW_PITCH_MAX, 5.2, 4.9, 0)).toBe(VIEW_PITCH_MAX);
   });
 
-  it('약 170dp 끌면 3° → 8°', () => {
+  it('약 170dp 끌면 기본 → 8°', () => {
     expect(VIEW_PITCH_MIN + 170 * VIEW_DEG_PER_DP).toBeCloseTo(VIEW_PITCH_MAX, 0);
   });
 });

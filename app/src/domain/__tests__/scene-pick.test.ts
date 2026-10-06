@@ -147,12 +147,20 @@ describe('윗선반 판이 아래 줄 책 머리를 가린다', () => {
     expect(geo.rows[1].dy).toBeCloseTo(rows[1].space + SHELF_THICK, 9);
   });
 
-  it('8°: 윗선반 판 뒤로 들어간 책 머리는 책이 아니다(같은 책 앞면은 잡힌다)', () => {
+  it('8°: 머리가 윗선반 판에 가려지는지는 눈에서 그 점까지의 시선이 판에 걸리는지로 정해진다(같은 책 앞면은 잡힌다)', () => {
+    // 원근 카메라: 아래 줄 눈은 그 줄 판에서 거리 × tan(8°) 위. 머리(벽 가까운 점)로 가는 시선이 윗선반 앞면(z = -SHELF_FRONT)을 지나는 높이
+    const e = STEEP.eye!;
+    const sight = head.y + ((e.y - head.y) * (head.z + SHELF_FRONT)) / (e.dist + head.z);
     const p = at(rows[1], STEEP, head);
     const upperPlank = hull(shelfBoxCorners().map((q) => at(rows[0], STEEP, q)));
-    expect(pointInPoly(p, upperPlank)).toBe(true);
     expect(pointInPoly(p, outlinePx(rows[1], STEEP, fromPlaced(box)))).toBe(true);
-    expect(pickAt(list, geo, STEEP, p.x, p.y, 0)).toBeNull();
+    // 줄 여유가 있어 시선이 판 아래로 지난다 → 머리는 판에 가리지 않고 책이 잡힌다
+    expect(sight).toBeLessThan(rows[1].space);
+    expect(pointInPoly(p, upperPlank)).toBe(false);
+    expect(pickAt(list, geo, STEEP, p.x, p.y, 0)).toEqual({ shelfId: 'low', bookId: 'b07' });
+    // 판 바로 아래보다 위(시선이 판에 걸리는 높이)의 벽 가까운 점은 위 줄이 그린 판 윤곽 안이다
+    const hidden = at(rows[1], STEEP, { x: head.x, y: rows[1].space + SHELF_THICK / 2, z: head.z });
+    expect(pointInPoly(hidden, upperPlank)).toBe(true);
     const face = at(rows[1], STEEP, { x: head.x, y: box.size.h / 2, z: box.z });
     expect(pickAt(list, geo, STEEP, face.x, face.y, 0)).toEqual({ shelfId: 'low', bookId: 'b07' });
     // 위 줄 책은 그대로 잡힌다

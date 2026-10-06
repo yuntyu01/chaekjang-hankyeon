@@ -4,7 +4,9 @@ import Storage from 'expo-sqlite/kv-store';
 
 import { clampPitch, VIEW_PITCH_MIN } from '@/domain/camera';
 
-const KEY = 'view-settings:v1';
+import { VIEW_SETTINGS_KEY } from './view-settings-key';
+
+const KEY = VIEW_SETTINGS_KEY;
 type State = { pitch: number; loaded: boolean };
 let state: State = { pitch: VIEW_PITCH_MIN, loaded: false };
 const listeners = new Set<() => void>();
