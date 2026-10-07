@@ -5,7 +5,7 @@
 //   lit: 구운 그림(tex)을 읽고 나머지(하늘·창빛 직접 몫, 둥근 모서리 법선, 반사광)를 화소마다. 곱하기·컬러 닷지 두 가지로 컴파일한다.
 import { EDGE_R, GROOVE, SPINE_CURVE } from '@/domain/book-parts';
 import { SHELF_DEPTH, SHELF_FRONT, SHELF_THICK, SHELF_X0, SHELF_X1 } from '@/domain/geometry';
-import { BOX_MAX, BOX_VEC, E_REF, FAR, GAMMA, KEY_BASIS, KEY_SAMPLES, L_AZIM, L_ELEV, L_UNIT, RAD_END_L, RAD_END_R, RAD_FLOOR, RAD_UNDER, RAD_WALL } from '@/domain/light-model';
+import { ALBEDO, BOX_MAX, BOX_VEC, DESIGN, EREF, FAR, GAMMA, KEY_BASIS, KEY_SAMPLES, L_AZIM, L_ELEV, L_UNIT, RAD, type C3 } from '@/domain/light-model';
 import type { Affine, Cam, Vec3 } from '@/domain/camera';
 import { light, material } from '@/ui/lighting';
 
@@ -41,12 +41,12 @@ export function planeFrame(c: Cam, px: Affine, pl: Plane) {
 
 const f = (v: number) => (Number.isFinite(v) ? v.toPrecision(9) : '1e9');
 const v3 = (v: { x: number; y: number; z: number }) => `float3(${f(v.x)}, ${f(v.y)}, ${f(v.z)})`;
+const c3 = (c: C3) => `float3(${f(c[0])}, ${f(c[1])}, ${f(c[2])})`;
 // 잘린 다각형 꼭짓점 최대 수: 사각형 4 + 반구 1 + 구역 평면 넷 4
 const NV = 10;
 
-// 하늘 가림 그림: (가림 + LOSS_OFF) / LOSS_SCALE를 회색(R = G = B)으로. 밝은 판이 되비춰 밝아지면 가림이 음수다.
-// 화면 색 공간(sRGB·Display P3)이 달라 그림 색이 바뀌어도 회색은 그대로라(흰 점·전달 함수가 같다) 값이 보존된다.
-// 셰이더 출력도 모두 회색 비율로만 낸다(재질 색은 그림이 칠한다). 8비트 한 단계 = 받는 빛 약 0.6%(화면에서 한 단계 아래)
+// 하늘 가림 그림: 선형 RGB 채널마다 (가림 + LOSS_OFF) / LOSS_SCALE. 밝은 판이 되비춰 밝아지면 가림이 음수다.
+// 그림 칸 값이 색 변환되지 않도록 굽는 표면은 화면 표면과 같은 색 공간이다(SceneLight bakeAtlas). 8비트 한 단계 = 받는 빛 약 0.6%
 export const LOSS_OFF = 0.25;
 export const LOSS_SCALE = 1.5;
 
@@ -61,7 +61,8 @@ function header() {
   const float SKYUP = ${f(light.skyUp)};
   const float DIFF = ${f(light.diffuse)};
   const float3 LU = ${v3(L_UNIT)};
-  const float EREF = ${f(E_REF)};
+  // 카메라 기준 빛(벽 대표 자리, 반사광을 화면 값으로)
+  const float3 ECAM = ${c3(EREF.wall)};
   const float LELEV = ${f(L_ELEV)};
   const float LAZIM = ${f(L_AZIM)};
   const float LRAD = ${f(light.radius)};
@@ -73,11 +74,14 @@ function header() {
   const float DEPTH = ${f(SHELF_DEPTH)};
   const float THICK = ${f(SHELF_THICK)};
   const float FARV = ${f(FAR)};
-  const float RADF = ${f(RAD_FLOOR)};
-  const float RADU = ${f(RAD_UNDER)};
-  const float RADW = ${f(RAD_WALL)};
-  const float RADL = ${f(RAD_END_L)};
-  const float RADR = ${f(RAD_END_R)};
+  // 둘레 면 밝기(선형 RGB: 반사율 × 받는 빛)와 속지 반사율(되비침), 속지 색(그림이 칠하는 색)
+  const float3 RADF = ${c3(RAD.floor)};
+  const float3 RADU = ${c3(RAD.under)};
+  const float3 RADW = ${c3(RAD.wall)};
+  const float3 RADL = ${c3(RAD.endL)};
+  const float3 RADR = ${c3(RAD.endR)};
+  const float3 PAPER = ${c3(ALBEDO.paper)};
+  const float3 PAPER_COLOR = ${c3(DESIGN.paper)};
   const float EDGER = ${f(EDGE_R)};
   const float IG = ${f(1 / GAMMA)};
   const float LOSS_OFF = ${f(LOSS_OFF)};
@@ -90,20 +94,20 @@ function header() {
   float skyOf(float4 q) { return AMB * q.x + 1.5 * SKYUP * q.z; }
 
   bool inPlank(float3 q) { return q.x >= X0 && q.x <= X1 && q.z >= -FRONT && q.z <= DEPTH; }
-  // 한 줄 안(판 윗면 f, 위 판 아랫면 c, 그 사이 벽)에서 광선이 처음 닿는 곳(거리, 밝기)
-  float2 rowHit(float3 p, float3 w, float f, float c, float2 hit) {
+  // 한 줄 안(판 윗면 f, 위 판 아랫면 c, 그 사이 벽)에서 광선이 처음 닿는 곳(거리, 밝기 RGB)
+  float4 rowHit(float3 p, float3 w, float f, float c, float4 hit) {
     if (w.y < -1e-6 && f > -FARV) {
       float t = (f - p.y) / w.y;
-      if (t > 0.0 && t < hit.x && inPlank(p + w * t)) hit = float2(t, RADF);
+      if (t > 0.0 && t < hit.x && inPlank(p + w * t)) hit = float4(t, RADF);
     }
     if (w.y > 1e-6 && c < FARV) {
       float t = (c - p.y) / w.y;
-      if (t > 0.0 && t < hit.x && inPlank(p + w * t)) hit = float2(t, RADU);
+      if (t > 0.0 && t < hit.x && inPlank(p + w * t)) hit = float4(t, RADU);
     }
     if (w.z > 1e-6) {
       float t = (DEPTH - p.z) / w.z;
       float y = p.y + w.y * t;
-      if (t > 0.0 && t < hit.x && y >= f && y <= c) hit = float2(t, RADW);
+      if (t > 0.0 && t < hit.x && y >= f && y <= c) hit = float4(t, RADW);
     }
     return hit;
   }
@@ -120,17 +124,17 @@ function header() {
     if (s == 2) return env2.x > -FARV && env.y > -FARV ? float2(env2.x - THICK, env2.x) : float2(1.0, 0.0);
     return env2.y < FARV && env.z < FARV ? float2(env2.y, env2.y + THICK) : float2(1.0, 0.0);
   }
-  // 점 p에서 방향 w로 처음 보이는 둘레 면(거리, 밝기). 없으면 하늘(light-model envHit)
-  float2 envHit(float3 p, float3 w) {
-    float2 sky = float2(1e9, skyRad(w));
+  // 점 p에서 방향 w로 처음 보이는 둘레 면(거리, 밝기 RGB). 없으면 하늘(light-model envHit)
+  float4 envHit(float3 p, float3 w) {
+    float4 sky = float4(1e9, float3(skyRad(w)));
     if (env.x < 0.5) return sky;
     if (p.x >= X0 && p.x <= X1) return rowHit(p, w, env.y, env.z, sky);
     // 판 끝 너머: 이 줄 높이의 벽은 바로, 판 쪽은 판 끝 평면(창)을 지나는 높이로(판 상자면 끝면, 틈이면 그 줄 안)
-    float2 hit = sky;
+    float4 hit = sky;
     if (w.z > 1e-6) {
       float t = (DEPTH - p.z) / w.z;
       float y = p.y + w.y * t;
-      if (t > 0.0 && y >= env.y && y <= env.z) hit = float2(t, RADW);
+      if (t > 0.0 && y >= env.y && y <= env.z) hit = float4(t, RADW);
     }
     float X = p.x < X0 ? X0 : X1;
     if ((X - p.x) * w.x <= 1e-9) return hit;
@@ -139,7 +143,7 @@ function header() {
     if (q.z < -FRONT || q.z > DEPTH || t >= hit.x) return hit;
     for (int s = 0; s < 4; s++) {
       float2 sl = slabOf(s);
-      if (q.y >= sl.x && q.y <= sl.y) return float2(t, w.x > 0.0 ? RADL : RADR);
+      if (q.y >= sl.x && q.y <= sl.y) return float4(t, w.x > 0.0 ? RADL : RADR);
     }
     for (int g = 0; g < 3; g++) {
       float2 gp = gapOf(g);
@@ -247,10 +251,10 @@ function envCode() {
   // 둘레 사각형 k(light-model envQuads): 0 벽(이 줄 높이), 판 끝 안쪽은 1 판 윗면·2 위 판 아랫면,
   // 판 끝 너머는 3~8 틈(아래 줄·이 줄·위 줄)마다 판 윗면·위 판 아랫면(그 틈으로, gap), 9~12 판 상자의 가까운 끝면.
   // 면의 앞쪽(빛을 받는 쪽)에서만 보인다. 받는 점 p 기준 꼭짓점과 밝기, 없으면 false
-  bool envQuad(int k, float3 p, out float3 a, out float3 b, out float3 c, out float3 d, out float rad, out float2 gap) {
+  bool envQuad(int k, float3 p, out float3 a, out float3 b, out float3 c, out float3 d, out float3 rad, out float2 gap) {
     float zf = -FRONT - p.z;
     float z = DEPTH - p.z;
-    a = float3(0.0); b = float3(0.0); c = float3(0.0); d = float3(0.0); rad = 0.0; gap = float2(1.0, 0.0);
+    a = float3(0.0); b = float3(0.0); c = float3(0.0); d = float3(0.0); rad = float3(0.0); gap = float2(1.0, 0.0);
     bool inside = p.x >= X0 && p.x <= X1;
     if (k == 0) {
       float y0 = max(env.y, -FARV) - p.y;
@@ -291,12 +295,12 @@ function envCode() {
     rad = top ? RADF : RADU;
     return true;
   }
-  float envLoss(float3 p, float3 n) {
-    if (env.x < 0.5) return 0.0;
-    float loss = 0.0;
+  float3 envLoss(float3 p, float3 n) {
+    if (env.x < 0.5) return float3(0.0);
+    float3 loss = float3(0.0);
     float X = p.x < X0 ? X0 : X1;
     for (int k = 0; k < 13; k++) {
-      float3 a; float3 b; float3 c; float3 d; float rad; float2 gap;
+      float3 a; float3 b; float3 c; float3 d; float3 rad; float2 gap;
       if (envQuad(k, p, a, b, c, d, rad, gap)) {
         float3 v[${NV}];
         for (int j = 0; j < ${NV}; j++) v[j] = float3(0.0);
@@ -310,7 +314,7 @@ function envCode() {
           if (on && cnt >= 3) clipPoly(v, cnt, j == 0 ? n : windowPlane(p, X, j == 1 ? gap.x : gap.y, j == 1), j == 0 ? HORIZON : 0.0);
         }
         float4 q = moments(v, cnt, n);
-        if (q.x > 0.0) loss += skyOf(q) - rad * q.x;
+        if (q.x > 0.0) loss += float3(skyOf(q)) - rad * q.x;
       }
     }
     return loss;
@@ -353,14 +357,14 @@ function boxCode() {
   }
   // 구역 셋: 판 윗면(앞·뒤 모서리, 판 양 끝 사이), 벽(아래·위 모서리 사이), 위 판 아랫면. 나머지는 하늘
   // gf·gc: 가리개가 있는 줄의 판 윗면·위 판 아랫면(다른 줄 책 뒤에 보였을 것은 그 줄 안)
-  float behindOf(float3 p, float3 n, float3 P[${NV}], int cnt, float4 total, float gf, float gc) {
-    if (env.x < 0.5) return skyOf(total);
+  float3 behindOf(float3 p, float3 n, float3 P[${NV}], int cnt, float4 total, float gf, float gc) {
+    if (env.x < 0.5) return float3(skyOf(total));
     bool hasF = gf > -FARV;
     bool hasC = gc < FARV;
     float3 FW = hasF ? edgePlane(p, gf, DEPTH) : float3(0.0, 0.0, -1.0);
     float3 CW = hasC ? edgePlane(p, gc, DEPTH) : float3(0.0, 0.0, 1.0);
     float4 rest = total;
-    float sum = 0.0;
+    float3 sum = float3(0.0);
     for (int si = 0; si < 3; si++) {
       bool on = si == 0 ? hasF : (si == 1 ? true : hasC);
       if (on) {
@@ -374,13 +378,13 @@ function boxCode() {
         rest -= q;
       }
     }
-    return sum + skyOf(rest);
+    return sum + float3(skyOf(rest));
   }
 
   // ---------- 책 상자가 가린 하늘(light-model boxLoss) ----------
   // 면 위 사각형 r(u0, u1, v0, v1) 하나: 보이는 부분의 (뒤에 보였을 밝기 − 면 밝기). side: 어느 줄 책인지(0 이 줄, ±1 위·아래 줄)
-  float stripLoss(float3 p, float3 n, float3 fc, float3 au, float3 av, float4 r, float rad, float side) {
-    if (r.y <= r.x || r.w <= r.z) return 0.0;
+  float3 stripLoss(float3 p, float3 n, float3 fc, float3 au, float3 av, float4 r, float3 rad, float side) {
+    if (r.y <= r.x || r.w <= r.z) return float3(0.0);
     float3 o = fc - p;
     float3 v[${NV}];
     for (int k = 0; k < ${NV}; k++) v[k] = float3(0.0);
@@ -402,16 +406,16 @@ function boxCode() {
       if (on && cnt >= 3) clipPoly(v, cnt, j == 0 ? n : (j == 1 ? c1 : c2), j == 0 ? HORIZON : 0.0);
     }
     float4 q = moments(v, cnt, n);
-    if (q.x <= 0.0) return 0.0;
+    if (q.x <= 0.0) return float3(0.0);
     float2 g = side > 0.5 ? float2(env.z + THICK, env2.y) : (side < -0.5 ? float2(env2.x, env.y - THICK) : env.yz);
     return behindOf(p, n, v, cnt, q, g.x, g.y) - q.x * rad;
   }
-  // 축 k 방향 s 면의 반사율(light-model faceAlbedo): 표지·책등 = 장정(albs.x), 머리·꼬리 = albs.y, 책배 = albs.z
-  float faceAlbedo(float3 albs, float k, float s) { return k < 0.5 ? albs.x : (k < 1.5 ? albs.y : (s < 0.0 ? albs.x : albs.z)); }
+  // 축 k 방향 s 면의 반사율(light-model faceAlbedo): 표지·책등 = 장정(tone), 머리·꼬리·책배 = 장정과 속지를 속지 넓이 비(fr.x 머리, fr.y 책배)로
+  float3 faceAlbedo(float3 tone, float2 fr, float k, float s) { return k < 0.5 ? tone : (k < 1.5 ? mix(tone, PAPER, fr.x) : (s < 0.0 ? tone : mix(tone, PAPER, fr.y))); }
   // 상자 면(축 a, 반 길이 h, 면 번호 k) 하나. 마주 보는 이웃 면(덮개)이 가리는 부분은 뺀 띠 넷으로
-  float faceLoss(float3 p, float3 n, float3 c, float3 a, float h, float3 au, float hu, float3 av, float hv, float3 albs, float k, float4 cc, float4 r0, float4 r1, float side) {
+  float3 faceLoss(float3 p, float3 n, float3 c, float3 a, float h, float3 au, float hu, float3 av, float hv, float3 tone, float2 fr, float k, float4 cc, float4 r0, float4 r1, float side) {
     float dk = dot(p - c, a);
-    if (abs(dk) <= h) return 0.0;
+    if (abs(dk) <= h) return float3(0.0);
     float s = dk > 0.0 ? 1.0 : -1.0;
     float code = k + (s > 0.0 ? 3.0 : 0.0);
     float4 R = float4(-hu, hu, -hv, hv);
@@ -441,13 +445,13 @@ function boxCode() {
       }
     }
     float3 fc = c + a * (s * h);
-    float rad = faceAlbedo(albs, k, s) * irr(a * s);
-    float loss = 0.0;
+    float3 rad = faceAlbedo(tone, fr, k, s) * irr(a * s);
+    float3 loss = float3(0.0);
     for (int j = 0; j < 4; j++) loss += stripLoss(p, n, fc, au, av, j == 0 ? S0 : (j == 1 ? S1 : (j == 2 ? S2 : S3)), rad, side);
     return loss;
   }
-  float boxesLoss(float3 p, float3 n) {
-    float loss = 0.0;
+  float3 boxesLoss(float3 p, float3 n) {
+    float3 loss = float3(0.0);
     for (int i = 0; i < ${BOX_MAX}; i++) {
       if (float(i) >= nBox) break;
       if (abs(float(i) - selfIdx) > 0.5) {
@@ -459,7 +463,9 @@ function boxCode() {
         float4 r0 = box[i * ${BOX_VEC} + 5];
         float4 r1 = box[i * ${BOX_VEC} + 6];
         float4 b7 = box[i * ${BOX_VEC} + 7];
-        float3 albs = float3(b0.w, b7.xy);
+        float4 b8 = box[i * ${BOX_VEC} + 8];
+        float3 tone = float3(b0.w, b7.xy);
+        float2 fr = float2(b7.w, b8.x);
         // 받는 면 평면 뒤에 통째로 있는 상자, 판 끝 안쪽에서 본 다른 줄 책(판이 가린다)은 보이지 않는다
         float front = dot(b0.xyz - p, n) + b1.w * abs(dot(b1.xyz, n)) + b2.w * abs(dot(b2.xyz, n)) + b3.w * abs(dot(b3.xyz, n));
         bool hidden = abs(b7.z) > 0.5 && (env.x < 0.5 || (p.x >= X0 && p.x <= X1));
@@ -469,7 +475,7 @@ function boxCode() {
             float4 A = k == 0 ? b1 : (k == 1 ? b2 : b3);
             float4 U = k == 0 ? b2 : (k == 1 ? b3 : b1);
             float4 V = k == 0 ? b3 : (k == 1 ? b1 : b2);
-            loss += faceLoss(p, n, b0.xyz, A.xyz, A.w, U.xyz, U.w, V.xyz, V.w, albs, float(k), cc, r0, r1, b7.z);
+            loss += faceLoss(p, n, b0.xyz, A.xyz, A.w, U.xyz, U.w, V.xyz, V.w, tone, fr, float(k), cc, r0, r1, b7.z);
           }
         }
       }
@@ -479,7 +485,7 @@ function boxCode() {
 `;
 }
 
-// 하늘 가림 굽기: 그림 칸 p(칸 가운데)의 줄 공간 점 O + p.x·Ux + p.y·Vy, 면 법선 tN에서. 출력 회색 (가림 + LOSS_OFF) / LOSS_SCALE
+// 하늘 가림 굽기: 그림 칸 p(칸 가운데)의 줄 공간 점 O + p.x·Ux + p.y·Vy, 면 법선 tN에서. 출력 채널마다 (가림 + LOSS_OFF) / LOSS_SCALE
 export function bakeSource() {
   return `
   uniform float3 O;
@@ -492,8 +498,8 @@ ${envCode()}
 ${boxCode()}
   half4 main(float2 p) {
     float3 P = O + p.x * Ux + p.y * Vy;
-    float g = clamp((envLoss(P, tN) + boxesLoss(P, tN) + LOSS_OFF) / LOSS_SCALE, 0.0, 1.0);
-    return half4(g, g, g, 1.0);
+    float3 g = clamp((envLoss(P, tN) + boxesLoss(P, tN) + LOSS_OFF) / LOSS_SCALE, 0.0, 1.0);
+    return half4(half3(g), 1.0);
   }
 `;
 }
@@ -572,22 +578,28 @@ function shadeCode(mode: 0 | 1 | 2) {
     return r > 0.0 ? clamp(1.0 - dist / r, 0.0, 1.0) : 0.0;
   }
   float slope(float t) { return t / sqrt(max(1e-4, 1.0 - t * t)); }
-  // 점 P(법선 n, 반사율 a, 하늘 가림 loss)의 빛. 눈 쪽 방향 v
+  // 점 P(법선 n, 재질 색 a, 하늘 가림 loss: 선형 RGB)의 빛. 눈 쪽 방향 v, eref: 그 재질의 대표 자리 빛. 채널마다 계산한다
   // 받는 빛 = 하늘·천장·창빛(위 판이 가린 창빛 몫 빼고) − 하늘 가림. 반사광 = 거울 방향의 둘레·하늘(이웃 책의 반사는 뺀다) + GGX 창빛
-  half4 shade(float3 P, float3 n, float3 v, float loss, float a) {
+  half4 shade(float3 P, float3 n, float3 v, float3 loss, float3 a, float3 eref) {
     float kb = plankKey(P);
-    float E = AMB + SKYUP * n.y + DIFF * max(0.0, dot(n, LU)) * (1.0 - kb) - loss;
+    float3 E = max(float3(0.0), AMB + SKYUP * n.y + DIFF * max(0.0, dot(n, LU)) * (1.0 - kb) - loss);
     float ks = envBRDF(max(0.0, dot(n, v)));
-    float r = max(0.0, E) * (1.0 - ks) / EREF;
-    float m = pow(min(1.0, r), IG);
-    if (DODGE < 0.5) return half4(m, m, m, 1.0);
-    float spec = (ks * envHit(P, reflect(-v, n)).y + ggxKey(n, v) * DIFF * (1.0 - kb)) / EREF;
-    float base = a * min(1.0, r);
-    float target = a * r + spec;
-    float s = target > base && target > 0.0 ? 1.0 - pow(base / target, IG) : 0.0;
+    float3 r = E * (1.0 - ks) / eref;
+    float3 m = pow(min(float3(1.0), r), float3(IG));
+    if (DODGE < 0.5) return half4(half3(m), 1.0);
+    float3 spec = (ks * envHit(P, reflect(-v, n)).yzw + ggxKey(n, v) * DIFF * (1.0 - kb)) / ECAM;
+    float3 base = a * min(float3(1.0), r);
+    float3 target = a * r + spec;
+    float3 s = float3(0.0);
+    for (int c = 0; c < 3; c++) {
+      float b = c == 0 ? base.x : (c == 1 ? base.y : base.z);
+      float t = c == 0 ? target.x : (c == 1 ? target.y : target.z);
+      float sc = t > b && t > 0.0 ? 1.0 - pow(b / t, IG) : 0.0;
+      if (c == 0) s.x = sc; else if (c == 1) s.y = sc; else s.z = sc;
+    }
     // 한 번에 칠하기(DODGE 2): 곱하기·닷지 두 겹과 같은 이득
-    if (DODGE > 1.5) { float g = m / max(1e-4, 1.0 - s); return half4(g, g, g, 1.0); }
-    return half4(s, s, s, 1.0);
+    if (DODGE > 1.5) return half4(half3(m / max(float3(1e-4), 1.0 - s)), 1.0);
+    return half4(half3(s), 1.0);
   }
 `;
 }
@@ -609,7 +621,8 @@ export function litSource(dodge: boolean | 'direct') {
   uniform float4 bev1;
   uniform float4 cam4;      // 눈(x, y, 기준면 z, 거리): 눈 위치 = (x, y, z − 거리)
   uniform float keyOn;      // 위 판이 창빛을 가리는 몫을 넣을지
-  uniform float albedo;     // 재질 반사율(닷지: 반사광을 감마 공간에 더할 때)
+  uniform float3 albedo;    // 재질 색(선형 RGB, 닷지: 반사광을 감마 공간에 더할 때)
+  uniform float3 eref;      // 그 재질의 대표 자리 빛(light-model EREF)
   uniform float liveEnv;    // 1: 구운 값 대신 둘레가 가린 하늘을 그 자리에서
 ${header()}
 ${polyCode()}
@@ -620,9 +633,9 @@ ${shadeCode(mode)}
     float b0 = slope(arc(bev0.w - dot(P, bev0.xyz), EDGER));
     float b1 = slope(arc(bev1.w - dot(P, bev1.xyz), EDGER));
     float3 n = normalize(tN + bev0.xyz * b0 + bev1.xyz * b1);
-    float loss = liveEnv > 0.5 ? envLoss(P, tN) : float(tex.eval(p).g) * LOSS_SCALE - LOSS_OFF;
-    half4 g = shade(P, n, normalize(float3(cam4.x, cam4.y, cam4.z - cam4.w) - P), loss, albedo);
-    ${mode === 2 ? 'return half4(min(base * float(g.r), float3(1.0)), 1.0);' : 'return g;'}
+    float3 loss = liveEnv > 0.5 ? envLoss(P, tN) : float3(tex.eval(p).rgb) * LOSS_SCALE - LOSS_OFF;
+    half4 g = shade(P, n, normalize(float3(cam4.x, cam4.y, cam4.z - cam4.w) - P), loss, albedo, eref);
+    ${mode === 2 ? 'return half4(half3(min(base * float3(g.rgb), float3(1.0))), 1.0);' : 'return g;'}
   }
 `;
 }
@@ -644,13 +657,14 @@ export function bookSource(dodge: boolean) {
   uniform float3 rig;       // 판 두께 bd, 책등 띠 sp, 속지가 들어간 깊이 sq(book-parts rigOf)
   uniform float4 rect[6];   // 면마다 아틀라스 칸 (0, 0) 자리와 칸 수(x, y, w, h). w ≤ 0이면 구운 값 없음
   uniform float keyOn;
-  uniform float albedo;     // 장정 반사율
-  uniform float albedo2;    // 속지 반사율
+  uniform float3 albedo;    // 장정 색(선형 RGB)
 ${header()}
 ${polyCode()}
 ${envCode()}
 ${shadeCode(dodge ? 1 : 0)}
   const float CURVE = ${f(SPINE_CURVE)};
+  const float3 EREF_BOOK = ${c3(EREF.book)};
+  const float3 EREF_PAPER = ${c3(EREF.paper)};
   const float4 GRV = float4(${f(GROOVE.at)}, ${f(GROOVE.width)}, ${f(GROOVE.slope)}, 0.0);
   float3 toRow(float3 l) { return bX * l.x + bY * l.y + bZ * l.z; }
 
@@ -695,9 +709,10 @@ ${shadeCode(dodge ? 1 : 0)}
       if (dl.z > 0.0) { fi = 0; u = L.x; v = H - L.y; pw = T; ph = H; }
       else { fi = 5; u = L.x; v = H - L.y; pw = T; ph = H; nl = float3(0.0, 0.0, 1.0); }
     }
-    float a = albedo;
+    float3 a = albedo;
     float3 n = nl;
     float3 Lp = L;
+    bool page = false;
     if (fi < 3) {
       // 책 면: 둥근 모서리(반지름 EDGER, 면이 좁으면 그 절반), 책등 곡면, 표지·뒤표지 제본 홈
       float rx = min(pw / 2.0, EDGER);
@@ -719,7 +734,7 @@ ${shadeCode(dodge ? 1 : 0)}
       float v0 = fi == 5 ? 0.0 : rig.y;
       float v1 = fi == 5 ? H : W;
       if (u >= u0 && u <= u1 && v >= v0 && v <= v1) {
-        a = albedo2;
+        a = PAPER_COLOR;
         float down = -dot(dl, nl);
         float du = dot(dl, ul);
         float dv = dot(dl, vl);
@@ -732,6 +747,7 @@ ${shadeCode(dodge ? 1 : 0)}
         Lp = L + dl * tw;
         n = nw;
         if (wall) a = albedo;
+        page = !wall;
       }
     }
     float3 P = bO + toRow(Lp);
@@ -739,9 +755,9 @@ ${shadeCode(dodge ? 1 : 0)}
     // 하늘 가림: 그 면의 구운 칸(면 평면 점의 칸 좌표), 없으면 둘레만 그 자리에서(면 법선)
     float4 R = float4(0.0);
     for (int i = 0; i < 6; i++) { if (i == fi) R = rect[i]; }
-    float loss = R.z > 0.0 ? float(tex.eval(float2(R.x + u / pw * R.z, R.y + v / ph * R.w)).g) * LOSS_SCALE - LOSS_OFF : envLoss(bO + toRow(L), toRow(nl));
+    float3 loss = R.z > 0.0 ? float3(tex.eval(float2(R.x + u / pw * R.z, R.y + v / ph * R.w)).rgb) * LOSS_SCALE - LOSS_OFF : envLoss(bO + toRow(L), toRow(nl));
     float3 view = cam4.w > 0.0 ? normalize(E - P) : normalize(-d);
-    return shade(P, nw3, view, loss, a);
+    return shade(P, nw3, view, loss, a, page ? EREF_PAPER : EREF_BOOK);
   }
 `;
 }

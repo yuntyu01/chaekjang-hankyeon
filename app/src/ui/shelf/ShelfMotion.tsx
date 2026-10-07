@@ -14,7 +14,7 @@ import { bookViewCam } from '@/domain/book-view';
 import { SHELF_DEPTH, SHELF_FRONT, SHELF_X0, SHELF_X1 } from '@/domain/geometry';
 import { shelfFaces } from '@/domain/shelf-geom';
 import { BOX_EDGES, bookCast, type BookCast } from '@/domain/cast-shadow';
-import { albedoOf, BOX_MAX, boxOf, FAR, irradiance, keyBlocked, keyIrradiance, NEGLIGIBLE, packBoxes, shadowAlpha, withCovers, type Box, type BoxBuf, type Env } from '@/domain/light-model';
+import { BOX_MAX, bookAlbedo, boxOf, FAR, irradiance, keyBlocked, keyIrradiance, NEGLIGIBLE, packBoxes, shadowAlpha, withCovers, type Box, type BoxBuf, type C3, type Env } from '@/domain/light-model';
 import { hull } from '@/domain/shadow-shape';
 import { outlineOf, type BookFrame, type Point } from '@/domain/shelf-scene';
 import { RECV_SLOTS, recvProject, type Recv, type Recv3 } from '@/ui/book3d/received';
@@ -381,7 +381,7 @@ export const EMPTY_MOTION = makeMotion([]);
 // 나란히 선 책·쌓인 책은 서로 마주 보는 면을 가린다(덮개, light-model withCovers).
 // neighbors: 이웃 줄 책(벽을 칠할 때만): 판 끝 너머 벽 띠에서 판 위·아래 틈으로 보인다. 셰이더 상자 수(BOX_MAX)를 넘으면 판 끝에서 먼 것부터 뺀다
 export function useRowBoxes(poses: Readonly<SharedValue<Poses>>, ids: string[], books: Record<string, Book>, env: Env, neighbors: NeighborRow[] = []): Readonly<SharedValue<BoxBuf>> {
-  const albedos = useMemo(() => Object.fromEntries([ids, ...neighbors.map((nb) => nb.ids)].flat().map((id) => [id, books[id] ? albedoOf(bookTone(books[id])) : 0])), [ids, neighbors, books]);
+  const albedos = useMemo(() => Object.fromEntries([ids, ...neighbors.map((nb) => nb.ids)].flat().map((id) => [id, books[id] ? bookAlbedo(bookTone(books[id])) : ([0, 0, 0] as C3)])), [ids, neighbors, books]);
   return useDerivedValue(() => {
     const own: Box[] = [];
     const used: string[] = [];

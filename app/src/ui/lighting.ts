@@ -5,7 +5,8 @@
 // - 창빛(key): 거의 정면(왼쪽 약 6°, 위 약 3.5°)의 둥근 면광원, 반지름 약 8°. 그림자가 책 뒤로 숨고 판 밑 그늘이 짧다.
 // - 방 확산광(ambient)과 천장에서 오는 몫(skyUp): 환경 밝기가 방향에 따라 L(ω) ∝ ambient + 1.5·skyUp·ω.y로 바뀌는 하늘.
 //   이 하늘이 법선 n인 면에 주는 빛 = ambient + skyUp·n.y(코사인 적분).
-// 세기는 상대값이다. 노출은 가리는 것 없는 정면 면(책등)의 밝기를 장정 색 그대로 보이게 맞춘다(light-model E_REF).
+// 세기는 상대값이고 빛은 흰빛이다. 재질 색(시안 색)은 그 재질이 대표 자리에서 보이는 색으로 보고 반사율을 거꾸로 구한다
+// (light-model calibrate). 카메라(노출·화이트 밸런스)는 줄 가운데 벽에 맞춘다.
 import { colors } from './theme';
 
 export const light = { dir: { x: -0.1, y: 0.06, z: -0.993 }, radius: (8 * Math.PI) / 180, ambient: 0.85, skyUp: 0.22, diffuse: 0.15 };
@@ -13,7 +14,7 @@ export const light = { dir: { x: -0.1, y: 0.06, z: -0.993 }, radius: (8 * Math.P
 // 모든 면의 표면 광택: 유전체(굴절률 1.5)의 수직 반사율 F0와 표면 거칠기(종이·칠한 벽·나무 모두 같은 무광 유전체)
 export const material = { f0: 0.04, roughness: 0.6 };
 
-// 장면 면의 재질 색(반사율은 light-model albedoOf): 선반 판(시안 판 앞면), 벽(화면 바탕), 책 속지(시안 책 머리의 속지 약 (253, 243, 226))
+// 장면 면의 재질 색(반사율은 선형 RGB, light-model linearOf): 선반 판(시안 판 앞면), 벽(화면 바탕), 책 속지(시안 책 머리의 속지 약 (253, 243, 226))
 export const surfaces = { plank: '#F2DCC1', wall: colors.wall, paper: '#FBF2E2' };
 
 // 그림자 흐림(반그림자): 가리개에서 빛 길이 t만큼 떨어진 곳의 반그림자 폭 = 2·tan(반지름)·t.

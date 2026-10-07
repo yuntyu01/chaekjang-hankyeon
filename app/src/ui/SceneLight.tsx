@@ -1,19 +1,20 @@
 // 화소마다의 빛(셰이더 소스 ui/scene-light-sksl, 식은 domain/light-model과 같다). 책 면·선반 판·벽이 모두 이것 하나로 밝기를 얻는다.
-// 그림(재질 색 = 정면 밝기 E_REF에서의 색) 위에 다시 칠하는 방식은 둘:
+// 그림(재질 색 = 그 재질의 대표 자리 빛 EREF에서 보이는 색) 위에 다시 칠하는 방식은 둘:
 //   곱하기(받는 빛 비 ≤ 1) · 컬러 닷지(> 1인 밝아짐 + 반사광). 감마(2.2)를 고려해 선형 빛 공간의 곱·합과 같게 하고,
-//   출력은 늘 회색 비율이다(화면 색 공간이 sRGB든 Display P3든 회색은 바뀌지 않는다. 재질 색은 그 아래 그림이 칠한다).
+//   채널마다 다르다(되비친 빛이 둘레 면 색을 띤다). 단색 재질(벽)은 재질 색 × 빛을 한 번에 칠한다.
 // 무거운 몫은 하늘 가림(둘레·책 상자가 가린 하늘, 시점과 상관없다)이다. 줄마다 그 줄의 모든 면(벽·판·책 면)을 그림 한 장(아틀라스)에
 // 면 좌표로 굽고(bakeAtlas: 줄의 책이 멈췄을 때만, BAKE_TEXEL 간격) 그리는 프레임에는 그 그림을 읽은 뒤 나머지
 // (하늘·창빛 직접 몫은 둥근 모서리 법선까지, 반사광)만 화소마다 계산한다. 책은 한 권에 한 번(BookLight: 셰이더가 화소마다 광선으로
 // 보이는 면을 찾는다), 벽·판은 평면마다(BakedPlane).
 // 구운 값이 없는 면(줄 밖에서 움직이는 책, 막 들어온 책)은 둘레가 가린 하늘만 그 자리에서 계산한다(다른 책은 뺀다).
 import { AlphaType, ColorType, FilterMode, ImageShader, MipmapMode, Path, processUniforms, Shader, Skia, type SkImage, type SkPath, type SkRuntimeEffect, type Uniforms } from '@shopify/react-native-skia';
+import { Platform } from 'react-native';
 import { useDerivedValue, type SharedValue } from 'react-native-reanimated';
 
 import { faceNormal, rot, toWorld, type Book3, type Cam, type FaceId, type Vec3 } from '@/domain/book3';
 import { lightPanel, rigOf } from '@/domain/book-parts';
 import { camAt, VIEW_PITCH_MAX, VIEW_PITCH_MIN, type Affine } from '@/domain/camera';
-import { FAR, gammaDodge, gammaMul, grayOf, type BoxBuf, type Env } from '@/domain/light-model';
+import { FAR, gammaDodge, gammaMul, type BoxBuf, type C3, type Env } from '@/domain/light-model';
 import { faceVisible } from '@/ui/book3d/face-geometry';
 
 import { PERF_ENABLED } from './perf';
@@ -50,7 +51,8 @@ const BASE = {
   env: ZERO3,
   env2: [-FAR, FAR],
   keyOn: 1,
-  albedo: 1,
+  albedo: [1, 1, 1],
+  eref: [1, 1, 1],
   liveEnv: 1,
 };
 
@@ -85,6 +87,9 @@ export const NO_ATLAS: Atlas = { image: null, at: {} };
 const GUTTER = 1;
 const ATLAS_W = 512;
 
+// 구운 그림의 칸 값이 화면에 그릴 때 색 변환되지 않게 화면 표면과 같은 색 공간에 굽는다
+// (안드로이드 화면·화면 밖 표면은 둘 다 색 공간 없음, iOS 화면은 Display P3)
+const BAKE_SURFACE = Platform.OS === 'ios' ? { colorSpace: 'display-p3' as const } : undefined;
 // 측정 번들: 굽기마다 칸 수·걸린 시간(GPU가 끝날 때까지 1화소 읽어 기다린다)
 const BAKE_STAT = PERF_ENABLED;
 
@@ -126,7 +131,7 @@ export function bakeAtlas(items: BakeItem[], key: string): Atlas {
     shelf = Math.max(shelf, it.h + 2 * GUTTER);
   }
   const H = y + shelf;
-  const surf = Skia.Surface.MakeOffscreen(W, H);
+  const surf = Skia.Surface.MakeOffscreen(W, H, BAKE_SURFACE);
   if (!surf) return NO_ATLAS;
   const canvas = surf.getCanvas();
   const paint = Skia.Paint();
@@ -212,9 +217,9 @@ export function bookItems(id: string, b: Book3, env: Env | null, bx: BoxBuf, sel
 }
 
 // 책 한 권의 빛: 책 윤곽(outline, 캔버스 px) 안을 화소마다 광선으로(셰이더 bookSource가 보이는 면·속지 구멍을 찾는다).
-// albedo: 장정 반사율, paper: 속지 반사율, atlas·id: 이 책이 있는 줄의 구운 하늘 가림(면 key = faceKey(id, 면)), env: 둘레
-export function BookLight({ dims: d, state, cam, px, outline, albedo, paper, env, atlas, id }: {
-  dims: Book3['dims']; state: RO<Book3>; cam: RO<Cam>; px: Affine; outline: RO<SkPath>; albedo: number; paper: number;
+// albedo: 장정 반사율(선형 RGB, 속지는 셰이더 상수), atlas·id: 이 책이 있는 줄의 구운 하늘 가림(면 key = faceKey(id, 면)), env: 둘레
+export function BookLight({ dims: d, state, cam, px, outline, albedo, env, atlas, id }: {
+  dims: Book3['dims']; state: RO<Book3>; cam: RO<Cam>; px: Affine; outline: RO<SkPath>; albedo: C3;
   env?: RO<Env | null>; atlas?: RO<Atlas>; id: string;
 }) {
   const { bd, sp, sq } = rigOf(d);
@@ -251,7 +256,6 @@ export function BookLight({ dims: d, state, cam, px, outline, albedo, paper, env
       rect: rects.value,
       keyOn: 1,
       albedo,
-      albedo2: paper,
       env: envOf(ev),
       env2: env2Of(ev),
     };
@@ -271,11 +275,12 @@ export function areaItem(key: string, a: BakeArea, env: Env | null, bx: BoxBuf):
   return { key, O: a.O, U: a.U, V: a.V, w: a.w, h: a.h, n: a.plane.n, env, bx, self: -1 };
 }
 
-// 평면 영역(path, 캔버스 px)을 구운 하늘 가림 + 그 자리의 직접 빛·반사광으로 칠한다(albedo: 재질 반사율).
+// 평면 영역(path, 캔버스 px)을 구운 하늘 가림 + 그 자리의 직접 빛·반사광으로 칠한다(albedo: 재질 색, 선형 RGB,
+// eref: 그 재질의 대표 자리 빛 light-model EREF).
 // color가 있으면(단색 재질) 재질 색 × 빛을 한 번에 칠하고, 없으면 아래 재질 그림 위에 곱하기·닷지 두 겹으로 다시 칠한다.
 // atlas·key: 구운 그림과 이 영역의 자리, matrix: 영역 칸 → 캔버스 px(칸 수 w × h를 받아)
-export function BakedPlane({ path, cam, px, plane, env, atlas, akey, matrix, albedo, color }: {
-  path: RO<SkPath> | SkPath; cam: RO<Cam>; px: Affine; plane: Plane; env: Env | null; atlas?: RO<Atlas>; akey: string; matrix: (c: Cam, w: number, h: number) => number[]; albedo: number; color?: string;
+export function BakedPlane({ path, cam, px, plane, env, atlas, akey, matrix, albedo, eref, color }: {
+  path: RO<SkPath> | SkPath; cam: RO<Cam>; px: Affine; plane: Plane; env: Env | null; atlas?: RO<Atlas>; akey: string; matrix: (c: Cam, w: number, h: number) => number[]; albedo: C3; eref: C3; color?: string;
 }) {
   const base = color ? rgbOf(color) : null;
   const sample = useDerivedValue(() => (atlas ? sampleOf(atlas.value, akey, (w, h) => matrix(cam.value, w, h)) : NO_SAMPLE));
@@ -291,6 +296,7 @@ export function BakedPlane({ path, cam, px, plane, env, atlas, akey, matrix, alb
       env: envOf(env),
       env2: env2Of(env),
       albedo,
+      eref,
       liveEnv: sample.value.live,
       ...(base ? { base } : null),
     };
@@ -316,11 +322,16 @@ function rgbOf(hex: string) {
 }
 
 // ---------- 한 점의 빛으로 영역 전체 ----------
-// 작은 면(갈피)은 한 점에서 계산한 빛(light-model: 받는 빛 비 r, 반사광 spec)으로 고르게 다시 칠한다
-export type PointLight = { r: number; spec: number };
-export function UniformLight({ path, light: lt, albedo }: { path: RO<SkPath> | SkPath; light: RO<PointLight>; albedo: number }) {
-  const mul = useDerivedValue(() => grayOf(gammaMul(lt.value.r)));
-  const dodge = useDerivedValue(() => grayOf(gammaDodge(lt.value.r, lt.value.spec, albedo)));
+// 작은 면(갈피)은 한 점에서 계산한 빛(light-model: 받는 빛 비 r, 반사광 spec, RGB)으로 고르게 다시 칠한다
+export type PointLight = { r: C3; spec: C3 };
+function rgbString(c: number[]) {
+  'worklet';
+  const k = (v: number) => Math.round(Math.max(0, Math.min(1, v)) * 255);
+  return `rgb(${k(c[0])}, ${k(c[1])}, ${k(c[2])})`;
+}
+export function UniformLight({ path, light: lt, albedo }: { path: RO<SkPath> | SkPath; light: RO<PointLight>; albedo: C3 }) {
+  const mul = useDerivedValue(() => rgbString(lt.value.r.map((r) => gammaMul(r))));
+  const dodge = useDerivedValue(() => rgbString(lt.value.r.map((r, c) => gammaDodge(r, lt.value.spec[c], albedo[c]))));
   return (
     <>
       <Path path={path} color={mul} blendMode="multiply" />

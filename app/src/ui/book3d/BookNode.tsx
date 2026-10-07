@@ -13,7 +13,7 @@ import { corners, depthKey, faceCorners, facing, rot, toWorld, type Book3, type 
 import { EDGE_R } from '@/domain/book-parts';
 import { bookViewCam } from '@/domain/book-view';
 import { project } from '@/domain/camera';
-import { albedoOf, lightWithLoss, NO_BOXES, othersOf, PAPER_ALBEDO, skyLossAt, toEye } from '@/domain/light-model';
+import { lightWithLoss, linearOf, NO_BOXES, othersOf, skyLossAt, toEye } from '@/domain/light-model';
 import { RIBBON_Z } from '@/domain/ribbon-design';
 import { titleOpacity } from '@/domain/title-layout';
 import type { Book } from '@/domain/types';
@@ -86,7 +86,7 @@ function PlainFace({ f, state, cam, px, tone }: { f: 'spine' | 'cover'; state: R
 // 갈피(종이 탭): 머리에서 위로 나온 종이. 보는 쪽을 향한 면(책등과 같은 법선)이라 탭 가운데 한 점의 빛으로 탭 모양 안만 다시 칠한다.
 // 하늘 가림(둘레·이웃 책)은 책 자세·둘레·상자가 바뀔 때만 계산하고, 시점에 따라 바뀌는 반사광만 매 프레임. 반사율은 앞장 탭 종이 색
 function Ribbons({ art, book, state, cam, px, sur }: { art: BookArt; book: Book; state: RO<Book3>; cam: RO<Cam>; px: Affine; sur: Surround }) {
-  const albedo = albedoOf(tabsOf(book)[0]?.color ?? toneOf(book));
+  const albedo = linearOf(tabsOf(book)[0]?.color ?? toneOf(book));
   const at = useDerivedValue(() => {
     const b = state.value;
     const d = b.dims;
@@ -138,7 +138,7 @@ export function BookNode({ book, dims, state, cam: sceneCam, px, shared, under, 
   if (!art) return null;
   // 몸체 색 하나: 판 두 장·책등·판 끝·책등 띠가 모두 같은 책 색이다
   const tone = toneOf(book);
-  const albedo = albedoOf(tone);
+  const albedo = linearOf(tone);
   const sur: Surround = { env, atlas, id: book.id, boxes, self };
   return (
     <Group zIndex={z} clip={clip}>
@@ -164,7 +164,7 @@ export function BookNode({ book, dims, state, cam: sceneCam, px, shared, under, 
             </>
           )}
           {/* 빛: 책 윤곽 안을 화소마다 광선으로(보이는 면·속지 구멍을 셰이더가 찾는다). 받는 그림자(under)는 그 위에 */}
-          {SHOW.body && LIGHT_ON.face ? <BookLight dims={dims} state={state} cam={cam} px={px} outline={outline} albedo={albedo} paper={PAPER_ALBEDO} env={env} atlas={atlas} id={book.id} /> : null}
+          {SHOW.body && LIGHT_ON.face ? <BookLight dims={dims} state={state} cam={cam} px={px} outline={outline} albedo={albedo} env={env} atlas={atlas} id={book.id} /> : null}
           {under}
           <Path path={outline} color="black" blendMode="dstIn" />
         </Group>
