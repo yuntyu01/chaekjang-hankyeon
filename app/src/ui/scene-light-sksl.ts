@@ -824,9 +824,10 @@ function shadeCode(mode: 0 | 1 | 2) {
     // 가림(loss)은 면 법선 nf에서 구운 값: 둥근 모서리·구멍 벽처럼 법선이 기운 곳은 면이 받는 빛의 비율로(light-model lightWithLoss)
     float e0 = AMB + SKYUP * n.y + DIFF * max(0.0, dot(n, LU)) * (1.0 - kb);
     float e0f = AMB + SKYUP * nf.y + DIFF * max(0.0, dot(nf, LU)) * (1.0 - kb);
-    // 하늘 가림은 그 면이 받는 하늘 빛보다 클 수 없다(아주 좁은 틈에서 해석 값의 작은 오차가 넘을 때: 창빛까지 가려지면 받는 빛이 음수가 된다)
+    // 하늘 가림은 그 면이 받는 하늘 빛보다 클 수 없다(light-model lightWithLoss): 아주 좁은 틈에서 해석 값이 넘는 것은 겹친 가리개가 같은 하늘을
+    // 두 번 센 오차라 회색이다. 넘친 만큼을 세 채널에서 똑같이 빼 색(되비친 빛의 채널 차이)은 그대로 둔다
     float sky = AMB + SKYUP * nf.y;
-    float3 lossB = min(loss, float3(sky));
+    float3 lossB = loss - max(0.0, max(loss.x, max(loss.y, loss.z)) - sky);
     float3 E = e0 * max(float3(0.0), e0f - lossB) / max(e0f, 1e-4);
     // 반사광도 둘레가 가린 만큼 가려진다(거친 면은 반사 방향이 넓어 하늘이 보이는 몫 = 확산 몫과 같다): 좁은 틈 안은 반사광도 없다
     float3 vis = clamp((float3(sky) - lossB) / max(sky, 1e-4), 0.0, 1.0);
@@ -978,8 +979,19 @@ ${shadeCode(dodge ? 1 : 0)}
     float3 mx = max(ta, tb);
     float t0 = max(mn.x, max(mn.y, mn.z));
     float t1 = min(mx.x, min(mx.y, mx.z));
-    if (t0 > t1 || t1 <= 0.0) return half4(DODGE < 0.5 ? 1.0 : 0.0, DODGE < 0.5 ? 1.0 : 0.0, DODGE < 0.5 ? 1.0 : 0.0, 1.0);
-    float3 L = ol + dl * t0;
+    if (t0 > t1 || t1 <= 0.0) {
+      // 윤곽 가장자리 화소(앤티에일리어싱으로 반쯤 덮인 칸)의 가운데가 상자를 살짝 비껴가면: 한 화소 반만큼 넓힌 상자에 닿은 점을 상자 면 위로
+      // 당겨 그 화소가 덮는 가장자리 면의 빛으로 칠한다(빛을 바꾸지 않으면 빛 없는 재질 그림이 점선처럼 드러난다)
+      float e = 1.5 / pxa.x;
+      ta = (-e - ol) * inv;
+      tb = (dims + e - ol) * inv;
+      mn = min(ta, tb);
+      mx = max(ta, tb);
+      t0 = max(mn.x, max(mn.y, mn.z));
+      t1 = min(mx.x, min(mx.y, mx.z));
+      if (t0 > t1 || t1 <= 0.0) return half4(DODGE < 0.5 ? 1.0 : 0.0, DODGE < 0.5 ? 1.0 : 0.0, DODGE < 0.5 ? 1.0 : 0.0, 1.0);
+    }
+    float3 L = clamp(ol + dl * t0, float3(0.0), dims);
     float T = dims.x;
     float H = dims.y;
     float W = dims.z;

@@ -249,9 +249,10 @@ describe('빛 격자(여러 번 튕긴 빛)', () => {
     const spine = [0.5, 5, 20, 75].map((y) => lumOf(analytic({ x: 111, y, z: 0 }, { x: 0, y: 0, z: -1 }, row, boxes, G)));
     for (let i = 1; i < spine.length; i++) expect(spine[i]).toBeGreaterThan(spine[i - 1]);
     const slot = [0.5, 5, 15, 50].map((z) => lumOf(analytic({ x: 122, y: 75, z }, { x: 1, y: 0, z: 0 }, row, boxes, G)));
-    // 아주 깊은 곳은 해석 값이 하늘 빛 상한(가림 ≤ 하늘 빛)에 닿아 0일 수 있다(경로 추적은 받는 빛 0.5% 안팎): 깊을수록 어둡거나 같다
+    // 아주 깊은 곳은 해석 값이 하늘 빛 상한(가림 ≤ 하늘 빛)에 닿아 받는 빛 0.1% 안팎(경로 추적 0.2~0.5%)인 바닥이라
+    // 그 차이(화면에서 구별되지 않는 0.2% 안)까지는 순서를 보지 않는다
     expect(slot[1]).toBeLessThan(slot[0]);
-    for (let i = 1; i < slot.length; i++) expect(slot[i]).toBeLessThanOrEqual(slot[i - 1]);
+    for (let i = 1; i < slot.length; i++) expect(slot[i]).toBeLessThan(slot[i - 1] + 0.002);
   });
 });
 
@@ -298,6 +299,24 @@ describe('재질 반사율 맞추기(역렌더링)', () => {
     const E = lightWithLoss(p, n, null, row, skyLossAt(p, n, row, [], solveGrid(row, [])), true, [1, 1, 1]).r;
     const ks = envBRDF(0.999, ROUGH.paint);
     E.forEach((e, c) => expect((e * (1 - ks)) / EREF.wall[c]).toBeCloseTo(1, 1));
+  });
+});
+
+describe('하늘 가림 상한', () => {
+  it('가림이 하늘 빛을 넘으면(겹친 가리개를 두 번 센 회색 오차) 넘친 만큼을 세 채널에서 똑같이 빼: 채널 차이(되비친 빛의 색)는 그대로, 음수는 없다', () => {
+    const p = { x: 100, y: 75, z: 50 };
+    const n = { x: -1, y: 0, z: 0 };
+    const sky = light.ambient + light.skyUp * n.y;
+    const loss: C3 = [sky - 0.05, sky + 0.02, sky + 0.06];
+    const E = lightWithLoss(p, n, null, row, loss, true, [1, 1, 1]).r;
+    E.forEach((v) => expect(v).toBeGreaterThanOrEqual(0));
+    expect(Math.min(...E)).toBeCloseTo(0, 9);
+    expect(E[0] - E[1]).toBeCloseTo(loss[1] - loss[0], 9);
+    expect(E[1] - E[2]).toBeCloseTo(loss[2] - loss[1], 9);
+    // 넘지 않으면 그대로
+    const ok: C3 = [sky - 0.1, sky - 0.05, sky - 0.02];
+    const E2 = lightWithLoss(p, n, null, row, ok, true, [1, 1, 1]).r;
+    E2.forEach((v, c) => expect(v).toBeCloseTo(sky - ok[c], 9));
   });
 });
 

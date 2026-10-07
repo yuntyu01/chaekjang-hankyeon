@@ -959,9 +959,11 @@ export function lightWithLoss(p: Vec3, n: Vec3, v: Vec3 | null, env: Env | null,
   const E0 = open(n);
   const E0f = nf ? open(nf) : E0;
   const k = E0 / Math.max(E0f, 1e-4);
-  // 하늘 가림은 그 면이 받는 하늘 빛보다 클 수 없다(아주 좁은 틈에서 해석 값의 작은 오차가 넘을 때)
+  // 하늘 가림은 그 면이 받는 하늘 빛보다 클 수 없다: 아주 좁은 틈에서 해석 값이 넘는 것은 겹친 가리개가 같은 하늘을 두 번 센 오차라 회색이다.
+  // 넘친 만큼을 세 채널에서 똑같이 빼 색(되비친 빛의 채널 차이)은 그대로 둔다(채널마다 자르면 붉거나 노란 검정이 된다)
   const sky = light.ambient + light.skyUp * (nf ?? n).y;
-  const lb = (c: number) => Math.min(loss[c], sky);
+  const over = Math.max(0, Math.max(loss[0], loss[1], loss[2]) - sky);
+  const lb = (c: number) => loss[c] - over;
   const E: C3 = [Math.max(0, E0f - lb(0)) * k, Math.max(0, E0f - lb(1)) * k, Math.max(0, E0f - lb(2)) * k];
   // 반사광도 둘레가 가린 만큼 가려진다(거친 면은 반사 방향이 넓어 하늘이 보이는 몫 = 확산 몫): 좁은 틈 안은 반사광도 없다
   const vis = (c: number) => Math.max(0, Math.min(1, (sky - lb(c)) / Math.max(sky, 1e-4)));

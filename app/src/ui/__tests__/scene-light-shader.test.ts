@@ -377,6 +377,16 @@ describe('책 광선 셰이더 = 광선 기하 + JS 빛', () => {
     const n = { x: 0, y: 0, z: -1 };
     for (const dodge of [false, true]) expect(maxDiff(shader(F, dodge), expected(F, n, { P: F, n, a: tone }, dodge))).toBeLessThan(1.5 / 255);
   });
+  it('윤곽 가장자리 화소의 가운데가 상자를 살짝 비껴가도 가장 가까운 면의 빛으로 칠한다(빛 없는 재질 그림이 점선처럼 드러나지 않는다)', () => {
+    // 책등 왼쪽 변 바깥 0.6DU(배율 1: 0.6px)와 변 바로 안
+    const out = { x: bO.x - 0.6, y: 80, z: 0 };
+    const inn = { x: bO.x + 1e-4, y: 80, z: 0 };
+    for (const dodge of [false, true]) {
+      const o = shader(out, dodge);
+      expect(maxDiff(o, shader(inn, dodge))).toBeLessThan(3 / 255);
+      expect(maxDiff(o, dodge ? [0, 0, 0] : [1, 1, 1])).toBeGreaterThan(5 / 255);
+    }
+  });
   it('책등이 받는 창빛 그림자(그림자 그림 kx): 빛 계산 안에서 창빛 몫이 그만큼 빠진다', () => {
     const F = { x: bO.x + d.T / 2, y: 80, z: 0 };
     const n = { x: 0, y: 0, z: -1 };
