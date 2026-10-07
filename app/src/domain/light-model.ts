@@ -33,6 +33,23 @@ export const NEGLIGIBLE = 0.5 / 255;
 const LL = Math.hypot(light.dir.x, light.dir.y, light.dir.z) || 1;
 // 면 → 광원 단위 벡터
 export const L_UNIT: Vec3 = { x: light.dir.x / LL, y: light.dir.y / LL, z: light.dir.z / LL };
+// 창빛 원반 위 고른 방향들(같은 넓이 나선: 반지름 √((i + ½)/N), 각 i × 황금각). 빛 격자점이 책에 가린 원반 몫을 이 방향들로 센다
+// (점광원 광선 하나면 좁은 틈 너머 벽이 원반 몫과 상관없이 다 밝거나 다 어둡다: 직접 창빛의 반그림자와 같은 원반으로)
+export const KEY_DIRS: Vec3[] = (() => {
+  const t = Math.abs(L_UNIT.y) < 0.9 ? { x: 0, y: 1, z: 0 } : { x: 1, y: 0, z: 0 };
+  const cu = { x: t.y * L_UNIT.z - t.z * L_UNIT.y, y: t.z * L_UNIT.x - t.x * L_UNIT.z, z: t.x * L_UNIT.y - t.y * L_UNIT.x };
+  const cl = Math.hypot(cu.x, cu.y, cu.z);
+  const u = { x: cu.x / cl, y: cu.y / cl, z: cu.z / cl };
+  const v = { x: L_UNIT.y * u.z - L_UNIT.z * u.y, y: L_UNIT.z * u.x - L_UNIT.x * u.z, z: L_UNIT.x * u.y - L_UNIT.y * u.x };
+  const N = 16;
+  return Array.from({ length: N }, (_, i) => {
+    const r = Math.tan(light.radius) * Math.sqrt((i + 0.5) / N);
+    const a = i * Math.PI * (3 - Math.sqrt(5));
+    const d = { x: L_UNIT.x + (u.x * Math.cos(a) + v.x * Math.sin(a)) * r, y: L_UNIT.y + (u.y * Math.cos(a) + v.y * Math.sin(a)) * r, z: L_UNIT.z + (u.z * Math.cos(a) + v.z * Math.sin(a)) * r };
+    const l = Math.hypot(d.x, d.y, d.z);
+    return { x: d.x / l, y: d.y / l, z: d.z / l };
+  });
+})();
 
 // 면이 받는 빛(가리는 것 없을 때). n: 바깥 법선(단위)
 export function irradiance(n: Vec3) {
@@ -467,8 +484,9 @@ export function othersOf(bx: BoxBuf, self: number): Box[] {
 export const GRID_N = 8;
 export const ENV_NX = 6 * GRID_N;
 export const ENV_NY = 16;
-// 둘레 면을 가로로 나눠 읽는 구간 수(판 범위 안, envLoss)
-export const ENV_COLS = 12;
+// 둘레 면을 가로로 나눠 읽는 구간 수(판 범위 안, envLoss). 구간마다 대표 점 하나로 읽으므로 구간 폭(약 20DU)이 정면 창빛의 책 뒤 본그림자 폭보다
+// 좁아야 한다: 30DU(12칸)면 책 뒤 빈 공간의 여러 번 튕긴 빛을 경로 추적보다 약 20% 덜 잡는다(18칸 3%, 24칸도 같다)
+export const ENV_COLS = 18;
 // e: 격자점마다 받는 빛(선형 RGB). 책 상자 i의 면 f(= 축 k + 3·(s > 0)) 칸은 (i·6 + f)·N², 그 뒤에 둘레 면(벽, 판 윗면, 위 판 아랫면) 칸이 nx·ENV_NY씩
 export type Grid = { e: C3[]; nBox: number; nx: number; env: Env };
 const ENV_L = SHELF_FRONT + SHELF_DEPTH;
@@ -1082,8 +1100,14 @@ function nodeE(nd: GridNode, env: Env, boxes: Box[], G?: Grid): C3 {
   const nl = dot3(n, L_UNIT);
   let key = 0;
   if (nl > 0) {
-    key = light.diffuse * nl * (1 - plankKeyBlocked(P, env));
-    for (let i = 0; i < boxes.length && key > 0; i++) if (!skip[i] && rayHitsBox(P, L_UNIT, boxes[i])) key = 0;
+    // 판은 원반을 자른 활꼴(plankKeyBlocked), 책은 원반 위 방향들 가운데 막힌 몫(KEY_DIRS)
+    let free = 0;
+    for (const w of KEY_DIRS) {
+      let hit = false;
+      for (let i = 0; i < boxes.length && !hit; i++) if (!skip[i] && rayHitsBox(P, w, boxes[i])) hit = true;
+      if (!hit) free++;
+    }
+    key = light.diffuse * nl * (1 - plankKeyBlocked(P, env)) * (free / KEY_DIRS.length);
   }
   const E: C3 = [0, 0, 0];
   const { loss, cols } = envLossCols(P, n, env, G);

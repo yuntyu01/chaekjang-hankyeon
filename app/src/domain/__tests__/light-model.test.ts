@@ -192,6 +192,14 @@ function pathTrace(p: Vec3, n: Vec3, env: Env, boxes: Box[], N: number): C3 {
     const z = Math.sqrt(1 - rr * rr);
     return { x: u.x * rr * Math.cos(a) + v.x * rr * Math.sin(a) + m.x * z, y: u.y * rr * Math.cos(a) + v.y * rr * Math.sin(a) + m.y * z, z: u.z * rr * Math.cos(a) + v.z * rr * Math.sin(a) + m.z * z };
   };
+  // 창빛 원반 위 고른 방향(원반 반지름의 탄젠트 평면 원 안 고른 점)
+  const ku = norm(cross(Math.abs(L_UNIT.y) < 0.9 ? { x: 0, y: 1, z: 0 } : { x: 1, y: 0, z: 0 }, L_UNIT));
+  const kv = cross(L_UNIT, ku);
+  const keyDir = (): Vec3 => {
+    const a = 2 * Math.PI * r();
+    const rr = Math.tan(light.radius) * Math.sqrt(r());
+    return norm({ x: L_UNIT.x + (ku.x * Math.cos(a) + kv.x * Math.sin(a)) * rr, y: L_UNIT.y + (ku.y * Math.cos(a) + kv.y * Math.sin(a)) * rr, z: L_UNIT.z + (ku.z * Math.cos(a) + kv.z * Math.sin(a)) * rr });
+  };
   const sum: C3 = [0, 0, 0];
   const off = (q: Vec3, m: Vec3) => ({ x: q.x + m.x * 1e-5, y: q.y + m.y * 1e-5, z: q.z + m.z * 1e-5 });
   for (let i = 0; i < N; i++) {
@@ -209,8 +217,10 @@ function pathTrace(p: Vec3, n: Vec3, env: Env, boxes: Box[], N: number): C3 {
       q = { x: q.x + w.x * h.t, y: q.y + w.y * h.t, z: q.z + w.z * h.t };
       m = h.n;
       thr = [thr[0] * h.a[0], thr[1] * h.a[1], thr[2] * h.a[2]];
-      const nl = m.x * L_UNIT.x + m.y * L_UNIT.y + m.z * L_UNIT.z;
-      if (nl > 0 && !hit(off(q, m), L_UNIT)) for (let c = 0; c < 3; c++) sum[c] += thr[c] * light.diffuse * nl;
+      // 창빛: 원반(반지름 light.radius) 위 한 점으로(원반 일부만 보이는 좁은 틈도 보이는 몫만큼)
+      const lw = keyDir();
+      const nl = m.x * lw.x + m.y * lw.y + m.z * lw.z;
+      if (nl > 0 && !hit(off(q, m), lw)) for (let c = 0; c < 3; c++) sum[c] += thr[c] * light.diffuse * nl;
     }
   }
   return sum.map((v) => v / N) as C3;
@@ -239,7 +249,9 @@ describe('빛 격자(여러 번 튕긴 빛)', () => {
     const spine = [0.5, 5, 20, 75].map((y) => lumOf(analytic({ x: 111, y, z: 0 }, { x: 0, y: 0, z: -1 }, row, boxes, G)));
     for (let i = 1; i < spine.length; i++) expect(spine[i]).toBeGreaterThan(spine[i - 1]);
     const slot = [0.5, 5, 15, 50].map((z) => lumOf(analytic({ x: 122, y: 75, z }, { x: 1, y: 0, z: 0 }, row, boxes, G)));
-    for (let i = 1; i < slot.length; i++) expect(slot[i]).toBeLessThan(slot[i - 1]);
+    // 아주 깊은 곳은 해석 값이 하늘 빛 상한(가림 ≤ 하늘 빛)에 닿아 0일 수 있다(경로 추적은 받는 빛 0.5% 안팎): 깊을수록 어둡거나 같다
+    expect(slot[1]).toBeLessThan(slot[0]);
+    for (let i = 1; i < slot.length; i++) expect(slot[i]).toBeLessThanOrEqual(slot[i - 1]);
   });
 });
 

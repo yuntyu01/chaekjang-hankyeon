@@ -152,8 +152,11 @@ describe('판 → 벽 그림자 모양', () => {
       expect(Math.abs(Math.max(...xs) - x1)).toBeLessThan(tol);
       expect(Math.abs(Math.min(...xs) - x0)).toBeLessThan(tol);
       expect(Math.abs(Math.min(...ys) - y0)).toBeLessThan(tol);
-      // 오른쪽 끝은 판 끝보다 오른쪽(빛이 오른쪽으로 간다), 왼쪽 끝은 판 왼쪽 끝(벽에 닿은 뒤 모서리)
-      expect(Math.max(...xs)).toBeGreaterThan(SHELF_X1);
+      // 빛이 가로로 가는 쪽 끝만 판 끝 너머로 나가고(앞 모서리 그림자), 반대쪽 끝은 판 끝(벽에 닿은 뒤 모서리). 정면 빛(L.x = 0)이면 판 끝 그대로
+      if (L.x > 1e-9) expect(Math.max(...xs)).toBeGreaterThan(SHELF_X1);
+      else expect(Math.max(...xs)).toBeCloseTo(SHELF_X1, 6);
+      if (L.x < -1e-9) expect(Math.min(...xs)).toBeLessThan(SHELF_X0);
+      else expect(Math.min(...xs)).toBeCloseTo(SHELF_X0, 6);
     }
   });
 });

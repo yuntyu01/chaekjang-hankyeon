@@ -5,7 +5,7 @@
 //   lit: 구운 그림(tex)을 읽고 나머지(하늘·창빛 직접 몫, 둥근 모서리 법선, 반사광)를 화소마다. 곱하기·컬러 닷지 두 가지로 컴파일한다.
 import { EDGE_R, GROOVE, SPINE_CURVE } from '@/domain/book-parts';
 import { SHELF_DEPTH, SHELF_FRONT, SHELF_THICK, SHELF_X0, SHELF_X1 } from '@/domain/geometry';
-import { ALBEDO, BOX_MAX, BOX_VEC, DESIGN, ENV_COLS, ENV_NY, CAM, EREF, EXPOSURE, FAR, GAMMA, GRID_N, L_ELEV, L_UNIT, RAD, TONE, TOUCH, type C3 } from '@/domain/light-model';
+import { ALBEDO, BOX_MAX, BOX_VEC, DESIGN, ENV_COLS, ENV_NY, CAM, EREF, EXPOSURE, FAR, GAMMA, GRID_N, KEY_DIRS, L_ELEV, L_UNIT, RAD, TONE, TOUCH, type C3 } from '@/domain/light-model';
 import type { Affine, Cam, Vec3 } from '@/domain/camera';
 import { F0, light } from '@/ui/lighting';
 
@@ -588,6 +588,15 @@ ${boxCode()}
     float3 mx = max(ta, tb);
     return max(1e-6, max(mn.x, max(mn.y, mn.z))) <= min(mx.x, min(mx.y, mx.z));
   }
+  // 방향 w로 창빛이 책(제 상자·덮은 책 빼고)에 막히지 않으면 1
+  float keyFree(float3 P, float3 w, float self, float skipA, float skipB) {
+    for (int i = 0; i < ${BOX_MAX}; i++) {
+      if (float(i) >= nBox) break;
+      float fi = float(i);
+      if (abs(fi - self) > 0.5 && abs(fi - skipA) > 0.5 && abs(fi - skipB) > 0.5 && rayHits(P, w, box[i * ${BOX_VEC}].xyz, box[i * ${BOX_VEC} + 1], box[i * ${BOX_VEC} + 2], box[i * ${BOX_VEC} + 3])) return 0.0;
+    }
+    return 1.0;
+  }
   half4 main(float2 pc) {
     float ix = floor(pc.x);
     float iy = floor(pc.y);
@@ -656,12 +665,9 @@ ${boxCode()}
     float nl = dot(n, LU);
     float key = 0.0;
     if (nl > 0.0) {
-      key = DIFF * nl * (1.0 - plankKeyOf(P));
-      for (int i = 0; i < ${BOX_MAX}; i++) {
-        if (float(i) >= nBox) break;
-        float fi = float(i);
-        if (abs(fi - self) > 0.5 && abs(fi - skipA) > 0.5 && abs(fi - skipB) > 0.5 && rayHits(P, LU, box[i * ${BOX_VEC}].xyz, box[i * ${BOX_VEC} + 1], box[i * ${BOX_VEC} + 2], box[i * ${BOX_VEC} + 3])) key = 0.0;
-      }
+      // 판은 원반을 자른 활꼴, 책은 원반 위 방향들(light-model KEY_DIRS) 가운데 막힌 몫
+      float kfree = ${KEY_DIRS.map((w) => `keyFree(P, ${v3(w)}, self, skipA, skipB)`).join(' + ')};
+      key = DIFF * nl * (1.0 - plankKeyOf(P)) * kfree / ${f(KEY_DIRS.length)};
     }
     float3 lossE = envLoss(P, n);
     float3 E = max(float3(0.0), float3(AMB + SKYUP * n.y + key) - lossE - boxesLoss(P, n, self, skipA, skipB));
