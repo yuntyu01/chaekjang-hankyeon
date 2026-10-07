@@ -3,9 +3,9 @@
  */
 // 빛 셰이더(SkSL)가 컴파일되고, 같은 점에서 JS 빛 모델(domain/light-model)과 같은 값을 내는지(CanvasKit으로 실제로 그려 읽는다).
 import type { Book3, Vec3 } from '@/domain/book3';
-import { BAND_IN, bakeLoss, bandOf, boxOf, DESIGN, EREF, FAR, gammaDodge, gammaMul, lightWithLoss, linearOf, packBoxes, skyLossAt, toEye, withCovers, type Band, type BoxBuf, type C3, type Env } from '@/domain/light-model';
+import { bakeLoss, bandOf, boxOf, DESIGN, ENV_NX, ENV_NY, EREF, FAR, gammaDodge, gammaMul, GRID_N, GRID_PASSES, lightWithLoss, TOUCH, linearOf, packBoxes, skyLossAt, solveGrid, toEye, withCovers, type Band, type BoxBuf, type C3, type Env } from '@/domain/light-model';
 import { SHELF_DEPTH, SHELF_THICK } from '@/domain/geometry';
-import { bakeSource, bookSource, litSource, LOSS_OFF, LOSS_SCALE, planeFrame } from '../scene-light-sksl';
+import { bakeSource, bookSource, GRID_SCALE, gridSource, litSource, LOSS_OFF, LOSS_SCALE, planeFrame } from '../scene-light-sksl';
 import { EDGE_R, GROOVE, rigOf } from '@/domain/book-parts';
 import { camAt, toPx } from '@/domain/camera';
 
@@ -51,13 +51,15 @@ function axes(n: Vec3) {
   const V = { x: n.y * U.z - n.z * U.y, y: n.z * U.x - n.x * U.z, z: n.x * U.y - n.y * U.x };
   return { U, V };
 }
-// 1×1 그림에 셰이더를 그려 회색 값(0~1)을 읽는다. child: 셰이더 자식(구운 그림 자리)
-function draw(src: string, values: Record<string, number | number[]>, child = false): C3 {
+// 1×1 그림에 셰이더를 그려 회색 값(0~1)을 읽는다. child: 셰이더 자식(구운 그림 자리. true면 검정, 그림 셰이더면 그것)
+const black = () => CK.Shader.MakeColor(CK.Color4f(0, 0, 0, 1), CK.ColorSpace.SRGB);
+const linear = (img: CK) => img.makeShaderOptions(CK.TileMode.Clamp, CK.TileMode.Clamp, CK.FilterMode.Linear, CK.MipmapMode.None);
+function draw(src: string, values: Record<string, number | number[]>, child: boolean | CK = false): C3 {
   const err: string[] = [];
   const effect = CK.RuntimeEffect.Make(src, (e: string) => err.push(e));
   if (!effect) throw new Error(err.join('\n'));
   const uni = uniformArray(effect, values);
-  const kids = child ? [CK.Shader.MakeColor(CK.Color4f(0, 0, 0, 1), CK.ColorSpace.SRGB)] : [];
+  const kids = child ? [child === true ? black() : child] : [];
   const shader = child ? effect.makeShaderWithChildren(uni, kids) : effect.makeShader(uni);
   const surf = CK.MakeSurface(1, 1);
   const paint = new CK.Paint();
@@ -69,7 +71,8 @@ function draw(src: string, values: Record<string, number | number[]>, child = fa
 
 // 굽기 셰이더로 점 P(법선 n)의 하늘 가림을 굽고 읽는다: 1×1 그림, 화소 가운데(0.5, 0.5)가 P
 const NO_BAND = { bandLo: [0, 0, 0, 0], bandLoFar: [0, 0, 0], bandHi: [0, 0, 0, 0], bandHiFar: [0, 0, 0] };
-function shaderLoss(P: Vec3, n: Vec3, env: Env | null, bx: BoxBuf, band: Record<string, number[]> = NO_BAND) {
+// grid: 빛 격자 그림(CanvasKit, 없으면 가리개는 가림 없는 받는 빛), self: 받는 점의 책
+function shaderLoss(P: Vec3, n: Vec3, env: Env | null, bx: BoxBuf, band: Record<string, number[]> = NO_BAND, grid: CK = null, self = -1) {
   const { U, V } = axes(n);
   const g = draw(bakeSource(), {
     O: [P.x - 0.5e-3 * (U.x + V.x), P.y - 0.5e-3 * (U.y + V.y), P.z - 0.5e-3 * (U.z + V.z)],
@@ -79,9 +82,11 @@ function shaderLoss(P: Vec3, n: Vec3, env: Env | null, bx: BoxBuf, band: Record<
     env: env ? [1, env.floor, env.ceil] : [0, 0, 0],
     box: bx.v,
     nBox: bx.list.length,
-    selfIdx: -1,
+    selfIdx: self,
     ...band,
-  });
+    gridOn: grid ? 1 : 0,
+    gridNx: bx.list.length ? ENV_NX : 1,
+  }, grid ? linear(grid) : black());
   return g.map((v) => v * LOSS_SCALE - LOSS_OFF) as C3;
 }
 
@@ -125,7 +130,7 @@ const cases: [string, Vec3, Vec3, Env | null, Book3[]][] = [
 
 describe('빛 셰이더 = JS 빛 모델', () => {
   it('셰이더가 컴파일된다', () => {
-    for (const src of [bakeSource(), litSource(false), litSource(true), litSource('direct'), bookSource(false), bookSource(true)]) {
+    for (const src of [bakeSource(), gridSource(), litSource(false), litSource(true), litSource('direct'), bookSource(false), bookSource(true)]) {
       const err: string[] = [];
       const e = CK.RuntimeEffect.Make(src, (m: string) => err.push(m));
       expect(err.join('\n')).toBe('');
@@ -142,6 +147,64 @@ describe('빛 셰이더 = JS 빛 모델', () => {
     const gpu = shaderLoss(P, n, env, bx);
     // 채널마다 8비트 한 단계(LOSS_SCALE / 255) 안
     expect(maxDiff(gpu, js)).toBeLessThan(LOSS_SCALE / 255);
+  });
+});
+
+// 빛 격자(되비침): GPU로 푼 격자(gridSource를 GRID_PASSES번)와 JS solveGrid가 칸마다 같고, 그 격자를 읽는 굽기도 JS와 같다
+describe('빛 격자 셰이더 = JS', () => {
+  // 기댄 책(회전된 상자)도 하나
+  const lean: Book3 = { id: 'lean', dims: { T: 22, H: 140, W: 100 }, roll: -8, yaw: 0, t: { x: 172, y: 0, z: 0 } };
+  const list = withCovers([boxOf(book(76), [0.05, 0.12, 0.42]), boxOf(book(100), [0.8, 0.75, 0.65]), boxOf(book(123, 22, 120), [0.5, 0.08, 0.05]), boxOf(lean, [0.85, 0.5, 0.38])]);
+  const bx = packBoxes(list, ['a', 'b', 'c', 'd']);
+  const N = GRID_N;
+  const W = 6 * N;
+  const H = list.length * N + 3 * ENV_NY;
+  function gpuGrid(env: Env, passes: number) {
+    const err: string[] = [];
+    const effect = CK.RuntimeEffect.Make(gridSource(), (e: string) => err.push(e));
+    if (!effect) throw new Error(err.join('\n'));
+    const surf = CK.MakeSurface(W, H);
+    const paint = new CK.Paint();
+    let img: CK = null;
+    for (let k = 0; k < passes; k++) {
+      const uni = uniformArray(effect, { env: [1, env.floor, env.ceil], box: bx.v, nBox: list.length, gridOn: img ? 1 : 0, gridNx: ENV_NX });
+      paint.setShader(effect.makeShaderWithChildren(uni, [img ? linear(img) : black()]));
+      surf.getCanvas().drawRect(CK.XYWHRect(0, 0, W, H), paint);
+      img = surf.makeImageSnapshot();
+    }
+    const px = img.readPixels(0, 0, { width: W, height: H, colorType: CK.ColorType.RGBA_8888, alphaType: CK.AlphaType.Unpremul, colorSpace: CK.ColorSpace.SRGB });
+    return { img, px };
+  }
+  // 칸 (x, y)의 GPU 값과 JS 격자 값(배치: scene-light-sksl GRID_SCALE 주석)
+  function compare(env: Env, passes: number) {
+    const G = solveGrid(env, list, passes);
+    const { px } = gpuGrid(env, passes);
+    let worst = 0;
+    const at = (x: number, y: number, js: C3) => {
+      for (let c = 0; c < 3; c++) {
+        worst = Math.max(worst, Math.abs((px[(y * W + x) * 4 + c] / 255) * GRID_SCALE - js[c]));
+      }
+    };
+    for (let i = 0; i < list.length; i++) for (let f = 0; f < 6; f++) for (let b = 0; b < N; b++) for (let a = 0; a < N; a++) at(f * N + a, i * N + b, G.e[(i * 6 + f) * N * N + b * N + a]);
+    for (let w = 0; w < 3; w++) for (let b = 0; b < ENV_NY; b++) for (let a = 0; a < G.nx; a++) at(a, list.length * N + w * ENV_NY + b, G.e[list.length * 6 * N * N + w * G.nx * ENV_NY + b * G.nx + a]);
+    return worst;
+  }
+  it('격자 풀기 첫 번(가리개는 가림 없는 받는 빛): 칸마다 8비트 한 단계 남짓 안', () => {
+    expect(compare(row, 1)).toBeLessThan((1.5 * GRID_SCALE) / 255);
+  });
+  it('되풀이(지난 격자를 읽는다): 8비트로 반올림한 격자를 다시 읽어도 몇 단계 안', () => {
+    expect(compare(row, 2)).toBeLessThan((3 * GRID_SCALE) / 255);
+  });
+  it.each([
+    ['책 사이 틈 뒤 벽', { x: 99, y: 60, z: SHELF_DEPTH }, { x: 0, y: 0, z: -1 }, -1],
+    ['책 앞 판 윗면', { x: 111, y: 0, z: -10 }, { x: 0, y: 1, z: 0 }, -1],
+    ['책등 아래쪽(받는 책 빼고)', { x: 111, y: 3, z: 0 }, { x: 0, y: 0, z: -1 }, 1],
+    ['틈 안 표지', { x: 122, y: 60, z: 20 }, { x: 1, y: 0, z: 0 }, 1],
+  ] as [string, Vec3, Vec3, number][])('격자를 읽는 굽기 = JS, %s', (_, P, n, self) => {
+    const G = solveGrid(row, list);
+    const { img } = gpuGrid(row, GRID_PASSES);
+    const js = skyLossAt(P, n, row, list, G, self);
+    expect(maxDiff(shaderLoss(P, n, row, bx, NO_BAND, img, self), js)).toBeLessThan((3 * LOSS_SCALE) / 255);
   });
 });
 
@@ -165,15 +228,15 @@ describe('그린 판 끝 너머 판 두께 높이 벽 띠(bakeLoss)', () => {
   it('띠는 이 줄 쪽 경계 → 가운데(두 줄이 같은 값) → 건너편 경계로 잇는다', () => {
     // 받는 빛(창빛 포함, 반사 몫 없이): 굽는 가림을 그 자리의 직접 빛에서 뺀 것
     const lit = (p: Vec3) => lightWithLoss(p, n, null, row, bakeLoss(p, n, row, list, band), true, [1, 1, 1]).r;
-    const edge = { x: 375, y: 200 - BAND_IN, z: SHELF_DEPTH };
+    const edge = { x: 375, y: 200 - TOUCH, z: SHELF_DEPTH };
     const near = lightWithLoss(edge, n, null, row, skyLossAt(edge, n, row, list), true, [1, 1, 1]).r;
     const bot = lit({ x: 375, y: 200 + 1e-6, z: SHELF_DEPTH });
-    const mid = lit({ x: 375, y: 200 - BAND_IN + SHELF_THICK / 2, z: SHELF_DEPTH });
+    const mid = lit({ x: 375, y: 200 - TOUCH + SHELF_THICK / 2, z: SHELF_DEPTH });
     const top = lit({ x: 375, y: 200 + SHELF_THICK - 1e-6, z: SHELF_DEPTH });
     // 위 줄에서 본 같은 띠(위 줄 둘레, 아래 판 띠): 가운데 값이 같다
     const upBand = bandOf(upper, row, false);
     for (let c = 0; c < 3; c++) {
-      expect(bot[c]).toBeCloseTo(near[c], 3);
+      expect(bot[c]).toBeCloseTo(near[c], 2);
       expect(mid[c]).toBeCloseTo(band[1].mid[c], 3);
       expect(top[c]).toBeCloseTo(band[1].far[c], 2);
       expect(upBand.mid[c]).toBeCloseTo(band[1].mid[c], 9);
@@ -238,7 +301,7 @@ describe('책 광선 셰이더 = 광선 기하 + JS 빛', () => {
   // JS 기하: 면 평면 점 F(면 법선 nf)에서 광선을 이어 닿는 곳의 점·법선·반사율
   function expected(F: Vec3, nf: Vec3, hit: { P: Vec3; n: Vec3; a: C3 }, dodge: boolean): C3 {
     const loss = skyLossAt(F, nf, row, []);
-    const lt = lightWithLoss(hit.P, hit.n, toEye(cam, hit.P), row, loss, true, hit.a === paper ? EREF.paper : EREF.book);
+    const lt = lightWithLoss(hit.P, hit.n, toEye(cam, hit.P), row, loss, true, hit.a === paper ? EREF.paper : EREF.book, nf);
     return lt.r.map((r, c) => (dodge ? gammaDodge(r, lt.spec[c], hit.a[c]) : gammaMul(r))) as C3;
   }
   const ray = (Q: Vec3) => {

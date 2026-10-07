@@ -7,18 +7,18 @@
 // (하늘·창빛 직접 몫은 둥근 모서리 법선까지, 반사광)만 화소마다 계산한다. 책은 한 권에 한 번(BookLight: 셰이더가 화소마다 광선으로
 // 보이는 면을 찾는다), 벽·판은 평면마다(BakedPlane).
 // 구운 값이 없는 면(줄 밖에서 움직이는 책, 막 들어온 책)은 둘레가 가린 하늘만 그 자리에서 계산한다(다른 책은 뺀다).
-import { AlphaType, ColorType, FilterMode, ImageShader, MipmapMode, Path, processUniforms, Shader, Skia, type SkImage, type SkPath, type SkRuntimeEffect, type Uniforms } from '@shopify/react-native-skia';
+import { AlphaType, ColorType, FilterMode, ImageShader, MipmapMode, Path, processUniforms, Shader, Skia, TileMode, type SkImage, type SkPath, type SkRuntimeEffect, type SkShader, type Uniforms } from '@shopify/react-native-skia';
 import { Platform } from 'react-native';
 import { useDerivedValue, type SharedValue } from 'react-native-reanimated';
 
 import { faceNormal, rot, toWorld, type Book3, type Cam, type FaceId, type Vec3 } from '@/domain/book3';
 import { lightPanel, rigOf } from '@/domain/book-parts';
 import { camAt, VIEW_PITCH_MAX, VIEW_PITCH_MIN, type Affine } from '@/domain/camera';
-import { FAR, gammaDodge, gammaMul, type Band, type BoxBuf, type C3, type Env } from '@/domain/light-model';
+import { ENV_NX, ENV_NY, FAR, gammaDodge, gammaMul, GRID_N, GRID_PASSES, type Band, type BoxBuf, type C3, type Env } from '@/domain/light-model';
 import { faceVisible } from '@/ui/book3d/face-geometry';
 
 import { PERF_ENABLED } from './perf';
-import { bakeSource, bookSource, litSource, LOSS_OFF, LOSS_SCALE, planeFrame, type Plane } from './scene-light-sksl';
+import { bakeSource, bookSource, gridSource, litSource, LOSS_OFF, LOSS_SCALE, planeFrame, type Plane } from './scene-light-sksl';
 
 export type { Plane } from './scene-light-sksl';
 type RO<T> = Readonly<SharedValue<T>>;
@@ -29,6 +29,7 @@ const make = (src: string) => {
   return e;
 };
 const BAKE = make(bakeSource());
+const GRID = make(gridSource());
 // 곱하기 · 컬러 닷지: 평면, 책
 const LIT = [make(litSource(false)), make(litSource(true))];
 // 단색 재질(벽)은 재질 색 × 빛을 한 번에(대상 색을 읽는 겹치기가 없다)
@@ -110,6 +111,67 @@ function bandFar(b: Band | null | undefined) {
   return b ? [b.far[0], b.far[1], b.far[2]] : ZERO3;
 }
 
+// 셰이더 자식 자리를 채우는 그림(구운 값이 없을 때. 그때 셰이더는 그림을 읽지 않는다)
+const EMPTY = Skia.Image.MakeImage(
+  { width: 1, height: 1, alphaType: AlphaType.Opaque, colorType: ColorType.RGBA_8888 },
+  Skia.Data.fromBytes(new Uint8Array([...Array(3).fill(Math.round((LOSS_OFF / LOSS_SCALE) * 255)), 255])),
+  4,
+)!;
+
+// 셰이더 자식으로 읽는 그림(칸 사이 선형, 끝은 늘림)
+function linearShader(img: SkImage): SkShader {
+  'worklet';
+  return img.makeShaderOptions(TileMode.Clamp, TileMode.Clamp, FilterMode.Linear, MipmapMode.None);
+}
+
+// 빛 격자(light-model solveGrid)를 GPU로: 줄 둘레·상자 목록 하나에 그림 한 장(scene-light-sksl GRID_SCALE 칸 배치).
+// GRID_PASSES번 되풀이: 같은 표면에 다시 그리며 지난 그림(스냅숏)을 읽는다(첫 번은 가리개를 가림 없는 받는 빛으로)
+function solveGridImage(env: Env, bx: BoxBuf): SkImage | null {
+  'worklet';
+  const nBox = bx.list.length;
+  const W = 6 * GRID_N;
+  const H = nBox * GRID_N + 3 * ENV_NY;
+  const surf = Skia.Surface.MakeOffscreen(W, H, BAKE_SURFACE);
+  if (!surf) return null;
+  const canvas = surf.getCanvas();
+  const paint = Skia.Paint();
+  let img: SkImage | null = null;
+  const prev: SkImage[] = [];
+  for (let k = 0; k < GRID_PASSES; k++) {
+    const u = { env: envOf(env), box: bx.v, nBox, gridOn: img ? 1 : 0, gridNx: nBox ? ENV_NX : 1 };
+    paint.setShader(GRID.makeShaderWithChildren(processUniforms(GRID, u), [linearShader(img ?? EMPTY)]));
+    canvas.drawRect(Skia.XYWHRect(0, 0, W, H), paint);
+    // 스냅숏은 표면을 다시 그리기 전에 떠 둔다(GPU 순서는 Skia가 지킨다: 되풀이마다 기다리지 않는다)
+    const next = surf.makeImageSnapshot();
+    prev.push(next);
+    img = next;
+  }
+  surf.flush();
+  for (const p of prev) if (p !== img) p.dispose();
+  surf.dispose();
+  return img;
+}
+
+// 푼 빛 격자 그림을 둘레·상자 값이 같으면 다시 쓴다(머리글 벽과 맨 윗줄은 같은 책 상자다). 최근 GRID_KEEP장만 두고 나머지는 놓아준다
+// (그림은 굽는 동안에만 읽는다)
+const GRID_KEEP = 6;
+function cachedGrid(env: Env, bx: BoxBuf): SkImage | null {
+  'worklet';
+  const g = globalThis as unknown as { __grids?: { key: string; img: SkImage | null }[] };
+  const list = g.__grids ?? (g.__grids = []);
+  const key = `${env.floor},${env.ceil}|${bx.v.slice(0, bx.list.length * 32).join(',')}`;
+  const i = list.findIndex((e) => e.key === key);
+  if (i >= 0) {
+    const e = list.splice(i, 1)[0];
+    list.push(e);
+    return e.img;
+  }
+  const img = solveGridImage(env, bx);
+  list.push({ key, img });
+  while (list.length > GRID_KEEP) list.shift()!.img?.dispose();
+  return img;
+}
+
 export function bakeAtlas(items: BakeItem[], key: string): Atlas {
   'worklet';
   // 굽기는 UI 스레드에서만(파생 값은 마운트 직후 UI에서 다시 돈다)
@@ -140,10 +202,30 @@ export function bakeAtlas(items: BakeItem[], key: string): Atlas {
   if (!surf) return NO_ATLAS;
   const canvas = surf.getCanvas();
   const paint = Skia.Paint();
+  // 줄 둘레·상자 목록마다 빛 격자 한 장(가리개 면 밝기)
+  const grids: { env: Env; bx: BoxBuf; img: SkImage | null }[] = [];
+  let gridMs = 0;
+  const gridOf = (env: Env | null, bx: BoxBuf) => {
+    if (!env) return null;
+    for (const g of grids) if (g.bx === bx && g.env.floor === env.floor && g.env.ceil === env.ceil) return g.img;
+    const t = BAKE_STAT ? performance.now() : 0;
+    const img = cachedGrid(env, bx);
+    if (BAKE_STAT && img) {
+      img.readPixels(0, 0, { width: 1, height: 1, alphaType: AlphaType.Premul, colorType: ColorType.RGBA_8888 });
+      gridMs += performance.now() - t;
+    }
+    grids.push({ env, bx, img });
+    return img;
+  };
   for (const it of items) {
     const r = at[it.key];
-    const u = { O: arr(it.O), Ux: arr(it.U), Vy: arr(it.V), tN: arr(it.n), env: envOf(it.env), box: it.bx.v, nBox: it.bx.list.length, selfIdx: it.self, bandLo: bandMid(it.band?.[0]), bandLoFar: bandFar(it.band?.[0]), bandHi: bandMid(it.band?.[1]), bandHiFar: bandFar(it.band?.[1]) };
-    paint.setShader(BAKE.makeShader(processUniforms(BAKE, u)));
+    const g = gridOf(it.env, it.bx);
+    const u = {
+      O: arr(it.O), Ux: arr(it.U), Vy: arr(it.V), tN: arr(it.n), env: envOf(it.env), box: it.bx.v, nBox: it.bx.list.length, selfIdx: it.self,
+      bandLo: bandMid(it.band?.[0]), bandLoFar: bandFar(it.band?.[0]), bandHi: bandMid(it.band?.[1]), bandHiFar: bandFar(it.band?.[1]),
+      gridOn: g ? 1 : 0, gridNx: it.bx.list.length ? ENV_NX : 1,
+    };
+    paint.setShader(BAKE.makeShaderWithChildren(processUniforms(BAKE, u), [linearShader(g ?? EMPTY)]));
     canvas.save();
     canvas.translate(r.x, r.y);
     canvas.drawRect(Skia.XYWHRect(-GUTTER, -GUTTER, it.w + 2 * GUTTER, it.h + 2 * GUTTER), paint);
@@ -154,17 +236,10 @@ export function bakeAtlas(items: BakeItem[], key: string): Atlas {
   surf.dispose();
   if (BAKE_STAT) {
     image.readPixels(0, 0, { width: 1, height: 1, alphaType: AlphaType.Premul, colorType: ColorType.RGBA_8888 });
-    console.log('[bake]', items.length, 'items', `${W}x${H}`, 'ms', (performance.now() - t0).toFixed(1));
+    console.log('[bake]', items.length, 'items', `${W}x${H}`, 'ms', (performance.now() - t0).toFixed(1), 'grid', grids.length, gridMs.toFixed(1));
   }
   return { image, at };
 }
-
-// 셰이더 자식 자리를 채우는 그림(구운 값이 없을 때. 그때 셰이더는 그림을 읽지 않는다)
-const EMPTY = Skia.Image.MakeImage(
-  { width: 1, height: 1, alphaType: AlphaType.Opaque, colorType: ColorType.RGBA_8888 },
-  Skia.Data.fromBytes(new Uint8Array([...Array(3).fill(Math.round((LOSS_OFF / LOSS_SCALE) * 255)), 255])),
-  4,
-)!;
 
 // 아틀라스에서 면 key의 그림 읽기: 그림 px → 그리는 좌표 행렬. M: 그 면의 칸 → 그리는 좌표(3×3 행 우선)
 export type Sample = { image: SkImage; matrix: number[]; live: number };
