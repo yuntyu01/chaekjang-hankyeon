@@ -1,6 +1,6 @@
 // 재장정 미리보기·편집(책 추가 확인 화면과 책 상세가 함께 쓴다).
 // 책장과 같은 3D 책 렌더러로 책등·정면을 벡터로 그린다(실제 표지 이미지는 쓰지 않는다).
-// 색 5개 추천 중 선택 + 모티프 바꾸기 + 책등 조판 변형. 저장하면 사용자 오버라이드(source 'custom')가 된다.
+// 색 5개 추천 중 선택 + 재질(무광 종이·천·코팅지) + 모티프 바꾸기 + 책등 조판 변형. 저장하면 사용자 오버라이드(source 'custom')가 된다.
 // "실물 표지로 보기"는 이번 범위 밖이라 자리만 둔다(비활성).
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { FlatList, Pressable, StyleSheet, Text, View } from 'react-native';
@@ -8,14 +8,15 @@ import { FlatList, Pressable, StyleSheet, Text, View } from 'react-native';
 import { ESTIMATED_PAGES, ESTIMATED_SIZE, type Binding, type SizeMm } from '@/domain/library';
 import { MOTIF_SLOTS } from '@/domain/motif-slots';
 import { BOOK_COLORS, LAYOUT_VARIANTS, layoutArt, suggestColors, tonesFor, type LayoutVariant } from '@/domain/rebinding';
-import type { Book } from '@/domain/types';
+import { BINDING_MATERIALS, type BindingMaterial, type Book } from '@/domain/types';
 import { StandaloneBook } from '@/ui/book3d/StandaloneBook';
 import { Btn, Muted, Row } from '@/ui/kit';
 import { colors, fonts } from '@/ui/screenTheme';
 
-export type BindingDraft = Pick<Binding, 'spineColor' | 'motif' | 'seed' | 'source' | 'inkColor' | 'accentColor' | 'layout'>;
+export type BindingDraft = Pick<Binding, 'spineColor' | 'motif' | 'seed' | 'source' | 'inkColor' | 'accentColor' | 'layout' | 'material'>;
 
 const LAYOUT_NAMES: Record<LayoutVariant, string> = { spine_a: '가', spine_b: '나', spine_c: '다' };
+const MATERIAL_NAMES: Record<BindingMaterial, string> = { paper: '무광 종이', cloth: '천', coated: '코팅지' };
 
 export function previewBook(p: { title: string; author?: string; size?: SizeMm; pages?: number; binding: BindingDraft }): Book {
   const size = p.size ?? ESTIMATED_SIZE;
@@ -28,7 +29,7 @@ export function previewBook(p: { title: string; author?: string; size?: SizeMm; 
     thicknessClass: 'medium',
     coverAspectRatio: size.widthMm / size.heightMm,
     physical: { ...size, pages: p.pages ?? ESTIMATED_PAGES },
-    art: { motif: p.binding.motif, inkColor: p.binding.inkColor, accentColor: p.binding.accentColor, vectorCover: true, ...layoutArt(p.binding.layout ?? 'spine_a') },
+    art: { motif: p.binding.motif, inkColor: p.binding.inkColor, accentColor: p.binding.accentColor, material: p.binding.material, vectorCover: true, ...layoutArt(p.binding.layout ?? 'spine_a') },
   };
 }
 
@@ -44,7 +45,8 @@ export function BindingEditor({ title, author, size, pages, value, recommended, 
     return [...rec, ...BOOK_COLORS.filter((c) => !have.has(c.hex))];
   }, [recommended.spineColor]);
   const custom = (patch: Partial<BindingDraft>): BindingDraft => ({ ...value, ...patch, source: 'custom' });
-  const same = value.spineColor === recommended.spineColor && value.motif === recommended.motif && value.layout === recommended.layout;
+  const material = value.material ?? 'paper';
+  const same = value.spineColor === recommended.spineColor && value.motif === recommended.motif && value.layout === recommended.layout && material === (recommended.material ?? 'paper');
   const book = useMemo(() => previewBook({ title, author, size, pages, binding: value }), [title, author, size, pages, value]);
   const [w, setW] = useState(0);
   const list = useRef<FlatList>(null);
@@ -97,6 +99,15 @@ export function BindingEditor({ title, author, size, pages, value, recommended, 
           </Pressable>
         )}
       />
+
+      <Text style={st.h}>재질</Text>
+      <Row gap={10}>
+        {BINDING_MATERIALS.map((m) => (
+          <Pressable key={m} onPress={() => onChange(custom({ material: m }))} accessibilityRole="button" accessibilityLabel={`재질 ${MATERIAL_NAMES[m]}`} accessibilityState={{ selected: material === m }} style={[st.chip, material === m && st.chipOn, { minWidth: 56 }]}>
+            <Text style={[st.chipText, material === m && st.chipTextOn]}>{MATERIAL_NAMES[m]}</Text>
+          </Pressable>
+        ))}
+      </Row>
 
       <Text style={st.h}>책등 조판</Text>
       <Row gap={10}>

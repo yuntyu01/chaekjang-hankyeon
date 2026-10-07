@@ -21,7 +21,7 @@ import { hull } from '@/domain/box';
 import { BASE_CAM, camAt, kyOf, toPx, VIEW_PITCH_MAX, VIEW_PITCH_MIN, type Affine, type Cam } from '@/domain/camera';
 import { SHELF, SHELF_DEPTH, SHELF_FRONT, SHELF_THICK } from '@/domain/geometry';
 import { bandOf, FAR, NO_BOXES, type Band, type Env } from '@/domain/light-model';
-import { RECV_SLOTS, receivedShadow3, shiftRecv, type Recv3 } from '@/domain/received3';
+import { receivedShadow3, shiftRecv, type Recv3 } from '@/domain/received3';
 import { frameBBox, type BookFrame } from '@/domain/shelf-scene';
 import type { Book } from '@/domain/types';
 import { ribbonDesign, type RibbonDesign } from '@/domain/ribbon-design';
@@ -29,14 +29,14 @@ import { ko } from '@/i18n/ko';
 import type { Shared } from '@/ui/book3d/art';
 import { BookNode } from '@/ui/book3d/BookNode';
 import { LIGHT_ON, RENDER, TL, tl, TRANSIT_DEBUG } from '@/ui/perf';
-import { areaItem, bakeAtlas, bookItems, NO_ATLAS, type BakeItem } from '@/ui/SceneLight';
+import { areaItem, bakeAtlas, bookItems, bookKeyImage, NO_ATLAS, NO_BOOK_KEY, type BakeItem } from '@/ui/SceneLight';
 import { SHOW } from '@/ui/shelf/shadow-debug';
 import { colors, fonts } from '@/ui/theme';
 
 import { rowAffine, type RowGeom, type ShelfMetrics } from './metrics';
 import { useRowPlanner } from './planner';
 import { bodyOf, frontOccluders, liveSV, locate, lowered, outsideDist, plankBody, presentSV, sceneOrder, TRANSIT_ROW, transitLead, transitVisible, warmSV, type Motion, type SceneGeo, type SceneMotion } from './scene';
-import { GlowOf, makeStruct, occludersOf, ReceivedShadow, RowBooks, RowContacts, RowShadows, structKeyOf, useRestPoses, useRowBoxes, useShadePoses, Z_WALL, type CamSV, type Ghost, type RowStruct } from './ShelfMotion';
+import { GlowOf, makeStruct, occludersOf, RowBooks, structKeyOf, useFloorKey, useRestPoses, useRowBoxes, useShadePoses, useWallKey, Z_WALL, type CamSV, type Ghost, type RowStruct } from './ShelfMotion';
 import { FRONT_AREA, FRONT_KEY, rowEnv, SHELF_CAST_EXTENT, ShelfBoard, ShelfWall, TOP_AREA, TOP_KEY, UNDER_ENV, wallArea } from './ShelfPlank';
 
 // 줄 아틀라스에서 벽 띠의 자리
@@ -186,15 +186,16 @@ const RowLayers = memo(function RowLayers({ r, st, mo, order, px, upx, upperSpac
     }
     return bakeAtlas(items, bakeKey);
   });
+  // 이 줄 책이 벽·판 윗면에서 창빛을 가리는 몫(벽·판 셰이더가 빛 계산 안에서 쓴다)
+  const wallKey = useWallKey(r.shelfId, poses, st.ids, px, top ? wallY1 : space + SHELF_THICK);
+  const floorKey = useFloorKey(r.shelfId, poses, st.ids, px);
   return (
     <>
       {/* 이 줄 벽: 판 아랫면 높이(판 양 끝 너머로 보인다, 아래 줄이 있으면 그 아래로 판 두께만큼 더: 아래 줄 캔버스가 덮는다)부터
           위 판 두께 가운데까지(그 위는 위 줄 캔버스), 맨 윗줄은 캔버스 위 끝까지 */}
-      {SHOW.shelf ? <ShelfWall cam={cam} px={px} y0={-SHELF_THICK} y1={wallY1} top={top ? wallY1 : space + SHELF_THICK / 2} bottom={last ? -SHELF_THICK : -2 * SHELF_THICK} env={env} atlas={atlas} akey={WALL_KEY} zIndex={Z_WALL} /> : null}
+      {SHOW.shelf ? <ShelfWall cam={cam} px={px} y0={-SHELF_THICK} y1={wallY1} top={top ? wallY1 : space + SHELF_THICK / 2} bottom={last ? -SHELF_THICK : -2 * SHELF_THICK} env={env} atlas={atlas} akey={WALL_KEY} zIndex={Z_WALL} keyShadow={wallKey} /> : null}
       {SHOW.shelf && last ? <ShelfWall cam={cam} px={px} y0={-SHELF_THICK - SHELF_CAST_EXTENT} y1={-SHELF_THICK} env={UNDER_ENV} atlas={atlas} akey={UNDER_KEY} zIndex={Z_WALL} /> : null}
-      {RENDER.books ? <RowShadows shelfId={r.shelfId} poses={poses} ids={st.ids} cam={cam} px={px} space={space} top={top} y1={top ? wallY1 : space + SHELF_THICK} /> : null}
-      {SHOW.shelfBoard ? <ShelfBoard px={px} cam={cam} zIndex={plankZ} env={env} atlas={atlas} /> : null}
-      {RENDER.books ? <RowContacts poses={poses} ids={st.ids} cam={cam} px={px} order={order} shelfId={r.shelfId} /> : null}
+      {SHOW.shelfBoard ? <ShelfBoard px={px} cam={cam} zIndex={plankZ} env={env} atlas={atlas} keyShadow={floorKey} /> : null}
       {RENDER.books ? <RowBooks m={mo} shelfId={r.shelfId} st={st} books={books} glowId={r.glowId} dragId={r.dragId} cam={cam} px={px} space={space} shared={shared} order={order} poses={poses} env={envSV} atlas={atlas} boxes={boxes} debug={debug} /> : null}
     </>
   );
@@ -286,26 +287,20 @@ function nearRow(motions: SceneMotion[], g: SceneGeo, id: string) {
   return { row, idx: best, b, occ: occludersOf(m, b, id, ids), all };
 }
 
-// 이동 캔버스의 책이 받는 그림자: 줄 캔버스와 같은 계산(같은 가리개 모델·같은 이웃 고르기)을, 책이 가장 가까이 있는 줄의 책·윗 선반 판으로.
-// 넘겨받는 순간(원래 줄 안, 같은 자세)과 도착 줄에 들어가는 순간 줄 그림과 같은 그림자라, 캔버스가 바뀌어도 책 면 명암이 이어진다.
-// 결과는 맨 윗줄 좌표로 옮겨 이동 캔버스의 변환(px0)으로 그린다.
-function TransitReceives({ id, motions, geo, cam, px0, vis }: { id: string; motions: SceneMotion[]; geo: Readonly<SharedValue<SceneGeo>>; cam: Readonly<SharedValue<Cam>>; px0: Affine; vis: Readonly<SharedValue<boolean>> }) {
+// 이동 캔버스의 책이 받는 창빛 그림자(면 좌표 그림, 책 빛 셰이더가 쓴다): 줄 캔버스와 같은 계산(같은 가리개 모델·같은 이웃 고르기)을,
+// 책이 가장 가까이 있는 줄의 책으로. 넘겨받는 순간(원래 줄 안, 같은 자세)과 도착 줄에 들어가는 순간 줄 그림과 같은 그림자라,
+// 캔버스가 바뀌어도 책 면 명암이 이어진다. 결과는 맨 윗줄 좌표로 옮긴다(면 좌표 그림은 책 자세에 붙어 있어 그대로 쓴다)
+function useTransitKey(id: string, motions: SceneMotion[], geo: Readonly<SharedValue<SceneGeo>>, px0: Affine, vis: Readonly<SharedValue<boolean>>, on: boolean) {
   // 보이는 동안 매 프레임 같은 계산(이 책·가리개 자세가 바뀔 때만 다시 돈다). 반응(reaction)으로 두면 계산이 그리기보다 한 프레임 늦어
   // 이동 캔버스가 처음 보이는 프레임에 받는 그림자가 비었다(책 면이 한 프레임 밝아짐).
   // motions·geo는 이 계산이 직접 붙잡아 지켜본다(다른 함수를 거쳐서만 읽으면 처음 한 번만 계산된다).
   const r3 = useDerivedValue<Recv3>(() => {
-    if (!vis.value) return null;
+    if (!on || !vis.value) return null;
     const g = geo.value;
     const n = nearRow(motions, g, id);
     return n ? shiftRecv(receivedShadow3(n.b, n.occ, px0.s), -n.row.dy) : null;
   });
-  return (
-    <Group>
-      {Array.from({ length: RECV_SLOTS }, (_, slot) => (
-        <ReceivedShadow key={slot} r3={r3} cam={cam} px={px0} slot={slot} />
-      ))}
-    </Group>
-  );
+  return useDerivedValue(() => (on ? bookKeyImage(`book-key:transit:${id}`, r3.value, px0.s) : NO_BOOK_KEY));
 }
 
 function TransitBook({ id, book, dims, frozen, motions, geo, cam, px0, shared, glow, dbg, ribbons, transit }: { id: string; book: Book; dims: Book3['dims']; frozen: Book3; motions: SceneMotion[]; geo: Readonly<SharedValue<SceneGeo>>; cam: CamSV; px0: Affine; shared: Shared; glow: boolean; dbg: boolean; ribbons: Record<string, RibbonDesign>; transit: Record<string, true> }) {
@@ -364,11 +359,12 @@ function TransitBook({ id, book, dims, frozen, motions, geo, cam, px0, shared, g
   // 선택 빛은 이동 캔버스만 그 책을 그릴 때만(미리 그려 두는 동안은 줄 그림의 빛이 이웃 책 뒤로 알맞게 가려진 채 보인다).
   // 빛은 책보다 먼저(책 아래) 그린다: 맨 윗줄 아래 줄의 책은 깊이 키가 음수라 0이면 빛이 책 위에 덮였다.
   const body = useDerivedValue(() => (vis.value && transitLead(motions, geo.value, id, liveSV.value) ? state.value : null));
+  const keyShadow = useTransitKey(id, motions, geo, px0, vis, SHOW.cast);
   return (
     <>
       <Group clip={clip} invertClip>
         {glow ? <GlowOf body={body} cam={camT} px={px0} z={-1e9} /> : null}
-        <BookNode book={book} dims={dims} state={state} cam={camT} px={px0} shared={shared} under={SHOW.cast ? <TransitReceives id={id} motions={motions} geo={geo} cam={camT} px0={px0} vis={vis} /> : null} env={env} />
+        <BookNode book={book} dims={dims} state={state} cam={camT} px={px0} shared={shared} keyShadow={keyShadow} env={env} />
       </Group>
       {dbg ? <Path path={clip} style="stroke" strokeWidth={2} color="rgba(220,30,30,0.9)" /> : null}
     </>

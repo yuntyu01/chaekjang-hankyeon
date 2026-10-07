@@ -9,6 +9,7 @@ import {
   frontWidth,
   LYING_BACK_Z,
   defaultDepth,
+  WALL_GAP,
   wallPitch,
   frontDims,
   frontExt,
@@ -748,11 +749,11 @@ export function setPose(layout: ShelfLayout, books: BookMap, bookId: string, pos
   const { p, index } = itemIndexOf(layout, bookId);
   const book = books[bookId];
   // 새 자세의 깊이: 사용자가 둔 깊이(더미에서 나오면 지금 놓인 깊이)는 자세를 바꿔도 지키고 선반 안으로만 맞춘다.
-  // 처음 표지 전시하는 책(깊이 기록 없음)은 뒤쪽(벽 앞)에 세워 본다.
+  // 처음 표지 전시하는 책(깊이 기록 없음)은 뒤쪽(벽에서 WALL_GAP 앞)에 세워 본다.
   const kept = p.stackId ? boxOf(layout, books, bookId)?.z : p.depth;
   const d = placementDepth(book, { pose, depth: 0 }).z1;
   const fit = (z: number) => round2(Math.max(-SHELF_FRONT, Math.min(SHELF_DEPTH - d, z)));
-  const tries: (number | undefined)[] = kept !== undefined ? [fit(kept)] : pose === 'front' ? [fit(SHELF_DEPTH - d - 1), undefined] : [undefined];
+  const tries: (number | undefined)[] = kept !== undefined ? [fit(kept)] : pose === 'front' ? [fit(SHELF_DEPTH - WALL_GAP - d), undefined] : [undefined];
   let last: Result = { ok: false, reason: 'no-space' };
   for (const depth of tries) {
     if (p.stackId) {

@@ -1070,7 +1070,7 @@ export function HomeScreen() {
     const after = await afterP;
     const out = { level, idle, sweep, calc, reactMs: Math.round(reactMs), after };
     console.log('[perf]', JSON.stringify(out));
-    setToast({ text: `${level} 전환 ${sweep.mean}ms(p90 ${sweep.p90}) 계산 ${(calc.faces + calc.received + calc.cast).toFixed(1)}ms React ${Math.round(reactMs)}ms` });
+    setToast({ text: `${level} 전환 ${sweep.mean}ms(p90 ${sweep.p90}) 계산 ${(calc.faces + calc.cast).toFixed(1)}ms React ${Math.round(reactMs)}ms` });
     viewStore.setPitch(VIEW_PITCH_MIN);
     pitchSV.value = VIEW_PITCH_MIN;
     viewGoal.value = VIEW_PITCH_MIN;

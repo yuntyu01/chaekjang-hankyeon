@@ -4,7 +4,7 @@
 //   둘 다 책등 면 그림 좌표에 고정되어 몸체와 함께 돈다(글자를 따로 돌리지 않는다). 어느 쪽을 보일지는 자세가 정한다(BookNode).
 // - 표지 면: 표지 그림(달·풍경 등) + 제목(시안처럼 제목만. 저자는 표지에 쓰지 않는다)
 // - 갈피: 머리 뒤에서 나오는 끈(원점 = 아래 가운데)
-import { BlurMask, ColorType, AlphaType, Group, Image as SkiaImage, PaintStyle, StrokeJoin, ImageSVG, Path, Picture, Rect, Skia, Text, drawAsPicture, useImage, useTypeface, type SkFont, type SkImage, type SkPath, type SkPicture, type SkTypeface } from '@shopify/react-native-skia';
+import { ColorType, AlphaType, Group, Image as SkiaImage, PaintStyle, StrokeJoin, ImageSVG, Path, Picture, Rect, Skia, Text, drawAsPicture, useImage, useTypeface, type SkFont, type SkImage, type SkPath, type SkPicture, type SkTypeface } from '@shopify/react-native-skia';
 import { createContext, useContext, useEffect, useState, type ReactNode } from 'react';
 
 import { rgbHex, tabColors, TITLE_LIGHT, titleInk } from '@/domain/color';
@@ -19,7 +19,6 @@ import { bookFacePath, CoverFaceArt, PAGE_BASE, SpineFaceArt } from '@/ui/book/B
 import { ReferenceCover } from './ReferenceCover';
 import { ReferenceBinding } from './ReferenceBinding';
 import { bookTone, referenceBinding } from '@/domain/binding-material';
-import { GRAIN, MaterialGrain, PageSheets } from './MaterialGrain';
 import { ORIGINAL_ART, ReferenceGlyph, ReferenceMotif, ReferencePrint, drawOriginalGlyph, hasOriginalGlyph, hasReferenceMotif, referencePrint } from './ReferencePrint';
 
 const REGULAR = require('@expo-google-fonts/gowun-batang/400Regular/GowunBatang_400Regular.ttf');
@@ -239,35 +238,8 @@ function PaperTab({ t, s }: { t: Tab; s: number }) {
   const w = t.width * s;
   const hidden = TAB_HIDDEN * s;
   const top = -t.out * s;
-  const shape = tabPath(t, s, Skia.PathBuilder.Make());
-  // 한지 결: 넓고 부드러운 물결(곡선 몇 가닥, 갈피 카드 테이프와 같은 결)
-  const rnd = rng(t.seed);
-  const fibers = Skia.PathBuilder.Make();
-  for (let i = 0; i < 5; i++) {
-    const fx = -w / 2 + rnd() * w;
-    const fy = top + rnd() * (hidden - top);
-    const a = rnd() * Math.PI;
-    const len = (4 + rnd() * 6) * s;
-    const ex = fx + Math.cos(a) * len;
-    const ey = fy + Math.sin(a) * len * 0.6;
-    fibers.moveTo(fx, fy);
-    fibers.cubicTo(fx + (rnd() - 0.5) * 5 * s, fy + (rnd() - 0.5) * 5 * s, ex + (rnd() - 0.5) * 5 * s, ey + (rnd() - 0.5) * 5 * s, ex, ey);
-  }
-  const swirl = fibers.detach();
-  return (
-    <Group clip={shape}>
-      <Path path={shape} color={t.color} />
-      <Group transform={[{ translateX: t.x * s }, { translateY: hidden }, { rotate: (t.tilt * Math.PI) / 180 }, { translateY: -hidden }]}>
-        {/* 한지 결(재질): 섬유가 뭉친 곳은 조금 짙다(결 세기 GRAIN 하나) */}
-        <Path path={swirl} style="stroke" strokeWidth={0.9 * s} strokeCap="round" color={`rgba(55,70,80,${GRAIN})`}>
-          <BlurMask blur={0.35 * s} style="normal" />
-        </Path>
-        <Group transform={[{ translateX: -w / 2 }, { translateY: top }]}>
-          <MaterialGrain w={w} h={hidden - top} s={s} />
-        </Group>
-      </Group>
-    </Group>
-  );
+  // 종이 색만 칠한다: 결(반사율·미세 높이)과 밝기는 빛 셰이더가 무광 종이 재질로(BookNode Ribbons, SceneLight TabLight)
+  return <Path path={tabPath(t, s, Skia.PathBuilder.Make())} color={t.color} />;
 }
 function Ribbons({ book, s }: { book: Book; s: number }) {
   return (
@@ -286,19 +258,10 @@ function ribbonShapeOf(book: Book, s: number) {
   return { path: all.detach(), out: Math.max(...tabs.map((t) => t.out)) };
 }
 
-// 속지 면(판 사이, 판 끝보다 안쪽). w×h DU를 배율 s로. 낱장은 가로(두께 방향)로 쌓여 결은 세로 줄이다.
-// 결은 책 좌표에 붙어 있어 세우기·눕히기·돌리기에도 같은 자리다. 밝기·판 쪽 그늘은 빛 모델이 위에 칠한다.
+// 속지 면(판 사이, 판 끝보다 안쪽). w×h DU를 배율 s로 종이 색만 칠한다: 낱장·접장 결(반사율·미세 높이)과 밝기·판 쪽 그늘은
+// 빛 셰이더가 속지 단면 재질(ui/lighting materials.pages)로 계산한다(책 좌표에 붙어 세우기·눕히기·돌리기에도 같은 자리)
 function PageArt({ w, h, s }: { w: number; h: number; s: number }) {
-  const W = w * s;
-  const H = h * s;
-  // 속지 단면(재질): 종이 색 + 낱장 결(PageSheets) + 섬유 점(같은 결 세기 GRAIN)
-  return (
-    <Group clip={Skia.XYWHRect(0, 0, W, H)}>
-      <Rect x={0} y={0} width={W} height={H} color={PAGE_BASE} />
-      <PageSheets w={W} h={H} s={s} />
-      <MaterialGrain w={W} h={H} s={s} />
-    </Group>
-  );
+  return <Rect x={0} y={0} width={w * s} height={h * s} color={PAGE_BASE} />;
 }
 
 async function record(el: ReactNode, w: number, h: number) {
@@ -306,7 +269,7 @@ async function record(el: ReactNode, w: number, h: number) {
 }
 
 // 그림 기록 키에 넣는 디자인 판(조판·몸체 규칙을 바꾸면 올린다: 빠른 새로고침에서도 예전 규칙으로 기록한 그림을 다시 쓰지 않게)
-const DESIGN_REV = 'page-sheets-1';
+const DESIGN_REV = 'material-shader-1';
 const cache = new Map<string, Promise<BookArt>>();
 const done = new Map<string, BookArt>(); // 이미 기록된 것(다시 그릴 때 한 프레임도 비지 않게)
 let queue: Promise<unknown> = Promise.resolve();

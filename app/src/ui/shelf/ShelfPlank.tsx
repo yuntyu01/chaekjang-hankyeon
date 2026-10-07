@@ -1,11 +1,11 @@
 // 선반 판과 벽. 장면(ShelfScene)이 줄마다 그린다.
 // 모양: 3D 판 꼭짓점을 책과 같은 카메라로 투영한 면(domain/shelf-geom). 화면에 보이는 선반 외곽 = 이 면들의 외곽(모서리 반지름 EDGE_R).
 // 그리는 순서는 장면 전체의 가림 순서(판도 책과 같은 3D 상자로 정렬): 아래 줄 책머리 위, 이 줄 책 아래.
-// 재질: 판 색 하나(ui/lighting surfaces.plank) + 받은 선반 PNG에서 잘라 낸 나무 결(윗면·앞면, scripts/extract-shelf-texture.py, 결 세기 WOOD_GRAIN).
+// 재질: 판 색 하나(ui/lighting surfaces.plank). 나무 결(반사율·미세 높이)과 벽 칠(무광 페인트)은 빛 셰이더가 재질(ui/lighting materials)로 계산한다.
 // 밝기: 빛 모델 하나(SceneLight). 판 윗면은 그 위 책·벽·위 판이 가린 하늘, 둥근 앞 모서리는 원호 법선의 빛이다.
 // 벽: 벽 색 위에 같은 셰이더로 다시 칠한다(판·책이 가린 하늘, 위 판이 가린 창빛). 맨 아랫줄은 판 밑 벽도.
 // 벽·판의 하늘 가림은 줄의 모든 책이 가려 무거워서 줄 아틀라스에 굽는다(줄이 멈췄을 때만, ShelfScene useRowAtlas).
-import { Group, ImageShader, Path, Skia, useImage, type SkPath } from '@shopify/react-native-skia';
+import { Group, Path, Skia, type SkPath } from '@shopify/react-native-skia';
 import { useCallback, useMemo } from 'react';
 import { useDerivedValue, type SharedValue } from 'react-native-reanimated';
 
@@ -21,17 +21,13 @@ import { SHOW } from '@/ui/shelf/shadow-debug';
 import { roundedPolygon } from '@/ui/book3d/face-geometry';
 import { layerBounds } from '@/ui/layer-bounds';
 import { surfaces } from '@/ui/lighting';
-import { BAKE_TEXEL, BakedPlane, type Atlas, type BakeArea, type Plane } from '@/ui/SceneLight';
+import { BAKE_TEXEL, BakedPlane, seedOf, type Atlas, type BakeArea, type Plane, type PlaneKey } from '@/ui/SceneLight';
 import { LIGHT_ON } from '@/ui/perf';
 
 type RO<T> = Readonly<SharedValue<T>>;
 
-const TOP_TEX = require('../../../assets/bookshelf/shelf-top.png');
-const FRONT_TEX = require('../../../assets/bookshelf/shelf-front.png');
 // 면 사이 이음새: 뒤에 그리는 면을 공유 변 너머로 이만큼(px) 덮어 투명 틈이 생기지 않게 한다(같은 꼭짓점, 그리기만 겹침)
 const SEAM_PX = 0.6;
-// 나무 결 세기(재질 입력: 받은 선반 PNG의 결을 판 색 위에 얹는 정도)
-const WOOD_GRAIN = 0.22;
 
 function pathOf(pts: Point[]) {
   'worklet';
@@ -110,8 +106,8 @@ function wallMatrix(c: Cam, px: Affine, a: BakeArea) {
 }
 
 // 벽 한 띠(높이 y0 ~ y1, 줄 공간: 구운 영역): 벽 색 × (받는 빛 + 반사광)을 한 번에 칠한다(불투명). akey: 줄 아틀라스에서 이 띠의 자리,
-// top·bottom: 칠하는 위·아래 끝(없으면 y1·y0, 구운 영역 밖은 가장자리 값)
-export function ShelfWall({ cam, px, y0, y1, top = y1, bottom = y0, env, atlas, akey, zIndex }: { cam: RO<Camera>; px: Affine; y0: number; y1: number; top?: number; bottom?: number; env: Env; atlas?: RO<Atlas>; akey: string; zIndex: number }) {
+// top·bottom: 칠하는 위·아래 끝(없으면 y1·y0, 구운 영역 밖은 가장자리 값), keyShadow: 이 줄 책이 벽에서 창빛을 가리는 몫(ShelfMotion useWallKey)
+export function ShelfWall({ cam, px, y0, y1, top = y1, bottom = y0, env, atlas, akey, zIndex, keyShadow }: { cam: RO<Camera>; px: Affine; y0: number; y1: number; top?: number; bottom?: number; env: Env; atlas?: RO<Atlas>; akey: string; zIndex: number; keyShadow?: RO<PlaneKey> }) {
   const area = useMemo(() => wallArea(y0, y1), [y0, y1]);
   const matrix = useCallback((c: Cam) => {
     'worklet';
@@ -128,7 +124,7 @@ export function ShelfWall({ cam, px, y0, y1, top = y1, bottom = y0, env, atlas, 
   return (
     <Group zIndex={zIndex}>
       {LIGHT_ON.wall ? (
-        <BakedPlane path={path} cam={cam} px={px} plane={WALL} env={env} atlas={atlas} akey={akey} matrix={matrix} albedo={DESIGN.wall} eref={EREF.wall} color={surfaces.wall} />
+        <BakedPlane path={path} cam={cam} px={px} plane={WALL} env={env} atlas={atlas} akey={akey} matrix={matrix} albedo={DESIGN.wall} eref={EREF.wall} mat="paint" color={surfaces.wall} keyShadow={keyShadow} />
       ) : (
         <Path path={path} color={surfaces.wall} />
       )}
@@ -136,29 +132,22 @@ export function ShelfWall({ cam, px, y0, y1, top = y1, bottom = y0, env, atlas, 
   );
 }
 
-function Face({ poly, matrix, image, children }: { poly: RO<SkPath>; matrix: RO<number[]>; image: ReturnType<typeof useImage>; children?: React.ReactNode }) {
+function Face({ poly, children }: { poly: RO<SkPath>; children?: React.ReactNode }) {
   return (
     <Group clip={poly}>
       <Path path={poly} color={surfaces.plank} />
-      <Path path={poly} opacity={WOOD_GRAIN} blendMode="softLight">
-        {image ? <ImageShader image={image} tx="clamp" ty="clamp" matrix={matrix} /> : null}
-      </Path>
       {children}
     </Group>
   );
 }
 
-// 판(윗면·앞면). env: 이 판 위 줄의 둘레, atlas: 그 줄의 구운 하늘 가림(TOP_KEY·FRONT_KEY 자리)
+// 판(윗면·앞면). env: 이 판 위 줄의 둘레, atlas: 그 줄의 구운 하늘 가림(TOP_KEY·FRONT_KEY 자리), keyShadow: 그 줄 책이 판 윗면에서 창빛을 가리는 몫
 export const TOP_KEY = 'plank:top';
 export const FRONT_KEY = 'plank:front';
-export function ShelfBoard({ px, cam, zIndex, env, atlas }: { px: Affine; cam: RO<Camera>; zIndex: Readonly<SharedValue<number>> | number; env: Env; atlas?: RO<Atlas> }) {
+export function ShelfBoard({ px, cam, zIndex, env, atlas, keyShadow }: { px: Affine; cam: RO<Camera>; zIndex: Readonly<SharedValue<number>> | number; env: Env; atlas?: RO<Atlas>; keyShadow?: RO<PlaneKey> }) {
   const s = px.s;
-  const top = useImage(TOP_TEX);
-  const front = useImage(FRONT_TEX);
-  const tw = top?.width() ?? 1;
-  const th = top?.height() ?? 1;
-  const fw = front?.width() ?? 1;
-  const fh = front?.height() ?? 1;
+  // 판마다 나무 무늬 자리를 다르게(판 높이로)
+  const seed = useMemo(() => seedOf(`plank:${env.floor.toFixed(2)}`), [env.floor]);
   // 지금 카메라로 판 면을 투영(시점을 끄는 동안에도 매 프레임)
   const g = useDerivedValue(() => {
     const f = shelfFaces(cam.value);
@@ -170,15 +159,11 @@ export function ShelfBoard({ px, cam, zIndex, env, atlas }: { px: Affine; cam: R
       outline: pathOf(roundedPolygon(hull([...topPoly, ...frontPoly]), EDGE_R * s)),
       top: pathOf(topPoly),
       front: pathOf(frontPoly),
-      topM: faceTextureMatrix(f.top, tw, th, s, px.tx, px.ty),
-      frontM: faceTextureMatrix(f.front, fw, fh, s, px.tx, px.ty),
     };
   });
   const topP = useDerivedValue(() => g.value.top);
   const outline = useDerivedValue(() => g.value.outline);
   const frontP = useDerivedValue(() => g.value.front);
-  const topM = useDerivedValue(() => g.value.topM);
-  const frontM = useDerivedValue(() => g.value.frontM);
   const topL = useCallback((c: Cam, w: number, h: number) => {
     'worklet';
     return faceTextureMatrix(shelfFaces(c).top, w, h, s, px.tx, px.ty);
@@ -193,11 +178,11 @@ export function ShelfBoard({ px, cam, zIndex, env, atlas }: { px: Affine; cam: R
     <Group zIndex={zIndex} clip={bounds}>
       {/* 경로 자르기는 안티에일리어싱 없이 계단이 되므로 판 둘레 크기 레이어에 그린 뒤 안티에일리어싱된 윤곽으로 남긴다(dstIn) */}
       <Group layer>
-        <Face poly={topP} matrix={topM} image={top}>
-          {on ? <BakedPlane path={topP} cam={cam} px={px} plane={TOP} env={env} atlas={atlas} akey={TOP_KEY} matrix={topL} albedo={DESIGN.plank} eref={EREF.plank} /> : null}
+        <Face poly={topP}>
+          {on ? <BakedPlane path={topP} cam={cam} px={px} plane={TOP} env={env} atlas={atlas} akey={TOP_KEY} matrix={topL} albedo={DESIGN.plank} eref={EREF.plank} mat="wood" seed={seed} keyShadow={keyShadow} /> : null}
         </Face>
-        <Face poly={frontP} matrix={frontM} image={front}>
-          {on ? <BakedPlane path={frontP} cam={cam} px={px} plane={FRONT} env={env} atlas={atlas} akey={FRONT_KEY} matrix={frontL} albedo={DESIGN.plank} eref={EREF.plank} /> : null}
+        <Face poly={frontP}>
+          {on ? <BakedPlane path={frontP} cam={cam} px={px} plane={FRONT} env={env} atlas={atlas} akey={FRONT_KEY} matrix={frontL} albedo={DESIGN.plank} eref={EREF.plank} mat="wood" seed={seed} /> : null}
         </Face>
         <Path path={outline} color="black" blendMode="dstIn" />
       </Group>

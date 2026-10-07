@@ -1,7 +1,7 @@
 // 책의 판·속지 면(책등·앞표지 그림 면 말고 나머지). 모두 book-parts의 3D 조각을 지금 자세·카메라로 투영한다(face-geometry).
 // - 종이 단면 면(머리·꼬리·책배): 판 테두리 안에 속지를 채우고, 들어간 종이 면의 무늬를 겹친다.
 //   속지 면이 판 끝보다 들어가 있어서, 앞 면(책등 등)에 가려지는 부분은 그 앞 면이 나중에 덮는다(카메라가 보이는 만큼을 정한다).
-// - 판 면(뒤표지): 판 색 + 재질 결.
+// - 판 면(뒤표지): 판 색(결은 빛 셰이더가 장정 재질로).
 // 여기는 재질(색·무늬)만 칠한다. 밝기는 책 한 권에 한 번(ui/SceneLight BookLight: 셰이더가 화소마다 광선으로 보이는 면을 찾고
 // 종이 단면 면은 테두리·속지·안쪽 벽을 가른다).
 import { Group, Path, Picture, Rect, Skia, type SkPath } from '@shopify/react-native-skia';
@@ -17,7 +17,6 @@ import type { Atlas } from '@/ui/SceneLight';
 
 import type { BookArt } from './art';
 import { faceMatrix, faceVisible, HIDDEN_MATRIX, pageGeom, roundedPolygon, type Affine } from './face-geometry';
-import { MaterialGrain } from './MaterialGrain';
 
 type RO<T> = Readonly<SharedValue<T>>;
 
@@ -59,16 +58,9 @@ export function PageFace({ f, state, cam, px, art, tone }: { f: 'head' | 'tail' 
   );
 }
 
-// 판 재질(색 + 결). 빛(모서리·제본 홈 법선까지)은 SceneLight BookLight
+// 판 재질 색. 빛·결(모서리·제본 홈 법선, 장정 재질 무늬까지)은 SceneLight BookLight
 function Board({ w, h, s, tone }: { w: number; h: number; s: number; tone: string }) {
-  const W = w * s;
-  const H = h * s;
-  return (
-    <>
-      <Rect x={0} y={0} width={W} height={H} color={tone} />
-      <MaterialGrain w={W} h={H} s={s} />
-    </>
-  );
+  return <Rect x={0} y={0} width={w * s} height={h * s} color={tone} />;
 }
 
 // 뒤표지 판 면

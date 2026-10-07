@@ -76,7 +76,7 @@ class SyncApiTest extends PostgresIntegrationTest {
     static String full(String at) {
         return """
                 {"editions":[%s],"books":[%s],
-                 "bindings":[{"id":"bd1","myBookId":"bk1","spineColor":"#6B7F92","inkColor":"#F7EEDC","accentColor":"#C9A46A","motif":"moon","layout":"spine_b","source":"custom","status":"ready","seed":0,"createdAt":"%s","updatedAt":"%s"}],
+                 "bindings":[{"id":"bd1","myBookId":"bk1","spineColor":"#6B7F92","inkColor":"#F7EEDC","accentColor":"#C9A46A","motif":"moon","layout":"spine_b","material":"cloth","source":"custom","status":"ready","seed":0,"createdAt":"%s","updatedAt":"%s"}],
                  "rounds":[{"id":"rd1","myBookId":"bk1","index":1,"startedAt":"2026-09-01","finishedAt":"2026-09-20","paused":false,"createdAt":"%s","updatedAt":"%s"}],
                  "sessions":[{"id":"ss1","myBookId":"bk1","roundId":"rd1","startedAt":"2026-09-02T10:00:00Z","endedAt":"2026-09-02T10:30:00Z","durationMs":1800000,"pagesRead":20,"createdAt":"%s","updatedAt":"%s"}],
                  "bookmarks":[{"id":"bm1","myBookId":"bk1","text":"서두르지 않아도 괜찮아.","page":128,"memo":"메모","createdAt":"%s","updatedAt":"%s"}],
@@ -105,6 +105,7 @@ class SyncApiTest extends PostgresIntegrationTest {
         assertThat((String) JsonPath.read(p, "$.editions[0].art.motifId")).isEqualTo("moon");
         assertThat((String) JsonPath.read(p, "$.editions[0].art.layoutVariant")).isEqualTo("spine_b");
         assertThat((String) JsonPath.read(p, "$.bindings[0].source")).isEqualTo("custom");
+        assertThat((String) JsonPath.read(p, "$.bindings[0].material")).isEqualTo("cloth");
         assertThat((String) JsonPath.read(p, "$.rounds[0].finishedAt")).isEqualTo("2026-09-20");
         assertThat((Integer) JsonPath.read(p, "$.sessions[0].durationMs")).isEqualTo(1800000);
         assertThat((String) JsonPath.read(p, "$.bookmarks[0].text")).isEqualTo("서두르지 않아도 괜찮아.");

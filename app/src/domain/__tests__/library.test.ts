@@ -80,6 +80,15 @@ describe('책장용 책 모양', () => {
     expect(b.themeColor).toBe(lib.bindings[lib.books.bk1.bindingId!].spineColor);
   });
 
+  it('장정 재질은 책 모양까지 가고, 고르지 않았으면 비워 둔다(무광 종이)', () => {
+    const lib = withBook();
+    const bdId = lib.books.bk1.bindingId!;
+    expect(lib.bindings[bdId].material).toBeUndefined();
+    expect(toShelfBook(lib, 'bk1')!.art.material).toBeUndefined();
+    lib.bindings[bdId] = { ...lib.bindings[bdId], material: 'cloth' };
+    expect(toShelfBook(lib, 'bk1')!.art.material).toBe('cloth');
+  });
+
   it('기본 장정(재장정)은 입력이 같으면 같고 제목이 다르면 달라질 수 있다', () => {
     const a = defaultBinding('x', '월든', 0, '');
     const b = defaultBinding('y', '월든', 0, '');

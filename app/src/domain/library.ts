@@ -11,7 +11,7 @@
 import { formatMm } from './catalog';
 import { illustratedDimensions } from './jacket-proportions';
 import { buildBookArt, heightClassOf, layoutArt, thicknessClassOf, type BookArtParams, type LayoutVariant, type RebindInput } from './rebinding';
-import type { Book } from './types';
+import type { BindingMaterial, Book } from './types';
 
 export type ReadStatus = 'want' | 'reading' | 'read' | 'paused';
 export const READ_STATUSES: ReadStatus[] = ['want', 'reading', 'read', 'paused'];
@@ -94,6 +94,7 @@ export type Binding = {
   inkColor?: string; // 글자색(바탕 위 대비 4.5:1)
   accentColor?: string; // 띠·모티프 색
   layout?: LayoutVariant; // 책등 조판 변형
+  material?: BindingMaterial; // 장정 재질, 없으면 무광 종이
   coverArtUri?: string; // AI 표지 그림(평평한 그림, 제목 없음)
   spineArtUri?: string; // AI 책등 그림
   source: 'default' | 'ai' | 'custom'; // custom = 사용자가 색·모티프·조판을 바꿈(추천 장정 대신 적용)
@@ -272,7 +273,7 @@ export function toShelfBook(lib: Library, myBookId: string): Book | null {
     physical: { widthMm: size.widthMm, heightMm: size.heightMm, pages },
     dims: illustratedDimensions({ widthMm: size.widthMm, heightMm: size.heightMm, pages }),
     // 갈피가 있으면 책 위로 작은 종이 탭(최대 두 장, art.tsx Ribbons)
-    art: { motif: bd?.motif ?? e.art?.motifId ?? 'none', inkColor: bd?.inkColor, accentColor: bd?.accentColor, vectorCover: true, ...layoutArt(bd?.layout ?? e.art?.layoutVariant ?? 'spine_a'), ribbon: marks ? PAPER_TAB : undefined },
+    art: { motif: bd?.motif ?? e.art?.motifId ?? 'none', inkColor: bd?.inkColor, accentColor: bd?.accentColor, material: bd?.material, vectorCover: true, ...layoutArt(bd?.layout ?? e.art?.layoutVariant ?? 'spine_a'), ribbon: marks ? PAPER_TAB : undefined },
     startedAt: r?.startedAt,
     finishedAt: b.status === 'read' ? r?.finishedAt : undefined,
     quotes: marks,

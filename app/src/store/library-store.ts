@@ -62,7 +62,7 @@ function commit(next: Library) {
 export type NewBookInput = {
   edition: Omit<Edition, 'id' | 'createdAt' | 'updatedAt'>;
   status: ReadStatus;
-  binding: Pick<Binding, 'spineColor' | 'motif' | 'source' | 'seed' | 'coverArtUri' | 'spineArtUri'> & Partial<Pick<Binding, 'inkColor' | 'accentColor' | 'layout'>>;
+  binding: Pick<Binding, 'spineColor' | 'motif' | 'source' | 'seed' | 'coverArtUri' | 'spineArtUri'> & Partial<Pick<Binding, 'inkColor' | 'accentColor' | 'layout' | 'material'>>;
 };
 
 export const libraryStore = {

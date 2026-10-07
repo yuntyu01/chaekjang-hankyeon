@@ -21,6 +21,10 @@ describe('시안 비교 책장(측정 전용)', () => {
       expect(b.author).toBeUndefined();
     }
     expect(by.b01.art.motif).toBe('blossom');
+    // 재질: 그림 표지 세 권은 코팅지, 세 권은 천, 나머지는 무광 종이(비움)
+    expect(MOCKUP_BOOKS.filter((b) => b.art.material === 'coated').map((b) => b.id)).toEqual(['b04', 'b07', 'b16']);
+    expect(MOCKUP_BOOKS.filter((b) => b.art.material === 'cloth').map((b) => b.title)).toEqual(['데미안', '사람의 마음이란', '고요한 우연']);
+    expect(MOCKUP_BOOKS.filter((b) => b.art.material && b.art.material !== 'coated' && b.art.material !== 'cloth')).toEqual([]);
     expect(by.b10.art.motif).toBe('moon');
     // 갈피는 시안에서 끈이 보이는 네 권
     // 갈피: 2026-10-07 사용자 참고 사진(책 색 계열 종이 탭, 두 장인 책과 한 장인 책)

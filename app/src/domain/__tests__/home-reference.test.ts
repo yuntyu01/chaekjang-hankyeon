@@ -50,6 +50,13 @@ it('예시의 서지·완독 기록을 만들어내지 않고, 홈 장식만 적
   expect(lib.editions[added.editionId].pageCount).toBeUndefined();
   expect(lib.editions[added.editionId].size).toBeUndefined();
   expect(Object.keys(lib.rounds)).toHaveLength(0);
+  // 시안 재질: 홈 책 모양과 새로 만든 장정 모두
+  expect(books[profile.b04.bookId].art.material).toBe('coated');
+  expect(books[profile.b02.bookId].art.material).toBe('cloth');
+  expect(books[profile.b03.bookId].art.material).toBeUndefined();
+  expect(lib.bindings[lib.books[profile.b02.bookId].bindingId!].material).toBe('cloth');
+  expect(lib.bindings[lib.books[profile.b03.bookId].bindingId!].material).toBeUndefined();
+  expect(books.owned.art.material).toBeUndefined();
 });
 
 it('같은 서재로 다시 구성해도 중복 책을 만들지 않는다', () => {

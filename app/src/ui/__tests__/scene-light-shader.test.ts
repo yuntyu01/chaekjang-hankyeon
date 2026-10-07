@@ -3,7 +3,8 @@
  */
 // 빛 셰이더(SkSL)가 컴파일되고, 같은 점에서 JS 빛 모델(domain/light-model)과 같은 값을 내는지(CanvasKit으로 실제로 그려 읽는다).
 import type { Book3, Vec3 } from '@/domain/book3';
-import { bakeLoss, bandOf, boxOf, DESIGN, ENV_NX, ENV_NY, EREF, FAR, GRID_N, GRID_PASSES, lightWithLoss, TOUCH, linearOf, packBoxes, skyLossAt, solveGrid, toEye, toneDodge, toneMul, withCovers, type Band, type BoxBuf, type C3, type Env } from '@/domain/light-model';
+import { bakeLoss, bandOf, boxOf, DESIGN, ENV_NX, ENV_NY, EREF, FAR, GRID_N, GRID_PASSES, lightWithLoss, ROUGH, TOUCH, linearOf, packBoxes, skyLossAt, solveGrid, toEye, toneDodge, toneMul, withCovers, type Band, type BoxBuf, type C3, type Env } from '@/domain/light-model';
+import { MAT_UNIFORMS, matSample, type MatUniforms } from '@/domain/surface-pattern';
 import { SHELF_DEPTH, SHELF_THICK } from '@/domain/geometry';
 import { bakeSource, bookSource, GRID_SCALE, gridSource, litSource, LOSS_OFF, LOSS_SCALE, planeFrame } from '../scene-light-sksl';
 import { EDGE_R, GROOVE, rigOf } from '@/domain/book-parts';
@@ -54,12 +55,12 @@ function axes(n: Vec3) {
 // 1×1 그림에 셰이더를 그려 회색 값(0~1)을 읽는다. child: 셰이더 자식(구운 그림 자리. true면 검정, 그림 셰이더면 그것)
 const black = () => CK.Shader.MakeColor(CK.Color4f(0, 0, 0, 1), CK.ColorSpace.SRGB);
 const linear = (img: CK) => img.makeShaderOptions(CK.TileMode.Clamp, CK.TileMode.Clamp, CK.FilterMode.Linear, CK.MipmapMode.None);
-function draw(src: string, values: Record<string, number | number[]>, child: boolean | CK = false): C3 {
+function draw(src: string, values: Record<string, number | number[]>, child: boolean | CK = false, more: CK[] = []): C3 {
   const err: string[] = [];
   const effect = CK.RuntimeEffect.Make(src, (e: string) => err.push(e));
   if (!effect) throw new Error(err.join('\n'));
   const uni = uniformArray(effect, values);
-  const kids = child ? [child === true ? black() : child] : [];
+  const kids = child ? [child === true ? black() : child, ...more] : [];
   const shader = child ? effect.makeShaderWithChildren(uni, kids) : effect.makeShader(uni);
   const surf = CK.MakeSurface(1, 1);
   const paint = new CK.Paint();
@@ -90,17 +91,25 @@ function shaderLoss(P: Vec3, n: Vec3, env: Env | null, bx: BoxBuf, band: Record<
   return g.map((v) => v * LOSS_SCALE - LOSS_OFF) as C3;
 }
 
-// 그리는 셰이더(둘레 하늘 가림을 그 자리에서, liveEnv)의 곱하기·닷지 값: 평평한 면 P(법선 n), 눈 cam4
+// 그리는 셰이더(둘레 하늘 가림을 그 자리에서, liveEnv)의 곱하기·닷지 값: 평평한 면 P(법선 n), 눈 cam4.
+// 재질(mat): JS 빛과 견줄 때는 결·미세 높이가 없는 코팅지(PLAIN), k: 화소 한 칸이 덮는 면 길이(DU)
 const CAM4 = [183, 300, 0, 4918];
-function shaderLit(P: Vec3, n: Vec3, env: Env | null, dodge: boolean | 'direct', albedo: C3, base?: number[]) {
+const uniOf = (m: MatUniforms, seed = [0, 0]) => ({ mR: m.mRough, mB: m.mBump, mG: m.mGrain, mS: m.mGsize, mSeed: seed });
+const PLAIN = uniOf(MAT_UNIFORMS.coated);
+// kx: 책이 창빛을 가리는 몫(그림자 그림 자리를 고른 알파로)
+function shaderLit(P: Vec3, n: Vec3, env: Env | null, dodge: boolean | 'direct', albedo: C3, base?: number[], mat = PLAIN, k = 1e-3, kx = 0) {
   const { U, V } = axes(n);
   return draw(
     litSource(dodge),
     {
       ...(base ? { base } : null),
-      O: [P.x - 0.5e-3 * (U.x + V.x), P.y - 0.5e-3 * (U.y + V.y), P.z - 0.5e-3 * (U.z + V.z)],
-      Ux: [U.x * 1e-3, U.y * 1e-3, U.z * 1e-3],
-      Vy: [V.x * 1e-3, V.y * 1e-3, V.z * 1e-3],
+      ...mat,
+      kU: [0, 0, 0],
+      kV: [0, 0, 0],
+      kO: [0, 0],
+      O: [P.x - 0.5 * k * (U.x + V.x), P.y - 0.5 * k * (U.y + V.y), P.z - 0.5 * k * (U.z + V.z)],
+      Ux: [U.x * k, U.y * k, U.z * k],
+      Vy: [V.x * k, V.y * k, V.z * k],
       Hw: [0, 0, 1],
       tN: [n.x, n.y, n.z],
       bev0: [0, 0, 0, 1e9],
@@ -113,6 +122,7 @@ function shaderLit(P: Vec3, n: Vec3, env: Env | null, dodge: boolean | 'direct',
       env: env ? [1, env.floor, env.ceil] : [0, 0, 0],
     },
     true,
+    [CK.Shader.MakeColor(CK.Color4f(0, 0, 0, kx), CK.ColorSpace.SRGB)],
   );
 }
 
@@ -259,7 +269,7 @@ describe('그리는 셰이더 = JS 빛(lightWithLoss, 둘레 하늘 가림)', ()
   ] as [string, Vec3, Vec3, Env | null, C3][])('%s', (_, P, n0, env, albedo) => {
     const l = Math.hypot(n0.x, n0.y, n0.z);
     const n = { x: n0.x / l, y: n0.y / l, z: n0.z / l };
-    const lt = lightWithLoss(P, n, toEye(cam, P), env, skyLossAt(P, n, env, []), true, EREF.wall);
+    const lt = lightWithLoss(P, n, toEye(cam, P), env, skyLossAt(P, n, env, []), true, EREF.wall, undefined, ROUGH.coated);
     const mul = lt.r.map((r, c) => toneMul(albedo[c], r)) as C3;
     const dodge = lt.r.map((r, c) => toneDodge(albedo[c], r, lt.spec[c])) as C3;
     expect(maxDiff(shaderLit(P, n, env, false, albedo), mul)).toBeLessThan(1.5 / 255);
@@ -268,6 +278,56 @@ describe('그리는 셰이더 = JS 빛(lightWithLoss, 둘레 하늘 가림)', ()
     const base = [0.99, 0.97, 0.945];
     const direct = base.map((b, c) => Math.min(1, (b * mul[c]) / Math.max(1e-4, 1 - dodge[c]))) as C3;
     expect(maxDiff(shaderLit(P, n, env, 'direct', albedo, base), direct)).toBeLessThan(2 / 255);
+  });
+
+  it('책이 창빛을 가린 벽(그림자 그림 kx): 위 판이 가리고 남은 창빛에서 그만큼 빠진다(빛 계산 안, 톤 곡선 앞)', () => {
+    const P = { x: 200, y: 120, z: SHELF_DEPTH };
+    const n = { x: 0, y: 0, z: -1 };
+    const albedo = linearOf('#FCF8F1');
+    const base = [0.99, 0.97, 0.945];
+    for (const kx of [0.3, 1]) {
+      const lt = lightWithLoss(P, n, toEye(cam, P), row, skyLossAt(P, n, row, []), true, EREF.wall, undefined, ROUGH.coated, kx);
+      const mul = lt.r.map((r, c) => toneMul(albedo[c], r));
+      const dodge = lt.r.map((r, c) => toneDodge(albedo[c], r, lt.spec[c]));
+      const direct = base.map((b, c) => Math.min(1, (b * mul[c]) / Math.max(1e-4, 1 - dodge[c]))) as C3;
+      expect(maxDiff(shaderLit(P, n, row, 'direct', albedo, base, PLAIN, 1e-3, kx), direct)).toBeLessThan(2 / 255);
+    }
+  });
+});
+
+// 재질 무늬(결·미세 높이·거칠기)가 셰이더와 JS 쌍둥이(surface-pattern matSample)에서 같은지: 무늬가 보이는 크기(가까이)와
+// 일부만 보이는 크기에서, 미세 높이로 기운 법선·거칠기·반사율 배수까지 넣은 빛으로 견준다
+describe('재질 무늬: 셰이더 = JS(matSample)', () => {
+  const eye = { x: CAM4[0], y: CAM4[1], z: CAM4[2], dist: CAM4[3] };
+  const cam = { kx: 0, ky: 0, eye } as Parameters<typeof toEye>[0];
+  it.each([
+    ['종이(섬유·뭉침), 가까이', 'paper', { x: 131.3, y: 72.7, z: 0 }, { x: 0, y: 0, z: -1 }, 0.02],
+    ['천(올), 가까이', 'cloth', { x: 131.3, y: 72.9, z: 0 }, { x: 0, y: 0, z: -1 }, 0.02],
+    ['나무 윗면(나이테)', 'wood', { x: 150.2, y: 0, z: -10.7 }, { x: 0, y: 1, z: 0 }, 0.05],
+    ['나무 앞면, 화소가 큰 곳', 'wood', { x: 151.9, y: -8.3, z: -53 }, { x: 0, y: 0, z: -1 }, 0.4],
+    ['속지 단면(낱장·접장)', 'pages', { x: 100.37, y: 150, z: 40 }, { x: 0, y: 1, z: 0 }, 0.03],
+    ['벽(칠)', 'paint', { x: 200, y: 40, z: SHELF_DEPTH }, { x: 0, y: 0, z: -1 }, 0.3],
+  ] as [string, keyof typeof MAT_UNIFORMS, Vec3, Vec3, number][])('%s', (_, name, P, n, k) => {
+    const M = MAT_UNIFORMS[name];
+    const seed = [3.7, 11.2];
+    const { U, V } = axes(n);
+    const Au = { x: 1, y: 0, z: 0 };
+    const c = { x: n.y * Au.z - n.z * Au.y, y: n.z * Au.x - n.x * Au.z, z: n.x * Au.y - n.y * Au.x };
+    const cl = Math.hypot(c.x, c.y, c.z);
+    const Av = { x: c.x / cl, y: c.y / cl, z: c.z / cl };
+    const dot = (a: Vec3, b: Vec3) => a.x * b.x + a.y * b.y + a.z * b.z;
+    const fu = Math.max(Math.abs(dot(U, Au)), Math.abs(dot(V, Au))) * k;
+    const fv = Math.max(Math.abs(dot(U, Av)), Math.abs(dot(V, Av))) * k;
+    const ms = matSample(dot(P, Au) + seed[0], dot(P, Av) + seed[1], fu, fv, M);
+    const nb0 = { x: n.x - ms.su * Au.x - ms.sv * Av.x, y: n.y - ms.su * Au.y - ms.sv * Av.y, z: n.z - ms.su * Au.z - ms.sv * Av.z };
+    const nl = Math.hypot(nb0.x, nb0.y, nb0.z);
+    const nb = { x: nb0.x / nl, y: nb0.y / nl, z: nb0.z / nl };
+    const albedo = linearOf('#C9A27A');
+    const lt = lightWithLoss(P, nb, toEye(cam, P), row, skyLossAt(P, n, row, []), true, EREF.wall, n, ms.r);
+    const mul = lt.r.map((r, ch) => toneMul(albedo[ch], r * ms.f)) as C3;
+    const dodge = lt.r.map((r, ch) => toneDodge(albedo[ch], r * ms.f, lt.spec[ch])) as C3;
+    expect(maxDiff(shaderLit(P, n, row, false, albedo, undefined, uniOf(M, seed), k), mul)).toBeLessThan(1.5 / 255);
+    expect(maxDiff(shaderLit(P, n, row, true, albedo, undefined, uniOf(M, seed), k), dodge)).toBeLessThan(1.5 / 255);
   });
 });
 
@@ -288,20 +348,23 @@ describe('책 광선 셰이더 = 광선 기하 + JS 빛', () => {
     const S = { x: E.x + (Q.x - E.x) * k, y: E.y + (Q.y - E.y) * k };
     return [1, 0.5 - S.x, 0.5 + S.y];
   }
-  const shader = (Q: Vec3, dodge: boolean) =>
+  // kx: 책등 면이 받는 창빛 그림자(그림자 그림 자리를 고른 알파로)
+  const shader = (Q: Vec3, dodge: boolean, kx = 0) =>
     draw(
       bookSource(dodge),
       {
+        kRect: kx > 0 ? [0, 0, 1, 1, ...new Array(20).fill(0)] : new Array(24).fill(0),
         cam4: CAM4, pxa: pxaOf(Q), bO: [bO.x, bO.y, bO.z], bX: [1, 0, 0], bY: [0, 1, 0], bZ: [0, 0, 1],
         dims: [d.T, d.H, d.W], rig: [bd, sp, sq], rect: new Array(24).fill(0), keyOn: 1, albedo: tone,
-        env: [1, row.floor, row.ceil],
+        env: [1, row.floor, row.ceil], erefB: EREF.book, ...PLAIN, pR: PLAIN.mR, pB: PLAIN.mB, pG: PLAIN.mG, pS: PLAIN.mS,
       },
       true,
+      [CK.Shader.MakeColor(CK.Color4f(0, 0, 0, kx), CK.ColorSpace.SRGB)],
     );
   // JS 기하: 면 평면 점 F(면 법선 nf)에서 광선을 이어 닿는 곳의 점·법선·반사율
-  function expected(F: Vec3, nf: Vec3, hit: { P: Vec3; n: Vec3; a: C3 }, dodge: boolean): C3 {
+  function expected(F: Vec3, nf: Vec3, hit: { P: Vec3; n: Vec3; a: C3 }, dodge: boolean, kx = 0): C3 {
     const loss = skyLossAt(F, nf, row, []);
-    const lt = lightWithLoss(hit.P, hit.n, toEye(cam, hit.P), row, loss, true, hit.a === paper ? EREF.paper : EREF.book, nf);
+    const lt = lightWithLoss(hit.P, hit.n, toEye(cam, hit.P), row, loss, true, hit.a === paper ? EREF.paper : EREF.book, nf, ROUGH.coated, kx);
     return lt.r.map((r, c) => (dodge ? toneDodge(hit.a[c], r, lt.spec[c]) : toneMul(hit.a[c], r))) as C3;
   }
   const ray = (Q: Vec3) => {
@@ -312,6 +375,11 @@ describe('책 광선 셰이더 = 광선 기하 + JS 빛', () => {
     const F = { x: bO.x + d.T / 2, y: 80, z: 0 };
     const n = { x: 0, y: 0, z: -1 };
     for (const dodge of [false, true]) expect(maxDiff(shader(F, dodge), expected(F, n, { P: F, n, a: tone }, dodge))).toBeLessThan(1.5 / 255);
+  });
+  it('책등이 받는 창빛 그림자(그림자 그림 kx): 빛 계산 안에서 창빛 몫이 그만큼 빠진다', () => {
+    const F = { x: bO.x + d.T / 2, y: 80, z: 0 };
+    const n = { x: 0, y: 0, z: -1 };
+    for (const kx of [0.4, 1]) for (const dodge of [false, true]) expect(maxDiff(shader(F, dodge, kx), expected(F, n, { P: F, n, a: tone }, dodge, kx))).toBeLessThan(1.5 / 255);
   });
   it('표지 앞 모서리(둥근 모서리 안): 법선이 앞쪽으로 기운다', () => {
     // 표지(x = T) 면, 책등 쪽 변에서 0.6DU: 원호 모서리 법선(둥근 모서리 + 제본 홈)

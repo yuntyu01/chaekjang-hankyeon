@@ -1,7 +1,7 @@
 // 빛 모델(domain/light-model): 해석적인 하늘 가림(램버트 윤곽 적분 + 앞 가리개는 뒤에 보일 것과의 차이)이
 // 같은 장면을 광선으로 직접 적분한 값(몬테카를로)과 맞는지, 그리고 반사·창빛 가림의 기본 성질.
 import type { Book3, Vec3 } from '../book3';
-import { ALBEDO, RAD, bookAlbedo, boxOf, tone, toneInv, TONE, darkening, DESIGN, EREF, envBRDF, faceAlbedo, lightWithLoss, FAR, irradiance, keyBlocked, L_UNIT, linearOf, plankKeyBlocked, polyVF, sceneLight, skyLossAt, skyRadiance, solveGrid, traceRadiance, withCovers, type Box, type C3, type Env, type Grid } from '../light-model';
+import { ALBEDO, ggxKey, RAD, ROUGH, bookAlbedo, boxOf, tone, toneInv, TONE, darkening, DESIGN, EREF, envBRDF, faceAlbedo, lightWithLoss, FAR, irradiance, keyBlocked, L_UNIT, linearOf, plankKeyBlocked, polyVF, sceneLight, skyLossAt, skyRadiance, solveGrid, traceRadiance, withCovers, type Box, type C3, type Env, type Grid } from '../light-model';
 import { SHELF_DEPTH, SHELF_FRONT, SHELF_THICK, SHELF_X0, SHELF_X1 } from '../geometry';
 import palette from '@/ui/art/reference-bindings.generated.json';
 import { light } from '@/ui/lighting';
@@ -271,7 +271,7 @@ describe('재질 반사율 맞추기(역렌더링)', () => {
     const n = { x: 0, y: 0, z: -1 };
     // 대표 자리 빛은 빈 줄의 여러 번 튕긴 빛(빛 격자)이고, 그 자리 반사 몫(1 − ks)까지 들어 있다
     const E = lightWithLoss(p, n, null, row, skyLossAt(p, n, row, [], solveGrid(row, [])), true, [1, 1, 1]).r;
-    const ks = envBRDF(0.999);
+    const ks = envBRDF(0.999, ROUGH.paint);
     E.forEach((e, c) => expect((e * (1 - ks)) / EREF.wall[c]).toBeCloseTo(1, 1));
   });
 });
@@ -292,10 +292,45 @@ describe('빛 모델: 창빛 가림·반사', () => {
   });
 
   it('거친 종이의 환경 반사: 정면 약 3%, 비스듬히 볼수록 커지지만 10%를 넘지 않는다(거울 프레넬처럼 수십 %가 되지 않는다)', () => {
-    expect(envBRDF(1)).toBeGreaterThan(0.02);
-    expect(envBRDF(1)).toBeLessThan(0.04);
-    expect(envBRDF(0.1)).toBeGreaterThan(envBRDF(1));
-    expect(envBRDF(0.1)).toBeLessThan(0.1);
+    const r = ROUGH.paper;
+    expect(envBRDF(1, r)).toBeGreaterThan(0.02);
+    expect(envBRDF(1, r)).toBeLessThan(0.04);
+    expect(envBRDF(0.1, r)).toBeGreaterThan(envBRDF(1, r));
+    expect(envBRDF(0.1, r)).toBeLessThan(0.1);
+  });
+
+  it('재질: 모두 같은 유전체(F0)라 정면 반사는 비슷하고, 매끈할수록(코팅지 > 종이 > 천) 비스듬한 반사와 창빛 하이라이트가 크다', () => {
+    expect(ROUGH.coated).toBeLessThan(ROUGH.paper);
+    expect(ROUGH.paper).toBeLessThan(ROUGH.cloth);
+    for (const r of [ROUGH.coated, ROUGH.paper, ROUGH.cloth]) expect(Math.abs(envBRDF(1, r) - envBRDF(1, ROUGH.paper))).toBeLessThan(0.015);
+    expect(envBRDF(0.1, ROUGH.coated)).toBeGreaterThan(envBRDF(0.1, ROUGH.paper));
+    expect(envBRDF(0.1, ROUGH.paper)).toBeGreaterThan(envBRDF(0.1, ROUGH.cloth));
+    // 거울 방향(빛과 눈의 가운데가 법선)의 하이라이트
+    const v = { x: 0, y: 0, z: -1 };
+    const hx = L_UNIT.x + v.x, hy = L_UNIT.y + v.y, hz = L_UNIT.z + v.z;
+    const hl = Math.hypot(hx, hy, hz);
+    const n = { x: hx / hl, y: hy / hl, z: hz / hl };
+    expect(ggxKey(n, v, ROUGH.coated)).toBeGreaterThan(ggxKey(n, v, ROUGH.paper));
+    expect(ggxKey(n, v, ROUGH.paper)).toBeGreaterThan(ggxKey(n, v, ROUGH.cloth));
+  });
+
+  it('창빛 하이라이트는 광원 원반 크기보다 좁아지지 않는다: 거칠기 0이어도 봉우리가 유한하고, 빛 에너지(반구 적분)는 1을 넘지 않는다', () => {
+    const v = { x: 0, y: 0, z: -1 };
+    for (const r of [0, ROUGH.coated, ROUGH.paper]) {
+      // 법선을 반구 위로 훑어 n·l 가중 반사(π·휘도/세기를 π로 나눈 것)를 눈 방향마다 적분 = 방향 반사율 ≤ F 몫
+      let s = 0;
+      const N = 160;
+      for (let i = 0; i < N; i++)
+        for (let j = 0; j < 2 * N; j++) {
+          const th = ((i + 0.5) / N) * (Math.PI / 2);
+          const ph = ((j + 0.5) / (2 * N)) * 2 * Math.PI;
+          const w = { x: Math.sin(th) * Math.cos(ph), y: Math.sin(th) * Math.sin(ph), z: -Math.cos(th) };
+          // 빛 방향 L_UNIT 고정, 눈 방향 w를 돌려 거울 몫 적분(상반성으로 같다)
+          s += (ggxKey({ x: 0, y: 0, z: -1 }, w, r) / Math.PI) * Math.sin(th) * (Math.PI / 2 / N) * (Math.PI / N) * Math.cos(th) / Math.max(1e-6, -L_UNIT.z);
+        }
+      expect(Number.isFinite(ggxKey({ x: L_UNIT.x, y: L_UNIT.y, z: L_UNIT.z }, v, r))).toBe(true);
+      expect(s).toBeLessThan(1);
+    }
   });
 
   it('하늘은 위가 밝다', () => {

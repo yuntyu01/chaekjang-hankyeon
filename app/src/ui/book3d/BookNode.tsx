@@ -6,20 +6,20 @@
 // - 윤곽: 투영 껍질을 판 모서리 반지름(EDGE_R)으로 둥글린 모양. 레이어에 그린 뒤 그 모양으로 잘라 가장자리를 매끈하게 한다(dstIn).
 // - 밝기: 빛 모델 하나(domain/light-model, ui/SceneLight). 책끼리 앞뒤는 매 프레임 가림 순서로(zIndex).
 import { Group, Path, Picture, Rect, Skia, type SkRect } from '@shopify/react-native-skia';
-import type React from 'react';
+import { useMemo } from 'react';
 import { useDerivedValue, type SharedValue } from 'react-native-reanimated';
 
 import { corners, depthKey, faceCorners, facing, rot, toWorld, type Book3, type Cam } from '@/domain/book3';
 import { EDGE_R } from '@/domain/book-parts';
 import { bookViewCam } from '@/domain/book-view';
 import { project } from '@/domain/camera';
-import { lightWithLoss, linearOf, NO_BOXES, othersOf, skyLossAt, toEye } from '@/domain/light-model';
+import { linearOf, NO_BOXES, othersOf, skyLossAt } from '@/domain/light-model';
 import { RIBBON_Z } from '@/domain/ribbon-design';
 import { titleOpacity } from '@/domain/title-layout';
 import type { Book } from '@/domain/types';
 import { bookFacePath } from '@/ui/book/BookBody';
 import { LIGHT_ON, RENDER } from '@/ui/perf';
-import { BookLight, UniformLight } from '@/ui/SceneLight';
+import { BookLight, seedOf, TabLight, type BookKey, type TabFrame } from '@/ui/SceneLight';
 import { SHOW } from '@/ui/shelf/shadow-debug';
 
 import { useBookArt, tabsOf, toneOf, type BookArt, type Shared } from './art';
@@ -83,8 +83,8 @@ function PlainFace({ f, state, cam, px, tone }: { f: 'spine' | 'cover'; state: R
   return <Path path={path} color={tone} />;
 }
 
-// 갈피(종이 탭): 머리에서 위로 나온 종이. 보는 쪽을 향한 면(책등과 같은 법선)이라 탭 가운데 한 점의 빛으로 탭 모양 안만 다시 칠한다.
-// 하늘 가림(둘레·이웃 책)은 책 자세·둘레·상자가 바뀔 때만 계산하고, 시점에 따라 바뀌는 반사광만 매 프레임. 반사율은 앞장 탭 종이 색
+// 갈피(종이 탭): 머리에서 위로 나온 종이. 보는 쪽을 향한 면(책등과 같은 법선)이라 탭 모양 안을 화소마다 같은 빛 모델로 다시 칠한다(SceneLight TabLight,
+// 재질은 무광 종이). 하늘 가림(둘레·이웃 책)은 탭 가운데 한 점에서, 책 자세·둘레·상자가 바뀔 때만 계산한다. 재질 색은 앞장 탭 종이 색
 function Ribbons({ art, book, state, cam, px, sur }: { art: BookArt; book: Book; state: RO<Book3>; cam: RO<Cam>; px: Affine; sur: Surround }) {
   const albedo = linearOf(tabsOf(book)[0]?.color ?? toneOf(book));
   const at = useDerivedValue(() => {
@@ -99,17 +99,24 @@ function Ribbons({ art, book, state, cam, px, sur }: { art: BookArt; book: Book;
     return { root, c, n, env, loss: skyLossAt(c, n, env, othersOf(sur.boxes ? sur.boxes.value : NO_BOXES, sur.self ? sur.self.value : -1)) };
   });
   const g = useDerivedValue(() => {
-    const { root, c, n, env, loss } = at.value;
+    const { root, n, env, loss } = at.value;
     const b = state.value;
-    const p = project(cam.value, root);
-    return { tf: [{ translateX: p.x * px.s + px.tx }, { translateY: p.y * px.s + px.ty }, { rotate: (b.roll * Math.PI) / 180 }], lt: lightWithLoss(c, n, toEye(cam.value, c), env, loss) };
+    const c = cam.value;
+    const p = project(c, root);
+    const q0 = [p.x * px.s + px.tx, p.y * px.s + px.ty];
+    const a = (b.roll * Math.PI) / 180;
+    const e = c.eye;
+    const turn = (v: { x: number; y: number; z: number }) => rot(b.roll, b.yaw, v, b.spin ?? 0, b.pitch ?? 0);
+    const frame: TabFrame = { root, axR: turn({ x: 1, y: 0, z: 0 }), axU: turn({ x: 0, y: 1, z: 0 }), n, loss, cam4: e ? [e.x, e.y, e.z, e.dist] : [c.kx, c.ky, 0, 0], env };
+    return { tf: [{ translateX: q0[0] }, { translateY: q0[1] }, { rotate: a }], frame };
   });
   const tf = useDerivedValue(() => g.value.tf);
-  const lt = useDerivedValue(() => g.value.lt);
+  const frame = useDerivedValue(() => g.value.frame);
+  const seed = useMemo(() => seedOf(`${book.id}:tab`), [book.id]);
   return (
     <Group transform={tf}>
       <Picture picture={art.ribbons!} />
-      <UniformLight path={art.ribbonsShape!} light={lt} albedo={albedo} />
+      <TabLight path={art.ribbonsShape!} frame={frame} albedo={albedo} s={px.s} seed={seed} />
     </Group>
   );
 }
@@ -117,12 +124,12 @@ function Ribbons({ art, book, state, cam, px, sur }: { art: BookArt; book: Book;
 export { depthKey } from '@/domain/book3';
 
 // shared: 캔버스 밖에서 useBookShared()로 읽어 넘긴다
-// under: 면 위·갈피 아래에 그릴 것(이 책이 받는 그림자)
+// keyShadow: 이 책 면이 받는 창빛 그림자(다른 책이 창빛 원반을 가리는 몫, 면 좌표 그림: 책 빛 셰이더가 빛 계산 안에서 쓴다)
 // order: 줄 전체의 그리는 순서(가림 순서, ShelfMotion의 drawOrder). 없으면(서랍·단독) 깊이 키.
 // clip: 이 책을 그릴 영역(없으면 전부). 줄 캔버스는 다른 줄로 옮겨 가는 동안 빈 영역을 준다(그동안은 이동 캔버스가 그린다)
 // env: 이 책이 받는 빛의 둘레(판·벽, 없으면 열린 방: 서랍·단독), atlas: 이 책이 있는 줄의 구운 하늘 가림(없으면 둘레만 그 자리에서),
 // boxes·self: 갈피 한 점의 하늘 가림에 쓸 줄의 책 상자(그중 self 번째가 이 책)
-export function BookNode({ book, dims, state, cam: sceneCam, px, shared, under, order, clip, env, atlas, boxes, self }: { book: Book; dims: Book3['dims']; state: RO<Book3>; cam: RO<Cam>; px: Affine; shared: Shared; under?: React.ReactNode; order?: RO<number>; clip?: RO<SkRect> } & Omit<Surround, 'id'>) {
+export function BookNode({ book, dims, state, cam: sceneCam, px, shared, keyShadow, order, clip, env, atlas, boxes, self }: { book: Book; dims: Book3['dims']; state: RO<Book3>; cam: RO<Cam>; px: Affine; shared: Shared; keyShadow?: RO<BookKey>; order?: RO<number>; clip?: RO<SkRect> } & Omit<Surround, 'id'>) {
   const cam = useDerivedValue(() => bookViewCam(sceneCam.value, state.value));
   const art = useBookArt(book, px.s, dims, shared);
   const z = useDerivedValue(() => (order ? order.value : depthKey(state.value)));
@@ -163,9 +170,8 @@ export function BookNode({ book, dims, state, cam: sceneCam, px, shared, under, 
               <PlainFace f="cover" state={state} cam={cam} px={px} tone={tone} />
             </>
           )}
-          {/* 빛: 책 윤곽 안을 화소마다 광선으로(보이는 면·속지 구멍을 셰이더가 찾는다). 받는 그림자(under)는 그 위에 */}
-          {SHOW.body && LIGHT_ON.face ? <BookLight dims={dims} state={state} cam={cam} px={px} outline={outline} albedo={albedo} env={env} atlas={atlas} id={book.id} /> : null}
-          {under}
+          {/* 빛: 책 윤곽 안을 화소마다 광선으로(보이는 면·속지 구멍을 셰이더가 찾는다). 받는 창빛 그림자도 그 빛 계산 안에서 */}
+          {SHOW.body && LIGHT_ON.face ? <BookLight dims={dims} state={state} cam={cam} px={px} outline={outline} albedo={albedo} material={book.art.material} env={env} atlas={atlas} id={book.id} keyShadow={keyShadow} /> : null}
           <Path path={outline} color="black" blendMode="dstIn" />
         </Group>
       </Group>

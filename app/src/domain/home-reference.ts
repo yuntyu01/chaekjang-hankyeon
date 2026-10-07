@@ -30,6 +30,7 @@ export function buildReferenceHome(original: Library, previous: ShelfLayout, now
       const binding = defaultBinding(id, sample.title, 0, now);
       binding.id = availableId(`home-reference-bd-${sample.id}`, lib.bindings);
       binding.spineColor = sample.themeColor;
+      if (sample.art.material) binding.material = sample.art.material;
       lib.editions[editionId] = { id: editionId, title: sample.title, authors: [], source: 'manual', sourceName: '시안 예시', createdAt: now, updatedAt: now };
       lib.books[id] = { id, editionId, bindingId: binding.id, status: 'want', createdAt: now, updatedAt: now };
       lib.bindings[binding.id] = binding;

@@ -14,7 +14,7 @@
 //    면 위에서 바뀌는 밝기는 그 면이 보이는 방향들의 코사인 가중 평균 방향이 닿는 점(대표 점)에서 읽는다. 다중 반사 경로 추적과 비교해 검증한다.
 // 4) 반사광: 유전체의 프레넬 반사를 거칠기까지 넣어(환경 반사 근사 EnvBRDF, GGX 창빛 하이라이트). 확산 몫은 반사된 만큼 줄어든다.
 // 워클릿은 만들어질 때 쓰는 함수를 붙잡으므로, 쓰이는 함수를 먼저 정의한다.
-import { camera, light, material, surfaces } from '@/ui/lighting';
+import { camera, F0, light, materials, surfaces, type SurfaceMaterial } from '@/ui/lighting';
 
 import { corners, type Book3 } from './book3';
 import { rigOf } from './book-parts';
@@ -785,20 +785,37 @@ export function plankKeyBlocked(p: Vec3, env: Env | null) {
   return keyBlocked(env.ceil - p.y, p.z + SHELF_FRONT);
 }
 
-// 환경 반사 몫(유전체 F0, 거칠기, n·v): 거칠기까지 넣은 프레넬 적분의 근사(Karis/Lazarov EnvBRDFApprox)
-export function envBRDF(nv: number) {
+// ---------- 재질 표면(ui/lighting materials) ----------
+// 멀리서 본(미세 높이가 모두 화소보다 작은) 거칠기: α² = r⁴ + 2·slope²(Toksvig). seen: 법선 무늬로 그리는 몫(1이면 거칠기에 넣지 않는다)
+export function roughOf(m: SurfaceMaterial, seen = 0) {
+  const a = m.roughness * m.roughness;
+  const s2 = m.bump ? m.bump.slope * m.bump.slope : 0;
+  return Math.sqrt(Math.sqrt(a * a + 2 * s2 * (1 - seen * seen)));
+}
+export const ROUGH = {
+  paper: roughOf(materials.paper),
+  cloth: roughOf(materials.cloth),
+  coated: roughOf(materials.coated),
+  pages: roughOf(materials.pages),
+  wood: roughOf(materials.wood),
+  paint: roughOf(materials.paint),
+};
+// 창빛 하이라이트를 넓히는 광원 원반(반각 방향 퍼짐 = 원반 반지름의 절반): α² += (반지름/2)²
+const LR2 = (light.radius / 2) * (light.radius / 2);
+
+// 환경 반사 몫(유전체 F0, 거칠기 r, n·v): 거칠기까지 넣은 프레넬 적분의 근사(Karis/Lazarov EnvBRDFApprox)
+export function envBRDF(nv: number, r: number) {
   'worklet';
-  const r = material.roughness;
   const rx = 1 - r;
   const ry = 0.0425 - 0.0275 * r;
   const rz = 1.04 - 0.572 * r;
   const rw = -0.04 + 0.022 * r;
   const a004 = Math.min(rx * rx, Math.pow(2, -9.28 * Math.max(0, nv))) * rx + ry;
-  return material.f0 * (-1.04 * a004 + rz) + (1.04 * a004 + rw);
+  return F0 * (-1.04 * a004 + rz) + (1.04 * a004 + rw);
 }
 
 // GGX 창빛 하이라이트(π·휘도 / 창빛 수직 세기): D·G·F / (4 n·v n·l) · n·l · π
-export function ggxKey(n: Vec3, v: Vec3) {
+export function ggxKey(n: Vec3, v: Vec3, r: number) {
   'worklet';
   const nl = n.x * L_UNIT.x + n.y * L_UNIT.y + n.z * L_UNIT.z;
   const nv = n.x * v.x + n.y * v.y + n.z * v.z;
@@ -809,14 +826,13 @@ export function ggxKey(n: Vec3, v: Vec3) {
   const hl = Math.hypot(hx, hy, hz) || 1;
   const nh = Math.max(0, (n.x * hx + n.y * hy + n.z * hz) / hl);
   const vh = Math.max(0, (v.x * hx + v.y * hy + v.z * hz) / hl);
-  const a = material.roughness * material.roughness;
-  const a2 = a * a;
+  const a2 = r * r * r * r + LR2;
   const dd = nh * nh * (a2 - 1) + 1;
   const D = a2 / (Math.PI * dd * dd);
-  const k = ((material.roughness + 1) * (material.roughness + 1)) / 8;
+  const k = ((r + 1) * (r + 1)) / 8;
   const G = (nv / (nv * (1 - k) + k)) * (nl / (nl * (1 - k) + k));
   const m = 1 - vh;
-  const F = material.f0 + (1 - material.f0) * m * m * m * m * m;
+  const F = F0 + (1 - F0) * m * m * m * m * m;
   return ((D * G * F) / (4 * nv * nl)) * nl * Math.PI;
 }
 
@@ -901,22 +917,27 @@ export function skyLossAt(p: Vec3, n: Vec3, env: Env | null, boxes: Box[], G?: G
 // 하늘 가림 loss를 알 때(미리 계산해 둔 값)의 빛: 직접 몫·반사광만 계산한다
 // (기본값 식은 워클릿 클로저에 잡히지 않으므로 기본 재질은 본문에서 정한다)
 // nf: 가림 loss를 계산한 면 법선(없으면 n). 법선이 기운 곳(둥근 모서리)은 면이 받는 빛의 비율(가림 없는 빛에 대한)을 그 법선의 가림 없는 빛에 곱한다
-export function lightWithLoss(p: Vec3, n: Vec3, v: Vec3 | null, env: Env | null, loss: C3, key = true, eref?: C3, nf?: Vec3): { r: C3; spec: C3 } {
+// rough: 표면 거칠기(없으면 무광 종이), kx: 책이 창빛 원반을 가리는 몫(위 판이 가리고 남은 빛에서)
+export function lightWithLoss(p: Vec3, n: Vec3, v: Vec3 | null, env: Env | null, loss: C3, key = true, eref?: C3, nf?: Vec3, rough?: number, kx?: number): { r: C3; spec: C3 } {
   'worklet';
   const ref = eref ?? EREF.book;
-  const kb = key ? plankKeyBlocked(p, env) : 0;
+  const ro = rough ?? ROUGH.paper;
+  const kb = 1 - (1 - (key ? plankKeyBlocked(p, env) : 0)) * (1 - (kx ?? 0));
   const open = (m: Vec3) => light.ambient + light.skyUp * m.y + light.diffuse * Math.max(0, m.x * L_UNIT.x + m.y * L_UNIT.y + m.z * L_UNIT.z) * (1 - kb);
   const E0 = open(n);
   const E0f = nf ? open(nf) : E0;
   const k = E0 / Math.max(E0f, 1e-4);
-  const E: C3 = [Math.max(0, E0f - loss[0]) * k, Math.max(0, E0f - loss[1]) * k, Math.max(0, E0f - loss[2]) * k];
+  // 하늘 가림은 그 면이 받는 하늘 빛보다 클 수 없다(아주 좁은 틈에서 해석 값의 작은 오차가 넘을 때)
+  const sky = light.ambient + light.skyUp * (nf ?? n).y;
+  const lb = (c: number) => Math.min(loss[c], sky);
+  const E: C3 = [Math.max(0, E0f - lb(0)) * k, Math.max(0, E0f - lb(1)) * k, Math.max(0, E0f - lb(2)) * k];
   if (!v) return { r: [E[0] / ref[0], E[1] / ref[1], E[2] / ref[2]], spec: [0, 0, 0] };
   const nv = Math.max(0, n.x * v.x + n.y * v.y + n.z * v.z);
-  const ks = envBRDF(nv);
+  const ks = envBRDF(nv, ro);
   const vn = 2 * (n.x * v.x + n.y * v.y + n.z * v.z);
   const rr = { x: vn * n.x - v.x, y: vn * n.y - v.y, z: vn * n.z - v.z };
   const env3 = envHit(p, rr, env).rad;
-  const key3 = ggxKey(n, v) * light.diffuse * (1 - kb);
+  const key3 = ggxKey(n, v, ro) * light.diffuse * (1 - kb);
   const cam = EREF.wall;
   const g = GAIN;
   return {
@@ -925,9 +946,9 @@ export function lightWithLoss(p: Vec3, n: Vec3, v: Vec3 | null, env: Env | null,
   };
 }
 
-export function sceneLight(p: Vec3, n: Vec3, v: Vec3 | null, env: Env | null, boxes: Box[], key = true, eref?: C3, G?: Grid, self = -1) {
+export function sceneLight(p: Vec3, n: Vec3, v: Vec3 | null, env: Env | null, boxes: Box[], key = true, eref?: C3, G?: Grid, self = -1, rough?: number) {
   'worklet';
-  return lightWithLoss(p, n, v, env, skyLossAt(p, n, env, boxes, G, self), key, eref);
+  return lightWithLoss(p, n, v, env, skyLossAt(p, n, env, boxes, G, self), key, eref, undefined, rough);
 }
 
 // ---------- 그린 판 끝 너머, 판 두께 높이의 벽 ----------
@@ -1163,16 +1184,21 @@ const REF_EYE = (() => {
   const e = camAt(VIEW_PITCH_MIN).eye!;
   return { x: e.x, y: e.y, z: e.z - e.dist };
 })();
-function anchorLight(p: Vec3, n: Vec3, G: Grid): C3 {
+// 대표 자리의 확산 몫 빛(반사된 몫 ks 뺀 것): 재질 거칠기 rough로
+function refNv(p: Vec3, n: Vec3) {
+  const d = { x: REF_EYE.x - p.x, y: REF_EYE.y - p.y, z: REF_EYE.z - p.z };
+  return Math.max(0, (n.x * d.x + n.y * d.y + n.z * d.z) / Math.hypot(d.x, d.y, d.z));
+}
+const REF_BOOK_P = { x: REF_X, y: REF_BOOK_H / 2, z: 0 };
+const REF_FRONT = { x: 0, y: 0, z: -1 };
+function anchorLight(p: Vec3, n: Vec3, G: Grid, rough: number): C3 {
   const kb = plankKeyBlocked(p, REF_ENV);
   const E0 = light.ambient + light.skyUp * n.y + light.diffuse * Math.max(0, n.x * L_UNIT.x + n.y * L_UNIT.y + n.z * L_UNIT.z) * (1 - kb);
   const loss = envLoss(p, n, REF_ENV, G);
-  const d = { x: REF_EYE.x - p.x, y: REF_EYE.y - p.y, z: REF_EYE.z - p.z };
-  const l = Math.hypot(d.x, d.y, d.z);
-  const ks = envBRDF(Math.max(0, (n.x * d.x + n.y * d.y + n.z * d.z) / l));
+  const ks = envBRDF(refNv(p, n), rough);
   return [(E0 - loss[0]) * (1 - ks), (E0 - loss[1]) * (1 - ks), (E0 - loss[2]) * (1 - ks)];
 }
-export type Calibration = { eref: { wall: C3; plank: C3; book: C3 }; albedo: { wall: C3; plank: C3; paper: C3 } };
+export type Calibration = { eref: { wall: C3; plank: C3; book: C3; paper: C3 }; albedo: { wall: C3; plank: C3; paper: C3 } };
 function setAlbedo() {
   const gain = (m: C3, ref: C3): C3 => [(toneInv(m[0]) * EREF.wall[0]) / ref[0] / GAIN, (toneInv(m[1]) * EREF.wall[1]) / ref[1] / GAIN, (toneInv(m[2]) * EREF.wall[2]) / ref[2] / GAIN];
   ALBEDO.wall = gain(DESIGN.wall, EREF.wall);
@@ -1187,27 +1213,27 @@ export function runCalibration(log?: (s: string) => void): Calibration {
     const before = [ALBEDO.wall, ALBEDO.plank, ALBEDO.paper, EREF.book].flat();
     // 대표 자리의 둘레(빈 줄)도 여러 번 튕긴 빛으로(빛 격자)
     const G = solveGrid(REF_ENV, []);
-    EREF.wall = anchorLight({ x: REF_X, y: REF_SPACE / 2, z: SHELF_DEPTH }, front, G);
-    EREF.plank = anchorLight({ x: REF_X, y: -SHELF_THICK / 2, z: -SHELF_FRONT }, front, G);
-    EREF.book = anchorLight({ x: REF_X, y: REF_BOOK_H / 2, z: 0 }, front, G);
-    EREF.paper = EREF.book;
+    EREF.wall = anchorLight({ x: REF_X, y: REF_SPACE / 2, z: SHELF_DEPTH }, front, G, ROUGH.paint);
+    EREF.plank = anchorLight({ x: REF_X, y: -SHELF_THICK / 2, z: -SHELF_FRONT }, front, G, ROUGH.wood);
+    EREF.book = anchorLight(REF_BOOK_P, front, G, ROUGH.paper);
+    EREF.paper = anchorLight(REF_BOOK_P, front, G, ROUGH.pages);
     setAlbedo();
     const after = [ALBEDO.wall, ALBEDO.plank, ALBEDO.paper, EREF.book].flat();
     const change = Math.max(...after.map((v, k) => Math.abs(v - before[k])));
     log?.(`calibration ${i}: change ${change.toExponential(2)}`);
     if (change < 1e-6) break;
   }
-  return { eref: { wall: EREF.wall, plank: EREF.plank, book: EREF.book }, albedo: { wall: ALBEDO.wall, plank: ALBEDO.plank, paper: ALBEDO.paper } };
+  return { eref: { wall: EREF.wall, plank: EREF.plank, book: EREF.book, paper: EREF.paper }, albedo: { wall: ALBEDO.wall, plank: ALBEDO.plank, paper: ALBEDO.paper } };
 }
 // 맞추기 입력(이 값이 바뀌면 미리 계산한 값을 다시 만든다)
 export function calibrationInputs() {
-  return JSON.stringify({ light, material, surfaces, TONE, REF_SPACE, REF_BOOK_H, SHELF_DEPTH, SHELF_FRONT, SHELF_THICK, SHELF_X0, SHELF_X1, GRID_N, ENV_NY, ENV_COLS, GRID_PASSES, TOUCH, eye: REF_EYE });
+  return JSON.stringify({ light, F0, materials, surfaces, TONE, REF_SPACE, REF_BOOK_H, SHELF_DEPTH, SHELF_FRONT, SHELF_THICK, SHELF_X0, SHELF_X1, GRID_N, ENV_NY, ENV_COLS, GRID_PASSES, TOUCH, eye: REF_EYE });
 }
 export function applyCalibration(c: Calibration) {
   EREF.wall = c.eref.wall;
   EREF.plank = c.eref.plank;
   EREF.book = c.eref.book;
-  EREF.paper = c.eref.book;
+  EREF.paper = c.eref.paper;
   ALBEDO.wall = c.albedo.wall;
   ALBEDO.plank = c.albedo.plank;
   ALBEDO.paper = c.albedo.paper;
@@ -1219,10 +1245,18 @@ export function applyCalibration(c: Calibration) {
 if (CALIBRATION) applyCalibration(CALIBRATION);
 else setAlbedo();
 
-// 책 장정 색(시안 색) → 실제 반사율(되비침에 쓴다)
-export function bookAlbedo(hex: string): C3 {
+// 장정 재질(거칠기 rough)의 대표 자리 빛: 재질이 다르면 대표 자리에서 반사되는 몫이 달라 확산 몫이 다르다(무광 종이 EREF.book 기준)
+const REF_NV_BOOK = refNv(REF_BOOK_P, REF_FRONT);
+export function bookEref(rough: number): C3 {
+  'worklet';
+  const k = (1 - envBRDF(REF_NV_BOOK, rough)) / (1 - envBRDF(REF_NV_BOOK, ROUGH.paper));
+  return [EREF.book[0] * k, EREF.book[1] * k, EREF.book[2] * k];
+}
+// 책 장정 색(시안 색) → 실제 반사율(되비침에 쓴다). rough: 장정 재질 거칠기(없으면 무광 종이)
+export function bookAlbedo(hex: string, rough?: number): C3 {
   'worklet';
   const c = linearOf(hex);
   const g = GAIN;
-  return [(toneInv(c[0]) * EREF.wall[0]) / EREF.book[0] / g, (toneInv(c[1]) * EREF.wall[1]) / EREF.book[1] / g, (toneInv(c[2]) * EREF.wall[2]) / EREF.book[2] / g];
+  const e = bookEref(rough ?? ROUGH.paper);
+  return [(toneInv(c[0]) * EREF.wall[0]) / e[0] / g, (toneInv(c[1]) * EREF.wall[1]) / e[1] / g, (toneInv(c[2]) * EREF.wall[2]) / e[2] / g];
 }

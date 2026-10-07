@@ -2,12 +2,11 @@
 // 가리개 = 같은 줄의 다른 책(이 책에 드리울 수 있는 범위만). 위 판이 광원 원반을 가리는 몫은 책 면 셰이더(SceneLight)가 계산한다.
 // 벽·선반 윗면 그림자와 같은 광원 모델(cast-shadow): 가리개를 빛 길이 구간(physShadow.bands)으로 잘라 구간마다 받는 면에 떨어뜨리고,
 // 구간 가운데 거리의 반그림자로 번지게 한다. 구간 조각은 서로 겹치지 않아 한 빛줄기가 두 번 어두워지지 않는다.
-// 진하기 d = 그 면이 받는 창빛 몫 / 그 면이 받는 빛(light-model). 빛을 등진 면은 창빛이 없어 받지 않는다.
-// 화면 투영은 ui/book3d/received.ts recvProject가 한다.
+// 빛을 등진 면은 창빛이 없어 받지 않는다. 결과(가려지는 몫)는 면 좌표 그림으로 그려 책 빛 셰이더가 빛 계산 안에서 쓴다(ui/SceneLight bookKeyImage):
+// 그 면이 받는 창빛이 얼마나 줄어드는지(진하기)는 셰이더가 그 면의 빛 그대로 계산한다.
 import { corners, faceCorners, faceNormal, FACE_IDS, rot, type Book3, type FaceId, type Vec3 } from './book3';
 import { penumbraSigma, shadowOnPlane, thinOccluder, travelOf } from './cast-shadow';
 import { SHELF_DEPTH, SHELF_FRONT } from './geometry';
-import { irradiance, keyIrradiance, NEGLIGIBLE, shadowAlpha } from './light-model';
 import { light, physShadow } from '@/ui/lighting';
 
 const LIGHT0 = travelOf(light.dir);
@@ -21,8 +20,8 @@ export const RECV_SLOTS = 2;
 
 // polys: 구간에 드는 그림자 다각형, sigma: 흐림 시그마(캔버스 px), w: 광원 원반 중 가려지는 몫(얇은 가리개)
 export type Layer3 = { polys: Vec3[][]; sigma: number; w: number };
-// d: 이 면에서 창빛이 가려질 때의 진하기, bands: 빛 길이 구간마다(physShadow.bands와 같은 수)
-export type Face3 = { f: FaceId; fc: Vec3[]; d: number; bands: Layer3[] };
+// bands: 빛 길이 구간마다(physShadow.bands와 같은 수)
+export type Face3 = { f: FaceId; fc: Vec3[]; bands: Layer3[] };
 export type Recv3 = { b: Book3; faces: Face3[] } | null;
 
 // 받는 그림자 전체를 세로로 dy만큼 옮긴 것(다른 줄 좌표로 그릴 때: 줄 사이는 세로 거리만 다르다)
@@ -34,7 +33,7 @@ export function shiftRecv(r: Recv3, dy: number): Recv3 {
   return { b: { ...r.b, t: sh(r.b.t) }, faces: r.faces.map((f) => ({ ...f, fc: f.fc.map(sh), bands: f.bands.map(layer) })) };
 }
 
-// 받는 그림자 3D 단계(카메라와 무관). 책이 움직일 때만 다시 계산하고, 시점을 끄는 동안에는 책 그림(BookNode)이 recvProject로 투영만 한다.
+// 받는 그림자 3D 단계(카메라와 무관). 책이 움직일 때만 다시 계산한다(시점을 끄는 동안에는 다시 그릴 것이 없다).
 // s: 캔버스 배율(흐림 px). dir: 빛 방향(물체 → 광원). 주지 않으면 앱 광원. 테스트가 비스듬한 빛으로 기하를 검사할 때 넘긴다
 export function receivedShadow3(b: Book3 | null, occBodies: Book3[], s: number, dir?: Vec3): Recv3 {
   'worklet';
@@ -56,8 +55,6 @@ export function receivedShadow3(b: Book3 | null, occBodies: Book3[], s: number, 
     // 빛을 등진 면은 창빛이 없어 그림자가 생기지 않는다
     if (n.x * LN.x + n.y * LN.y + n.z * LN.z <= 0) continue;
     // 앱 광원에서 이 면의 그림자가 화면에 보이지 않을 만큼 옅으면 계산하지 않는다
-    const d = keyIrradiance(n) / irradiance(n);
-    if (!dir && shadowAlpha(d) < NEGLIGIBLE) continue;
     const fc = faceCorners(f).map((i) => cs[i]);
     // 면 좌표(u, v: 면 사각형 0~1): 그림자가 면에 실제로 닿는 가리개만
     const e1 = { x: fc[1].x - fc[0].x, y: fc[1].y - fc[0].y, z: fc[1].z - fc[0].z };
@@ -102,7 +99,7 @@ export function receivedShadow3(b: Book3 | null, occBodies: Book3[], s: number, 
         any = true;
       }
     }
-    if (any) faces.push({ f, fc, d, bands });
+    if (any) faces.push({ f, fc, bands });
   }
   return { b, faces };
 }

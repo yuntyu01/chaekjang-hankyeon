@@ -8,7 +8,6 @@ import { SAMPLE_BOOKS, SAMPLE_LAYOUT } from '../test-fixtures/interaction-books'
 import { bodiesOf } from '../shelf-scene';
 import type { ShelfLayout } from '../types';
 import { receivedShadow3, type Face3 } from '../received3';
-import { irradiance, keyIrradiance } from '../light-model';
 import { physShadow } from '@/ui/lighting';
 
 const books: BookMap = Object.fromEntries(SAMPLE_BOOKS.map((b) => [b.id, b]));
@@ -186,14 +185,9 @@ describe('받는 그림자: 가리개 모델 하나(벽·선반과 같은 빛 �
     for (let i = 1; i < total.length; i++) expect(Math.abs(total[i] - total[i - 1])).toBeLessThan(fin * 0.25);
   });
 
-  it('받는 면의 진하기: 그 면이 받는 창빛 몫 / 받는 빛(빛 모델), 빛을 등진 옆면은 받지 않는다', () => {
+  it('창빛을 향한 면만 받는다(진하기는 셰이더가 그 면의 빛으로): 빛을 등진 옆면은 받지 않는다', () => {
     const r = receivedShadow3(recv, [near1, near2], 3, TEST_DIR);
-    const spine = faceOf(r, 'spine')!;
-    const front = { x: 0, y: 0, z: -1 };
-    expect(spine.d).toBeCloseTo(keyIrradiance(front) / irradiance(front), 9);
-    // 머리(위를 향함)는 거의 수평인 창빛을 덜 받아 그림자도 옅다
-    const head = faceOf(r, 'head');
-    if (head) expect(head.d).toBeLessThan(spine.d);
+    expect(faceOf(r, 'spine')).toBeTruthy();
     // 오른쪽 옆면(법선 +x, 빛은 왼쪽에서): 없다
     for (const f of r!.faces) expect(['cover']).not.toContain(f.f);
   });

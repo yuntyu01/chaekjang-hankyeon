@@ -9,15 +9,15 @@ import { makeMutable } from 'react-native-reanimated';
 import { SHOW } from '@/ui/shelf/shadow-debug';
 
 export const PERF_ENABLED = process.env.EXPO_PUBLIC_PERF === '1';
-// 세부 단계: art에서 옆면 질감만 뺀 것(art-grain), art에 그림자 한 종류씩 더한 것(art+이름)
+// 세부 단계: art에 그림자 한 종류씩 더한 것(art+이름)
 type Shadow = 'wall' | 'shelfCast' | 'shelf' | 'cast';
-export type PerfLevel = 'shapes' | 'art' | 'cast' | 'full' | 'art-grain' | `art+${Shadow}`;
+export type PerfLevel = 'shapes' | 'art' | 'cast' | 'full' | `art+${Shadow}`;
 export const PERF_LEVELS: PerfLevel[] = ['shapes', 'art', 'cast', 'full'];
-export const PERF_DETAIL: PerfLevel[] = ['art-grain', 'art+wall', 'art+shelfCast', 'art+shelf', 'art+cast'];
+export const PERF_DETAIL: PerfLevel[] = ['art+wall', 'art+shelfCast', 'art+shelf', 'art+cast'];
 const SHADOWS: Shadow[] = ['wall', 'shelfCast', 'shelf', 'cast'];
 
 // 책 몸체 그리기 단계(BookNode·BookFaces가 마운트할 때 읽는다. 바꾸면 선반 줄을 다시 마운트해야 한다)
-export const RENDER = { art: true, texture: true, grain: true, books: true };
+export const RENDER = { art: true, texture: true, books: true };
 // 측정 번들: 빛 층 끄기(?lt=끌 글자: f 책, k 선반 판, w 벽). 마운트할 때 읽는다
 export const LIGHT_ON = { face: true, plank: true, wall: true };
 export function setLightOff(s: string) {
@@ -58,7 +58,6 @@ export function setPerfLevel(level: PerfLevel) {
   const art = level !== 'shapes';
   RENDER.art = art;
   RENDER.texture = art;
-  RENDER.grain = art && level !== 'art-grain';
   SHOW.body = art;
   const on = new Set<Shadow>(level === 'full' ? SHADOWS : level === 'cast' ? SHADOWS.filter((k) => k !== 'cast') : level.startsWith('art+') ? [level.slice(4) as Shadow] : []);
   for (const k of SHADOWS) SHOW[k] = on.has(k);

@@ -4,20 +4,19 @@
 // 셰이더(ui/SceneLight)가 같이 읽어 화소마다 계산한다.
 // 그리는 순서(zIndex)는 장면 전체의 가림 순서(scene.ts sceneOrder: 모든 줄의 책과 선반 판)를 따른다.
 // 한 줄의 좌표 변환은 px 하나(설계 단위 → 캔버스 px, 원점 = 그 줄 책 기준선 왼쪽 끝)뿐이다.
-import { AlphaType, BlendMode, BlurMask, BlurStyle, ColorType, FilterMode, Group, ImageShader, MipmapMode, Path, Rect, Skia, TileMode, vec, type SkImage, type SkPath, type SkRect } from '@shopify/react-native-skia';
+import { BlurMask, BlurStyle, Group, Path, Skia, type SkImage, type SkPath, type SkRect } from '@shopify/react-native-skia';
 import { memo, useLayoutEffect, useMemo } from 'react';
 import { useAnimatedReaction, useDerivedValue, useSharedValue, type SharedValue } from 'react-native-reanimated';
 
-import { corners, fromPlaced, lowest, type Book3 } from '@/domain/book3';
+import { corners, fromPlaced, lowest, type Book3, type Vec3 } from '@/domain/book3';
 import { camAt, project, toPx, VIEW_PITCH_MAX, VIEW_PITCH_MIN, type Affine, type Cam } from '@/domain/camera';
-import { bookViewCam } from '@/domain/book-view';
 import { SHELF_DEPTH, SHELF_FRONT, SHELF_X0, SHELF_X1 } from '@/domain/geometry';
 import { shelfFaces } from '@/domain/shelf-geom';
 import { BOX_EDGES, bookCast, type BookCast } from '@/domain/cast-shadow';
-import { bookAlbedo, boxOf, FAR, irradiance, keyBlocked, keyIrradiance, NEGLIGIBLE, packBoxes, shadowAlpha, withCovers, type Box, type BoxBuf, type C3, type Env } from '@/domain/light-model';
+import { bookAlbedo, boxOf, ROUGH, packBoxes, withCovers, type Box, type BoxBuf, type C3, type Env } from '@/domain/light-model';
 import { hull } from '@/domain/shadow-shape';
 import { outlineOf, type BookFrame, type Point } from '@/domain/shelf-scene';
-import { RECV_SLOTS, recvProject, type Recv, type Recv3 } from '@/ui/book3d/received';
+import type { Recv3 } from '@/domain/received3';
 import { REACH_L, REACH_R, receivedShadow3 } from '@/domain/received3';
 import type { Book } from '@/domain/types';
 import type { Shared } from '@/ui/book3d/art';
@@ -28,8 +27,8 @@ import { colors } from '@/ui/theme';
 import { physShadow } from '@/ui/lighting';
 import { SHOW } from '@/ui/shelf/shadow-debug';
 import { WALL_X0, WALL_X1 } from '@/ui/shelf/ShelfPlank';
-import { TL, tl, tlOn, tlu } from '@/ui/perf';
-import { keepLatest, type Atlas } from '@/ui/SceneLight';
+import { RENDER, TL, tl, tlOn, tlu } from '@/ui/perf';
+import { bookKeyImage, keepLatest, NO_IMAGE, type Atlas, type BookKey, type PlaneKey } from '@/ui/SceneLight';
 
 import { scheduleOnUI } from 'react-native-worklets';
 
@@ -262,12 +261,11 @@ const RowBook = memo(
         });
       };
     }, [id, shelfId]);
-    const artCam = useDerivedValue(() => bookViewCam(cam.value, state.value));
-    const under = recv ? <BookReceives vis={vis} poses={recv.poses} id={id} ids={recv.ids} cam={artCam} px={px} debug={recv.debug} /> : null;
+    const keyShadow = useBookKey(vis, recv, id, `book-key:${shelfId}:${id}`, px);
     const z = useDerivedValue(() => zOf(order, id));
     // 줄의 책 상자 목록에서 이 책(빛을 받을 때 자기 상자는 뺀다)
     const self = useDerivedValue(() => boxes.value.ids.indexOf(id));
-    return <BookNode book={book} dims={dims} state={state} cam={cam} px={px} shared={shared} under={under} order={z} clip={clip} env={env} atlas={atlas} boxes={boxes} self={self} />;
+    return <BookNode book={book} dims={dims} state={state} cam={cam} px={px} shared={shared} keyShadow={keyShadow} order={z} clip={clip} env={env} atlas={atlas} boxes={boxes} self={self} />;
   },
   (a, b) =>
     a.m === b.m && a.shelfId === b.shelfId && a.id === b.id && a.book === b.book && dimsKey(a.dims) === dimsKey(b.dims) && a.cam === b.cam && a.px === b.px && a.shared === b.shared && a.space === b.space &&
@@ -375,7 +373,7 @@ const NO_PATH = Skia.PathBuilder.Make().detach();
 // 공간 밖(다른 줄로 옮겨 가는 중 판 너머에 있는 책)은 판이 가려 이 줄 안을 가리지 않는다. 반사율은 책 몸체 재질 색에서.
 // 나란히 선 책·쌓인 책은 서로 마주 보는 면을 가린다(덮개, light-model withCovers). 다른 줄 책은 판이 다 가린다
 export function useRowBoxes(poses: Readonly<SharedValue<Poses>>, ids: string[], books: Record<string, Book>, env: Env): Readonly<SharedValue<BoxBuf>> {
-  const albedos = useMemo(() => Object.fromEntries(ids.map((id) => [id, books[id] ? bookAlbedo(bookTone(books[id])) : ([0, 0, 0] as C3)])), [ids, books]);
+  const albedos = useMemo(() => Object.fromEntries(ids.map((id) => [id, books[id] ? bookAlbedo(bookTone(books[id]), ROUGH[books[id].art.material ?? 'paper']) : ([0, 0, 0] as C3)])), [ids, books]);
   return useDerivedValue(() => {
     const own: Box[] = [];
     const used: string[] = [];
@@ -398,8 +396,8 @@ export function useRowBoxes(poses: Readonly<SharedValue<Poses>>, ids: string[], 
 }
 
 // ---------- 창빛 그림자: 책 → 벽·선반 윗면 ----------
-// 책 → 벽·선반 윗면 층의 3D 점은 domain/cast-shadow bookCast가 만들고, 여기서는 투영·흐림·합성만 한다.
-// 시점을 끄는 동안에는 투영만 다시 하고, 책이 움직일 때만 3D 계산을 다시 한다.
+// 책 → 벽·선반 윗면 그림자의 3D 점은 domain/cast-shadow bookCast가 만들고(빛 길이 구간마다), 여기서는 평면 좌표 그림으로 흐려 칠한다.
+// castPath: 측정(benchProjection)에서 투영 비용을 잴 때
 function castPath(cam: Cam, c: BookCast, px: Affine): SkPath {
   'worklet';
   if (!c) return NO_PATH;
@@ -407,60 +405,13 @@ function castPath(cam: Cam, c: BookCast, px: Affine): SkPath {
   for (const q of c.pts) pts.push(toPx(cam, px, q));
   return pathOf([hull(pts)]);
 }
-
-// 그림자 한 권·한 구간: 불투명하게 그려(얇은 가리개는 w만큼) 층(CastLayer) 안에서 합집합이 되게 한다.
-// 3D 계산(of)은 이 책 자세가 바뀔 때만(줄 자세 모음에서 이 책 값은 멈춘 동안 같은 객체), 투영은 시점이 바뀔 때도
-function CastShadow({ poses, id, of, k, cam, px }: { poses: Readonly<SharedValue<Poses>>; id: string; of: (b: Book3, k: number) => BookCast; k: number; cam: CamSV; px: Affine }) {
-  const b = useDerivedValue(() => poses.value[id] ?? null);
-  const c = useDerivedValue(() => (b.value ? of(b.value, k) : null));
-  const path = useDerivedValue(() => castPath(cam.value, c.value, px));
-  const sigma = useDerivedValue(() => Math.max(0.01, c.value ? c.value.sigma : 0));
-  const op = useDerivedValue(() => c.value?.w ?? 0);
-  return (
-    <Path path={path} color="black" opacity={op}>
-      <BlurMask blur={sigma} style="normal" />
-    </Path>
-  );
-}
-
-// 받는 면 하나의 창빛 그림자 층: 모든 책·모든 빛 길이 구간을 한 레이어에 합집합으로 그리고(겹쳐도 두 번 어두워지지 않는다),
-// 받는 면의 진하기(검정 불투명도 shadowAlpha(d))를 dstIn으로 한 번 얹는다. ink: 진하기를 칠하는 요소(색 또는 세로 그러데이션)
 const BAND_KS = physShadow.bands.map((_, k) => k);
-function CastLayer({ poses, ids, of, cam, px, ink }: { poses: Readonly<SharedValue<Poses>>; ids: string[]; of: (b: Book3, k: number) => BookCast; cam: CamSV; px: Affine; ink: React.ReactNode }) {
-  return (
-    <Group layer>
-      {ids.map((id) => BAND_KS.map((k) => <CastShadow key={`${id}:${k}`} poses={poses} id={id} of={of} k={k} cam={cam} px={px} />))}
-      {ink}
-    </Group>
-  );
-}
 
-// 창빛이 가려질 때의 진하기 = 그 면이 받는 창빛 몫 / 받는 빛: 벽(앞을 향함), 선반 윗면(위를 향함)
-const WALL_N = { x: 0, y: 0, z: -1 };
-const UP_N = { x: 0, y: 1, z: 0 };
-const D_WALL = keyIrradiance(WALL_N) / irradiance(WALL_N);
-const D_FLOOR = keyIrradiance(UP_N) / irradiance(UP_N);
-// 벽: 위 판이 이미 가린 창빛은 책이 다시 가릴 수 없다 → 진하기 = D_WALL·(1 − 위 판이 가린 몫). 위 판 그늘이 있는 높이만 단계(해상도)로
-const WALL_STOPS = 9;
-function wallInk(space: number, top: boolean) {
-  if (top) return { pos: [0, 1], colors: ['black', 'black'].map(() => `rgba(0,0,0,${shadowAlpha(D_WALL)})`), y0: 0, y1: 1 };
-  // 위 판 그늘이 닿는 높이: 광원 원반 아래 끝이 판 앞 모서리에 걸리는 앙각까지
-  const zf = SHELF_DEPTH + SHELF_FRONT;
-  let reach = 1;
-  while (reach < space && keyBlocked(reach, zf) > 0) reach *= 1.2;
-  const y0 = Math.max(0, space - reach);
-  const pos = Array.from({ length: WALL_STOPS }, (_, i) => i / (WALL_STOPS - 1));
-  return { pos, colors: pos.map((t) => `rgba(0,0,0,${shadowAlpha(D_WALL * (1 - keyBlocked(space - (y0 + (space - y0) * t), zf))).toFixed(4)})`), y0, y1: space };
-}
-const FLOOR_SHADOW = shadowAlpha(D_FLOOR) >= NEGLIGIBLE;
-
-// 벽 단계(판보다 먼저): 책 → 벽 창빛 그림자. 벽 자체(색·하늘 가림·위 판 그늘)는 ShelfPlank ShelfWall이 칠한다.
-// 그림자는 벽 평면 위의 모양이라 시점과 상관없다: 벽 좌표 그림(배율 = 캔버스 배율)에 책 자세가 바뀔 때만 그리고, 그리는 프레임에는
-// 그 그림을 벽의 화면 자리(확대·이동)에 놓기만 한다. 그림 범위: 판 윗면이 벽에 닿는 선(y = 0, 그 아래 벽으로 가는 빛은 판 윗면을 지나야 해서
-// 책이 가릴 수 없다) ~ y1(위 판 윗면이 벽에 닿는 선, 맨 윗줄은 벽 끝). 가로는 화면에 보이는 벽 범위
-const NO_IMAGE = Skia.Image.MakeImage({ width: 1, height: 1, alphaType: AlphaType.Premul, colorType: ColorType.RGBA_8888 }, Skia.Data.fromBytes(new Uint8Array(4)), 4)!;
-const LINEAR = { filter: FilterMode.Linear, mipmap: MipmapMode.None };
-function wallShadows(key: string, poses: Poses, ids: string[], s: number, W: number, H: number, y1: number, ink: { pos: number[]; colors: string[]; y0: number; y1: number }): SkImage {
+// 벽·판 윗면이 받는 창빛 그림자(이 줄 책들이 창빛 원반을 가리는 몫, 알파)를 평면 좌표 그림으로: 벽·판 셰이더가 빛 계산 안에서
+// 창빛 몫에 곱한다(SceneLight PlaneKey). 그림자는 평면 위 모양이라 시점과 상관없다: 책 자세가 바뀔 때만 다시 그린다.
+// 벽 그림 범위: 판 윗면이 벽에 닿는 선(y = 0, 그 아래 벽으로 가는 빛은 판 윗면을 지나야 해서 책이 가릴 수 없다) ~ y1, 가로는 화면에 보이는 벽.
+// 판 윗면 그림 범위: 판 전체(가로 판 길이, 앞 끝 ~ 벽). 판 아래(다른 줄)에 있는 책은 이 판에 드리우지 않는다
+function planeShadows(key: string, poses: Poses, ids: string[], s: number, W: number, H: number, wall: boolean, toImg: (q: Vec3) => Point): SkImage {
   'worklet';
   // UI 스레드에서만(파생 값은 마운트 직후 UI에서 다시 돈다)
   if (!(globalThis as { _WORKLET?: boolean })._WORKLET) return NO_IMAGE;
@@ -471,76 +422,51 @@ function wallShadows(key: string, poses: Poses, ids: string[], s: number, W: num
   paint.setColor(Skia.Color('black'));
   for (const id of ids) {
     const b = poses[id];
-    if (!b) continue;
+    if (!b || (!wall && lowest(b) < -0.5)) continue;
     for (const k of BAND_KS) {
-      const c = bookCast(b, s, k, true);
+      const c = bookCast(b, s, k, wall);
       if (!c || c.w <= 0) continue;
-      const pts = hull(c.pts.map((q) => ({ x: (q.x - WALL_X0) * s, y: (y1 - q.y) * s })));
+      const pts = hull(c.pts.map(toImg));
       if (pts.length < 3) continue;
       paint.setAlphaf(c.w);
       paint.setMaskFilter(Skia.MaskFilter.MakeBlur(BlurStyle.Normal, Math.max(0.01, c.sigma), true));
       canvas.drawPath(pathOf([pts]), paint);
     }
   }
-  // 진하기(높이에 따른 세로 그러데이션)를 dstIn으로
-  const ip = Skia.Paint();
-  ip.setBlendMode(BlendMode.DstIn);
-  ip.setShader(Skia.Shader.MakeLinearGradient(vec(0, (y1 - ink.y0) * s), vec(0, (y1 - ink.y1) * s), ink.colors.map((c) => Skia.Color(c)), ink.pos, TileMode.Clamp));
-  canvas.drawRect(Skia.XYWHRect(0, 0, W, H), ip);
   surf.flush();
   const img = keepLatest(key, surf.makeImageSnapshot());
   surf.dispose();
   return img;
 }
-
-export const RowShadows = memo(function RowShadows({ shelfId, poses, ids, cam, px, space, top, y1 }: { shelfId: string; poses: Readonly<SharedValue<Poses>>; ids: string[]; cam: CamSV; px: Affine; space: number; top: boolean; y1: number }) {
+export function useWallKey(shelfId: string, poses: Readonly<SharedValue<Poses>>, ids: string[], px: Affine, y1: number): Readonly<SharedValue<PlaneKey>> {
   const s = px.s;
   const W = Math.ceil((WALL_X1 - WALL_X0) * s);
   const H = Math.ceil(y1 * s);
-  const ink = useMemo(() => wallInk(space, top), [space, top]);
   const key = `wall-shadow:${shelfId}`;
-  const image = useDerivedValue(() => wallShadows(key, poses.value, ids, s, W, H, y1, ink));
-  // 그림 px → 캔버스 px: 벽 평면은 화면에 평행해 확대·이동뿐
-  const m = useDerivedValue(() => {
-    const o = toPx(cam.value, px, { x: WALL_X0, y: y1, z: SHELF_DEPTH });
-    const e = toPx(cam.value, px, { x: WALL_X0 + 1 / s, y: y1 - 1 / s, z: SHELF_DEPTH });
-    return [e.x - o.x, 0, o.x, 0, e.y - o.y, o.y, 0, 0, 1];
-  });
-  if (!SHOW.wall) return null;
-  return (
-    <Group zIndex={Z_WALL + 1} matrix={m}>
-      <Rect x={0} y={0} width={W} height={H}>
-        <ImageShader image={image} sampling={LINEAR} />
-      </Rect>
-    </Group>
-  );
-});
-
-// 선반 윗면 위(그 줄 판 바로 다음, 책들보다 먼저): 책 → 선반 윗면 창빛 그림자. 선반 윗면 안에만.
-// 거의 수평인 창빛에서는 위를 향한 면의 창빛 몫이 작아 화면에 보이지 않으면(FLOOR_SHADOW) 그리지 않는다
-export const RowContacts = memo(function RowContacts({ poses, ids, cam, px, order, shelfId }: { poses: Readonly<SharedValue<Poses>>; ids: string[]; cam: CamSV; px: Affine; order: Order; shelfId: string }) {
+  const on = SHOW.wall && RENDER.books;
+  return useDerivedValue(() => ({
+    image: on ? planeShadows(key, poses.value, ids, s, W, H, true, (q) => ({ x: (q.x - WALL_X0) * s, y: (y1 - q.y) * s })) : NO_IMAGE,
+    kU: [s, 0, 0],
+    kV: [0, -s, 0],
+    kO: [-WALL_X0 * s, y1 * s],
+  }));
+}
+export function useFloorKey(shelfId: string, poses: Readonly<SharedValue<Poses>>, ids: string[], px: Affine): Readonly<SharedValue<PlaneKey>> {
   const s = px.s;
-  const z = useDerivedValue(() => zOf(order, `plank:${shelfId}`, 5));
-  // 판 아래(다른 줄)에 있는 책은 이 판에 그림자를 드리우지 않는다
-  const of = useMemo(() => (b: Book3, k: number) => {
-    'worklet';
-    return lowest(b) < -0.5 ? null : bookCast(b, s, k, false);
-  }, [s]);
-  // 선반 윗면(투영된 실제 윗면 다각형) 안에만(받는 면 클리핑)
-  const clip = useDerivedValue(() => {
-    const f = shelfFaces(cam.value);
-    return pathOf([f.top.poly.map((q) => ({ x: q.x * px.s + px.tx, y: q.y * px.s + px.ty }))]);
-  });
-  if (!SHOW.shelfCast || !FLOOR_SHADOW) return null;
-  return (
-    <Group zIndex={z} clip={clip}>
-      <CastLayer poses={poses} ids={ids} of={of} cam={cam} px={px} ink={<Rect x={-FAR} y={-FAR} width={2 * FAR} height={2 * FAR} color={`rgba(0,0,0,${shadowAlpha(D_FLOOR)})`} blendMode="dstIn" />} />
-    </Group>
-  );
-});
+  const W = Math.ceil((SHELF_X1 - SHELF_X0) * s);
+  const H = Math.ceil((SHELF_DEPTH + SHELF_FRONT) * s);
+  const key = `floor-shadow:${shelfId}`;
+  const on = SHOW.shelfCast && RENDER.books;
+  return useDerivedValue(() => ({
+    image: on ? planeShadows(key, poses.value, ids, s, W, H, false, (q) => ({ x: (q.x - SHELF_X0) * s, y: (q.z + SHELF_FRONT) * s })) : NO_IMAGE,
+    kU: [s, 0, 0],
+    kV: [0, 0, s],
+    kO: [-SHELF_X0 * s, SHELF_FRONT * s],
+  }));
+}
 
 // ---------- 책 면이 받는 창빛 그림자: 다른 책 ----------
-// 3D 단계(receivedShadow3)는 domain/received3(카메라와 무관, 순수), 투영은 received.ts recvProject.
+// 3D 단계(receivedShadow3)는 domain/received3(카메라와 무관, 순수), 면 좌표 그림은 SceneLight bookKeyImage.
 // 이 책에 그림자를 드리울 수 있는 이웃: 이 책의 가로 범위에서 왼쪽으로 REACH_L, 오른쪽으로 REACH_R 안에 걸친 책만(빛 방향에서 유도).
 // 멀리 있는 책이 움직여도 이 책은 다시 계산하지 않는다. (워클릿은 만들어질 때 쓰는 함수를 붙잡으므로 쓰이는 함수를 먼저 정의한다)
 function xRangeOf(q: Book3) {
@@ -585,86 +511,25 @@ export function occluderBodies(m: Motion, id: string, ids: string[]): { b: Book3
   return { b, occ: occludersOf(m, b, id, ids) };
 }
 
-// 받는 그림자 한 구간: 그 구간에 드는 가리개들의 다각형(한 경로), 얇은 가리개는 w만큼
-function RecvBand({ r, k }: { r: Readonly<SharedValue<Recv>>; k: number }) {
-  const path = useDerivedValue(() => r.value.bands[k].path);
-  const sigma = useDerivedValue(() => Math.max(0.01, r.value.bands[k].sigma));
-  const op = useDerivedValue(() => r.value.bands[k].w);
-  return (
-    <Path path={path} color="black" opacity={op}>
-      <BlurMask blur={sigma} style="normal" />
-    </Path>
-  );
-}
-
-// 개발용: 계산된 그림자 외곽(빨강)과 받는 면(초록)
-function RecvDebug({ r }: { r: Readonly<SharedValue<Recv>> }) {
-  const outline = useDerivedValue(() => {
-    const p = Skia.PathBuilder.Make();
-    for (const l of r.value.bands) p.addPath(l.path);
-    return p.detach();
-  });
-  const clip = useDerivedValue(() => r.value.clip);
-  return (
-    <>
-      <Path path={outline} style="stroke" strokeWidth={1} color="rgba(220,40,40,0.9)" />
-      <Path path={clip} style="stroke" strokeWidth={1} color="rgba(30,160,60,0.9)" />
-    </>
-  );
-}
-
-// 받는 면 하나(slot)의 그림자: 받는 면 안에서 구간들을 한 레이어에 합집합으로, 그 면의 진하기를 dstIn으로 한 번
-export function ReceivedShadow({ r3, cam, px, slot, debug }: { r3: Readonly<SharedValue<Recv3>>; cam: CamSV; px: Affine; slot: number; debug?: boolean }) {
-  const r = useDerivedValue(() => recvProject(r3.value, cam.value, px, slot));
-  const clip = useDerivedValue(() => r.value.clip);
-  const ink = useDerivedValue(() => `rgba(0,0,0,${shadowAlpha(r.value.d)})`);
-  return (
-    <>
-      <Group clip={clip}>
-        <Group layer>
-          {BAND_KS.map((k) => (
-            <RecvBand key={k} r={r} k={k} />
-          ))}
-          <Rect x={-FAR} y={-FAR} width={2 * FAR} height={2 * FAR} color={ink} blendMode="dstIn" />
-        </Group>
-      </Group>
-      {debug ? <RecvDebug r={r} /> : null}
-    </>
-  );
-}
-
-// 한 책이 받는 그림자 전부(보이는 면마다). 책 그룹 안, 면 다음·갈피 전에 그린다(BookNode의 under).
-// vis: 이 줄이 그리는 이 책의 자세(안 그리면 null), poses: 줄의 그림자용 자세 모음.
-export function BookReceives({ vis, poses, id, ids, cam, px, debug }: { vis: Readonly<SharedValue<Book3 | null>>; poses: Readonly<SharedValue<Poses>>; id: string; ids: string[]; cam: CamSV; px: Affine; debug?: boolean }) {
-  // 이 책 자세와 가리개 후보(드리울 수 있는 범위의 이웃)가 하나라도 바뀔 때만 다시 계산한다(멈춘 책은 같은 객체라 비교가 싸다).
-  // 옮긴 책과 그 그림자를 받는 이웃만 다시 계산되고, 줄의 다른 책은 끄는 동안에도 계산하지 않는다. 그리지 않는 동안(vis 없음)은 비운다.
-  // 파생 값으로 계산해 그리는 쪽과 같은 프레임에 나온다: 반응으로 따로 두면 그리는 쪽 계산이 먼저 돌아(반응이 쓰는 값은 순서에 들어가지
-  // 않는다) 이동 캔버스에서 이 줄로 넘겨받는 프레임에 받는 그림자가 비어 책 면이 한 프레임 밝아졌다.
-  // 지난 계산의 열쇠·결과는 따로 담아 두고 같으면 그대로 돌려준다(담는 값을 바꾸면 이 계산이 다음 프레임에 한 번 더 돌지만 같은 결과로 멈춘다).
-  const init = useMemo(() => {
-    const b = vis.value;
-    if (!b) return { key: [] as Book3[], r: null as Recv3 };
-    const occ = occludersIn(poses.value, b, id, ids);
-    return { key: [b, ...occ], r: receivedShadow3(b, occ, px.s) };
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
-  const memo = useSharedValue<{ key: Book3[]; r: Recv3 }>(init);
+// 한 책이 받는 창빛 그림자(다른 책이 창빛 원반을 가리는 몫)를 면 좌표 그림으로(SceneLight bookKeyImage). 책 셰이더가 빛 계산 안에서 쓴다.
+// 카메라와 무관해 시점을 끄는 동안에는 다시 그리지 않는다. vis: 이 줄이 그리는 이 책의 자세(안 그리면 null), recv: 줄의 그림자용 자세 모음과 책들(없으면 그림자 없음).
+// 이 책 자세와 가리개 후보(드리울 수 있는 범위의 이웃)가 하나라도 바뀔 때만 다시 계산한다(멈춘 책은 같은 객체라 비교가 싸다).
+// 파생 값으로 계산해 그리는 쪽과 같은 프레임에 나온다(반응으로 따로 두면 이동 캔버스에서 넘겨받는 프레임에 그림자가 비어 책 면이 한 프레임 밝아졌다)
+export function useBookKey(vis: Readonly<SharedValue<Book3 | null>>, recv: { ids: string[]; poses: Readonly<SharedValue<Poses>> } | undefined, id: string, key: string, px: Affine): Readonly<SharedValue<BookKey>> {
+  const poses = recv?.poses;
+  const ids = recv?.ids ?? [];
+  const memo = useSharedValue<{ key: Book3[]; r: Recv3 }>({ key: [], r: null });
   const r3 = useDerivedValue<Recv3>(() => {
     const b = vis.value;
+    if (!b || !poses) return null;
     const last = memo.value;
-    if (!b) return null;
     const occ = occludersIn(poses.value, b, id, ids);
     if (last.key.length === occ.length + 1 && last.key[0] === b && occ.every((q, i) => q === last.key[i + 1])) return last.r;
     const r = receivedShadow3(b, occ, px.s);
     memo.value = { key: [b, ...occ], r };
     return r;
   });
-  return (
-    <Group>
-      {Array.from({ length: RECV_SLOTS }, (_, slot) => (
-        <ReceivedShadow key={slot} r3={r3} cam={cam} px={px} slot={slot} debug={debug} />
-      ))}
-    </Group>
-  );
+  return useDerivedValue(() => bookKeyImage(key, r3.value, px.s));
 }
 
 // ---------- 측정용: 투영 계산만 따로 잰다(그리기·React 없이) ----------
@@ -692,7 +557,6 @@ export function benchProjection(rows: BenchRow[], s: number, n: number) {
   }
   const t3d = clock() - t0;
   let tGeom = 0;
-  let tRecv = 0;
   let tCast = 0;
   for (let i = 0; i < n; i++) {
     const deg = VIEW_PITCH_MIN + ((VIEW_PITCH_MAX - VIEW_PITCH_MIN) * i) / Math.max(1, n - 1);
@@ -710,10 +574,6 @@ export function benchProjection(rows: BenchRow[], s: number, n: number) {
     let b2 = clock();
     tGeom += b2 - a;
     a = b2;
-    for (const q of prep) for (let slot = 0; slot < RECV_SLOTS; slot++) recvProject(q.r3, cam, q.px, slot);
-    b2 = clock();
-    tRecv += b2 - a;
-    a = b2;
     for (const q of prep) {
       for (const c of q.wall) castPath(cam, c, q.px);
       for (const c of q.shelf) castPath(cam, c, q.px);
@@ -721,7 +581,7 @@ export function benchProjection(rows: BenchRow[], s: number, n: number) {
     tCast += clock() - a;
   }
   const r2 = (v: number) => Math.round(v * 100) / 100;
-  return { books: prep.length, shadow3d: r2(t3d), faces: r2(tGeom / n), received: r2(tRecv / n), cast: r2(tCast / n) };
+  return { books: prep.length, shadow3d: r2(t3d), faces: r2(tGeom / n), cast: r2(tCast / n) };
 }
 
 export { project };

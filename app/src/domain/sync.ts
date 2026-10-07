@@ -5,6 +5,7 @@
 import { LIB_KINDS, type LibKind } from '@/db/local-db';
 import type { Binding, Bookmark, Edition, Library, MyBook, Round, Session } from './library';
 import type { LayoutVariant } from './rebinding';
+import { BINDING_MATERIALS, type BindingMaterial } from './types';
 
 export type Dirty = Record<string, { deleted: boolean; at: string }>; // 키: "kind:id"
 export const dirtyKey = (kind: LibKind, id: string) => `${kind}:${id}`;
@@ -20,7 +21,7 @@ export type WireEdition = Wire & {
 };
 export type WireBook = Wire & { editionId?: string; status?: string; rating?: number | null; note?: string | null; currentPage?: number | null; bindingId?: string | null; createdAt?: string };
 export type WireBinding = Wire & {
-  myBookId?: string; spineColor?: string; inkColor?: string | null; accentColor?: string | null; motif?: string; layout?: string | null; source?: string; status?: string;
+  myBookId?: string; spineColor?: string; inkColor?: string | null; accentColor?: string | null; motif?: string; layout?: string | null; material?: string | null; source?: string; status?: string;
   seed?: number | null; coverArtFileId?: string | null; spineArtFileId?: string | null; createdAt?: string;
 };
 export type WireRound = Wire & { myBookId?: string; index?: number; startedAt?: string | null; finishedAt?: string | null; paused?: boolean | null; createdAt?: string };
@@ -64,7 +65,7 @@ export function editionToWire(e: Edition, imageDir: string): WireEdition {
 }
 export const bookToWire = (b: MyBook): WireBook => ({ id: b.id, editionId: b.editionId, status: b.status, rating: b.rating, note: b.note, currentPage: b.currentPage, bindingId: b.bindingId, createdAt: b.createdAt, updatedAt: b.updatedAt });
 export const bindingToWire = (b: Binding, imageDir: string): WireBinding => ({
-  id: b.id, myBookId: b.myBookId, spineColor: b.spineColor, inkColor: b.inkColor, accentColor: b.accentColor, motif: b.motif, layout: b.layout, source: b.source, status: b.status,
+  id: b.id, myBookId: b.myBookId, spineColor: b.spineColor, inkColor: b.inkColor, accentColor: b.accentColor, motif: b.motif, layout: b.layout, material: b.material, source: b.source, status: b.status,
   seed: b.seed, coverArtFileId: fileIdOf(b.coverArtUri, imageDir), spineArtFileId: fileIdOf(b.spineArtUri, imageDir), createdAt: b.createdAt, updatedAt: b.updatedAt,
 });
 export const roundToWire = (r: Round): WireRound => ({ id: r.id, myBookId: r.myBookId, index: r.index, startedAt: r.startedAt, finishedAt: r.finishedAt, paused: !!r.paused, createdAt: r.createdAt, updatedAt: r.updatedAt });
@@ -123,6 +124,7 @@ export const editionFromWire = (w: WireEdition, imageDir: string): Edition => ({
 export const bookFromWire = (w: WireBook): MyBook => ({ id: w.id, editionId: w.editionId ?? '', status: (w.status as MyBook['status']) ?? 'want', rating: nz(w.rating), note: nz(w.note), currentPage: nz(w.currentPage), bindingId: nz(w.bindingId), createdAt: w.createdAt ?? w.updatedAt, updatedAt: w.updatedAt });
 export const bindingFromWire = (w: WireBinding, imageDir: string): Binding => ({
   id: w.id, myBookId: w.myBookId ?? '', spineColor: w.spineColor ?? '#8A8378', inkColor: nz(w.inkColor), accentColor: nz(w.accentColor), motif: w.motif ?? 'none', layout: nz(w.layout) as LayoutVariant | undefined,
+  material: BINDING_MATERIALS.includes(w.material as BindingMaterial) ? (w.material as BindingMaterial) : undefined,
   coverArtUri: w.coverArtFileId ? `${imageDir}${w.coverArtFileId}` : undefined, spineArtUri: w.spineArtFileId ? `${imageDir}${w.spineArtFileId}` : undefined,
   source: (w.source as Binding['source']) ?? 'default', status: (w.status as Binding['status']) ?? 'ready', seed: w.seed ?? 0, createdAt: w.createdAt ?? w.updatedAt, updatedAt: w.updatedAt,
 });

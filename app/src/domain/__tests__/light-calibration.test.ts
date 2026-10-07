@@ -18,7 +18,7 @@ import type { Calibration } from './light-model';
 
 export const CALIBRATION_INPUTS = ${JSON.stringify(calibrationInputs())};
 export const CALIBRATION: Calibration | null = {
-  eref: { wall: ${c3(c.eref.wall)}, plank: ${c3(c.eref.plank)}, book: ${c3(c.eref.book)} },
+  eref: { wall: ${c3(c.eref.wall)}, plank: ${c3(c.eref.plank)}, book: ${c3(c.eref.book)}, paper: ${c3(c.eref.paper)} },
   albedo: { wall: ${c3(c.albedo.wall)}, plank: ${c3(c.albedo.plank)}, paper: ${c3(c.albedo.paper)} },
 };
 `;

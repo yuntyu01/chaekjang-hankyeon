@@ -7,18 +7,22 @@
 // (하늘·창빛 직접 몫은 둥근 모서리 법선까지, 반사광)만 화소마다 계산한다. 책은 한 권에 한 번(BookLight: 셰이더가 화소마다 광선으로
 // 보이는 면을 찾는다), 벽·판은 평면마다(BakedPlane).
 // 구운 값이 없는 면(줄 밖에서 움직이는 책, 막 들어온 책)은 둘레가 가린 하늘만 그 자리에서 계산한다(다른 책은 뺀다).
-import { AlphaType, ColorType, FilterMode, ImageShader, MipmapMode, Path, processUniforms, Shader, Skia, TileMode, type SkImage, type SkPath, type SkRuntimeEffect, type SkShader, type Uniforms } from '@shopify/react-native-skia';
+import { AlphaType, BlurStyle, ColorType, FilterMode, ImageShader, MipmapMode, Path, processUniforms, Shader, Skia, TileMode, type SkImage, type SkPath, type SkRuntimeEffect, type SkShader, type Uniforms } from '@shopify/react-native-skia';
 import { Platform } from 'react-native';
 import { useDerivedValue, type SharedValue } from 'react-native-reanimated';
 
 import { faceNormal, rot, toWorld, type Book3, type Cam, type FaceId, type Vec3 } from '@/domain/book3';
 import { lightPanel, rigOf } from '@/domain/book-parts';
 import { camAt, VIEW_PITCH_MAX, VIEW_PITCH_MIN, type Affine } from '@/domain/camera';
-import { ENV_NX, ENV_NY, FAR, GRID_N, GRID_PASSES, toneDodge, toneMul, type Band, type BoxBuf, type C3, type Env } from '@/domain/light-model';
+import { bookEref, ENV_NX, ENV_NY, FAR, GRID_N, GRID_PASSES, ROUGH, type Band, type BoxBuf, type C3, type Env } from '@/domain/light-model';
+import type { Recv3 } from '@/domain/received3';
+import { MAT_UNIFORMS, type MatUniforms } from '@/domain/surface-pattern';
+import type { BindingMaterial } from '@/domain/types';
+import type { MaterialName } from '@/ui/lighting';
 import { faceVisible } from '@/ui/book3d/face-geometry';
 
 import { PERF_ENABLED } from './perf';
-import { bakeSource, bookSource, gridSource, litSource, LOSS_OFF, LOSS_SCALE, planeFrame, type Plane } from './scene-light-sksl';
+import { bakeSource, bookSource, gridSource, litSource, LOSS_OFF, LOSS_SCALE, planeFrame, tabSource, type Plane } from './scene-light-sksl';
 
 export type { Plane } from './scene-light-sksl';
 type RO<T> = Readonly<SharedValue<T>>;
@@ -35,6 +39,7 @@ const LIT = [make(litSource(false)), make(litSource(true))];
 // 단색 재질(벽)은 재질 색 × 빛을 한 번에(대상 색을 읽는 겹치기가 없다)
 const LIT_DIRECT = make(litSource('direct'));
 const BOOK = [make(bookSource(false)), make(bookSource(true))];
+const TAB = [make(tabSource(false)), make(tabSource(true))];
 const BLEND = ['multiply', 'colorDodge'] as const;
 
 const ZERO3 = [0, 0, 0];
@@ -55,6 +60,16 @@ const BASE = {
   eref: [1, 1, 1],
   liveEnv: 1,
 };
+// 재질 셰이더 입력(scene-light-sksl matSample): 거칠기·미세 높이·결·결 크기, 무늬 자리 어긋남(같은 재질 면이 똑같아 보이지 않게)
+function matOf(m: MatUniforms, seed: number[]) {
+  return { mR: m.mRough, mB: m.mBump, mG: m.mGrain, mS: m.mGsize, mSeed: seed };
+}
+// 문자열 → 무늬 자리 어긋남(DU, 0~1000)
+export function seedOf(key: string) {
+  let h = 2166136261;
+  for (let i = 0; i < key.length; i++) h = Math.imul(h ^ key.charCodeAt(i), 16777619) >>> 0;
+  return [(h % 1000) + 0.37, ((h >>> 10) % 1000) + 0.71];
+}
 
 function camOf(c: Cam, far: Vec3) {
   'worklet';
@@ -117,6 +132,16 @@ const EMPTY = Skia.Image.MakeImage(
   Skia.Data.fromBytes(new Uint8Array([...Array(3).fill(Math.round((LOSS_OFF / LOSS_SCALE) * 255)), 255])),
   4,
 )!;
+
+// 창빛 그림자가 없는 면(투명: 가리는 몫 0)
+export const NO_IMAGE = Skia.Image.MakeImage({ width: 1, height: 1, alphaType: AlphaType.Premul, colorType: ColorType.RGBA_8888 }, Skia.Data.fromBytes(new Uint8Array(4)), 4)!;
+// 평면(벽·판 윗면)이 받는 창빛 그림자: 책이 창빛 원반을 가리는 몫(알파) 그림과 평면 점 P → 그림 px 사상((P·kU, P·kV) + kO)
+export type PlaneKey = { image: SkImage; kU: number[]; kV: number[]; kO: number[] };
+export const NO_PLANE_KEY: PlaneKey = { image: NO_IMAGE, kU: [0, 0, 0], kV: [0, 0, 0], kO: [-8, -8] };
+function keyMapOf(k: PlaneKey) {
+  'worklet';
+  return { kU: k.kU, kV: k.kV, kO: k.kO };
+}
 
 // 셰이더 자식으로 읽는 그림(칸 사이 선형, 끝은 늘림)
 function linearShader(img: SkImage): SkShader {
@@ -253,7 +278,7 @@ function sampleOf(a: Atlas, key: string, M: (w: number, h: number) => number[]):
 }
 
 // 두 겹(곱하기·닷지)으로 영역(path)을 다시 칠한다. fx: [곱하기, 닷지] 셰이더, sample: 셰이더 자식(구운 그림과 행렬)
-function Relit({ path, fx, uniforms, sample }: { path: RO<SkPath> | SkPath; fx: SkRuntimeEffect[]; uniforms: RO<Uniforms>; sample: RO<Sample> }) {
+function Relit({ path, fx, uniforms, sample, keyImage }: { path: RO<SkPath> | SkPath; fx: SkRuntimeEffect[]; uniforms: RO<Uniforms>; sample: RO<Sample>; keyImage: RO<SkImage> }) {
   const image = useDerivedValue(() => sample.value.image);
   const matrix = useDerivedValue(() => sample.value.matrix);
   return (
@@ -262,6 +287,7 @@ function Relit({ path, fx, uniforms, sample }: { path: RO<SkPath> | SkPath; fx: 
         <Path key={i} path={path} blendMode={BLEND[i]}>
           <Shader source={e} uniforms={uniforms}>
             <ImageShader image={image} tx="clamp" ty="clamp" sampling={LINEAR} matrix={matrix} />
+            <ImageShader image={keyImage} tx="decal" ty="decal" sampling={LINEAR} />
           </Shader>
         </Path>
       ))}
@@ -271,6 +297,80 @@ function Relit({ path, fx, uniforms, sample }: { path: RO<SkPath> | SkPath; fx: 
 
 // ---------- 책 ----------
 const FACES: FaceId[] = ['spine', 'cover', 'back', 'head', 'tail', 'fore'];
+
+// 책 면이 받는 창빛 그림자(다른 책이 창빛 원반을 가리는 몫, 알파)를 면 좌표 그림으로: 받는 면(많아야 둘)을 가로로 나란히,
+// 면 칸 안에서 (u, v)(DU, book-parts lightPanel 틀) × 배율 s. 그림자 구간(빛 길이)마다 가려지는 몫 w로 칠하고 반그림자만큼 흐린다.
+// rects: 셰이더 kRect(면마다 칸 원점·배율·있음)
+export type BookKey = { image: SkImage; rects: number[] };
+const NO_RECTS = new Array(24).fill(0);
+export const NO_BOOK_KEY: BookKey = { image: NO_IMAGE, rects: NO_RECTS };
+export function bookKeyImage(key: string, r: Recv3, s: number): BookKey {
+  'worklet';
+  if (!r || !r.faces.length || !(globalThis as { _WORKLET?: boolean })._WORKLET) return NO_BOOK_KEY;
+  const b = r.b;
+  const X = rot(b.roll, b.yaw, { x: 1, y: 0, z: 0 }, b.spin ?? 0, b.pitch ?? 0);
+  const Y = rot(b.roll, b.yaw, { x: 0, y: 1, z: 0 }, b.spin ?? 0, b.pitch ?? 0);
+  const Z = rot(b.roll, b.yaw, { x: 0, y: 0, z: 1 }, b.spin ?? 0, b.pitch ?? 0);
+  const cells: { f: number; x: number; w: number; h: number }[] = [];
+  let W = 0;
+  let H = 1;
+  for (const fc of r.faces) {
+    const pn = lightPanel(b.dims, fc.f);
+    const w = Math.ceil(pn.w * s) + 2;
+    const h = Math.ceil(pn.h * s) + 2;
+    cells.push({ f: FACES.indexOf(fc.f), x: W + 1, w, h });
+    W += w;
+    H = Math.max(H, h);
+  }
+  const surf = Skia.Surface.MakeOffscreen(Math.max(1, W), H);
+  if (!surf) return NO_BOOK_KEY;
+  const canvas = surf.getCanvas();
+  const paint = Skia.Paint();
+  paint.setAntiAlias(true);
+  paint.setColor(Skia.Color('black'));
+  const rects = NO_RECTS.slice();
+  r.faces.forEach((fc, i) => {
+    const c = cells[i];
+    const pn = lightPanel(b.dims, fc.f);
+    const ul = Math.hypot(pn.U.x, pn.U.y, pn.U.z) || 1;
+    const vl = Math.hypot(pn.V.x, pn.V.y, pn.V.z) || 1;
+    // 줄 공간 점 → 책 좌표 → 면 좌표(u, v) → 그림 px
+    const toPx = (q: Vec3) => {
+      const d = { x: q.x - b.t.x, y: q.y - b.t.y, z: q.z - b.t.z };
+      const l = { x: d.x * X.x + d.y * X.y + d.z * X.z, y: d.x * Y.x + d.y * Y.y + d.z * Y.z, z: d.x * Z.x + d.y * Z.y + d.z * Z.z };
+      const o = { x: l.x - pn.O.x, y: l.y - pn.O.y, z: l.z - pn.O.z };
+      return { x: c.x + ((o.x * pn.U.x + o.y * pn.U.y + o.z * pn.U.z) / ul) * s, y: 1 + ((o.x * pn.V.x + o.y * pn.V.y + o.z * pn.V.z) / vl) * s };
+    };
+    canvas.save();
+    canvas.clipRect(Skia.XYWHRect(c.x - 1, 0, c.w, c.h), 1, true);
+    for (const layer of fc.bands) {
+      if (!layer.polys.length || layer.w <= 0) continue;
+      const pb = Skia.PathBuilder.Make();
+      for (const poly of layer.polys) {
+        if (poly.length < 3) continue;
+        const p0 = toPx(poly[0]);
+        pb.moveTo(p0.x, p0.y);
+        for (let k = 1; k < poly.length; k++) {
+          const q = toPx(poly[k]);
+          pb.lineTo(q.x, q.y);
+        }
+        pb.close();
+      }
+      paint.setAlphaf(Math.min(1, layer.w));
+      paint.setMaskFilter(Skia.MaskFilter.MakeBlur(BlurStyle.Normal, Math.max(0.01, layer.sigma), true));
+      canvas.drawPath(pb.detach(), paint);
+    }
+    canvas.restore();
+    rects[c.f * 4] = c.x;
+    rects[c.f * 4 + 1] = 1;
+    rects[c.f * 4 + 2] = s;
+    rects[c.f * 4 + 3] = 1;
+  });
+  surf.flush();
+  const image = keepLatest(key, surf.makeImageSnapshot());
+  surf.dispose();
+  return { image, rects };
+}
 // 면이 보이는지는 보기 각 범위 양 끝에서(굽기가 시점을 따라 다시 돌지 않게)
 const LOW = camAt(VIEW_PITCH_MIN);
 const HIGH = camAt(VIEW_PITCH_MAX);
@@ -297,12 +397,15 @@ export function bookItems(id: string, b: Book3, env: Env | null, bx: BoxBuf, sel
 }
 
 // 책 한 권의 빛: 책 윤곽(outline, 캔버스 px) 안을 화소마다 광선으로(셰이더 bookSource가 보이는 면·속지 구멍을 찾는다).
-// albedo: 장정 반사율(선형 RGB, 속지는 셰이더 상수), atlas·id: 이 책이 있는 줄의 구운 하늘 가림(면 key = faceKey(id, 면)), env: 둘레
-export function BookLight({ dims: d, state, cam, px, outline, albedo, env, atlas, id }: {
-  dims: Book3['dims']; state: RO<Book3>; cam: RO<Cam>; px: Affine; outline: RO<SkPath>; albedo: C3;
-  env?: RO<Env | null>; atlas?: RO<Atlas>; id: string;
+// albedo: 장정 색(선형 RGB, 속지는 셰이더 상수), material: 장정 재질(없으면 무광 종이), atlas·id: 이 책이 있는 줄의 구운 하늘 가림(면 key = faceKey(id, 면)), env: 둘레,
+// keyShadow: 이 책 면이 받는 창빛 그림자(bookKeyImage)
+export function BookLight({ dims: d, state, cam, px, outline, albedo, material = 'paper', env, atlas, id, keyShadow }: {
+  dims: Book3['dims']; state: RO<Book3>; cam: RO<Cam>; px: Affine; outline: RO<SkPath>; albedo: C3; material?: BindingMaterial;
+  env?: RO<Env | null>; atlas?: RO<Atlas>; id: string; keyShadow?: RO<BookKey>;
 }) {
   const { bd, sp, sq } = rigOf(d);
+  const pg = MAT_UNIFORMS.pages;
+  const mat = { ...matOf(MAT_UNIFORMS[material], seedOf(id)), erefB: bookEref(ROUGH[material]), pR: pg.mRough, pB: pg.mBump, pG: pg.mGrain, pS: pg.mGsize };
   // 면마다 아틀라스 칸(구운 값이 없으면 0): 굽기가 바뀔 때만
   const sample = useDerivedValue<Sample>(() => {
     const a = atlas ? atlas.value : NO_ATLAS;
@@ -337,9 +440,25 @@ export function BookLight({ dims: d, state, cam, px, outline, albedo, env, atlas
       keyOn: 1,
       albedo,
       env: envOf(ev),
+      kRect: keyShadow ? keyShadow.value.rects : NO_RECTS,
+      ...mat,
     };
   });
-  return <Relit path={outline} fx={BOOK} uniforms={uniforms} sample={sample} />;
+  const image = useDerivedValue(() => sample.value.image);
+  const matrix = useDerivedValue(() => sample.value.matrix);
+  const keyImage = useDerivedValue(() => (keyShadow ? keyShadow.value : NO_BOOK_KEY).image);
+  return (
+    <>
+      {BOOK.map((e, i) => (
+        <Path key={i} path={outline} blendMode={BLEND[i]}>
+          <Shader source={e} uniforms={uniforms}>
+            <ImageShader image={image} tx="clamp" ty="clamp" sampling={LINEAR} matrix={matrix} />
+            <ImageShader image={keyImage} tx="decal" ty="decal" sampling={LINEAR} />
+          </Shader>
+        </Path>
+      ))}
+    </>
+  );
 }
 
 // ---------- 평면(벽·판) ----------
@@ -355,13 +474,17 @@ export function areaItem(key: string, a: BakeArea, env: Env | null, bx: BoxBuf, 
 }
 
 // 평면 영역(path, 캔버스 px)을 구운 하늘 가림 + 그 자리의 직접 빛·반사광으로 칠한다(albedo: 재질 색, 선형 RGB,
-// eref: 그 재질의 대표 자리 빛 light-model EREF).
+// eref: 그 재질의 대표 자리 빛 light-model EREF, mat: 표면 재질(ui/lighting materials), seed: 무늬 자리 어긋남).
 // color가 있으면(단색 재질) 재질 색 × 빛을 한 번에 칠하고, 없으면 아래 재질 그림 위에 곱하기·닷지 두 겹으로 다시 칠한다.
 // atlas·key: 구운 그림과 이 영역의 자리, matrix: 영역 칸 → 캔버스 px(칸 수 w × h를 받아)
-export function BakedPlane({ path, cam, px, plane, env, atlas, akey, matrix, albedo, eref, color }: {
-  path: RO<SkPath> | SkPath; cam: RO<Cam>; px: Affine; plane: Plane; env: Env | null; atlas?: RO<Atlas>; akey: string; matrix: (c: Cam, w: number, h: number) => number[]; albedo: C3; eref: C3; color?: string;
+// keyShadow: 책이 이 면에서 창빛 원반을 가리는 몫(평면 좌표 그림, PlaneKey: 벽·판 윗면)
+export function BakedPlane({ path, cam, px, plane, env, atlas, akey, matrix, albedo, eref, mat, seed = [0, 0], color, keyShadow }: {
+  path: RO<SkPath> | SkPath; cam: RO<Cam>; px: Affine; plane: Plane; env: Env | null; atlas?: RO<Atlas>; akey: string; matrix: (c: Cam, w: number, h: number) => number[]; albedo: C3; eref: C3; mat: MaterialName; seed?: number[]; color?: string;
+  keyShadow?: RO<PlaneKey>;
 }) {
   const base = color ? rgbOf(color) : null;
+  const m = matOf(MAT_UNIFORMS[mat], seed);
+  const keyImage = useDerivedValue(() => (keyShadow ? keyShadow.value : NO_PLANE_KEY).image);
   const sample = useDerivedValue(() => (atlas ? sampleOf(atlas.value, akey, (w, h) => matrix(cam.value, w, h)) : NO_SAMPLE));
   const uniforms = useDerivedValue<Uniforms>(() => {
     const c = cam.value;
@@ -376,19 +499,22 @@ export function BakedPlane({ path, cam, px, plane, env, atlas, akey, matrix, alb
       albedo,
       eref,
       liveEnv: sample.value.live,
+      ...keyMapOf(keyShadow ? keyShadow.value : NO_PLANE_KEY),
+      ...m,
       ...(base ? { base } : null),
     };
   });
-  if (base) return <Direct path={path} uniforms={uniforms} sample={sample} />;
-  return <Relit path={path} fx={LIT} uniforms={uniforms} sample={sample} />;
+  if (base) return <Direct path={path} uniforms={uniforms} sample={sample} keyImage={keyImage} />;
+  return <Relit path={path} fx={LIT} uniforms={uniforms} sample={sample} keyImage={keyImage} />;
 }
-function Direct({ path, uniforms, sample }: { path: RO<SkPath> | SkPath; uniforms: RO<Uniforms>; sample: RO<Sample> }) {
+function Direct({ path, uniforms, sample, keyImage }: { path: RO<SkPath> | SkPath; uniforms: RO<Uniforms>; sample: RO<Sample>; keyImage: RO<SkImage> }) {
   const image = useDerivedValue(() => sample.value.image);
   const matrix = useDerivedValue(() => sample.value.matrix);
   return (
     <Path path={path}>
       <Shader source={LIT_DIRECT} uniforms={uniforms}>
         <ImageShader image={image} tx="clamp" ty="clamp" sampling={LINEAR} matrix={matrix} />
+        <ImageShader image={keyImage} tx="decal" ty="decal" sampling={LINEAR} />
       </Shader>
     </Path>
   );
@@ -399,21 +525,23 @@ function rgbOf(hex: string) {
   return [((v >> 16) & 255) / 255, ((v >> 8) & 255) / 255, (v & 255) / 255];
 }
 
-// ---------- 한 점의 빛으로 영역 전체 ----------
-// 작은 면(갈피)은 한 점에서 계산한 빛(light-model: 받는 빛 비 r, 반사광 spec, RGB)으로 고르게 다시 칠한다
-export type PointLight = { r: C3; spec: C3 };
-function rgbString(c: number[]) {
-  'worklet';
-  const k = (v: number) => Math.round(Math.max(0, Math.min(1, v)) * 255);
-  return `rgb(${k(c[0])}, ${k(c[1])}, ${k(c[2])})`;
-}
-export function UniformLight({ path, light: lt, albedo }: { path: RO<SkPath> | SkPath; light: RO<PointLight>; albedo: C3 }) {
-  const mul = useDerivedValue(() => rgbString(lt.value.r.map((r, c) => toneMul(albedo[c], r))));
-  const dodge = useDerivedValue(() => rgbString(lt.value.r.map((r, c) => toneDodge(albedo[c], r, lt.value.spec[c]))));
+// ---------- 갈피(종이 탭) ----------
+// 탭 모양(path, 탭 그림 좌표) 안을 화소마다 같은 빛 모델로(셰이더 tabSource). 탭 그림과 같은 Group(뿌리로 옮기고 책 기울기만큼 돌림) 안에 그린다.
+// 하늘 가림은 탭 가운데 한 점의 값(loss), 재질은 무광 종이(무늬 자리는 책마다)
+export type TabFrame = { root: Vec3; axR: Vec3; axU: Vec3; n: Vec3; loss: C3; cam4: number[]; env: Env | null };
+export function TabLight({ path, frame, albedo, s, seed }: { path: SkPath; frame: RO<TabFrame>; albedo: C3; s: number; seed: number[] }) {
+  const mat = matOf(MAT_UNIFORMS.paper, seed);
+  const uniforms = useDerivedValue<Uniforms>(() => {
+    const f = frame.value;
+    return { pxa: [s, 0, 0], root: arr(f.root), axR: arr(f.axR), axU: arr(f.axU), nrm: arr(f.n), loss: f.loss, cam4: f.cam4, keyOn: 1, albedo, eref: bookEref(ROUGH.paper), env: envOf(f.env), ...mat };
+  });
   return (
     <>
-      <Path path={path} color={mul} blendMode="multiply" />
-      <Path path={path} color={dodge} blendMode="colorDodge" />
+      {TAB.map((e, i) => (
+        <Path key={i} path={path} blendMode={BLEND[i]}>
+          <Shader source={e} uniforms={uniforms} />
+        </Path>
+      ))}
     </>
   );
 }

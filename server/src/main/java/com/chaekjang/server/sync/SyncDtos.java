@@ -23,9 +23,10 @@ public final class SyncDtos {
             String createdAt, String updatedAt, Boolean deleted) {
     }
 
+    /** material: 장정 재질(paper/cloth/coated). 비우면 무광 종이. */
     public record Binding(String id, String myBookId, String spineColor, String inkColor, String accentColor, String motif, String layout,
-            String source, String status, Integer seed, String coverArtFileId, String spineArtFileId, String createdAt, String updatedAt,
-            Boolean deleted) {
+            String material, String source, String status, Integer seed, String coverArtFileId, String spineArtFileId, String createdAt,
+            String updatedAt, Boolean deleted) {
     }
 
     public record Round(String id, String myBookId, Integer index, String startedAt, String finishedAt, Boolean paused, String createdAt,
