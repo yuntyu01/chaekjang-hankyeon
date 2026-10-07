@@ -46,8 +46,9 @@ export const materials = {
   coated: { roughness: 0.7, bump: null, grain: NONE },
   // 속지 단면: 낱장(약 0.1mm) 가장자리가 쌓인 면이라 두께 방향으로 촘촘한 굴곡(재단면이라 종이 면보다 거칠다)
   pages: { roughness: 0.9, bump: { size: [0.15, 40], slope: 0.15 }, grain: { kind: 'sheets', size: [0.1, 1.6], contrast: [0.04, 0.25] } },
-  // 선반 판: 무광 마감(오일·무광 래커)한 나무. 결 방향(판 길이)으로 길게 늘어난 굴곡
-  wood: { roughness: 0.7, bump: { size: [30, 0.8], slope: 0.02 }, grain: { kind: 'wood', size: [3.5, 60], contrast: [0.12, 0.03] } },
+  // 선반 판: 무광 마감(오일·무광 래커)한 결 대비가 낮은 밝은 나무(자작·단풍류: 늦재 띠가 2% 안팎만 짙다. 시안 판 앞면은 결이 거의 안 보인다,
+  // 고역 표준편차 0.5단계). 결 방향(판 길이)으로 길게 늘어난 굴곡
+  wood: { roughness: 0.7, bump: { size: [30, 0.8], slope: 0.02 }, grain: { kind: 'wood', size: [3.5, 60], contrast: [0.02, 0.005] } },
   // 벽: 무광 수성 페인트(평광)
   paint: { roughness: 0.9, bump: { size: [1, 1], slope: 0.01 }, grain: NONE },
 } satisfies Record<string, SurfaceMaterial>;
