@@ -3,8 +3,8 @@
  */
 // 빛 셰이더(SkSL)가 컴파일되고, 같은 점에서 JS 빛 모델(domain/light-model)과 같은 값을 내는지(CanvasKit으로 실제로 그려 읽는다).
 import type { Book3, Vec3 } from '@/domain/book3';
-import { boxOf, DESIGN, EREF, FAR, gammaDodge, gammaMul, lightWithLoss, linearOf, packBoxes, skyLossAt, toEye, withCovers, type BoxBuf, type C3, type Env } from '@/domain/light-model';
-import { SHELF_DEPTH } from '@/domain/geometry';
+import { BAND_IN, bakeLoss, bandOf, boxOf, DESIGN, EREF, FAR, gammaDodge, gammaMul, lightWithLoss, linearOf, packBoxes, skyLossAt, toEye, withCovers, type Band, type BoxBuf, type C3, type Env } from '@/domain/light-model';
+import { SHELF_DEPTH, SHELF_THICK } from '@/domain/geometry';
 import { bakeSource, bookSource, litSource, LOSS_OFF, LOSS_SCALE, planeFrame } from '../scene-light-sksl';
 import { EDGE_R, GROOVE, rigOf } from '@/domain/book-parts';
 import { camAt, toPx } from '@/domain/camera';
@@ -40,7 +40,6 @@ function uniformArray(effect: CK, values: Record<string, number | number[]>) {
 
 // 채널마다 차이의 최댓값
 const maxDiff = (a: C3, b: C3) => Math.max(...a.map((v, c) => Math.abs(v - b[c])));
-const g3 = (v: number): C3 => [v, v, v];
 const book = (x: number, T = 22, H = 150, W = 100, z = 0): Book3 => ({ id: `b${x}`, dims: { T, H, W }, roll: 0, yaw: 0, t: { x, y: 0, z } });
 
 // 법선에 수직인 두 단위 축
@@ -69,7 +68,8 @@ function draw(src: string, values: Record<string, number | number[]>, child = fa
 }
 
 // 굽기 셰이더로 점 P(법선 n)의 하늘 가림을 굽고 읽는다: 1×1 그림, 화소 가운데(0.5, 0.5)가 P
-function shaderLoss(P: Vec3, n: Vec3, env: Env | null, bx: BoxBuf) {
+const NO_BAND = { bandLo: [0, 0, 0, 0], bandLoFar: [0, 0, 0], bandHi: [0, 0, 0, 0], bandHiFar: [0, 0, 0] };
+function shaderLoss(P: Vec3, n: Vec3, env: Env | null, bx: BoxBuf, band: Record<string, number[]> = NO_BAND) {
   const { U, V } = axes(n);
   const g = draw(bakeSource(), {
     O: [P.x - 0.5e-3 * (U.x + V.x), P.y - 0.5e-3 * (U.y + V.y), P.z - 0.5e-3 * (U.z + V.z)],
@@ -77,10 +77,10 @@ function shaderLoss(P: Vec3, n: Vec3, env: Env | null, bx: BoxBuf) {
     Vy: [V.x * 1e-3, V.y * 1e-3, V.z * 1e-3],
     tN: [n.x, n.y, n.z],
     env: env ? [1, env.floor, env.ceil] : [0, 0, 0],
-    env2: [env?.below ?? -FAR, env?.above ?? FAR],
     box: bx.v,
     nBox: bx.list.length,
     selfIdx: -1,
+    ...band,
   });
   return g.map((v) => v * LOSS_SCALE - LOSS_OFF) as C3;
 }
@@ -106,14 +106,12 @@ function shaderLit(P: Vec3, n: Vec3, env: Env | null, dodge: boolean | 'direct',
       eref: EREF.wall,
       liveEnv: 1,
       env: env ? [1, env.floor, env.ceil] : [0, 0, 0],
-      env2: [env?.below ?? -FAR, env?.above ?? FAR],
     },
     true,
   );
 }
 
 const row: Env = { floor: 0, ceil: 200 };
-const rows3: Env = { floor: 0, ceil: 200, below: -16 - 190, above: 216 + 180 };
 const cases: [string, Vec3, Vec3, Env | null, Book3[]][] = [
   ['열린 방', { x: 111, y: 50, z: 0 }, { x: 0, y: 0, z: -1 }, null, []],
   ['판 윗면, 책 앞', { x: 111, y: 0, z: -4 }, { x: 0, y: 1, z: 0 }, row, [book(76), book(100), book(124)]],
@@ -121,11 +119,8 @@ const cases: [string, Vec3, Vec3, Env | null, Book3[]][] = [
   ['책등 아래쪽(위 판 그늘·판 윗면)', { x: 111, y: 10, z: 0 }, { x: 0, y: 0, z: -1 }, row, [book(76), book(124)]],
   ['기운 법선', { x: 111, y: 140, z: 0 }, { x: 0.3, y: 0.4, z: -Math.sqrt(1 - 0.25) }, row, [book(76), book(124, 22, 180)]],
   ['판 밑 벽', { x: 180, y: -30, z: SHELF_DEPTH }, { x: 0, y: 0, z: -1 }, { floor: -FAR, ceil: -16 }, []],
-  ['판 끝 너머 벽(판 끝면)', { x: -9, y: -8, z: SHELF_DEPTH }, { x: 0, y: 0, z: -1 }, row, [book(16)]],
-  ['판 끝 너머 벽(오른쪽, 위 판 아래)', { x: 375, y: 190, z: SHELF_DEPTH }, { x: 0, y: 0, z: -1 }, row, [book(340)]],
-  ['판 끝 너머 벽, 이웃 줄 판까지(판 두께 높이)', { x: 375, y: -8, z: SHELF_DEPTH }, { x: 0, y: 0, z: -1 }, rows3, [book(340)]],
-  ['판 끝 너머 벽, 이웃 줄 판까지(위 판 두께 높이)', { x: -10, y: 206, z: SHELF_DEPTH }, { x: 0, y: 0, z: -1 }, rows3, [book(16)]],
-  ['판 끝 너머 판 밑 벽(위로 그 줄 안)', { x: 375, y: -40, z: SHELF_DEPTH }, { x: 0, y: 0, z: -1 }, { floor: -FAR, ceil: -16, above: 190 }, []],
+  ['그린 판 끝 너머 벽(가림 계산에서는 판이 이어진다)', { x: -9, y: 30, z: SHELF_DEPTH }, { x: 0, y: 0, z: -1 }, row, [book(16)]],
+  ['그린 판 끝 너머 벽(오른쪽, 위 판 아래)', { x: 375, y: 190, z: SHELF_DEPTH }, { x: 0, y: 0, z: -1 }, row, [book(340)]],
 ];
 
 describe('빛 셰이더 = JS 빛 모델', () => {
@@ -150,23 +145,40 @@ describe('빛 셰이더 = JS 빛 모델', () => {
   });
 });
 
-describe('다른 줄 책(판 끝 틈)', () => {
+describe('그린 판 끝 너머 판 두께 높이 벽 띠(bakeLoss)', () => {
+  const n = { x: 0, y: 0, z: -1 };
+  const lower: Env = { floor: -FAR, ceil: -SHELF_THICK };
+  const upper: Env = { floor: 200 + SHELF_THICK, ceil: 200 + SHELF_THICK + 190 };
+  const band: [Band, Band] = [bandOf(row, lower, false), bandOf(row, upper, true)];
+  const list = withCovers([boxOf(book(16), [0.5, 0.08, 0.05]), boxOf(book(340), [0.05, 0.12, 0.42])]);
+  const bx = packBoxes(list, ['a', 'b']);
+  const draw = (b: Band | null) => ({ mid: b ? [...b.mid, 1] : [0, 0, 0, 0], far: b ? b.far : [0, 0, 0] });
+  const shader = (P: Vec3) => shaderLoss(P, n, row, bx, { bandLo: draw(band[0]).mid, bandLoFar: draw(band[0]).far, bandHi: draw(band[1]).mid, bandHiFar: draw(band[1]).far });
   it.each([
-    ['판 두께 높이', { x: -9, y: -8, z: SHELF_DEPTH }],
-    ['위 판 바로 아래', { x: -9, y: 192, z: SHELF_DEPTH }],
-    ['판 끝 안쪽', { x: 6, y: 40, z: SHELF_DEPTH }],
+    ['아래 판 띠(가까운 절반)', { x: -9, y: -6, z: SHELF_DEPTH }],
+    ['아래 판 띠(먼 절반)', { x: -9, y: -12, z: SHELF_DEPTH }],
+    ['위 판 띠', { x: 375, y: 200 + 5, z: SHELF_DEPTH }],
+    ['띠 밖', { x: 375, y: 120, z: SHELF_DEPTH }],
   ] as [string, Vec3][])('%s: 셰이더 = JS', (_, P) => {
-    const lifted = (b: Book3, dy: number): Book3 => ({ ...b, t: { ...b.t, y: b.t.y + dy } });
-    const list = [
-      ...withCovers([boxOf(book(16), g3(0.12)), boxOf(book(40), g3(0.5))]),
-      ...withCovers([boxOf(lifted(book(10), 216), g3(0.2), 1), boxOf(lifted(book(34, 22, 120), 216), g3(0.7), 1)]),
-      ...withCovers([boxOf(lifted(book(20, 22, 170), -206), g3(0.15), -1)]),
-    ];
-    const bx = packBoxes(list, list.map((_b, i) => `b${i}`));
-    const n = { x: 0, y: 0, z: -1 };
-    for (const env of [row, rows3]) {
-      const js = skyLossAt(P, n, env, list);
-      expect(maxDiff(shaderLoss(P, n, env, bx), js)).toBeLessThan(LOSS_SCALE / 255);
+    expect(maxDiff(shader(P), bakeLoss(P, n, row, list, band))).toBeLessThan(LOSS_SCALE / 255);
+  });
+  it('띠는 이 줄 쪽 경계 → 가운데(두 줄이 같은 값) → 건너편 경계로 잇는다', () => {
+    // 받는 빛(창빛 포함, 반사 몫 없이): 굽는 가림을 그 자리의 직접 빛에서 뺀 것
+    const lit = (p: Vec3) => lightWithLoss(p, n, null, row, bakeLoss(p, n, row, list, band), true, [1, 1, 1]).r;
+    const edge = { x: 375, y: 200 - BAND_IN, z: SHELF_DEPTH };
+    const near = lightWithLoss(edge, n, null, row, skyLossAt(edge, n, row, list), true, [1, 1, 1]).r;
+    const bot = lit({ x: 375, y: 200 + 1e-6, z: SHELF_DEPTH });
+    const mid = lit({ x: 375, y: 200 - BAND_IN + SHELF_THICK / 2, z: SHELF_DEPTH });
+    const top = lit({ x: 375, y: 200 + SHELF_THICK - 1e-6, z: SHELF_DEPTH });
+    // 위 줄에서 본 같은 띠(위 줄 둘레, 아래 판 띠): 가운데 값이 같다
+    const upBand = bandOf(upper, row, false);
+    for (let c = 0; c < 3; c++) {
+      expect(bot[c]).toBeCloseTo(near[c], 3);
+      expect(mid[c]).toBeCloseTo(band[1].mid[c], 3);
+      expect(top[c]).toBeCloseTo(band[1].far[c], 2);
+      expect(upBand.mid[c]).toBeCloseTo(band[1].mid[c], 9);
+      // 판 바로 밑 벽은 위가 판이라 판 바로 위 벽(건너편 경계)보다 어둡다
+      expect(bot[c]).toBeLessThan(top[c]);
     }
   });
 });
@@ -178,9 +190,8 @@ describe('그리는 셰이더 = JS 빛(lightWithLoss, 둘레 하늘 가림)', ()
     ['책등(앞), 판 위', { x: 111, y: 60, z: 0 }, { x: 0, y: 0, z: -1 }, row, linearOf('#466181')],
     ['벽', { x: 200, y: 40, z: SHELF_DEPTH }, { x: 0, y: 0, z: -1 }, row, linearOf('#FCF8F1')],
     ['판 윗면', { x: 150, y: 0, z: -10 }, { x: 0, y: 1, z: 0 }, row, linearOf('#F2DCC1')],
-    ['판 끝 너머 벽', { x: -9, y: 30, z: SHELF_DEPTH }, { x: 0, y: 0, z: -1 }, row, linearOf('#FCF8F1')],
-    ['판 끝 너머 벽, 이웃 줄 판까지', { x: 374, y: -6, z: SHELF_DEPTH }, { x: 0, y: 0, z: -1 }, rows3, linearOf('#FCF8F1')],
-    ['판 끝 너머 판 윗면 높이 위, 기운 면', { x: -6, y: 3, z: 40 }, { x: 0.3, y: 0.5, z: -Math.sqrt(0.66) }, rows3, linearOf('#C9785F')],
+    ['그린 판 끝 너머 벽', { x: -9, y: 30, z: SHELF_DEPTH }, { x: 0, y: 0, z: -1 }, row, linearOf('#FCF8F1')],
+    ['판 윗면 높이 위, 기운 면', { x: -6, y: 3, z: 40 }, { x: 0.3, y: 0.5, z: -Math.sqrt(0.66) }, row, linearOf('#C9785F')],
     ['열린 방, 기운 면', { x: 50, y: 50, z: 0 }, { x: 0.4, y: 0.3, z: -Math.sqrt(0.75) }, null, linearOf('#8AA07E')],
   ] as [string, Vec3, Vec3, Env | null, C3][])('%s', (_, P, n0, env, albedo) => {
     const l = Math.hypot(n0.x, n0.y, n0.z);
@@ -220,7 +231,7 @@ describe('책 광선 셰이더 = 광선 기하 + JS 빛', () => {
       {
         cam4: CAM4, pxa: pxaOf(Q), bO: [bO.x, bO.y, bO.z], bX: [1, 0, 0], bY: [0, 1, 0], bZ: [0, 0, 1],
         dims: [d.T, d.H, d.W], rig: [bd, sp, sq], rect: new Array(24).fill(0), keyOn: 1, albedo: tone,
-        env: [1, row.floor, row.ceil], env2: [-FAR, FAR],
+        env: [1, row.floor, row.ceil],
       },
       true,
     );

@@ -63,21 +63,12 @@ const FRONT: Plane = {
 };
 const WALL: Plane = { O: { x: 0, y: 0, z: SHELF_DEPTH }, n: { x: 0, y: 0, z: -1 } };
 
-// 줄의 둘레: 판 윗면 y = 0, 위 판 아랫면 y = space(맨 윗줄은 없음).
-// 이웃 줄(판 끝 너머에서 판 사이 틈으로 보인다): below = 아래 줄 공간, above = 위 줄 공간(위 줄이 맨 윗줄이면 FAR: 위가 열려 있다)
-export function rowEnv(space: number, top: boolean, below?: number, above?: number): Env {
-  return {
-    floor: 0,
-    ceil: top ? FAR : space,
-    below: below === undefined ? undefined : -SHELF_THICK - below,
-    above: top || above === undefined ? undefined : above >= FAR ? FAR : space + SHELF_THICK + above,
-  };
+// 줄의 둘레: 판 윗면 y = 0, 위 판 아랫면 y = space(맨 윗줄은 없음)
+export function rowEnv(space: number, top: boolean): Env {
+  return { floor: 0, ceil: top ? FAR : space };
 }
-// 맨 아랫줄 판 밑 벽의 둘레: 위로 판 아랫면만(판 끝 너머에서는 그 위 줄 안도 보인다: ceil = 맨 아랫줄 위 판 아랫면, 맨 윗줄이면 FAR)
+// 맨 아랫줄 판 밑 벽의 둘레: 위로 판 아랫면만
 export const UNDER_ENV: Env = { floor: -FAR, ceil: -SHELF_THICK };
-export function underEnv(ceil: number): Env {
-  return { ...UNDER_ENV, above: ceil };
-}
 
 // 맨 아랫줄 판 밑 벽이 판 때문에 어두워지는 깊이: 어둠이 화면 한 단계의 절반보다 작아지는 곳까지(판 가운데 아래에서)
 const MID_X = (SHELF_X0 + SHELF_X1) / 2;
@@ -118,8 +109,9 @@ function wallMatrix(c: Cam, px: Affine, a: BakeArea) {
   return [e.x - o.x, 0, o.x, 0, e.y - o.y, o.y, 0, 0, 1];
 }
 
-// 벽 한 띠(높이 y0 ~ y1, 줄 공간): 벽 색 × (받는 빛 + 반사광)을 한 번에 칠한다(불투명). akey: 줄 아틀라스에서 이 띠의 자리
-export function ShelfWall({ cam, px, y0, y1, env, atlas, akey, zIndex }: { cam: RO<Camera>; px: Affine; y0: number; y1: number; env: Env; atlas?: RO<Atlas>; akey: string; zIndex: number }) {
+// 벽 한 띠(높이 y0 ~ y1, 줄 공간: 구운 영역): 벽 색 × (받는 빛 + 반사광)을 한 번에 칠한다(불투명). akey: 줄 아틀라스에서 이 띠의 자리,
+// top·bottom: 칠하는 위·아래 끝(없으면 y1·y0, 구운 영역 밖은 가장자리 값)
+export function ShelfWall({ cam, px, y0, y1, top = y1, bottom = y0, env, atlas, akey, zIndex }: { cam: RO<Camera>; px: Affine; y0: number; y1: number; top?: number; bottom?: number; env: Env; atlas?: RO<Atlas>; akey: string; zIndex: number }) {
   const area = useMemo(() => wallArea(y0, y1), [y0, y1]);
   const matrix = useCallback((c: Cam) => {
     'worklet';
@@ -127,8 +119,8 @@ export function ShelfWall({ cam, px, y0, y1, env, atlas, akey, zIndex }: { cam: 
   }, [px, area]);
   const path = useDerivedValue(() => {
     const c = cam.value;
-    const a = toPx(c, px, { x: 0, y: y1, z: SHELF_DEPTH }).y;
-    const b = toPx(c, px, { x: 0, y: y0, z: SHELF_DEPTH }).y;
+    const a = toPx(c, px, { x: 0, y: top, z: SHELF_DEPTH }).y;
+    const b = toPx(c, px, { x: 0, y: bottom, z: SHELF_DEPTH }).y;
     const p = Skia.PathBuilder.Make();
     p.addRect(Skia.XYWHRect(-FAR, a, 2 * FAR, b - a));
     return p.detach();

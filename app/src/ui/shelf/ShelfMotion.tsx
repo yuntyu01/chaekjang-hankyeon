@@ -14,7 +14,7 @@ import { bookViewCam } from '@/domain/book-view';
 import { SHELF_DEPTH, SHELF_FRONT, SHELF_X0, SHELF_X1 } from '@/domain/geometry';
 import { shelfFaces } from '@/domain/shelf-geom';
 import { BOX_EDGES, bookCast, type BookCast } from '@/domain/cast-shadow';
-import { BOX_MAX, bookAlbedo, boxOf, FAR, irradiance, keyBlocked, keyIrradiance, NEGLIGIBLE, packBoxes, shadowAlpha, withCovers, type Box, type BoxBuf, type C3, type Env } from '@/domain/light-model';
+import { bookAlbedo, boxOf, FAR, irradiance, keyBlocked, keyIrradiance, NEGLIGIBLE, packBoxes, shadowAlpha, withCovers, type Box, type BoxBuf, type C3, type Env } from '@/domain/light-model';
 import { hull } from '@/domain/shadow-shape';
 import { outlineOf, type BookFrame, type Point } from '@/domain/shelf-scene';
 import { RECV_SLOTS, recvProject, type Recv, type Recv3 } from '@/ui/book3d/received';
@@ -34,7 +34,7 @@ import { keepLatest, type Atlas } from '@/ui/SceneLight';
 import { scheduleOnUI } from 'react-native-worklets';
 
 import { tryApplyPending } from './planner';
-import { bodyOf, drawnOf, liveSV, makeMotion, OUT_SHADE_MAX, outsideDist, presentSV, shadeIn, shadeOf, TRANSIT_ROW, warmSV, type Motion, type Poses } from './scene';
+import { bodyOf, drawnOf, liveSV, OUT_SHADE_MAX, outsideDist, presentSV, shadeIn, shadeOf, TRANSIT_ROW, warmSV, type Motion, type Poses } from './scene';
 
 export type CamSV = Readonly<SharedValue<Cam>>;
 type Order = Readonly<SharedValue<Record<string, number>>>;
@@ -371,17 +371,11 @@ function pathOf(polys: Point[][]): SkPath {
 }
 const NO_PATH = Skia.PathBuilder.Make().detach();
 
-// 이웃 줄(위·아래): 그 줄의 그림자용 자세 모음과 책 id, 그 줄 좌표 → 이 줄 좌표 세로 이동 dy, 어느 쪽인지(side: 위 +1, 아래 −1)
-export type NeighborRow = { poses: Readonly<SharedValue<Poses>>; ids: string[]; dy: number; side: number };
-// 이웃 줄이 없을 때 쓰는 빈 움직임(훅 수를 줄마다 같게)
-export const EMPTY_MOTION = makeMotion([]);
-
 // 줄의 책 상자 목록(하늘 가림의 가리개): 그림자용 자세 모음에서, 이 줄 공간(판 윗면 ~ 위 판 아랫면)에 걸친 책.
 // 공간 밖(다른 줄로 옮겨 가는 중 판 너머에 있는 책)은 판이 가려 이 줄 안을 가리지 않는다. 반사율은 책 몸체 재질 색에서.
-// 나란히 선 책·쌓인 책은 서로 마주 보는 면을 가린다(덮개, light-model withCovers).
-// neighbors: 이웃 줄 책(벽을 칠할 때만): 판 끝 너머 벽 띠에서 판 위·아래 틈으로 보인다. 셰이더 상자 수(BOX_MAX)를 넘으면 판 끝에서 먼 것부터 뺀다
-export function useRowBoxes(poses: Readonly<SharedValue<Poses>>, ids: string[], books: Record<string, Book>, env: Env, neighbors: NeighborRow[] = []): Readonly<SharedValue<BoxBuf>> {
-  const albedos = useMemo(() => Object.fromEntries([ids, ...neighbors.map((nb) => nb.ids)].flat().map((id) => [id, books[id] ? bookAlbedo(bookTone(books[id])) : ([0, 0, 0] as C3)])), [ids, neighbors, books]);
+// 나란히 선 책·쌓인 책은 서로 마주 보는 면을 가린다(덮개, light-model withCovers). 다른 줄 책은 판이 다 가린다
+export function useRowBoxes(poses: Readonly<SharedValue<Poses>>, ids: string[], books: Record<string, Book>, env: Env): Readonly<SharedValue<BoxBuf>> {
+  const albedos = useMemo(() => Object.fromEntries(ids.map((id) => [id, books[id] ? bookAlbedo(bookTone(books[id])) : ([0, 0, 0] as C3)])), [ids, books]);
   return useDerivedValue(() => {
     const own: Box[] = [];
     const used: string[] = [];
@@ -399,30 +393,7 @@ export function useRowBoxes(poses: Readonly<SharedValue<Poses>>, ids: string[], 
       own.push(boxOf(b, albedos[id]));
       used.push(id);
     }
-    const list = withCovers(own);
-    const others: { box: Box; id: string; d: number }[] = [];
-    for (const nb of neighbors) {
-      const group: Box[] = [];
-      const gids: string[] = [];
-      const nps = nb.poses.value;
-      for (const id of nb.ids) {
-        const b = nps[id];
-        if (!b) continue;
-        group.push(boxOf({ ...b, t: { x: b.t.x, y: b.t.y + nb.dy, z: b.t.z } }, albedos[id], nb.side));
-        gids.push(id);
-      }
-      withCovers(group).forEach((box, i) => {
-        const r = Math.hypot(box.hx, box.hz);
-        others.push({ box, id: gids[i], d: Math.min(box.c.x - r - SHELF_X0, SHELF_X1 - box.c.x - r) });
-      });
-    }
-    others.sort((a, b) => a.d - b.d);
-    for (const o of others) {
-      if (list.length >= BOX_MAX) break;
-      list.push(o.box);
-      used.push(o.id);
-    }
-    return packBoxes(list, used);
+    return packBoxes(withCovers(own), used);
   });
 }
 

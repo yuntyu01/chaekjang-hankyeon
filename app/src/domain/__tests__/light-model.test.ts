@@ -63,8 +63,7 @@ describe('빛 모델: 하늘 가림', () => {
     ['책등, 앞으로 뺀 이웃 옆', { x: 128, y: 80, z: 0 }, { x: 0, y: 0, z: -1 }, row, [book(100, 22, 150, 100, -40)]],
     ['판 윗면 벽 쪽 구석(위 판 아래)', { x: 180, y: 0, z: SHELF_DEPTH - 5 }, { x: 0, y: 1, z: 0 }, row, []],
     ['맨 아랫줄 판 밑 벽', { x: 180, y: -30, z: SHELF_DEPTH }, { x: 0, y: 0, z: -1 }, { floor: -FAR, ceil: -16 }, []],
-    ['판 끝 너머 벽, 판 두께 높이(판 끝면이 가린다)', { x: -9, y: -8, z: SHELF_DEPTH }, { x: 0, y: 0, z: -1 }, row, [book(16)]],
-    ['판 끝 너머 벽, 판 위', { x: -9, y: 20, z: SHELF_DEPTH }, { x: 0, y: 0, z: -1 }, row, [book(16)]],
+    ['그린 판 끝 너머 벽(가림 계산에서는 판이 이어진다)', { x: -9, y: 20, z: SHELF_DEPTH }, { x: 0, y: 0, z: -1 }, row, [book(16)]],
   ];
   it.each(cases)('%s: 해석 값 = 광선 적분(오차 1% 이내)', (_, p, n, env, books) => {
     const boxes = withCovers(books.map((b) => boxOf(b, g3(0.12))));
@@ -80,50 +79,14 @@ describe('빛 모델: 하늘 가림', () => {
     expect(relErr(analytic(p, n, row, boxes), monteCarlo(p, n, row, boxes))).toBeLessThan(0.01);
   });
 
-  // 판 끝 너머 벽: 판 끝 평면(창)의 판 사이 틈마다 그 줄 안(판 윗면·아랫면·책)이 보인다(판 끝 안쪽에서는 판이 다 가린다).
-  // 이웃 줄: 아래 줄(공간 190), 위 줄(공간 180)
-  const lifted = (b: Book3, dy: number): Book3 => ({ ...b, t: { ...b.t, y: b.t.y + dy } });
-  const rows3: Env = { floor: 0, ceil: 200, below: -SHELF_THICK - 190, above: 200 + SHELF_THICK + 180 };
-  it.each([
-    ['판 두께 높이', { x: -9, y: -8, z: SHELF_DEPTH }],
-    ['판 바로 위', { x: -9, y: 4, z: SHELF_DEPTH }],
-    ['위 판 바로 아래', { x: -9, y: 192, z: SHELF_DEPTH }],
-    ['위 판 두께 높이(오른쪽)', { x: 372, y: 205, z: SHELF_DEPTH }],
-    ['판 끝 안쪽(다른 줄 책은 다 가린다)', { x: 6, y: 40, z: SHELF_DEPTH }],
-  ] as [string, Vec3][])('다른 줄 책·판, %s: 해석 값 = 광선 적분(오차 1% 이내)', (_, p) => {
-    const boxes = [
-      ...withCovers([boxOf(book(16), g3(0.12)), boxOf(book(40), g3(0.5)), boxOf(book(330), g3(0.3))]),
-      ...withCovers([boxOf(lifted(book(10), 200 + SHELF_THICK), g3(0.2), 1), boxOf(lifted(book(34, 22, 120), 200 + SHELF_THICK), g3(0.7), 1), boxOf(lifted(book(335), 200 + SHELF_THICK), g3(0.6), 1)]),
-      ...withCovers([boxOf(lifted(book(20, 22, 170), -SHELF_THICK - 190), g3(0.15), -1)]),
-    ];
+  it('판은 가림 계산에서 가로로 끝없이 이어진다: 책이 없으면 그린 판 끝 너머 벽도 줄 가운데 벽과 같다(줄 끝 흰 번짐 없음)', () => {
     const n = { x: 0, y: 0, z: -1 };
-    for (const env of [row, rows3]) {
-      const mc = monteCarlo(p, n, env, boxes);
-      const an = analytic(p, n, env, boxes);
-      expect(relErr(an, mc)).toBeLessThan(0.01);
-    }
-  });
-  it.each([
-    ['아래 판 두께 높이', { x: 372, y: -10, z: SHELF_DEPTH }, rows3],
-    ['줄 가운데 높이', { x: -12, y: 100, z: SHELF_DEPTH }, rows3],
-    ['맨 아랫줄 판 밑(위로 그 줄 안)', { x: 374, y: -40, z: SHELF_DEPTH }, { floor: -FAR, ceil: -SHELF_THICK, above: 190 }],
-  ] as [string, Vec3, Env][])('판 끝 너머 벽, 이웃 줄 판까지, %s: 해석 값 = 광선 적분(오차 1% 이내)', (_, p, env) => {
-    const n = { x: 0, y: 0, z: -1 };
-    const mc = monteCarlo(p, n, env, []);
-    const an = analytic(p, n, env, []);
-    expect(relErr(an, mc)).toBeLessThan(0.01);
-  });
-  it('판 끝 너머 벽: 이웃 두 줄이 맞닿는 판 높이에서 두 줄의 계산이 같다(줄 경계 이음새가 없다)', () => {
-    // 이 줄(공간 200) 판 윗면 y = 0, 아래 줄(공간 190)의 위 판 = 이 줄 판. 같은 점을 두 줄 좌표로
-    const lower: Env = { floor: 0, ceil: 190, below: undefined, above: 190 + SHELF_THICK + 200 };
-    const upper: Env = { floor: 0, ceil: 200, below: -SHELF_THICK - 190, above: undefined };
-    for (const y of [-SHELF_THICK, -SHELF_THICK / 2, 0]) {
-      const p = { x: 372, y, z: SHELF_DEPTH };
-      const q = { x: 372, y: y + 190 + SHELF_THICK, z: SHELF_DEPTH };
-      const n = { x: 0, y: 0, z: -1 };
-      const a = analytic(p, n, upper, []);
-      const b = analytic(q, n, lower, []);
-      for (let c = 0; c < 3; c++) expect(Math.abs(a[c] - b[c])).toBeLessThan(1e-9);
+    for (const y of [-8, 20, 190]) {
+      const mid = analytic({ x: (SHELF_X0 + SHELF_X1) / 2, y, z: SHELF_DEPTH }, n, row, []);
+      for (const x of [SHELF_X0 - 9, SHELF_X1 + 9]) {
+        const end = analytic({ x, y, z: SHELF_DEPTH }, n, row, []);
+        for (let c = 0; c < 3; c++) expect(end[c]).toBeCloseTo(mid[c], 6);
+      }
     }
   });
 
@@ -143,10 +106,12 @@ describe('빛 모델: 하늘 가림', () => {
     expect(plank[0]).toBeGreaterThan(plank[2]);
     expect(loss[0]).toBeLessThan(loss[1]);
     expect(loss[1]).toBeLessThan(loss[2]);
-    // 같은 자리에 판과 같은 색 책이 있으면 그 책 색도 번진다: 파란 책 옆 벽은 파랑이 덜 빠진다
+    // 책 색도 번진다: 파란 책 옆 벽은 그 책이 가린 만큼 파랑이 덜 빠진다
     const blue = withCovers([boxOf(book(100), [0.05, 0.12, 0.4])]);
-    const l2 = skyLossAt({ x: 124, y: 60, z: SHELF_DEPTH }, { x: 0, y: 0, z: -1 }, row, blue);
-    expect(l2[2] - loss[2]).toBeLessThan(l2[0] - loss[0]);
+    const q = { x: 124, y: 60, z: SHELF_DEPTH };
+    const l0 = skyLossAt(q, { x: 0, y: 0, z: -1 }, row, []);
+    const l2 = skyLossAt(q, { x: 0, y: 0, z: -1 }, row, blue);
+    expect(l2[2] - l0[2]).toBeLessThan(l2[0] - l0[0]);
   });
 
   it('판이 그 방향 하늘보다 밝은 채널은 판 바로 위 벽이 오히려 밝아진다(되비침): 나무 판은 빨강이 하늘보다 밝고 파랑은 어둡다', () => {
@@ -174,7 +139,7 @@ describe('재질 반사율 맞추기(역렌더링)', () => {
 });
 
 describe('빛 모델: 창빛 가림·반사', () => {
-  it('위 판이 창빛 원반을 가리는 몫은 판 앞 모서리에 가까울수록 크고, 판 가운데에서는 가로 위치와 상관없다', () => {
+  it('위 판이 창빛 원반을 가리는 몫은 판 앞 모서리에 가까울수록 크고, 가로 위치와 상관없다(판은 끝없이 이어진다)', () => {
     const zf = SHELF_DEPTH + SHELF_FRONT;
     let prev = 2;
     for (let d = 0.5; d < 60; d += 0.5) {
@@ -184,9 +149,8 @@ describe('빛 모델: 창빛 가림·반사', () => {
     }
     const mid = (SHELF_X0 + SHELF_X1) / 2;
     const a = plankKeyBlocked({ x: mid, y: 190, z: SHELF_DEPTH }, row);
-    expect(plankKeyBlocked({ x: mid + 60, y: 190, z: SHELF_DEPTH }, row)).toBeCloseTo(a, 6);
-    // 판 왼쪽 끝 너머(빛이 왼쪽에서 와서 판 끝 그늘이 오른쪽으로 밀린다)는 덜 가려진다
-    expect(plankKeyBlocked({ x: SHELF_X0, y: 190, z: SHELF_DEPTH }, row)).toBeLessThan(a);
+    expect(plankKeyBlocked({ x: mid + 60, y: 190, z: SHELF_DEPTH }, row)).toBeCloseTo(a, 9);
+    expect(plankKeyBlocked({ x: SHELF_X0 - 9, y: 190, z: SHELF_DEPTH }, row)).toBeCloseTo(a, 9);
   });
 
   it('거친 종이의 환경 반사: 정면 약 3%, 비스듬히 볼수록 커지지만 10%를 넘지 않는다(거울 프레넬처럼 수십 %가 되지 않는다)', () => {
