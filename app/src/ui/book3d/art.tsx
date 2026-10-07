@@ -12,7 +12,7 @@ import { COVER_LINE_H, COVER_SPACE, COVER_TRACK, coverTitleLayout, LYING_TRACK, 
 import type { Book, CoverArt } from '@/domain/types';
 import { motifSvg } from '@/ui/art/motifs';
 import { bootMark } from '@/ui/boot-trace';
-import { EDGE_R, GROOVE, rigOf } from '@/domain/book-parts';
+import { GROOVE, rigOf, TAB_R } from '@/domain/book-parts';
 import { jacketColor, jacketFor, LANDSCAPES } from '@/domain/book-design';
 import { hasRibbon, ribbonDesign } from '@/domain/ribbon-design';
 import { bookFacePath, CoverFaceArt, PAGE_BASE, SpineFaceArt } from '@/ui/book/BookBody';
@@ -211,12 +211,12 @@ export function tabsOf(book: Book): Tab[] {
     return { x: design.x + t.x, width: t.width, out: t.out, color: t.out === tall ? c1 : c2, seed: sd, tilt: (rng(sd ^ 0x9e3779b9)() - 0.5) * 2 * TAB_TILT_MAX };
   });
 }
-// 탭 한 장의 모양(갈피 좌표, px). 둥근 위 모서리 반지름 = 판 모서리 반지름(EDGE_R)
+// 탭 한 장의 모양(갈피 좌표, px). 둥근 위 모서리 반지름 TAB_R
 function tabPath(t: Tab, s: number, into: ReturnType<typeof Skia.PathBuilder.Make>) {
   const w = t.width * s;
   const hidden = TAB_HIDDEN * s;
   const top = -t.out * s;
-  const r = Math.min(EDGE_R * s, w / 2);
+  const r = Math.min(TAB_R * s, w / 2);
   const m = Skia.Matrix();
   m.translate(t.x * s, hidden);
   m.rotate((t.tilt * Math.PI) / 180);
