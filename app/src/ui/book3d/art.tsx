@@ -19,7 +19,7 @@ import { bookFacePath, CoverFaceArt, PAGE_BASE, SpineFaceArt } from '@/ui/book/B
 import { ReferenceCover } from './ReferenceCover';
 import { ReferenceBinding } from './ReferenceBinding';
 import { bookTone, referenceBinding } from '@/domain/binding-material';
-import { GRAIN, MaterialGrain } from './MaterialGrain';
+import { GRAIN, MaterialGrain, PageSheets } from './MaterialGrain';
 import { ORIGINAL_ART, ReferenceGlyph, ReferenceMotif, ReferencePrint, drawOriginalGlyph, hasOriginalGlyph, hasReferenceMotif, referencePrint } from './ReferencePrint';
 
 const REGULAR = require('@expo-google-fonts/gowun-batang/400Regular/GowunBatang_400Regular.ttf');
@@ -286,18 +286,16 @@ function ribbonShapeOf(book: Book, s: number) {
   return { path: all.detach(), out: Math.max(...tabs.map((t) => t.out)) };
 }
 
-// 속지 면(판 사이, 판 끝보다 안쪽). w×h DU를 배율 s로. 밝은 아이보리 바탕 + 판(과 책등 띠) 쪽 좁은 그늘(결 줄은 두지 않는다:
-// 휴대폰 크기에서 머리 면을 나누는 이음선처럼 보였다). 그늘은 책 좌표에 붙어 있어 세우기·눕히기·돌리기에도 같은 자리다. 밝기는 그릴 때 면마다 덧칠한다.
-function PageArt({ w, h, s, spineBand }: { w: number; h: number; s: number; spineBand: boolean }) {
+// 속지 면(판 사이, 판 끝보다 안쪽). w×h DU를 배율 s로. 낱장은 가로(두께 방향)로 쌓여 결은 세로 줄이다.
+// 결은 책 좌표에 붙어 있어 세우기·눕히기·돌리기에도 같은 자리다. 밝기·판 쪽 그늘은 빛 모델이 위에 칠한다.
+function PageArt({ w, h, s }: { w: number; h: number; s: number }) {
   const W = w * s;
   const H = h * s;
-  // 속지 단면(재질): 종이 색 + 낱장 가장자리 결(같은 결 세기 GRAIN). 판 쪽 그늘·밝기는 빛 모델이 칠한다
+  // 속지 단면(재질): 종이 색 + 낱장 결(PageSheets) + 섬유 점(같은 결 세기 GRAIN)
   return (
     <Group clip={Skia.XYWHRect(0, 0, W, H)}>
       <Rect x={0} y={0} width={W} height={H} color={PAGE_BASE} />
-      {Array.from({ length: spineBand ? 0 : Math.max(1, Math.floor(w / 2.8)) }, (_, i) => (
-        <Rect key={i} x={(1.1 + i * 2.8) * s} y={0} width={0.12 * s} height={H} color={`rgba(158,132,98,${GRAIN})`} />
-      ))}
+      <PageSheets w={W} h={H} s={s} />
       <MaterialGrain w={W} h={H} s={s} />
     </Group>
   );
@@ -308,7 +306,7 @@ async function record(el: ReactNode, w: number, h: number) {
 }
 
 // 그림 기록 키에 넣는 디자인 판(조판·몸체 규칙을 바꾸면 올린다: 빠른 새로고침에서도 예전 규칙으로 기록한 그림을 다시 쓰지 않게)
-const DESIGN_REV = 'light-model-1';
+const DESIGN_REV = 'page-sheets-1';
 const cache = new Map<string, Promise<BookArt>>();
 const done = new Map<string, BookArt>(); // 이미 기록된 것(다시 그릴 때 한 프레임도 비지 않게)
 let queue: Promise<unknown> = Promise.resolve();
@@ -421,8 +419,8 @@ async function buildArt(book: Book, s: number, dims: { T: number; H: number; W: 
   // 속지 면(book-parts와 같은 치수): 머리·꼬리는 책등 띠 쪽에도 그늘, 책배는 판 쪽만
   const rig = rigOf(dims);
   const pw = dims.T - 2 * rig.bd;
-  const pageEnd = await record(<PageArt w={pw} h={dims.W - rig.sq - rig.sp} s={s} spineBand />, pw * s, (dims.W - rig.sq - rig.sp) * s);
-  const pageFore = await record(<PageArt w={pw} h={dims.H - 2 * rig.sq} s={s} spineBand={false} />, pw * s, (dims.H - 2 * rig.sq) * s);
+  const pageEnd = await record(<PageArt w={pw} h={dims.W - rig.sq - rig.sp} s={s} />, pw * s, (dims.W - rig.sq - rig.sp) * s);
+  const pageFore = await record(<PageArt w={pw} h={dims.H - 2 * rig.sq} s={s} />, pw * s, (dims.H - 2 * rig.sq) * s);
   return { spine, titleV, titleH, cover: coverPic, ribbons, ribbonsShape: rs?.path ?? null, ribbonsOut: rs?.out ?? 0, pageEnd, pageFore };
 }
 
