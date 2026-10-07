@@ -4,7 +4,7 @@ import palette from '@/ui/art/reference-bindings.generated.json';
 import { materials } from '@/ui/lighting';
 
 import { bookAlbedo, ROUGH } from '../light-model';
-import { GRAIN_KIND, MAT_UNIFORMS, matSample, VN_GRAD_RMS } from '../surface-pattern';
+import { GRAIN_KIND, grainPeak, MAT_UNIFORMS, matSample, VN_GRAD_RMS } from '../surface-pattern';
 
 const NAMES = Object.keys(materials) as (keyof typeof materials)[];
 // 고르게 흩은 표본 점(R2 저불일치 수열: 두 축이 서로 묶이지 않는다)
@@ -50,10 +50,15 @@ describe('재질 무늬', () => {
     expect(s.r).toBeGreaterThanOrEqual(materials[name].roughness);
   });
 
+  it.each(NAMES)('%s: 결의 가장 밝은 점은 grainPeak를 넘지 않는다', (name) => {
+    let top = 0;
+    for (let i = 0; i < 4000; i++) top = Math.max(top, matSample(i * 0.137, i * 0.291, 0, 0, MAT_UNIFORMS[name]).f);
+    expect(top).toBeLessThanOrEqual(grainPeak(MAT_UNIFORMS[name]) + 1e-9);
+  });
+
   it('결을 곱해도 반사율은 1을 넘지 않는다(장정 재질 × 가장 밝은 시안 장정 색)', () => {
     for (const name of ['paper', 'cloth', 'coated'] as const) {
-      const [kind, c1, c2] = MAT_UNIFORMS[name].mGrain;
-      const fmax = kind === GRAIN_KIND.none ? 1 : 1 + c1 + c2;
+      const fmax = grainPeak(MAT_UNIFORMS[name]);
       for (const hex of Object.keys(palette)) expect(Math.max(...bookAlbedo(hex, ROUGH[name])) * fmax).toBeLessThanOrEqual(1);
     }
   });

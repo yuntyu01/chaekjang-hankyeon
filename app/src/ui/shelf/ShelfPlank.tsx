@@ -13,7 +13,7 @@ import { toPx, VIEW_CX, VIEW_DIST, type Affine, type Cam, type Vec3 } from '@/do
 import type { Camera } from '@/domain/box';
 import { EDGE_R } from '@/domain/book-parts';
 import { DESIGN_WIDTH, SHELF, SHELF_DEPTH, SHELF_FRONT, SHELF_THICK, SHELF_X0, SHELF_X1 } from '@/domain/geometry';
-import { darkening, DESIGN, EREF, FAR, NEGLIGIBLE, shadowAlpha, type Env } from '@/domain/light-model';
+import { darkening, DESIGN, EREF, FAR, NEGLIGIBLE, shadowAlpha, SREF, type Env } from '@/domain/light-model';
 import { hull } from '@/domain/shadow-shape';
 import type { Point } from '@/domain/shelf-scene';
 import { faceTextureMatrix, shelfFaces } from '@/domain/shelf-geom';
@@ -124,7 +124,7 @@ export function ShelfWall({ cam, px, y0, y1, top = y1, bottom = y0, env, atlas, 
   return (
     <Group zIndex={zIndex}>
       {LIGHT_ON.wall ? (
-        <BakedPlane path={path} cam={cam} px={px} plane={WALL} env={env} atlas={atlas} akey={akey} matrix={matrix} albedo={DESIGN.wall} eref={EREF.wall} mat="paint" color={surfaces.wall} keyShadow={keyShadow} />
+        <BakedPlane path={path} cam={cam} px={px} plane={WALL} env={env} atlas={atlas} akey={akey} matrix={matrix} albedo={DESIGN.wall} eref={EREF.wall} sref={SREF.wall} mat="paint" color={surfaces.wall} keyShadow={keyShadow} />
       ) : (
         <Path path={path} color={surfaces.wall} />
       )}
@@ -179,10 +179,10 @@ export function ShelfBoard({ px, cam, zIndex, env, atlas, keyShadow }: { px: Aff
       {/* 경로 자르기는 안티에일리어싱 없이 계단이 되므로 판 둘레 크기 레이어에 그린 뒤 안티에일리어싱된 윤곽으로 남긴다(dstIn) */}
       <Group layer>
         <Face poly={topP}>
-          {on ? <BakedPlane path={topP} cam={cam} px={px} plane={TOP} env={env} atlas={atlas} akey={TOP_KEY} matrix={topL} albedo={DESIGN.plank} eref={EREF.plank} mat="wood" seed={seed} keyShadow={keyShadow} /> : null}
+          {on ? <BakedPlane path={topP} cam={cam} px={px} plane={TOP} env={env} atlas={atlas} akey={TOP_KEY} matrix={topL} albedo={DESIGN.plank} eref={EREF.plank} sref={SREF.plank} mat="wood" seed={seed} keyShadow={keyShadow} /> : null}
         </Face>
         <Face poly={frontP}>
-          {on ? <BakedPlane path={frontP} cam={cam} px={px} plane={FRONT} env={env} atlas={atlas} akey={FRONT_KEY} matrix={frontL} albedo={DESIGN.plank} eref={EREF.plank} mat="wood" seed={seed} /> : null}
+          {on ? <BakedPlane path={frontP} cam={cam} px={px} plane={FRONT} env={env} atlas={atlas} akey={FRONT_KEY} matrix={frontL} albedo={DESIGN.plank} eref={EREF.plank} sref={SREF.plank} mat="wood" seed={seed} /> : null}
         </Face>
         <Path path={outline} color="black" blendMode="dstIn" />
       </Group>

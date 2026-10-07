@@ -86,6 +86,16 @@ export function pulseCover(x: number, q: number, w: number) {
   return (pulseInt(x + w / 2, q) - pulseInt(x - w / 2, q)) / w;
 }
 
+// 결(반사율 배수 f)의 가장 큰 값: 반사율 × 이 값이 1을 넘지 않아야 한다(받은 빛보다 많이 되비추는 점은 없다). matSample의 kind별 식에서
+export function grainPeak(M: MatUniforms) {
+  const [kind, c1, c2] = M.mGrain;
+  const [s1, s2] = M.mGsize;
+  if (kind === GRAIN_KIND.fiber || kind === GRAIN_KIND.weave) return 1 + c1 + c2;
+  if (kind === GRAIN_KIND.sheets) return 1 + c1 + (c2 * 1.5 * s1) / s2;
+  if (kind === GRAIN_KIND.wood) return 1 + c1 * 0.25 + c2;
+  return 1;
+}
+
 // 한 점의 재질 표본: 미세 높이의 기울기(면 u·v 방향, 법선을 n − su·U − sv·V로 기울인다), 반사율 배수 f, 거칠기 r(그리지 못한 높이 몫 포함).
 // 셰이더 materialCode matSample과 같은 식
 export function matSample(u: number, v: number, fu: number, fv: number, M: MatUniforms) {

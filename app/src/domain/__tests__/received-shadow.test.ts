@@ -126,7 +126,7 @@ describe('받는 그림자: 가리개 모델 하나(벽·선반과 같은 빛 �
   const near2 = box('o2', 50, -30, 20, 178);
   const faceOf = (r: ReturnType<typeof receivedShadow3>, f: string) => r!.faces.find((q) => q.f === f);
   // 그림자 다각형이 실제로 보이는 넓이: 면 좌표(u·v)의 볼록 껍질을 면 사각형으로 잘라 잰다(그리기도 면 모양으로 자른다)
-  const area = (fa: Face3, pts: { x: number; y: number; z: number }[]) => {
+  const faceHull = (fa: Face3, pts: { x: number; y: number; z: number }[]) => {
     const [o, a1, , a3] = fa.fc;
     const e1 = { x: a1.x - o.x, y: a1.y - o.y, z: a1.z - o.z };
     const e2 = { x: a3.x - o.x, y: a3.y - o.y, z: a3.z - o.z };
@@ -152,9 +152,36 @@ describe('받는 그림자: 가리개 모델 하나(벽·선반과 같은 빛 �
     clip((q) => q.x <= l1, atX(l1));
     clip((q) => q.y >= 0, atY(0));
     clip((q) => q.y <= l2, atY(l2));
+    return { poly, l1, l2 };
+  };
+  const area = (fa: Face3, pts: { x: number; y: number; z: number }[]) => {
+    const { poly } = faceHull(fa, pts);
     let A = 0;
     for (let i = 0; i < poly.length; i++) A += poly[i].x * poly[(i + 1) % poly.length].y - poly[(i + 1) % poly.length].x * poly[i].y;
     return Math.abs(A) / 2;
+  };
+  // 여러 다각형의 합집합 넓이(면 위 0.5DU 칸 가운데 점이 어느 볼록 다각형 안에 드는지 세어)
+  const unionArea = (fa: Face3, list: { x: number; y: number; z: number }[][]) => {
+    const hulls = list.map((pts) => faceHull(fa, pts));
+    if (!hulls.length) return 0;
+    const { l1, l2 } = hulls[0];
+    const inside = (poly: { x: number; y: number }[], x: number, y: number) => {
+      if (poly.length < 3) return false;
+      let sign = 0;
+      for (let i = 0; i < poly.length; i++) {
+        const a = poly[i];
+        const b = poly[(i + 1) % poly.length];
+        const c = (b.x - a.x) * (y - a.y) - (b.y - a.y) * (x - a.x);
+        if (Math.abs(c) < 1e-12) continue;
+        if (sign === 0) sign = Math.sign(c);
+        else if (Math.sign(c) !== sign) return false;
+      }
+      return true;
+    };
+    const h = 0.5;
+    let n = 0;
+    for (let x = h / 2; x < l1; x += h) for (let y = h / 2; y < l2; y += h) if (hulls.some((q) => inside(q.poly, x, y))) n++;
+    return n * h * h;
   };
 
   it('가리개 수에 제한이 없다: 가까운 책 둘이 한 면에 모두 남는다', () => {
@@ -165,23 +192,25 @@ describe('받는 그림자: 가리개 모델 하나(벽·선반과 같은 빛 �
 
   it('책 가리개는 벽·선반 그림자와 같은 빛 길이 구간을 쓰고, 다가올 때 그림자 전체가 한 번에 바뀌지 않는다', () => {
     // 받는 책 앞(받는 면 평면 z=0보다 완전히 앞)에 선 책을 0.5DU씩 밀어 넣는다. 구간 k는 가장 가까운 빛 길이가 구간 끝 L_k 안에 들 때만 있다.
-    // 받는 면과 평행한 가리개 면은 한 걸음에 한 구간에서 다음 구간으로 통째로 옮겨 가므로(흐림만 바뀐다), 이어지는 것은 구간을 모두 합친 그림자다
+    // 빛 방향으로 자른 상자 조각의 그림자는 조각 두께와 상관없이 상자 실루엣이라, 구간이 새로 생기면 그 구간은 한 걸음에 다 나타난다(이미 먼 구간이
+    // 같은 자리를 덮고 있어 흐림만 바뀐다). 이어지는 것은 구간을 모두 합친 그림자(합집합 넓이)다
     const L = physShadow.bands;
-    const series: { d: number; areas: number[] }[] = [];
+    const series: { d: number; areas: number[]; union: number }[] = [];
     for (let z = -260; z <= -100.5; z += 0.5) {
       const o = box('o', 92, z, 22, 170);
       const r = receivedShadow3(recv, [o], 3, TEST_DIR);
       const spine = faceOf(r, 'spine');
       const d = -(z + 100) / -LIGHT_Z; // 가리개 뒷면 → 받는 면 평면까지 빛 길이
-      series.push({ d, areas: L.map((_, k) => (spine ? spine.bands[k].polys.reduce((acc, poly) => acc + area(spine, poly), 0) : 0)) });
+      series.push({ d, areas: L.map((_, k) => (spine ? spine.bands[k].polys.reduce((acc, poly) => acc + area(spine, poly), 0) : 0)), union: spine ? unionArea(spine, spine.bands.flatMap((b) => b.polys)) : 0 });
     }
     // 가까운 구간까지 차례로 나타나고, 구간 끝보다 멀면 없다
     expect(Math.max(...series.map((q) => q.areas[0]))).toBeGreaterThan(0);
     L.forEach((Lk, k) => {
       for (const q of series) if (q.d > Lk + 0.6) expect(q.areas[k]).toBe(0);
     });
-    const total = series.map((q) => q.areas.reduce((a, v) => a + v, 0));
+    const total = series.map((q) => q.union);
     const fin = Math.max(...total);
+    expect(fin).toBeGreaterThan(0);
     for (let i = 1; i < total.length; i++) expect(Math.abs(total[i] - total[i - 1])).toBeLessThan(fin * 0.25);
   });
 

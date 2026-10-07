@@ -5,7 +5,7 @@
 //   lit: 구운 그림(tex)을 읽고 나머지(하늘·창빛 직접 몫, 둥근 모서리 법선, 반사광)를 화소마다. 곱하기·컬러 닷지 두 가지로 컴파일한다.
 import { EDGE_R, GROOVE, SPINE_CURVE } from '@/domain/book-parts';
 import { SHELF_DEPTH, SHELF_FRONT, SHELF_THICK, SHELF_X0, SHELF_X1 } from '@/domain/geometry';
-import { ALBEDO, BOX_MAX, BOX_VEC, DESIGN, ENV_COLS, ENV_NY, EREF, EXPOSURE, FAR, GAIN, GAMMA, GRID_N, L_ELEV, L_UNIT, RAD, TONE, TOUCH, type C3 } from '@/domain/light-model';
+import { ALBEDO, BOX_MAX, BOX_VEC, DESIGN, ENV_COLS, ENV_NY, CAM, EREF, EXPOSURE, FAR, GAMMA, GRID_N, L_ELEV, L_UNIT, RAD, TONE, TOUCH, type C3 } from '@/domain/light-model';
 import type { Affine, Cam, Vec3 } from '@/domain/camera';
 import { F0, light } from '@/ui/lighting';
 
@@ -45,10 +45,11 @@ const c3 = (c: C3) => `float3(${f(c[0])}, ${f(c[1])}, ${f(c[2])})`;
 // 잘린 다각형 꼭짓점 최대 수: 사각형 4 + 반구 1 + 구역 평면 둘 2(볼록 다각형은 평면 하나에 꼭짓점이 많아야 하나 는다)
 const NV = 7;
 
-// 하늘 가림 그림: 선형 RGB 채널마다 (가림 + LOSS_OFF) / LOSS_SCALE. 밝은 판이 되비춰 밝아지면 가림이 음수다.
-// 그림 칸 값이 색 변환되지 않도록 굽는 표면은 화면 표면과 같은 색 공간이다(SceneLight bakeAtlas). 8비트 한 단계 = 받는 빛 약 0.6%
-export const LOSS_OFF = 0.25;
-export const LOSS_SCALE = 1.5;
+// 하늘 가림 그림: 선형 RGB 채널마다 (가림 + LOSS_OFF) / LOSS_SCALE. 가림이 음수인 곳: 밝은 판이 되비춰 밝아진 곳(0.25 안), 판 두께 높이 벽 띠
+// (그 점은 판 속이라 창빛이 다 가려지지만 띠 빛은 위아래 경계 빛을 이어 창빛을 받는다: 창빛 몫까지). 가장 큰 가림 = 모두 가려진 앞면의 빛.
+// 그림 칸 값이 색 변환되지 않도록 굽는 표면은 화면 표면과 같은 색 공간이다(SceneLight bakeAtlas). 8비트 한 단계 = 받는 빛 약 0.75%
+export const LOSS_OFF = light.diffuse + 0.25;
+export const LOSS_SCALE = light.ambient + light.skyUp + light.diffuse + LOSS_OFF;
 // 빛 격자 그림(light-model Grid): 칸 값 = 받는 빛 / GRID_SCALE(선형 RGB). 가로 6·GRID_N칸: 상자 i의 면 f(축 k + 3·(s > 0))는
 // (f·N, i·N)부터 N × N, 그 아래(nBox·N부터) 둘레 면(벽, 판 윗면, 위 판 아랫면)이 ENV_NX × ENV_NY씩(책이 없으면 가로 한 칸)
 export const GRID_SCALE = 1.5;
@@ -63,8 +64,8 @@ function header() {
   const float SKYUP = ${f(light.skyUp)};
   const float DIFF = ${f(light.diffuse)};
   const float3 LU = ${v3(L_UNIT)};
-  // 카메라 기준 빛(벽 대표 자리 빛 / 노출 기준 GAIN, 반사광을 장면 밝기로)
-  const float3 ECAM = ${c3(EREF.wall.map((v) => v / GAIN) as C3)};
+  // 카메라 기준 빛(벽 대표 자리 빛 / 노출 기준 CAM.gain, 반사광을 장면 밝기로)
+  const float3 ECAM = ${c3(EREF.wall.map((v) => v / CAM.gain) as C3)};
   const float LELEV = ${f(L_ELEV)};
   const float LRAD = ${f(light.radius)};
   const float F0 = ${f(F0)};
@@ -95,16 +96,25 @@ function header() {
   float skyOf(float4 q) { return AMB * q.x + 1.5 * SKYUP * q.z; }
 
   bool inDepth(float z) { return z >= -FRONT && z <= DEPTH; }
-  // 위 판이 창빛 원반을 가리는 몫(light-model plankKeyBlocked): 판 앞 모서리로 자른 활꼴 넓이 비율
+  // 판이 창빛 원반을 가리는 몫: 판 앞 모서리로 자른 활꼴 넓이 비율
   float segment(float u) {
     if (u <= -1.0) return 1.0;
     if (u >= 1.0) return 0.0;
     return (acos(u) - u * sqrt(1.0 - u * u)) / PI;
   }
+  // 위 판 앞 모서리 위쪽 활꼴 + 아래 판 앞 모서리 아래쪽 활꼴(light-model plankKeyBlocked)
   float plankKeyOf(float3 p) {
-    if (env.x < 0.5 || env.z >= FARV) return 0.0;
-    float d = env.z - p.y;
-    return d <= 0.0 ? 1.0 : segment((atan(d, max(0.001, p.z + FRONT)) - LELEV) / LRAD);
+    if (env.x < 0.5) return 0.0;
+    float k = 0.0;
+    if (env.z < FARV) {
+      float d = env.z - p.y;
+      k += d <= 0.0 ? 1.0 : segment((atan(d, max(0.001, p.z + FRONT)) - LELEV) / LRAD);
+    }
+    if (env.y > -FARV) {
+      float h = p.y - env.y;
+      k += h <= 0.0 ? 0.0 : segment((LELEV + atan(h, max(0.001, p.z + FRONT))) / LRAD);
+    }
+    return min(1.0, k);
   }
   // 가림이 없을 때 받는 빛(light-model openE)
   float openE(float3 p, float3 n) { return AMB + SKYUP * n.y + DIFF * max(0.0, dot(n, LU)) * (1.0 - plankKeyOf(p)); }
@@ -801,27 +811,33 @@ function shadeCode(mode: 0 | 1 | 2) {
   // 점 P(법선 n, 재질 색 a, 하늘 가림 loss: 선형 RGB)의 빛. 눈 쪽 방향 v, eref: 그 재질의 대표 자리 빛. 채널마다 계산한다
   // 받는 빛 = 하늘·천장·창빛(위 판이 가린 창빛 몫 빼고) − 하늘 가림. 반사광 = 거울 방향의 둘레·하늘(이웃 책의 반사는 뺀다) + GGX 창빛
   // rough: 표면 거칠기(재질, 그리지 못한 미세 높이 몫 포함), alb: 반사율 결(배수, 평균 1),
-  // kx: 책이 창빛 원반을 가리는 몫(위 판이 가리고 남은 빛에서, 벽 그림자 그림)
-  half4 shade(float3 P, float3 n, float3 nf, float3 v, float3 loss, float3 a, float3 eref, float rough, float alb, float kx) {
+  // kx: 책이 창빛 원반을 가리는 몫(위 판이 가리고 남은 빛에서, 벽 그림자 그림),
+  // sref: 그 재질이 대표 자리에서 받는 반사광(장면 밝기, light-model SREF): 재질 색 a는 반사광까지 넣은 '보이는 색'이라 확산 몫은 toneInv(a) − sref
+  half4 shade(float3 P, float3 n, float3 nf, float3 v, float3 loss, float3 a, float3 eref, float rough, float alb, float kx, float3 sref) {
     float kb = 1.0 - (1.0 - plankKey(P)) * (1.0 - kx);
     // 가림(loss)은 면 법선 nf에서 구운 값: 둥근 모서리·구멍 벽처럼 법선이 기운 곳은 면이 받는 빛의 비율로(light-model lightWithLoss)
     float e0 = AMB + SKYUP * n.y + DIFF * max(0.0, dot(n, LU)) * (1.0 - kb);
     float e0f = AMB + SKYUP * nf.y + DIFF * max(0.0, dot(nf, LU)) * (1.0 - kb);
     // 하늘 가림은 그 면이 받는 하늘 빛보다 클 수 없다(아주 좁은 틈에서 해석 값의 작은 오차가 넘을 때: 창빛까지 가려지면 받는 빛이 음수가 된다)
-    float3 lossB = min(loss, float3(AMB + SKYUP * nf.y));
+    float sky = AMB + SKYUP * nf.y;
+    float3 lossB = min(loss, float3(sky));
     float3 E = e0 * max(float3(0.0), e0f - lossB) / max(e0f, 1e-4);
+    // 반사광도 둘레가 가린 만큼 가려진다(거친 면은 반사 방향이 넓어 하늘이 보이는 몫 = 확산 몫과 같다): 좁은 틈 안은 반사광도 없다
+    float3 vis = clamp((float3(sky) - lossB) / max(sky, 1e-4), 0.0, 1.0);
     float ks = envBRDF(max(0.0, dot(n, v)), rough);
     float3 r = E * (1.0 - ks) * alb / eref;
-    // 화면 색 = tone(노출 × (toneInv(a) × r + 반사광))(light-model toneTarget). 곱하기는 반사광 없이, 닷지가 나머지
+    // 화면 색 = tone(노출 × ((toneInv(a) − sref) × r + 반사광))(light-model toneTarget). 곱하기·닷지 두 겹으로 그 색이 되게:
+    // 곱하기가 화면 색을 base까지 내리고 닷지가 target까지 올린다. base는 확산 몫(반사광 없이)이되, 8비트 화면 버퍼에서 닷지가 올릴 수 있게
+    // target의 1/4보다 낮추지 않는다(확산 몫이 0인 채널은 곱하기에서 0이 되면 닷지가 반사광을 더하지 못한다)
     float3 am = max(a, float3(1e-4));
-    float3 sa = float3(toneInv(am.x), toneInv(am.y), toneInv(am.z)) * r * EXPO;
-    float3 t0 = float3(toneF(sa.x), toneF(sa.y), toneF(sa.z));
-    float3 m = pow(min(float3(1.0), t0 / am), float3(IG));
-    if (DODGE < 0.5) return half4(half3(m), 1.0);
-    float3 spec = (ks * envHit(P, reflect(-v, n)).yzw + ggxKey(n, v, rough) * DIFF * (1.0 - kb)) / ECAM;
+    float3 sa = max(float3(0.0), float3(toneInv(am.x), toneInv(am.y), toneInv(am.z)) - sref) * r * EXPO;
+    float3 spec = (ks * envHit(P, reflect(-v, n)).yzw * vis + ggxKey(n, v, rough) * DIFF * (1.0 - kb)) / ECAM;
     float3 st = sa + spec * EXPO;
-    float3 base = min(a, t0);
+    float3 t0 = float3(toneF(sa.x), toneF(sa.y), toneF(sa.z));
     float3 target = float3(toneF(st.x), toneF(st.y), toneF(st.z));
+    float3 base = min(am, max(t0, 0.25 * target));
+    float3 m = pow(min(float3(1.0), base / am), float3(IG));
+    if (DODGE < 0.5) return half4(half3(m), 1.0);
     float3 s = float3(0.0);
     for (int c = 0; c < 3; c++) {
       float b = c == 0 ? base.x : (c == 1 ? base.y : base.z);
@@ -853,9 +869,10 @@ export function litSource(dodge: boolean | 'direct') {
   uniform float4 bev0;      // 모서리 둥글기(평면 안에서 모서리 쪽 단위 벡터, 모서리의 그 축 좌표). 없으면 0
   uniform float4 bev1;
   uniform float4 cam4;      // 눈(x, y, 기준면 z, 거리): 눈 위치 = (x, y, z − 거리)
-  uniform float keyOn;      // 위 판이 창빛을 가리는 몫을 넣을지
+  uniform float keyOn;      // 판(위·아래)이 창빛을 가리는 몫을 넣을지
   uniform float3 albedo;    // 재질 색(선형 RGB, 닷지: 반사광을 감마 공간에 더할 때)
   uniform float3 eref;      // 그 재질의 대표 자리 빛(light-model EREF)
+  uniform float3 sref;      // 그 재질의 대표 자리 반사광(light-model SREF)
   uniform float liveEnv;    // 1: 구운 값 대신 둘레가 가린 하늘을 그 자리에서
   uniform float3 kU;
   uniform float3 kV;
@@ -886,7 +903,7 @@ ${shadeCode(mode)}
     float4 ms = matSample(float2(dot(P, Au), dot(P, Av)) + mSeed, fp, mR, mB, mG, mS);
     n = normalize(n - ms.x * Au - ms.y * Av);
     float3 loss = liveEnv > 0.5 ? envLoss(P, tN) : float3(tex.eval(p).rgb) * LOSS_SCALE - LOSS_OFF;
-    half4 g = shade(P, n, tN, normalize(float3(cam4.x, cam4.y, cam4.z - cam4.w) - P), loss, albedo, eref, ms.w, ms.z, float(keyTex.eval(float2(dot(P, kU), dot(P, kV)) + kO).a));
+    half4 g = shade(P, n, tN, normalize(float3(cam4.x, cam4.y, cam4.z - cam4.w) - P), loss, albedo, eref, ms.w, ms.z, float(keyTex.eval(float2(dot(P, kU), dot(P, kV)) + kO).a), sref);
     ${mode === 2 ? 'return half4(half3(min(base * float3(g.rgb), float3(1.0))), 1.0);' : 'return g;'}
   }
 `;
@@ -912,7 +929,9 @@ export function bookSource(dodge: boolean) {
   uniform float4 rect[6];   // 면마다 아틀라스 칸 (0, 0) 자리와 칸 수(x, y, w, h). w ≤ 0이면 구운 값 없음
   uniform float keyOn;
   uniform float3 albedo;    // 장정 색(선형 RGB)
-  uniform float3 erefB;     // 장정 재질의 대표 자리 빛(light-model bookEref)
+  uniform float3 erefB;     // 장정 재질의 대표 자리 빛·반사광(light-model bookEref·bookSref), 속지 단면의 대표 자리 반사광
+  uniform float3 srefB;
+  uniform float3 srefP;
   uniform float2 mR;        // 장정 재질(domain/surface-pattern matUniforms): 거칠기·기울기 RMS, 미세 높이, 결, 결 크기, 책마다 무늬 자리 어긋남
   uniform float4 mB;
   uniform float4 mG;
@@ -1048,7 +1067,7 @@ ${shadeCode(dodge ? 1 : 0)}
     float4 K = float4(0.0);
     for (int i = 0; i < 6; i++) { if (i == fi) K = kRect[i]; }
     float kx = K.w > 0.5 ? float(keyTex.eval(K.xy + float2(u, v) * K.z).a) : 0.0;
-    return shade(P, nw3, normalize(toRow(nl)), view, loss, a, page ? EREF_PAPER : erefB, ms.w, ms.z, kx);
+    return shade(P, nw3, normalize(toRow(nl)), view, loss, a, page ? EREF_PAPER : erefB, ms.w, ms.z, kx, page ? srefP : srefB);
   }
 `;
 }
@@ -1068,6 +1087,7 @@ export function tabSource(dodge: boolean) {
   uniform float keyOn;
   uniform float3 albedo;
   uniform float3 eref;
+  uniform float3 sref;
   uniform float2 mR;
   uniform float4 mB;
   uniform float4 mG;
@@ -1084,7 +1104,7 @@ ${shadeCode(dodge ? 1 : 0)}
     float4 ms = matSample(float2(l.x, -l.y) + mSeed, float2(fp, fp), mR, mB, mG, mS);
     float3 n = normalize(nrm - ms.x * axR - ms.y * axU);
     float3 view = cam4.w > 0.0 ? normalize(float3(cam4.x, cam4.y, cam4.z - cam4.w) - P) : float3(0.0, 0.0, -1.0);
-    return shade(P, n, nrm, view, loss, albedo, eref, ms.w, ms.z, 0.0);
+    return shade(P, n, nrm, view, loss, albedo, eref, ms.w, ms.z, 0.0, sref);
   }
 `;
 }

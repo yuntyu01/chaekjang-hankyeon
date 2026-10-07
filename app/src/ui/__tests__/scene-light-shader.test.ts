@@ -107,6 +107,7 @@ function shaderLit(P: Vec3, n: Vec3, env: Env | null, dodge: boolean | 'direct',
       kU: [0, 0, 0],
       kV: [0, 0, 0],
       kO: [0, 0],
+      sref: [0, 0, 0],
       O: [P.x - 0.5 * k * (U.x + V.x), P.y - 0.5 * k * (U.y + V.y), P.z - 0.5 * k * (U.z + V.z)],
       Ux: [U.x * k, U.y * k, U.z * k],
       Vy: [V.x * k, V.y * k, V.z * k],
@@ -270,7 +271,7 @@ describe('그리는 셰이더 = JS 빛(lightWithLoss, 둘레 하늘 가림)', ()
     const l = Math.hypot(n0.x, n0.y, n0.z);
     const n = { x: n0.x / l, y: n0.y / l, z: n0.z / l };
     const lt = lightWithLoss(P, n, toEye(cam, P), env, skyLossAt(P, n, env, []), true, EREF.wall, undefined, ROUGH.coated);
-    const mul = lt.r.map((r, c) => toneMul(albedo[c], r)) as C3;
+    const mul = lt.r.map((r, c) => toneMul(albedo[c], r, lt.spec[c])) as C3;
     const dodge = lt.r.map((r, c) => toneDodge(albedo[c], r, lt.spec[c])) as C3;
     expect(maxDiff(shaderLit(P, n, env, false, albedo), mul)).toBeLessThan(1.5 / 255);
     expect(maxDiff(shaderLit(P, n, env, true, albedo), dodge)).toBeLessThan(1.5 / 255);
@@ -287,7 +288,7 @@ describe('그리는 셰이더 = JS 빛(lightWithLoss, 둘레 하늘 가림)', ()
     const base = [0.99, 0.97, 0.945];
     for (const kx of [0.3, 1]) {
       const lt = lightWithLoss(P, n, toEye(cam, P), row, skyLossAt(P, n, row, []), true, EREF.wall, undefined, ROUGH.coated, kx);
-      const mul = lt.r.map((r, c) => toneMul(albedo[c], r));
+      const mul = lt.r.map((r, c) => toneMul(albedo[c], r, lt.spec[c]));
       const dodge = lt.r.map((r, c) => toneDodge(albedo[c], r, lt.spec[c]));
       const direct = base.map((b, c) => Math.min(1, (b * mul[c]) / Math.max(1e-4, 1 - dodge[c]))) as C3;
       expect(maxDiff(shaderLit(P, n, row, 'direct', albedo, base, PLAIN, 1e-3, kx), direct)).toBeLessThan(2 / 255);
@@ -324,7 +325,7 @@ describe('재질 무늬: 셰이더 = JS(matSample)', () => {
     const nb = { x: nb0.x / nl, y: nb0.y / nl, z: nb0.z / nl };
     const albedo = linearOf('#C9A27A');
     const lt = lightWithLoss(P, nb, toEye(cam, P), row, skyLossAt(P, n, row, []), true, EREF.wall, n, ms.r);
-    const mul = lt.r.map((r, ch) => toneMul(albedo[ch], r * ms.f)) as C3;
+    const mul = lt.r.map((r, ch) => toneMul(albedo[ch], r * ms.f, lt.spec[ch])) as C3;
     const dodge = lt.r.map((r, ch) => toneDodge(albedo[ch], r * ms.f, lt.spec[ch])) as C3;
     expect(maxDiff(shaderLit(P, n, row, false, albedo, undefined, uniOf(M, seed), k), mul)).toBeLessThan(1.5 / 255);
     expect(maxDiff(shaderLit(P, n, row, true, albedo, undefined, uniOf(M, seed), k), dodge)).toBeLessThan(1.5 / 255);
@@ -356,7 +357,7 @@ describe('책 광선 셰이더 = 광선 기하 + JS 빛', () => {
         kRect: kx > 0 ? [0, 0, 1, 1, ...new Array(20).fill(0)] : new Array(24).fill(0),
         cam4: CAM4, pxa: pxaOf(Q), bO: [bO.x, bO.y, bO.z], bX: [1, 0, 0], bY: [0, 1, 0], bZ: [0, 0, 1],
         dims: [d.T, d.H, d.W], rig: [bd, sp, sq], rect: new Array(24).fill(0), keyOn: 1, albedo: tone,
-        env: [1, row.floor, row.ceil], erefB: EREF.book, ...PLAIN, pR: PLAIN.mR, pB: PLAIN.mB, pG: PLAIN.mG, pS: PLAIN.mS,
+        env: [1, row.floor, row.ceil], erefB: EREF.book, srefB: [0, 0, 0], srefP: [0, 0, 0], ...PLAIN, pR: PLAIN.mR, pB: PLAIN.mB, pG: PLAIN.mG, pS: PLAIN.mS,
       },
       true,
       [CK.Shader.MakeColor(CK.Color4f(0, 0, 0, kx), CK.ColorSpace.SRGB)],
@@ -365,7 +366,7 @@ describe('책 광선 셰이더 = 광선 기하 + JS 빛', () => {
   function expected(F: Vec3, nf: Vec3, hit: { P: Vec3; n: Vec3; a: C3 }, dodge: boolean, kx = 0): C3 {
     const loss = skyLossAt(F, nf, row, []);
     const lt = lightWithLoss(hit.P, hit.n, toEye(cam, hit.P), row, loss, true, hit.a === paper ? EREF.paper : EREF.book, nf, ROUGH.coated, kx);
-    return lt.r.map((r, c) => (dodge ? toneDodge(hit.a[c], r, lt.spec[c]) : toneMul(hit.a[c], r))) as C3;
+    return lt.r.map((r, c) => (dodge ? toneDodge(hit.a[c], r, lt.spec[c]) : toneMul(hit.a[c], r, lt.spec[c]))) as C3;
   }
   const ray = (Q: Vec3) => {
     const v = { x: Q.x - E.x, y: Q.y - E.y, z: Q.z - E.z };

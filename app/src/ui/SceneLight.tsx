@@ -14,7 +14,7 @@ import { useDerivedValue, type SharedValue } from 'react-native-reanimated';
 import { faceNormal, rot, toWorld, type Book3, type Cam, type FaceId, type Vec3 } from '@/domain/book3';
 import { lightPanel, rigOf } from '@/domain/book-parts';
 import { camAt, VIEW_PITCH_MAX, VIEW_PITCH_MIN, type Affine } from '@/domain/camera';
-import { bookEref, ENV_NX, ENV_NY, FAR, GRID_N, GRID_PASSES, ROUGH, type Band, type BoxBuf, type C3, type Env } from '@/domain/light-model';
+import { bookEref, bookSref, ENV_NX, ENV_NY, FAR, GRID_N, GRID_PASSES, ROUGH, SREF, type Band, type BoxBuf, type C3, type Env } from '@/domain/light-model';
 import type { Recv3 } from '@/domain/received3';
 import { MAT_UNIFORMS, type MatUniforms } from '@/domain/surface-pattern';
 import type { BindingMaterial } from '@/domain/types';
@@ -58,6 +58,7 @@ const BASE = {
   keyOn: 1,
   albedo: [1, 1, 1],
   eref: [1, 1, 1],
+  sref: [0, 0, 0],
   liveEnv: 1,
 };
 // 재질 셰이더 입력(scene-light-sksl matSample): 거칠기·미세 높이·결·결 크기, 무늬 자리 어긋남(같은 재질 면이 똑같아 보이지 않게)
@@ -405,7 +406,7 @@ export function BookLight({ dims: d, state, cam, px, outline, albedo, material =
 }) {
   const { bd, sp, sq } = rigOf(d);
   const pg = MAT_UNIFORMS.pages;
-  const mat = { ...matOf(MAT_UNIFORMS[material], seedOf(id)), erefB: bookEref(ROUGH[material]), pR: pg.mRough, pB: pg.mBump, pG: pg.mGrain, pS: pg.mGsize };
+  const mat = { ...matOf(MAT_UNIFORMS[material], seedOf(id)), erefB: bookEref(ROUGH[material]), srefB: bookSref(), srefP: SREF.paper, pR: pg.mRough, pB: pg.mBump, pG: pg.mGrain, pS: pg.mGsize };
   // 면마다 아틀라스 칸(구운 값이 없으면 0): 굽기가 바뀔 때만
   const sample = useDerivedValue<Sample>(() => {
     const a = atlas ? atlas.value : NO_ATLAS;
@@ -478,8 +479,8 @@ export function areaItem(key: string, a: BakeArea, env: Env | null, bx: BoxBuf, 
 // color가 있으면(단색 재질) 재질 색 × 빛을 한 번에 칠하고, 없으면 아래 재질 그림 위에 곱하기·닷지 두 겹으로 다시 칠한다.
 // atlas·key: 구운 그림과 이 영역의 자리, matrix: 영역 칸 → 캔버스 px(칸 수 w × h를 받아)
 // keyShadow: 책이 이 면에서 창빛 원반을 가리는 몫(평면 좌표 그림, PlaneKey: 벽·판 윗면)
-export function BakedPlane({ path, cam, px, plane, env, atlas, akey, matrix, albedo, eref, mat, seed = [0, 0], color, keyShadow }: {
-  path: RO<SkPath> | SkPath; cam: RO<Cam>; px: Affine; plane: Plane; env: Env | null; atlas?: RO<Atlas>; akey: string; matrix: (c: Cam, w: number, h: number) => number[]; albedo: C3; eref: C3; mat: MaterialName; seed?: number[]; color?: string;
+export function BakedPlane({ path, cam, px, plane, env, atlas, akey, matrix, albedo, eref, sref = ZERO3, mat, seed = [0, 0], color, keyShadow }: {
+  path: RO<SkPath> | SkPath; cam: RO<Cam>; px: Affine; plane: Plane; env: Env | null; atlas?: RO<Atlas>; akey: string; matrix: (c: Cam, w: number, h: number) => number[]; albedo: C3; eref: C3; sref?: number[]; mat: MaterialName; seed?: number[]; color?: string;
   keyShadow?: RO<PlaneKey>;
 }) {
   const base = color ? rgbOf(color) : null;
@@ -498,6 +499,7 @@ export function BakedPlane({ path, cam, px, plane, env, atlas, akey, matrix, alb
       env: envOf(env),
       albedo,
       eref,
+      sref,
       liveEnv: sample.value.live,
       ...keyMapOf(keyShadow ? keyShadow.value : NO_PLANE_KEY),
       ...m,
@@ -533,7 +535,7 @@ export function TabLight({ path, frame, albedo, s, seed }: { path: SkPath; frame
   const mat = matOf(MAT_UNIFORMS.paper, seed);
   const uniforms = useDerivedValue<Uniforms>(() => {
     const f = frame.value;
-    return { pxa: [s, 0, 0], root: arr(f.root), axR: arr(f.axR), axU: arr(f.axU), nrm: arr(f.n), loss: f.loss, cam4: f.cam4, keyOn: 1, albedo, eref: bookEref(ROUGH.paper), env: envOf(f.env), ...mat };
+    return { pxa: [s, 0, 0], root: arr(f.root), axR: arr(f.axR), axU: arr(f.axU), nrm: arr(f.n), loss: f.loss, cam4: f.cam4, keyOn: 1, albedo, eref: bookEref(ROUGH.paper), sref: bookSref(), env: envOf(f.env), ...mat };
   });
   return (
     <>

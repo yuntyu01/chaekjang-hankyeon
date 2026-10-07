@@ -5,6 +5,7 @@ import { ALBEDO, ggxKey, RAD, ROUGH, bookAlbedo, boxOf, tone, toneInv, TONE, dar
 import { SHELF_DEPTH, SHELF_FRONT, SHELF_THICK, SHELF_X0, SHELF_X1 } from '../geometry';
 import palette from '@/ui/art/reference-bindings.generated.json';
 import { light } from '@/ui/lighting';
+import { grainPeak, MAT_UNIFORMS } from '../surface-pattern';
 
 // 재현되는 난수
 function rng(seed: number) {
@@ -259,12 +260,23 @@ describe('카메라 톤 곡선', () => {
 });
 
 describe('재질 반사율 맞추기(역렌더링)', () => {
-  it('반사율은 모두(시안 장정 색 포함) 1 이하, 벽 반사율의 가장 밝은 채널은 시안 벽 색 그 채널(노출 기준)', () => {
-    for (const c of [ALBEDO.wall, ALBEDO.plank, ALBEDO.paper, ...Object.keys(palette).map(bookAlbedo)]) expect(Math.max(...c)).toBeLessThanOrEqual(1);
-    const top = DESIGN.wall.indexOf(Math.max(...DESIGN.wall));
-    expect(ALBEDO.wall[top]).toBeCloseTo(DESIGN.wall[top], 9);
-    // 어깨가 밝은 쪽을 누르므로 덜 밝은 채널의 반사율은 화면 색보다 낮다(장면 색이 더 짙다)
-    ALBEDO.wall.forEach((v, c) => expect(v).toBeLessThanOrEqual(DESIGN.wall[c] + 1e-9));
+  it('노출 기준: 반사율은 모두(시안 장정 색 × 장정 재질 포함) 그 화면 색 이하이고 결의 가장 밝은 점까지 1 이하, 이득은 그중 가장 작은 값', () => {
+    const peak = (m: keyof typeof MAT_UNIFORMS) => grainPeak(MAT_UNIFORMS[m]);
+    const all: [C3, C3, number][] = [
+      [ALBEDO.wall, DESIGN.wall, peak('paint')],
+      [ALBEDO.plank, DESIGN.plank, peak('wood')],
+      [ALBEDO.paper, DESIGN.paper, peak('pages')],
+      ...Object.keys(palette).flatMap((hex) => (['paper', 'cloth', 'coated'] as const).map((m): [C3, C3, number] => [bookAlbedo(hex, ROUGH[m]), linearOf(hex), peak(m)])),
+    ];
+    let tight = 0;
+    for (const [a, d, f] of all)
+      a.forEach((v, c) => {
+        expect(v).toBeLessThanOrEqual(d[c] + 1e-9);
+        expect(v * f).toBeLessThanOrEqual(1 + 1e-9);
+        tight = Math.max(tight, v / d[c], v * f);
+      });
+    // 이득을 조금이라도 낮추면 어느 하나가 넘는다
+    expect(tight).toBeCloseTo(1, 9);
   });
   it('벽 대표 자리(빈 줄 가운데)에서 받는 빛 비가 1: 시안 벽 색 그대로 보인다', () => {
     const p = { x: (SHELF_X0 + SHELF_X1) / 2, y: 100, z: SHELF_DEPTH };
