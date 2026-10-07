@@ -28,6 +28,7 @@ export type BookArt = {
   ribbon?: string;
   // 장정에 포함된 가름끈. 문장 기록 수를 꾸며내지 않고 장식만 표시한다.
   ribbonVisible?: boolean;
+  ribbonCount?: number; // 보이는 갈피 장 수(예시 책장: 시안 그대로). 없으면 남긴 갈피 수(quotes)
   // 장정별 인쇄 위치. 없으면 제목 길이에 맞춘 자동 조판을 사용한다.
   titleTop?: number;
   motifScale?: number;

@@ -3,7 +3,7 @@
 // - 속지 묶음: 판 사이(x ∈ [bd, T − bd]), 책등 띠 뒤에서 책배 쪽 판 끝보다 sq 안쪽까지, 머리·꼬리도 판 끝보다 sq 안쪽.
 //   판이 속지보다 머리·꼬리·책배 쪽으로 sq만큼 나와 있어(판 끝 여유) 속지 면은 판 끝 면보다 sq 안으로 들어가 있다.
 // 모든 면은 이 구조의 평면 조각을 같은 카메라로 투영해 그린다(화면 좌표에서 밀어 넣기·흔들림 없음). 보이는지는 자세와 카메라로 정한다.
-// 충돌·받침·가림 순서는 바깥 상자(T×H×W) 그대로이고, 그리는 모양은 그 상자 안에만 있다: 둥근 모서리(CORNER_R)는 책 전체 윤곽을
+// 충돌·받침·가림 순서는 바깥 상자(T×H×W) 그대로이고, 그리는 모양은 그 상자 안에만 있다: 둥근 모서리(EDGE_R)는 책 전체 윤곽을
 // 안쪽으로 깎을 뿐 밖으로 내밀지 않는다.
 import type { Book3, FaceId, Vec3 } from './book3';
 
@@ -11,11 +11,12 @@ type Dims = Book3['dims'];
 
 export const BOARD = { min: 0.95, max: 1.7, k: 0.047 }; // 표지판을 속지와 구별할 수 있는 두께(DU)
 export const SQUARE = 1.35; // 속지는 판 끝보다 안쪽: 얇은 판 턱과 밝은 종이 단면을 분리한다
-export const CORNER_R = 4.5; // 표지 끝을 살짝 둥글려 인접 면의 반사광과 이어지게 한다
-// 표지 판의 제본 홈: 책등 쪽 변에서 at(DU) 안쪽의 좁은 그늘(dark 폭)과 그 바로 뒤(gap)의 가는 밝음(lit 폭).
-// 앞표지 그림과 판 면(뒤표지·비스듬한 앞표지 덮개)이 같은 규칙을 쓴다.
-// 시안 표지: 책등 쪽에서 표지 폭의 약 6.5% 안쪽에 가는 밝은 줄(약 2DU), 그 바깥(책등 쪽)은 조금 어둡다.
-export const GROOVE = { at: 6.5, dark: 0.8, lit: 1.6, gap: 0.9 };
+// 판 모서리 둥글기 약 3mm(2mm는 각져 보였다, 사용자 확인). 책·선반 판의 윤곽·면 모서리 법선이 모두 이 반지름 하나를 쓴다
+export const EDGE_R = 2.4;
+// 둥근 책등(양장 책등은 두께 방향으로 얕은 원통). 책등 양 끝에서 면이 기우는 각(라디안)
+export const SPINE_CURVE = 0.12; // 양장본 책등은 거의 평평하다(시안 책등도 폭 전체가 같은 밝기)
+// 표지 판의 제본 홈(책 모양 입력): 책등 쪽 변에서 at(DU) 안쪽, 반폭 width(DU), 홈 가장자리에서 면이 기우는 기울기 slope
+export const GROOVE = { at: 6.5, width: 2.4, slope: 0.16 };
 
 export type Rig = { bd: number; sp: number; sq: number };
 
@@ -92,5 +93,13 @@ export function facePanel(d: Dims, f: 'spine' | 'cover' | 'back'): Panel {
   return { O: v3(0, d.H, d.W), U: v3(0, 0, -d.W), V: v3(0, -d.H, 0), w: d.W, h: d.H };
 }
 
+// 빛을 계산할 면 틀(바깥 평면 전체): 책등·표지·뒤표지는 facePanel, 종이 단면 면은 판 끝 평면(머리·꼬리: 가로 = 두께, 세로 = 깊이,
+// 책배: 가로 = 두께, 세로 = 높이를 위에서 아래로)
+export function lightPanel(d: Dims, f: FaceId): Panel {
+  'worklet';
+  if (f === 'spine' || f === 'cover' || f === 'back') return facePanel(d, f);
+  if (f === 'fore') return { O: v3(0, d.H, d.W), U: v3(d.T, 0, 0), V: v3(0, -d.H, 0), w: d.T, h: d.H };
+  return { O: v3(0, f === 'head' ? d.H : 0, 0), U: v3(d.T, 0, 0), V: v3(0, 0, d.W), w: d.T, h: d.W };
+}
 export const PAGE_FACES: ('head' | 'tail' | 'fore')[] = ['head', 'tail', 'fore'];
 export const isPageFace = (f: FaceId): f is 'head' | 'tail' | 'fore' => f === 'head' || f === 'tail' || f === 'fore';

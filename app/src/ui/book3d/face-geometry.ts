@@ -1,10 +1,10 @@
 // 책 면의 화면 모양 계산(워클릿). 선반 줄·이동 캔버스·서랍 모두 이것 하나로 면을 만든다.
 // 모든 면은 책 좌표의 평면 조각(domain/book-parts)을 지금 자세·카메라로 투영한다: 그림이 붙는 조각은 조각 → 캔버스 변환 행렬,
 // 테두리·안쪽 벽처럼 단색인 조각은 투영한 다각형. 화면 좌표에서 밀어 넣거나 흔들거나 부풀리지 않는다.
-// 둥근 모서리는 책 전체의 투영 윤곽을 공통 반지름(CORNER_R)으로 깎는 자르기 하나로 만든다(모든 면·그림자·빛이 같이 잘린다).
+// 둥근 모서리는 책 전체의 투영 윤곽을 판 모서리 반지름(EDGE_R)으로 깎은 모양 하나로 만든다(모든 면·그림자·빛이 같이 잘린다).
 // 워클릿은 만들어질 때 쓰는 함수를 붙잡으므로, 쓰이는 함수를 먼저 정의한다.
 import { corners, faceNormal, facing, rot, toWorld, type Book3, type Cam, type FaceId, type Vec3 } from '@/domain/book3';
-import { CORNER_R, facePanel, pageFace, type Panel } from '@/domain/book-parts';
+import { EDGE_R, facePanel, pageFace, type Panel } from '@/domain/book-parts';
 import { hull } from '@/domain/box';
 import { project, viewAt, type Point } from '@/domain/camera';
 
@@ -24,7 +24,7 @@ export function panelMatrix(b: Book3, p: Panel, cam: Cam, px: Affine) {
   const V = rot(b.roll, b.yaw, p.V, b.spin ?? 0, b.pitch ?? 0);
   const s = px.s;
   // 원근 카메라(eye)는 사선 없이 눈 쪽으로 모으는 것과 같다(camera.project): 같은 동차 행렬로 그린다
-  const t = cam.eye ? { x: cam.eye.x, y: -cam.eye.y, z: cam.eye.z, strength: 1 / cam.eye.dist } : cam.taper;
+  const t = cam.eye ? { x: cam.eye.x, y: -cam.eye.y, z: cam.eye.z, strength: 1 / cam.eye.dist } : null;
   const kx = cam.eye ? 0 : cam.kx;
   const ky = cam.eye ? 0 : cam.ky;
   if (t) {
@@ -62,7 +62,7 @@ export function faceVisible(cam: Cam, b: Book3, f: FaceId) {
   return rot(b.roll, b.yaw, faceNormal(f), b.spin ?? 0, b.pitch ?? 0).y >= -0.5;
 }
 
-// 종이 단면 면(머리·꼬리·책배) 하나의 화면 모양: 열린 칸, 속지 조각 행렬, 판·책등 테두리, 보이는 안쪽 벽(캔버스 px)
+// 종이 단면 면(머리·꼬리·책배) 하나의 화면 모양: 열린 칸, 속지 조각 행렬, 판·책등 테두리, 안쪽 벽(캔버스 px, pageFace 벽 순서, 안 보이면 빈 배열)
 export type PageGeom = { ok: boolean; opening: Point[]; pageM: number[]; rims: Point[][]; walls: Point[][] };
 export const EMPTY_PAGE: PageGeom = { ok: false, opening: [], pageM: HIDDEN_MATRIX, rims: [], walls: [] };
 
@@ -79,7 +79,7 @@ export function pageGeom(cam: Cam, b: Book3, f: 'head' | 'tail' | 'fore', px: Af
     const n = rot(b.roll, b.yaw, w.n, b.spin ?? 0, b.pitch ?? 0);
     // 원근 카메라는 벽 조각 첫 꼭짓점 자리에서 본다
     const k = viewAt(cam, toWorld(b, w.pts[0]));
-    if ((n.x * k.kx + n.y * k.ky - n.z) / Math.hypot(k.kx, k.ky, 1) > 0.002) walls.push(w.pts.map(P));
+    walls.push((n.x * k.kx + n.y * k.ky - n.z) / Math.hypot(k.kx, k.ky, 1) > 0.002 ? w.pts.map(P) : []);
   }
   return { ok: true, opening: pf.opening.map(P), pageM: panelMatrix(b, pf.page, cam, px), rims: pf.rims.map((r) => r.map(P)), walls };
 }
@@ -173,13 +173,15 @@ export function roundedPolygon(pts: Point[], radius: number): Point[] {
   return out;
 }
 
-export function silhouette(cam: Cam, b: Book3, px: Affine): Point[] {
+// radius: 둥글기(DU). 주지 않으면 EDGE_R(워클릿은 기본값 매개변수를 싣지 않아 본문에서 정한다)
+export function silhouette(cam: Cam, b: Book3, px: Affine, radius?: number): Point[] {
   'worklet';
+  const r = radius === undefined ? EDGE_R : radius;
   const pts = hull(corners(b).map((c) => {
     const q = project(cam, c);
     return { x: q.x * px.s + px.tx, y: q.y * px.s + px.ty };
   }));
-  return roundedPolygon(pts, CORNER_R * px.s);
+  return roundedPolygon(pts, r * px.s);
 }
 
 export const seedOf = (id: string, f: string) => [...id].reduce((h, c) => h + c.charCodeAt(0), 0) * 0.37 + f.length;

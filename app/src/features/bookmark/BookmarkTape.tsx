@@ -17,7 +17,14 @@ export const BookmarkTape = memo(function BookmarkTape({ color, seed, width, hei
     for (let x = 41.8; x > 2; x -= 2.25) edge.push({ x, y: 43.55 + random() * 0.9 });
     const torn = `M43.15 42.8Q43.05 43.65 41.8 ${n(edge[0].y)}${edge.slice(1).map(p => `L${n(p.x)} ${n(p.y)}`).join('')}L1.6 44Q.5 43.9 .62 42.6`;
     const shape = `M2.1 .9Q.8 .8 .75 2.2L.45 13.8Q.75 27 .62 42.6L1.6 44${[...edge].reverse().map(p => `L${n(p.x)} ${n(p.y)}`).join('')}Q43.05 43.65 43.15 42.8Q43.05 32 43.45 22L43.65 2.4Q43.65 .65 42 .65Q23 .3 2.1 .9Z`;
-    let short = '', long = '', pulp = '', flecks = '', fringe = '';
+    let short = '', long = '', pulp = '', flecks = '', fringe = '', swirl = '';
+    // 시안 테이프: 한지(크레이프 종이)의 넓고 부드러운 물결 주름. 긴 곡선 몇 가닥이 밝은 등·어두운 골로 짝을 이룬다
+    for (let i = 0; i < 34; i++) {
+      const x = random() * 44, y = random() * 45, len = 8 + random() * 14, a = random() * Math.PI;
+      const ex = x + Math.cos(a) * len, ey = y + Math.sin(a) * len * 0.6;
+      const c1x = x + (random() - .5) * 16, c1y = y + (random() - .5) * 16, c2x = ex + (random() - .5) * 16, c2y = ey + (random() - .5) * 16;
+      swirl += `M${n(x)} ${n(y)}C${n(c1x)} ${n(c1y)} ${n(c2x)} ${n(c2y)} ${n(ex)} ${n(ey)}`;
+    }
     for (let i = 0; i < 340; i++) {
       const x = random() * 44, y = random() * 45;
       const dx = (0.6 + random() * 2.2) * (random() > .25 ? 1 : -1), dy = (random() - .5) * 1.8;
@@ -33,7 +40,7 @@ export const BookmarkTape = memo(function BookmarkTape({ color, seed, width, hei
       flecks += `M${n(random() * 44)} ${n(random() * 45)}l.24 .16`;
     }
     for (const p of edge) fringe += `M${n(p.x)} ${n(p.y - .15)}l${n((random() - .5) * .7)} ${n(.22 + random() * .45)}`;
-    return { shape, torn, short, long, pulp, flecks, fringe };
+    return { shape, torn, short, long, pulp, flecks, fringe, swirl };
   }, [seed]);
   const join = paperEdge / height * 45;
   return <View pointerEvents="none" accessible={false} style={{ width, height }}>
@@ -64,9 +71,13 @@ export const BookmarkTape = memo(function BookmarkTape({ color, seed, width, hei
       <Path d={material.shape} fill={color} />
       <G clipPath={`url(#${id}face)`}>
         <Rect width={44} height={45} fill={`url(#${id}light)`} />
-        <Path d={material.pulp} fill="#46606A" fillOpacity={0.045} />
-        <Path d={material.short} stroke="#4D6269" strokeWidth={0.38} strokeOpacity={0.13} strokeLinecap="round" fill="none" />
-        <Path d={material.short} transform="translate(.12 .22)" stroke="#F6F3E8" strokeWidth={0.42} strokeOpacity={0.18} strokeLinecap="round" fill="none" />
+        <Path d={material.pulp} fill="#46606A" fillOpacity={0.035} />
+        {/* 물결 주름: 골(어둡게)과 바로 옆 등(밝게). 위에서 오는 빛이라 등은 골보다 조금 위 */}
+        {/* 넓고 옅은 띠를 겹쳐 가장자리가 흐린 주름(선이 아니라 면의 명암으로 보이게) */}
+        {[3.2, 1.8].map((w) => <Path key={`d${w}`} d={material.swirl} transform="translate(0 .7)" stroke="#3E5560" strokeWidth={w} strokeOpacity={0.022} strokeLinecap="round" fill="none" />)}
+        {[2.6, 1.3].map((w) => <Path key={`l${w}`} d={material.swirl} stroke="#FFFCF2" strokeWidth={w} strokeOpacity={0.05} strokeLinecap="round" fill="none" />)}
+        <Path d={material.short} stroke="#4D6269" strokeWidth={0.32} strokeOpacity={0.07} strokeLinecap="round" fill="none" />
+        <Path d={material.short} transform="translate(.12 .22)" stroke="#F6F3E8" strokeWidth={0.36} strokeOpacity={0.1} strokeLinecap="round" fill="none" />
         <Path d={material.long} stroke="#61747A" strokeWidth={0.36} strokeOpacity={0.11} strokeLinecap="round" fill="none" />
         <Path d={material.long} transform="translate(0 .3)" stroke="#FFFCF0" strokeWidth={0.42} strokeOpacity={0.15} strokeLinecap="round" fill="none" />
         <Path d={material.flecks} stroke="#334B56" strokeWidth={0.45} strokeOpacity={0.11} strokeLinecap="round" />

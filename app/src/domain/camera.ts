@@ -13,7 +13,7 @@
 // 워클릿은 만들어질 때 쓰는 함수를 붙잡으므로, 쓰이는 함수를 먼저 정의한다.
 
 export type Eye = { x: number; y: number; z: number; dist: number };
-export type Cam = { kx: number; ky: number; taper?: { x: number; y: number; z: number; strength: number }; eye?: Eye };
+export type Cam = { kx: number; ky: number; eye?: Eye };
 export type Point = { x: number; y: number };
 export type Vec3 = { x: number; y: number; z: number };
 
@@ -21,8 +21,9 @@ export type Vec3 = { x: number; y: number; z: number };
 // - 판 윗면 230mm가 약 12px(7.2mm)로 보인다 → 판 높이에서 깊이 1당 0.031(약 1.8°).
 // - 판 오른쪽 끝이 벽 쪽으로 가운데를 향해 약 3.6% 들어간다 → 거리 약 230mm / 0.036 = 6.4m.
 // - 책 머리(판 위 약 200mm)는 윗면이 거의 보이지 않는다 → 눈높이 ≈ 0.031 × 6.4m ≈ 200mm.
-// 기본 보기 1.8°, 꾸미기에서 8°까지 눈을 올려 내려다본다.
-export const VIEW_PITCH_MIN = 1.8;
+// 시안 구도는 1.8°(눈 ≈ 책 머리)였고, 2026-10-06 사용자 요청으로 기본을 4°(눈 ≈ 판 위 450mm, 책 머리 윗면이 조금 보인다)로 올렸다.
+// 꾸미기에서 8°까지 눈을 올려 내려다본다.
+export const VIEW_PITCH_MIN = 4;
 export const VIEW_PITCH_MAX = 8;
 // 줄 앞 카메라 거리(DU, 6.45m × 0.7625DU/mm)
 export const VIEW_DIST = 4918;
@@ -64,14 +65,7 @@ export function project(cam: Cam, v: Vec3): Point {
     const d = 1 + (v.z - e.z) / e.dist;
     return { x: e.x + (v.x - e.x) / d, y: -(e.y + (v.y - e.y) / d) };
   }
-  let x = v.x + v.z * cam.kx;
-  let y = -(v.y + v.z * cam.ky);
-  if (cam.taper) {
-    const t = cam.taper;
-    const d = 1 + (v.z - t.z) * t.strength;
-    x=t.x+(x-t.x)/d; y=t.y+(y-t.y)/d;
-  }
-  return {x,y};
+  return { x: v.x + v.z * cam.kx, y: -(v.y + v.z * cam.ky) };
 }
 
 // 그 자리(선반 공간 점 p)에서 본 사선 값: 깊이 1당 화면 변화(눈 쪽으로 가는 방향). 사선 카메라는 어디서나 같다.

@@ -41,3 +41,42 @@ export function titleInk(bg: string) {
 export function rgbHex(r: number, g: number, b: number) {
   return toHex([r, g, b]);
 }
+
+// ---------- HSL ----------
+function toHsl([r, g, b]: number[]) {
+  const R = r / 255, G = g / 255, B = b / 255;
+  const mx = Math.max(R, G, B), mn = Math.min(R, G, B);
+  const l = (mx + mn) / 2;
+  if (mx === mn) return [0, 0, l];
+  const d = mx - mn;
+  const s = l > 0.5 ? d / (2 - mx - mn) : d / (mx + mn);
+  const h = mx === R ? (G - B) / d + (G < B ? 6 : 0) : mx === G ? (B - R) / d + 2 : (R - G) / d + 4;
+  return [h / 6, s, l];
+}
+function fromHsl([h, s, l]: number[]) {
+  if (s === 0) return [l * 255, l * 255, l * 255];
+  const q = l < 0.5 ? l * (1 + s) : l + s - l * s;
+  const p = 2 * l - q;
+  const f = (t: number) => {
+    const u = t < 0 ? t + 1 : t > 1 ? t - 1 : t;
+    if (u < 1 / 6) return p + (q - p) * 6 * u;
+    if (u < 1 / 2) return q;
+    if (u < 2 / 3) return p + (q - p) * (2 / 3 - u) * 6;
+    return p;
+  };
+  return [f(h + 1 / 3) * 255, f(h) * 255, f(h - 1 / 3) * 255];
+}
+// ---------- 갈피(종이 탭) 색: 책 색 계열(2026-10-07 사용자 참고 사진) ----------
+// 짙은·중간 색 책은 같은 색을 종이처럼 밝힌 두 장(한 장은 조금, 한 장은 더), 밝고 진한 색 책(살구 등)은 같은 색을 조금 짙게,
+// 거의 흰 책(크림)은 정해 둔 갈피 색(accent)이나 따뜻한 귤색. 첫째 색 = 길쭉한 장, 둘째 = 짧은 장
+// 흰색을 섞지 않고 같은 색상(hue)에서 밝기만 옮긴다(흰색을 섞으면 탁해진다): 첫째는 책 색에 가깝게 조금 더 선명하게, 둘째는 밝게
+const hsl = (h: number, s: number, l: number) => toHex(fromHsl([h, Math.min(1, s), Math.max(0, Math.min(0.93, l))]));
+export function tabColors(tone: string, accent?: string): [string, string] {
+  const [h, s, l] = toHsl(parse(tone));
+  if (l > 0.84 && s < 0.6) {
+    const [ah, as, al] = toHsl(parse(accent ?? '#E7AE72'));
+    return [hsl(ah, as, al), hsl(ah, as * 0.95, al + 0.12)];
+  }
+  if (l > 0.7) return [hsl(h, s * 1.1, l - 0.1), hsl(h, s, l - 0.03)];
+  return [hsl(h, s * 1.15, l + 0.07), hsl(h, s * 1.1, l + 0.22)];
+}

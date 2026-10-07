@@ -1,75 +1,63 @@
-// 책 면이 받는 그림자의 3D 단계(순수, 카메라와 무관, UI 스레드 워클릿에서도 쓴다).
-// 가리개 = 같은 줄의 다른 책(이 책에 드리울 수 있는 범위만) + 윗선반 판. 진하기는 가리개 모델이 정한다(lighting shadow.cast:
-// 책·판마다 빛 길이 층). 벽·선반 윗면이 받는 그림자와 같은 모델이라 같은 빛 길이에서 같은 층이다.
-// 받는 면은 모습만 정한다: 빛을 받는 정도(nl, 법선·빛, 책등 앞면 = 1)를 진하기에 곱하고, 빛을 등진 면은 받지 않는다(이미 그늘).
-// 면마다 가리개 모델(책·판) × 층마다 그림자 다각형(면 평면 위 3D 점)을 모은다. 한 층의 다각형은 한 경로로 칠해(합집합) 같은 층에서
-// 두 번 어두워지지 않고, 층끼리 포개져 가까운 곳이 진하다. 가리개가 층 문턱에 막 들어오면 다각형을 가까운 가장자리에서부터 키운다.
+// 책 면이 받는 창빛 그림자의 3D 단계(순수, 카메라와 무관, UI 스레드 워클릿에서도 쓴다).
+// 가리개 = 같은 줄의 다른 책(이 책에 드리울 수 있는 범위만). 위 판이 광원 원반을 가리는 몫은 책 면 셰이더(SceneLight)가 계산한다.
+// 벽·선반 윗면 그림자와 같은 광원 모델(cast-shadow): 가리개를 빛 길이 구간(physShadow.bands)으로 잘라 구간마다 받는 면에 떨어뜨리고,
+// 구간 가운데 거리의 반그림자로 번지게 한다. 구간 조각은 서로 겹치지 않아 한 빛줄기가 두 번 어두워지지 않는다.
+// 진하기 d = 그 면이 받는 창빛 몫 / 그 면이 받는 빛(light-model). 빛을 등진 면은 창빛이 없어 받지 않는다.
 // 화면 투영은 ui/book3d/received.ts recvProject가 한다.
 import { corners, faceCorners, faceNormal, FACE_IDS, rot, type Book3, type FaceId, type Vec3 } from './book3';
-import { shadowOnPlane, travelOf } from './cast-shadow';
-import { SHELF_DEPTH, SHELF_FRONT, SHELF_THICK, SHELF_X0, SHELF_X1 } from './geometry';
-import { light, shadow } from '@/ui/lighting';
+import { penumbraSigma, shadowOnPlane, thinOccluder, travelOf } from './cast-shadow';
+import { SHELF_DEPTH, SHELF_FRONT } from './geometry';
+import { irradiance, keyIrradiance, NEGLIGIBLE, shadowAlpha } from './light-model';
+import { light, physShadow } from '@/ui/lighting';
 
-// 이 책에 그림자를 드리울 수 있는 이웃의 가로 범위: 빛이 왼쪽 위 앞에서 오므로 그림자는 가리개 오른쪽으로 떨어진다
-export const REACH_L = 90;
-export const REACH_R = 12;
+const LIGHT0 = travelOf(light.dir);
+// 이 책에 그림자를 드리울 수 있는 이웃의 가로 범위: 한 줄 안에서 가장 긴 빛 길이(판 앞 끝 → 벽)만큼 빛이 옆으로 비켜 가는 거리.
+// 빛이 왼쪽에서 오면 그림자는 오른쪽으로 떨어지므로 가리개는 왼쪽에 있다
+const DRIFT = (Math.abs(LIGHT0.x) / LIGHT0.z) * (SHELF_FRONT + SHELF_DEPTH);
+export const REACH_L = LIGHT0.x > 0 ? DRIFT : 0;
+export const REACH_R = LIGHT0.x < 0 ? DRIFT : 0;
 // 그림자를 받는 보이는 면은 많아야 둘(빛 쪽과 카메라 쪽을 함께 향하는 앞·윗면)
 export const RECV_SLOTS = 2;
-const LIGHT = travelOf(light.dir);
-const LN = { x: -LIGHT.x, y: -LIGHT.y, z: -LIGHT.z }; // 면 → 광원
-// 빛을 받는 정도의 기준: 책등 앞면(법선 -z). nl은 많아야 NL_MAX(빛을 정면으로 받는 면)
-const REF = Math.max(1e-3, -LN.z);
-export const NL_MAX = 1 / REF;
 
-export type Layer3 = { polys: Vec3[][]; blur: number }; // blur: 캔버스 px
-export type Face3 = { f: FaceId; fc: Vec3[]; nl: number; book: Layer3[]; plank: Layer3[] };
+// polys: 구간에 드는 그림자 다각형, sigma: 흐림 시그마(캔버스 px), w: 광원 원반 중 가려지는 몫(얇은 가리개)
+export type Layer3 = { polys: Vec3[][]; sigma: number; w: number };
+// d: 이 면에서 창빛이 가려질 때의 진하기, bands: 빛 길이 구간마다(physShadow.bands와 같은 수)
+export type Face3 = { f: FaceId; fc: Vec3[]; d: number; bands: Layer3[] };
 export type Recv3 = { b: Book3; faces: Face3[] } | null;
-type Model = { layers: number[]; ramp: number; near: number; perDU: number; maxBlur: number };
 
 // 받는 그림자 전체를 세로로 dy만큼 옮긴 것(다른 줄 좌표로 그릴 때: 줄 사이는 세로 거리만 다르다)
 export function shiftRecv(r: Recv3, dy: number): Recv3 {
   'worklet';
   if (!r || !dy) return r;
   const sh = (q: Vec3) => ({ x: q.x, y: q.y + dy, z: q.z });
-  const layer = (l: Layer3) => ({ polys: l.polys.map((poly) => poly.map(sh)), blur: l.blur });
-  return { b: { ...r.b, t: sh(r.b.t) }, faces: r.faces.map((f) => ({ ...f, fc: f.fc.map(sh), book: f.book.map(layer), plank: f.plank.map(layer) })) };
+  const layer = (l: Layer3) => ({ ...l, polys: l.polys.map((poly) => poly.map(sh)) });
+  return { b: { ...r.b, t: sh(r.b.t) }, faces: r.faces.map((f) => ({ ...f, fc: f.fc.map(sh), bands: f.bands.map(layer) })) };
 }
 
-// 받는 면(책 앞면·윗면 중 빛을 받는 면)의 평면으로, 가리는 물체의 꼭짓점을 빛 방향으로 떨어뜨린다.
-// 면보다 빛 쪽(앞)에 있는 부분만 그림자를 만든다(면 뒤쪽 꼭짓점은 버리고 면을 지나는 변은 교점으로 자른다).
-// 결과는 받는 면 다각형 안으로만 자른다. 가리는 물체가 옮겨 가면 그림자도 옮겨 가거나 사라진다.
-// 이 줄 위 선반 판(윗 줄의 판)의 상자: 이 줄 공간에서 아랫면이 y = space(3D 줄 간격, 카메라와 무관)
-export function plankAboveBox(space: number): Vec3[] {
-  'worklet';
-  const out: Vec3[] = [];
-  for (let i = 0; i < 8; i++) out.push({ x: i & 1 ? SHELF_X1 : SHELF_X0, y: i & 2 ? space + SHELF_THICK : space, z: i & 4 ? SHELF_DEPTH : -SHELF_FRONT });
-  return out;
-}
-
-// 다각형을 한 점(가까운 가장자리 가운데)으로 g배 줄인다(층에 막 들어온 가리개: 0이면 점, 1이면 그대로). 넓이가 고르게 늘도록 g = √비율
-function grow(pts: Vec3[], o: Vec3, g: number): Vec3[] {
-  'worklet';
-  if (g >= 1) return pts;
-  return pts.map((q) => ({ x: o.x + (q.x - o.x) * g, y: o.y + (q.y - o.y) * g, z: o.z + (q.z - o.z) * g }));
-}
-
-// 받는 그림자 3D 단계(카메라와 무관). 가리개 = 같은 줄의 다른 책 + 윗 선반 판. 책이 움직일 때만 다시 계산하고,
-// 시점을 끄는 동안에는 책 그림(BookNode)이 recvProject로 투영만 한다.
-export function receivedShadow3(b: Book3 | null, occBodies: Book3[], s: number, space: number, plankAbove: boolean, castPlank?: boolean): Recv3 {
+// 받는 그림자 3D 단계(카메라와 무관). 책이 움직일 때만 다시 계산하고, 시점을 끄는 동안에는 책 그림(BookNode)이 recvProject로 투영만 한다.
+// s: 캔버스 배율(흐림 px). dir: 빛 방향(물체 → 광원). 주지 않으면 앱 광원. 테스트가 비스듬한 빛으로 기하를 검사할 때 넘긴다
+export function receivedShadow3(b: Book3 | null, occBodies: Book3[], s: number, dir?: Vec3): Recv3 {
   'worklet';
   if (!b) return null;
-  const bookOccs: Vec3[][] = [];
-  for (const ob of occBodies) bookOccs.push(corners(ob));
-  const plankOccs: Vec3[][] = plankAbove && castPlank !== false ? [plankAboveBox(space)] : [];
+  let LIGHT = LIGHT0;
+  if (dir) {
+    const l = Math.hypot(dir.x, dir.y, dir.z) || 1;
+    LIGHT = { x: -dir.x / l, y: -dir.y / l, z: -dir.z / l };
+  }
+  const LN = { x: -LIGHT.x, y: -LIGHT.y, z: -LIGHT.z };
+  const occs = occBodies.map((ob) => ({ cs: corners(ob), dims: ob.dims }));
   const cs = corners(b);
+  const B = physShadow.bands;
   const faces: Face3[] = [];
   for (const f of FACE_IDS) {
     const n = rot(b.roll, b.yaw, faceNormal(f), b.spin ?? 0, b.pitch ?? 0);
     // 아래를 향한 면은 보이지 않는다
     if (n.y < -0.5) continue;
-    // 빛을 등진 면은 이미 그늘이라 받지 않는다
-    const nl = (n.x * LN.x + n.y * LN.y + n.z * LN.z) / REF;
-    if (nl <= 0.02) continue;
+    // 빛을 등진 면은 창빛이 없어 그림자가 생기지 않는다
+    if (n.x * LN.x + n.y * LN.y + n.z * LN.z <= 0) continue;
+    // 앱 광원에서 이 면의 그림자가 화면에 보이지 않을 만큼 옅으면 계산하지 않는다
+    const d = keyIrradiance(n) / irradiance(n);
+    if (!dir && shadowAlpha(d) < NEGLIGIBLE) continue;
     const fc = faceCorners(f).map((i) => cs[i]);
     // 면 좌표(u, v: 면 사각형 0~1): 그림자가 면에 실제로 닿는 가리개만
     const e1 = { x: fc[1].x - fc[0].x, y: fc[1].y - fc[0].y, z: fc[1].z - fc[0].z };
@@ -94,29 +82,27 @@ export function receivedShadow3(b: Book3 | null, occBodies: Book3[], s: number, 
       }
       return u1 > 0 && u0 < 1 && v1 > 0 && v0 < 1;
     };
-    // 가리개 모델 하나로 층마다 다각형: 그 층의 문턱(빛 길이) 안에 드는 가리개 부분만 면에 떨어뜨린다
-    const layersOf = (occs: Vec3[][], m: Model): Layer3[] => {
-      const polys: Vec3[][][] = m.layers.map(() => []);
-      const far: number[] = m.layers.map(() => 0);
-      for (const occ of occs) {
-        const all = shadowOnPlane(occ, fc[0], n, LIGHT);
-        if (all.pts.length < 3 || !touches(all.pts)) continue;
-        for (let k = 0; k < m.layers.length; k++) {
-          const L = m.layers[k];
-          if (all.dist >= L) continue;
-          const part = L >= all.tFar ? all : shadowOnPlane(occ, fc[0], n, LIGHT, L);
-          if (part.pts.length < 3) continue;
-          const g = Math.sqrt(Math.min(1, (L - part.dist) / m.ramp));
-          polys[k].push(part.near ? grow(part.pts, part.near, g) : part.pts);
-          far[k] = Math.max(far[k], Math.min(L, part.tFar));
-        }
+    const bands: Layer3[] = B.map(() => ({ polys: [], sigma: 0, w: 0 }));
+    let any = false;
+    for (const occ of occs) {
+      const all = shadowOnPlane(occ.cs, fc[0], n, LIGHT);
+      if (all.pts.length < 3 || !touches(all.pts)) continue;
+      for (let k = 0; k < B.length; k++) {
+        const lo = k === 0 ? 0 : B[k - 1];
+        const hi = B[k];
+        if (all.dist >= hi || all.tFar <= lo) continue;
+        const part = shadowOnPlane(occ.cs, fc[0], n, LIGHT, hi, lo);
+        if (part.pts.length < 3) continue;
+        // 구간 가운데 거리의 반그림자(벽·선반 윗면 그림자와 같은 식, cast-shadow bookCast). 한 구간에 가리개가 여럿이면 넓은 쪽·진한 쪽
+        const pen = physShadow.spread * ((part.dist + part.tFar) / 2);
+        const L = bands[k];
+        L.polys.push(part.pts);
+        L.sigma = Math.max(L.sigma, penumbraSigma(pen) * s);
+        L.w = Math.max(L.w, thinOccluder(occ.dims, pen));
+        any = true;
       }
-      return m.layers.map((_, k) => ({ polys: polys[k], blur: Math.min(m.maxBlur, m.near + m.perDU * far[k]) * s }));
-    };
-    const book = layersOf(bookOccs, shadow.cast.book);
-    const plank = layersOf(plankOccs, shadow.cast.plank);
-    if (!book.some((l) => l.polys.length) && !plank.some((l) => l.polys.length)) continue;
-    faces.push({ f, fc, nl, book, plank });
+    }
+    if (any) faces.push({ f, fc, d, bands });
   }
   return { b, faces };
 }

@@ -120,14 +120,15 @@ export function facing(cam: Cam, b: Book3, f: FaceId) {
 }
 
 // 광원(램버트): 밝기 = ambient + diffuse·(n·L), [min, max]로 제한
-export type Light = { dir: Vec3; ambient: number; diffuse: number; min: number; max: number };
+export type Light = { dir: Vec3; ambient: number; diffuse: number; min: number; max: number; skyUp?: number };
 
 export function brightness(light: Light, b: Book3, f: FaceId) {
   'worklet';
   const n = rot(b.roll, b.yaw, faceNormal(f), b.spin ?? 0, b.pitch ?? 0);
   const d = light.dir;
   const l = Math.hypot(d.x, d.y, d.z) || 1;
-  const k = light.ambient + light.diffuse * ((n.x * d.x + n.y * d.y + n.z * d.z) / l);
+  // 램버트: 빛을 등진 면은 창빛을 받지 않는다(max 0). 천장 확산광은 위를 향한 만큼
+  const k = light.ambient + (light.skyUp ?? 0) * n.y + light.diffuse * Math.max(0, (n.x * d.x + n.y * d.y + n.z * d.z) / l);
   return Math.max(light.min, Math.min(light.max, k));
 }
 

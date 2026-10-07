@@ -1,7 +1,7 @@
 // 선반 판 모양: 3D 꼭짓점을 책과 같은 project()로 투영한 면이고, 이웃 면은 꼭짓점을 공유한다. 책은 어디에 놓여도 윗면 위에 있다.
 import { corners, fromPlaced } from '../book3';
 import { project } from '../box';
-import { camCenteredAt, type Cam } from '../camera';
+import { camCenteredAt, VIEW_PITCH_MIN, type Cam } from '../camera';
 import { CAMERA, SHELF, SHELF_DEPTH, SHELF_DEPTH_MM, SHELF_FRONT, SHELF_FRONT_MM, SHELF_THICK, SHELF_TOTAL_DEPTH_MM, SHELF_USABLE_WIDTH, SHELF_X0, SHELF_X1 } from '../geometry';
 import { shadowOnPlane, travelOf } from '../cast-shadow';
 import { light } from '@/ui/lighting';
@@ -9,7 +9,6 @@ import { normalize, setSpin, type BookMap } from '../layout-engine';
 import { SAMPLE_BOOKS, SAMPLE_LAYOUT } from '../onboarding-sample';
 import { computeShelf } from '../shelf-scene';
 import { faceTextureMatrix, shelfBoxCorners, shelfFaces, shelfVertices } from '../shelf-geom';
-import { shelfViewCam } from '../shelf-view';
 
 const books: BookMap = Object.fromEntries(SAMPLE_BOOKS.map((b) => [b.id, b]));
 const eq = (a: { x: number; y: number }, b: { x: number; y: number }) => {
@@ -18,8 +17,6 @@ const eq = (a: { x: number; y: number }, b: { x: number; y: number }) => {
 };
 
 it('시안 선반: 원근 카메라 하나로 윗면이 벽 쪽으로 좁아지고 질감 네 모서리가 판에 붙는다', () => {
-  // 원근 카메라는 판에 따로 원근을 덧붙이지 않는다(책·그림자와 같은 카메라)
-  expect(shelfViewCam(CAMERA)).toBe(CAMERA);
   const view = shelfFaces(CAMERA);
   // 벽 쪽(뒤) 모서리는 앞 모서리보다 줄 가운데 쪽으로 들어간다(시안: 약 3.6%)
   expect(view.corners.LBT.x).toBeGreaterThan(view.corners.LFT.x);
@@ -48,8 +45,8 @@ it('깊이 기준: 앞 끝 0 → 책 기준선 70mm → 벽 230mm(기준선 뒤 
   // 화면에서 윗면 앞 모서리(기준선 아래) → 뒤 모서리(기준선 위) 거리 = 각 깊이 × ky를 원근 d로 나눈 높이의 합
   const d = (z: number) => 1 + z / CAMERA.eye!.dist;
   expect(project(CAMERA, v.LFT).y - project(CAMERA, v.LBT).y).toBeCloseTo((SHELF_FRONT / d(-SHELF_FRONT) + SHELF_DEPTH / d(SHELF_DEPTH)) * CAMERA.ky, 9);
-  // 시안: 판 윗면 230mm가 약 7mm(판 높이에서 1.8°)로 보인다
-  expect(project(CAMERA, v.LFT).y - project(CAMERA, v.LBT).y).toBeCloseTo((SHELF_FRONT + SHELF_DEPTH) * Math.tan((1.8 * Math.PI) / 180), 0);
+  // 판 윗면 230mm가 기본 보기 각(판 높이에서)만큼 보인다
+  expect(project(CAMERA, v.LFT).y - project(CAMERA, v.LBT).y).toBeCloseTo((SHELF_FRONT + SHELF_DEPTH) * Math.tan((VIEW_PITCH_MIN * Math.PI) / 180), 0);
 });
 
 it('면 = 3D 꼭짓점의 투영, 이웃 면은 같은 꼭짓점', () => {

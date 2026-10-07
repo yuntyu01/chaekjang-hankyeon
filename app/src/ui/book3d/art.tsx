@@ -4,21 +4,22 @@
 //   둘 다 책등 면 그림 좌표에 고정되어 몸체와 함께 돈다(글자를 따로 돌리지 않는다). 어느 쪽을 보일지는 자세가 정한다(BookNode).
 // - 표지 면: 표지 그림(달·풍경 등) + 제목(시안처럼 제목만. 저자는 표지에 쓰지 않는다)
 // - 갈피: 머리 뒤에서 나오는 끈(원점 = 아래 가운데)
-import { BlurMask, ColorType, AlphaType, Group, Image as SkiaImage, LinearGradient, PaintStyle, StrokeJoin, ImageSVG, Path, Picture, Rect, Skia, Text, vec, drawAsPicture, useImage, useTypeface, type SkFont, type SkImage, type SkPicture, type SkTypeface } from '@shopify/react-native-skia';
+import { BlurMask, ColorType, AlphaType, Group, Image as SkiaImage, PaintStyle, StrokeJoin, ImageSVG, Path, Picture, Rect, Skia, Text, drawAsPicture, useImage, useTypeface, type SkFont, type SkImage, type SkPath, type SkPicture, type SkTypeface } from '@shopify/react-native-skia';
 import { createContext, useContext, useEffect, useState, type ReactNode } from 'react';
 
-import { rgbHex, shade, TITLE_LIGHT, titleInk } from '@/domain/color';
+import { rgbHex, tabColors, TITLE_LIGHT, titleInk } from '@/domain/color';
 import { COVER_LINE_H, COVER_SPACE, COVER_TRACK, coverTitleLayout, LYING_TRACK, lyingTitleLayout, SPINE_SPACE, spineTitleLayout } from '@/domain/title-layout';
 import type { Book, CoverArt } from '@/domain/types';
 import { motifSvg } from '@/ui/art/motifs';
 import { bootMark } from '@/ui/boot-trace';
-import { GROOVE, rigOf } from '@/domain/book-parts';
+import { EDGE_R, GROOVE, rigOf } from '@/domain/book-parts';
 import { jacketColor, jacketFor, LANDSCAPES } from '@/domain/book-design';
 import { hasRibbon, ribbonDesign } from '@/domain/ribbon-design';
-import { bookFacePath, CoverFaceArt, PAGE_BASE, PAGE_RIM, SpineFaceArt, withAlpha as withAlphaHex } from '@/ui/book/BookBody';
+import { bookFacePath, CoverFaceArt, PAGE_BASE, SpineFaceArt } from '@/ui/book/BookBody';
 import { ReferenceCover } from './ReferenceCover';
-import { ReferenceBinding, referenceBinding, bindingSurfaceTone } from './ReferenceBinding';
-import { MaterialGrain } from './MaterialGrain';
+import { ReferenceBinding } from './ReferenceBinding';
+import { bookTone, referenceBinding } from '@/domain/binding-material';
+import { GRAIN, MaterialGrain } from './MaterialGrain';
 import { ORIGINAL_ART, ReferenceGlyph, ReferenceMotif, ReferencePrint, drawOriginalGlyph, hasOriginalGlyph, hasReferenceMotif, referencePrint } from './ReferencePrint';
 
 const REGULAR = require('@expo-google-fonts/gowun-batang/400Regular/GowunBatang_400Regular.ttf');
@@ -45,14 +46,14 @@ export type BookArt = {
   titleH: SkPicture; // 눕힌 책등 제목(가로 한 줄, 책등 면 그림 좌표에서 머리 → 꼬리 방향으로 읽힌다)
   cover: SkPicture;
   ribbons: SkPicture | null;
+  ribbonsShape: SkPath | null;
+  ribbonsOut: number;
   pageEnd: SkPicture; // 머리·꼬리 속지 면(두께 × 책등 띠 뒤 ~ 책배 판 끝 안쪽)
   pageFore: SkPicture; // 책배 속지 면(두께 × 머리·꼬리 판 끝 안쪽)
-  prelitCover: boolean;
-  prelitSpine: boolean;
-  spineHorizontal: boolean;
 };
 
 // 책 몸체 색 하나: 표지판·책등·판 끝이 모두 같은 색이다(같은 책의 판 두 장과 책등). 표지 그림이 있는 책은 그 판 색(가장자리 색)을 쓴다.
+// 책 재질 색(장정·표지 가장자리). 모든 화면의 책이 이 색 하나를 쓴다
 const faceOf = (b: Book) => jacketColor(b.cover?.edge ?? b.body?.face ?? b.themeColor);
 export const inkOf = (b: Book) => b.art.inkColor ?? titleInk(faceOf(b));
 
@@ -183,36 +184,106 @@ function bandColor(img: SkImage, fw: number, fh: number, x0: number, y0: number,
   return rgbHex(r / n, g / n, b / n);
 }
 // 몸체 색(판 두 장·책등이 같은 색). cover 인자는 예전 호출과 맞추려고 남겨 둔다(앞표지·뒤표지·책등이 모두 같은 색).
-export const toneOf = (b: Book, _cover?: boolean) => bindingSurfaceTone(faceOf(b));
+export const toneOf = (b: Book) => bookTone(b);
 
 export const SPINE_FACE = 0.94; // 세운 책등 제목 크기를 정할 때 쓰는 폭(책등 폭의 94%. 글자는 책등 가운데)
 
-// 갈피 끈: 시안처럼 한 가닥, 곧게 선 납작한 띠(위 끝 모서리만 작게 둥글림). 균일한 무광 색(외곽선·광택 없음).
-// 원점 = 책 머리 가운데, 위가 음수. 뿌리는 머리 면 속지 사이로 조금 묻힌다.
-function Ribbons({ book, s }: { book: Book; s: number }) {
-  const color = book.art.ribbon ?? shade(book.themeColor, 0.25);
+// 갈피(종이 탭): 갈피가 하나면 한 장, 둘 이상이면 두 장이 머리 위로 나란히 나온다(ribbon-design). 색은 책 색 계열(tabColors).
+// 원점 = 책 머리 가운데, 위가 음수. 뿌리는 머리 면 속지 사이로 조금 묻힌다(TAB_HIDDEN). 종이 탭은 속지 사이에 끼워져
+// 뿌리를 축으로 조금씩 기운다(±TAB_TILT_MAX°, 책마다·장마다). 그림은 재질(색·한지 결)만, 밝기는 그릴 때 빛 모델이 칠한다(BookNode Ribbons).
+const TAB_HIDDEN = 1.2;
+const TAB_TILT_MAX = 4;
+type Tab = { x: number; width: number; out: number; color: string; seed: number; tilt: number };
+function rng(seed: number) {
+  let k = seed >>> 0;
+  return () => {
+    k = (Math.imul(k, 1664525) + 1013904223) >>> 0;
+    return k / 4294967296;
+  };
+}
+export function tabsOf(book: Book): Tab[] {
   const design = ribbonDesign(book);
-  const w = design.width * s;
-  const hidden = 1.2 * s;
-  const top = -design.out * s;
-  const r = 1.5 * s;
-  const path = Skia.PathBuilder.Make();
-  path.moveTo(-w / 2, hidden);
-  path.lineTo(-w / 2, top + r);
-  path.quadTo(-w / 2, top, -w / 2 + r, top);
-  path.lineTo(w / 2 - r, top);
-  path.quadTo(w / 2, top, w / 2, top + r);
-  path.lineTo(w / 2, hidden);
-  path.close();
+  const [c1, c2] = tabColors(toneOf(book), book.art.ribbon);
+  const tall = Math.max(...design.tabs.map((t) => t.out));
+  let seed = 0;
+  for (const ch of book.id) seed = (seed * 31 + ch.charCodeAt(0)) >>> 0;
+  return design.tabs.map((t, i) => {
+    const sd = seed + i * 7919;
+    return { x: design.x + t.x, width: t.width, out: t.out, color: t.out === tall ? c1 : c2, seed: sd, tilt: (rng(sd ^ 0x9e3779b9)() - 0.5) * 2 * TAB_TILT_MAX };
+  });
+}
+// 탭 한 장의 모양(갈피 좌표, px). 둥근 위 모서리 반지름 = 판 모서리 반지름(EDGE_R)
+function tabPath(t: Tab, s: number, into: ReturnType<typeof Skia.PathBuilder.Make>) {
+  const w = t.width * s;
+  const hidden = TAB_HIDDEN * s;
+  const top = -t.out * s;
+  const r = Math.min(EDGE_R * s, w / 2);
+  const m = Skia.Matrix();
+  m.translate(t.x * s, hidden);
+  m.rotate((t.tilt * Math.PI) / 180);
+  m.translate(0, -hidden);
+  const p = Skia.PathBuilder.Make();
+  p.moveTo(-w / 2, hidden);
+  p.lineTo(-w / 2, top + r);
+  p.quadTo(-w / 2, top, -w / 2 + r, top);
+  p.lineTo(w / 2 - r, top);
+  p.quadTo(w / 2, top, w / 2, top + r);
+  p.lineTo(w / 2, hidden);
+  p.close();
+  const one = p.detach();
+  one.transform(m);
+  into.addPath(one);
+  return one;
+}
+function PaperTab({ t, s }: { t: Tab; s: number }) {
+  const w = t.width * s;
+  const hidden = TAB_HIDDEN * s;
+  const top = -t.out * s;
+  const shape = tabPath(t, s, Skia.PathBuilder.Make());
+  // 한지 결: 넓고 부드러운 물결(곡선 몇 가닥, 갈피 카드 테이프와 같은 결)
+  const rnd = rng(t.seed);
+  const fibers = Skia.PathBuilder.Make();
+  for (let i = 0; i < 5; i++) {
+    const fx = -w / 2 + rnd() * w;
+    const fy = top + rnd() * (hidden - top);
+    const a = rnd() * Math.PI;
+    const len = (4 + rnd() * 6) * s;
+    const ex = fx + Math.cos(a) * len;
+    const ey = fy + Math.sin(a) * len * 0.6;
+    fibers.moveTo(fx, fy);
+    fibers.cubicTo(fx + (rnd() - 0.5) * 5 * s, fy + (rnd() - 0.5) * 5 * s, ex + (rnd() - 0.5) * 5 * s, ey + (rnd() - 0.5) * 5 * s, ex, ey);
+  }
+  const swirl = fibers.detach();
   return (
-    <Group transform={[{ translateX: design.x * s }, { translateY: design.y * s }]}>
-      {/* 갈피가 종이 묶음 사이로 들어가는 자리: 아주 옅은 틈 그늘 */}
-      <Rect x={-w / 2 - 0.4 * s} y={hidden - 0.7 * s} width={w + 0.8 * s} height={1.2 * s} color="rgba(96,74,52,0.12)">
-        <BlurMask blur={0.45 * s} style="normal" />
-      </Rect>
-      <Path path={path.detach()} color={color} />
+    <Group clip={shape}>
+      <Path path={shape} color={t.color} />
+      <Group transform={[{ translateX: t.x * s }, { translateY: hidden }, { rotate: (t.tilt * Math.PI) / 180 }, { translateY: -hidden }]}>
+        {/* 한지 결(재질): 섬유가 뭉친 곳은 조금 짙다(결 세기 GRAIN 하나) */}
+        <Path path={swirl} style="stroke" strokeWidth={0.9 * s} strokeCap="round" color={`rgba(55,70,80,${GRAIN})`}>
+          <BlurMask blur={0.35 * s} style="normal" />
+        </Path>
+        <Group transform={[{ translateX: -w / 2 }, { translateY: top }]}>
+          <MaterialGrain w={w} h={hidden - top} s={s} />
+        </Group>
+      </Group>
     </Group>
   );
+}
+function Ribbons({ book, s }: { book: Book; s: number }) {
+  return (
+    <Group>
+      {tabsOf(book).map((t, i) => (
+        <PaperTab key={i} t={t} s={s} />
+      ))}
+    </Group>
+  );
+}
+// 모든 탭 모양(빛을 다시 칠할 자리)과 가장 긴 탭 길이(DU)
+function ribbonShapeOf(book: Book, s: number) {
+  const all = Skia.PathBuilder.Make();
+  const tabs = tabsOf(book);
+  for (const t of tabs) tabPath(t, s, all);
+  return { path: all.detach(), out: Math.max(...tabs.map((t) => t.out)) };
 }
 
 // 속지 면(판 사이, 판 끝보다 안쪽). w×h DU를 배율 s로. 밝은 아이보리 바탕 + 판(과 책등 띠) 쪽 좁은 그늘(결 줄은 두지 않는다:
@@ -220,30 +291,14 @@ function Ribbons({ book, s }: { book: Book; s: number }) {
 function PageArt({ w, h, s, spineBand }: { w: number; h: number; s: number; spineBand: boolean }) {
   const W = w * s;
   const H = h * s;
-  // 판 쪽 그늘은 아주 좁고 옅게(시안 머리 면에는 베이지 안쪽 띠가 없다)
-  const band = Math.max(0.3, Math.min(0.6, w * 0.12)) * s;
-  const rim = withAlphaHex(PAGE_RIM, 0.06);
+  // 속지 단면(재질): 종이 색 + 낱장 가장자리 결(같은 결 세기 GRAIN). 판 쪽 그늘·밝기는 빛 모델이 칠한다
   return (
     <Group clip={Skia.XYWHRect(0, 0, W, H)}>
       <Rect x={0} y={0} width={W} height={H} color={PAGE_BASE} />
-      <Rect x={0} y={0} width={W} height={H}>
-        <LinearGradient start={vec(0, 0)} end={vec(W, 0)} colors={['#EAD9BE', '#FBF2E2', '#FFF6E7', '#F0E2CC']} positions={[0, 0.16, 0.72, 1]} />
-      </Rect>
       {Array.from({ length: spineBand ? 0 : Math.max(1, Math.floor(w / 2.8)) }, (_, i) => (
-        <Rect key={i} x={(1.1 + i * 2.8) * s} y={0} width={0.12 * s} height={H} color="rgba(158,132,98,0.06)" />
+        <Rect key={i} x={(1.1 + i * 2.8) * s} y={0} width={0.12 * s} height={H} color={`rgba(158,132,98,${GRAIN})`} />
       ))}
-      <MaterialGrain w={W} h={H} s={s} strength={0.12} />
-      <Rect x={-band} y={-band} width={2 * band} height={H + 2 * band} color={rim}>
-        <BlurMask blur={0.4 * s} style="normal" />
-      </Rect>
-      <Rect x={W - band} y={-band} width={2 * band} height={H + 2 * band} color={rim}>
-        <BlurMask blur={0.4 * s} style="normal" />
-      </Rect>
-      {spineBand ? (
-        <Rect x={-band} y={-band} width={W + 2 * band} height={2 * band} color={rim}>
-          <BlurMask blur={0.4 * s} style="normal" />
-        </Rect>
-      ) : null}
+      <MaterialGrain w={W} h={H} s={s} />
     </Group>
   );
 }
@@ -253,7 +308,7 @@ async function record(el: ReactNode, w: number, h: number) {
 }
 
 // 그림 기록 키에 넣는 디자인 판(조판·몸체 규칙을 바꾸면 올린다: 빠른 새로고침에서도 예전 규칙으로 기록한 그림을 다시 쓰지 않게)
-const DESIGN_REV = 'continuous-jacket-light-11-vector';
+const DESIGN_REV = 'light-model-1';
 const cache = new Map<string, Promise<BookArt>>();
 const done = new Map<string, BookArt>(); // 이미 기록된 것(다시 그릴 때 한 프레임도 비지 않게)
 let queue: Promise<unknown> = Promise.resolve();
@@ -265,6 +320,9 @@ let artMs = 0;
 // 서버에서 받은 책 전체 그림(표지·책등). 있으면 코드로 그리는 장정 대신 이 그림을 그대로 쓴다(제목·장식도 그림 안에 있다).
 type MadeArt = { cover: SkImage | null; spine: SkImage | null };
 
+// 시안에서 잰 책등 제목 위치(titleTop)는 책등 그림을 머리 위로 늘려 그리던 때의 값이다. 물리 모드는 책등을 늘리지 않아
+// 제목이 그만큼(책등 높이의 약 6%) 내려가 보였다(시안 '흰' 0.23 → 앱 0.29). 그만큼 올린다
+const TITLE_LIFT = 0.06;
 // 책등 장식(꽃·별·달 같은 작은 그림)은 일단 그리지 않는다. 다시 켜려면 true.
 const SPINE_MOTIF = false;
 
@@ -287,7 +345,7 @@ async function buildArt(book: Book, s: number, dims: { T: number; H: number; W: 
   const textEnd = book.art.titleTop !== undefined ? 0.79 : !SPINE_MOTIF || book.art.motif === 'none' ? 0.88 : Math.max(0.50, (motifY + (compactMotif ? motifH * 0.28 : 0) - 4 * s) / h);
   const binding = referenceBinding(face);
   const spine = await record(made.spine
-    ? <Group clip={bookFacePath(w, h, s, true)}><SkiaImage image={made.spine} x={0} y={0} width={w} height={h} fit="fill" /></Group>
+    ? <Group clip={bookFacePath(w, h, s)}><SkiaImage image={made.spine} x={0} y={0} width={w} height={h} fit="fill" /></Group>
     : binding ? <ReferenceBinding material={binding} w={w} h={h} s={s} /> : <SpineFaceArt w={w} h={h} face={face} s={s} />, w, h);
   const motifGlyph = !SPINE_MOTIF ? null : hasReferenceMotif(book.art.motif) ? <ReferenceMotif image={shared.original!} id={book.art.motif} color={book.art.accentColor ?? (ink === TITLE_LIGHT ? '#F4DCA3' : '#8B9C7C')} /> : spineMotif ? <ImageSVG svg={spineMotif} x={0} y={0} width={24} height={60} /> : null;
   const print = referencePrint(book.title);
@@ -295,7 +353,7 @@ async function buildArt(book: Book, s: number, dims: { T: number; H: number; W: 
   const printH = print?.pose === 'horizontal' ? print : undefined;
   const accent = book.art.accentColor ?? (ink === TITLE_LIGHT ? '#F4DCA3' : '#8B9C7C');
   const titleV = made.spine ? await record(<Group />, w, h) : await record(<Group>
-    {printV ? <ReferencePrint image={shared.original!} template={printV} w={w} h={h} ink={ink} accent={accent} decoration={SPINE_MOTIF && printV.motif === book.art.motif} /> : <Picture picture={verticalTitlePicture(book.title, dims, s, regular, ink, shared.original!, book.art.titleTop, textEnd)} />}
+    {printV ? <ReferencePrint image={shared.original!} template={printV} w={w} h={h} ink={ink} accent={accent} decoration={SPINE_MOTIF && printV.motif === book.art.motif} /> : <Picture picture={verticalTitlePicture(book.title, dims, s, regular, ink, shared.original!, book.art.titleTop === undefined ? undefined : Math.max(0.12, book.art.titleTop - TITLE_LIFT), textEnd)} />}
     {!SPINE_MOTIF || printV?.motif === book.art.motif ? null : <Group transform={[{ translateX: (w - motifW) / 2 }, { translateY: motifY }, { scale: motifW / 24 }]}>{motifGlyph}</Group>}
   </Group>, w, h);
   // Counter-rotate the small illustration so it stays upright on a lying spine.
@@ -351,7 +409,7 @@ async function buildArt(book: Book, s: number, dims: { T: number; H: number; W: 
   const coverPic = await record(
     made.cover ? <Group clip={bookFacePath(cw, h, s)}><SkiaImage image={made.cover} x={0} y={0} width={cw} height={h} fit="cover" /></Group> :
     <Group>
-      {originalCover ? <ReferenceCover image={coverImg!} cover={cover} w={cw} h={h} retainTitle={retainTitle} /> : <CoverFaceArt w={cw} h={h} s={s} face={toneOf(book)} tone={toneOf(book)} image={coverImg} motif={book.body ? motif : null} />}
+      {originalCover ? <ReferenceCover image={coverImg!} cover={cover} w={cw} h={h} retainTitle={retainTitle} /> : <CoverFaceArt w={cw} h={h} s={s} face={toneOf(book)} image={coverImg} motif={book.body ? motif : null} />}
       {coverMotif}
       {book.art.plainCover || retainTitle ? null : lineEls}
     </Group>,
@@ -359,12 +417,13 @@ async function buildArt(book: Book, s: number, dims: { T: number; H: number; W: 
     h,
   );
   const ribbons = hasRibbon(book) ? await record(<Ribbons book={book} s={s} />, 40 * s, 30 * s) : null;
+  const rs = hasRibbon(book) ? ribbonShapeOf(book, s) : null;
   // 속지 면(book-parts와 같은 치수): 머리·꼬리는 책등 띠 쪽에도 그늘, 책배는 판 쪽만
   const rig = rigOf(dims);
   const pw = dims.T - 2 * rig.bd;
   const pageEnd = await record(<PageArt w={pw} h={dims.W - rig.sq - rig.sp} s={s} spineBand />, pw * s, (dims.W - rig.sq - rig.sp) * s);
   const pageFore = await record(<PageArt w={pw} h={dims.H - 2 * rig.sq} s={s} spineBand={false} />, pw * s, (dims.H - 2 * rig.sq) * s);
-  return { spine, titleV, titleH, cover: coverPic, ribbons, pageEnd, pageFore, prelitCover: originalCover, prelitSpine: !!binding && !made.spine, spineHorizontal: binding?.horizontal ?? false };
+  return { spine, titleV, titleH, cover: coverPic, ribbons, ribbonsShape: rs?.path ?? null, ribbonsOut: rs?.out ?? 0, pageEnd, pageFore };
 }
 
 // 책 한 권의 기록된 그림(없으면 null → 다음 렌더에서 채워진다)

@@ -7,36 +7,39 @@ import { LANDSCAPES } from './book-design';
 import type { Book, ShelfLayout } from './types';
 
 type CoverArt = NonNullable<Book['cover']>;
-type Slot = { title: string; color: string; ribbon?: string; cover?: CoverArt };
+// marks: 보이는 갈피 장 수(2026-10-07 사용자 참고 사진). ribbon: 갈피 색(크림 책처럼 책 색으로 정하기 어려울 때 쓰는 색)
+type Slot = { title: string; color: string; ribbon?: string; marks?: number; cover?: CoverArt };
 
 // 책 색은 시안 책등(표지 책은 판 가장자리)에서 글자·장식을 뺀 면의 중앙값, 갈피 색은 시안 갈피 끈의 색.
 // 표지 그림의 titleTop은 시안 표지의 제목 자리(제목 칸 위 끝, 표지 높이 비율), ink는 시안 제목 색(참고값).
 const SLOTS: Record<string, Slot> = {
   b01: { title: '모순', color: '#FDF0E0' },
-  b02: { title: '데미안', color: '#5E6D5B' },
-  b03: { title: '어린 왕자', color: '#FBD392', ribbon: '#929778' },
+  b02: { title: '데미안', color: '#5E6D5B', ribbon: '#98AC9E', marks: 2 },
+  b03: { title: '어린 왕자', color: '#FBD392', ribbon: '#E9A562', marks: 1 },
   b04: {
     title: '느린 계절',
     color: '#475B7A',
+    ribbon: '#7D9CC4',
+    marks: 2,
     cover: LANDSCAPES.night,
   },
-  b05: { title: '문장 수집', color: '#CE886F' },
-  b17: { title: '느린 하루', color: '#88A4BA', ribbon: '#EFC591' },
+  b05: { title: '문장 수집', color: '#CE886F', ribbon: '#D98A7C', marks: 2 },
+  b17: { title: '느린 하루', color: '#88A4BA' },
   b06: { title: '흰', color: '#FDF0DF' },
   b07: {
     title: '여름의 숲',
     color: '#E6D6BC',
     cover: LANDSCAPES.forest,
   },
-  b08: { title: '여행의 이유', color: '#819AB1' },
-  b09: { title: '작은 것들의 기쁨', color: '#FDECD4', ribbon: '#ECA676' },
+  b08: { title: '여행의 이유', color: '#819AB1', ribbon: '#8EAAD0', marks: 2 },
+  b09: { title: '작은 것들의 기쁨', color: '#FDECD4' },
   b10: { title: '사람의 마음이란', color: '#3E5374' },
   b18: { title: '아주 보통의 하루', color: '#A7AF95' },
-  b11: { title: '너라는 계절', color: '#F0BDA0' },
+  b11: { title: '너라는 계절', color: '#F0BDA0', ribbon: '#E9A070', marks: 1 },
   b12: { title: '찰나의 마음', color: '#F3B497' },
   b13: { title: '좋은 문장은 이렇게 온다', color: '#F8E6CF' },
   b14: { title: '고요한 우연', color: '#8D4F4E' },
-  b15: { title: '아무튼, 독서', color: '#FDECD5', ribbon: '#8C9474' },
+  b15: { title: '아무튼, 독서', color: '#FDECD5' },
   b16: {
     title: '우리가 빛의 속도로 갈 수 없다면',
     color: '#F4BFA2',
@@ -61,12 +64,13 @@ function toMockup(b: Book): Book {
       motif: ({ b01: 'blossom', b02: 'asterisk', b03: 'star-solid', b04: 'moon', b05: 'sprig', b17: 'cloud', b06: 'daisy', b08: 'wave', b09: 'sprig', b10: 'moon', b18: 'seedling', b11: 'blossom', b12: 'seedling', b13: 'feather', b14: 'seedling', b15: 'book' } as Record<string, string>)[b.id] ?? 'none',
       accentColor: ({ b02: '#F6DB8C', b03: '#DCA64E', b05: '#F7E2B6', b17: '#F9EDDA', b08: '#F8EACF', b10: '#F8DEA3', b18: '#F8EACF', b12: '#FFF0D5', b14: '#F8E3B7', b15: '#C6A67B' } as Record<string, string>)[b.id],
       ribbon: s.ribbon,
+      ribbonCount: s.marks,
       titleTop: ({ b01: 0.25, b02: 0.24, b03: 0.22, b05: 0.21, b17: 0.18, b06: 0.322, b08: 0.245, b09: 0.175, b10: 0.155, b18: 0.195, b11: 0.215, b14: 0.205, b15: 0.24 } as Record<string, number>)[b.id],
       motifScale: ({ b01: 1.15, b05: 0.9, b11: 0.76, b13: 1.3 } as Record<string, number>)[b.id],
       motifBottom: ({ b01: 0.875, b05: 0.91, b11: 0.89 } as Record<string, number>)[b.id],
       plainCover: b.id === 'b12' || b.id === 'b13',
     },
-    quotes: s.ribbon ? 1 : 0,
+    quotes: s.marks ?? (s.ribbon ? 1 : 0),
     cover: s.cover,
   };
 }

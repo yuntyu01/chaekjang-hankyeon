@@ -1,6 +1,6 @@
 // 책 몸체 구조(판 두 장·책등 띠·속지 묶음·판 끝 여유)는 책 좌표에서 정해 같은 카메라로 투영한다(domain/book-parts, face-geometry).
 // 속지 면은 판 끝보다 sq 안쪽 평면에 있어, 앞 면에 가려지는 부분은 카메라가 정한다. 둥근 모서리는 투영 윤곽을 깎을 뿐 상자 밖으로 나가지 않는다.
-import { CORNER_R, pageFace, rigOf, SQUARE } from '../book-parts';
+import { EDGE_R, pageFace, rigOf, SQUARE } from '../book-parts';
 import { corners, facing, fromPlaced, toWorld, type Book3 } from '../book3';
 import { hull } from '../box';
 import { camAt, project, viewAt } from '../camera';
@@ -71,8 +71,9 @@ describe('책 몸체 구조', () => {
     const cam = camAt(3);
     const g = pageGeom(cam, standing, 'head', px);
     // 왼쪽(뒤표지) 판 안쪽 면(법선 +x)만 보이고, 오른쪽 판 안쪽 면·책등 띠 안쪽 면(법선 +z, 뒤를 향함)은 안 보인다
-    expect(g.walls).toHaveLength(1);
-    const xs = g.walls[0].map((p) => p.x);
+    const shown = g.walls.filter((w) => w.length);
+    expect(shown).toHaveLength(1);
+    const xs = shown[0].map((p) => p.x);
     expect(Math.min(...xs)).toBeLessThan(screen(cam, standing, { x: dims.T / 2, y: dims.H, z: 0 }).x);
   });
 
@@ -114,7 +115,7 @@ describe('책 몸체 구조', () => {
         // 모서리에서 깎인 거리는 공통 반지름을 넘지 않는다
         for (const c of box) {
           const nearest = Math.min(...sil.map((p) => Math.hypot(p.x - c.x, p.y - c.y)));
-          expect(nearest).toBeLessThanOrEqual(CORNER_R * px.s + 1e-6);
+          expect(nearest).toBeLessThanOrEqual(EDGE_R * px.s + 1e-6);
         }
       }
     }
@@ -128,7 +129,7 @@ describe('책 몸체 구조', () => {
       return { x: q.x * px.s, y: q.y * px.s };
     }));
     const sil = silhouette(cam, b, px);
-    const r = CORNER_R * px.s;
+    const r = EDGE_R * px.s;
     // 앞면 위 끝과 얇은 띠를 한 모서리로 본 왼쪽 위 모서리(외곽 상자의 모서리)에서 윤곽까지 r(√2−1): 직각 모서리를 반지름 r로 둥글린 거리
     const corner = { x: Math.min(...box.map((p) => p.x)), y: Math.min(...box.map((p) => p.y)) };
     const cut = Math.min(...sil.map((p) => Math.hypot(p.x - corner.x, p.y - corner.y)));

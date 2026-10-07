@@ -1,7 +1,7 @@
 // 실제 그림자(순수, 워클릿): 광원 방향으로 3D 점을 받는 면(평면)에 떨어뜨린다. 화면으로는 책과 같은 project()로 옮긴다.
 // 받는 면: 벽(z = SHELF_DEPTH, 책 기준선 뒤 160mm = 앞 끝에서 230mm), 선반 윗면(y = 0).
-// 광원은 면 밝기(램버트)와 같은 방향이다. 부드러운 면광원이라 가리는 물체에서 멀수록 옅고 흐려진다(fadeOf).
-import { light, shadow } from "@/ui/lighting";
+// 광원은 면 밝기(램버트)와 같은 방향이다(domain/light-model). 면광원이라 가리는 물체에서 멀수록 번진다.
+import { light, physShadow } from "@/ui/lighting";
 
 import { corners, type Book3, type Vec3 } from "./book3";
 import { SHELF_DEPTH } from "./geometry";
@@ -24,18 +24,6 @@ export function onFloor(p: Vec3, D: Vec3, y0: number): Vec3 {
   "worklet";
   const t = Math.max(0, (y0 - p.y) / D.y);
   return { x: p.x + D.x * t, y: y0, z: p.z + D.z * t };
-}
-
-// 가리는 물체와 받는 면 사이 거리(빛 방향으로 잰 길이)
-export function rayLength(p: Vec3, q: Vec3) {
-  "worklet";
-  return Math.hypot(q.x - p.x, q.y - p.y, q.z - p.z);
-}
-
-// 면광원: 거리 d에서 그림자 진하기 비율(가까우면 1, 멀수록 지수로 옅어짐)
-export function fadeOf(d: number, len: number) {
-  "worklet";
-  return Math.exp(-Math.max(0, d) / len);
 }
 
 // 상자 꼭짓점 번호(xi + 2*yi + 4*zi)의 12개 변
@@ -65,6 +53,7 @@ export function shadowOnPlane(
   n: Vec3,
   LIGHT: Vec3,
   tMax = Infinity,
+  tMin = 0,
 ): {
   pts: Vec3[];
   dist: number;
@@ -81,7 +70,8 @@ export function shadowOnPlane(
   let near: Vec3 | null = null;
   let far: Vec3 | null = null;
   if (nd > -1e-4) return { pts: out, dist: 0, near, far, tFar: 0 };
-  const lo = 0.05;
+  // 빛 길이 tMin < t ≤ tMax 인 부분만(구간): 가리개를 빛 길이로 자른 판 조각들은 겹치지 않는다
+  const lo = Math.max(0.05, tMin * -nd);
   const hi = tMax * -nd;
   const h = occ.map(
     (c) => n.x * (c.x - p0.x) + n.y * (c.y - p0.y) + n.z * (c.z - p0.z),
@@ -182,45 +172,63 @@ export function shadowOnPlane(
   return { pts: out, dist, near, far, tFar };
 }
 
-// ---------- 책 → 벽·선반 윗면: 받는 면 두 개, 그림자 모델 하나(lighting shadow.cast.book) ----------
-// k번째 층 = 책 상자에서 빛 길이 ℓ ≤ layers[k]인 부분이 받는 면(벽 z = SHELF_DEPTH, 선반 윗면 y = 0)에 만드는 그림자(3D 점, 카메라와 무관).
-// 벽과 선반 윗면이 만나는 선의 한 점으로 가는 빛줄기는 두 면까지의 빛 길이가 같으므로, 두 면이 같은 절대 문턱·진하기·색을 쓰면 이음에서 이어진다.
-// w: 책의 가장 가까운 점이 문턱에 가까울 때 그 층을 옅게(ramp). 흐림은 캔버스 px(배율 s).
+// ---------- 책 → 벽·선반 윗면 그림자(창빛) ----------
+// 책 상자를 빛 길이 구간(physShadow.bands)으로 잘라 구간마다 받는 면(벽 z = SHELF_DEPTH, 선반 윗면 y = 0)에 떨어뜨린다(3D 점, 카메라와 무관).
+// 구간 조각은 겹치지 않고, 구간 가운데 거리의 반그림자 폭으로 번진다. 진하기는 받는 면이 정한다(light-model: 창빛 몫 / 그 면이 받는 빛).
+// 벽과 선반 윗면이 만나는 선으로 가는 빛줄기는 두 면까지 빛 길이가 같아 같은 구간에 든다(이음에서 이어진다).
 const BOOK_LIGHT = travelOf(light.dir);
-export type BookCast = { pts: Vec3[]; blur: number; w: number } | null;
+// pts: 받는 면 위 점, sigma: 흐림 시그마(캔버스 px), w: 광원 원반 중 가려지는 몫(가리개가 반그림자보다 좁으면 1보다 작다)
+export type BookCast = { pts: Vec3[]; sigma: number; w: number } | null;
 
-// 상자에서 빛 길이 f(v)가 L 이하인 부분의 꼭짓점: 꼭짓점 + 12개 변이 f = L을 지나는 점
-function nearPart(cs: Vec3[], f: number[], L: number): Vec3[] {
+// 상자에서 빛 길이 f가 (lo, hi]인 부분(볼록 상자 ∩ 두 평면 사이)의 꼭짓점: 그 사이 꼭짓점 + 12개 변이 lo·hi를 지나는 점
+function bandPart(cs: Vec3[], f: number[], lo: number, hi: number): Vec3[] {
   "worklet";
   const out: Vec3[] = [];
-  for (let i = 0; i < 8; i++) if (f[i] <= L) out.push(cs[i]);
+  for (let i = 0; i < 8; i++) if (f[i] >= lo && f[i] <= hi) out.push(cs[i]);
   for (const [i, j] of BOX_EDGES) {
-    if ((f[i] - L) * (f[j] - L) >= 0) continue;
-    const t = (L - f[i]) / (f[j] - f[i]);
-    out.push({ x: cs[i].x + (cs[j].x - cs[i].x) * t, y: cs[i].y + (cs[j].y - cs[i].y) * t, z: cs[i].z + (cs[j].z - cs[i].z) * t });
+    for (const L of [lo, hi]) {
+      if ((f[i] - L) * (f[j] - L) >= 0) continue;
+      const t = (L - f[i]) / (f[j] - f[i]);
+      out.push({ x: cs[i].x + (cs[j].x - cs[i].x) * t, y: cs[i].y + (cs[j].y - cs[i].y) * t, z: cs[i].z + (cs[j].z - cs[i].z) * t });
+    }
   }
   return out;
 }
 
+// 반그림자 폭 w(DU)를 가우스 흐림 시그마로: 원반 광원의 반그림자는 폭 w의 경사이고, 가운데 기울기가 같은 가우스는 σ = w / √(2π)
+export function penumbraSigma(w: number) {
+  "worklet";
+  return w / Math.sqrt(2 * Math.PI);
+}
+
+// 광원 원반 중 가리개가 가리는 몫: 가리개의 짧은 두 변이 반그림자 폭 pen보다 좁으면 그 비율만큼만 가린다
+// (붙은 곳은 진하고 멀수록 빨리 옅어진다)
+export function thinOccluder(d: { T: number; H: number; W: number }, pen: number) {
+  "worklet";
+  const ds = [d.T, d.H, d.W].sort((p, q) => p - q);
+  const w = Math.max(1e-3, pen);
+  return Math.min(1, ds[0] / w) * Math.min(1, ds[1] / w);
+}
+
+// k번째 구간의 책 그림자(벽 wall = true, 선반 윗면 false). s: 캔버스 배율
 export function bookCast(b: Book3, s: number, k: number, wall: boolean): BookCast {
   "worklet";
-  const m = shadow.cast.book;
+  const B = physShadow.bands;
+  const lo = k === 0 ? 0 : B[k - 1];
+  const hi = B[k];
   const D = BOOK_LIGHT;
   const cs = corners(b);
   const f = cs.map((c) => (wall ? Math.max(0, (SHELF_DEPTH - c.z) / D.z) : Math.max(0, c.y / -D.y)));
   let f0 = Infinity;
-  for (const v of f) f0 = Math.min(f0, v);
-  const L = m.layers[k];
-  const w = Math.min(1, (L - f0) / m.ramp);
-  if (w <= 0) return null;
-  const part = nearPart(cs, f, L);
-  if (part.length < 3) return null;
-  let far = 0;
-  const pts: Vec3[] = [];
-  for (const c of part) {
-    const q = wall ? onWall(c, D, SHELF_DEPTH) : onFloor(c, D, 0);
-    far = Math.max(far, rayLength(c, q));
-    pts.push(q);
+  let f1 = -Infinity;
+  for (const v of f) {
+    f0 = Math.min(f0, v);
+    f1 = Math.max(f1, v);
   }
-  return { pts, blur: Math.min(m.maxBlur, m.near + m.perDU * far) * s, w };
+  if (f1 <= lo || f0 > hi) return null;
+  const part = bandPart(cs, f, lo, hi);
+  if (part.length < 3) return null;
+  const pts: Vec3[] = part.map((c) => (wall ? onWall(c, D, SHELF_DEPTH) : onFloor(c, D, 0)));
+  const pen = physShadow.spread * ((Math.max(lo, f0) + Math.min(hi, f1)) / 2);
+  return { pts, sigma: penumbraSigma(pen) * s, w: thinOccluder(b.dims, pen) };
 }

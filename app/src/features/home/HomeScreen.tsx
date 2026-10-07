@@ -73,8 +73,8 @@ import { CONTENT_TOP, computeRows, LAYOUT, rowAffine, rowAt, toContent, useShelf
 import { benchProjection, type BenchRow } from '@/ui/shelf/ShelfMotion';
 import { displayedPoses, flushApply, lastPlan, previewInto, PULL_MS, settleInto, WAIT_MAX } from '@/ui/shelf/planner';
 import { liveSV, makeMotion, pickAt, plankFrontBand, rowPx, TRANSIT_ROW, warmSV, type Motion, type Pick, type SceneGeo, type SceneMotion } from '@/ui/shelf/scene';
-import { HANDLE_HIT, handlePoint, SHELF_CAST_EXTENT, ShelfScene, type DropHint, type SceneRowProps } from '@/ui/shelf/ShelfScene';
-import { ANIM, frameStats, logChunks, MENU_FLAGS, PERF_DETAIL, PERF_ENABLED, PERF_LEVELS, PUSH_DEBUG, setPerfLevel, TL, tl, tlEv, tlOn, tlu, TRANSIT_DEBUG, setShelfMode, setShelfView, SHELF_MODES, SHELF_VIEWS, type PerfLevel, type ShelfMode } from '@/ui/perf';
+import { HANDLE_HIT, handlePoint, HeaderWall, SHELF_CAST_EXTENT, ShelfScene, type DropHint, type SceneRowProps } from '@/ui/shelf/ShelfScene';
+import { ANIM, frameStats, logChunks, MENU_FLAGS, PERF_DETAIL, PERF_ENABLED, PERF_LEVELS, PUSH_DEBUG, setLightOff, setPerfLevel, TL, tl, tlEv, tlOn, tlu, TRANSIT_DEBUG, setShelfMode, setShelfView, SHELF_MODES, SHELF_VIEWS, type PerfLevel, type ShelfMode } from '@/ui/perf';
 import type { FrontState } from '@/domain/front-pose';
 import { colors, fonts, motion, navigation } from '@/ui/theme';
 
@@ -183,6 +183,8 @@ export function HomeScreen() {
   const [debugGeom, setDebugGeom] = useState(false); // 개발용 형상 보기
   const [selectedYear, setSelectedYear] = useState<number | null>(null); // 헤더 독서 연도
   const [vpH, setVpH] = useState(0);
+  // 줄 화면(스크롤 영역) 위 끝의 화면 y: 머리글 뒤 벽(HeaderWall) 높이
+  const [vpTop, setVpTop] = useState(0);
   const [editing, setEditing] = useState(false);
   const [panelH, setPanelH] = useState(0);
   const leanRef = useRef<boolean | undefined>(undefined); // 앞뒤 막대를 끄는 동안의 벽 기대기 상태
@@ -843,7 +845,7 @@ export function HomeScreen() {
   const [shelfView, setShelfViewState] = useState<(typeof SHELF_VIEWS)[number]>('전체');
   // 측정 번들에서만: chaekjang:///?sv=0~4 로 선반 보기를 바로 고른다(비교 캡처용)
   // lv=<그리기 단계>(예: full, cast)로 단계만 바꿔 같은 화면을 비교한다
-  const { sv, lv, sh, cam: camDebug, pitch: pitchParam, slow, transit, geom, pushdbg, mark } = useLocalSearchParams<{ sv?: string; lv?: string; sh?: string; cam?: string; pitch?: string; slow?: string; transit?: string; geom?: string; pushdbg?: string; mark?: string }>();
+  const { sv, lv, sh, lt, cam: camDebug, pitch: pitchParam, slow, transit, geom, pushdbg, mark } = useLocalSearchParams<{ sv?: string; lv?: string; sh?: string; lt?: string; cam?: string; pitch?: string; slow?: string; transit?: string; geom?: string; pushdbg?: string; mark?: string }>();
   // 측정 번들: ?mark=b11,b12 처럼 고른 책을 한 가지 색(자홍, 둘째는 청록)으로만 그린다. 화면 녹화에서 그 책이 프레임마다 몇 군데에
   // 얼마나 보이는지 세어 빈 프레임·두 권 보임을 찾는다(장면에 넘기는 그림용 사본만 바꾼다. 배치 계산·저장은 그대로).
   const sceneBooks = useMemo(() => {
@@ -883,12 +885,12 @@ export function HomeScreen() {
     [camDebug],
   );
   const { demoboot, menutl, perfrun } = useLocalSearchParams<{ demoboot?: string; menutl?: string; perfrun?: string }>();
-  // 측정 번들: ?perfrun=full 처럼 메뉴를 거치지 않고 그 단계의 시점 전환 측정을 한 번 돌린다(전후 비교 스크립트용)
+  // 측정 번들: ?perfrun=full 처럼 메뉴를 거치지 않고 그 단계의 시점 전환 측정을 한 번 돌린다(전후 비교 스크립트용, 같은 단계를 다시 돌리려면 full.2처럼)
   const perfRan = useRef('');
   useEffect(() => {
     if (!PERF_ENABLED || !perfrun || !store.loaded || perfRan.current === perfrun) return;
     perfRan.current = perfrun;
-    const id = setTimeout(() => void runPerfRef.current(perfrun as PerfLevel), 1500);
+    const id = setTimeout(() => void runPerfRef.current(perfrun.split('.')[0] as PerfLevel), 1500);
     return () => clearTimeout(id);
   }, [perfrun, store.loaded]);
   if (PERF_ENABLED && menutl !== undefined) MENU_FLAGS.translucent = menutl === '1';
@@ -897,6 +899,11 @@ export function HomeScreen() {
     void Storage.setItem(DEMO_BOOT_KEY, demoboot === '1' || demoboot === 'mockup' ? demoboot : '0');
     placementStore.setDemo(demoboot === '1' || demoboot === 'mockup', demoboot === 'mockup' ? 'mockup' : 'sample');
   }, [demoboot]);
+  useEffect(() => {
+    if (!PERF_ENABLED || lt === undefined) return;
+    setLightOff(lt);
+    setPerfKey((k) => k + 1);
+  }, [lt]);
   useEffect(() => {
     if (!PERF_ENABLED || !sh || !SHELF_MODES.includes(sh as ShelfMode)) return;
     setShelfMode(sh as ShelfMode);
@@ -1042,7 +1049,7 @@ export function HomeScreen() {
     const sweep = await record(3700);
     const benchRows: BenchRow[] = rows.flatMap((r, i) => {
       const mo = motionOf(r.shelfId);
-      return mo ? [{ m: mo, px: rowAffine(m, r, 0), space: r.space, plankAbove: i > 0 }] : [];
+      return mo ? [{ m: mo, px: rowAffine(m, r, 0), space: r.space }] : [];
     });
     const s = m.scale;
     const calc = await new Promise<ReturnType<typeof benchProjection>>((resolve) => {
@@ -1491,6 +1498,8 @@ export function HomeScreen() {
 
   return (
     <View style={[styles.root, { paddingTop: insets.top }]}>
+      {/* 머리글 뒤 벽: 맨 윗줄 벽이 화면 위 끝까지 이어진다 */}
+      <HeaderWall rows={sceneRows} motions={motions} books={sceneBooks} m={m} width={winW} height={vpTop} cam={camSV} />
       {PERF_ENABLED && camDebug === '1' ? (
         <Text pointerEvents="none" style={{ position: 'absolute', zIndex: 99, left: 8, bottom: navigation.height + insets.bottom + 4, fontSize: 11, color: '#7A2E1E', backgroundColor: 'rgba(255,255,255,0.8)' }}>
           {`저장 ${view.pitch}° · ${camNow || `적용 ${view.pitch}°`} · 배율 ${m.scale.toFixed(4)}dp/DU(${(m.scale * PixelRatio.get()).toFixed(3)}px/DU) · 3D 줄 간격 ${(rows[0]?.space ?? 0).toFixed(1)}DU · 꾸미기 ${editing ? '켬' : '끔'}`}
@@ -1555,6 +1564,7 @@ export function HomeScreen() {
         onLayout={(e) => {
           viewportH.value = e.nativeEvent.layout.height;
           setVpH(e.nativeEvent.layout.height);
+          setVpTop(e.nativeEvent.layout.y);
         }}>
         <GestureDetector gesture={scrollNative}>
         <Animated.ScrollView

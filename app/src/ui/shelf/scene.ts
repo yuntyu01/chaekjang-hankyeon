@@ -9,14 +9,13 @@ import { makeMutable, type SharedValue } from 'react-native-reanimated';
 
 import { corners, depthKey, drawOrder, frontOf, toWorld, type Book3 } from '@/domain/book3';
 import { bookViewCam } from '@/domain/book-view';
-import { shelfViewCam } from '@/domain/shelf-view';
 import { hull } from '@/domain/box';
 import { project, toPx, type Affine, type Cam, type Point } from '@/domain/camera';
 import { SHELF, SHELF_DEPTH, SHELF_FRONT, SHELF_THICK, SHELF_X0, SHELF_X1 } from '@/domain/geometry';
 import { pointInPoly } from '@/domain/shelf-scene';
 import { bookAt, holdTrack, type Track } from '@/domain/transition';
 import { silhouette } from '@/ui/book3d/face-geometry';
-import type { RibbonDesign } from '@/domain/ribbon-design';
+import { RIBBON_Z, type RibbonDesign } from '@/domain/ribbon-design';
 
 export type Tracks = Record<string, Track>;
 // 막 다른 줄로 떠난 책이 이 줄에 남기는 경로(이 줄 좌표): 그 책이 지금 있는 줄의 경로를 세로로 옮긴 것과 그 진행 시각.
@@ -206,7 +205,7 @@ function screenBox(b: Book3, cam: Cam) {
 function ribbonQuad(cam: Cam, aff: Affine, b: Book3, ribbon: RibbonDesign): Point[] {
   'worklet';
   const d = b.dims;
-  const o = toPx(cam, aff, toWorld(b, { x: d.T * 0.55, y: d.H, z: d.W * 0.8 }));
+  const o = toPx(cam, aff, toWorld(b, { x: d.T * 0.55, y: d.H, z: d.W * RIBBON_Z }));
   const half = (ribbon.width / 2 + 0.8) * aff.s;
   const top = (-ribbon.out + ribbon.y - 0.8) * aff.s;
   const bottom = (1.2 + ribbon.y) * aff.s;
@@ -268,7 +267,7 @@ export function frontOccluders(list: SceneMotion[], geo: SceneGeo, cam: Cam, she
     const PL = lowered(pb, row.dy);
     const pbb = screenBox(PL, cam);
     if (pbb.x1 < bb.x0 - 0.5 || bb.x1 < pbb.x0 - 0.5 || pbb.y1 < bb.y0 - 0.5 || bb.y1 < pbb.y0 - 0.5) continue;
-    if (frontOf(PL, B, cam) < 0) out.push(hull(corners(pb).map((q) => toPx(shelfViewCam(cam), aff, q))));
+    if (frontOf(PL, B, cam) < 0) out.push(hull(corners(pb).map((q) => toPx(cam, aff, q))));
   }
   return out;
 }
@@ -338,7 +337,7 @@ export function pickAt(list: SceneMotion[], geo: SceneGeo, cam: Cam, x: number, 
   let nearRank = -1;
   for (const row of geo.rows) {
     const aff = rowPx(geo, row);
-    const px = (q: { x: number; y: number; z: number }) => toPx(shelfViewCam(cam), aff, q);
+    const px = (q: { x: number; y: number; z: number }) => toPx(cam, aff, q);
     // 판: 앞에 있으면 그 뒤 책은 가려진다
     const plank = plankBody(row.shelfId, 0);
     const pr = order[plank.id] ?? -1;

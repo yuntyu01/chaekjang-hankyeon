@@ -2,25 +2,32 @@
 // 같은 배치·같은 시점 전환에서 단계를 하나씩 켜 프레임 간격 차이로 비용을 가른다.
 //   shapes: 책 면을 단색 다각형으로만(그림·글자·질감·명암·그림자 없음)
 //   art:    + 책등·표지 그림, 글자, 질감, 면 명암
-//   cast:   + 벽·선반 윗면 그림자, 접촉·틈·기대기·쌓기 어둠, 선반 아래 그림자
-//   full:   + 책 면이 받는 그림자(다른 책·윗 선반 판)
+//   cast:   + 벽(빛 모델로 칠함)·벽·선반 윗면 창빛 그림자
+//   full:   + 책 면이 받는 창빛 그림자(다른 책)
 import { makeMutable } from 'react-native-reanimated';
 
 import { SHOW } from '@/ui/shelf/shadow-debug';
 
 export const PERF_ENABLED = process.env.EXPO_PUBLIC_PERF === '1';
 // 세부 단계: art에서 옆면 질감만 뺀 것(art-grain), art에 그림자 한 종류씩 더한 것(art+이름)
-type Shadow = 'wall' | 'shelfCast' | 'contact' | 'gap' | 'lean' | 'stack' | 'shelf' | 'cast';
+type Shadow = 'wall' | 'shelfCast' | 'shelf' | 'cast';
 export type PerfLevel = 'shapes' | 'art' | 'cast' | 'full' | 'art-grain' | `art+${Shadow}`;
 export const PERF_LEVELS: PerfLevel[] = ['shapes', 'art', 'cast', 'full'];
-export const PERF_DETAIL: PerfLevel[] = ['art-grain', 'art+wall', 'art+shelfCast', 'art+contact', 'art+gap', 'art+lean', 'art+stack', 'art+shelf', 'art+cast'];
-const SHADOWS: Shadow[] = ['wall', 'shelfCast', 'contact', 'gap', 'lean', 'stack', 'shelf', 'cast'];
+export const PERF_DETAIL: PerfLevel[] = ['art-grain', 'art+wall', 'art+shelfCast', 'art+shelf', 'art+cast'];
+const SHADOWS: Shadow[] = ['wall', 'shelfCast', 'shelf', 'cast'];
 
 // 책 몸체 그리기 단계(BookNode·BookFaces가 마운트할 때 읽는다. 바꾸면 선반 줄을 다시 마운트해야 한다)
 export const RENDER = { art: true, texture: true, grain: true, books: true };
+// 측정 번들: 빛 층 끄기(?lt=끌 글자: f 책, k 선반 판, w 벽). 마운트할 때 읽는다
+export const LIGHT_ON = { face: true, plank: true, wall: true };
+export function setLightOff(s: string) {
+  LIGHT_ON.face = !s.includes('f');
+  LIGHT_ON.plank = !s.includes('k');
+  LIGHT_ON.wall = !s.includes('w');
+}
 
-// 선반 그림자 확인용 보기(측정 메뉴): 오른쪽 끝의 옆면 명암·벽 그림자·AO를 하나씩 끄고, 빈 선반만 본다
-export const SHELF_VIEWS = ['전체', '옆면 명암 끔', '벽 그림자 끔', 'AO 끔', '빈 선반'] as const;
+// 선반 확인용 보기(측정 메뉴): 벽 칠하기를 끄고, 빈 선반만 본다
+export const SHELF_VIEWS = ['전체', '벽 끔', '빈 선반'] as const;
 export type ShelfView = (typeof SHELF_VIEWS)[number];
 // 선반 원인 분리(chaekjang:///?sh=모드). 카메라·광원·선반 형상은 그대로 두고 그리는 층만 고른다.
 // 측정 번들: 자세 바꾸기·밀림 애니메이션을 이 배수만큼 느리게(중간 프레임 캡처용, 기본 1)
@@ -32,35 +39,18 @@ export const PUSH_DEBUG = { on: false };
 // 측정 번들: 메뉴 모달의 반투명 옵션을 다시 켜 ANR 재현 여부를 비교(?menutl=1). 기본은 끔
 export const MENU_FLAGS = { translucent: false };
 
-export const SHELF_MODES = ['all', 'plank', 'plankflat', 'side0', 'wall', 'wallmask', 'wallboard', 'ao', 'debug', 'nowall', 'norecv', 'noplank', 'faces'] as const;
+export const SHELF_MODES = ['all', 'plank', 'plankflat', 'wall', 'nowall', 'faces'] as const;
 export type ShelfMode = (typeof SHELF_MODES)[number];
 export function setShelfMode(m: ShelfMode) {
-  const board = !['wall', 'wallmask'].includes(m);
-  SHOW.shelfBoard = board;
+  SHOW.shelfBoard = m !== 'wall';
   SHOW.shelfShade = m !== 'plankflat';
-  SHOW.shelfSide = m !== 'side0';
-  SHOW.shelf = ['all', 'side0', 'wall', 'wallmask', 'wallboard', 'debug'].includes(m);
-  SHOW.shelfAO = ['all', 'side0', 'ao', 'debug'].includes(m);
-  SHOW.shelfBlur = m !== 'wallmask';
-  SHOW.shelfDebug = m === 'wallmask' || m === 'debug';
-  // 선반 그림자 연결 확인(책 있는 화면): nowall = 판 → 벽만 끔, norecv = 판 → 아래 책만 끔, noplank = 둘 다 끔
-  if (m === 'nowall' || m === 'norecv' || m === 'noplank') {
-    SHOW.shelfAO = true;
-    SHOW.shelf = m === 'norecv';
-  }
-  SHOW.castPlank = m !== 'norecv' && m !== 'noplank';
+  SHOW.shelf = m !== 'nowall' && m !== 'plank' && m !== 'plankflat';
   SHOW.faceDebug = m === 'faces';
-  if (m === 'faces') {
-    SHOW.shelf = true;
-    SHOW.shelfAO = true;
-  }
 }
 
 export function setShelfView(v: ShelfView) {
   setPerfLevel('full');
-  SHOW.shelfSide = v !== '옆면 명암 끔';
-  SHOW.shelf = v !== '벽 그림자 끔';
-  SHOW.shelfAO = v !== 'AO 끔';
+  SHOW.shelf = v !== '벽 끔';
   RENDER.books = v !== '빈 선반';
 }
 
@@ -72,8 +62,6 @@ export function setPerfLevel(level: PerfLevel) {
   SHOW.body = art;
   const on = new Set<Shadow>(level === 'full' ? SHADOWS : level === 'cast' ? SHADOWS.filter((k) => k !== 'cast') : level.startsWith('art+') ? [level.slice(4) as Shadow] : []);
   for (const k of SHADOWS) SHOW[k] = on.has(k);
-  SHOW.shelfSide = true;
-  SHOW.shelfAO = true;
   RENDER.books = true;
 }
 

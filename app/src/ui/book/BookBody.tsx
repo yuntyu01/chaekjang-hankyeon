@@ -1,82 +1,24 @@
 // 책 면 그림(캔버스 없이, 면 그림 좌표 0..w, 0..h). 상자 렌더러(ui/book3d)가 Skia Picture로 기록해 면 변환에 태워 그린다.
-// 책등 면: 책 색 한 가지(균일한 무광). 표지 면: 표지 그림(없으면 책 색 + 모티프) + 제본 홈. 제목은 따로 그린다(세움·눕힘 조판을 자세에 따라 고른다).
-// 면마다 둥근 윤곽을 사용한다. 빛 받는 모서리와 자세에 따른 명암은 BookNode에서 덧그린다.
-import { Group, Image as SkImage, LinearGradient, Rect, Skia, vec, type SkImage as SkImageType } from '@shopify/react-native-skia';
+// 면 그림은 재질(색·그림)만 담는다. 빛(명암·모서리·그늘)은 면을 그릴 때 빛 모델이 계산한다(ui/SceneLight).
+import { Group, Image as SkImage, Rect, Skia, type SkImage as SkImageType } from '@shopify/react-native-skia';
 
-import { CORNER_R } from '@/domain/book-parts';
+import { EDGE_R } from '@/domain/book-parts';
+import { surfaces } from '@/ui/lighting';
 
-// Each board has its own rounded outline, in book coordinates, so the corner
-// stays rounded when the book is turned or laid flat.
-export function bookFacePath(w: number, h: number, s: number, spine = false) {
+// 면 윤곽: 판 모서리 반지름(EDGE_R)의 둥근 사각형(책 좌표에 붙어 있어 돌리거나 눕혀도 모서리가 둥글다)
+export function bookFacePath(w: number, h: number, s: number) {
   const p = Skia.PathBuilder.Make();
-  const r = Math.min(CORNER_R * s, w * 0.18, h * 0.18);
-  if (!spine) {
-    p.addRRect(Skia.RRectXY(Skia.XYWHRect(0, 0, w, h), r, r));
-    return p.detach();
-  }
-  p.moveTo(0, r);
-  p.quadTo(0, s * 0.9, r, s * 0.5);
-  p.quadTo(w / 2, -s * 0.5, w - r, s * 0.5);
-  p.quadTo(w, s * 0.9, w, r);
-  p.lineTo(w, h - r);
-  p.quadTo(w, h - s * 0.5, w - r, h - s * 0.3);
-  p.quadTo(w / 2, h + s * 0.3, r, h - s * 0.3);
-  p.quadTo(0, h - s * 0.5, 0, h - r);
-  p.close();
+  const r = Math.min(EDGE_R * s, w / 2, h / 2);
+  p.addRRect(Skia.RRectXY(Skia.XYWHRect(0, 0, w, h), r, r));
   return p.detach();
 }
 
-// 속지(종이 단면) 색: 밝은 아이보리(시안 책장 책 머리의 속지 평균). 표지색·판 그늘은 섞지 않는다(속지 면에만).
-export const PAGE_BASE = '#FBF2E2'; // 시안 속지 약 (253,243,226)
-export const PAGE_RIM = '#C6B293'; // 표지와 맞닿는 안쪽의 좁은 그늘(따뜻한 베이지)
-export const PAGE_LINE = '#E0D1BA';
+// 속지(종이 단면) 색: 장면 재질 입력(ui/lighting surfaces.paper)
+export const PAGE_BASE = surfaces.paper;
 
-// 책 색을 k배로 어둡게. 시안의 그늘은 회색이 아니라 따뜻한 갈색 쪽으로 어두워진다
-// (모순 옆면: 앞면 대비 R 0.88, G 0.82, B 0.77) → 채널마다 지수를 달리한다. 밝게(k>1)는 그대로 곱한다.
-export function scaleColor(hex: string, k: number) {
-  'worklet';
-  const WARM = [0.64, 1, 1.32];
-  const n = parseInt(hex.slice(1), 16);
-  const c = [(n >> 16) & 255, (n >> 8) & 255, n & 255].map((v, i) => Math.max(0, Math.min(255, Math.round(v * (k < 1 ? Math.pow(k, WARM[i]) : k)))));
-  return `rgb(${c[0]}, ${c[1]}, ${c[2]})`;
-}
-
-// 두 색 섞기(a: 'rgb(...)' 또는 '#RRGGBB')
-export function mix(a: string, b: string, t: number) {
-  'worklet';
-  const parse = (c: string) =>
-    c.startsWith('#') ? [1, 3, 5].map((i) => parseInt(c.slice(i, i + 2), 16)) : (c.match(/\d+/g) ?? []).slice(0, 3).map(Number);
-  const x = parse(a);
-  const y = parse(b);
-  const m = x.map((v, i) => Math.round(v + (y[i] - v) * t));
-  return `rgb(${m[0]}, ${m[1]}, ${m[2]})`;
-}
-
-// 색에 투명도 붙이기(a: 'rgb(...)' 또는 '#RRGGBB')
-export function withAlpha(c: string, alpha: number) {
-  'worklet';
-  const v = c.startsWith('#') ? [1, 3, 5].map((i) => parseInt(c.slice(i, i + 2), 16)) : (c.match(/\d+/g) ?? []).slice(0, 3).map(Number);
-  return `rgba(${v[0]}, ${v[1]}, ${v[2]}, ${Math.max(0, Math.min(1, alpha)).toFixed(3)})`;
-}
-
-// 책 색에서 이어지는 빛: 흰색이 아니라 그 책 색을 따뜻한 빛 쪽으로 밝힌 색(모서리 하이라이트가 표지색과 이어지게)
-export const LIGHT_TINT = '#FFF4E2';
-export function litTone(tone: string) {
-  'worklet';
-  return mix(tone, LIGHT_TINT, 0.5);
-}
-
-// 책등 바탕: 따뜻한 무광 색에 아주 옅은 밝기 차이를 더한다.
-export function SpineFaceArt({ w, h, face, s = 1 }: { w: number; h: number; face: string; s?: number }) {
-  return (
-    <Group>
-      <Rect x={0} y={0} width={w} height={h} color={face} />
-      <Rect x={0} y={0} width={w} height={h}>
-        <LinearGradient start={vec(0, 0)} end={vec(w, h * 0.8)} colors={[withAlpha(LIGHT_TINT, 0.045), withAlpha(face, 0), withAlpha(scaleColor(face, 0.7), 0.045)]} positions={[0, 0.45, 1]} />
-      </Rect>
-      {/* Rounded edge light is applied with the book's pose by JacketEdgeLight. */}
-    </Group>
-  );
+// 책등 바탕: 책 색 한 가지(무광 재질)
+export function SpineFaceArt({ w, h, face }: { w: number; h: number; face: string; s?: number }) {
+  return <Rect x={0} y={0} width={w} height={h} color={face} />;
 }
 
 // 표지 그림 왼쪽(제본 쪽)을 면 밖으로 미는 비율(아래 CoverFaceArt 설명)
@@ -88,7 +30,6 @@ export function CoverFaceArt({
   h,
   s,
   face,
-  tone,
   image,
   motif,
 }: {
@@ -96,7 +37,6 @@ export function CoverFaceArt({
   h: number;
   s: number;
   face: string;
-  tone: string;
   image: SkImageType | null;
   motif: SkImageType | null;
 }) {

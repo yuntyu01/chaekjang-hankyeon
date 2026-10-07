@@ -4,7 +4,7 @@ import type { Book3, Vec3 } from '../book3';
 import { hull } from '../box';
 import { bookCast, travelOf } from '../cast-shadow';
 import { SHELF_DEPTH } from '../geometry';
-import { light, shadow } from '@/ui/lighting';
+import { light, physShadow } from '@/ui/lighting';
 
 const D = travelOf(light.dir);
 const W = 97.6; // 128mm 판형 책의 깊이(DU)
@@ -24,48 +24,62 @@ function inside(p: P2, poly: P2[]) {
   return true;
 }
 
-// 한 점의 진하기: 그 점을 덮는 층의 진하기 × 옅어짐(w)을 포갠 값. 받는 면 평면 좌표는 벽 (x, y), 선반 윗면 (x, z)
-function darkness(b: Book3, P: Vec3, wall: boolean) {
+// 한 점이 가려진 몫: 그 점을 덮는 구간들의 합집합(구간마다 얇은 가리개 몫 w). 받는 면 평면 좌표는 벽 (x, y), 선반 윗면 (x, z)
+function blocked(b: Book3, P: Vec3, wall: boolean) {
   let keep = 1;
-  shadow.cast.book.layers.forEach((_, k) => {
+  physShadow.bands.forEach((_, k) => {
     const c = bookCast(b, 1, k, wall);
     if (!c) return;
     const poly = hull(c.pts.map((q) => (wall ? { x: q.x, y: q.y } : { x: q.x, y: q.z })));
-    if (inside(wall ? { x: P.x, y: P.y } : { x: P.x, y: P.z }, poly)) keep *= 1 - shadow.cast.book.opacity[k] * c.w;
+    if (inside(wall ? { x: P.x, y: P.y } : { x: P.x, y: P.z }, poly)) keep *= 1 - c.w;
   });
   return 1 - keep;
 }
 
+// 그 점으로 가는 빛줄기를 가리는 빛 길이 구간들(받는 면과 상관없이 같은 빛줄기는 같은 가리개에 막힌다)
+function blockedBands(b: Book3, P: Vec3, wall: boolean) {
+  const out: number[] = [];
+  physShadow.bands.forEach((_, k) => {
+    const c = bookCast(b, 1, k, wall);
+    if (!c) return;
+    const poly = hull(c.pts.map((q) => (wall ? { x: q.x, y: q.y } : { x: q.x, y: q.z })));
+    if (inside(wall ? { x: P.x, y: P.y } : { x: P.x, y: P.z }, poly)) out.push(k);
+  });
+  return out;
+}
+
 describe('책 → 벽·선반 윗면 그림자', () => {
-  it('벽과 선반 윗면이 만나는 선에서 같은 빛줄기의 진하기가 같다(책을 앞으로 뺀 자리부터 벽에 붙인 자리까지)', () => {
-    // 앞면 z: 앞으로 뺌(-20), 기준선(0), 뒤로(10, 20). 뒷면에서 벽까지 빛 길이 약 80·44·26·8DU
+  it('벽과 선반 윗면이 만나는 선에서 같은 빛줄기는 같은 구간의 가리개에 막힌다(책을 앞으로 뺀 자리부터 벽에 붙인 자리까지)', () => {
+    // 앞면 z: 앞으로 뺌(-20), 기준선(0), 뒤로(10, 20)
     for (const z of [-20, 0, 10, 20]) {
       const b = standing(z);
       let shaded = 0;
-      for (let x = 90; x <= 260; x += 1) {
+      for (let x = 90; x <= 330; x += 1) {
         const P = { x, y: 0, z: SHELF_DEPTH };
-        const dw = darkness(b, P, true);
-        const df = darkness(b, P, false);
-        expect(Math.abs(dw - df)).toBeLessThan(1e-6);
-        if (dw > 0) shaded++;
+        const w = blockedBands(b, P, true);
+        // 경계선 위 점은 두 면 모두에서 같은 구간에 막힌다
+        const f = blockedBands(b, P, false);
+        expect(f).toEqual(w);
+        if (w.length) shaded++;
       }
       expect(shaded).toBeGreaterThan(10);
     }
   });
 
-  it('책을 벽 쪽으로 0.5DU씩 밀 때 책 뒤 벽 그림자 진하기가 한 번에 튀지 않는다', () => {
+  it('책을 벽 쪽으로 0.5DU씩 밀 때 책 뒤 벽이 가려진 몫이 한 번에 튀지 않고, 벽에 붙이면 다 가린다', () => {
     let prev = -1;
+    let maxStep = 0;
     for (let z = -30; z <= SHELF_DEPTH - W; z += 0.5) {
       const b = standing(z);
       // 뒷면 가운데에서 빛 방향으로 벽에 닿는 점
       const back = { x: 111, y: 70, z: z + W };
       const t = (SHELF_DEPTH - back.z) / D.z;
       const P = { x: back.x + D.x * t, y: back.y + D.y * t, z: SHELF_DEPTH };
-      const d = darkness(b, P, true);
-      if (prev >= 0) expect(Math.abs(d - prev)).toBeLessThan(0.02);
+      const d = blocked(b, P, true);
+      if (prev >= 0) maxStep = Math.max(maxStep, Math.abs(d - prev));
       prev = d;
     }
-    // 벽에 붙이면 가장 진하다(세 층이 모두 덮는다)
-    expect(prev).toBeCloseTo(1 - shadow.cast.book.opacity.reduce((a, o) => a * (1 - o), 1), 6);
+    expect(maxStep).toBeLessThan(0.05);
+    expect(prev).toBeCloseTo(1, 6);
   });
 });

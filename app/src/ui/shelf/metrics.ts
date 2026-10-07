@@ -36,7 +36,7 @@ export function useShelfMetrics() {
   return useMemo(() => makeMetrics(width), [width]);
 }
 
-export const RIBBON_OUT = 12; // 줄 간격에 예약하는 평균 갈피 높이. 실제 모양은 ribbon-design.
+export const RIBBON_OUT = 15; // 줄 간격에 예약하는 갈피 높이(가장 긴 장). 실제 모양은 ribbon-design.
 // 가장 키 큰 책(갈피 포함) 머리 위의 3D 여유(DU). 기본 3° 보기에서 예전 줄 간격(가장 큰 책의 투영 높이 + 2DU)과 같아지는 값.
 export const ROW_CLEARANCE = 22;
 // 시안의 둘째 줄 위 여백은 조금 넓고, 마지막 줄 위 여백은 더 촘촘하다.
