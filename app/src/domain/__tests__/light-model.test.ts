@@ -346,27 +346,27 @@ describe('빛 모델: 창빛 가림·반사', () => {
     expect(plankKeyBlocked({ x: SHELF_X0 - 9, y: 190, z: SHELF_DEPTH }, row)).toBeCloseTo(a, 9);
   });
 
-  it('거친 종이의 환경 반사: 정면 약 3%, 비스듬히 볼수록 커지지만 10%를 넘지 않는다(거울 프레넬처럼 수십 %가 되지 않는다)', () => {
+  it('거친 종이의 환경 반사: 정면 F0 안팎(거친 면은 미세면끼리 가려 조금 덜하다), 비스듬히 볼수록 커지지만 10%를 넘지 않는다(거울 프레넬처럼 수십 %가 되지 않는다)', () => {
     const r = ROUGH.paper;
-    expect(envBRDF(1, r)).toBeGreaterThan(0.02);
+    expect(envBRDF(1, r)).toBeGreaterThan(0.015);
     expect(envBRDF(1, r)).toBeLessThan(0.04);
     expect(envBRDF(0.1, r)).toBeGreaterThan(envBRDF(1, r));
     expect(envBRDF(0.1, r)).toBeLessThan(0.1);
   });
 
-  it('재질: 모두 같은 유전체(F0)라 정면 반사는 비슷하고, 매끈할수록(코팅지 > 종이 > 천) 비스듬한 반사와 창빛 하이라이트가 크다', () => {
-    expect(ROUGH.coated).toBeLessThan(ROUGH.paper);
-    expect(ROUGH.paper).toBeLessThan(ROUGH.cloth);
+  it('재질: 모두 같은 유전체(F0)라 정면 반사는 비슷하고, 매끈할수록(코팅지 > 천 > 무광 종이) 비스듬한 반사와 창빛 하이라이트가 크다', () => {
+    expect(ROUGH.coated).toBeLessThan(ROUGH.cloth);
+    expect(ROUGH.cloth).toBeLessThan(ROUGH.paper);
     for (const r of [ROUGH.coated, ROUGH.paper, ROUGH.cloth]) expect(Math.abs(envBRDF(1, r) - envBRDF(1, ROUGH.paper))).toBeLessThan(0.015);
-    expect(envBRDF(0.1, ROUGH.coated)).toBeGreaterThan(envBRDF(0.1, ROUGH.paper));
-    expect(envBRDF(0.1, ROUGH.paper)).toBeGreaterThan(envBRDF(0.1, ROUGH.cloth));
+    expect(envBRDF(0.1, ROUGH.coated)).toBeGreaterThan(envBRDF(0.1, ROUGH.cloth));
+    expect(envBRDF(0.1, ROUGH.cloth)).toBeGreaterThan(envBRDF(0.1, ROUGH.paper));
     // 거울 방향(빛과 눈의 가운데가 법선)의 하이라이트
     const v = { x: 0, y: 0, z: -1 };
     const hx = L_UNIT.x + v.x, hy = L_UNIT.y + v.y, hz = L_UNIT.z + v.z;
     const hl = Math.hypot(hx, hy, hz);
     const n = { x: hx / hl, y: hy / hl, z: hz / hl };
-    expect(ggxKey(n, v, ROUGH.coated)).toBeGreaterThan(ggxKey(n, v, ROUGH.paper));
-    expect(ggxKey(n, v, ROUGH.paper)).toBeGreaterThan(ggxKey(n, v, ROUGH.cloth));
+    expect(ggxKey(n, v, ROUGH.coated)).toBeGreaterThan(ggxKey(n, v, ROUGH.cloth));
+    expect(ggxKey(n, v, ROUGH.cloth)).toBeGreaterThan(ggxKey(n, v, ROUGH.paper));
   });
 
   it('창빛 하이라이트는 광원 원반 크기보다 좁아지지 않는다: 거칠기 0이어도 봉우리가 유한하고, 빛 에너지(반구 적분)는 1을 넘지 않는다', () => {

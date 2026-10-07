@@ -22,7 +22,9 @@ export const light = { dir: { x: 0, y: Math.tan((0.5 * Math.PI) / 180), z: -1 },
 export const camera = { exposure: 0, shoulder: 0.85, toe: 0.18, toeK: 0.15 };
 
 // 재질(모든 면이 같은 규칙). 종이·면 섬유·도료·나무 마감은 모두 유전체(굴절률 약 1.5)라 수직 반사율 F0가 같고, 다른 것은 표면뿐이다.
-// - roughness: 화소보다 훨씬 작은 요철의 거칠기(GGX 지각 거칠기 r, α = r²)
+// - roughness: 화소보다 훨씬 작은 요철의 거칠기(GGX 지각 거칠기 r, α = r²). 창빛이 보는 사람 바로 뒤라 모든 앞면이 거울 방향 가운데에 있어
+//   앞면 반사광 = F0·D(0)·π/4 × 창빛(D(0) = 1/(π α²))이 그대로 보인다. 시안 표지·책등엔 창 비침이 없으니 모두 무광 재질의 범위로 둔다
+//   (반사광이 재질 색보다 밝으면 그 색은 물리적으로 못 낸다: 맞추기 SREF)
 // - bump: 화소 크기 안팎의 미세 높이(법선 무늬). size = 요철 크기 mm(면 가로, 세로), slope = 기울기 RMS, weave = 천 올(주기 무늬).
 //   화면에서 2px보다 작은 요철은 법선 무늬로 그릴 수 없어 거칠기에 더한다(Toksvig: α² += 2·slope²): 멀리서는 결이 광택을 흐리게 하고
 //   가까이서는 결로 보인다. 창빛 하이라이트는 광원 원반 크기만큼 넓어진다(α² += (반지름/2)²)
@@ -36,18 +38,18 @@ export type Grain = { kind: 'fiber' | 'weave' | 'sheets' | 'wood' | 'none'; size
 export type SurfaceMaterial = { roughness: number; bump: Bump | null; grain: Grain };
 const NONE: Grain = { kind: 'none', size: [1, 1], contrast: [0, 0] };
 export const materials = {
-  // 무광 종이: 장정 기본·갈피 종이. 섬유 뭉침(약 1.5mm)의 아주 얕은 굴곡
-  paper: { roughness: 0.6, bump: { size: [1.5, 1.5], slope: 0.02 }, grain: { kind: 'fiber', size: [0.6, 3], contrast: [0.015, 0.01] } },
+  // 무광 종이(코팅 없는 종이, 거의 완전 확산면): 장정 기본·갈피 종이. 섬유 뭉침(약 1.5mm)의 아주 얕은 굴곡
+  paper: { roughness: 0.9, bump: { size: [1.5, 1.5], slope: 0.02 }, grain: { kind: 'fiber', size: [0.6, 3], contrast: [0.015, 0.01] } },
   // 장정 천: 올(약 0.5mm 주기)이 높낮이를 만든다. 홈 화면에선 화소보다 작아 거칠기로 들어간다
   cloth: { roughness: 0.75, bump: { size: [0.5, 0.5], slope: 0.3, weave: true }, grain: { kind: 'weave', size: [0.5, 2], contrast: [0.02, 0.008] } },
-  // 코팅지: 표지에 흔한 무광 코팅 막(종이보다 매끈해 비스듬한 반사·창빛 하이라이트가 더 크다)
-  coated: { roughness: 0.45, bump: null, grain: NONE },
-  // 속지 단면: 낱장(약 0.1mm) 가장자리가 쌓인 면이라 두께 방향으로 촘촘한 굴곡
-  pages: { roughness: 0.6, bump: { size: [0.15, 40], slope: 0.15 }, grain: { kind: 'sheets', size: [0.1, 1.6], contrast: [0.04, 0.25] } },
-  // 선반 판: 무광 마감한 나무. 결 방향(판 길이)으로 길게 늘어난 굴곡
-  wood: { roughness: 0.5, bump: { size: [30, 0.8], slope: 0.02 }, grain: { kind: 'wood', size: [3.5, 60], contrast: [0.12, 0.03] } },
-  // 벽: 무광 수성 페인트
-  paint: { roughness: 0.6, bump: { size: [1, 1], slope: 0.01 }, grain: NONE },
+  // 코팅지: 표지에 흔한 무광 코팅 막(종이보다 매끈해 비스듬한 반사·창빛 하이라이트가 더 크다. 유광 막(r 0.2~0.3)이면 창이 비친다)
+  coated: { roughness: 0.7, bump: null, grain: NONE },
+  // 속지 단면: 낱장(약 0.1mm) 가장자리가 쌓인 면이라 두께 방향으로 촘촘한 굴곡(재단면이라 종이 면보다 거칠다)
+  pages: { roughness: 0.9, bump: { size: [0.15, 40], slope: 0.15 }, grain: { kind: 'sheets', size: [0.1, 1.6], contrast: [0.04, 0.25] } },
+  // 선반 판: 무광 마감(오일·무광 래커)한 나무. 결 방향(판 길이)으로 길게 늘어난 굴곡
+  wood: { roughness: 0.7, bump: { size: [30, 0.8], slope: 0.02 }, grain: { kind: 'wood', size: [3.5, 60], contrast: [0.12, 0.03] } },
+  // 벽: 무광 수성 페인트(평광)
+  paint: { roughness: 0.9, bump: { size: [1, 1], slope: 0.01 }, grain: NONE },
 } satisfies Record<string, SurfaceMaterial>;
 export type MaterialName = keyof typeof materials;
 
