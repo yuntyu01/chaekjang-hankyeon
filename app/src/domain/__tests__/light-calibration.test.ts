@@ -21,6 +21,7 @@ export const CALIBRATION: Calibration | null = {
   gain: ${num(c.gain)},
   eref: { wall: ${c3(c.eref.wall)}, plank: ${c3(c.eref.plank)}, book: ${c3(c.eref.book)}, paper: ${c3(c.eref.paper)} },
   albedo: { wall: ${c3(c.albedo.wall)}, plank: ${c3(c.albedo.plank)}, paper: ${c3(c.albedo.paper)} },
+  sref: { wall: ${c3(c.sref.wall)}, plank: ${c3(c.sref.plank)}, paper: ${c3(c.sref.paper)}, book: { paper: ${c3(c.sref.book.paper)}, cloth: ${c3(c.sref.book.cloth)}, coated: ${c3(c.sref.book.coated)} } },
 };
 `;
     writeFileSync(`${__dirname}/../light-calibration.generated.ts`, body);

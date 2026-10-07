@@ -21,6 +21,7 @@ import { corners, type Book3 } from './book3';
 import { rigOf } from './book-parts';
 import { camAt, VIEW_PITCH_MIN, type Cam, type Vec3 } from './camera';
 import { SHELF_DEPTH, SHELF_FRONT, SHELF_THICK, SHELF_X0, SHELF_X1 } from './geometry';
+import type { BindingMaterial } from './types';
 import { CALIBRATION, CALIBRATION_INPUTS } from './light-calibration.generated';
 import { grainPeak, MAT_UNIFORMS } from './surface-pattern';
 
@@ -85,8 +86,8 @@ export const ALBEDO = { plank: DESIGN.plank, wall: DESIGN.wall, paper: DESIGN.pa
 export const RAD = { floor: grey(0), wall: grey(0), under: grey(0) };
 // 재질마다 대표 자리에서 받는 빛(선형 RGB, calibrate): 화면 밝기 비 = 받는 빛 / EREF[재질]. 카메라(노출·화이트 밸런스)는 벽(EREF.wall)
 export const EREF = { wall: grey(1), plank: grey(1), book: grey(1), paper: grey(1) };
-// 재질마다 대표 자리에서 받는 반사광(장면 밝기, calibrate): 재질 색은 이것까지 넣은 '보이는 색'이다
-export const SREF = { wall: grey(0), plank: grey(0), book: grey(0), paper: grey(0) };
+// 재질마다 대표 자리의 반사광(장면 밝기, calibrate): 재질 색은 이것까지 넣은 '보이는 색'이다. 책은 장정 재질마다
+export const SREF = { wall: grey(0), plank: grey(0), paper: grey(0), book: { paper: grey(0), cloth: grey(0), coated: grey(0) } as Record<BindingMaterial, C3> };
 function setRadiance() {
   RAD.floor = cscale(ALBEDO.plank, irradiance({ x: 0, y: 1, z: 0 }));
   RAD.wall = cscale(ALBEDO.wall, irradiance({ x: 0, y: 0, z: -1 }));
@@ -1220,55 +1221,81 @@ function anchorLight(p: Vec3, n: Vec3, G: Grid, rough: number): C3 {
   const ks = envBRDF(refNv(p, n), rough);
   return [(E0 - loss[0]) * (1 - ks), (E0 - loss[1]) * (1 - ks), (E0 - loss[2]) * (1 - ks)];
 }
-// 장정 재질(거칠기 rough)의 대표 자리 빛: 재질이 다르면 대표 자리에서 반사되는 몫이 달라 확산 몫이 다르다(무광 종이 EREF.book 기준)
+// 장정 재질의 대표 자리 빛: 재질이 다르면 대표 자리에서 반사되는 몫이 달라 확산 몫이 다르다(무광 종이 EREF.book 기준)
 const REF_NV_BOOK = refNv(REF_BOOK_P, REF_FRONT);
-export function bookEref(rough: number): C3 {
+export function bookEref(m?: BindingMaterial): C3 {
   'worklet';
-  const k = (1 - envBRDF(REF_NV_BOOK, rough)) / (1 - envBRDF(REF_NV_BOOK, ROUGH.paper));
+  const k = (1 - envBRDF(REF_NV_BOOK, ROUGH[m ?? 'paper'])) / (1 - envBRDF(REF_NV_BOOK, ROUGH.paper));
   return [EREF.book[0] * k, EREF.book[1] * k, EREF.book[2] * k];
 }
-export type Calibration = { gain: number; eref: { wall: C3; plank: C3; book: C3; paper: C3 }; albedo: { wall: C3; plank: C3; paper: C3 } };
+// 대표 자리의 반사광(이득 1일 때 장면 밝기): 눈(REF_EYE) 쪽으로 반사되는 둘레·하늘과 창빛(lightWithLoss와 같은 식)
+function anchorSpec(p: Vec3, n: Vec3, G: Grid, rough: number): C3 {
+  const d = { x: REF_EYE.x - p.x, y: REF_EYE.y - p.y, z: REF_EYE.z - p.z };
+  const l = Math.hypot(d.x, d.y, d.z);
+  const s = lightWithLoss(p, n, { x: d.x / l, y: d.y / l, z: d.z / l }, REF_ENV, envLoss(p, n, REF_ENV, G), true, undefined, undefined, rough).spec;
+  return [s[0] / CAM.gain, s[1] / CAM.gain, s[2] / CAM.gain];
+}
+// 대표 자리 반사광(이득 1): 맞추기가 정한다
+const SPEC0 = { wall: grey(0), plank: grey(0), paper: grey(0), book: { paper: grey(0), cloth: grey(0), coated: grey(0) } as Record<BindingMaterial, C3> };
+export type Calibration = { gain: number; eref: { wall: C3; plank: C3; book: C3; paper: C3 }; albedo: { wall: C3; plank: C3; paper: C3 }; sref: typeof SREF };
+// 재질 하나의 반사율: 화면 색 = tone(이득 g × 반사율 × 받는 빛 / 카메라 빛 + 반사광)에서 대표 자리(받는 빛 ref, 반사광 g·s0)가 재질 색 d.
+// 반사율 = (toneInv(d) − g·s0) × 카메라 빛 / (ref × g). 반사광만으로 재질 색보다 밝은 채널은 0(그 방의 빛에서 그만큼 짙게 보일 수 없다)
+function albedoOf(d: C3, ref: C3, s0: C3, g: number): C3 {
+  const cam = EREF.wall;
+  return [0, 1, 2].map((c) => Math.max(0, ((toneInv(d[c]) - g * s0[c]) * cam[c]) / (ref[c] * g))) as C3;
+}
 // 노출 기준(이득 gain): 모든 재질 색(벽·판·속지, 시안 장정 색 × 장정 재질)에서 반사율이 그 색(화면 색)을 넘지 않고
-// 결의 가장 밝은 점(grainPeak)까지 1을 넘지 않는 가장 작은 이득. 어깨가 밝은 쪽을 누르므로 이득이 1이면 밝은 색은 반사율이 1을 넘는다
+// 결의 가장 밝은 점(grainPeak)까지 1을 넘지 않는 가장 작은 이득. 어깨가 밝은 쪽을 누르므로 이득이 1이면 밝은 색은 반사율이 1을 넘는다.
+// 반사율 ≤ d ⇔ g ≥ toneInv(d)·cam / (ref·d + s0·cam), 반사율 × 결 최대 f ≤ 1 ⇔ g ≥ toneInv(d)·cam·f / (ref + f·s0·cam)
 const BOOK_MATS = ['paper', 'cloth', 'coated'] as const;
 function setAlbedo() {
-  // 이득 1일 때의 반사율 = toneInv(재질 색) × 카메라 빛 / 그 재질 대표 자리 빛
-  const raw = (m: C3, ref: C3): C3 => [(toneInv(m[0]) * EREF.wall[0]) / ref[0], (toneInv(m[1]) * EREF.wall[1]) / ref[1], (toneInv(m[2]) * EREF.wall[2]) / ref[2]];
+  const cam = EREF.wall;
   const peak = (name: keyof typeof materials) => grainPeak(MAT_UNIFORMS[name]);
-  const all: [C3, C3, number][] = [
-    [raw(DESIGN.wall, EREF.wall), DESIGN.wall, peak('paint')],
-    [raw(DESIGN.plank, EREF.plank), DESIGN.plank, peak('wood')],
-    [raw(DESIGN.paper, EREF.paper), DESIGN.paper, peak('pages')],
+  const all: [C3, C3, C3, number][] = [
+    [DESIGN.wall, EREF.wall, SPEC0.wall, peak('paint')],
+    [DESIGN.plank, EREF.plank, SPEC0.plank, peak('wood')],
+    [DESIGN.paper, EREF.paper, SPEC0.paper, peak('pages')],
   ];
-  for (const hex of Object.keys(palette)) for (const m of BOOK_MATS) all.push([raw(linearOf(hex), bookEref(ROUGH[m])), linearOf(hex), peak(m)]);
-  CAM.gain = Math.max(...all.flatMap(([r, d, f]) => r.map((v, c) => Math.max(v / d[c], v * f))));
+  for (const hex of Object.keys(palette)) for (const m of BOOK_MATS) all.push([linearOf(hex), bookEref(m), SPEC0.book[m], peak(m)]);
+  CAM.gain = Math.max(
+    ...all.flatMap(([d, ref, s0, f]) => [0, 1, 2].map((c) => Math.max((toneInv(d[c]) * cam[c]) / (ref[c] * d[c] + s0[c] * cam[c]), (toneInv(d[c]) * cam[c] * f) / (ref[c] + f * s0[c] * cam[c])))),
+  );
   const g = CAM.gain;
-  ALBEDO.wall = all[0][0].map((v) => v / g) as C3;
-  ALBEDO.plank = all[1][0].map((v) => v / g) as C3;
-  ALBEDO.paper = all[2][0].map((v) => v / g) as C3;
+  ALBEDO.wall = albedoOf(DESIGN.wall, EREF.wall, SPEC0.wall, g);
+  ALBEDO.plank = albedoOf(DESIGN.plank, EREF.plank, SPEC0.plank, g);
+  ALBEDO.paper = albedoOf(DESIGN.paper, EREF.paper, SPEC0.paper, g);
+  const gs = (s0: C3): C3 => [s0[0] * g, s0[1] * g, s0[2] * g];
+  SREF.wall = gs(SPEC0.wall);
+  SREF.plank = gs(SPEC0.plank);
+  SREF.paper = gs(SPEC0.paper);
+  SREF.book = { paper: gs(SPEC0.book.paper), cloth: gs(SPEC0.book.cloth), coated: gs(SPEC0.book.coated) };
   setRadiance();
 }
 // 맞추기(테스트에서만). 반사율이 1e-4보다 덜 바뀌면 멈춘다
 export function runCalibration(log?: (s: string) => void): Calibration {
   const front = { x: 0, y: 0, z: -1 };
   for (let i = 0; i < 20; i++) {
-    const before = [ALBEDO.wall, ALBEDO.plank, ALBEDO.paper, EREF.book].flat();
+    const before = [ALBEDO.wall, ALBEDO.plank, ALBEDO.paper, EREF.book, SREF.wall, SREF.plank, SREF.paper, ...BOOK_MATS.map((m) => SREF.book[m])].flat();
     // 대표 자리의 둘레(빈 줄)도 여러 번 튕긴 빛으로(빛 격자)
     const G = solveGrid(REF_ENV, []);
     EREF.wall = anchorLight({ x: REF_X, y: REF_SPACE / 2, z: SHELF_DEPTH }, front, G, ROUGH.paint);
     EREF.plank = anchorLight({ x: REF_X, y: -SHELF_THICK / 2, z: -SHELF_FRONT }, front, G, ROUGH.wood);
     EREF.book = anchorLight(REF_BOOK_P, front, G, ROUGH.paper);
     EREF.paper = anchorLight(REF_BOOK_P, front, G, ROUGH.pages);
+    SPEC0.wall = anchorSpec({ x: REF_X, y: REF_SPACE / 2, z: SHELF_DEPTH }, front, G, ROUGH.paint);
+    SPEC0.plank = anchorSpec({ x: REF_X, y: -SHELF_THICK / 2, z: -SHELF_FRONT }, front, G, ROUGH.wood);
+    SPEC0.paper = anchorSpec(REF_BOOK_P, front, G, ROUGH.pages);
+    for (const m of BOOK_MATS) SPEC0.book[m] = anchorSpec(REF_BOOK_P, front, G, ROUGH[m]);
     setAlbedo();
-    const after = [ALBEDO.wall, ALBEDO.plank, ALBEDO.paper, EREF.book].flat();
+    const after = [ALBEDO.wall, ALBEDO.plank, ALBEDO.paper, EREF.book, SREF.wall, SREF.plank, SREF.paper, ...BOOK_MATS.map((m) => SREF.book[m])].flat();
     const change = Math.max(...after.map((v, k) => Math.abs(v - before[k])));
     log?.(`calibration ${i}: change ${change.toExponential(2)}`);
     if (change < 1e-6) break;
   }
-  return { gain: CAM.gain, eref: { wall: EREF.wall, plank: EREF.plank, book: EREF.book, paper: EREF.paper }, albedo: { wall: ALBEDO.wall, plank: ALBEDO.plank, paper: ALBEDO.paper } };
+  return { gain: CAM.gain, eref: { wall: EREF.wall, plank: EREF.plank, book: EREF.book, paper: EREF.paper }, albedo: { wall: ALBEDO.wall, plank: ALBEDO.plank, paper: ALBEDO.paper }, sref: SREF };
 }
 // 맞추기 입력(이 값이 바뀌면 미리 계산한 값을 다시 만든다). method: 맞추기 방법을 바꾸면 올린다
-const CALIBRATION_METHOD = 3;
+const CALIBRATION_METHOD = 4;
 export function calibrationInputs() {
   return JSON.stringify({ method: CALIBRATION_METHOD, light, F0, materials, surfaces, palette: Object.keys(palette), TONE, REF_SPACE, REF_BOOK_H, SHELF_DEPTH, SHELF_FRONT, SHELF_THICK, SHELF_X0, SHELF_X1, GRID_N, ENV_NY, ENV_COLS, GRID_PASSES, TOUCH, eye: REF_EYE });
 }
@@ -1281,6 +1308,10 @@ export function applyCalibration(c: Calibration) {
   ALBEDO.wall = c.albedo.wall;
   ALBEDO.plank = c.albedo.plank;
   ALBEDO.paper = c.albedo.paper;
+  SREF.wall = c.sref.wall;
+  SREF.plank = c.sref.plank;
+  SREF.paper = c.sref.paper;
+  SREF.book = { ...c.sref.book };
   setRadiance();
   // 반사율은 1을 넘을 수 없다(받은 빛보다 많이 되비추는 면은 없다)
   for (const v of [ALBEDO.wall, ALBEDO.plank, ALBEDO.paper]) if (Math.max(...v) > 1) throw new Error(`light-model: albedo > 1 (${v.join(', ')})`);
@@ -1289,16 +1320,17 @@ export function applyCalibration(c: Calibration) {
 if (CALIBRATION && CALIBRATION_INPUTS === calibrationInputs()) applyCalibration(CALIBRATION);
 else setAlbedo();
 
-// 장정 재질의 대표 자리 반사광(아직 맞추기에 넣지 않아 0)
-export function bookSref(): C3 {
+// 장정 재질의 대표 자리 반사광
+export function bookSref(m?: BindingMaterial): C3 {
   'worklet';
-  return SREF.book;
+  return SREF.book[m ?? 'paper'];
 }
-// 책 장정 색(시안 색) → 실제 반사율(되비침에 쓴다). rough: 장정 재질 거칠기(없으면 무광 종이)
-export function bookAlbedo(hex: string, rough?: number): C3 {
+// 책 장정 색(시안 색) → 실제 반사율(되비침에 쓴다, albedoOf와 같은 식). m: 장정 재질(없으면 무광 종이)
+export function bookAlbedo(hex: string, m?: BindingMaterial): C3 {
   'worklet';
   const c = linearOf(hex);
   const g = CAM.gain;
-  const e = bookEref(rough ?? ROUGH.paper);
-  return [(toneInv(c[0]) * EREF.wall[0]) / e[0] / g, (toneInv(c[1]) * EREF.wall[1]) / e[1] / g, (toneInv(c[2]) * EREF.wall[2]) / e[2] / g];
+  const e = bookEref(m);
+  const sr = bookSref(m);
+  return [0, 1, 2].map((k) => (Math.max(0, toneInv(c[k]) - sr[k]) * EREF.wall[k]) / e[k] / g) as C3;
 }

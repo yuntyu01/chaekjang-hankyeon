@@ -13,7 +13,7 @@ import { camAt, project, toPx, VIEW_PITCH_MAX, VIEW_PITCH_MIN, type Affine, type
 import { SHELF_DEPTH, SHELF_FRONT, SHELF_X0, SHELF_X1 } from '@/domain/geometry';
 import { shelfFaces } from '@/domain/shelf-geom';
 import { BOX_EDGES, bookCast, type BookCast } from '@/domain/cast-shadow';
-import { bookAlbedo, boxOf, ROUGH, packBoxes, withCovers, type Box, type BoxBuf, type C3, type Env } from '@/domain/light-model';
+import { bookAlbedo, boxOf, packBoxes, withCovers, type Box, type BoxBuf, type C3, type Env } from '@/domain/light-model';
 import { hull } from '@/domain/shadow-shape';
 import { outlineOf, type BookFrame, type Point } from '@/domain/shelf-scene';
 import type { Recv3 } from '@/domain/received3';
@@ -373,7 +373,7 @@ const NO_PATH = Skia.PathBuilder.Make().detach();
 // 공간 밖(다른 줄로 옮겨 가는 중 판 너머에 있는 책)은 판이 가려 이 줄 안을 가리지 않는다. 반사율은 책 몸체 재질 색에서.
 // 나란히 선 책·쌓인 책은 서로 마주 보는 면을 가린다(덮개, light-model withCovers). 다른 줄 책은 판이 다 가린다
 export function useRowBoxes(poses: Readonly<SharedValue<Poses>>, ids: string[], books: Record<string, Book>, env: Env): Readonly<SharedValue<BoxBuf>> {
-  const albedos = useMemo(() => Object.fromEntries(ids.map((id) => [id, books[id] ? bookAlbedo(bookTone(books[id]), ROUGH[books[id].art.material ?? 'paper']) : ([0, 0, 0] as C3)])), [ids, books]);
+  const albedos = useMemo(() => Object.fromEntries(ids.map((id) => [id, books[id] ? bookAlbedo(bookTone(books[id]), books[id].art.material) : ([0, 0, 0] as C3)])), [ids, books]);
   return useDerivedValue(() => {
     const own: Box[] = [];
     const used: string[] = [];

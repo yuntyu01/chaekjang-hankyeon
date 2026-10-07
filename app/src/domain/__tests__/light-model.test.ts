@@ -1,10 +1,11 @@
 // 빛 모델(domain/light-model): 해석적인 하늘 가림(램버트 윤곽 적분 + 앞 가리개는 뒤에 보일 것과의 차이)이
 // 같은 장면을 광선으로 직접 적분한 값(몬테카를로)과 맞는지, 그리고 반사·창빛 가림의 기본 성질.
 import type { Book3, Vec3 } from '../book3';
-import { ALBEDO, ggxKey, RAD, ROUGH, bookAlbedo, boxOf, tone, toneInv, TONE, darkening, DESIGN, EREF, envBRDF, faceAlbedo, lightWithLoss, FAR, irradiance, keyBlocked, L_UNIT, linearOf, plankKeyBlocked, polyVF, sceneLight, skyLossAt, skyRadiance, solveGrid, traceRadiance, withCovers, type Box, type C3, type Env, type Grid } from '../light-model';
+import { ALBEDO, ggxKey, RAD, ROUGH, SREF, bookAlbedo, bookEref, boxOf, tone, toneInv, toneTarget, TONE, darkening, DESIGN, EREF, envBRDF, faceAlbedo, lightWithLoss, FAR, irradiance, keyBlocked, L_UNIT, linearOf, plankKeyBlocked, polyVF, sceneLight, skyLossAt, skyRadiance, solveGrid, traceRadiance, withCovers, type Box, type C3, type Env, type Grid } from '../light-model';
 import { SHELF_DEPTH, SHELF_FRONT, SHELF_THICK, SHELF_X0, SHELF_X1 } from '../geometry';
 import palette from '@/ui/art/reference-bindings.generated.json';
 import { light } from '@/ui/lighting';
+import { camAt, VIEW_PITCH_MIN } from '../camera';
 import { grainPeak, MAT_UNIFORMS } from '../surface-pattern';
 
 // 재현되는 난수
@@ -266,7 +267,7 @@ describe('재질 반사율 맞추기(역렌더링)', () => {
       [ALBEDO.wall, DESIGN.wall, peak('paint')],
       [ALBEDO.plank, DESIGN.plank, peak('wood')],
       [ALBEDO.paper, DESIGN.paper, peak('pages')],
-      ...Object.keys(palette).flatMap((hex) => (['paper', 'cloth', 'coated'] as const).map((m): [C3, C3, number] => [bookAlbedo(hex, ROUGH[m]), linearOf(hex), peak(m)])),
+      ...Object.keys(palette).flatMap((hex) => (['paper', 'cloth', 'coated'] as const).map((m): [C3, C3, number] => [bookAlbedo(hex, m), linearOf(hex), peak(m)])),
     ];
     let tight = 0;
     for (const [a, d, f] of all)
@@ -285,6 +286,36 @@ describe('재질 반사율 맞추기(역렌더링)', () => {
     const E = lightWithLoss(p, n, null, row, skyLossAt(p, n, row, [], solveGrid(row, [])), true, [1, 1, 1]).r;
     const ks = envBRDF(0.999, ROUGH.paint);
     E.forEach((e, c) => expect((e * (1 - ks)) / EREF.wall[c]).toBeCloseTo(1, 1));
+  });
+});
+
+describe('대표 자리 반사광(SREF)', () => {
+  // 대표 자리(맞추기와 같은 눈·자리)에서 빛 모델이 주는 받는 빛 비 r과 반사광 spec
+  const e = camAt(VIEW_PITCH_MIN).eye!;
+  const eye = { x: e.x, y: e.y, z: e.z - e.dist };
+  const front = { x: 0, y: 0, z: -1 };
+  const at = (p: Vec3, eref: C3, rough: number) => {
+    const d = { x: eye.x - p.x, y: eye.y - p.y, z: eye.z - p.z };
+    const l = Math.hypot(d.x, d.y, d.z);
+    return lightWithLoss(p, front, { x: d.x / l, y: d.y / l, z: d.z / l }, row, skyLossAt(p, front, row, [], solveGrid(row, [])), true, eref, undefined, rough);
+  };
+  const mid = (SHELF_X0 + SHELF_X1) / 2;
+  it.each([
+    ['벽', { x: mid, y: 100, z: SHELF_DEPTH }, () => EREF.wall, ROUGH.paint, () => SREF.wall, () => DESIGN.wall],
+    ['판 앞면', { x: mid, y: -SHELF_THICK / 2, z: -SHELF_FRONT }, () => EREF.plank, ROUGH.wood, () => SREF.plank, () => DESIGN.plank],
+    ['코팅지 장정(하늘색)', { x: mid, y: 75, z: 0 }, () => bookEref('coated'), ROUGH.coated, () => SREF.book.coated, () => linearOf('#88A4BA')],
+  ] as [string, Vec3, () => C3, number, () => C3, () => C3][])('%s: 반사광이 SREF이고, 확산 + 반사광으로 보이는 색이 재질 색', (_, p, eref, rough, sref, design) => {
+    const { r, spec } = at(p, eref(), rough);
+    spec.forEach((v, c) => expect(v).toBeCloseTo(sref()[c], 2));
+    design().forEach((d, c) => expect(toneTarget(d, r[c], spec[c], sref()[c])).toBeCloseTo(d, 2));
+  });
+  it('반사광보다 짙은 채널은 반사율 0(그 방의 빛에서 그만큼 짙게 보일 수 없다)', () => {
+    const navy = linearOf('#1D426B');
+    const a = bookAlbedo('#1D426B', 'coated');
+    navy.forEach((v, c) => {
+      if (toneInv(v) <= SREF.book.coated[c]) expect(a[c]).toBe(0);
+      else expect(a[c]).toBeGreaterThan(0);
+    });
   });
 });
 

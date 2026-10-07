@@ -14,7 +14,7 @@ import { useDerivedValue, type SharedValue } from 'react-native-reanimated';
 import { faceNormal, rot, toWorld, type Book3, type Cam, type FaceId, type Vec3 } from '@/domain/book3';
 import { lightPanel, rigOf } from '@/domain/book-parts';
 import { camAt, VIEW_PITCH_MAX, VIEW_PITCH_MIN, type Affine } from '@/domain/camera';
-import { bookEref, bookSref, ENV_NX, ENV_NY, FAR, GRID_N, GRID_PASSES, ROUGH, SREF, type Band, type BoxBuf, type C3, type Env } from '@/domain/light-model';
+import { bookEref, bookSref, ENV_NX, ENV_NY, FAR, GRID_N, GRID_PASSES, SREF, type Band, type BoxBuf, type C3, type Env } from '@/domain/light-model';
 import type { Recv3 } from '@/domain/received3';
 import { MAT_UNIFORMS, type MatUniforms } from '@/domain/surface-pattern';
 import type { BindingMaterial } from '@/domain/types';
@@ -406,7 +406,7 @@ export function BookLight({ dims: d, state, cam, px, outline, albedo, material =
 }) {
   const { bd, sp, sq } = rigOf(d);
   const pg = MAT_UNIFORMS.pages;
-  const mat = { ...matOf(MAT_UNIFORMS[material], seedOf(id)), erefB: bookEref(ROUGH[material]), srefB: bookSref(), srefP: SREF.paper, pR: pg.mRough, pB: pg.mBump, pG: pg.mGrain, pS: pg.mGsize };
+  const mat = { ...matOf(MAT_UNIFORMS[material], seedOf(id)), erefB: bookEref(material), srefB: bookSref(material), srefP: SREF.paper, pR: pg.mRough, pB: pg.mBump, pG: pg.mGrain, pS: pg.mGsize };
   // 면마다 아틀라스 칸(구운 값이 없으면 0): 굽기가 바뀔 때만
   const sample = useDerivedValue<Sample>(() => {
     const a = atlas ? atlas.value : NO_ATLAS;
@@ -535,7 +535,7 @@ export function TabLight({ path, frame, albedo, s, seed }: { path: SkPath; frame
   const mat = matOf(MAT_UNIFORMS.paper, seed);
   const uniforms = useDerivedValue<Uniforms>(() => {
     const f = frame.value;
-    return { pxa: [s, 0, 0], root: arr(f.root), axR: arr(f.axR), axU: arr(f.axU), nrm: arr(f.n), loss: f.loss, cam4: f.cam4, keyOn: 1, albedo, eref: bookEref(ROUGH.paper), sref: bookSref(), env: envOf(f.env), ...mat };
+    return { pxa: [s, 0, 0], root: arr(f.root), axR: arr(f.axR), axU: arr(f.axU), nrm: arr(f.n), loss: f.loss, cam4: f.cam4, keyOn: 1, albedo, eref: bookEref('paper'), sref: bookSref('paper'), env: envOf(f.env), ...mat };
   });
   return (
     <>

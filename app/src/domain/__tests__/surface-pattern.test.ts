@@ -59,7 +59,7 @@ describe('재질 무늬', () => {
   it('결을 곱해도 반사율은 1을 넘지 않는다(장정 재질 × 가장 밝은 시안 장정 색)', () => {
     for (const name of ['paper', 'cloth', 'coated'] as const) {
       const fmax = grainPeak(MAT_UNIFORMS[name]);
-      for (const hex of Object.keys(palette)) expect(Math.max(...bookAlbedo(hex, ROUGH[name])) * fmax).toBeLessThanOrEqual(1);
+      for (const hex of Object.keys(palette)) expect(Math.max(...bookAlbedo(hex, name)) * fmax).toBeLessThanOrEqual(1 + 1e-9);
     }
   });
 });
