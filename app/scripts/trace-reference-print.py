@@ -72,6 +72,12 @@ def alpha_mask(bounds, mode):
     light=mode in ('light','orange')
     bg=float(np.percentile(channel, 50))
     ink=float(np.percentile(channel, 99 if light else 1))
+    # The box is mostly jacket, which carries the original's shading (a few levels). Zero the
+    # alpha at the far edge of the jacket pixels (outside the inner 30% toward the ink), not at
+    # their median, so no faint ink tint covers the whole box.
+    if abs(ink-bg)>5:
+        t=(channel-bg)/(ink-bg)
+        bg=float(np.percentile(channel[t<0.3], 99.5 if light else 0.5))
     gain=255/(ink-bg) if abs(ink-bg)>5 else 0
     return {'bounds':bounds,'alpha':[round(q*gain,7) for q in axis]+[round(-bg/(ink-bg),7) if gain else 0]}
 
