@@ -1,8 +1,9 @@
 // 빛 모델(domain/light-model): 해석적인 하늘 가림(램버트 윤곽 적분 + 앞 가리개는 뒤에 보일 것과의 차이)이
 // 같은 장면을 광선으로 직접 적분한 값(몬테카를로)과 맞는지, 그리고 반사·창빛 가림의 기본 성질.
 import type { Book3, Vec3 } from '../book3';
-import { ALBEDO, bookAlbedo, boxOf, darkening, DESIGN, EREF, envBRDF, faceAlbedo, lightWithLoss, FAR, irradiance, keyBlocked, L_UNIT, linearOf, plankKeyBlocked, polyVF, sceneLight, skyLossAt, skyRadiance, solveGrid, traceRadiance, withCovers, type Box, type C3, type Env, type Grid } from '../light-model';
+import { ALBEDO, RAD, bookAlbedo, boxOf, tone, toneInv, TONE, darkening, DESIGN, EREF, envBRDF, faceAlbedo, lightWithLoss, FAR, irradiance, keyBlocked, L_UNIT, linearOf, plankKeyBlocked, polyVF, sceneLight, skyLossAt, skyRadiance, solveGrid, traceRadiance, withCovers, type Box, type C3, type Env, type Grid } from '../light-model';
 import { SHELF_DEPTH, SHELF_FRONT, SHELF_THICK, SHELF_X0, SHELF_X1 } from '../geometry';
+import palette from '@/ui/art/reference-bindings.generated.json';
 import { light } from '@/ui/lighting';
 
 // 재현되는 난수
@@ -106,20 +107,31 @@ describe('빛 모델: 하늘 가림', () => {
     expect(plank[0]).toBeGreaterThan(plank[2]);
     expect(loss[0]).toBeLessThan(loss[1]);
     expect(loss[1]).toBeLessThan(loss[2]);
-    // 책 색도 번진다: 파란 책 옆 벽은 그 책이 가린 만큼 파랑이 덜 빠진다
-    const blue = withCovers([boxOf(book(100), [0.05, 0.12, 0.4])]);
+    // 책 색도 번진다: 파란 책 옆 벽은 같은 밝기의 회색 책 옆보다 파랑이 덜, 빨강이 더 빠진다
+    // (책 뒤 좁은 틈은 따뜻한 벽·속지끼리 되비쳐 어느 책이든 빨강이 덜 빠질 수 있어 회색 책과 견준다)
     const q = { x: 124, y: 60, z: SHELF_DEPTH };
-    const l0 = skyLossAt(q, { x: 0, y: 0, z: -1 }, row, []);
-    const l2 = skyLossAt(q, { x: 0, y: 0, z: -1 }, row, blue);
-    expect(l2[2] - l0[2]).toBeLessThan(l2[0] - l0[0]);
+    const at = (a: C3) => skyLossAt(q, { x: 0, y: 0, z: -1 }, row, withCovers([boxOf(book(100), a)]));
+    const blue = at([0.05, 0.12, 0.4]);
+    const grey = at(g3((0.05 + 0.12 + 0.4) / 3));
+    expect(blue[2]).toBeLessThan(grey[2]);
+    expect(blue[0]).toBeGreaterThan(grey[0]);
   });
 
-  it('판이 그 방향 하늘보다 밝은 채널은 판 바로 위 벽이 오히려 밝아진다(되비침): 나무 판은 빨강이 하늘보다 밝고 파랑은 어둡다', () => {
+  it('판 바로 위 벽은 판 색을 띤다: 판이 그 아래 하늘보다 밝은 채널은 밝아지고 어두운 채널은 어두워진다(되비침)', () => {
     const p = { x: 180, y: 2, z: SHELF_DEPTH };
     const n = { x: 0, y: 0, z: -1 };
     const E = sceneLight(p, n, null, { floor: 0, ceil: FAR }, [], false, [1, 1, 1]).r;
-    expect(E[0]).toBeGreaterThan(irradiance(n));
-    expect(E[2]).toBeLessThan(irradiance(n));
+    // 판이 가리는 하늘(수평 아래)의 밝기 범위
+    const skyLo = skyRadiance({ x: 0, y: -1, z: 0 });
+    const skyHi = skyRadiance({ x: 0, y: 0, z: -1 });
+    for (let c = 0; c < 3; c++) {
+      if (RAD.floor[c] > skyHi) expect(E[c]).toBeGreaterThan(irradiance(n));
+      if (RAD.floor[c] < skyLo) expect(E[c]).toBeLessThan(irradiance(n));
+    }
+    expect(RAD.floor[2]).toBeLessThan(skyLo);
+    // 따뜻한 나무: 빨강 > 초록 > 파랑 순으로 덜 어두워진다
+    expect(E[0]).toBeGreaterThan(E[1]);
+    expect(E[1]).toBeGreaterThan(E[2]);
   });
 });
 
@@ -229,10 +241,30 @@ describe('빛 격자(여러 번 튕긴 빛)', () => {
   });
 });
 
+describe('카메라 톤 곡선', () => {
+  it('되돌리기(toneInv)가 맞고, 단조 증가에 이음매에서 기울기가 이어지며, 1을 넘지 않는다', () => {
+    let prev = -1;
+    for (let y = 0.001; y < 0.9999; y += 0.0007) {
+      expect(tone(toneInv(y))).toBeCloseTo(y, 9);
+      const x = toneInv(y);
+      expect(x).toBeGreaterThan(prev);
+      prev = x;
+    }
+    for (let x = 0; x < 50; x += 0.01) expect(tone(x)).toBeLessThanOrEqual(1);
+    // 발끝 끝·어깨 시작에서 기울기 1(꺾이지 않는다)
+    const slope = (x: number) => (tone(x + 1e-6) - tone(x - 1e-6)) / 2e-6;
+    expect(slope(TONE.toe)).toBeCloseTo(1, 4);
+    expect(slope(TONE.shoulder)).toBeCloseTo(1, 4);
+  });
+});
+
 describe('재질 반사율 맞추기(역렌더링)', () => {
-  it('반사율은 모두 1 이하, 벽은 시안 색 그대로(카메라 기준)', () => {
-    for (const c of [ALBEDO.wall, ALBEDO.plank, ALBEDO.paper]) expect(Math.max(...c)).toBeLessThanOrEqual(1);
-    expect(ALBEDO.wall).toEqual(DESIGN.wall);
+  it('반사율은 모두(시안 장정 색 포함) 1 이하, 벽 반사율의 가장 밝은 채널은 시안 벽 색 그 채널(노출 기준)', () => {
+    for (const c of [ALBEDO.wall, ALBEDO.plank, ALBEDO.paper, ...Object.keys(palette).map(bookAlbedo)]) expect(Math.max(...c)).toBeLessThanOrEqual(1);
+    const top = DESIGN.wall.indexOf(Math.max(...DESIGN.wall));
+    expect(ALBEDO.wall[top]).toBeCloseTo(DESIGN.wall[top], 9);
+    // 어깨가 밝은 쪽을 누르므로 덜 밝은 채널의 반사율은 화면 색보다 낮다(장면 색이 더 짙다)
+    ALBEDO.wall.forEach((v, c) => expect(v).toBeLessThanOrEqual(DESIGN.wall[c] + 1e-9));
   });
   it('벽 대표 자리(빈 줄 가운데)에서 받는 빛 비가 1: 시안 벽 색 그대로 보인다', () => {
     const p = { x: (SHELF_X0 + SHELF_X1) / 2, y: 100, z: SHELF_DEPTH };

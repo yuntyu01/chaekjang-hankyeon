@@ -3,7 +3,7 @@
  */
 // 빛 셰이더(SkSL)가 컴파일되고, 같은 점에서 JS 빛 모델(domain/light-model)과 같은 값을 내는지(CanvasKit으로 실제로 그려 읽는다).
 import type { Book3, Vec3 } from '@/domain/book3';
-import { bakeLoss, bandOf, boxOf, DESIGN, ENV_NX, ENV_NY, EREF, FAR, gammaDodge, gammaMul, GRID_N, GRID_PASSES, lightWithLoss, TOUCH, linearOf, packBoxes, skyLossAt, solveGrid, toEye, withCovers, type Band, type BoxBuf, type C3, type Env } from '@/domain/light-model';
+import { bakeLoss, bandOf, boxOf, DESIGN, ENV_NX, ENV_NY, EREF, FAR, GRID_N, GRID_PASSES, lightWithLoss, TOUCH, linearOf, packBoxes, skyLossAt, solveGrid, toEye, toneDodge, toneMul, withCovers, type Band, type BoxBuf, type C3, type Env } from '@/domain/light-model';
 import { SHELF_DEPTH, SHELF_THICK } from '@/domain/geometry';
 import { bakeSource, bookSource, GRID_SCALE, gridSource, litSource, LOSS_OFF, LOSS_SCALE, planeFrame } from '../scene-light-sksl';
 import { EDGE_R, GROOVE, rigOf } from '@/domain/book-parts';
@@ -260,8 +260,8 @@ describe('그리는 셰이더 = JS 빛(lightWithLoss, 둘레 하늘 가림)', ()
     const l = Math.hypot(n0.x, n0.y, n0.z);
     const n = { x: n0.x / l, y: n0.y / l, z: n0.z / l };
     const lt = lightWithLoss(P, n, toEye(cam, P), env, skyLossAt(P, n, env, []), true, EREF.wall);
-    const mul = lt.r.map((r) => gammaMul(r)) as C3;
-    const dodge = lt.r.map((r, c) => gammaDodge(r, lt.spec[c], albedo[c])) as C3;
+    const mul = lt.r.map((r, c) => toneMul(albedo[c], r)) as C3;
+    const dodge = lt.r.map((r, c) => toneDodge(albedo[c], r, lt.spec[c])) as C3;
     expect(maxDiff(shaderLit(P, n, env, false, albedo), mul)).toBeLessThan(1.5 / 255);
     expect(maxDiff(shaderLit(P, n, env, true, albedo), dodge)).toBeLessThan(1.5 / 255);
     // 한 번에 칠하기(단색 재질 base): base × 곱하기 / (1 − 닷지), 채널마다 1에서 자름(두 겹을 칠한 결과와 같다)
@@ -302,7 +302,7 @@ describe('책 광선 셰이더 = 광선 기하 + JS 빛', () => {
   function expected(F: Vec3, nf: Vec3, hit: { P: Vec3; n: Vec3; a: C3 }, dodge: boolean): C3 {
     const loss = skyLossAt(F, nf, row, []);
     const lt = lightWithLoss(hit.P, hit.n, toEye(cam, hit.P), row, loss, true, hit.a === paper ? EREF.paper : EREF.book, nf);
-    return lt.r.map((r, c) => (dodge ? gammaDodge(r, lt.spec[c], hit.a[c]) : gammaMul(r))) as C3;
+    return lt.r.map((r, c) => (dodge ? toneDodge(hit.a[c], r, lt.spec[c]) : toneMul(hit.a[c], r))) as C3;
   }
   const ray = (Q: Vec3) => {
     const v = { x: Q.x - E.x, y: Q.y - E.y, z: Q.z - E.z };

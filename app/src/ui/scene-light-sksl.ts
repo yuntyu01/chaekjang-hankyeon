@@ -5,7 +5,7 @@
 //   lit: 구운 그림(tex)을 읽고 나머지(하늘·창빛 직접 몫, 둥근 모서리 법선, 반사광)를 화소마다. 곱하기·컬러 닷지 두 가지로 컴파일한다.
 import { EDGE_R, GROOVE, SPINE_CURVE } from '@/domain/book-parts';
 import { SHELF_DEPTH, SHELF_FRONT, SHELF_THICK, SHELF_X0, SHELF_X1 } from '@/domain/geometry';
-import { ALBEDO, BOX_MAX, BOX_VEC, DESIGN, ENV_COLS, ENV_NY, EREF, FAR, GAMMA, GRID_N, L_ELEV, L_UNIT, RAD, TOUCH, type C3 } from '@/domain/light-model';
+import { ALBEDO, BOX_MAX, BOX_VEC, DESIGN, ENV_COLS, ENV_NY, EREF, EXPOSURE, FAR, GAIN, GAMMA, GRID_N, L_ELEV, L_UNIT, RAD, TONE, TOUCH, type C3 } from '@/domain/light-model';
 import type { Affine, Cam, Vec3 } from '@/domain/camera';
 import { light, material } from '@/ui/lighting';
 
@@ -63,8 +63,8 @@ function header() {
   const float SKYUP = ${f(light.skyUp)};
   const float DIFF = ${f(light.diffuse)};
   const float3 LU = ${v3(L_UNIT)};
-  // 카메라 기준 빛(벽 대표 자리, 반사광을 화면 값으로)
-  const float3 ECAM = ${c3(EREF.wall)};
+  // 카메라 기준 빛(벽 대표 자리 빛 / 노출 기준 GAIN, 반사광을 장면 밝기로)
+  const float3 ECAM = ${c3(EREF.wall.map((v) => v / GAIN) as C3)};
   const float LELEV = ${f(L_ELEV)};
   const float LRAD = ${f(light.radius)};
   const float F0 = ${f(material.f0)};
@@ -665,6 +665,31 @@ function shadeCode(mode: 0 | 1 | 2) {
   return `
   const float DODGE = ${mode}.0;
   float plankKey(float3 p) { return keyOn < 0.5 ? 0.0 : plankKeyOf(p); }
+  // 카메라: 노출과 필름형 톤 곡선(light-model tone·toneInv)
+  const float EXPO = ${f(EXPOSURE)};
+  const float TTOE = ${f(TONE.toe)};
+  const float TK = ${f(TONE.k)};
+  const float TSH = ${f(TONE.shoulder)};
+  float toneF(float x) {
+    if (x <= 0.0) return 0.0;
+    if (x < TTOE) { float u = 1.0 - x / TTOE; return x - TK * x * u * u; }
+    if (x <= TSH) return x;
+    return 1.0 - (1.0 - TSH) * exp(-(x - TSH) / max(1e-6, 1.0 - TSH));
+  }
+  float toneInv(float y) {
+    if (y <= 0.0) return 0.0;
+    if (y < TTOE) {
+      float x = y;
+      for (int i = 0; i < 6; i++) {
+        float u = 1.0 - x / TTOE;
+        x -= (x - TK * x * u * u - y) / (1.0 - TK * u * u + 2.0 * TK * x * u / TTOE);
+      }
+      return x;
+    }
+    if (y <= TSH) return y;
+    if (y >= 1.0) return FARV;
+    return TSH - (1.0 - TSH) * log((1.0 - y) / max(1e-6, 1.0 - TSH));
+  }
   float envBRDF(float nv) {
     float rx = 1.0 - ROUGH;
     float ry = 0.0425 - 0.0275 * ROUGH;
@@ -705,11 +730,16 @@ function shadeCode(mode: 0 | 1 | 2) {
     float3 E = e0 * max(float3(0.0), e0f - loss) / max(e0f, 1e-4);
     float ks = envBRDF(max(0.0, dot(n, v)));
     float3 r = E * (1.0 - ks) / eref;
-    float3 m = pow(min(float3(1.0), r), float3(IG));
+    // 화면 색 = tone(노출 × (toneInv(a) × r + 반사광))(light-model toneTarget). 곱하기는 반사광 없이, 닷지가 나머지
+    float3 am = max(a, float3(1e-4));
+    float3 sa = float3(toneInv(am.x), toneInv(am.y), toneInv(am.z)) * r * EXPO;
+    float3 t0 = float3(toneF(sa.x), toneF(sa.y), toneF(sa.z));
+    float3 m = pow(min(float3(1.0), t0 / am), float3(IG));
     if (DODGE < 0.5) return half4(half3(m), 1.0);
     float3 spec = (ks * envHit(P, reflect(-v, n)).yzw + ggxKey(n, v) * DIFF * (1.0 - kb)) / ECAM;
-    float3 base = a * min(float3(1.0), r);
-    float3 target = a * r + spec;
+    float3 st = sa + spec * EXPO;
+    float3 base = min(a, t0);
+    float3 target = float3(toneF(st.x), toneF(st.y), toneF(st.z));
     float3 s = float3(0.0);
     for (int c = 0; c < 3; c++) {
       float b = c == 0 ? base.x : (c == 1 ? base.y : base.z);

@@ -14,7 +14,7 @@ import { useDerivedValue, type SharedValue } from 'react-native-reanimated';
 import { faceNormal, rot, toWorld, type Book3, type Cam, type FaceId, type Vec3 } from '@/domain/book3';
 import { lightPanel, rigOf } from '@/domain/book-parts';
 import { camAt, VIEW_PITCH_MAX, VIEW_PITCH_MIN, type Affine } from '@/domain/camera';
-import { ENV_NX, ENV_NY, FAR, gammaDodge, gammaMul, GRID_N, GRID_PASSES, type Band, type BoxBuf, type C3, type Env } from '@/domain/light-model';
+import { ENV_NX, ENV_NY, FAR, GRID_N, GRID_PASSES, toneDodge, toneMul, type Band, type BoxBuf, type C3, type Env } from '@/domain/light-model';
 import { faceVisible } from '@/ui/book3d/face-geometry';
 
 import { PERF_ENABLED } from './perf';
@@ -408,8 +408,8 @@ function rgbString(c: number[]) {
   return `rgb(${k(c[0])}, ${k(c[1])}, ${k(c[2])})`;
 }
 export function UniformLight({ path, light: lt, albedo }: { path: RO<SkPath> | SkPath; light: RO<PointLight>; albedo: C3 }) {
-  const mul = useDerivedValue(() => rgbString(lt.value.r.map((r) => gammaMul(r))));
-  const dodge = useDerivedValue(() => rgbString(lt.value.r.map((r, c) => gammaDodge(r, lt.value.spec[c], albedo[c]))));
+  const mul = useDerivedValue(() => rgbString(lt.value.r.map((r, c) => toneMul(albedo[c], r))));
+  const dodge = useDerivedValue(() => rgbString(lt.value.r.map((r, c) => toneDodge(albedo[c], r, lt.value.spec[c]))));
   return (
     <>
       <Path path={path} color={mul} blendMode="multiply" />

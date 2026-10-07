@@ -11,6 +11,12 @@ import { colors } from './theme';
 
 export const light = { dir: { x: -0.1, y: 0.06, z: -0.993 }, radius: (8 * Math.PI) / 180, ambient: 0.85, skyUp: 0.22, diffuse: 0.15 };
 
+// 카메라(보기 선택, 물리 값이 아니다). exposure: 노출(EV), 기준(재질이 대표 자리에서 시안 색으로 보이는 노출)보다 밝게 +, 어둡게 −.
+// 화면 색은 노출 뒤 필름형 톤 곡선(light-model tone): 화면 밝기가 shoulder를 넘으면 1로 부드럽게 다가가고(하이라이트를 누른다),
+// toe 아래는 검정 쪽 기울기를 1 − toeK로 눌러 아주 어두운 곳이 조금 더 깊다. 어깨는 약하게(위 15%만): 더 내리면 시안의 거의 흰 장정 색이
+// 반사율 1을 넘는다(0.81 아래)
+export const camera = { exposure: 0, shoulder: 0.85, toe: 0.18, toeK: 0.15 };
+
 // 모든 면의 표면 광택: 유전체(굴절률 1.5)의 수직 반사율 F0와 표면 거칠기(종이·칠한 벽·나무 모두 같은 무광 유전체)
 export const material = { f0: 0.04, roughness: 0.6 };
 
