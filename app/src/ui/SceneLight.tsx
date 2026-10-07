@@ -22,7 +22,7 @@ import type { MaterialName } from '@/ui/lighting';
 import { faceVisible } from '@/ui/book3d/face-geometry';
 
 import { PERF_ENABLED } from './perf';
-import { bakeSource, bookSource, gridSource, litSource, LOSS_OFF, LOSS_SCALE, planeFrame, tabSource, type Plane } from './scene-light-sksl';
+import { bakeSource, bookSource, gridSource, litSource, planeFrame, tabSource, type Plane } from './scene-light-sksl';
 
 export type { Plane } from './scene-light-sksl';
 type RO<T> = Readonly<SharedValue<T>>;
@@ -130,7 +130,7 @@ function bandFar(b: Band | null | undefined) {
 // 셰이더 자식 자리를 채우는 그림(구운 값이 없을 때. 그때 셰이더는 그림을 읽지 않는다)
 const EMPTY = Skia.Image.MakeImage(
   { width: 1, height: 1, alphaType: AlphaType.Opaque, colorType: ColorType.RGBA_8888 },
-  Skia.Data.fromBytes(new Uint8Array([...Array(3).fill(Math.round((LOSS_OFF / LOSS_SCALE) * 255)), 255])),
+  Skia.Data.fromBytes(new Uint8Array([128, 128, 128, 255])),
   4,
 )!;
 

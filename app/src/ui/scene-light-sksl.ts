@@ -45,11 +45,34 @@ const c3 = (c: C3) => `float3(${f(c[0])}, ${f(c[1])}, ${f(c[2])})`;
 // 잘린 다각형 꼭짓점 최대 수: 사각형 4 + 반구 1 + 구역 평면 둘 2(볼록 다각형은 평면 하나에 꼭짓점이 많아야 하나 는다)
 const NV = 7;
 
-// 하늘 가림 그림: 선형 RGB 채널마다 (가림 + LOSS_OFF) / LOSS_SCALE. 가림이 음수인 곳: 밝은 판이 되비춰 밝아진 곳(0.25 안), 판 두께 높이 벽 띠
-// (그 점은 판 속이라 창빛이 다 가려지지만 띠 빛은 위아래 경계 빛을 이어 창빛을 받는다: 창빛 몫까지). 가장 큰 가림 = 모두 가려진 앞면의 빛.
-// 그림 칸 값이 색 변환되지 않도록 굽는 표면은 화면 표면과 같은 색 공간이다(SceneLight bakeAtlas). 8비트 한 단계 = 받는 빛 약 0.75%
-export const LOSS_OFF = light.diffuse + 0.25;
-export const LOSS_SCALE = light.ambient + light.skyUp + light.diffuse + LOSS_OFF;
+// 하늘 가림 그림: 선형 RGB 채널마다 남은 하늘 빛 R = sky − 가림(sky = 그 면이 받는 하늘 빛 AMB + SKYUP·n.y, n = 구운 면 법선)을
+// 0을 가운데(그림 값 LOSS_G0)로 양쪽 제곱근 곡선에 담는다: R ≥ 0이면 g = G0 + (1 − G0)·√(R/RP), R < 0이면 g = G0 − G0·√(−R/RN).
+// 받는 빛이 작은 그늘일수록 단계가 촘촘하다(R 0.02에서 한 단계 0.0018, 하늘 그대로 0.3에서 0.0069. 가림을 그대로 담으면 어디서나 0.0075라
+// 깊은 그늘에서 띠·동심원이 보인다). R이 음수인 곳: 겹친 가리개를 두 번 센 회색 오차(shade가 세 채널에서 똑같이 뺀다), 판 두께 높이 벽 띠
+// (그 점은 판 속이라 창빛이 다 가려진 것으로 보지만 띠 빛은 위아래 경계 빛을 이어 창빛 몫까지 받는다: 가림이 창빛 몫만큼 하늘보다 크거나 작다).
+// RP = 하늘 + 밝은 판의 되비침(0.25 안) + 띠의 창빛, RN = 모두 가려진 앞면의 빛 − 가장 작은 하늘.
+// 굽는 값에 칸마다 다른 반 단계 안의 디더를 더해 남은 양자화를 고른 잡음으로 흩는다.
+// 그림 칸 값이 색 변환되지 않도록 굽는 표면은 화면 표면과 같은 색 공간이다(SceneLight bakeAtlas)
+export const LOSS_G0 = 0.3;
+export const LOSS_RP = light.ambient + light.skyUp + light.diffuse + 0.25;
+export const LOSS_RN = light.diffuse + 2 * light.skyUp;
+// 가림 L(면이 받는 하늘 빛 sky) ↔ 그림 값 g
+export function lossEncode(L: number, sky: number) {
+  const R = sky - L;
+  return R >= 0 ? LOSS_G0 + (1 - LOSS_G0) * Math.sqrt(Math.min(1, R / LOSS_RP)) : LOSS_G0 - LOSS_G0 * Math.sqrt(Math.min(1, -R / LOSS_RN));
+}
+export function lossDecode(g: number, sky: number) {
+  const a = (g - LOSS_G0) / (1 - LOSS_G0);
+  const b = (LOSS_G0 - g) / LOSS_G0;
+  return sky - (g >= LOSS_G0 ? LOSS_RP * a * a : -LOSS_RN * b * b);
+}
+// 그 자리 그림 값 한 단계의 가림 크기(곡선 기울기 × 1/255 + 곡률 몫)
+export function lossStep(L: number, sky: number) {
+  const g = lossEncode(L, sky);
+  const pos = g >= LOSS_G0;
+  const k = pos ? LOSS_RP / ((1 - LOSS_G0) * (1 - LOSS_G0)) : LOSS_RN / (LOSS_G0 * LOSS_G0);
+  return (2 * k * Math.abs(g - LOSS_G0) + k / 255) / 255;
+}
 // 빛 격자 그림(light-model Grid): 칸 값 = 받는 빛 / GRID_SCALE(선형 RGB). 가로 6·GRID_N칸: 상자 i의 면 f(축 k + 3·(s > 0))는
 // (f·N, i·N)부터 N × N, 그 아래(nBox·N부터) 둘레 면(벽, 판 윗면, 위 판 아랫면)이 ENV_NX × ENV_NY씩(책이 없으면 가로 한 칸)
 export const GRID_SCALE = 1.5;
@@ -86,8 +109,21 @@ function header() {
   const float3 PAPER_COLOR = ${c3(DESIGN.paper)};
   const float EDGER = ${f(EDGE_R)};
   const float IG = ${f(1 / GAMMA)};
-  const float LOSS_OFF = ${f(LOSS_OFF)};
-  const float LOSS_SCALE = ${f(LOSS_SCALE)};
+  const float LOSS_G0 = ${f(LOSS_G0)};
+  const float LOSS_RP = ${f(LOSS_RP)};
+  const float LOSS_RN = ${f(LOSS_RN)};
+  // 하늘 가림 그림 값 ↔ 가림(면이 받는 하늘 빛 sky, lossEncode·lossDecode)
+  float3 lossDec(float3 g, float sky) {
+    float3 a = (g - LOSS_G0) / (1.0 - LOSS_G0);
+    float3 b = (LOSS_G0 - g) / LOSS_G0;
+    return float3(sky) - mix(-LOSS_RN * b * b, LOSS_RP * a * a, step(LOSS_G0, g));
+  }
+  float3 lossEnc(float3 L, float sky) {
+    float3 R = float3(sky) - L;
+    float3 pos = LOSS_G0 + (1.0 - LOSS_G0) * sqrt(clamp(R / LOSS_RP, 0.0, 1.0));
+    float3 neg = LOSS_G0 - LOSS_G0 * sqrt(clamp(-R / LOSS_RN, 0.0, 1.0));
+    return mix(neg, pos, step(0.0, R));
+  }
   const float HORIZON = 1e-4;
 
   float skyRad(float3 w) { return AMB + 1.5 * SKYUP * w.y; }
@@ -514,7 +550,7 @@ function boxCode() {
 `;
 }
 
-// 하늘 가림 굽기: 그림 칸 p(칸 가운데)의 줄 공간 점 O + p.x·Ux + p.y·Vy, 면 법선 tN에서. 출력 채널마다 (가림 + LOSS_OFF) / LOSS_SCALE
+// 하늘 가림 굽기: 그림 칸 p(칸 가운데)의 줄 공간 점 O + p.x·Ux + p.y·Vy, 면 법선 tN에서. 출력 채널마다 lossEncode + 디더
 export function bakeSource() {
   return `
   uniform float3 O;
@@ -548,8 +584,12 @@ ${boxCode()}
       float3 E = t <= 0.5 ? mix(float3(openE(Q, tN)) - L, mid, 2.0 * t) : mix(mid, lo ? bandLoFar : bandHiFar, 2.0 * t - 1.0);
       L = float3(openE(P, tN)) - E;
     }
-    float3 g = clamp((L + LOSS_OFF) / LOSS_SCALE, 0.0, 1.0);
-    return half4(half3(g), 1.0);
+    float3 g = lossEnc(L, AMB + SKYUP * tN.y);
+    // 디더: 칸마다 다른 −½~½ 단계(8비트로 담을 때 띠 대신 고른 잡음)
+    float3 q = fract(float3(floor(p).x, floor(p).y, floor(p).x) * 0.1031);
+    q += dot(q, q.yzx + 33.33);
+    float h = fract((q.x + q.y) * q.z) - 0.5;
+    return half4(half3(clamp(g + h / 255.0, 0.0, 1.0)), 1.0);
   }
 `;
 }
@@ -909,7 +949,7 @@ ${shadeCode(mode)}
     float2 fp = float2(max(abs(dot(JX, Au)), abs(dot(JY, Au))), max(abs(dot(JX, Av)), abs(dot(JY, Av))));
     float4 ms = matSample(float2(dot(P, Au), dot(P, Av)) + mSeed, fp, mR, mB, mG, mS);
     n = normalize(n - ms.x * Au - ms.y * Av);
-    float3 loss = liveEnv > 0.5 ? envLoss(P, tN) : float3(tex.eval(p).rgb) * LOSS_SCALE - LOSS_OFF;
+    float3 loss = liveEnv > 0.5 ? envLoss(P, tN) : lossDec(float3(tex.eval(p).rgb), AMB + SKYUP * tN.y);
     half4 g = shade(P, n, tN, normalize(float3(cam4.x, cam4.y, cam4.z - cam4.w) - P), loss, albedo, eref, ms.w, ms.z, float(keyTex.eval(float2(dot(P, kU), dot(P, kV)) + kO).a), sref);
     ${mode === 2 ? 'return half4(half3(min(base * float3(g.rgb), float3(1.0))), 1.0);' : 'return g;'}
   }
@@ -1080,7 +1120,7 @@ ${shadeCode(dodge ? 1 : 0)}
     // 하늘 가림: 그 면의 구운 칸(면 평면 점의 칸 좌표), 없으면 둘레만 그 자리에서(면 법선)
     float4 R = float4(0.0);
     for (int i = 0; i < 6; i++) { if (i == fi) R = rect[i]; }
-    float3 loss = R.z > 0.0 ? float3(tex.eval(float2(R.x + u / pw * R.z, R.y + v / ph * R.w)).rgb) * LOSS_SCALE - LOSS_OFF : envLoss(bO + toRow(L), toRow(nl));
+    float3 loss = R.z > 0.0 ? lossDec(float3(tex.eval(float2(R.x + u / pw * R.z, R.y + v / ph * R.w)).rgb), AMB + SKYUP * toRow(nl).y) : envLoss(bO + toRow(L), toRow(nl));
     float3 view = cam4.w > 0.0 ? normalize(E - P) : normalize(-d);
     float4 K = float4(0.0);
     for (int i = 0; i < 6; i++) { if (i == fi) K = kRect[i]; }
