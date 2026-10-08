@@ -1,7 +1,7 @@
 // 빛 모델(domain/light-model): 해석적인 하늘 가림(램버트 윤곽 적분 + 앞 가리개는 뒤에 보일 것과의 차이)이
 // 같은 장면을 광선으로 직접 적분한 값(몬테카를로)과 맞는지, 그리고 반사·창빛 가림의 기본 성질.
 import type { Book3, Vec3 } from '../book3';
-import { ALBEDO, ggxKey, RAD, ROUGH, SREF, bookAlbedo, bookEref, boxOf, tone, toneInv, toneTarget, TONE, darkening, DESIGN, EREF, envBRDF, faceAlbedo, lightWithLoss, FAR, irradiance, keyBlocked, L_UNIT, linearOf, plankKeyBlocked, polyVF, sceneLight, skyLossAt, skyRadiance, solveGrid, traceRadiance, withCovers, type Box, type C3, type Env, type Grid } from '../light-model';
+import { ALBEDO, ggxKey, KEY_C, lum, RAD, ROUGH, skyIrradiance, SREF, bookAlbedo, bookEref, boxOf, tone, toneInv, toneTarget, TONE, darkening, DESIGN, EREF, envBRDF, faceAlbedo, lightWithLoss, FAR, irradiance, keyBlocked, L_UNIT, linearOf, plankKeyBlocked, polyVF, sceneLight, skyLossAt, skyRadiance, solveGrid, traceRadiance, withCovers, type Box, type C3, type Env, type Grid } from '../light-model';
 import { SHELF_DEPTH, SHELF_FRONT, SHELF_THICK, SHELF_X0, SHELF_X1 } from '../geometry';
 import palette from '@/ui/art/reference-bindings.generated.json';
 import { light } from '@/ui/lighting';
@@ -41,8 +41,9 @@ const norm = (a: Vec3) => {
 };
 // 창빛을 뺀 받는 빛(해석): sceneLight는 창빛까지 더하므로 그 몫을 뺀다(가림 없는 창빛, 위 판 가림 끔)
 function analytic(p: Vec3, n: Vec3, env: Env | null, boxes: Box[], G?: Grid): C3 {
-  const key = irradiance(n) - (light.ambient + light.skyUp * n.y);
-  return sceneLight(p, n, null, env, boxes, false, [1, 1, 1], G).r.map((r) => r - key) as C3;
+  const all = irradiance(n);
+  const sky = skyIrradiance(n);
+  return sceneLight(p, n, null, env, boxes, false, [1, 1, 1], G).r.map((r, c) => r - (all[c] - sky[c])) as C3;
 }
 // 채널마다 상대 오차의 최댓값
 const relErr = (a: C3, b: C3) => Math.max(...a.map((v, c) => Math.abs(v - b[c]) / b[c]));
@@ -104,7 +105,10 @@ describe('빛 모델: 하늘 가림', () => {
   });
 
   it('색 번짐: 따뜻한 나무 판 바로 아래 벽은 판이 되비친 빛을 받아 파랑보다 빨강이 덜 빠진다(판 색을 띤다)', () => {
-    const loss = skyLossAt({ x: 180, y: 195, z: SHELF_DEPTH }, { x: 0, y: 0, z: -1 }, row, []);
+    // 채널마다 그 채널 하늘 빛에 대한 비(하늘 빛 자체가 방 빛 색을 띤다)
+    const n = { x: 0, y: 0, z: -1 };
+    const sky = skyIrradiance(n);
+    const loss = skyLossAt({ x: 180, y: 195, z: SHELF_DEPTH }, n, row, []).map((v, c) => v / sky[c]);
     const plank = linearOf('#F2DCC1');
     expect(plank[0]).toBeGreaterThan(plank[2]);
     expect(loss[0]).toBeLessThan(loss[1]);
@@ -126,11 +130,12 @@ describe('빛 모델: 하늘 가림', () => {
     // 판이 가리는 하늘(수평 아래)의 밝기 범위
     const skyLo = skyRadiance({ x: 0, y: -1, z: 0 });
     const skyHi = skyRadiance({ x: 0, y: 0, z: -1 });
+    const open = irradiance(n);
     for (let c = 0; c < 3; c++) {
-      if (RAD.floor[c] > skyHi) expect(E[c]).toBeGreaterThan(irradiance(n));
-      if (RAD.floor[c] < skyLo) expect(E[c]).toBeLessThan(irradiance(n));
+      if (RAD.floor[c] > skyHi[c]) expect(E[c]).toBeGreaterThan(open[c]);
+      if (RAD.floor[c] < skyLo[c]) expect(E[c]).toBeLessThan(open[c]);
     }
-    expect(RAD.floor[2]).toBeLessThan(skyLo);
+    expect(RAD.floor[2]).toBeLessThan(skyLo[2]);
     // 따뜻한 나무: 빨강 > 초록 > 파랑 순으로 덜 어두워진다
     expect(E[0]).toBeGreaterThan(E[1]);
     expect(E[1]).toBeGreaterThan(E[2]);
@@ -211,7 +216,7 @@ function pathTrace(p: Vec3, n: Vec3, env: Env, boxes: Box[], N: number): C3 {
       const h = hit(off(q, m), w);
       if (!h) {
         const sk = skyRadiance(w);
-        for (let c = 0; c < 3; c++) sum[c] += thr[c] * sk;
+        for (let c = 0; c < 3; c++) sum[c] += thr[c] * sk[c];
         break;
       }
       q = { x: q.x + w.x * h.t, y: q.y + w.y * h.t, z: q.z + w.z * h.t };
@@ -220,7 +225,7 @@ function pathTrace(p: Vec3, n: Vec3, env: Env, boxes: Box[], N: number): C3 {
       // 창빛: 원반(반지름 light.radius) 위 한 점으로(원반 일부만 보이는 좁은 틈도 보이는 몫만큼)
       const lw = keyDir();
       const nl = m.x * lw.x + m.y * lw.y + m.z * lw.z;
-      if (nl > 0 && !hit(off(q, m), lw)) for (let c = 0; c < 3; c++) sum[c] += thr[c] * light.diffuse * nl;
+      if (nl > 0 && !hit(off(q, m), lw)) for (let c = 0; c < 3; c++) sum[c] += thr[c] * light.diffuse * nl * KEY_C[c];
     }
   }
   return sum.map((v) => v / N) as C3;
@@ -249,10 +254,10 @@ describe('빛 격자(여러 번 튕긴 빛)', () => {
     const spine = [0.5, 5, 20, 75].map((y) => lumOf(analytic({ x: 111, y, z: 0 }, { x: 0, y: 0, z: -1 }, row, boxes, G)));
     for (let i = 1; i < spine.length; i++) expect(spine[i]).toBeGreaterThan(spine[i - 1]);
     const slot = [0.5, 5, 15, 50].map((z) => lumOf(analytic({ x: 122, y: 75, z }, { x: 1, y: 0, z: 0 }, row, boxes, G)));
-    // 아주 깊은 곳은 해석 값이 하늘 빛 상한(가림 ≤ 하늘 빛)에 닿아 받는 빛 0.1% 안팎(경로 추적 0.2~0.5%)인 바닥이라
-    // 그 차이(화면에서 구별되지 않는 0.2% 안)까지는 순서를 보지 않는다
+    // 아주 깊은 곳은 해석 값이 하늘 빛 상한(가림 ≤ 하늘 빛)에 닿는 바닥(받는 빛 0.3~0.7%, 경로 추적 0.2~0.5%)이라
+    // 그 바닥 안(받는 빛 0.5%)의 차이까지는 순서를 보지 않는다
     expect(slot[1]).toBeLessThan(slot[0]);
-    for (let i = 1; i < slot.length; i++) expect(slot[i]).toBeLessThan(slot[i - 1] + 0.002);
+    for (let i = 1; i < slot.length; i++) expect(slot[i]).toBeLessThan(slot[i - 1] + 0.005);
   });
 });
 
@@ -306,17 +311,18 @@ describe('하늘 가림 상한', () => {
   it('가림이 하늘 빛을 넘으면(겹친 가리개를 두 번 센 회색 오차) 넘친 만큼을 세 채널에서 똑같이 빼: 채널 차이(되비친 빛의 색)는 그대로, 음수는 없다', () => {
     const p = { x: 100, y: 75, z: 50 };
     const n = { x: -1, y: 0, z: 0 };
-    const sky = light.ambient + light.skyUp * n.y;
-    const loss: C3 = [sky - 0.05, sky + 0.02, sky + 0.06];
+    const sky = skyIrradiance(n);
+    // 하늘 빛을 넘는 몫(비): 초록 2%, 파랑 6% 넘음 → 6% 몫(하늘 빛 × 0.06)을 세 채널에서 뺀다
+    const loss: C3 = [sky[0] - 0.05, sky[1] * 1.02, sky[2] * 1.06];
     const E = lightWithLoss(p, n, null, row, loss, true, [1, 1, 1]).r;
     E.forEach((v) => expect(v).toBeGreaterThanOrEqual(0));
     expect(Math.min(...E)).toBeCloseTo(0, 9);
-    expect(E[0] - E[1]).toBeCloseTo(loss[1] - loss[0], 9);
-    expect(E[1] - E[2]).toBeCloseTo(loss[2] - loss[1], 9);
+    // 받는 빛 = 하늘 빛 − (가림 − 0.06·하늘 빛)
+    E.forEach((v, c) => expect(v).toBeCloseTo(sky[c] - (loss[c] - 0.06 * sky[c]), 9));
     // 넘지 않으면 그대로
-    const ok: C3 = [sky - 0.1, sky - 0.05, sky - 0.02];
+    const ok: C3 = [sky[0] - 0.1, sky[1] - 0.05, sky[2] - 0.02];
     const E2 = lightWithLoss(p, n, null, row, ok, true, [1, 1, 1]).r;
-    E2.forEach((v, c) => expect(v).toBeCloseTo(sky - ok[c], 9));
+    E2.forEach((v, c) => expect(v).toBeCloseTo(sky[c] - ok[c], 9));
   });
 });
 
@@ -408,6 +414,6 @@ describe('빛 모델: 창빛 가림·반사', () => {
   });
 
   it('하늘은 위가 밝다', () => {
-    expect(skyRadiance({ x: 0, y: 1, z: 0 })).toBeGreaterThan(skyRadiance({ x: 0, y: 0, z: -1 }));
+    expect(lum(skyRadiance({ x: 0, y: 1, z: 0 }))).toBeGreaterThan(lum(skyRadiance({ x: 0, y: 0, z: -1 })));
   });
 });

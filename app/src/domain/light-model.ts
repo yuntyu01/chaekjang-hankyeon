@@ -51,23 +51,34 @@ export const KEY_DIRS: Vec3[] = (() => {
   });
 })();
 
-// 면이 받는 빛(가리는 것 없을 때). n: 바깥 법선(단위)
-export function irradiance(n: Vec3) {
+// 빛 색(선형 RGB 배수, 휘도 1로 맞춘다: 세기는 ambient·skyUp·diffuse가 정한다). SKY_C = 방 확산광, KEY_C = 창빛
+const lum3 = (c: number[]) => 0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2];
+export const SKY_C: C3 = light.skyColor.map((v) => v / lum3(light.skyColor)) as C3;
+export const KEY_C: C3 = light.keyColor.map((v) => v / lum3(light.keyColor)) as C3;
+// 면이 하늘(방)에서 받는 빛 세기(색 없이): ambient + skyUp·n.y
+function skyE(ny: number) {
   'worklet';
-  const nl = n.x * L_UNIT.x + n.y * L_UNIT.y + n.z * L_UNIT.z;
-  return light.ambient + light.skyUp * n.y + light.diffuse * Math.max(0, nl);
+  return light.ambient + light.skyUp * ny;
 }
-// 창빛 몫만
-export function keyIrradiance(n: Vec3) {
+// 면이 받는 빛(가리는 것 없을 때, 선형 RGB). n: 바깥 법선(단위)
+export function irradiance(n: Vec3): C3 {
   'worklet';
-  return light.diffuse * Math.max(0, n.x * L_UNIT.x + n.y * L_UNIT.y + n.z * L_UNIT.z);
+  const sk = skyE(n.y);
+  const ky = light.diffuse * Math.max(0, n.x * L_UNIT.x + n.y * L_UNIT.y + n.z * L_UNIT.z);
+  return [SKY_C[0] * sk + KEY_C[0] * ky, SKY_C[1] * sk + KEY_C[1] * ky, SKY_C[2] * sk + KEY_C[2] * ky];
+}
+// 하늘(방) 몫만
+export function skyIrradiance(n: Vec3): C3 {
+  'worklet';
+  const sk = skyE(n.y);
+  return [SKY_C[0] * sk, SKY_C[1] * sk, SKY_C[2] * sk];
 }
 // 하늘 밝기(방향 ω, π·휘도 단위: 코사인 적분이 irradiance의 하늘 몫과 같다). 가장 밝은 곳은 바로 위
-export function skyRadiance(w: Vec3) {
+export function skyRadiance(w: Vec3): C3 {
   'worklet';
-  return light.ambient + 1.5 * light.skyUp * w.y;
+  const k = light.ambient + 1.5 * light.skyUp * w.y;
+  return [SKY_C[0] * k, SKY_C[1] * k, SKY_C[2] * k];
 }
-export const SKY_MAX = light.ambient + 1.5 * light.skyUp;
 
 // 색(#RRGGBB) → 선형 RGB(반사율)
 export function linearOf(hex: string): [number, number, number] {
@@ -86,6 +97,10 @@ export function lum(c: C3) {
 function grey(v: number): C3 {
   'worklet';
   return [v, v, v];
+}
+function cmul(a: C3, b: C3): C3 {
+  'worklet';
+  return [a[0] * b[0], a[1] * b[1], a[2] * b[2]];
 }
 function cscale(c: C3, k: number): C3 {
   'worklet';
@@ -106,9 +121,9 @@ export const EREF = { wall: grey(1), plank: grey(1), book: grey(1), paper: grey(
 // 재질마다 대표 자리의 반사광(장면 밝기, calibrate): 재질 색은 이것까지 넣은 '보이는 색'이다. 책은 장정 재질마다
 export const SREF = { wall: grey(0), plank: grey(0), paper: grey(0), book: { paper: grey(0), cloth: grey(0), coated: grey(0) } as Record<BindingMaterial, C3> };
 function setRadiance() {
-  RAD.floor = cscale(ALBEDO.plank, irradiance({ x: 0, y: 1, z: 0 }));
-  RAD.wall = cscale(ALBEDO.wall, irradiance({ x: 0, y: 0, z: -1 }));
-  RAD.under = cscale(ALBEDO.plank, irradiance({ x: 0, y: -1, z: 0 }));
+  RAD.floor = cmul(ALBEDO.plank, irradiance({ x: 0, y: 1, z: 0 }));
+  RAD.wall = cmul(ALBEDO.wall, irradiance({ x: 0, y: 0, z: -1 }));
+  RAD.under = cmul(ALBEDO.plank, irradiance({ x: 0, y: -1, z: 0 }));
 }
 // 벽은 판보다 훨씬 넓고 높다(하늘 가림 계산에서 끝이 보이지 않을 만큼)
 export const FAR = 1e4;
@@ -253,10 +268,11 @@ export function polyVF(p: Vec3, n: Vec3, poly: Vec3[]): VF {
   return moments(visiblePart(p, n, poly), n);
 }
 
-// 하늘 앞의 면(F, M)이 가린 하늘 빛(코사인 가중 적분, 정확)
-export function skyOf(F: number, M: Vec3) {
+// 하늘 앞의 면(F, M)이 가린 하늘 빛(코사인 가중 적분, 정확, 선형 RGB)
+export function skyOf(F: number, M: Vec3): C3 {
   'worklet';
-  return light.ambient * F + 1.5 * light.skyUp * M.y;
+  const k = light.ambient * F + 1.5 * light.skyUp * M.y;
+  return [SKY_C[0] * k, SKY_C[1] * k, SKY_C[2] * k];
 }
 
 // ---------- 둘레(한 줄의 선반 공간) ----------
@@ -280,7 +296,7 @@ const SKY = -1;
 export function envHit(p: Vec3, w: Vec3, env: Env | null): { t: number; rad: C3; which: number } {
   'worklet';
   let best = Infinity;
-  let rad = grey(skyRadiance(w));
+  let rad = skyRadiance(w);
   let which = SKY;
   if (!env) return { t: best, rad, which };
   if (w.y < -1e-6 && env.floor > -FAR) {
@@ -662,7 +678,7 @@ function sectorVF(P: Vec3[], n: Vec3, s: Sector, total: VF): VF {
 // (깊은 틈처럼 거의 다 가려진 곳에서 서로 다른 대표 점의 차이가 남지 않게)
 function behindOf(p: Vec3, n: Vec3, P: Vec3[], total: VF, env: Env | null, G?: Grid, cols?: EnvCols): C3 {
   'worklet';
-  if (!env) return grey(skyOf(total.F, total.M));
+  if (!env) return skyOf(total.F, total.M);
   let rest = total;
   const sum: C3 = [0, 0, 0];
   for (const s of sectorsOf(p, env)) {
@@ -673,7 +689,7 @@ function behindOf(p: Vec3, n: Vec3, P: Vec3[], total: VF, env: Env | null, G?: G
     rest = subVF(rest, q);
   }
   const sky = skyOf(rest.F, rest.M);
-  return [sum[0] + sky, sum[1] + sky, sum[2] + sky];
+  return [sum[0] + sky[0], sum[1] + sky[1], sum[2] + sky[2]];
 }
 
 // 상자 면 위 사각형(축 k 방향 s 면, 면 평면 좌표 u ∈ [u0, u1], v ∈ [v0, v1])의 꼭짓점
@@ -733,7 +749,7 @@ export function boxLoss(p: Vec3, n: Vec3, b: Box, env: Env | null, G?: Grid, bi 
     }
     const alb = faceAlbedo(b, k, s);
     const nf = { x: a.x * s, y: a.y * s, z: a.z * s };
-    const open = cscale(alb, irradiance(nf));
+    const open = cmul(alb, irradiance(nf));
     const fc = { x: b.c.x + nf.x * h, y: b.c.y + nf.y * h, z: b.c.z + nf.z * h };
     for (const r of rects) {
       const P = visiblePart(p, n, rectOn(b, k, s, r));
@@ -776,7 +792,7 @@ export function envLossCols(p: Vec3, n: Vec3, env: Env | null, G?: Grid): { loss
       const sky = skyOf(vf.F, vf.M);
       const rad = envRad(G, q.which, p, vf.M, q.rad);
       out[q.which][k] = rad;
-      for (let c = 0; c < 3; c++) loss[c] += sky - vf.F * rad[c];
+      for (let c = 0; c < 3; c++) loss[c] += sky[c] - vf.F * rad[c];
     }
   }
   return { loss, cols: out };
@@ -915,7 +931,7 @@ export function traceRadiance(p: Vec3, w: Vec3, env: Env | null, boxes: Box[], G
       if (G) {
         const g = boxGridE(G, i, b, nk, ns, { x: p.x + w.x * t0, y: p.y + w.y * t0, z: p.z + w.z * t0 });
         rad = [alb[0] * g[0], alb[1] * g[1], alb[2] * g[2]];
-      } else rad = cscale(alb, irradiance({ x: na.x * ns, y: na.y * ns, z: na.z * ns }));
+      } else rad = cmul(alb, irradiance({ x: na.x * ns, y: na.y * ns, z: na.z * ns }));
     }
   }
   return rad;
@@ -955,18 +971,22 @@ export function lightWithLoss(p: Vec3, n: Vec3, v: Vec3 | null, env: Env | null,
   const ref = eref ?? EREF.book;
   const ro = rough ?? ROUGH.paper;
   const kb = 1 - (1 - (key ? plankKeyBlocked(p, env) : 0)) * (1 - (kx ?? 0));
-  const open = (m: Vec3) => light.ambient + light.skyUp * m.y + light.diffuse * Math.max(0, m.x * L_UNIT.x + m.y * L_UNIT.y + m.z * L_UNIT.z) * (1 - kb);
+  // 가림 없을 때 받는 빛(선형 RGB): 하늘(방) 몫 + 창빛 몫
+  const open = (m: Vec3): C3 => {
+    const sk = skyE(m.y);
+    const ky = light.diffuse * Math.max(0, m.x * L_UNIT.x + m.y * L_UNIT.y + m.z * L_UNIT.z) * (1 - kb);
+    return [SKY_C[0] * sk + KEY_C[0] * ky, SKY_C[1] * sk + KEY_C[1] * ky, SKY_C[2] * sk + KEY_C[2] * ky];
+  };
   const E0 = open(n);
   const E0f = nf ? open(nf) : E0;
-  const k = E0 / Math.max(E0f, 1e-4);
-  // 하늘 가림은 그 면이 받는 하늘 빛보다 클 수 없다: 아주 좁은 틈에서 해석 값이 넘는 것은 겹친 가리개가 같은 하늘을 두 번 센 오차라 회색이다.
-  // 넘친 만큼을 세 채널에서 똑같이 빼 색(되비친 빛의 채널 차이)은 그대로 둔다(채널마다 자르면 붉거나 노란 검정이 된다)
-  const sky = light.ambient + light.skyUp * (nf ?? n).y;
-  const over = Math.max(0, Math.max(loss[0], loss[1], loss[2]) - sky);
-  const lb = (c: number) => loss[c] - over;
-  const E: C3 = [Math.max(0, E0f - lb(0)) * k, Math.max(0, E0f - lb(1)) * k, Math.max(0, E0f - lb(2)) * k];
+  // 하늘 가림은 그 면이 받는 하늘 빛보다 클 수 없다: 아주 좁은 틈에서 해석 값이 넘는 것은 겹친 가리개가 같은 하늘을 두 번 센 오차라 하늘 색이다.
+  // 넘친 몫(하늘 빛에 대한 비)만큼 하늘 빛을 세 채널에서 똑같이 빼 되비친 빛의 채널 차이는 그대로 둔다(채널마다 자르면 붉거나 노란 검정이 된다)
+  const sky = skyIrradiance(nf ?? n);
+  const over = Math.max(0, (loss[0] - sky[0]) / sky[0], (loss[1] - sky[1]) / sky[1], (loss[2] - sky[2]) / sky[2]);
+  const lb = (c: number) => loss[c] - over * sky[c];
+  const E: C3 = [0, 1, 2].map((c) => (Math.max(0, E0f[c] - lb(c)) * E0[c]) / Math.max(E0f[c], 1e-4)) as C3;
   // 반사광도 둘레가 가린 만큼 가려진다(거친 면은 반사 방향이 넓어 하늘이 보이는 몫 = 확산 몫): 좁은 틈 안은 반사광도 없다
-  const vis = (c: number) => Math.max(0, Math.min(1, (sky - lb(c)) / Math.max(sky, 1e-4)));
+  const vis = (c: number) => Math.max(0, Math.min(1, (sky[c] - lb(c)) / Math.max(sky[c], 1e-4)));
   if (!v) return { r: [E[0] / ref[0], E[1] / ref[1], E[2] / ref[2]], spec: [0, 0, 0] };
   const nv = Math.max(0, n.x * v.x + n.y * v.y + n.z * v.z);
   const ks = envBRDF(nv, ro);
@@ -978,7 +998,7 @@ export function lightWithLoss(p: Vec3, n: Vec3, v: Vec3 | null, env: Env | null,
   const g = CAM.gain;
   return {
     r: [(E[0] * (1 - ks)) / ref[0], (E[1] * (1 - ks)) / ref[1], (E[2] * (1 - ks)) / ref[2]],
-    spec: [((ks * env3[0] * vis(0) + key3) * g) / cam[0], ((ks * env3[1] * vis(1) + key3) * g) / cam[1], ((ks * env3[2] * vis(2) + key3) * g) / cam[2]],
+    spec: [0, 1, 2].map((c) => ((ks * env3[c] * vis(c) + key3 * KEY_C[c]) * g) / cam[c]) as C3,
   };
 }
 
@@ -996,9 +1016,11 @@ export function sceneLight(p: Vec3, n: Vec3, v: Vec3 | null, env: Env | null, bo
 // 이 줄 쪽 경계 점은 판 면에서 줄 안으로 TOUCH 들인 곳
 export type Band = { mid: C3; far: C3 };
 // 가림이 없을 때 받는 빛(판이 창빛 원반을 가린 몫까지)
-function openE(p: Vec3, n: Vec3, env: Env | null) {
+function openE(p: Vec3, n: Vec3, env: Env | null): C3 {
   'worklet';
-  return light.ambient + light.skyUp * n.y + light.diffuse * Math.max(0, dot3(n, L_UNIT)) * (1 - plankKeyBlocked(p, env));
+  const sk = skyE(n.y);
+  const ky = light.diffuse * Math.max(0, dot3(n, L_UNIT)) * (1 - plankKeyBlocked(p, env));
+  return [SKY_C[0] * sk + KEY_C[0] * ky, SKY_C[1] * sk + KEY_C[1] * ky, SKY_C[2] * sk + KEY_C[2] * ky];
 }
 // 책 없는 둘레의 빛 격자(높이로 옮겨도 같다: 판 사이 간격·열린 쪽마다 한 번만 푼다)
 const FREE_GRIDS = new Map<string, C3[]>();
@@ -1017,7 +1039,7 @@ function edgeLight(env: Env, atFloor: boolean): C3 {
   const p = { x: (SHELF_X0 + SHELF_X1) / 2, y: atFloor ? env.floor + TOUCH : env.ceil - TOUCH, z: SHELF_DEPTH };
   const e = openE(p, n, env);
   const loss = envLoss(p, n, env, freeGrid(env));
-  return [e - loss[0], e - loss[1], e - loss[2]];
+  return [e[0] - loss[0], e[1] - loss[1], e[2] - loss[2]];
 }
 // 이 줄(env)의 아래 판 띠(up = false, other: 아래 줄 둘레) 또는 위 판 띠(up = true, other: 위 줄 둘레)
 export function bandOf(env: Env, other: Env, up: boolean): Band {
@@ -1039,7 +1061,7 @@ export function bakeLoss(p: Vec3, n: Vec3, env: Env | null, boxes: Box[], band: 
       const lq = skyLossAt(q, n, env, boxes, G, self);
       const b = (lo ? band[0] : band[1])!;
       const e = openE(p, n, env);
-      return [0, 1, 2].map((c) => e - (t <= 0.5 ? (eq - lq[c]) * (1 - 2 * t) + b.mid[c] * 2 * t : b.mid[c] * (2 - 2 * t) + b.far[c] * (2 * t - 1))) as C3;
+      return [0, 1, 2].map((c) => e[c] - (t <= 0.5 ? (eq[c] - lq[c]) * (1 - 2 * t) + b.mid[c] * 2 * t : b.mid[c] * (2 - 2 * t) + b.far[c] * (2 * t - 1))) as C3;
     }
   }
   return skyLossAt(p, n, env, boxes, G, self);
@@ -1048,7 +1070,7 @@ export function bakeLoss(p: Vec3, n: Vec3, env: Env | null, boxes: Box[], band: 
 // 받는 면의 상대 어둠(0이면 그대로, 휘도): 가림 없을 때보다 빛이 빠진 비율
 export function darkening(p: Vec3, n: Vec3, env: Env | null, boxes: Box[], key = true) {
   'worklet';
-  const e = irradiance(n);
+  const e = lum(irradiance(n));
   if (e <= 1e-6) return 0;
   return 1 - lum(sceneLight(p, n, null, env, boxes, key, grey(1)).r) / e;
 }
@@ -1118,8 +1140,8 @@ function nodeE(nd: GridNode, env: Env, boxes: Box[], G?: Grid): C3 {
     const l = boxLoss(P, n, boxes[i], env, G, i, cols);
     for (let c = 0; c < 3; c++) loss[c] += l[c];
   }
-  const E0 = light.ambient + light.skyUp * n.y + key;
-  for (let c = 0; c < 3; c++) E[c] = Math.max(0, E0 - loss[c]);
+  const sk = skyE(n.y);
+  for (let c = 0; c < 3; c++) E[c] = Math.max(0, SKY_C[c] * sk + KEY_C[c] * key - loss[c]);
   return E;
 }
 // 격자점(빛 격자 칸 순서): 상자마다 면 f = 축 k + 3·(s > 0)의 N × N, 그 뒤 둘레 면(벽, 판 윗면, 위 판 아랫면)의 nx × ENV_NY.
@@ -1241,11 +1263,10 @@ function refNv(p: Vec3, n: Vec3) {
 const REF_BOOK_P = { x: REF_X, y: REF_BOOK_H / 2, z: 0 };
 const REF_FRONT = { x: 0, y: 0, z: -1 };
 function anchorLight(p: Vec3, n: Vec3, G: Grid, rough: number): C3 {
-  const kb = plankKeyBlocked(p, REF_ENV);
-  const E0 = light.ambient + light.skyUp * n.y + light.diffuse * Math.max(0, n.x * L_UNIT.x + n.y * L_UNIT.y + n.z * L_UNIT.z) * (1 - kb);
+  const E0 = openE(p, n, REF_ENV);
   const loss = envLoss(p, n, REF_ENV, G);
   const ks = envBRDF(refNv(p, n), rough);
-  return [(E0 - loss[0]) * (1 - ks), (E0 - loss[1]) * (1 - ks), (E0 - loss[2]) * (1 - ks)];
+  return [(E0[0] - loss[0]) * (1 - ks), (E0[1] - loss[1]) * (1 - ks), (E0[2] - loss[2]) * (1 - ks)];
 }
 // 장정 재질의 대표 자리 빛: 재질이 다르면 대표 자리에서 반사되는 몫이 달라 확산 몫이 다르다(무광 종이 EREF.book 기준)
 const REF_NV_BOOK = refNv(REF_BOOK_P, REF_FRONT);

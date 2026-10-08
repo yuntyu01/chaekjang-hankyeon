@@ -3,7 +3,7 @@
  */
 // 빛 셰이더(SkSL)가 컴파일되고, 같은 점에서 JS 빛 모델(domain/light-model)과 같은 값을 내는지(CanvasKit으로 실제로 그려 읽는다).
 import type { Book3, Vec3 } from '@/domain/book3';
-import { bakeLoss, bandOf, boxOf, DESIGN, ENV_NX, ENV_NY, EREF, FAR, GRID_N, GRID_PASSES, lightWithLoss, ROUGH, TOUCH, linearOf, packBoxes, skyLossAt, solveGrid, toEye, toneDodge, toneMul, withCovers, type Band, type BoxBuf, type C3, type Env } from '@/domain/light-model';
+import { bakeLoss, bandOf, boxOf, DESIGN, ENV_NX, ENV_NY, EREF, FAR, GRID_N, GRID_PASSES, KEY_C, KEY_DIRS, lightWithLoss, skyIrradiance, ROUGH, TOUCH, linearOf, packBoxes, skyLossAt, solveGrid, toEye, toneDodge, toneMul, withCovers, type Band, type BoxBuf, type C3, type Env } from '@/domain/light-model';
 import { MAT_UNIFORMS, matSample, type MatUniforms } from '@/domain/surface-pattern';
 import { SHELF_DEPTH, SHELF_THICK } from '@/domain/geometry';
 import { bakeSource, bookSource, GRID_SCALE, gridSource, litSource, lossDecode, lossEncode, lossStep, LOSS_RN, LOSS_RP, planeFrame } from '../scene-light-sksl';
@@ -71,10 +71,8 @@ function draw(src: string, values: Record<string, number | number[]>, child: boo
   return [px[0] / 255, px[1] / 255, px[2] / 255];
 }
 
-// 면(법선 n)이 받는 하늘 빛(그림 값 ↔ 가림의 기준)
-const skyOf = (n: Vec3) => light.ambient + light.skyUp * n.y;
-// 셰이더 가림과 JS 가림의 차이가 그 자리 그림 값 한 단계(디더 반 단계 + 반올림 반 단계) 안
-const withinStep = (gpu: C3, js: C3, n: Vec3, k = 1) => gpu.forEach((v, c) => expect(Math.abs(v - js[c])).toBeLessThan(k * lossStep(js[c], skyOf(n))));
+// 셰이더 가림과 JS 가림의 차이가 그 자리 그림 값 한 단계(디더 반 단계 + 반올림 반 단계) 안. 그림 값의 기준은 그 면이 받는 하늘 빛(채널마다)
+const withinStep = (gpu: C3, js: C3, n: Vec3, k = 1) => gpu.forEach((v, c) => expect(Math.abs(v - js[c])).toBeLessThan(k * lossStep(js[c], skyIrradiance(n)[c])));
 // 굽기 셰이더로 점 P(법선 n)의 하늘 가림을 굽고 읽는다: 1×1 그림, 화소 가운데(0.5, 0.5)가 P
 const NO_BAND = { bandLo: [0, 0, 0, 0], bandLoFar: [0, 0, 0], bandHi: [0, 0, 0, 0], bandHiFar: [0, 0, 0] };
 // grid: 빛 격자 그림(CanvasKit, 없으면 가리개는 가림 없는 받는 빛), self: 받는 점의 책
@@ -93,7 +91,7 @@ function shaderLoss(P: Vec3, n: Vec3, env: Env | null, bx: BoxBuf, band: Record<
     gridOn: grid ? 1 : 0,
     gridNx: bx.list.length ? ENV_NX : 1,
   }, grid ? linear(grid) : black());
-  return g.map((v) => lossDecode(v, skyOf(n))) as C3;
+  return g.map((v, c) => lossDecode(v, skyIrradiance(n)[c])) as C3;
 }
 
 // 그리는 셰이더(둘레 하늘 가림을 그 자리에서, liveEnv)의 곱하기·닷지 값: 평평한 면 P(법선 n), 눈 cam4.
@@ -226,11 +224,14 @@ describe('빛 격자 셰이더 = JS', () => {
     for (let w = 0; w < 3; w++) for (let b = 0; b < ENV_NY; b++) for (let a = 0; a < G.nx; a++) at(a, list.length * N + w * ENV_NY + b, G.e[list.length * 6 * N * N + w * G.nx * ENV_NY + b * G.nx + a]);
     return worst;
   }
-  it('격자 풀기 첫 번(가리개는 가림 없는 받는 빛): 칸마다 8비트 한 단계 남짓 안', () => {
-    expect(compare(row, 1)).toBeLessThan((1.5 * GRID_SCALE) / 255);
+  // 격자점 창빛은 원반 위 방향(KEY_DIRS)마다 책에 막히는지(예·아니오)를 센다: 책 모서리를 스치는 방향 하나는 GPU(float32)와 JS(float64)가
+  // 다르게 볼 수 있어 그 한 방향 몫(창빛 / 방향 수)까지는 같은 것으로 본다
+  const oneDir = (light.diffuse * Math.max(...KEY_C)) / KEY_DIRS.length;
+  it('격자 풀기 첫 번(가리개는 가림 없는 받는 빛): 칸마다 8비트 한 단계 남짓 안(원반 한 방향 몫 더)', () => {
+    expect(compare(row, 1)).toBeLessThan((1.5 * GRID_SCALE) / 255 + oneDir);
   });
-  it('되풀이(지난 격자를 읽는다): 8비트로 반올림한 격자를 다시 읽어도 몇 단계 안', () => {
-    expect(compare(row, 2)).toBeLessThan((3 * GRID_SCALE) / 255);
+  it('되풀이(지난 격자를 읽는다): 8비트로 반올림한 격자를 다시 읽어도 몇 단계 안(원반 한 방향 몫 더)', () => {
+    expect(compare(row, 2)).toBeLessThan((3 * GRID_SCALE) / 255 + oneDir);
   });
   it.each([
     ['책 사이 틈 뒤 벽', { x: 99, y: 60, z: SHELF_DEPTH }, { x: 0, y: 0, z: -1 }, -1],
