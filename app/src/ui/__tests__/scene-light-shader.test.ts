@@ -153,11 +153,12 @@ describe('하늘 가림 그림 값(양쪽 제곱근 곡선)', () => {
     expect(lossEncode(sky + LOSS_RN, sky)).toBeCloseTo(0, 9);
     expect(lossEncode(sky - LOSS_RP, sky)).toBeCloseTo(1, 9);
   });
-  it('받는 빛이 작을수록 단계가 촘촘하고, 흔한 범위(남은 하늘 0 ~ 하늘)에서 가림을 그대로 담을 때(0.0075)보다 촘촘하다', () => {
+  it('받는 빛이 작을수록 단계가 촘촘하고, 흔한 범위(남은 하늘 0 ~ 하늘)에서 같은 범위를 고르게 담을 때보다 촘촘하다', () => {
     const steps = [0.005, 0.02, 0.1, 0.3].map((R) => lossStep(sky - R, sky));
+    const linear = (LOSS_RP + LOSS_RN) / 255;
     for (let i = 1; i < steps.length; i++) expect(steps[i]).toBeGreaterThan(steps[i - 1]);
-    for (const st of steps) expect(st).toBeLessThan(0.0075);
-    expect(steps[1]).toBeLessThan(0.0025);
+    for (const st of steps) expect(st).toBeLessThan(linear);
+    expect(steps[1]).toBeLessThan(linear / 3);
   });
 });
 

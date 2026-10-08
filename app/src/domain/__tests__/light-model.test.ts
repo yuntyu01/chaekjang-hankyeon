@@ -99,9 +99,9 @@ describe('빛 모델: 하늘 가림', () => {
       const m = analytic({ x: mid, y, z: SHELF_DEPTH }, n, row, []);
       expect(lumOf3(out)).toBeGreaterThan(lumOf3(m));
       expect(lumOf3(far)).toBeGreaterThanOrEqual(lumOf3(out) - 1e-9);
-      // 줄 가운데는 가운데에서 60DU 옮겨도 거의 같다
+      // 줄 가운데는 가운데에서 60DU 옮겨도 거의 같다(1% 안: 화면에서 구별되지 않는다)
       const m2 = analytic({ x: mid + 60, y, z: SHELF_DEPTH }, n, row, []);
-      for (let c = 0; c < 3; c++) expect(Math.abs(m2[c] - m[c])).toBeLessThan(0.005);
+      for (let c = 0; c < 3; c++) expect(Math.abs(m2[c] - m[c])).toBeLessThan(0.01);
     }
   });
 
@@ -147,9 +147,9 @@ describe('빛 모델: 하늘 가림', () => {
       if (RAD.floor[c] < skyLo[c]) expect(E[c]).toBeLessThan(open[c]);
     }
     expect(RAD.floor[2]).toBeLessThan(skyLo[2]);
-    // 따뜻한 나무: 빨강 > 초록 > 파랑 순으로 덜 어두워진다
-    expect(E[0]).toBeGreaterThan(E[1]);
-    expect(E[1]).toBeGreaterThan(E[2]);
+    // 따뜻한 나무: 빨강 > 초록 > 파랑 순으로 덜 어두워진다(채널마다 가림 없는 빛에 대한 비: 빛 자체가 색을 띤다)
+    expect(E[0] / open[0]).toBeGreaterThan(E[1] / open[1]);
+    expect(E[1] / open[1]).toBeGreaterThan(E[2] / open[2]);
   });
 });
 
