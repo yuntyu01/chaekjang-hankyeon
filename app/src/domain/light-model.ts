@@ -15,7 +15,7 @@
 // 4) 반사광: 유전체의 프레넬 반사를 거칠기까지 넣어(환경 반사 근사 EnvBRDF, GGX 창빛 하이라이트). 확산 몫은 반사된 만큼 줄어든다.
 // 워클릿은 만들어질 때 쓰는 함수를 붙잡으므로, 쓰이는 함수를 먼저 정의한다.
 import palette from '@/ui/art/reference-bindings.generated.json';
-import { camera, F0, light, materials, surfaces, type SurfaceMaterial } from '@/ui/lighting';
+import { ALBEDO_MAX, camera, F0, light, materials, surfaces, type SurfaceMaterial } from '@/ui/lighting';
 
 import { corners, type Book3 } from './book3';
 import { rigOf } from './book-parts';
@@ -1358,8 +1358,8 @@ function albedoOf(d: C3, ref: C3, s0: C3, g: number): C3 {
   return [0, 1, 2].map((c) => Math.max(0, ((toneInv(d[c]) - g * s0[c]) * cam[c]) / (ref[c] * g))) as C3;
 }
 // 노출 기준(이득 gain): 모든 재질 색(벽·판·속지, 시안 장정 색 × 장정 재질)에서 반사율이 그 색(화면 색)을 넘지 않고
-// 결의 가장 밝은 점(grainPeak)까지 1을 넘지 않는 가장 작은 이득. 어깨가 밝은 쪽을 누르므로 이득이 1이면 밝은 색은 반사율이 1을 넘는다.
-// 반사율 ≤ d ⇔ g ≥ toneInv(d)·cam / (ref·d + s0·cam), 반사율 × 결 최대 f ≤ 1 ⇔ g ≥ toneInv(d)·cam·f / (ref + f·s0·cam)
+// 결의 가장 밝은 점(grainPeak)까지 ALBEDO_MAX(실제 가장 흰 재질의 반사율)를 넘지 않는 가장 작은 이득. 어깨가 밝은 쪽을 누르므로 이득이 1이면 밝은 색은 반사율이 1을 넘는다.
+// 반사율 ≤ d ⇔ g ≥ toneInv(d)·cam / (ref·d + s0·cam), 반사율 × 결 최대 f ≤ ALBEDO_MAX(실제 가장 흰 재질) ⇔ g ≥ toneInv(d)·cam·f / (ref·ALBEDO_MAX + f·s0·cam)
 const BOOK_MATS = ['paper', 'cloth', 'coated'] as const;
 function setAlbedo() {
   const cam = EREF.wall;
@@ -1371,7 +1371,14 @@ function setAlbedo() {
   ];
   for (const hex of Object.keys(palette)) for (const m of BOOK_MATS) all.push([linearOf(hex), bookEref(m), SPEC0.book[m], peak(m)]);
   CAM.gain = Math.max(
-    ...all.flatMap(([d, ref, s0, f]) => [0, 1, 2].map((c) => Math.max((toneInv(d[c]) * cam[c]) / (ref[c] * d[c] + s0[c] * cam[c]), (toneInv(d[c]) * cam[c] * f) / (ref[c] + f * s0[c] * cam[c])))),
+    ...all.flatMap(([d, ref, s0, f]) =>
+      [0, 1, 2].map((c) =>
+        Math.max(
+          (toneInv(d[c]) * cam[c]) / (ref[c] * d[c] + s0[c] * cam[c]),
+          (toneInv(d[c]) * cam[c] * f) / (ref[c] * ALBEDO_MAX + f * s0[c] * cam[c]),
+        ),
+      ),
+    ),
   );
   const g = CAM.gain;
   ALBEDO.wall = albedoOf(DESIGN.wall, EREF.wall, SPEC0.wall, g);
@@ -1410,7 +1417,7 @@ export function runCalibration(log?: (s: string) => void): Calibration {
 // 맞추기 입력(이 값이 바뀌면 미리 계산한 값을 다시 만든다). method: 맞추기 방법을 바꾸면 올린다
 const CALIBRATION_METHOD = 4;
 export function calibrationInputs() {
-  return JSON.stringify({ method: CALIBRATION_METHOD, light, F0, materials, surfaces, palette: Object.keys(palette), TONE, REF_SPACE, REF_BOOK_H, SHELF_DEPTH, SHELF_FRONT, SHELF_THICK, SHELF_X0, SHELF_X1, GRID_N, ENV_NY, ENV_COLS, GRID_PASSES, TOUCH, eye: REF_EYE });
+  return JSON.stringify({ method: CALIBRATION_METHOD, light, F0, ALBEDO_MAX, materials, surfaces, palette: Object.keys(palette), TONE, REF_SPACE, REF_BOOK_H, SHELF_DEPTH, SHELF_FRONT, SHELF_THICK, SHELF_X0, SHELF_X1, GRID_N, ENV_NY, ENV_COLS, GRID_PASSES, TOUCH, eye: REF_EYE });
 }
 export function applyCalibration(c: Calibration) {
   CAM.gain = c.gain;

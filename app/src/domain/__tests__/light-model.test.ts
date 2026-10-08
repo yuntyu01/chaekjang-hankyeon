@@ -4,7 +4,7 @@ import type { Book3, Vec3 } from '../book3';
 import { ALBEDO, diskBlocked, ggxKey, KEY_C, lum, RAD, ROUGH, skyIrradiance, SREF, bookAlbedo, bookEref, boxOf, tone, toneInv, toneTarget, TONE, darkening, DESIGN, EREF, envBRDF, faceAlbedo, lightWithLoss, FAR, irradiance, keyBlocked, L_UNIT, linearOf, plankKeyBlocked, polyVF, sceneLight, skyLossAt, skyRadiance, solveGrid, traceRadiance, withCovers, type Box, type C3, type Env, type Grid } from '../light-model';
 import { SHELF_DEPTH, SHELF_FRONT, SHELF_THICK, SHELF_X0, SHELF_X1 } from '../geometry';
 import palette from '@/ui/art/reference-bindings.generated.json';
-import { light } from '@/ui/lighting';
+import { ALBEDO_MAX, light } from '@/ui/lighting';
 import { camAt, VIEW_PITCH_MIN } from '../camera';
 import { grainPeak, MAT_UNIFORMS } from '../surface-pattern';
 
@@ -292,7 +292,7 @@ describe('카메라 톤 곡선', () => {
 });
 
 describe('재질 반사율 맞추기(역렌더링)', () => {
-  it('노출 기준: 반사율은 모두(시안 장정 색 × 장정 재질 포함) 그 화면 색 이하이고 결의 가장 밝은 점까지 1 이하, 이득은 그중 가장 작은 값', () => {
+  it('노출 기준: 반사율은 모두(시안 장정 색 × 장정 재질 포함) 그 화면 색 이하이고 결의 가장 밝은 점까지 실제 흰 재질 반사율(ALBEDO_MAX) 이하, 이득은 그중 가장 작은 값', () => {
     const peak = (m: keyof typeof MAT_UNIFORMS) => grainPeak(MAT_UNIFORMS[m]);
     const all: [C3, C3, number][] = [
       [ALBEDO.wall, DESIGN.wall, peak('paint')],
@@ -304,8 +304,8 @@ describe('재질 반사율 맞추기(역렌더링)', () => {
     for (const [a, d, f] of all)
       a.forEach((v, c) => {
         expect(v).toBeLessThanOrEqual(d[c] + 1e-9);
-        expect(v * f).toBeLessThanOrEqual(1 + 1e-9);
-        tight = Math.max(tight, v / d[c], v * f);
+        expect(v * f).toBeLessThanOrEqual(ALBEDO_MAX + 1e-9);
+        tight = Math.max(tight, v / d[c], (v * f) / ALBEDO_MAX);
       });
     // 이득을 조금이라도 낮추면 어느 하나가 넘는다
     expect(tight).toBeCloseTo(1, 9);
