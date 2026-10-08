@@ -9,15 +9,14 @@
 //   다른 줄로 옮기는 경로는 도착 줄 캔버스에 책이 올라간 뒤에 움직이기 시작한다(planner: 멈춘 사이에 경로가 지나가 버리지 않게).
 // 자세만 바뀔 때는 캔버스 안 React가 다시 돌지 않는다(줄 구조가 바뀔 때만). 줄마다 RN 쪽에는 경로 계획·접근성 칸·안내·손잡이만 둔다.
 // 구성 비교(2026-10-01 측정): 세 줄을 캔버스 하나에 그리면 시점 전환은 비슷하고 끌기 프레임이 약 2배 느렸다(끄는 줄만 바뀌어도 전부 다시 그림).
-import { Canvas, Group, Path, Rect, Skia, type SkPath } from '@shopify/react-native-skia';
+import { Canvas, Group, Path, Rect, Skia } from '@shopify/react-native-skia';
 import { memo, useLayoutEffect, useMemo } from 'react';
 import { PixelRatio, StyleSheet, Text, View } from 'react-native';
 import { GestureDetector, type PanGesture } from 'react-native-gesture-handler';
 import Animated, { ReduceMotion, useAnimatedReaction, useAnimatedStyle, useDerivedValue, useSharedValue, withDelay, withTiming, type SharedValue } from 'react-native-reanimated';
 import { scheduleOnUI } from 'react-native-worklets';
 
-import { corners, fromPlaced, toWorld, type Book3 } from '@/domain/book3';
-import { hull } from '@/domain/box';
+import { fromPlaced, toWorld, type Book3 } from '@/domain/book3';
 import { BASE_CAM, camAt, kyOf, toPx, VIEW_PITCH_MAX, VIEW_PITCH_MIN, type Affine, type Cam } from '@/domain/camera';
 import { SHELF, SHELF_DEPTH, SHELF_FRONT, SHELF_THICK } from '@/domain/geometry';
 import { FAR, NO_BOXES, type Env } from '@/domain/light-model';
@@ -35,9 +34,9 @@ import { colors, fonts } from '@/ui/theme';
 
 import { rowAffine, type RowGeom, type ShelfMetrics } from './metrics';
 import { useRowPlanner } from './planner';
-import { bodyOf, frontOccluders, liveSV, locate, lowered, outsideDist, plankBody, presentSV, sceneOrder, TRANSIT_ROW, transitLead, transitVisible, warmSV, type Motion, type SceneGeo, type SceneMotion } from './scene';
+import { bodyOf, frontOccluders, liveSV, locate, lowered, outsideDist, presentSV, sceneOrder, TRANSIT_ROW, transitLead, transitVisible, warmSV, type Motion, type SceneGeo, type SceneMotion } from './scene';
 import { GlowOf, makeStruct, occludersOf, RowBooks, structKeyOf, useFloorKey, useRestPoses, useRowBoxes, useShadePoses, useWallKey, Z_WALL, type CamSV, type Ghost, type RowStruct } from './ShelfMotion';
-import { FRONT_AREA, FRONT_KEY, rowEnv, SHELF_CAST_EXTENT, ShelfBoard, ShelfWall, TOP_AREA, TOP_KEY, UNDER_ENV, wallArea } from './ShelfPlank';
+import { FRONT_AREA, FRONT_KEY, plankOutlinePath, rowEnv, SHELF_CAST_EXTENT, ShelfBoard, ShelfWall, TOP_AREA, TOP_KEY, UNDER_ENV, wallArea } from './ShelfPlank';
 
 // 줄 아틀라스에서 벽 띠의 자리
 const WALL_KEY = 'wall';
@@ -181,9 +180,10 @@ const RowLayers = memo(function RowLayers({ r, st, mo, order, px, upx, books, ca
   const floorKey = useFloorKey(r.shelfId, poses, st.ids, px);
   return (
     <>
-      {/* 이 줄 벽: 판 아랫면 높이(판 양 끝 너머로 보인다, 아래 줄이 있으면 그 아래로 판 두께만큼 더: 아래 줄 캔버스가 덮는다)부터
-          위 판 두께 가운데까지(그 위는 위 줄 캔버스), 맨 윗줄은 캔버스 위 끝까지 */}
-      {SHOW.shelf ? <ShelfWall cam={cam} px={px} y0={-SHELF_THICK} y1={wallY1} top={top ? wallY1 : space + SHELF_THICK / 2} bottom={last ? -SHELF_THICK : -2 * SHELF_THICK} env={env} atlas={atlas} akey={WALL_KEY} zIndex={Z_WALL} keyShadow={wallKey} /> : null}
+      {/* 이 줄 벽: 판 아랫면 높이(판 양 끝 너머로 보인다)부터 위 판 두께 가운데까지(그 위는 위 줄 캔버스), 맨 윗줄은 캔버스 위 끝까지.
+          판 아랫면 아래는 아래 줄 공간이라 아래 줄 캔버스가 그 둘레로 칠한다(이 줄 둘레로는 판 밑을 계산할 수 없다. 판 끝 둥근 모서리로 드러난다).
+          아래 줄 벽이 이 판 두께 가운데까지 올라와 두 캔버스가 판 두께 절반 겹친다(줄마다 카메라가 달라 조금 어긋나도 틈이 없다) */}
+      {SHOW.shelf ? <ShelfWall cam={cam} px={px} y0={-SHELF_THICK} y1={wallY1} top={top ? wallY1 : space + SHELF_THICK / 2} bottom={-SHELF_THICK} env={env} atlas={atlas} akey={WALL_KEY} zIndex={Z_WALL} keyShadow={wallKey} /> : null}
       {SHOW.shelf && last ? <ShelfWall cam={cam} px={px} y0={-SHELF_THICK - SHELF_CAST_EXTENT} y1={-SHELF_THICK} env={UNDER_ENV} atlas={atlas} akey={UNDER_KEY} zIndex={Z_WALL} /> : null}
       {SHOW.shelfBoard ? <ShelfBoard px={px} cam={cam} zIndex={plankZ} env={env} atlas={atlas} keyShadow={floorKey} /> : null}
       {RENDER.books ? <RowBooks m={mo} shelfId={r.shelfId} st={st} books={books} glowId={r.glowId} dragId={r.dragId} cam={cam} px={px} space={space} shared={shared} order={order} poses={poses} env={envSV} atlas={atlas} boxes={boxes} debug={debug} /> : null}
@@ -196,13 +196,6 @@ const EMPTY_CLIP = Skia.PathBuilder.Make().detach();
 // 줄 칸 위로 넓힐 높이: 8°에서 벽 윗끝(윗선반 판 뒤)까지. 이 부분은 윗선반 판 윤곽으로 잘려 판이 보인다.
 const HEAD_DU = SHELF_FRONT * BASE_CAM.ky + SHELF_DEPTH * kyOf(VIEW_PITCH_MAX) + 6;
 
-function hullPath(pts: { x: number; y: number }[]): SkPath {
-  'worklet';
-  const b = Skia.PathBuilder.Make();
-  pts.forEach((q, i) => (i ? b.lineTo(q.x, q.y) : b.moveTo(q.x, q.y)));
-  b.close();
-  return b.detach();
-}
 
 const RowCanvas = memo(
   function RowCanvas({ r, upper, mo, books, m, width, cam, shared, debug, last = false }: { r: SceneRowProps; upper: RowGeom | null; mo: Motion; books: Record<string, Book>; m: ShelfMetrics; width: number; cam: CamSV; shared: Shared; debug: boolean; last?: boolean }) {
@@ -220,9 +213,8 @@ const RowCanvas = memo(
     // 이 줄의 그리는 순서: 이 줄이 그리는 책 + 이 줄 판
     const space = r.row.space;
     const order = useDerivedValue(() => sceneOrder([{ shelfId, m: mo }], { rows: [{ shelfId, baseline: 0, dy: 0, space }], s, originX: 0 }, cam.value, true));
-    const upperId = upper?.shelfId ?? '';
-    // 윗선반 판의 화면 윤곽(이 캔버스 px): 이 줄의 모든 그림은 이 밖에만
-    const clip = useDerivedValue(() => (upx ? hullPath(hull(corners(plankBody(upperId, 0)).map((c) => toPx(cam.value, upx, c)))) : EMPTY_CLIP));
+    // 윗선반 판의 화면 윤곽(이 캔버스 px, 판 그리기와 같은 둥근 윤곽): 이 줄의 모든 그림은 이 밖에만
+    const clip = useDerivedValue(() => (upx ? plankOutlinePath(cam.value, upx) : EMPTY_CLIP));
     // 측정 번들 시간표: 이 줄 캔버스가 다시 그려지는 때(렌더 → 캔버스 기록이 끝난 커밋)
     if (TL.on) tl(`row-render ${shelfId} n=${st.ids.length}`);
     useLayoutEffect(() => {

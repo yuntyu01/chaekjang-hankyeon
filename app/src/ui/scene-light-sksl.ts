@@ -177,12 +177,23 @@ function header() {
     }
     if (env.y > -FARV) {
       float h = p.y - env.y;
-      k += h <= 0.0 ? 0.0 : diskBlocked((LELEV + atan(h, zf)) / LRAD, v0, v1);
+      // 판 끝 너머 판 두께 높이는 판 쪽 방향이 판 끝면에 막힌다(light-model keyBlockedBelow)
+      bool beyond = p.x < X0 || p.x > X1;
+      k += h <= 0.0 ? (beyond && h > -THICK ? diskBlocked(-2.0, v0, v1) : 0.0) : diskBlocked((LELEV + atan(h, zf)) / LRAD, v0, v1);
     }
     return min(1.0, k);
   }
   // 가림이 없을 때 받는 빛(light-model openE)
   float3 openE(float3 p, float3 n) { return skyIrr(n) + KEYC * (DIFF * max(0.0, dot(n, LU)) * (1.0 - plankKeyOf(p))); }
+  // 판 속 벽 점(판 두께 높이, 판 범위 안)은 판에 가려 보이지 않는다. 판 끝 둥근 모서리·안티에일리어싱으로 드러나는 화소는 그 시선이 실제로
+  // 닿는 판 끝 바로 너머 벽으로 본다
+  float3 wallOutside(float3 P, float3 n) {
+    if (env.x < 0.5 || n.z > -0.5 || P.z < DEPTH - 1e-3 || P.x <= X0 || P.x >= X1) return P;
+    bool inF = env.y > -FARV && P.y < env.y && P.y > env.y - THICK;
+    bool inC = env.z < FARV && P.y > env.z && P.y < env.z + THICK;
+    if (!inF && !inC) return P;
+    return float3(P.x - X0 < X1 - P.x ? X0 - 0.01 : X1 + 0.01, P.y, P.z);
+  }
   // 점 p에서 방향 w로 처음 보이는 둘레 면(판 윗면, 위 판 아랫면, 그 사이 벽)의 거리와 밝기 RGB, 없으면 하늘(light-model envHit).
   // 판은 그린 범위(X0 ~ X1)에서 끝나고 판 끝 너머는 어느 높이든 벽이다
   float4 envHit(float3 p, float3 w) {
@@ -682,7 +693,7 @@ ${gridCode()}
 ${envCode(true)}
 ${boxCode()}
   half4 main(float2 p) {
-    float3 P = O + p.x * Ux + p.y * Vy;
+    float3 P = wallOutside(O + p.x * Ux + p.y * Vy, tN);
     // 둘레 먼저(구간 밝기를 채운다), 그다음 책 상자
     float3 L = envLoss(P, tN);
     L += boxesLoss(P, tN, selfIdx, -1.0, -1.0);
@@ -1039,7 +1050,7 @@ ${materialCode()}
 ${shadeCode(mode)}
   half4 main(float2 p) {
     float w = dot(Hw, float3(p, 1.0));
-    float3 P = (O + p.x * Ux + p.y * Vy) / w;
+    float3 P = wallOutside((O + p.x * Ux + p.y * Vy) / w, tN);
     // 화소 한 칸이 평면에서 덮는 길이(사상의 미분): 재질 무늬를 화소 크기로 거른다
     float3 JX = (Ux - P * Hw.x) / w;
     float3 JY = (Vy - P * Hw.y) / w;

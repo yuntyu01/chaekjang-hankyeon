@@ -128,6 +128,40 @@ function insetConvex(pts: Point[], r: number): Point[] {
 // (시안 책등 위 모서리 약 2.6~4.3DU 둥글기가 1~2px로만 보였다). 이렇게 하면 그 짧은 변들을 한 번에 둥글린다.
 // 윤곽이 너무 얇아(폭 < 2r) 줄인 모양이 없어지면 반지름을 줄여 다시 하고, 그래도 안 되면 껍질 그대로.
 // Shared by the book and shelf silhouettes; never grows beyond the original hull.
+// 볼록 다각형 poly를 볼록 다각형 clip 안쪽만 남긴다(서덜랜드–호지먼). 경로 자르기(clip)는 안티에일리어싱이 없어 계단이 되므로
+// 둥근 윤곽 안 면을 다각형으로 미리 잘라 안티에일리어싱되는 경로로 칠할 때
+export function clipConvexBy(poly: Point[], clip: Point[]): Point[] {
+  'worklet';
+  const m = clip.length;
+  if (m < 3) return poly;
+  let cx = 0;
+  let cy = 0;
+  for (const p of clip) {
+    cx += p.x / m;
+    cy += p.y / m;
+  }
+  let out = poly;
+  for (let i = 0; i < m && out.length >= 3; i++) {
+    const a = clip[i];
+    const b = clip[(i + 1) % m];
+    const side = (p: Point) => (b.x - a.x) * (p.y - a.y) - (b.y - a.y) * (p.x - a.x);
+    const sc = side({ x: cx, y: cy }) >= 0 ? 1 : -1;
+    const inp = out;
+    out = [];
+    for (let j = 0; j < inp.length; j++) {
+      const P = inp[j];
+      const Q = inp[(j + 1) % inp.length];
+      const sp = side(P) * sc;
+      const sq = side(Q) * sc;
+      if (sp >= 0) out.push(P);
+      if (sp >= 0 !== sq >= 0) {
+        const t = sp / (sp - sq);
+        out.push({ x: P.x + (Q.x - P.x) * t, y: P.y + (Q.y - P.y) * t });
+      }
+    }
+  }
+  return out;
+}
 export function roundedPolygon(pts: Point[], radius: number): Point[] {
   'worklet';
   let r = radius;

@@ -918,10 +918,11 @@ export function keyBlocked(d: number, zf: number, v0?: number, v1?: number) {
   const u0 = d <= 0 ? -2 : (Math.atan2(d, Math.max(1e-3, zf)) - L_ELEV) / light.radius;
   return diskBlocked(u0, v0 ?? -2, v1 ?? 2);
 }
-// 아래 판(점보다 h 아래)이 원반의 수평선 아래쪽을 가리는 몫. 판 앞면·판 아래(h ≤ 0)는 그 판의 그늘이 아니다
-export function keyBlockedBelow(h: number, zf: number, v0?: number, v1?: number) {
+// 아래 판(점보다 h 아래)이 원반의 수평선 아래쪽을 가리는 몫. 판 앞면·판 아래(h ≤ 0, 판 범위 안)는 그 판의 그늘이 아니다.
+// 판 끝 너머 판 두께 높이(−SHELF_THICK < h ≤ 0, beyond)의 점은 판 쪽으로 가는 방향(그 가로 범위)이 판 끝면에 막힌다(위 판 d ≤ 0과 같은 규칙)
+export function keyBlockedBelow(h: number, zf: number, v0?: number, v1?: number, beyond?: boolean) {
   'worklet';
-  if (h <= 0) return 0;
+  if (h <= 0) return beyond && h > -SHELF_THICK ? diskBlocked(-2, v0 ?? -2, v1 ?? 2) : 0;
   return diskBlocked((L_ELEV + Math.atan2(h, Math.max(1e-3, zf))) / light.radius, v0 ?? -2, v1 ?? 2);
 }
 // 둘레의 판이 점 p에서 창빛 원반을 가리는 몫: 위 판 + 아래 판(가로는 판 범위)
@@ -933,7 +934,7 @@ export function plankKeyBlocked(p: Vec3, env: Env | null) {
   const v1 = (Math.atan2(SHELF_X1 - p.x, zf) - L_AZ) / light.radius;
   let k = 0;
   if (env.ceil < FAR) k += keyBlocked(env.ceil - p.y, zf, v0, v1);
-  if (env.floor > -FAR) k += keyBlockedBelow(p.y - env.floor, zf, v0, v1);
+  if (env.floor > -FAR) k += keyBlockedBelow(p.y - env.floor, zf, v0, v1, p.x < SHELF_X0 || p.x > SHELF_X1);
   return Math.min(1, k);
 }
 

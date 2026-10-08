@@ -257,6 +257,11 @@ describe('판 끝 가까이·너머 벽(판은 그린 곳에서 끝난다)', () 
   ] as [string, Vec3][])('%s: 셰이더 = JS', (_, P) => {
     withinStep(shaderLoss(P, n, row, bx), skyLossAt(P, n, row, list), n);
   });
+  it('판 속 벽 점(판 끝 둥근 모서리·안티에일리어싱으로 드러나는 화소)은 판 끝 바로 너머 벽으로 굽는다', () => {
+    const inside = shaderLoss({ x: SHELF_X0 + 2, y: -6, z: SHELF_DEPTH }, n, row, bx);
+    const beyond = shaderLoss({ x: SHELF_X0 - 0.01, y: -6, z: SHELF_DEPTH }, n, row, bx);
+    expect(maxDiff(inside, beyond)).toBeLessThan(2 / 255);
+  });
 });
 
 describe('그리는 셰이더 = JS 빛(lightWithLoss, 둘레 하늘 가림)', () => {

@@ -18,8 +18,7 @@ import { hull } from '@/domain/shadow-shape';
 import type { Point } from '@/domain/shelf-scene';
 import { faceTextureMatrix, shelfFaces } from '@/domain/shelf-geom';
 import { SHOW } from '@/ui/shelf/shadow-debug';
-import { roundedPolygon } from '@/ui/book3d/face-geometry';
-import { layerBounds } from '@/ui/layer-bounds';
+import { clipConvexBy, roundedPolygon } from '@/ui/book3d/face-geometry';
 import { surfaces } from '@/ui/lighting';
 import { BAKE_TEXEL, BakedPlane, seedOf, type Atlas, type BakeArea, type Plane, type PlaneKey } from '@/ui/SceneLight';
 import { LIGHT_ON } from '@/ui/perf';
@@ -134,11 +133,28 @@ export function ShelfWall({ cam, px, y0, y1, top = y1, bottom = y0, env, atlas, 
 
 function Face({ poly, children }: { poly: RO<SkPath>; children?: React.ReactNode }) {
   return (
-    <Group clip={poly}>
+    <>
       <Path path={poly} color={surfaces.plank} />
       {children}
-    </Group>
+    </>
   );
+}
+
+// 판의 화면 모양(px 변환 px로): 윗면·앞면 다각형과 두 면의 투영 껍질을 모서리 반지름(EDGE_R)으로 둥글린 윤곽.
+// 판 그리기(ShelfBoard)와 아래 줄 캔버스가 이 판 자리를 비우는 윤곽이 같은 모양을 쓴다(판 끝 둥근 모서리로 깎인 곳은 아래 줄이 판 밑 벽을 칠한다)
+export function plankShape(c: Camera, px: Affine) {
+  'worklet';
+  const f = shelfFaces(c);
+  const s = px.s;
+  const P = (q: Point) => ({ x: q.x * s + px.tx, y: q.y * s + px.ty });
+  const top = f.top.poly.map(P);
+  // 앞면은 위 변(윗면과 공유)을 위로 조금 덮는다
+  const front = grow(f.front.poly.map(P), 0, 1, { x: 0, y: -1 });
+  return { top, front, outline: roundedPolygon(hull([...top, ...front]), EDGE_R * s) };
+}
+export function plankOutlinePath(c: Camera, px: Affine) {
+  'worklet';
+  return pathOf(plankShape(c, px).outline);
 }
 
 // 판(윗면·앞면). env: 이 판 위 줄의 둘레, atlas: 그 줄의 구운 하늘 가림(TOP_KEY·FRONT_KEY 자리), keyShadow: 그 줄 책이 판 윗면에서 창빛을 가리는 몫
@@ -149,20 +165,13 @@ export function ShelfBoard({ px, cam, zIndex, env, atlas, keyShadow }: { px: Aff
   // 판마다 나무 무늬 자리를 다르게(판 높이로)
   const seed = useMemo(() => seedOf(`plank:${env.floor.toFixed(2)}`), [env.floor]);
   // 지금 카메라로 판 면을 투영(시점을 끄는 동안에도 매 프레임)
+  // 판 면을 둥근 윤곽 안쪽으로 잘라 안티에일리어싱되는 경로로 칠한다(경로 자르기는 안티에일리어싱이 없어 계단이 되고,
+  // 레이어에 그려 윤곽으로 남기는 방식은 판에서 먹히지 않았다)
   const g = useDerivedValue(() => {
-    const f = shelfFaces(cam.value);
-    const P = (q: Point) => ({ x: q.x * s + px.tx, y: q.y * s + px.ty });
-    const topPoly = f.top.poly.map(P);
-    // 앞면은 위 변(윗면과 공유)을 위로 조금 덮는다
-    const frontPoly = grow(f.front.poly.map(P), 0, 1, { x: 0, y: -1 });
-    return {
-      outline: pathOf(roundedPolygon(hull([...topPoly, ...frontPoly]), EDGE_R * s)),
-      top: pathOf(topPoly),
-      front: pathOf(frontPoly),
-    };
+    const sh = plankShape(cam.value, px);
+    return { top: pathOf(clipConvexBy(sh.top, sh.outline)), front: pathOf(clipConvexBy(sh.front, sh.outline)) };
   });
   const topP = useDerivedValue(() => g.value.top);
-  const outline = useDerivedValue(() => g.value.outline);
   const frontP = useDerivedValue(() => g.value.front);
   const topL = useCallback((c: Cam, w: number, h: number) => {
     'worklet';
@@ -173,19 +182,14 @@ export function ShelfBoard({ px, cam, zIndex, env, atlas, keyShadow }: { px: Aff
     return faceTextureMatrix(shelfFaces(c).front, w, h, s, px.tx, px.ty);
   }, [s, px]);
   const on = LIGHT_ON.plank && SHOW.shelfShade;
-  const bounds = useDerivedValue(() => layerBounds(g.value.outline));
   return (
-    <Group zIndex={zIndex} clip={bounds}>
-      {/* 경로 자르기는 안티에일리어싱 없이 계단이 되므로 판 둘레 크기 레이어에 그린 뒤 안티에일리어싱된 윤곽으로 남긴다(dstIn) */}
-      <Group layer>
-        <Face poly={topP}>
-          {on ? <BakedPlane path={topP} cam={cam} px={px} plane={TOP} env={env} atlas={atlas} akey={TOP_KEY} matrix={topL} albedo={DESIGN.plank} eref={EREF.plank} sref={SREF.plank} mat="wood" seed={seed} keyShadow={keyShadow} /> : null}
-        </Face>
-        <Face poly={frontP}>
-          {on ? <BakedPlane path={frontP} cam={cam} px={px} plane={FRONT} env={env} atlas={atlas} akey={FRONT_KEY} matrix={frontL} albedo={DESIGN.plank} eref={EREF.plank} sref={SREF.plank} mat="wood" seed={seed} /> : null}
-        </Face>
-        <Path path={outline} color="black" blendMode="dstIn" />
-      </Group>
+    <Group zIndex={zIndex}>
+      <Face poly={topP}>
+        {on ? <BakedPlane path={topP} cam={cam} px={px} plane={TOP} env={env} atlas={atlas} akey={TOP_KEY} matrix={topL} albedo={DESIGN.plank} eref={EREF.plank} sref={SREF.plank} mat="wood" seed={seed} keyShadow={keyShadow} /> : null}
+      </Face>
+      <Face poly={frontP}>
+        {on ? <BakedPlane path={frontP} cam={cam} px={px} plane={FRONT} env={env} atlas={atlas} akey={FRONT_KEY} matrix={frontL} albedo={DESIGN.plank} eref={EREF.plank} sref={SREF.plank} mat="wood" seed={seed} /> : null}
+      </Face>
     </Group>
   );
 }
