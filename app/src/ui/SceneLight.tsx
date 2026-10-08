@@ -14,7 +14,7 @@ import { useDerivedValue, type SharedValue } from 'react-native-reanimated';
 import { faceNormal, rot, toWorld, type Book3, type Cam, type FaceId, type Vec3 } from '@/domain/book3';
 import { lightPanel, rigOf } from '@/domain/book-parts';
 import { camAt, VIEW_PITCH_MAX, VIEW_PITCH_MIN, type Affine } from '@/domain/camera';
-import { bookEref, bookSref, ENV_NX, ENV_NY, FAR, GRID_N, GRID_PASSES, SREF, type Band, type BoxBuf, type C3, type Env } from '@/domain/light-model';
+import { bookEref, bookSref, ENV_NX, ENV_NY, FAR, GRID_N, GRID_PASSES, SREF, type BoxBuf, type C3, type Env } from '@/domain/light-model';
 import type { Recv3 } from '@/domain/received3';
 import { MAT_UNIFORMS, type MatUniforms } from '@/domain/surface-pattern';
 import type { BindingMaterial } from '@/domain/types';
@@ -92,8 +92,7 @@ export const BAKE_TEXEL = 2;
 
 // ---------- 굽기(아틀라스) ----------
 // 구울 면 하나: 칸 (0, 0) 모서리 O, 칸 한 개의 이동 U·V(줄 공간), 칸 수 w × h, 면 법선 n, 그 면이 받는 빛의 둘레·가리개(self: 상자 목록에서 그 면의 책),
-// band: 벽의 판 두께 높이 띠(아래 판, 위 판, light-model bandOf, 없으면 null)
-export type BakeItem = { key: string; O: Vec3; U: Vec3; V: Vec3; w: number; h: number; n: Vec3; env: Env | null; bx: BoxBuf; self: number; band?: [Band | null, Band | null] };
+export type BakeItem = { key: string; O: Vec3; U: Vec3; V: Vec3; w: number; h: number; n: Vec3; env: Env | null; bx: BoxBuf; self: number };
 // 구운 그림과 면마다 칸 (0, 0)의 자리·칸 수. 면 둘레에 한 칸씩 더 구워 둔다(겹선형 읽기가 옆 면으로 새지 않게)
 export type Atlas = { image: SkImage | null; at: Record<string, { x: number; y: number; w: number; h: number }> };
 export const NO_ATLAS: Atlas = { image: null, at: {} };
@@ -116,15 +115,6 @@ export function keepLatest<T extends SkImage | null>(key: string, img: T): T {
   if (img && list[list.length - 1] !== img) list.push(img);
   while (list.length > 3) list.shift()!.dispose();
   return img;
-}
-
-function bandMid(b: Band | null | undefined) {
-  'worklet';
-  return b ? [b.mid[0], b.mid[1], b.mid[2], 1] : [0, 0, 0, 0];
-}
-function bandFar(b: Band | null | undefined) {
-  'worklet';
-  return b ? [b.far[0], b.far[1], b.far[2]] : ZERO3;
 }
 
 // 셰이더 자식 자리를 채우는 그림(구운 값이 없을 때. 그때 셰이더는 그림을 읽지 않는다)
@@ -248,7 +238,6 @@ export function bakeAtlas(items: BakeItem[], key: string): Atlas {
     const g = gridOf(it.env, it.bx);
     const u = {
       O: arr(it.O), Ux: arr(it.U), Vy: arr(it.V), tN: arr(it.n), env: envOf(it.env), box: it.bx.v, nBox: it.bx.list.length, selfIdx: it.self,
-      bandLo: bandMid(it.band?.[0]), bandLoFar: bandFar(it.band?.[0]), bandHi: bandMid(it.band?.[1]), bandHiFar: bandFar(it.band?.[1]),
       gridOn: g ? 1 : 0, gridNx: it.bx.list.length ? ENV_NX : 1,
     };
     paint.setShader(BAKE.makeShaderWithChildren(processUniforms(BAKE, u), [linearShader(g ?? EMPTY)]));
@@ -469,9 +458,9 @@ function edgeOf(e?: { T: Vec3; at: number }) {
 }
 // 평면 위 사각형 영역: 칸 (0, 0)의 점 O, 칸 한 개의 이동 U·V(줄 공간), 칸 수 w × h, 그 평면(법선·둥근 모서리)
 export type BakeArea = { O: Vec3; U: Vec3; V: Vec3; w: number; h: number; plane: Plane };
-export function areaItem(key: string, a: BakeArea, env: Env | null, bx: BoxBuf, band?: [Band | null, Band | null]): BakeItem {
+export function areaItem(key: string, a: BakeArea, env: Env | null, bx: BoxBuf): BakeItem {
   'worklet';
-  return { key, O: a.O, U: a.U, V: a.V, w: a.w, h: a.h, n: a.plane.n, env, bx, self: -1, band };
+  return { key, O: a.O, U: a.U, V: a.V, w: a.w, h: a.h, n: a.plane.n, env, bx, self: -1 };
 }
 
 // 평면 영역(path, 캔버스 px)을 구운 하늘 가림 + 그 자리의 직접 빛·반사광으로 칠한다(albedo: 재질 색, 선형 RGB,

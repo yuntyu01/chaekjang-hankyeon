@@ -20,7 +20,7 @@ import { corners, fromPlaced, toWorld, type Book3 } from '@/domain/book3';
 import { hull } from '@/domain/box';
 import { BASE_CAM, camAt, kyOf, toPx, VIEW_PITCH_MAX, VIEW_PITCH_MIN, type Affine, type Cam } from '@/domain/camera';
 import { SHELF, SHELF_DEPTH, SHELF_FRONT, SHELF_THICK } from '@/domain/geometry';
-import { bandOf, FAR, NO_BOXES, type Band, type Env } from '@/domain/light-model';
+import { FAR, NO_BOXES, type Env } from '@/domain/light-model';
 import { receivedShadow3, shiftRecv, type Recv3 } from '@/domain/received3';
 import { frameBBox, type BookFrame } from '@/domain/shelf-scene';
 import type { Book } from '@/domain/types';
@@ -119,7 +119,7 @@ export function ShelfScene(p: Props) {
       <TransitMark items={p.leaving} />
       {p.rows.map((r, i) => {
         const mo = motionOf(p.motions, r.shelfId);
-        return mo ? <RowCanvas key={r.shelfId} last={i === p.rows.length - 1} r={r} upper={i > 0 ? p.rows[i - 1].row : null} upperOpen={i === 1} lowerSpace={p.rows[i + 1]?.row.space ?? null} mo={mo} books={p.books} m={p.m} width={p.width} cam={p.cam} shared={p.shared} debug={p.debug} /> : null;
+        return mo ? <RowCanvas key={r.shelfId} last={i === p.rows.length - 1} r={r} upper={i > 0 ? p.rows[i - 1].row : null} mo={mo} books={p.books} m={p.m} width={p.width} cam={p.cam} shared={p.shared} debug={p.debug} /> : null;
       })}
       <TransitCanvas ids={p.transitIds} rows={p.rows} motions={p.motions} geo={p.geo} books={p.books} m={p.m} width={p.width} height={p.height} cam={p.cam} shared={p.shared} glowId={p.glowId} />
       {p.rows.map((r) => {
@@ -139,28 +139,18 @@ const sameRowDraw = (a: SceneRowProps, b: SceneRowProps) =>
 
 // 한 줄의 그림(캔버스 안): 벽 + 벽 그림자 + 판 + 판 위 그림자 + 책(그 줄의 분리축 순서로 zIndex).
 // upx: 위 줄 변환(맨 윗줄은 null). 이 줄 벽은 위 판의 뒤 윗모서리(위 줄 판 윤곽이 시작하는 곳)까지 칠한다.
-// upperSpace·lowerSpace: 위·아래 줄 공간(위 줄이 맨 윗줄이면 FAR: 위가 열려 있다, 아래 줄이 없으면 null: 판 밑 벽),
-// 그린 판 끝 너머 판 두께 높이 벽 띠의 건너편 경계를 계산할 때
-const RowLayers = memo(function RowLayers({ r, st, mo, order, px, upx, upperSpace, lowerSpace, books, cam, shared, debug, last = false }: { r: SceneRowProps; st: RowStruct; mo: Motion; order: Readonly<SharedValue<Record<string, number>>>; px: Affine; upx: Affine | null; upperSpace: number | null; lowerSpace: number | null; books: Record<string, Book>; cam: CamSV; shared: Shared; debug: boolean; last?: boolean }) {
+const RowLayers = memo(function RowLayers({ r, st, mo, order, px, upx, books, cam, shared, debug, last = false }: { r: SceneRowProps; st: RowStruct; mo: Motion; order: Readonly<SharedValue<Record<string, number>>>; px: Affine; upx: Affine | null; books: Record<string, Book>; cam: CamSV; shared: Shared; debug: boolean; last?: boolean }) {
   const plankZ = useDerivedValue(() => (order.value[`plank:${r.shelfId}`] ?? 0) * 10);
   const space = r.row.space;
   const top = !upx;
   // 그림자는 모두 줄의 그림자용 자세 모음만 읽는다(바뀐 책이 있을 때만 다시 계산·다시 그리기)
   const poses = useShadePoses(mo, st.ids, space, r.shelfId);
   // 빛 계산: 이 줄의 둘레(판 윗면, 위 판 아랫면)와 멈췄을 때의 책 상자 목록. 하늘 가림은 줄의 면 전부를 아틀라스 한 장에 굽는다.
-  // 판은 가림 계산에서 가로로 끝없이 이어져 다른 줄 책은 보이지 않는다(맨 아랫줄 판 밑 벽도 판만 본다)
+  // 판은 그린 곳에서 끝난다(판 끝 너머는 열린 벽). 판 끝 너머로 보이는 다른 줄은 하늘로 본다(light-model Env)
   const rest = useRestPoses(poses, mo);
   const env = useMemo(() => rowEnv(space, top), [space, top]);
   const envSV = useDerivedValue<Env | null>(() => env);
   const boxes = useRowBoxes(rest, st.ids, books, env);
-  // 그린 판 끝 너머 판 두께 높이 벽 띠(light-model bandOf): 띠는 위·아래 두 줄 캔버스에 걸쳐 줄마다 제 쪽 절반을 그린다.
-  // 위 판 띠는 가운데까지만 칠한다(아래 줄 캔버스가 위에 겹친다: 그 위는 위 줄 캔버스). 아래 판 띠의 먼 절반은 띠 가운데 빛 그대로 두고
-  // 판 아래로 넉넉히 칠한다(아래 줄 캔버스가 덮는다. 두 캔버스의 카메라가 줄마다라 띠가 조금 어긋나도 이음새가 없게). 맨 아랫줄은 판 밑 벽까지 잇는다
-  const band = useMemo<[Band, Band | null]>(() => {
-    const lo = bandOf(env, lowerSpace === null ? UNDER_ENV : { floor: -SHELF_THICK - lowerSpace, ceil: -SHELF_THICK }, false);
-    const hi = upperSpace === null ? null : bandOf(env, { floor: space + SHELF_THICK, ceil: upperSpace >= FAR ? FAR : space + SHELF_THICK + upperSpace }, true);
-    return [last ? lo : { mid: lo.mid, far: lo.mid }, hi && { mid: hi.mid, far: hi.mid }];
-  }, [env, last, lowerSpace, space, upperSpace]);
   const wallY1 = space + SHELF_THICK + (top ? HEAD_DU : 0);
   const wallA = useMemo(() => wallArea(-SHELF_THICK, wallY1), [wallY1]);
   const underA = useMemo(() => wallArea(-SHELF_THICK - SHELF_CAST_EXTENT, -SHELF_THICK), []);
@@ -174,7 +164,7 @@ const RowLayers = memo(function RowLayers({ r, st, mo, order, px, upx, upperSpac
     // 아직 멈춘 자세가 없다(마운트 직후)
     if (ids.length && !ids.some((id) => ps[id])) return NO_ATLAS;
     const items: BakeItem[] = [];
-    if (wallOn) items.push(areaItem(WALL_KEY, wallA, env, boxes.value, band));
+    if (wallOn) items.push(areaItem(WALL_KEY, wallA, env, boxes.value));
     if (wallOn && last) items.push(areaItem(UNDER_KEY, underA, UNDER_ENV, NO_BOXES));
     if (boardOn) items.push(areaItem(TOP_KEY, TOP_AREA, env, boxes.value), areaItem(FRONT_KEY, FRONT_AREA, env, boxes.value));
     if (booksOn) {
@@ -215,7 +205,7 @@ function hullPath(pts: { x: number; y: number }[]): SkPath {
 }
 
 const RowCanvas = memo(
-  function RowCanvas({ r, upper, upperOpen, lowerSpace, mo, books, m, width, cam, shared, debug, last = false }: { r: SceneRowProps; upper: RowGeom | null; upperOpen: boolean; lowerSpace: number | null; mo: Motion; books: Record<string, Book>; m: ShelfMetrics; width: number; cam: CamSV; shared: Shared; debug: boolean; last?: boolean }) {
+  function RowCanvas({ r, upper, mo, books, m, width, cam, shared, debug, last = false }: { r: SceneRowProps; upper: RowGeom | null; mo: Motion; books: Record<string, Book>; m: ShelfMetrics; width: number; cam: CamSV; shared: Shared; debug: boolean; last?: boolean }) {
     // 캔버스 위쪽 끝은 물리 픽셀에 맞춘다: 레이아웃은 뷰 위치를 픽셀로 반올림하는데 그림의 변환은 y0 그대로라, 맞추지 않으면 이 줄 그림이
     // 이동 캔버스(맨 위 0)와 반 픽셀까지 어긋나 같은 책을 넘겨줄 때 글자·그림 가장자리가 흔들린다
     const y0 = PixelRatio.roundToNearestPixel(Math.max(0, r.row.top - HEAD_DU * m.scale));
@@ -241,13 +231,13 @@ const RowCanvas = memo(
     return (
       <Canvas style={{ position: 'absolute', left: 0, top: y0, width, height }} pointerEvents="none">
         <Group clip={clip} invertClip>
-          <RowLayers r={r} st={st} mo={mo} order={order} px={px} upx={upx} upperSpace={upper ? (upperOpen ? FAR : upper.space) : null} lowerSpace={lowerSpace} books={books} cam={cam} shared={shared} debug={debug} last={last} />
+          <RowLayers r={r} st={st} mo={mo} order={order} px={px} upx={upx}  books={books} cam={cam} shared={shared} debug={debug} last={last} />
         </Group>
       </Canvas>
     );
   },
   (a, b) =>
-    sameRowDraw(a.r, b.r) && a.last === b.last && a.upperOpen === b.upperOpen && a.lowerSpace === b.lowerSpace && a.upper?.space === b.upper?.space && a.upper?.baseline === b.upper?.baseline && a.upper?.shelfId === b.upper?.shelfId && a.mo === b.mo && a.books === b.books && a.m === b.m && a.width === b.width && a.cam === b.cam && a.shared === b.shared && a.debug === b.debug,
+    sameRowDraw(a.r, b.r) && a.last === b.last && a.upper?.space === b.upper?.space && a.upper?.baseline === b.upper?.baseline && a.upper?.shelfId === b.upper?.shelfId && a.mo === b.mo && a.books === b.books && a.m === b.m && a.width === b.width && a.cam === b.cam && a.shared === b.shared && a.debug === b.debug,
 );
 
 // ---------- 이동 캔버스 ----------
