@@ -56,8 +56,10 @@ const NV = 9;
 export const LOSS_G0 = 0.3;
 const SKY_MAXC = Math.max(...SKY_C);
 const KEY_MAXC = Math.max(...KEY_C);
-export const LOSS_RP = SKY_MAXC * (light.ambient + light.skyUp) + KEY_MAXC * light.diffuse + 0.25;
-export const LOSS_RN = KEY_MAXC * light.diffuse + 2 * SKY_MAXC * light.skyUp;
+// 하늘 빛이 방향에 따라 바뀌는 크기(skyUp·skyFront 벡터의 길이): 면이 받는 하늘 빛은 ambient ± 이 값
+const SKY_TILT = Math.hypot(light.skyUp, light.skyFront);
+export const LOSS_RP = SKY_MAXC * (light.ambient + SKY_TILT) + KEY_MAXC * light.diffuse + 0.25;
+export const LOSS_RN = KEY_MAXC * light.diffuse + 2 * SKY_MAXC * SKY_TILT;
 // 가림 L(면이 받는 하늘 빛 sky) ↔ 그림 값 g
 export function lossEncode(L: number, sky: number) {
   const R = sky - L;
@@ -87,6 +89,7 @@ function header() {
   const float PI = 3.14159265;
   const float AMB = ${f(light.ambient)};
   const float SKYUP = ${f(light.skyUp)};
+  const float SKYFRONT = ${f(light.skyFront)};
   const float DIFF = ${f(light.diffuse)};
   const float3 LU = ${v3(L_UNIT)};
   // 카메라 기준 빛(벽 대표 자리 빛 / 노출 기준 CAM.gain, 반사광을 장면 밝기로)
@@ -133,12 +136,12 @@ function header() {
   // 빛 색(light-model SKY_C 방 확산광, KEY_C 창빛)
   const float3 SKYC = ${c3(SKY_C)};
   const float3 KEYC = ${c3(KEY_C)};
-  float3 skyRad(float3 w) { return SKYC * (AMB + 1.5 * SKYUP * w.y); }
+  float3 skyRad(float3 w) { return SKYC * (AMB + 1.5 * SKYUP * w.y - 1.5 * SKYFRONT * w.z); }
   // 면이 하늘(방)에서 받는 빛
-  float3 skyIrr(float3 n) { return SKYC * (AMB + SKYUP * n.y); }
+  float3 skyIrr(float3 n) { return SKYC * (AMB + SKYUP * n.y - SKYFRONT * n.z); }
   float3 irr(float3 n) { return skyIrr(n) + KEYC * (DIFF * max(0.0, dot(n, LU))); }
   // 하늘 앞의 면(F, M)이 가린 하늘 빛
-  float3 skyOf(float4 q) { return SKYC * (AMB * q.x + 1.5 * SKYUP * q.z); }
+  float3 skyOf(float4 q) { return SKYC * (AMB * q.x + 1.5 * SKYUP * q.z - 1.5 * SKYFRONT * q.w); }
 
   bool inDepth(float z) { return z >= -FRONT && z <= DEPTH; }
   // 판이 창빛 원반을 가리는 몫: 원반을 판 모서리(수평선)와 판 끝(두 수직선)으로 자른 넓이 비율(light-model diskBlocked)

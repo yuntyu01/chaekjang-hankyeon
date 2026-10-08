@@ -55,28 +55,28 @@ export const KEY_DIRS: Vec3[] = (() => {
 const lum3 = (c: number[]) => 0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2];
 export const SKY_C: C3 = light.skyColor.map((v) => v / lum3(light.skyColor)) as C3;
 export const KEY_C: C3 = light.keyColor.map((v) => v / lum3(light.keyColor)) as C3;
-// 면이 하늘(방)에서 받는 빛 세기(색 없이): ambient + skyUp·n.y
-function skyE(ny: number) {
+// 면이 하늘(방)에서 받는 빛 세기(색 없이): ambient + skyUp·n.y + skyFront·(−n.z)(밝기가 방향에 1차인 하늘의 코사인 적분)
+function skyE(n: Vec3) {
   'worklet';
-  return light.ambient + light.skyUp * ny;
+  return light.ambient + light.skyUp * n.y - light.skyFront * n.z;
 }
 // 면이 받는 빛(가리는 것 없을 때, 선형 RGB). n: 바깥 법선(단위)
 export function irradiance(n: Vec3): C3 {
   'worklet';
-  const sk = skyE(n.y);
+  const sk = skyE(n);
   const ky = light.diffuse * Math.max(0, n.x * L_UNIT.x + n.y * L_UNIT.y + n.z * L_UNIT.z);
   return [SKY_C[0] * sk + KEY_C[0] * ky, SKY_C[1] * sk + KEY_C[1] * ky, SKY_C[2] * sk + KEY_C[2] * ky];
 }
 // 하늘(방) 몫만
 export function skyIrradiance(n: Vec3): C3 {
   'worklet';
-  const sk = skyE(n.y);
+  const sk = skyE(n);
   return [SKY_C[0] * sk, SKY_C[1] * sk, SKY_C[2] * sk];
 }
 // 하늘 밝기(방향 ω, π·휘도 단위: 코사인 적분이 irradiance의 하늘 몫과 같다). 가장 밝은 곳은 바로 위
 export function skyRadiance(w: Vec3): C3 {
   'worklet';
-  const k = light.ambient + 1.5 * light.skyUp * w.y;
+  const k = light.ambient + 1.5 * light.skyUp * w.y - 1.5 * light.skyFront * w.z;
   return [SKY_C[0] * k, SKY_C[1] * k, SKY_C[2] * k];
 }
 
@@ -273,7 +273,7 @@ export function polyVF(p: Vec3, n: Vec3, poly: Vec3[]): VF {
 // 하늘 앞의 면(F, M)이 가린 하늘 빛(코사인 가중 적분, 정확, 선형 RGB)
 export function skyOf(F: number, M: Vec3): C3 {
   'worklet';
-  const k = light.ambient * F + 1.5 * light.skyUp * M.y;
+  const k = light.ambient * F + 1.5 * light.skyUp * M.y - 1.5 * light.skyFront * M.z;
   return [SKY_C[0] * k, SKY_C[1] * k, SKY_C[2] * k];
 }
 
@@ -1078,7 +1078,7 @@ export function lightWithLoss(p: Vec3, n: Vec3, v: Vec3 | null, env: Env | null,
   const kb = 1 - (1 - (key ? plankKeyBlocked(p, env) : 0)) * (1 - (kx ?? 0));
   // 가림 없을 때 받는 빛(선형 RGB): 하늘(방) 몫 + 창빛 몫
   const open = (m: Vec3): C3 => {
-    const sk = skyE(m.y);
+    const sk = skyE(m);
     const ky = light.diffuse * Math.max(0, m.x * L_UNIT.x + m.y * L_UNIT.y + m.z * L_UNIT.z) * (1 - kb);
     return [SKY_C[0] * sk + KEY_C[0] * ky, SKY_C[1] * sk + KEY_C[1] * ky, SKY_C[2] * sk + KEY_C[2] * ky];
   };
@@ -1115,7 +1115,7 @@ export function sceneLight(p: Vec3, n: Vec3, v: Vec3 | null, env: Env | null, bo
 // 가림이 없을 때 받는 빛(판이 창빛 원반을 가린 몫까지)
 function openE(p: Vec3, n: Vec3, env: Env | null): C3 {
   'worklet';
-  const sk = skyE(n.y);
+  const sk = skyE(n);
   const ky = light.diffuse * Math.max(0, dot3(n, L_UNIT)) * (1 - plankKeyBlocked(p, env));
   return [SKY_C[0] * sk + KEY_C[0] * ky, SKY_C[1] * sk + KEY_C[1] * ky, SKY_C[2] * sk + KEY_C[2] * ky];
 }
@@ -1203,7 +1203,7 @@ function nodeE(nd: GridNode, env: Env, boxes: Box[], G?: Grid): C3 {
     const l = boxLoss(P, n, boxes[i], env, G, i, cols);
     for (let c = 0; c < 3; c++) loss[c] += l[c];
   }
-  const sk = skyE(n.y);
+  const sk = skyE(n);
   for (let c = 0; c < 3; c++) E[c] = Math.max(0, SKY_C[c] * sk + KEY_C[c] * key - loss[c]);
   return E;
 }
