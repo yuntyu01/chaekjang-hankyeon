@@ -1,7 +1,7 @@
 // 빛 모델(순수, UI 스레드 워클릿에서도 쓴다). 화면의 모든 밝기·그림자·어둠·반사광을 장면 입력(ui/lighting)과 3D 형태에서 계산하는 원칙 하나.
 // 같은 식을 화소마다 계산하는 셰이더는 ui/SceneLight(이 파일과 식·이름을 맞춘다).
 //
-// 1) 면이 받는 빛 E(n) = 하늘 ambient + skyUp·n.y + 창빛 diffuse·max(0, n·L)(램버트). 하늘·창빛은 흰빛이고, 밝기는 선형 RGB 채널마다
+// 1) 면이 받는 빛 E(n) = 하늘 ambient + skyTilt·n + 창빛 diffuse·max(0, n·L)(램버트). 하늘·창빛은 흰빛이고, 밝기는 선형 RGB 채널마다
 //    계산한다: 되비친 빛은 그 면의 반사율(색)을 띠어 가까운 면을 물들인다(색 번짐).
 //    재질 색(시안 색)은 그 재질이 대표 자리에서 보이는 색이다(역렌더링, 맨 아래 calibrate): 화면 밝기 = 재질 색 × E / EREF[재질].
 // 2) 창빛 그림자: 가리개를 빛 방향으로 받는 면에 떨어뜨린 모양(cast-shadow). 가려진 곳은 창빛 몫만 빠진다(진하기 = 그 몫 / E(n)).
@@ -51,14 +51,15 @@ export const KEY_DIRS: Vec3[] = (() => {
   });
 })();
 
-// 빛 색(선형 RGB 배수, 휘도 1로 맞춘다: 세기는 ambient·skyUp·diffuse가 정한다). SKY_C = 방 확산광, KEY_C = 창빛
+// 빛 색(선형 RGB 배수, 휘도 1로 맞춘다: 세기는 ambient·skyTilt·diffuse가 정한다). SKY_C = 방 확산광, KEY_C = 창빛
 const lum3 = (c: number[]) => 0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2];
 export const SKY_C: C3 = light.skyColor.map((v) => v / lum3(light.skyColor)) as C3;
 export const KEY_C: C3 = light.keyColor.map((v) => v / lum3(light.keyColor)) as C3;
-// 면이 하늘(방)에서 받는 빛 세기(색 없이): ambient + skyUp·n.y + skyFront·(−n.z)(밝기가 방향에 1차인 하늘의 코사인 적분)
+// 면이 하늘(방)에서 받는 빛 세기(색 없이): ambient + skyTilt·n(밝기가 방향에 1차인 하늘의 코사인 적분)
 function skyE(n: Vec3) {
   'worklet';
-  return light.ambient + light.skyUp * n.y - light.skyFront * n.z;
+  const g = light.skyTilt;
+  return light.ambient + g.x * n.x + g.y * n.y + g.z * n.z;
 }
 // 면이 받는 빛(가리는 것 없을 때, 선형 RGB). n: 바깥 법선(단위)
 export function irradiance(n: Vec3): C3 {
@@ -76,7 +77,8 @@ export function skyIrradiance(n: Vec3): C3 {
 // 하늘 밝기(방향 ω, π·휘도 단위: 코사인 적분이 irradiance의 하늘 몫과 같다). 가장 밝은 곳은 바로 위
 export function skyRadiance(w: Vec3): C3 {
   'worklet';
-  const k = light.ambient + 1.5 * light.skyUp * w.y - 1.5 * light.skyFront * w.z;
+  const g = light.skyTilt;
+  const k = light.ambient + 1.5 * (g.x * w.x + g.y * w.y + g.z * w.z);
   return [SKY_C[0] * k, SKY_C[1] * k, SKY_C[2] * k];
 }
 
@@ -124,7 +126,7 @@ function setRadiance() {
   RAD.floor = cmul(ALBEDO.plank, irradiance({ x: 0, y: 1, z: 0 }));
   RAD.wall = cmul(ALBEDO.wall, irradiance({ x: 0, y: 0, z: -1 }));
   RAD.under = cmul(ALBEDO.plank, irradiance({ x: 0, y: -1, z: 0 }));
-  // 판 끝면(옆을 향함: 정면 창빛은 스치기만 한다)
+  // 판 끝면(옆을 향함: 창빛은 비스듬히 스친다)
   RAD.end = cmul(ALBEDO.plank, irradiance({ x: -1, y: 0, z: 0 }));
 }
 // 벽은 판보다 훨씬 넓고 높다(하늘 가림 계산에서 끝이 보이지 않을 만큼)
@@ -179,7 +181,7 @@ export const CAM = { gain: 1 };
 // ---------- 다각형이 보이는 양(정확한 적분) ----------
 // 점 p 기준 볼록 다각형(꼭짓점은 p에서의 벡터)의
 //   F = (1/π)∫ cosθ dω(뷰 팩터)와 M = (1/π)∫ ω cosθ dω(코사인 가중 1차 모멘트, M/F = 그 면이 보이는 방향들의 코사인 가중 평균).
-// 하늘 밝기는 ω.y에 1차라 이 둘로 정확히 적분된다: (1/π)∫ L(ω) cosθ dω = ambient·F + 1.5·skyUp·M.y.
+// 하늘 밝기는 ω에 1차라 이 둘로 정확히 적분된다: (1/π)∫ L(ω) cosθ dω = ambient·F + 1.5·skyTilt·M.
 // 구면 다각형의 변(대원 호, 끝 단위 벡터 u0 → u1, 끼인각 θ, 호 평면 법선 m)마다:
 //   램버트 윤곽 적분 ∫ cosθ dω = |Σ θ m·n| / 2,
 //   구면 발산 정리((ω·a)(ω·n) − (a·n)/3은 2차 구면 조화 함수): ∫(ω·a)(ω·n)dω = (a·n)Ω/3 − (1/6)Σ[(ν·a)(n·W) + (ν·n)(a·W)],
@@ -273,7 +275,8 @@ export function polyVF(p: Vec3, n: Vec3, poly: Vec3[]): VF {
 // 하늘 앞의 면(F, M)이 가린 하늘 빛(코사인 가중 적분, 정확, 선형 RGB)
 export function skyOf(F: number, M: Vec3): C3 {
   'worklet';
-  const k = light.ambient * F + 1.5 * light.skyUp * M.y - 1.5 * light.skyFront * M.z;
+  const g = light.skyTilt;
+  const k = light.ambient * F + 1.5 * (g.x * M.x + g.y * M.y + g.z * M.z);
   return [SKY_C[0] * k, SKY_C[1] * k, SKY_C[2] * k];
 }
 
@@ -547,7 +550,7 @@ export function othersOf(bx: BoxBuf, self: number): Box[] {
 export const GRID_N = 8;
 export const ENV_NX = 6 * GRID_N;
 export const ENV_NY = 16;
-// 둘레 면을 가로로 나눠 읽는 구간 수(판 범위 안, envLoss). 구간마다 대표 점 하나로 읽으므로 구간 폭(약 20DU)이 정면 창빛의 책 뒤 본그림자 폭보다
+// 둘레 면을 가로로 나눠 읽는 구간 수(판 범위 안, envLoss). 구간마다 대표 점 하나로 읽으므로 구간 폭(약 20DU)이 창빛의 책 뒤 본그림자 폭보다
 // 좁아야 한다: 30DU(12칸)면 책 뒤 빈 공간의 여러 번 튕긴 빛을 경로 추적보다 약 20% 덜 잡는다(18칸 3%, 24칸도 같다)
 export const ENV_COLS = 18;
 // e: 격자점마다 받는 빛(선형 RGB). 책 상자 i의 면 f(= 축 k + 3·(s > 0)) 칸은 (i·6 + f)·N², 그 뒤에 둘레 면(벽, 판 윗면, 위 판 아랫면) 칸이 nx·ENV_NY씩

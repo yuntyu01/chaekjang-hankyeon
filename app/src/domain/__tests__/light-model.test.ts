@@ -99,9 +99,11 @@ describe('빛 모델: 하늘 가림', () => {
       const m = analytic({ x: mid, y, z: SHELF_DEPTH }, n, row, []);
       expect(lumOf3(out)).toBeGreaterThan(lumOf3(m));
       expect(lumOf3(far)).toBeGreaterThanOrEqual(lumOf3(out) - 1e-9);
-      // 줄 가운데는 가운데에서 60DU 옮겨도 거의 같다(1% 안: 화면에서 구별되지 않는다)
+      // 줄 가운데는 판 끝 영향이 작다: 가운데에서 60DU 옮겨도 3% 안. 하늘이 왼쪽으로 밝으면(skyTilt.x < 0) 열린 왼쪽 판 끝으로 드는 하늘이
+      // 더 밝아 오른쪽으로 갈수록 조금 어둡다(이음 없는 완만한 기울기)
       const m2 = analytic({ x: mid + 60, y, z: SHELF_DEPTH }, n, row, []);
-      for (let c = 0; c < 3; c++) expect(Math.abs(m2[c] - m[c])).toBeLessThan(0.01);
+      for (let c = 0; c < 3; c++) expect(Math.abs(m2[c] - m[c]) / m[c]).toBeLessThan(0.03);
+      if (light.skyTilt.x < 0) expect(lumOf3(m2)).toBeLessThan(lumOf3(m));
     }
   });
 
@@ -320,8 +322,9 @@ describe('재질 반사율 맞추기(역렌더링)', () => {
 
 describe('하늘 가림 상한', () => {
   it('가림이 하늘 빛을 넘으면(겹친 가리개를 두 번 센 회색 오차) 넘친 만큼을 세 채널에서 똑같이 빼: 채널 차이(되비친 빛의 색)는 그대로, 음수는 없다', () => {
+    // 창빛을 등진 면(받는 빛 = 하늘 빛뿐)
     const p = { x: 100, y: 75, z: 50 };
-    const n = { x: -1, y: 0, z: 0 };
+    const n = { x: L_UNIT.x > 0 ? -1 : 1, y: 0, z: 0 };
     const sky = skyIrradiance(n);
     // 하늘 빛을 넘는 몫(비): 초록 2%, 파랑 6% 넘음 → 6% 몫(하늘 빛 × 0.06)을 세 채널에서 뺀다
     const loss: C3 = [sky[0] - 0.05, sky[1] * 1.02, sky[2] * 1.06];

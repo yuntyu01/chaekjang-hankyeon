@@ -45,7 +45,7 @@ const c3 = (c: C3) => `float3(${f(c[0])}, ${f(c[1])}, ${f(c[2])})`;
 // 잘린 다각형 꼭짓점 최대 수: 사각형 4 + 반구 1 + 구역 평면 넷(볼록 다각형은 평면 하나에 꼭짓점이 많아야 하나 는다. 구역 평면은 걸칠 때만 자른다)
 const NV = 9;
 
-// 하늘 가림 그림: 선형 RGB 채널마다 남은 하늘 빛 R = sky − 가림(sky = 그 면이 받는 하늘 빛 AMB + SKYUP·n.y, n = 구운 면 법선)을
+// 하늘 가림 그림: 선형 RGB 채널마다 남은 하늘 빛 R = sky − 가림(sky = 그 면이 받는 하늘 빛 AMB + SKYTILT·n, n = 구운 면 법선)을
 // 0을 가운데(그림 값 LOSS_G0)로 양쪽 제곱근 곡선에 담는다: R ≥ 0이면 g = G0 + (1 − G0)·√(R/RP), R < 0이면 g = G0 − G0·√(−R/RN).
 // 받는 빛이 작은 그늘일수록 단계가 촘촘하다(R 0.02에서 한 단계 0.0018, 하늘 그대로 0.3에서 0.0069. 가림을 그대로 담으면 어디서나 0.0075라
 // 깊은 그늘에서 띠·동심원이 보인다). R이 음수인 곳: 겹친 가리개를 두 번 센 회색 오차(shade가 세 채널에서 똑같이 뺀다), 판 두께 높이 벽 띠
@@ -56,8 +56,8 @@ const NV = 9;
 export const LOSS_G0 = 0.3;
 const SKY_MAXC = Math.max(...SKY_C);
 const KEY_MAXC = Math.max(...KEY_C);
-// 하늘 빛이 방향에 따라 바뀌는 크기(skyUp·skyFront 벡터의 길이): 면이 받는 하늘 빛은 ambient ± 이 값
-const SKY_TILT = Math.hypot(light.skyUp, light.skyFront);
+// 하늘 빛이 방향에 따라 바뀌는 크기(skyTilt의 길이): 면이 받는 하늘 빛은 ambient ± 이 값
+const SKY_TILT = Math.hypot(light.skyTilt.x, light.skyTilt.y, light.skyTilt.z);
 export const LOSS_RP = SKY_MAXC * (light.ambient + SKY_TILT) + KEY_MAXC * light.diffuse + 0.25;
 export const LOSS_RN = KEY_MAXC * light.diffuse + 2 * SKY_MAXC * SKY_TILT;
 // 가림 L(면이 받는 하늘 빛 sky) ↔ 그림 값 g
@@ -88,8 +88,7 @@ function header() {
 
   const float PI = 3.14159265;
   const float AMB = ${f(light.ambient)};
-  const float SKYUP = ${f(light.skyUp)};
-  const float SKYFRONT = ${f(light.skyFront)};
+  const float3 SKYTILT = ${v3(light.skyTilt)};
   const float DIFF = ${f(light.diffuse)};
   const float3 LU = ${v3(L_UNIT)};
   // 카메라 기준 빛(벽 대표 자리 빛 / 노출 기준 CAM.gain, 반사광을 장면 밝기로)
@@ -136,12 +135,12 @@ function header() {
   // 빛 색(light-model SKY_C 방 확산광, KEY_C 창빛)
   const float3 SKYC = ${c3(SKY_C)};
   const float3 KEYC = ${c3(KEY_C)};
-  float3 skyRad(float3 w) { return SKYC * (AMB + 1.5 * SKYUP * w.y - 1.5 * SKYFRONT * w.z); }
+  float3 skyRad(float3 w) { return SKYC * (AMB + 1.5 * dot(SKYTILT, w)); }
   // 면이 하늘(방)에서 받는 빛
-  float3 skyIrr(float3 n) { return SKYC * (AMB + SKYUP * n.y - SKYFRONT * n.z); }
+  float3 skyIrr(float3 n) { return SKYC * (AMB + dot(SKYTILT, n)); }
   float3 irr(float3 n) { return skyIrr(n) + KEYC * (DIFF * max(0.0, dot(n, LU))); }
   // 하늘 앞의 면(F, M)이 가린 하늘 빛
-  float3 skyOf(float4 q) { return SKYC * (AMB * q.x + 1.5 * SKYUP * q.z - 1.5 * SKYFRONT * q.w); }
+  float3 skyOf(float4 q) { return SKYC * (AMB * q.x + 1.5 * dot(SKYTILT, q.yzw)); }
 
   bool inDepth(float z) { return z >= -FRONT && z <= DEPTH; }
   // 판이 창빛 원반을 가리는 몫: 원반을 판 모서리(수평선)와 판 끝(두 수직선)으로 자른 넓이 비율(light-model diskBlocked)
