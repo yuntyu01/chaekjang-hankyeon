@@ -82,6 +82,7 @@ function shaderLoss(P: Vec3, n: Vec3, env: Env | null, bx: BoxBuf, grid: CK = nu
     Ux: [U.x * 1e-3, U.y * 1e-3, U.z * 1e-3],
     Vy: [V.x * 1e-3, V.y * 1e-3, V.z * 1e-3],
     tN: [n.x, n.y, n.z],
+    cells: [1, 1],
     env: env ? [1, env.floor, env.ceil] : [0, 0, 0],
     box: bx.v,
     nBox: bx.list.length,

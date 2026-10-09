@@ -680,13 +680,16 @@ function boxCode() {
 `;
 }
 
-// 하늘 가림 굽기: 그림 칸 p(칸 가운데)의 줄 공간 점 O + p.x·Ux + p.y·Vy, 면 법선 tN에서. 출력 채널마다 lossEncode + 디더
+// 하늘 가림 굽기: 그림 칸 p(칸 가운데)의 줄 공간 점 O + p.x·Ux + p.y·Vy, 면 법선 tN에서. 출력 채널마다 lossEncode + 디더.
+// 면 둘레 한 칸(겹선형 읽기가 아틀라스의 옆 그림으로 새지 않게 더 굽는 칸)은 면 가장자리 칸 값 그대로(cells: 면의 칸 수로 자른다):
+// 면 밖 점을 구우면 맞닿은 옆 책 몸속 점이 되어 '다 가려짐'이 구워지고, 면 가장자리를 읽을 때 섞여 칸 하나 폭의 검은 띠가 된다
 export function bakeSource() {
   return `
   uniform float3 O;
   uniform float3 Ux;
   uniform float3 Vy;
   uniform float3 tN;
+  uniform float2 cells;
   uniform float selfIdx;    // 이 면의 책(상자 목록에서 뺀다), 없으면 −1
 ${header()}
 ${polyCode()}
@@ -695,7 +698,8 @@ ${gridCode()}
 ${envCode(true)}
 ${boxCode()}
   half4 main(float2 p) {
-    float3 P = wallOutside(O + p.x * Ux + p.y * Vy, tN);
+    float2 pc = clamp(p, float2(0.5), max(float2(0.5), cells - float2(0.5)));
+    float3 P = wallOutside(O + pc.x * Ux + pc.y * Vy, tN);
     // 둘레 먼저(구간 밝기를 채운다), 그다음 책 상자
     float3 L = envLoss(P, tN);
     L += boxesLoss(P, tN, selfIdx, -1.0, -1.0);

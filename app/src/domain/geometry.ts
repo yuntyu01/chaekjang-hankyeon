@@ -34,7 +34,7 @@ export const SHELF = {
   sideMargin: USABLE_LEFT, // 선반 공간 x=0의 화면 설계 좌표
   innerLeft: 0,
   innerRight: 0,
-  gap: 2.1, // 옆면 투영 약 1.2DU + 벽색이 보이는 약 0.9DU(853px에서 2px)
+  gap: 0, // 서 있는 책 사이 틈: 붙인다(깊이 145mm 책 사이 2~3mm 틈은 빛이 들지 않아 검은 선이 된다. 그림자 참고 그림도 책끼리 맞닿는다)
   rowTopPad: 2, // 가장 높은 책(갈피 포함) 위 여백(기본 3°에서): 시안처럼 위 선반 바로 밑까지
   minClear: 110,
 };
@@ -95,6 +95,10 @@ export const LYING_BACK_Z = 40;
 // 책을 저절로 놓을 때 벽과 띄우는 거리(실제 책장처럼 10~20mm): 벽에 붙은 책은 그 뒤 벽을 거의 다 가려 접촉선처럼 짙은 그늘이 진다.
 // 사용자가 앞뒤로 옮길 때는 벽까지(SHELF_DEPTH) 갈 수 있다(물리 한계는 벽)
 export const WALL_GAP = mm(15);
+// 세운 책 책등 줄: 책등은 책 기준선(0)에 한 줄로 맞춘다(사람이 꽂는 방식, 그림자 참고 그림). 깊이가 다른 책을 저마다 벽 쪽(WALL_GAP)에 붙여 세우면
+// 책등이 들쭉날쭉해(예시 책 깊이 150~156mm면 1~5DU) 얕은 책의 둥근 모서리가 앞으로 나온 옆 책 옆면과 좁은 구석을 이뤄 빛이 들지 않는다(검은 띠).
+// 벽과 이보다 가까워지는 깊은 책만 그만큼 앞으로 나온다
+export const SPINE_WALL_GAP = mm(3);
 // 쌓을 때 위 책을 살짝 어긋나게 둔다(아래에서 위 순서).
 export const STACK_OFFSETS = [0, 8, 3];
 export const MAX_STACK = 3;
@@ -126,12 +130,12 @@ export function frontWidth(book: Book) {
 
 // 한 권(쌓기 전)의 선반 점유 크기(상자 모델). 폭은 앞면 가로(옆면은 옆 책 뒤로 숨는다),
 // 높이는 화면에서 보이는 높이(앞면 + 위로 밀린 윗면, 눕힌 책은 뒤에 놓인 만큼 더). 세운 책은 똑바로 선 모양으로 잰다.
-// 기본 깊이(선반 공간 z): 세운 책·표지 책은 책 기준선(0), 눕힌 책은 조금 뒤. 어느 책도 벽과 WALL_GAP보다 가깝게 두지 않는다:
+// 기본 깊이(선반 공간 z): 세운 책·표지 책은 책 기준선(0), 눕힌 책은 조금 뒤. 세운 책은 벽과 SPINE_WALL_GAP, 눕힌 책은 WALL_GAP보다 가깝게 두지 않는다:
 // 기준선 뒤 공간에서 그 틈을 뺀 것보다 깊은 책은 그만큼 기준선 앞으로 나온다(선반 앞 끝까지).
 export function defaultDepth(book: Book, pose: BookPlacement['pose']) {
   const W = frontWidth(book);
   if (pose === 'front') return 0;
-  if (pose === 'spine') return Math.max(-SHELF_FRONT, Math.min(0, SHELF_DEPTH - WALL_GAP - W));
+  if (pose === 'spine') return Math.max(-SHELF_FRONT, Math.min(0, SHELF_DEPTH - SPINE_WALL_GAP - W));
   return Math.max(-SHELF_FRONT, Math.min(LYING_BACK_Z, SHELF_DEPTH - WALL_GAP - W));
 }
 

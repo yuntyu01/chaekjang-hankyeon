@@ -93,7 +93,7 @@ export const BAKE_TEXEL = 2;
 // ---------- 굽기(아틀라스) ----------
 // 구울 면 하나: 칸 (0, 0) 모서리 O, 칸 한 개의 이동 U·V(줄 공간), 칸 수 w × h, 면 법선 n, 그 면이 받는 빛의 둘레·가리개(self: 상자 목록에서 그 면의 책),
 export type BakeItem = { key: string; O: Vec3; U: Vec3; V: Vec3; w: number; h: number; n: Vec3; env: Env | null; bx: BoxBuf; self: number };
-// 구운 그림과 면마다 칸 (0, 0)의 자리·칸 수. 면 둘레에 한 칸씩 더 구워 둔다(겹선형 읽기가 옆 면으로 새지 않게)
+// 구운 그림과 면마다 칸 (0, 0)의 자리·칸 수. 면 둘레에 한 칸씩 더 구워 둔다(겹선형 읽기가 옆 면으로 새지 않게, 값은 면 가장자리 칸 그대로)
 export type Atlas = { image: SkImage | null; at: Record<string, { x: number; y: number; w: number; h: number }> };
 export const NO_ATLAS: Atlas = { image: null, at: {} };
 const GUTTER = 1;
@@ -237,7 +237,7 @@ export function bakeAtlas(items: BakeItem[], key: string): Atlas {
     const r = at[it.key];
     const g = gridOf(it.env, it.bx);
     const u = {
-      O: arr(it.O), Ux: arr(it.U), Vy: arr(it.V), tN: arr(it.n), env: envOf(it.env), box: it.bx.v, nBox: it.bx.list.length, selfIdx: it.self,
+      O: arr(it.O), Ux: arr(it.U), Vy: arr(it.V), tN: arr(it.n), cells: [it.w, it.h], env: envOf(it.env), box: it.bx.v, nBox: it.bx.list.length, selfIdx: it.self,
       gridOn: g ? 1 : 0, gridNx: it.bx.list.length ? ENV_NX : 1,
     };
     paint.setShader(BAKE.makeShaderWithChildren(processUniforms(BAKE, u), [linearShader(g ?? EMPTY)]));
