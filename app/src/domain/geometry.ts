@@ -89,6 +89,9 @@ export function viewSettle(home: number, p0: number, now: number, vy: number) {
 }
 // 눕힌 책의 수직축 회전 범위(도). 미적·조작상의 제한(선반 깊이·충돌·받침에 따라 더 좁아질 수 있다).
 export const MAX_SPIN = 12;
+// 표지 책의 좌우 돌리기 범위(도): 서 있는 책은 제자리에서 자유롭게 돈다(2026-10-10 사용자: 표지 상태 돌리기는 자유로워야).
+// 옆 책·벽·선반 끝에 닿으면 그 직전에서 멈춘다(frontSpin reach)
+export const MAX_FRONT_SPIN = 90;
 
 // 누운 책(더미)의 기본 깊이: 세운 책보다 조금 뒤(선반 공간 z, DU)
 export const LYING_BACK_Z = 40;
@@ -150,8 +153,7 @@ export function spunExtent(book: Book, spin = 0) {
 // ---------- 표지 전시 책의 벽 기대기 ----------
 // 뒤쪽 아래 모서리(z = depth + 두께)는 사용자가 둔 자리 그대로 선반에, 뒤쪽 윗모서리는 벽(z = SHELF_DEPTH)에 닿는다:
 //   sin(각) = 벽까지 틈 / 책 높이. 벽에서 멀어질수록 더 기울고, 닿지 못하면 바닥에 눕는다.
-// 선 책은 WALL_LEAN_ENTER 각에 해당하는 거리 안으로 들어와야 기대기 시작한다.
-export const WALL_LEAN_ENTER = 16;
+// 서 있는 책은 앞뒤로 옮겨도 저절로 기대지 않는다(벽 가까이 가도 서 있다): 기대기는 머리 손잡이로 젖힐 때만.
 export function wallGap(book: Book, depth: number) {
   return SHELF_DEPTH - (depth + bookThickness(book));
 }

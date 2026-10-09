@@ -882,7 +882,6 @@ export function envLoss(p: Vec3, n: Vec3, env: Env | null, G?: Grid): C3 {
 // 원반(반지름 R)을 수평선과 두 수직선으로 자른 넓이 비율. 판 범위 안쪽(끝에서 zf·tan R보다 먼 곳)에서는 수직선이 원반 밖이라 활꼴과 같다.
 // (판 범위 안 끝 가까이에서 판 끝면으로 빠져나가는 광선은 앞 끝 가로로 본다: 끝에서 zf·tan R 안의 작은 근사)
 export const L_ELEV = Math.atan2(L_UNIT.y, -L_UNIT.z);
-const L_AZ = Math.atan2(L_UNIT.x, -L_UNIT.z);
 // ∫√(1 − t²) dt
 function arcInt(t: number) {
   'worklet';
@@ -929,15 +928,18 @@ export function keyBlockedBelow(h: number, zf: number, v0?: number, v1?: number,
   return diskBlocked((L_ELEV + Math.atan2(h, Math.max(1e-3, zf))) / light.radius, v0 ?? -2, v1 ?? 2);
 }
 // 둘레의 판이 점 p에서 창빛 원반을 가리는 몫: 위 판 + 아래 판(가로는 판 범위)
+// 그림 규칙(2026-10-10 사용자: 선반 양끝 이상한 그림자를 지워라): 판 그림자는 창빛의 가로 기울기 없이 판 바로 아래로 진다.
+// 가로 기울기대로 두면 판 그림자가 벽에서 판 깊이 × tan(가로 각)만큼 밀려(9°면 28DU) 한쪽 끝 판 아래가 비고 다른 쪽은 판 끝 너머까지
+// 그늘이 지며, 판 끝 너머 판 두께 높이에 따로 띠가 생겼다. 양끝은 원반 반지름만큼 똑같이 부드럽게 옅어진다
 export function plankKeyBlocked(p: Vec3, env: Env | null) {
   'worklet';
   if (!env) return 0;
   const zf = Math.max(1e-3, p.z + SHELF_FRONT);
-  const v0 = (Math.atan2(SHELF_X0 - p.x, zf) - L_AZ) / light.radius;
-  const v1 = (Math.atan2(SHELF_X1 - p.x, zf) - L_AZ) / light.radius;
+  const v0 = Math.atan2(SHELF_X0 - p.x, zf) / light.radius;
+  const v1 = Math.atan2(SHELF_X1 - p.x, zf) / light.radius;
   let k = 0;
   if (env.ceil < FAR) k += keyBlocked(env.ceil - p.y, zf, v0, v1);
-  if (env.floor > -FAR) k += keyBlockedBelow(p.y - env.floor, zf, v0, v1, p.x < SHELF_X0 || p.x > SHELF_X1);
+  if (env.floor > -FAR) k += keyBlockedBelow(p.y - env.floor, zf, v0, v1);
   return Math.min(1, k);
 }
 

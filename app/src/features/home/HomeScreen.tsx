@@ -1252,7 +1252,7 @@ export function HomeScreen() {
   const headOffX = useSharedValue(0);
   const headOffY = useSharedValue(0);
   const TILT_PER_DU = 0.35; // 머리를 1DU 밀면 0.35° 젖힘(20°에 약 57DU)
-  const SPIN_PER_DU = 0.3; // 좌우 1DU에 0.3°(12°에 40DU)
+  const SPIN_PER_DU = 0.9; // 좌우 1DU에 0.9°(표지 책은 ±90°까지 돈다: 90°에 100DU)
   const AXIS_DP = 4;
   const headStep = () => {
     const h = headRef.current;
@@ -1309,8 +1309,8 @@ export function HomeScreen() {
     headOffX.value = withTiming(0, back);
     headOffY.value = withTiming(0, back);
     if (!h.last) return;
-    // 받침을 잃으면 무게중심에 따라 넘어져 벽·책·바닥에서 멈춘 자세를 저장한다.
-    const fin = frontRelease(layout, books, h.id, h.cur, h.qx);
+    // 받침을 잃으면 무게중심에 따라 넘어져 벽·책·바닥에서 멈춘 자세를 저장한다. 끄는 동안 마지막 배치(돌리며 비킨 옆 책 자리)에서 시작한다
+    const fin = frontRelease(h.last, books, h.id, h.cur, h.qx);
     const err = fin ? commitPath({ ok: true, layout: fin }) : ko.fail['no-space'];
     settleShelf(h.shelfId, fin && !err ? fin : layout);
     setEditMsg(err);

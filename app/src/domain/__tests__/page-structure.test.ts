@@ -1,10 +1,10 @@
 // 책 몸체 구조(판 두 장·책등 띠·속지 묶음·판 끝 여유)는 책 좌표에서 정해 같은 카메라로 투영한다(domain/book-parts, face-geometry).
 // 속지 면은 판 끝보다 sq 안쪽 평면에 있어, 앞 면에 가려지는 부분은 카메라가 정한다. 둥근 모서리는 투영 윤곽을 깎을 뿐 상자 밖으로 나가지 않는다.
 import { EDGE_R, pageFace, rigOf, SQUARE } from '../book-parts';
-import { corners, facing, fromPlaced, toWorld, type Book3 } from '../book3';
+import { corners, facing, fromPlaced, frontBook3, toWorld, type Book3 } from '../book3';
 import { hull } from '../box';
 import { camAt, project, viewAt } from '../camera';
-import { pageGeom, silhouette } from '../../ui/book3d/face-geometry';
+import { faceVisible, pageGeom, silhouette } from '../../ui/book3d/face-geometry';
 
 const px = { s: 3, tx: 0, ty: 0 };
 const dims = { T: 22, H: 150, W: 100 };
@@ -145,5 +145,18 @@ describe('책 몸체 구조', () => {
     const sil = silhouette(cam, b, px);
     // 바닥 앞 모서리(y = 0, z = 0)는 화면 y = 0. 윤곽은 그보다 아래로 내려가지 않는다(판을 뚫지 않는다)
     expect(Math.max(...sil.map((p) => p.y))).toBeLessThanOrEqual(1e-6);
+  });
+
+  it('뒤로 젖힌 표지 책의 꼬리는 들려 있어 그린다(받침에 닿은 아래 면만 뺀다)', () => {
+    const cam = camAt(3);
+    // 31° 젖힘: 뒤쪽 아래 모서리만 선반에 닿고 앞 끝은 T·sin31만큼 들린다
+    const leaning = frontBook3('f', dims, 50, 0, 31);
+    expect(faceVisible(cam, leaning, 'tail')).toBe(true);
+    const g = pageGeom(cam, leaning, 'tail', px);
+    expect(g.ok).toBe(true);
+    expect(g.opening.length).toBeGreaterThanOrEqual(3);
+    // 똑바로 선 책·바닥에 누운 책의 아래 면은 받침에 닿아 있어 빼던 그대로
+    expect(faceVisible(cam, frontBook3('f', dims, 50, 0, 0), 'tail')).toBe(false);
+    expect(faceVisible(cam, frontBook3('f', dims, 50, 0, 90), 'back')).toBe(false);
   });
 });

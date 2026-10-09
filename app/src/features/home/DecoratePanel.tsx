@@ -6,7 +6,7 @@ import { Gesture, GestureDetector, State } from 'react-native-gesture-handler';
 import Animated, { FadeInDown, FadeOutDown } from 'react-native-reanimated';
 import Svg, { Path, Rect } from 'react-native-svg';
 
-import { DU_PER_MM, MAX_SPIN, SHELF_DEPTH, SHELF_FRONT } from '@/domain/geometry';
+import { DU_PER_MM, MAX_FRONT_SPIN, MAX_SPIN, SHELF_DEPTH, SHELF_FRONT } from '@/domain/geometry';
 import type { Pose } from '@/domain/types';
 import { ko } from '@/i18n/ko';
 import { colors, fonts } from '@/ui/theme';
@@ -32,11 +32,12 @@ type Props = {
   angles?: string | null; // 표지 책: 지금 좌우·뒤로 각도
 };
 
-// 돌리기: 연속 조절 막대(-MAX ~ +MAX). 가능한 각도는 부모가 되돌려 준 값(spin)으로 표시.
+// 돌리기: 연속 조절 막대(-max ~ +max, 눕힌 책 MAX_SPIN·표지 책 MAX_FRONT_SPIN). 가능한 각도는 부모가 되돌려 준 값(spin)으로 표시.
 // 손잡이(동그라미)를 잡으면 지금 각도에서 끈 거리만큼만 바뀐다(잡는 순간 튀지 않는다).
 // 손잡이 밖 빈 트랙을 누르면 그 자리 값으로 옮긴 뒤 이어서 끈 만큼 바뀐다. 0 근처에서는 살짝 붙는다.
 const THUMB_HIT = 22; // 손잡이 둘레로 잡았다고 보는 거리(dp, 손잡이 지름 22)
-function SpinSlider({ value, onChange }: { value: number; onChange: (deg: number, done: boolean) => number }) {
+function SpinSlider({ value, onChange, max }: { value: number; onChange: (deg: number, done: boolean) => number; max: number }) {
+  const MAX = max;
   const [w, setW] = useState(1);
   const [live, setLive] = useState<number | null>(null); // 끄는 동안 실제로 된 각도
   const last = useRef<number | null>(null);
@@ -45,18 +46,18 @@ function SpinSlider({ value, onChange }: { value: number; onChange: (deg: number
   const grab = useRef<{ x0: number; v0: number } | null>(null); // 잡은 x와 그때 각도
   const shownRef = useRef(value);
   const snap = (d: number) => {
-    const c = Math.max(-MAX_SPIN, Math.min(MAX_SPIN, d));
+    const c = Math.max(-MAX, Math.min(MAX, d));
     return Math.abs(c) < 0.75 ? 0 : Math.round(c * 2) / 2;
   };
   const toDeg = (x: number) => {
-    const d = Math.max(-1, Math.min(1, (x / w) * 2 - 1)) * MAX_SPIN;
+    const d = Math.max(-1, Math.min(1, (x / w) * 2 - 1)) * MAX;
     return Math.abs(d) < 1.5 ? 0 : Math.round(d * 2) / 2;
   };
   // 잡은 자리에서 끈 만큼(움직이지 않았으면 그 각도 그대로)
   const along = (x: number) => {
     const g = grab.current;
     if (!g) return shownRef.current;
-    return Math.abs(x - g.x0) < 1 ? g.v0 : snap(g.v0 + ((x - g.x0) / w) * 2 * MAX_SPIN);
+    return Math.abs(x - g.x0) < 1 ? g.v0 : snap(g.v0 + ((x - g.x0) / w) * 2 * MAX);
   };
   // 계산은 한 프레임에 한 번, 마지막 각도만(밀린 중간 값은 버린다)
   const send = (deg: number, done: boolean) => {
@@ -84,7 +85,7 @@ function SpinSlider({ value, onChange }: { value: number; onChange: (deg: number
     .runOnJS(true)
     .onBegin((e) => {
       const cur = shownRef.current;
-      const thumb = ((cur / MAX_SPIN + 1) / 2) * w;
+      const thumb = ((cur / MAX + 1) / 2) * w;
       if (Math.abs(e.x - thumb) <= THUMB_HIT) {
         grab.current = { x0: e.x, v0: cur };
         if (PERF_ENABLED) console.log('[spin]', 'thumb', e.x.toFixed(1), thumb.toFixed(1), cur);
@@ -112,7 +113,7 @@ function SpinSlider({ value, onChange }: { value: number; onChange: (deg: number
     });
   const shown = live ?? value;
   shownRef.current = shown;
-  const pos = ((shown / MAX_SPIN + 1) / 2) * w;
+  const pos = ((shown / MAX + 1) / 2) * w;
   return (
     <>
       <GestureDetector gesture={pan}>
@@ -122,9 +123,9 @@ function SpinSlider({ value, onChange }: { value: number; onChange: (deg: number
           onLayout={(e) => setW(e.nativeEvent.layout.width)}
           accessibilityRole="adjustable"
           accessibilityLabel={ko.decoratePanel.spin}
-          accessibilityValue={{ min: -MAX_SPIN, max: MAX_SPIN, now: Math.round(value) }}
+          accessibilityValue={{ min: -MAX, max: MAX, now: Math.round(value) }}
           accessibilityActions={[{ name: 'increment' }, { name: 'decrement' }]}
-          onAccessibilityAction={(e) => onChange(Math.max(-MAX_SPIN, Math.min(MAX_SPIN, Math.round(value) + (e.nativeEvent.actionName === 'increment' ? 2 : -2))), true)}>
+          onAccessibilityAction={(e) => onChange(Math.max(-MAX, Math.min(MAX, Math.round(value) + (e.nativeEvent.actionName === 'increment' ? 2 : -2))), true)}>
           <View style={styles.track} />
           <View style={[styles.tick, { left: w / 2 - 0.5 }]} />
           <View style={[styles.thumb, { left: pos - 11, opacity: w > 1 ? 1 : 0 /* 폭을 재기 전에는 0 위치에 잠깐 보이지 않게 */ }]} />
@@ -287,7 +288,7 @@ export function DecoratePanel({ title, pose, lean, canLean, msg, bottomInset, re
       {pose === 'horizontal' || pose === 'front' ? (
         <View style={[styles.row, styles.rowLast]}>
           <Text style={styles.label}>{ko.decoratePanel.spin}</Text>
-          <SpinSlider value={spin} onChange={onSpin} />
+          <SpinSlider value={spin} onChange={onSpin} max={pose === 'front' ? MAX_FRONT_SPIN : MAX_SPIN} />
         </View>
       ) : (
         <View style={[styles.row, styles.rowLast]}>

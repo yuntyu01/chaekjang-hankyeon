@@ -48,7 +48,9 @@ export const VN_GRAD_RMS = (() => {
 })();
 
 export const GRAIN_KIND = { none: 0, fiber: 1, weave: 2, sheets: 3, wood: 4 } as const;
-// 셰이더 입력: mRough = (거칠기 r, 기울기 RMS), mBump = (1/크기 u, 1/크기 v, 진폭, 천 올이면 1), mGrain = (종류, 세기 1, 세기 2, 0), mGsize = (크기 1, 크기 2)
+// 셰이더 입력: mRough = (거칠기 r, 기울기 RMS), mBump = (1/크기 u, 1/크기 v, 진폭, 천 올이면 1), mGrain = (종류, 세기 1, 세기 2, 접장 틈 폭), mGsize = (크기 1, 크기 2)
+// 접장 사이 틈 폭(속지 sheets): 낱장 1.5장(0.1mm × 1.5)
+export const SHEET_GAP = mm(0.15);
 // 미세 높이 진폭: 값 잡음은 높이 H(DU)로 E|∇h|² = H²·g²·(1/su² + 1/sv²)이 slope²이 되게, 천 올(h = H·sin(ku)·sin(kv))은 기울기 진폭 H·k = √2·slope
 export type MatUniforms = { mRough: number[]; mBump: number[]; mGrain: number[]; mGsize: number[] };
 export function matUniforms(m: SurfaceMaterial): MatUniforms {
@@ -64,7 +66,7 @@ export function matUniforms(m: SurfaceMaterial): MatUniforms {
   return {
     mRough: [m.roughness, b ? b.slope : 0],
     mBump: bump,
-    mGrain: [GRAIN_KIND[g.kind], g.contrast[0], g.contrast[1], 0],
+    mGrain: [GRAIN_KIND[g.kind], g.contrast[0], g.contrast[1], g.kind === 'sheets' ? SHEET_GAP : 0],
     mGsize: [mm(g.size[0]), mm(g.size[1])],
   };
 }
@@ -88,10 +90,10 @@ export function pulseCover(x: number, q: number, w: number) {
 
 // 결(반사율 배수 f)의 가장 큰 값: 반사율 × 이 값이 1을 넘지 않아야 한다(받은 빛보다 많이 되비추는 점은 없다). matSample의 kind별 식에서
 export function grainPeak(M: MatUniforms) {
-  const [kind, c1, c2] = M.mGrain;
-  const [s1, s2] = M.mGsize;
+  const [kind, c1, c2, gap] = M.mGrain;
+  const [, s2] = M.mGsize;
   if (kind === GRAIN_KIND.fiber || kind === GRAIN_KIND.weave) return 1 + c1 + c2;
-  if (kind === GRAIN_KIND.sheets) return 1 + c1 + (c2 * 1.5 * s1) / s2;
+  if (kind === GRAIN_KIND.sheets) return 1 + c1 + (c2 * gap) / s2;
   if (kind === GRAIN_KIND.wood) return 1 + c1 * 0.25 + c2;
   return 1;
 }
@@ -119,7 +121,7 @@ export function matSample(u: number, v: number, fu: number, fv: number, M: MatUn
   }
   const a = r0 * r0;
   const r = Math.sqrt(Math.sqrt(a * a + 2 * slope * slope * (1 - seen * seen)));
-  const [kind, c1, c2] = M.mGrain;
+  const [kind, c1, c2, gap] = M.mGrain;
   const [s1, s2] = M.mGsize;
   const fm = Math.max(fu, fv);
   let f = 1;
@@ -129,9 +131,10 @@ export function matSample(u: number, v: number, fu: number, fv: number, M: MatUn
     const k = (2 * Math.PI) / s1;
     f += c1 * Math.cos(k * u) * Math.cos(k * v) * seenOf(s1 / 2, fm) + c2 * vnoise(u / s2 + 17, v / s2 + 31)[0] * seenOf(s2, fm);
   } else if (kind === GRAIN_KIND.sheets) {
-    // 낱장마다 조금씩 다른 밝기(두께 방향 u) + 접장 사이 틈(간격 s2마다 조금씩 어긋난 자리, 폭 1.5·s1: 화소 안 넓이 비로)
-    f += c1 * (hash12(Math.floor(u / s1), 7) * 2 - 1) * seenOf(s1, fu);
-    const w = 1.5 * s1;
+    // 묶음 결: 두께 방향(u)으로 s1 크기, 가장자리 길이(v)로 30배 길게 이어지는 밝기 차(값 잡음은 칸 하나가 부드럽게 이어져 칸 두 배 크기로 보이는지 본다)
+    // + 접장 사이 틈(간격 s2마다 조금씩 어긋난 자리, 폭 gap: 화소 안 넓이 비로)
+    f += c1 * vnoise(u / s1 + 13, v / (30 * s1))[0] * seenOf(2 * s1, fu);
+    const w = gap;
     const k0 = Math.floor(u / s2);
     let cover = 0;
     for (let k = k0 - 1; k <= k0 + 1; k++) {

@@ -45,7 +45,8 @@ export type PageFace = {
   opening: Vec3[]; // 판 끝 평면에서 테두리 안쪽(속지가 들어가 보이는 칸)
   page: Panel; // 속지 면(판 끝보다 sq 안쪽 평면)
   rims: Vec3[][]; // 판 끝·책등 띠 끝(바깥 평면)
-  walls: { pts: Vec3[]; n: Vec3 }[]; // 칸 안쪽 벽(판 안쪽 면, 책등 띠 안쪽 면)
+  walls: { pts: Vec3[]; n: Vec3 }[]; // 칸 안쪽 벽(판 안쪽 면, 책등 띠 안쪽 면). 판 안쪽 면은 판 끝까지(속지가 끝난 뒤에도 판은 이어진다:
+  // 빛 셰이더도 벽을 판 끝까지 보므로, 속지 끝에서 자르면 그 틈이 종이 색 위에 판 빛으로 칠해져 흰 점이 보였다)
 };
 
 export function pageFace(d: Dims, f: 'head' | 'tail' | 'fore'): PageFace {
@@ -65,8 +66,8 @@ export function pageFace(d: Dims, f: 'head' | 'tail' | 'fore'): PageFace {
         [v3(x1, H, z), v3(T, H, z), v3(T, 0, z), v3(x1, 0, z)],
       ],
       walls: [
-        { pts: [v3(x0, H - sq, zi), v3(x0, H - sq, z), v3(x0, sq, z), v3(x0, sq, zi)], n: v3(1, 0, 0) },
-        { pts: [v3(x1, H - sq, zi), v3(x1, H - sq, z), v3(x1, sq, z), v3(x1, sq, zi)], n: v3(-1, 0, 0) },
+        { pts: [v3(x0, H, zi), v3(x0, H, z), v3(x0, 0, z), v3(x0, 0, zi)], n: v3(1, 0, 0) },
+        { pts: [v3(x1, H, zi), v3(x1, H, z), v3(x1, 0, z), v3(x1, 0, zi)], n: v3(-1, 0, 0) },
       ],
     };
   }
@@ -82,8 +83,8 @@ export function pageFace(d: Dims, f: 'head' | 'tail' | 'fore'): PageFace {
       [v3(x0, y, 0), v3(x1, y, 0), v3(x1, y, sp), v3(x0, y, sp)],
     ],
     walls: [
-      { pts: [v3(x0, yi, sp), v3(x0, y, sp), v3(x0, y, W - sq), v3(x0, yi, W - sq)], n: v3(1, 0, 0) },
-      { pts: [v3(x1, yi, sp), v3(x1, y, sp), v3(x1, y, W - sq), v3(x1, yi, W - sq)], n: v3(-1, 0, 0) },
+      { pts: [v3(x0, yi, sp), v3(x0, y, sp), v3(x0, y, W), v3(x0, yi, W)], n: v3(1, 0, 0) },
+      { pts: [v3(x1, yi, sp), v3(x1, y, sp), v3(x1, y, W), v3(x1, yi, W)], n: v3(-1, 0, 0) },
       { pts: [v3(x0, yi, sp), v3(x1, yi, sp), v3(x1, y, sp), v3(x0, y, sp)], n: v3(0, 0, 1) },
     ],
   };

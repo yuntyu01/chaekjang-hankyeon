@@ -97,7 +97,6 @@ function header() {
   const float3 ECAM = ${c3(EREF.wall.map((v) => v / CAM.gain) as C3)};
   const float LELEV = ${f(L_ELEV)};
   const float LRAD = ${f(light.radius)};
-  const float LAZ = ${f(Math.atan2(L_UNIT.x, -L_UNIT.z))};
   const float F0 = ${f(F0)};
   // 창빛 원반이 하이라이트를 넓히는 몫(light-model ggxKey): α² += (반지름/2)²
   const float LR2 = ${f((light.radius / 2) * (light.radius / 2))};
@@ -168,12 +167,12 @@ function header() {
     if (v1 <= v0) return 0.0;
     return clamp((diskCum(v1, u0) - diskCum(v0, u0)) / PI, 0.0, 1.0);
   }
-  // 위 판 + 아래 판(가로는 판 범위, light-model plankKeyBlocked)
+  // 위 판 + 아래 판(가로는 판 범위, light-model plankKeyBlocked: 판 그림자는 창빛의 가로 기울기 없이 판 바로 아래로)
   float plankKeyOf(float3 p) {
     if (env.x < 0.5) return 0.0;
     float zf = max(0.001, p.z + FRONT);
-    float v0 = (atan(X0 - p.x, zf) - LAZ) / LRAD;
-    float v1 = (atan(X1 - p.x, zf) - LAZ) / LRAD;
+    float v0 = atan(X0 - p.x, zf) / LRAD;
+    float v1 = atan(X1 - p.x, zf) / LRAD;
     float k = 0.0;
     if (env.z < FARV) {
       float d = env.z - p.y;
@@ -181,9 +180,7 @@ function header() {
     }
     if (env.y > -FARV) {
       float h = p.y - env.y;
-      // 판 끝 너머 판 두께 높이는 판 쪽 방향이 판 끝면에 막힌다(light-model keyBlockedBelow)
-      bool beyond = p.x < X0 || p.x > X1;
-      k += h <= 0.0 ? (beyond && h > -THICK ? diskBlocked(-2.0, v0, v1) : 0.0) : diskBlocked((LELEV + atan(h, zf)) / LRAD, v0, v1);
+      k += h <= 0.0 ? 0.0 : diskBlocked((LELEV + atan(h, zf)) / LRAD, v0, v1);
     }
     return min(1.0, k);
   }
@@ -897,8 +894,8 @@ function materialCode() {
       float k = 2.0 * PI / s1;
       f += mG.y * cos(k * u) * cos(k * v) * seenOf(s1 * 0.5, fm) + mG.z * vnoise(float2(u / s2 + 17.0, v / s2 + 31.0)).x * seenOf(s2, fm);
     } else if (mG.x > 2.5 && mG.x < 3.5) {
-      f += mG.y * (hash12(float2(floor(u / s1), 7.0)) * 2.0 - 1.0) * seenOf(s1, fp.x);
-      float w = 1.5 * s1;
+      f += mG.y * vnoise(float2(u / s1 + 13.0, v / (30.0 * s1))).x * seenOf(2.0 * s1, fp.x);
+      float w = mG.w;
       float k0 = floor(u / s2);
       float cover = 0.0;
       for (int j = -1; j <= 1; j++) {

@@ -104,19 +104,45 @@ function Ribbons({ art, book, state, cam, px, sur }: { art: BookArt; book: Book;
     const c = cam.value;
     const p = project(c, root);
     const q0 = [p.x * px.s + px.tx, p.y * px.s + px.ty];
-    const a = (b.roll * Math.PI) / 180;
     const e = c.eye;
     const turn = (v: { x: number; y: number; z: number }) => rot(b.roll, b.yaw, v, b.spin ?? 0, b.pitch ?? 0);
-    const frame: TabFrame = { root, axR: turn({ x: 1, y: 0, z: 0 }), axU: turn({ x: 0, y: 1, z: 0 }), n, loss, cam4: e ? [e.x, e.y, e.z, e.dist] : [c.kx, c.ky, 0, 0], env };
-    return { tf: [{ translateX: q0[0] }, { translateY: q0[1] }, { rotate: a }], frame };
+    const up = turn({ x: 0, y: 1, z: 0 });
+    const frame: TabFrame = { root, axR: turn({ x: 1, y: 0, z: 0 }), axU: up, n, loss, cam4: e ? [e.x, e.y, e.z, e.dist] : [c.kx, c.ky, 0, 0], env };
+    // 탭 그림은 보는 쪽을 향한 채(세운·기울인·돌린 책은 예전과 같다) 머리 방향(화면에서 위 방향 u)으로 세운다.
+    // 뒤로 젖힌 책은 위 방향이 화면에서 짧아지는 만큼 탭도 짧아진다(u 길이 = 같은 자리 화면 평면 길이 대비)
+    const pu = project(c, { x: root.x + up.x, y: root.y + up.y, z: root.z + up.z });
+    const p1 = project(c, { x: root.x + 1, y: root.y, z: root.z });
+    const k = Math.hypot(p1.x - p.x, p1.y - p.y) || 1;
+    const ux = (pu.x - p.x) / k;
+    const uy = (pu.y - p.y) / k;
+    const L = Math.hypot(ux, uy);
+    const matrix = L < 1e-3 ? HIDDEN_MATRIX : [-uy / L, -ux, q0[0], ux / L, -uy, q0[1], 0, 0, 1];
+    // 머리가 보는 쪽을 등지면(크게 젖힌 표지 책) 탭 뿌리는 책 뒤에 있다: 보이는 바깥 면에 가려지는 부분은 그리지 않는다
+    const hide = Skia.PathBuilder.Make();
+    if (facing(c, b, 'head') <= 0.002) {
+      const cs = corners(b);
+      for (const f of ['spine', 'cover', 'back', 'tail', 'fore'] as const) {
+        if (facing(c, b, f) <= 0.002) continue;
+        faceCorners(f).forEach((i, j) => {
+          const q = project(c, cs[i]);
+          if (j === 0) hide.moveTo(q.x * px.s + px.tx, q.y * px.s + px.ty);
+          else hide.lineTo(q.x * px.s + px.tx, q.y * px.s + px.ty);
+        });
+        hide.close();
+      }
+    }
+    return { matrix, frame, hide: hide.detach() };
   });
-  const tf = useDerivedValue(() => g.value.tf);
+  const matrix = useDerivedValue(() => g.value.matrix);
   const frame = useDerivedValue(() => g.value.frame);
+  const hide = useDerivedValue(() => g.value.hide);
   const seed = useMemo(() => seedOf(`${book.id}:tab`), [book.id]);
   return (
-    <Group transform={tf}>
-      <Picture picture={art.ribbons!} />
-      <TabLight path={art.ribbonsShape!} frame={frame} albedo={albedo} s={px.s} seed={seed} />
+    <Group clip={hide} invertClip>
+      <Group matrix={matrix}>
+        <Picture picture={art.ribbons!} />
+        <TabLight path={art.ribbonsShape!} frame={frame} albedo={albedo} s={px.s} seed={seed} />
+      </Group>
     </Group>
   );
 }

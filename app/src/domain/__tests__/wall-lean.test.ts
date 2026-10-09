@@ -1,7 +1,8 @@
 // 벽에 기댄 책은 당길수록 더 기울고, 벽이 닿지 않는 거리에서는 바닥에 눕는다.
 import { corners, gap, lowest } from '../book3';
-import { bookHeight, bookThickness, SHELF_DEPTH, WALL_LEAN_ENTER, wallPitch } from '../geometry';
-import { boxOf, depthRange, frontRelease, frontSpin, frontStateOf, frontTilt, normalize, placementOf, setDepth, type BookMap, type Result } from '../layout-engine';
+import { bookHeight, bookThickness, SHELF_DEPTH, SHELF_FRONT, wallPitch } from '../geometry';
+import { bookXs, boxOf, depthRange, frontRelease, frontSpin, frontStateOf, frontTilt, normalize, placementOf, setDepth, type BookMap, type Result } from '../layout-engine';
+import { MOCKUP_BOOKS, MOCKUP_LAYOUT } from '../mockup-sample';
 import { SAMPLE_BOOKS, SAMPLE_LAYOUT } from '../onboarding-sample';
 import { bodiesOf } from '../shelf-scene';
 import type { ShelfLayout } from '../types';
@@ -36,8 +37,9 @@ it('벽에 기댄 책을 당기면 20°를 넘어도 더 기울며 벽과 바닥
   expect(body(l).pitch ?? 0).toBe(0);
   const steps = [H * Math.sin((10 * Math.PI) / 180), H * Math.sin((15 * Math.PI) / 180), H * Math.sin((5 * Math.PI) / 180), H * 0.6];
   const pitches: number[] = [];
-  for (const g of steps) {
-    l = ok(setDepth(l, books, ID, depthAtGap(g)));
+  for (const [i, g] of steps.entries()) {
+    // 첫 걸음은 기댄 채로 옮긴다(머리 손잡이로 젖힌 뒤처럼): 서 있는 책은 앞뒤로 옮겨도 저절로 기대지 않는다
+    l = ok(setDepth(l, books, ID, depthAtGap(g), i === 0 ? true : undefined));
     pitches.push(body(l).pitch ?? 0);
     // 바닥 자리는 사용자가 둔 곳 그대로
     expect(footZ(l)).toBeCloseTo(SHELF_DEPTH - g, 1);
@@ -61,13 +63,15 @@ it('각도는 책 높이·두께·거리에서: 같은 틈이면 키가 큰 책�
   expect(wallPitch(tall, SHELF_DEPTH - bookThickness(tall) - g, true)).toBeLessThan(wallPitch(B, depthAtGap(g), true));
 });
 
-it('서 있던 책은 가까워야 기대기 시작하고 기댄 책은 먼 곳까지 연속해서 넘어간다', () => {
-  const mid = H * Math.sin(((WALL_LEAN_ENTER + 10) * Math.PI) / 180);
-  // 서 있던 책은 그 틈에서 기대지 않는다
-  const standing = ok(setDepth(lone(depthAtGap(H * 0.6)), books, ID, depthAtGap(mid)));
-  expect(placementOf(standing, ID)!.pitch ?? 0).toBe(0);
+it('서 있던 책은 앞뒤로 옮겨도(벽 바로 앞까지) 서 있고, 기댄 책은 먼 곳까지 연속해서 넘어간다', () => {
+  const mid = H * Math.sin((26 * Math.PI) / 180);
+  // 서 있던 책은 벽 가까이 가도 기대지 않는다
+  for (const g of [mid, 20, 5, 0.5]) {
+    const standing = ok(setDepth(lone(depthAtGap(H * 0.6)), books, ID, depthAtGap(g)));
+    expect(placementOf(standing, ID)!.pitch ?? 0).toBe(0);
+  }
   // 기대 있던 책은 같은 틈에서 계속 기댄다
-  let leaning = ok(setDepth(lone(depthAtGap(H * 0.6)), books, ID, depthAtGap(5)));
+  let leaning = ok(setDepth(lone(depthAtGap(H * 0.6)), books, ID, depthAtGap(5), true));
   leaning = ok(setDepth(leaning, books, ID, depthAtGap(mid)));
   expect(placementOf(leaning, ID)!.pitch ?? 0).toBeGreaterThan(0);
   // 끄는 도중 상태(prevLean)로도 같은 판단
@@ -152,17 +156,47 @@ describe('머리 손잡이: 젖히기·좌우 돌리기(하나의 3D 자세)', (
     expect(body(back)).toEqual(body(both.l));
   });
 
-  it('옆 책에 막히면 가능한 각에서 멈추고 옆 책은 밀지 않는다(18권 배치)', () => {
-    const f = frontStateOf(SAMPLE_LAYOUT, books, ID)!;
-    const before = bodiesOf(SAMPLE_LAYOUT, books, 'shelf-3').filter((b) => b.id !== ID);
-    const r = frontSpin(SAMPLE_LAYOUT, books, ID, f.state, f.qx, -12);
-    const l = r ? r.layout : SAMPLE_LAYOUT;
-    const after = bodiesOf(l, books, 'shelf-3');
-    for (const b of before) {
-      const a = after.find((q) => q.id === b.id)!.t;
-      expect(a.x).toBeCloseTo(b.t.x, 1); // 위치 값 반올림(0.01DU) 외에는 그대로
-      expect(a.z).toBeCloseTo(b.t.z, 1);
+  it('책이 붙은 홈 배치에서 중간 각도로도 돈다: 옆 책은 양옆으로 모서리가 나온 만큼만 비켰다가 좁아지면 제자리로', () => {
+    const mb: BookMap = Object.fromEntries(MOCKUP_BOOKS.map((b) => [b.id, b]));
+    const id = MOCKUP_BOOKS.find((b) => b.title === '느린 계절')!.id;
+    const shelf = placementOf(MOCKUP_LAYOUT, id)!.shelfId;
+    const f = frontStateOf(MOCKUP_LAYOUT, mb, id)!;
+    const x0 = bookXs(MOCKUP_LAYOUT, mb);
+    const me = x0.get(id)!;
+    for (const want of [5, 10, 16, 25, 40, 90, -16]) {
+      const r = frontSpin(MOCKUP_LAYOUT, mb, id, f.state, f.qx, want);
+      if (!r) throw new Error(`no-space ${want}`);
+      expect(r.state.spin).toBeCloseTo(want, 1);
+      expect(frontStateOf(r.layout, mb, id)!.qx).toBeCloseTo(f.qx, 1);
+      // 손잡이를 놓으면 끄는 동안 마지막 배치에서 확정한다(비킨 옆 책 자리 그대로)
+      expect(frontRelease(r.layout, mb, id, r.state, f.qx)).not.toBeNull();
+      const x1 = bookXs(r.layout, mb);
+      for (const q of r.layout.placements) {
+        if (q.shelfId !== shelf || q.bookId === id) continue;
+        const d = x1.get(q.bookId)! - x0.get(q.bookId)!;
+        // 왼쪽 책은 왼쪽으로만, 오른쪽 책은 오른쪽으로만, 돌린 모서리가 나온 만큼(대각선 반 − 반폭 ≈ 2.4DU)까지
+        expect(Math.abs(d)).toBeLessThanOrEqual(2.6);
+        if (Math.abs(d) > 0.01) expect(Math.sign(d)).toBe(x0.get(q.bookId)! < me ? -1 : 1);
+        if (Math.abs(want) >= 40) expect(Math.abs(d)).toBeLessThan(0.05);
+      }
+      const after = bodiesOf(r.layout, mb, shelf);
+      for (let i = 0; i < after.length; i++) for (let j = i + 1; j < after.length; j++) expect(gap(after[i], after[j])).toBeGreaterThan(-0.3);
     }
-    for (let i = 0; i < after.length; i++) for (let j = i + 1; j < after.length; j++) expect(gap(after[i], after[j])).toBeGreaterThan(-0.3);
+  });
+
+  it('붙어 선 책 사이에서도 옆 책을 밀며 크게 돌고, 선반 앞 끝 밖으로 나가지 않는다(18권 배치)', () => {
+    for (const want of [-60, 60]) {
+      const f = frontStateOf(SAMPLE_LAYOUT, books, ID)!;
+      const r = frontSpin(SAMPLE_LAYOUT, books, ID, f.state, f.qx, want);
+      if (!r) throw new Error('no-space');
+      expect(r.state.spin).toBeCloseTo(want, 0);
+      expect(frontStateOf(r.layout, books, ID)!.qx).toBeCloseTo(f.qx, 1); // 제자리에서 돈다
+      const after = bodiesOf(r.layout, books, 'shelf-3');
+      for (let i = 0; i < after.length; i++) for (let j = i + 1; j < after.length; j++) expect(gap(after[i], after[j])).toBeGreaterThan(-0.3);
+      for (const p of corners(body(r.layout))) {
+        expect(p.z).toBeGreaterThanOrEqual(-SHELF_FRONT - 0.01);
+        expect(p.z).toBeLessThanOrEqual(SHELF_DEPTH + 0.01);
+      }
+    }
   });
 });

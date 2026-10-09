@@ -3,7 +3,7 @@
 // 테두리·안쪽 벽처럼 단색인 조각은 투영한 다각형. 화면 좌표에서 밀어 넣거나 흔들거나 부풀리지 않는다.
 // 둥근 모서리는 책 전체의 투영 윤곽을 판 모서리 반지름(EDGE_R)으로 깎은 모양 하나로 만든다(모든 면·그림자·빛이 같이 잘린다).
 // 워클릿은 만들어질 때 쓰는 함수를 붙잡으므로, 쓰이는 함수를 먼저 정의한다.
-import { corners, faceNormal, facing, rot, toWorld, type Book3, type Cam, type FaceId, type Vec3 } from '@/domain/book3';
+import { corners, faceCorners, faceNormal, facing, rot, toWorld, type Book3, type Cam, type FaceId, type Vec3 } from '@/domain/book3';
 import { EDGE_R, facePanel, pageFace, type Panel } from '@/domain/book-parts';
 import { hull } from '@/domain/box';
 import { project, viewAt, type Point } from '@/domain/camera';
@@ -55,11 +55,17 @@ export function faceMatrix(b: Book3, f: 'spine' | 'cover' | 'back', cam: Cam, px
   return panelMatrix(b, facePanel(b.dims, f), cam, px);
 }
 
-// 면이 보이는가: 카메라 쪽을 향하고(뒷면 거르기), 아래를 향한 면(바닥·아래 책에 닿는 면)이 아닐 때
+// 면이 보이는가: 카메라 쪽을 향하고(뒷면 거르기), 받침에 닿은 아래 면(바닥·아래 책에 닿는 면)이 아닐 때.
+// 아래를 향해도 들린 면은 보인다: 뒤로 젖힌 표지 책은 뒤쪽 아래 모서리만 선반에 닿고 꼬리가 앞으로 드러난다
+// (빼면 그 자리에 속지·판 그림 없이 바탕 책 색이 칠해져 밑이 책 색 판이나 흰 판으로 보였다)
 export function faceVisible(cam: Cam, b: Book3, f: FaceId) {
   'worklet';
   if (facing(cam, b, f) <= 0.002) return false;
-  return rot(b.roll, b.yaw, faceNormal(f), b.spin ?? 0, b.pitch ?? 0).y >= -0.5;
+  if (rot(b.roll, b.yaw, faceNormal(f), b.spin ?? 0, b.pitch ?? 0).y >= -0.5) return true;
+  const cs = corners(b);
+  let lo = Infinity;
+  for (const c of cs) lo = Math.min(lo, c.y);
+  return faceCorners(f).some((i) => cs[i].y > lo + 0.5);
 }
 
 // 종이 단면 면(머리·꼬리·책배) 하나의 화면 모양: 열린 칸, 속지 조각 행렬, 판·책등 테두리, 안쪽 벽(캔버스 px, pageFace 벽 순서, 안 보이면 빈 배열)

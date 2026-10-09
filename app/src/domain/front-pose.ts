@@ -62,12 +62,15 @@ export function tiltStep(dims: Dims, cur: FrontState, pitch: number, wall: numbe
 }
 
 // 좌우 돌리기 한 걸음: 벽에 기대 있으면 벽 접촉을 유지하도록 바닥을 최소로 앞뒤, 아니면 벽을 뚫을 때만 앞으로.
-export function spinStep(dims: Dims, cur: FrontState, spin: number, wall: number, max: number): FrontState {
+// front: 선반 앞 끝 z. 돌려서 앞 끝 밖으로 나가는 쪽이 있으면 그만큼 뒤로(벽과 똑같이)
+export function spinStep(dims: Dims, cur: FrontState, spin: number, wall: number, max: number, front = -Infinity): FrontState {
   const s = Math.max(-max, Math.min(max, spin));
   const touching = cur.pitch > 0 && wallReach(dims, cur) >= wall - WALL_TOUCH;
   const r = wallReach(dims, { ...cur, spin: s });
   let depth = cur.depth;
   if (touching || r > wall) depth += wall - r;
+  const z0 = depth + frontExtent(dims, cur.pitch, s).z0;
+  if (z0 < front) depth += front - z0;
   return { depth, pitch: cur.pitch, spin: s };
 }
 
