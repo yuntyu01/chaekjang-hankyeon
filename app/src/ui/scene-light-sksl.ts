@@ -90,6 +90,8 @@ function header() {
   const float AMB = ${f(light.ambient)};
   const float3 SKYTILT = ${v3(light.skyTilt)};
   const float DIFF = ${f(light.diffuse)};
+  // 방 빛 가림(light.occlusion): 0이면 하늘 가림을 빼는 그림 규칙
+  const float OCC = ${light.occlusion ? '1.0' : '0.0'};
   const float3 LU = ${v3(L_UNIT)};
   // 카메라 기준 빛(벽 대표 자리 빛 / 노출 기준 CAM.gain, 반사광을 장면 밝기로)
   const float3 ECAM = ${c3(EREF.wall.map((v) => v / CAM.gain) as C3)};
@@ -978,7 +980,8 @@ function shadeCode(mode: 0 | 1 | 2) {
   // rough: 표면 거칠기(재질, 그리지 못한 미세 높이 몫 포함), alb: 반사율 결(배수, 평균 1),
   // kx: 책이 창빛 원반을 가리는 몫(위 판이 가리고 남은 빛에서, 벽 그림자 그림),
   // sref: 그 재질이 대표 자리에서 받는 반사광(장면 밝기, light-model SREF): 재질 색 a는 반사광까지 넣은 '보이는 색'이라 확산 몫은 toneInv(a) − sref
-  half4 shade(float3 P, float3 n, float3 nf, float3 v, float3 loss, float3 a, float3 eref, float rough, float alb, float kx, float3 sref) {
+  half4 shade(float3 P, float3 n, float3 nf, float3 v, float3 lossIn, float3 a, float3 eref, float rough, float alb, float kx, float3 sref) {
+    float3 loss = lossIn * OCC;
     float kb = 1.0 - (1.0 - plankKey(P)) * (1.0 - kx);
     // 가림(loss)은 면 법선 nf에서 구운 값: 둥근 모서리·구멍 벽처럼 법선이 기운 곳은 면이 받는 빛의 비율로(light-model lightWithLoss)
     float3 e0 = skyIrr(n) + KEYC * (DIFF * max(0.0, dot(n, LU)) * (1.0 - kb));

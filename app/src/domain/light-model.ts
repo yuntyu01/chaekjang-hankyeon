@@ -1078,6 +1078,8 @@ export function lightWithLoss(p: Vec3, n: Vec3, v: Vec3 | null, env: Env | null,
   'worklet';
   const ref = eref ?? EREF.book;
   const ro = rough ?? ROUGH.paper;
+  // 방 빛 가림을 빼는 그림 규칙(light.occlusion false): 가림 0
+  if (!light.occlusion) loss = [0, 0, 0];
   const kb = 1 - (1 - (key ? plankKeyBlocked(p, env) : 0)) * (1 - (kx ?? 0));
   // 가림 없을 때 받는 빛(선형 RGB): 하늘(방) 몫 + 창빛 몫
   const open = (m: Vec3): C3 => {
@@ -1330,7 +1332,7 @@ const REF_BOOK_P = { x: REF_X, y: REF_BOOK_H / 2, z: 0 };
 const REF_FRONT = { x: 0, y: 0, z: -1 };
 function anchorLight(p: Vec3, n: Vec3, G: Grid, rough: number): C3 {
   const E0 = openE(p, n, REF_ENV);
-  const loss = envLoss(p, n, REF_ENV, G);
+  const loss = light.occlusion ? envLoss(p, n, REF_ENV, G) : grey(0);
   const ks = envBRDF(refNv(p, n), rough);
   return [(E0[0] - loss[0]) * (1 - ks), (E0[1] - loss[1]) * (1 - ks), (E0[2] - loss[2]) * (1 - ks)];
 }
