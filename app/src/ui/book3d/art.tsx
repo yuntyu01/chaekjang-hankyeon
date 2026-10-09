@@ -60,10 +60,11 @@ export const inkOf = (b: Book) => b.art.inkColor ?? titleInk(faceOf(b));
 // 시안의 제목 획은 보통 굵기보다 약 30% 두껍고, 가는 획은 실제 표시 크기에서 바탕에 묻혀 옅어 보인다.
 // 어두운 바탕의 밝은 글자는 번져 보여 같은 두께도 더 굵게 읽히므로 덧그리는 두께를 조금 줄인다(바탕·글자색에 따른 공통 규칙).
 // 책등·눕힘 제목: 시안 책장 같은 글자(모순·데미안·어린 왕자)의 잉크 면적에 맞춘 중간 굵기(예전 0.03/0.022는 17~26% 굵었다)
-export const TITLE_WEIGHT = 0.014;
-export const TITLE_WEIGHT_LIGHT = 0.010;
+// 2026-10-09 그림자 참고 그림 책등 제목이 더 굵고 진해 보여(사용자: 글씨가 너무 얇다) 0.014 → 0.022(먹색도 짙은 남색으로)
+export const TITLE_WEIGHT = 0.022;
+export const TITLE_WEIGHT_LIGHT = 0.016;
 // 앞표지 제목: 시안 표지 제목 획은 글자 높이의 약 10%(보통 굵기 약 8%)라 조금 더 굵게
-export const COVER_WEIGHT = 0.017;
+export const COVER_WEIGHT = 0.024;
 const weightFor = (ink: string) => (ink === TITLE_LIGHT ? TITLE_WEIGHT_LIGHT : TITLE_WEIGHT);
 function Glyph({ x, y, text, font, color, weight, original }: { x: number; y: number; text: string; font: SkFont; color: string; weight: number; original: SkImage }) {
   if (hasOriginalGlyph(text)) return <ReferenceGlyph image={original} text={text} font={font} x={x} y={y} color={color} />;

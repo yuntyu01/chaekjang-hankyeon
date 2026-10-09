@@ -117,7 +117,7 @@ export const editionFromWire = (w: WireEdition, imageDir: string): Edition => ({
   coverUri: w.coverFileId ? `${imageDir}${w.coverFileId}` : nz(w.coverUrl), coverSource: (nz(w.coverSource) as Edition['coverSource']) ?? undefined,
   source: (w.source as Edition['source']) ?? 'manual', sourceName: nz(w.sourceName),
   art: w.art?.baseColor
-    ? { baseColor: w.art.baseColor, inkColor: w.art.inkColor ?? '#4A403A', accentColor: w.art.accentColor ?? w.art.baseColor, motifId: (w.art.motifId ?? 'leaf') as never, layoutVariant: (w.art.layoutVariant ?? 'spine_a') as LayoutVariant, heightClass: 'medium', thicknessClass: 'medium', generatedAt: w.art.generatedAt ?? '', version: w.art.version ?? 1 }
+    ? { baseColor: w.art.baseColor, inkColor: w.art.inkColor ?? '#2F3944', accentColor: w.art.accentColor ?? w.art.baseColor, motifId: (w.art.motifId ?? 'leaf') as never, layoutVariant: (w.art.layoutVariant ?? 'spine_a') as LayoutVariant, heightClass: 'medium', thicknessClass: 'medium', generatedAt: w.art.generatedAt ?? '', version: w.art.version ?? 1 }
     : undefined,
   createdAt: w.createdAt ?? w.updatedAt, updatedAt: w.updatedAt,
 });

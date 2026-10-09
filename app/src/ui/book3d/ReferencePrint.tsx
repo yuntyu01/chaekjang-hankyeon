@@ -11,16 +11,19 @@ export function referencePrint(title: string): Print | undefined {
   return (prints as Record<string, Print>)[title];
 }
 
-function inkMatrix(layer: Ink, color: string) {
+// 제목 잉크 진하기: 원본 그림(처음 시안)의 획은 그림자 참고 그림 제목보다 가늘어(사용자: 글씨가 너무 얇다) 잉크 알파를 키운다.
+// 가장자리 반투명 화소가 진해져 획이 굵고 진해 보인다(글꼴로 그리는 제목의 덧그림 TITLE_WEIGHT와 같은 몫). 장식 무늬는 그대로
+export const TITLE_INK_BOOST = 2;
+function inkMatrix(layer: Ink, color: string, boost = 1) {
   const [r,g,b] = [1,3,5].map(i => parseInt(color.slice(i,i+2),16)/255);
-  const [a0,a1,a2,offset] = layer.alpha;
+  const [a0,a1,a2,offset] = layer.alpha.map((v) => v * boost);
   return [0,0,0,0,r,0,0,0,0,g,0,0,0,0,b,a0,a1,a2,0,offset];
 }
-function InkLayer({ image, layer, color }: { image: SkImage; layer: Ink; color: string }) {
+function InkLayer({ image, layer, color, boost = 1 }: { image: SkImage; layer: Ink; color: string; boost?: number }) {
   const [x,y,w,h] = layer.bounds;
   return <Group clip={Skia.XYWHRect(x,y,w,h)}>
     <Image image={image} x={0} y={0} width={image.width()} height={image.height()} fit="fill">
-      <ColorMatrix matrix={inkMatrix(layer,color)} />
+      <ColorMatrix matrix={inkMatrix(layer,color,boost)} />
     </Image>
   </Group>;
 }
@@ -32,7 +35,7 @@ export function drawOriginalGlyph(canvas: SkCanvas, image: SkImage, text: string
   const [sx,sy,w,h]=layer.bounds;
   const paint=Skia.Paint();
   paint.setAntiAlias(true);
-  paint.setColorFilter(Skia.ColorFilter.MakeMatrix(inkMatrix(layer,color)));
+  paint.setColorFilter(Skia.ColorFilter.MakeMatrix(inkMatrix(layer,color,TITLE_INK_BOOST)));
   canvas.drawImageRect(image,Skia.XYWHRect(sx,sy,w,h),Skia.XYWHRect(x+b.x,y+b.y,b.width,b.height),paint,false);
   return true;
 }
@@ -41,7 +44,7 @@ export function ReferenceGlyph({ image, text, font, x, y, color }: { image: SkIm
   const layer=(glyphs as Record<string,Ink>)[text];
   if (!layer) return null;
   const b=font.measureText(text), [sx,sy,w,h]=layer.bounds;
-  return <Group matrix={[b.width/w,0,x+b.x-sx*b.width/w,0,b.height/h,y+b.y-sy*b.height/h,0,0,1]}><InkLayer image={image} layer={layer} color={color} /></Group>;
+  return <Group matrix={[b.width/w,0,x+b.x-sx*b.width/w,0,b.height/h,y+b.y-sy*b.height/h,0,0,1]}><InkLayer image={image} layer={layer} color={color} boost={TITLE_INK_BOOST} /></Group>;
 }
 export const hasOriginalGlyph = (text: string) => text in glyphs;
 
@@ -55,7 +58,7 @@ function faceMatrix(face: number[], w: number, h: number) {
 
 export function ReferencePrint({ image, template, w, h, ink, accent, title = true, decoration = true }: { image: SkImage; template: Print; w: number; h: number; ink: string; accent: string; title?: boolean; decoration?: boolean }) {
   return <Group matrix={faceMatrix(template.face,w,h)}>
-    {title ? <Group matrix={template.registration}><InkLayer image={image} layer={template.title} color={ink} /></Group> : null}
+    {title ? <Group matrix={template.registration}><InkLayer image={image} layer={template.title} color={ink} boost={TITLE_INK_BOOST} /></Group> : null}
     {decoration ? template.decoration.map((p,i)=><InkLayer key={i} image={image} layer={p} color={p.color ?? accent} />) : null}
   </Group>;
 }

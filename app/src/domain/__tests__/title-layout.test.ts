@@ -27,12 +27,12 @@ describe('색', () => {
     for (const bg of ['#FBEDDD', '#B5C7D7', '#E39E8A', '#BE5D47', '#3D5F57', '#1D426B']) expect(contrast(titleInk(bg), bg)).toBeGreaterThan(3.5);
     expect(shade('#808080', -0.5)).toBe('#404040');
   });
-  it('시안 책장의 글자색: 중간 밝기의 붉은·푸른 책등은 밝은 글자, 연한 책은 따뜻한 갈색 먹', () => {
-    // 문장 수집·느린 하루·여행의 이유·사람의 마음이란·데미안·고요한 우연
-    for (const bg of ['#CE886F', '#8DA5B9', '#819AB1', '#475A78', '#647361', '#8F5654']) expect(titleInk(bg)).toBe(TITLE_LIGHT);
-    // 모순·어린 왕자·작은 것들의 기쁨·너라는 계절·찰나의 마음
-    for (const bg of ['#FDF0E0', '#FBD392', '#FDECD4', '#F0BDA0', '#F3B497']) expect(titleInk(bg)).toBe(TITLE_DARK);
-    expect(TITLE_DARK).toBe('#4A403A');
+  it('시안 책장의 글자색: 중간 밝기의 붉은·푸른 책등은 밝은 글자, 연한 책은 짙은 남색 먹', () => {
+    // 문장 수집·여행의 이유·사람의 마음이란·데미안·고요한 우연
+    for (const bg of ['#CE886F', '#819AB1', '#475A78', '#647361', '#8F5654']) expect(titleInk(bg)).toBe(TITLE_LIGHT);
+    // 모순·어린 왕자·작은 것들의 기쁨·너라는 계절·찰나의 마음, 느린 하루(연한 하늘색: 그림자 참고 그림도 짙은 먹)
+    for (const bg of ['#FDF0E0', '#FBD392', '#FDECD4', '#F0BDA0', '#F3B497', '#8DA5B9']) expect(titleInk(bg)).toBe(TITLE_DARK);
+    expect(TITLE_DARK).toBe('#2F3944');
   });
 });
 

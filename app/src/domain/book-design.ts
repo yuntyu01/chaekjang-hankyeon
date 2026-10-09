@@ -8,12 +8,12 @@ export const LANDSCAPES: Record<'night' | 'forest' | 'sunset', CoverArt> = {
     titleRect: { x: 65, y: 57, width: 146, height: 43, cleanX: 225 },
   },
   forest: {
-    image: require('../../assets/reference/bookshelf-original.png'), titleTop: 0.275, ink: '#4A403A', edge: '#929D7B',
+    image: require('../../assets/reference/bookshelf-original.png'), titleTop: 0.275, ink: '#2F3944', edge: '#929D7B',
     sourceRect: { x: 67, y: 806, width: 291, height: 351 }, printedTitle: '여름의 숲',
     titleRect: { x: 97, y: 108, width: 129, height: 40, cleanX: 248 },
   },
   sunset: {
-    image: require('../../assets/reference/bookshelf-original.png'), titleTop: 0.085, ink: '#4A403A', edge: '#F4BF9C',
+    image: require('../../assets/reference/bookshelf-original.png'), titleTop: 0.085, ink: '#2F3944', edge: '#F4BF9C',
     sourceRect: { x: 546, y: 1248, width: 267, height: 322 }, printedTitle: '우리가 빛의 속도로 갈 수 없다면',
     titleRect: { x: 53, y: 33, width: 185, height: 66, cleanX: 244 },
   },
