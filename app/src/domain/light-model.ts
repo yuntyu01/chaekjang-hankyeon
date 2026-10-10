@@ -15,7 +15,7 @@
 // 4) 반사광: 유전체의 프레넬 반사를 거칠기까지 넣어(환경 반사 근사 EnvBRDF, GGX 창빛 하이라이트). 확산 몫은 반사된 만큼 줄어든다.
 // 워클릿은 만들어질 때 쓰는 함수를 붙잡으므로, 쓰이는 함수를 먼저 정의한다.
 import palette from '@/ui/art/reference-bindings.generated.json';
-import { ALBEDO_MAX, camera, F0, light, materials, surfaces, type SurfaceMaterial } from '@/ui/lighting';
+import { ALBEDO_MAX, camera, F0, light, materials, physShadow, PLANK_END_SOFT, plankShadow, surfaces, type SurfaceMaterial } from '@/ui/lighting';
 
 import { corners, type Book3 } from './book3';
 import { rigOf } from './book-parts';
@@ -927,18 +927,27 @@ export function keyBlockedBelow(h: number, zf: number, v0?: number, v1?: number,
   if (h <= 0) return beyond && h > -SHELF_THICK ? diskBlocked(-2, v0 ?? -2, v1 ?? 2) : 0;
   return diskBlocked((L_ELEV + Math.atan2(h, Math.max(1e-3, zf))) / light.radius, v0 ?? -2, v1 ?? 2);
 }
+// 위 판(점보다 d 위)이 가리는 몫(그림 규칙 plankShadow: 가까운 띠 + 긴 꼬리, 상한 max). d ≤ 0(판 높이)이면 그 가로 범위 전체
+export function plankAbove(d: number, zf: number, v0: number, v1: number) {
+  'worklet';
+  const P = plankShadow;
+  const a = Math.atan2(d, Math.max(1e-3, zf));
+  const near = diskBlocked(d <= 0 ? -2 : (a - P.near.elev) / P.near.radius, v0, v1);
+  const far = diskBlocked(d <= 0 ? -2 : (a - P.far.elev) / P.far.radius, v0, v1);
+  return P.max * (P.mix * near + (1 - P.mix) * far);
+}
 // 둘레의 판이 점 p에서 창빛 원반을 가리는 몫: 위 판 + 아래 판(가로는 판 범위)
 // 그림 규칙(2026-10-10 사용자: 선반 양끝 이상한 그림자를 지워라): 판 그림자는 창빛의 가로 기울기 없이 판 바로 아래로 진다.
 // 가로 기울기대로 두면 판 그림자가 벽에서 판 깊이 × tan(가로 각)만큼 밀려(9°면 28DU) 한쪽 끝 판 아래가 비고 다른 쪽은 판 끝 너머까지
-// 그늘이 지며, 판 끝 너머 판 두께 높이에 따로 띠가 생겼다. 양끝은 원반 반지름만큼 똑같이 부드럽게 옅어진다
+// 그늘이 지며, 판 끝 너머 판 두께 높이에 따로 띠가 생겼다. 양끝은 PLANK_END_SOFT 폭으로 똑같이 옅어진다(판 끝까지 진하게)
 export function plankKeyBlocked(p: Vec3, env: Env | null) {
   'worklet';
   if (!env) return 0;
   const zf = Math.max(1e-3, p.z + SHELF_FRONT);
-  const v0 = Math.atan2(SHELF_X0 - p.x, zf) / light.radius;
-  const v1 = Math.atan2(SHELF_X1 - p.x, zf) / light.radius;
+  const v0 = Math.atan2(SHELF_X0 - p.x, zf) / PLANK_END_SOFT;
+  const v1 = Math.atan2(SHELF_X1 - p.x, zf) / PLANK_END_SOFT;
   let k = 0;
-  if (env.ceil < FAR) k += keyBlocked(env.ceil - p.y, zf, v0, v1);
+  if (env.ceil < FAR) k += plankAbove(env.ceil - p.y, zf, v0, v1);
   if (env.floor > -FAR) k += keyBlockedBelow(p.y - env.floor, zf, v0, v1);
   return Math.min(1, k);
 }
@@ -1082,7 +1091,7 @@ export function lightWithLoss(p: Vec3, n: Vec3, v: Vec3 | null, env: Env | null,
   const ro = rough ?? ROUGH.paper;
   // 방 빛 가림을 빼는 그림 규칙(light.occlusion false): 가림 0
   if (!light.occlusion) loss = [0, 0, 0];
-  const kb = 1 - (1 - (key ? plankKeyBlocked(p, env) : 0)) * (1 - (kx ?? 0));
+  const kb = 1 - (1 - (key ? plankKeyBlocked(p, env) : 0)) * (1 - (kx ?? 0) * physShadow.bookMax);
   // 가림 없을 때 받는 빛(선형 RGB): 하늘(방) 몫 + 창빛 몫
   const open = (m: Vec3): C3 => {
     const sk = skyE(m);

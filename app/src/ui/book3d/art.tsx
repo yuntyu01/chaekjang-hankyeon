@@ -371,7 +371,7 @@ async function buildArt(book: Book, s: number, dims: { T: number; H: number; W: 
   const coverPic = await record(
     made.cover ? <Group clip={bookFacePath(cw, h, s)}><SkiaImage image={made.cover} x={0} y={0} width={cw} height={h} fit="cover" /></Group> :
     <Group>
-      {originalCover ? <ReferenceCover image={coverImg!} cover={cover} w={cw} h={h} retainTitle={retainTitle} /> : <CoverFaceArt w={cw} h={h} s={s} face={toneOf(book)} image={coverImg} motif={book.body ? motif : null} />}
+      {originalCover ? <ReferenceCover image={coverImg!} cover={cover} w={cw} h={h} s={s} retainTitle={retainTitle} /> : <CoverFaceArt w={cw} h={h} s={s} face={toneOf(book)} image={coverImg} motif={book.body ? motif : null} />}
       {coverMotif}
       {book.art.plainCover || retainTitle ? null : lineEls}
     </Group>,

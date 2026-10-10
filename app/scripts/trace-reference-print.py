@@ -65,6 +65,21 @@ def print_registration(key, face):
     dy=(target[1]+target[3]-actual[1]-actual[3])/2
     return [round(v,7) for v in [sx,0,cx*(1-sx)+dx,0,sy,cy*(1-sy)+dy,0,0,1]]
 
+# Tilted originals (흰, 너라는 계절) show a sliver of their side face beside the spine, so the
+# printed title sits right of the spine centre (너라는 계절: 62% across). The native book shows
+# no such sliver and the title looked pushed right (2026-10-10 user), so centre the title ink
+# across the spine face: shift along the face's horizontal axis only.
+def center_on_face(face, layer):
+    x0,y0,fw,_,ang=face
+    x,y,w,h=layer['bounds']; k=np.array(layer['alpha'][:3]); offset=layer['alpha'][3]
+    alpha=np.clip(pixels[y:y+h,x:x+w]@k/255+offset,0,1)
+    alpha[alpha<=.05]=0
+    a=np.radians(ang); c,s=np.cos(a),np.sin(a)
+    yy,xx=np.mgrid[y:y+h,x:x+w]
+    across=c*(xx-x0)+s*(yy-y0)
+    shift=fw/2-float((alpha*across).sum()/alpha.sum())
+    return [round(v,7) for v in [1,0,shift*c,0,1,shift*s,0,0,1]]
+
 def alpha_mask(bounds, mode):
     x,y,w,h=bounds; a=pixels[y:y+h,x:x+w]
     axis=[1,-1,0] if mode=='orange' else [0,1,0] if mode=='gold' else [1,0,0]
@@ -92,6 +107,7 @@ for key,(title,face,box,mode,motif_box,motif) in SLOTS.items():
         paths.append({**alpha_mask(motif_box,color),'color':('#EDBB63' if motif=='daisy' else '#EDA75F') if color=='orange' else None})
     out[title]={'slot':key,'face':face,'pose':'horizontal' if face[4]==90 else 'spine','title':alpha_mask(box,mode),'motif':motif,'decoration':paths}
     registration=print_registration(key,face)
+    if face[4] not in (0,90): registration=center_on_face(face,out[title]['title'])
     if registration: out[title]['registration']=registration
     if motif not in motifs:
         motifs[motif]={'face':[*motif_box,0],'decoration':paths}

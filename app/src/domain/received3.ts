@@ -95,7 +95,7 @@ export function receivedShadow3(b: Book3 | null, occBodies: Book3[], s: number, 
         const L = bands[k];
         L.polys.push(part.pts);
         L.sigma = Math.max(L.sigma, penumbraSigma(pen) * s);
-        L.w = Math.max(L.w, thinOccluder(occ.dims, pen));
+        L.w = Math.max(L.w, thinOccluder(occ.dims, physShadow.spread * Math.max(lo, part.dist)));
         any = true;
       }
     }

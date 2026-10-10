@@ -230,5 +230,7 @@ export function bookCast(b: Book3, s: number, k: number, wall: boolean): BookCas
   if (part.length < 3) return null;
   const pts: Vec3[] = part.map((c) => (wall ? onWall(c, D, SHELF_DEPTH) : onFloor(c, D, 0)));
   const pen = physShadow.spread * ((Math.max(lo, f0) + Math.min(hi, f1)) / 2);
-  return { pts, sigma: penumbraSigma(pen) * s, w: thinOccluder(b.dims, pen) };
+  // 가리는 몫은 그 구간에서 가장 가까운 곳의 반그림자로(그림자 가운데의 진하기는 가장 가까운 부분이 정한다). 구간 가운데로 재면
+  // 책이 구간 경계를 넘을 때 몫이 한 번에 바뀌어(반지름 16°면 0.5) 벽 그림자가 튀었다
+  return { pts, sigma: penumbraSigma(pen) * s, w: thinOccluder(b.dims, physShadow.spread * Math.max(lo, f0)) };
 }

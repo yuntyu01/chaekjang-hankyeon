@@ -7,7 +7,7 @@ import { EDGE_R, GROOVE, SPINE_CURVE } from '@/domain/book-parts';
 import { SHELF_DEPTH, SHELF_FRONT, SHELF_THICK, SHELF_X0, SHELF_X1 } from '@/domain/geometry';
 import { ALBEDO, BOX_MAX, BOX_VEC, DESIGN, ENV_COLS, ENV_NY, CAM, EREF, EXPOSURE, FAR, GAMMA, GRID_N, KEY_C, KEY_DIRS, L_ELEV, L_UNIT, RAD, SKY_C, TONE, TOUCH, type C3 } from '@/domain/light-model';
 import type { Affine, Cam, Vec3 } from '@/domain/camera';
-import { F0, light } from '@/ui/lighting';
+import { F0, light, physShadow, PLANK_END_SOFT, plankShadow } from '@/ui/lighting';
 
 // 평면: 한 점 O, 바깥 법선 n, 둥근 모서리(평면 안에서 모서리 쪽 단위 벡터 T와 모서리의 그 축 좌표 at)
 export type Plane = { O: Vec3; n: Vec3; edges?: { T: Vec3; at: number }[] };
@@ -97,6 +97,10 @@ function header() {
   const float3 ECAM = ${c3(EREF.wall.map((v) => v / CAM.gain) as C3)};
   const float LELEV = ${f(L_ELEV)};
   const float LRAD = ${f(light.radius)};
+  const float LEND = ${f(PLANK_END_SOFT)};
+  const float BOOKMAX = ${f(physShadow.bookMax)};
+  const float4 PLN = float4(${f(plankShadow.near.elev)}, ${f(plankShadow.near.radius)}, ${f(plankShadow.far.elev)}, ${f(plankShadow.far.radius)});
+  const float2 PLM = float2(${f(plankShadow.max)}, ${f(plankShadow.mix)});
   const float F0 = ${f(F0)};
   // 창빛 원반이 하이라이트를 넓히는 몫(light-model ggxKey): α² += (반지름/2)²
   const float LR2 = ${f((light.radius / 2) * (light.radius / 2))};
@@ -167,16 +171,20 @@ function header() {
     if (v1 <= v0) return 0.0;
     return clamp((diskCum(v1, u0) - diskCum(v0, u0)) / PI, 0.0, 1.0);
   }
-  // 위 판 + 아래 판(가로는 판 범위, light-model plankKeyBlocked: 판 그림자는 창빛의 가로 기울기 없이 판 바로 아래로)
+  // 위 판 + 아래 판(가로는 판 범위, light-model plankKeyBlocked: 판 그림자는 창빛의 가로 기울기 없이 판 바로 아래로, 양끝은 LEND 폭으로)
   float plankKeyOf(float3 p) {
     if (env.x < 0.5) return 0.0;
     float zf = max(0.001, p.z + FRONT);
-    float v0 = atan(X0 - p.x, zf) / LRAD;
-    float v1 = atan(X1 - p.x, zf) / LRAD;
+    float v0 = atan(X0 - p.x, zf) / LEND;
+    float v1 = atan(X1 - p.x, zf) / LEND;
     float k = 0.0;
     if (env.z < FARV) {
+      // 위 판: 가까운 띠 + 긴 꼬리(light-model plankAbove)
       float d = env.z - p.y;
-      k += diskBlocked(d <= 0.0 ? -2.0 : (atan(d, zf) - LELEV) / LRAD, v0, v1);
+      float a = atan(d, zf);
+      float kn = diskBlocked(d <= 0.0 ? -2.0 : (a - PLN.x) / PLN.y, v0, v1);
+      float kf = diskBlocked(d <= 0.0 ? -2.0 : (a - PLN.z) / PLN.w, v0, v1);
+      k += PLM.x * (PLM.y * kn + (1.0 - PLM.y) * kf);
     }
     if (env.y > -FARV) {
       float h = p.y - env.y;
@@ -979,7 +987,7 @@ function shadeCode(mode: 0 | 1 | 2) {
   // sref: 그 재질이 대표 자리에서 받는 반사광(장면 밝기, light-model SREF): 재질 색 a는 반사광까지 넣은 '보이는 색'이라 확산 몫은 toneInv(a) − sref
   half4 shade(float3 P, float3 n, float3 nf, float3 v, float3 lossIn, float3 a, float3 eref, float rough, float alb, float kx, float3 sref) {
     float3 loss = lossIn * OCC;
-    float kb = 1.0 - (1.0 - plankKey(P)) * (1.0 - kx);
+    float kb = 1.0 - (1.0 - plankKey(P)) * (1.0 - kx * BOOKMAX);
     // 가림(loss)은 면 법선 nf에서 구운 값: 둥근 모서리·구멍 벽처럼 법선이 기운 곳은 면이 받는 빛의 비율로(light-model lightWithLoss)
     float3 e0 = skyIrr(n) + KEYC * (DIFF * max(0.0, dot(n, LU)) * (1.0 - kb));
     float3 e0f = skyIrr(nf) + KEYC * (DIFF * max(0.0, dot(nf, LU)) * (1.0 - kb));
@@ -1183,8 +1191,21 @@ ${shadeCode(dodge ? 1 : 0)}
       // 책 면: 둥근 모서리(반지름 EDGER, 면이 좁으면 그 절반), 책등 곡면, 표지·뒤표지 제본 홈
       float rx = min(pw / 2.0, EDGER);
       float ry = min(ph / 2.0, EDGER);
-      float tx = arc(pw - u, rx) - arc(u, rx);
+      // 세로 변 양쪽 면이 둘 다 뚜렷이 보이면(돌린 표지 책의 책등·표지처럼) 그 변은 화면 한가운데의 모서리라, 면마다 둥글게 밝히면
+      // 한 면이 둥근 카드처럼 따로 떠 보였다(2026-10-10 사용자: 모서리가 깨진다). 두 면 중 덜 보이는 쪽이 뚜렷할수록 그 변의 둥글기를 줄인다
+      // (세운 책의 옆면처럼 한쪽이 원근으로 살짝 보이는 정도는 그대로)
+      float3 dn = dl / length(dl);
+      float fown = -dot(nl, dn);
+      float f0 = min(fown, fi == 0 ? dn.x : (fi == 1 ? dn.z : -dn.z));
+      float f1 = min(fown, fi == 0 ? -dn.x : (fi == 1 ? -dn.z : dn.z));
+      float k0 = 1.0 - smoothstep(0.2, 0.4, f0);
+      float k1 = 1.0 - smoothstep(0.2, 0.4, f1);
+      float tx = arc(pw - u, rx) * k1 - arc(u, rx) * k0;
       float ty = arc(ph - v, ry) - arc(v, ry);
+      // 모서리 사분원 밖(두 변의 기울기 합이 1을 넘는 곳)은 둥근 상자라면 없는 자리라 법선이 면에 눕는다(창빛을 정면으로 받아 흰 세모가 됐다).
+      // 바깥 모서리는 둥근 윤곽이 잘라 내지만, 두 면이 만나는 모서리(돌린 표지 책의 책등·표지 위 끝)에서는 보였다: 둥근 변의 끝 기울기로 묶는다
+      float tl = length(float2(tx, ty));
+      if (tl > 0.95) { tx *= 0.95 / tl; ty *= 0.95 / tl; }
       float nz = sqrt(max(1e-4, 1.0 - tx * tx - ty * ty));
       float sx = tx / nz;
       if (fi == 0) sx += tan(CURVE * (u / pw * 2.0 - 1.0));
