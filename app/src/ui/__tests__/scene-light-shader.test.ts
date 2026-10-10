@@ -256,6 +256,8 @@ describe('판 끝 가까이·너머 벽(판은 그린 곳에서 끝난다)', () 
     ['위 판 높이, 판 끝 너머', { x: 375, y: 200 + 5, z: SHELF_DEPTH }],
     ['줄 안, 판 끝 바로 안', { x: SHELF_X1 - 0.5, y: 120, z: SHELF_DEPTH }],
     ['판 끝 너머 멀리', { x: -80, y: 120, z: SHELF_DEPTH }],
+    ['위 판 바로 아래 벽(판이 위쪽 하늘을 가린다)', { x: 60, y: 200 - 9, z: SHELF_DEPTH }],
+    ['위 판 아래 25DU 벽', { x: 60, y: 200 - 25, z: SHELF_DEPTH }],
   ] as [string, Vec3][])('%s: 셰이더 = JS', (_, P) => {
     withinStep(shaderLoss(P, n, row, bx), skyLossAt(P, n, row, list), n);
   });

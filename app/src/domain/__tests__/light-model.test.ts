@@ -50,13 +50,12 @@ const relErr = (a: C3, b: C3) => Math.max(...a.map((v, c) => Math.abs(v - b[c]) 
 const lumOf3 = (c: C3) => 0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2];
 const g3 = (v: number): C3 => [v, v, v];
 
-// 방 빛 가림 모델(하늘 가림·빛 격자)은 앱 빛이 그림 규칙(light.occlusion false)이어도 코드에 그대로 있고 occlusion을 켜면 쓰인다.
-// 그 모델을 검증하는 묶음은 가림을 켜고 돈다
+// 방 빛 가림 모델(하늘 가림·빛 격자)을 검증하는 묶음은 가림 세기를 물리 그대로(1) 두고 돈다(앱은 light.occlusion 비율로 줄여 쓴다)
 function withOcclusion() {
   let saved = light.occlusion;
   beforeAll(() => {
     saved = light.occlusion;
-    light.occlusion = true;
+    light.occlusion = 1;
   });
   afterAll(() => {
     light.occlusion = saved;

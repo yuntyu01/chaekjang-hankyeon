@@ -15,7 +15,7 @@
 // 4) 반사광: 유전체의 프레넬 반사를 거칠기까지 넣어(환경 반사 근사 EnvBRDF, GGX 창빛 하이라이트). 확산 몫은 반사된 만큼 줄어든다.
 // 워클릿은 만들어질 때 쓰는 함수를 붙잡으므로, 쓰이는 함수를 먼저 정의한다.
 import palette from '@/ui/art/reference-bindings.generated.json';
-import { ALBEDO_MAX, camera, F0, light, materials, physShadow, PLANK_END_SOFT, plankShadow, surfaces, type SurfaceMaterial } from '@/ui/lighting';
+import { ALBEDO_MAX, camera, F0, light, materials, surfaces, type SurfaceMaterial } from '@/ui/lighting';
 
 import { corners, type Book3 } from './book3';
 import { rigOf } from './book-parts';
@@ -882,6 +882,8 @@ export function envLoss(p: Vec3, n: Vec3, env: Env | null, G?: Grid): C3 {
 // 원반(반지름 R)을 수평선과 두 수직선으로 자른 넓이 비율. 판 범위 안쪽(끝에서 zf·tan R보다 먼 곳)에서는 수직선이 원반 밖이라 활꼴과 같다.
 // (판 범위 안 끝 가까이에서 판 끝면으로 빠져나가는 광선은 앞 끝 가로로 본다: 끝에서 zf·tan R 안의 작은 근사)
 export const L_ELEV = Math.atan2(L_UNIT.y, -L_UNIT.z);
+// 창빛 가운데의 가로 방위(왼쪽 −): 판 그림자도 책 그림자와 같은 방향으로 밀린다
+const L_AZ = Math.atan2(L_UNIT.x, -L_UNIT.z);
 // ∫√(1 − t²) dt
 function arcInt(t: number) {
   'worklet';
@@ -927,28 +929,16 @@ export function keyBlockedBelow(h: number, zf: number, v0?: number, v1?: number,
   if (h <= 0) return beyond && h > -SHELF_THICK ? diskBlocked(-2, v0 ?? -2, v1 ?? 2) : 0;
   return diskBlocked((L_ELEV + Math.atan2(h, Math.max(1e-3, zf))) / light.radius, v0 ?? -2, v1 ?? 2);
 }
-// 위 판(점보다 d 위)이 가리는 몫(그림 규칙 plankShadow: 가까운 띠 + 긴 꼬리, 상한 max). d ≤ 0(판 높이)이면 그 가로 범위 전체
-export function plankAbove(d: number, zf: number, v0: number, v1: number) {
-  'worklet';
-  const P = plankShadow;
-  const a = Math.atan2(d, Math.max(1e-3, zf));
-  const near = diskBlocked(d <= 0 ? -2 : (a - P.near.elev) / P.near.radius, v0, v1);
-  const far = diskBlocked(d <= 0 ? -2 : (a - P.far.elev) / P.far.radius, v0, v1);
-  return P.max * (P.mix * near + (1 - P.mix) * far);
-}
-// 둘레의 판이 점 p에서 창빛 원반을 가리는 몫: 위 판 + 아래 판(가로는 판 범위)
-// 그림 규칙(2026-10-10 사용자: 선반 양끝 이상한 그림자를 지워라): 판 그림자는 창빛의 가로 기울기 없이 판 바로 아래로 진다.
-// 가로 기울기대로 두면 판 그림자가 벽에서 판 깊이 × tan(가로 각)만큼 밀려(9°면 28DU) 한쪽 끝 판 아래가 비고 다른 쪽은 판 끝 너머까지
-// 그늘이 지며, 판 끝 너머 판 두께 높이에 따로 띠가 생겼다. 양끝은 PLANK_END_SOFT 폭으로 똑같이 옅어진다(판 끝까지 진하게)
+// 둘레의 판이 점 p에서 창빛 원반을 가리는 몫: 위 판 + 아래 판(가로는 판 범위, 원반 가운데 방위 L_AZ 기준)
 export function plankKeyBlocked(p: Vec3, env: Env | null) {
   'worklet';
   if (!env) return 0;
   const zf = Math.max(1e-3, p.z + SHELF_FRONT);
-  const v0 = Math.atan2(SHELF_X0 - p.x, zf) / PLANK_END_SOFT;
-  const v1 = Math.atan2(SHELF_X1 - p.x, zf) / PLANK_END_SOFT;
+  const v0 = (Math.atan2(SHELF_X0 - p.x, zf) - L_AZ) / light.radius;
+  const v1 = (Math.atan2(SHELF_X1 - p.x, zf) - L_AZ) / light.radius;
   let k = 0;
-  if (env.ceil < FAR) k += plankAbove(env.ceil - p.y, zf, v0, v1);
-  if (env.floor > -FAR) k += keyBlockedBelow(p.y - env.floor, zf, v0, v1);
+  if (env.ceil < FAR) k += keyBlocked(env.ceil - p.y, zf, v0, v1);
+  if (env.floor > -FAR) k += keyBlockedBelow(p.y - env.floor, zf, v0, v1, p.x < SHELF_X0 || p.x > SHELF_X1);
   return Math.min(1, k);
 }
 
@@ -1089,9 +1079,9 @@ export function lightWithLoss(p: Vec3, n: Vec3, v: Vec3 | null, env: Env | null,
   'worklet';
   const ref = eref ?? EREF.book;
   const ro = rough ?? ROUGH.paper;
-  // 방 빛 가림을 빼는 그림 규칙(light.occlusion false): 가림 0
-  if (!light.occlusion) loss = [0, 0, 0];
-  const kb = 1 - (1 - (key ? plankKeyBlocked(p, env) : 0)) * (1 - (kx ?? 0) * physShadow.bookMax);
+  // 방 빛 하늘 가림은 모든 곳에 같은 세기(light.occlusion)
+  loss = [loss[0] * light.occlusion, loss[1] * light.occlusion, loss[2] * light.occlusion];
+  const kb = 1 - (1 - (key ? plankKeyBlocked(p, env) : 0)) * (1 - (kx ?? 0));
   // 가림 없을 때 받는 빛(선형 RGB): 하늘(방) 몫 + 창빛 몫
   const open = (m: Vec3): C3 => {
     const sk = skyE(m);
@@ -1343,7 +1333,8 @@ const REF_BOOK_P = { x: REF_X, y: REF_BOOK_H / 2, z: 0 };
 const REF_FRONT = { x: 0, y: 0, z: -1 };
 function anchorLight(p: Vec3, n: Vec3, G: Grid, rough: number): C3 {
   const E0 = openE(p, n, REF_ENV);
-  const loss = light.occlusion ? envLoss(p, n, REF_ENV, G) : grey(0);
+  const lf = envLoss(p, n, REF_ENV, G);
+  const loss: C3 = [lf[0] * light.occlusion, lf[1] * light.occlusion, lf[2] * light.occlusion];
   const ks = envBRDF(refNv(p, n), rough);
   return [(E0[0] - loss[0]) * (1 - ks), (E0[1] - loss[1]) * (1 - ks), (E0[2] - loss[2]) * (1 - ks)];
 }

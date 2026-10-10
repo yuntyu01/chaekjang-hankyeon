@@ -7,7 +7,7 @@ import { EDGE_R, GROOVE, SPINE_CURVE } from '@/domain/book-parts';
 import { SHELF_DEPTH, SHELF_FRONT, SHELF_THICK, SHELF_X0, SHELF_X1 } from '@/domain/geometry';
 import { ALBEDO, BOX_MAX, BOX_VEC, DESIGN, ENV_COLS, ENV_NY, CAM, EREF, EXPOSURE, FAR, GAMMA, GRID_N, KEY_C, KEY_DIRS, L_ELEV, L_UNIT, RAD, SKY_C, TONE, TOUCH, type C3 } from '@/domain/light-model';
 import type { Affine, Cam, Vec3 } from '@/domain/camera';
-import { F0, light, physShadow, PLANK_END_SOFT, plankShadow } from '@/ui/lighting';
+import { F0, light } from '@/ui/lighting';
 
 // 평면: 한 점 O, 바깥 법선 n, 둥근 모서리(평면 안에서 모서리 쪽 단위 벡터 T와 모서리의 그 축 좌표 at)
 export type Plane = { O: Vec3; n: Vec3; edges?: { T: Vec3; at: number }[] };
@@ -90,17 +90,14 @@ function header() {
   const float AMB = ${f(light.ambient)};
   const float3 SKYTILT = ${v3(light.skyTilt)};
   const float DIFF = ${f(light.diffuse)};
-  // 방 빛 가림(light.occlusion): 0이면 하늘 가림을 빼는 그림 규칙
-  const float OCC = ${light.occlusion ? '1.0' : '0.0'};
+  // 방 빛 하늘 가림 세기(light.occlusion, 모든 곳 같은 비율)
+  const float OCC = ${f(light.occlusion)};
   const float3 LU = ${v3(L_UNIT)};
   // 카메라 기준 빛(벽 대표 자리 빛 / 노출 기준 CAM.gain, 반사광을 장면 밝기로)
   const float3 ECAM = ${c3(EREF.wall.map((v) => v / CAM.gain) as C3)};
   const float LELEV = ${f(L_ELEV)};
   const float LRAD = ${f(light.radius)};
-  const float LEND = ${f(PLANK_END_SOFT)};
-  const float BOOKMAX = ${f(physShadow.bookMax)};
-  const float4 PLN = float4(${f(plankShadow.near.elev)}, ${f(plankShadow.near.radius)}, ${f(plankShadow.far.elev)}, ${f(plankShadow.far.radius)});
-  const float2 PLM = float2(${f(plankShadow.max)}, ${f(plankShadow.mix)});
+  const float LAZ = ${f(Math.atan2(L_UNIT.x, -L_UNIT.z))};
   const float F0 = ${f(F0)};
   // 창빛 원반이 하이라이트를 넓히는 몫(light-model ggxKey): α² += (반지름/2)²
   const float LR2 = ${f((light.radius / 2) * (light.radius / 2))};
@@ -171,24 +168,22 @@ function header() {
     if (v1 <= v0) return 0.0;
     return clamp((diskCum(v1, u0) - diskCum(v0, u0)) / PI, 0.0, 1.0);
   }
-  // 위 판 + 아래 판(가로는 판 범위, light-model plankKeyBlocked: 판 그림자는 창빛의 가로 기울기 없이 판 바로 아래로, 양끝은 LEND 폭으로)
+  // 위 판 + 아래 판(가로는 판 범위, 원반 가운데 방위 LAZ 기준: light-model plankKeyBlocked)
   float plankKeyOf(float3 p) {
     if (env.x < 0.5) return 0.0;
     float zf = max(0.001, p.z + FRONT);
-    float v0 = atan(X0 - p.x, zf) / LEND;
-    float v1 = atan(X1 - p.x, zf) / LEND;
+    float v0 = (atan(X0 - p.x, zf) - LAZ) / LRAD;
+    float v1 = (atan(X1 - p.x, zf) - LAZ) / LRAD;
     float k = 0.0;
     if (env.z < FARV) {
-      // 위 판: 가까운 띠 + 긴 꼬리(light-model plankAbove)
       float d = env.z - p.y;
-      float a = atan(d, zf);
-      float kn = diskBlocked(d <= 0.0 ? -2.0 : (a - PLN.x) / PLN.y, v0, v1);
-      float kf = diskBlocked(d <= 0.0 ? -2.0 : (a - PLN.z) / PLN.w, v0, v1);
-      k += PLM.x * (PLM.y * kn + (1.0 - PLM.y) * kf);
+      k += diskBlocked(d <= 0.0 ? -2.0 : (atan(d, zf) - LELEV) / LRAD, v0, v1);
     }
     if (env.y > -FARV) {
       float h = p.y - env.y;
-      k += h <= 0.0 ? 0.0 : diskBlocked((LELEV + atan(h, zf)) / LRAD, v0, v1);
+      // 판 끝 너머 판 두께 높이는 판 쪽 방향이 판 끝면에 막힌다(light-model keyBlockedBelow)
+      bool beyond = p.x < X0 || p.x > X1;
+      k += h <= 0.0 ? (beyond && h > -THICK ? diskBlocked(-2.0, v0, v1) : 0.0) : diskBlocked((LELEV + atan(h, zf)) / LRAD, v0, v1);
     }
     return min(1.0, k);
   }
@@ -987,7 +982,7 @@ function shadeCode(mode: 0 | 1 | 2) {
   // sref: 그 재질이 대표 자리에서 받는 반사광(장면 밝기, light-model SREF): 재질 색 a는 반사광까지 넣은 '보이는 색'이라 확산 몫은 toneInv(a) − sref
   half4 shade(float3 P, float3 n, float3 nf, float3 v, float3 lossIn, float3 a, float3 eref, float rough, float alb, float kx, float3 sref) {
     float3 loss = lossIn * OCC;
-    float kb = 1.0 - (1.0 - plankKey(P)) * (1.0 - kx * BOOKMAX);
+    float kb = 1.0 - (1.0 - plankKey(P)) * (1.0 - kx);
     // 가림(loss)은 면 법선 nf에서 구운 값: 둥근 모서리·구멍 벽처럼 법선이 기운 곳은 면이 받는 빛의 비율로(light-model lightWithLoss)
     float3 e0 = skyIrr(n) + KEYC * (DIFF * max(0.0, dot(n, LU)) * (1.0 - kb));
     float3 e0f = skyIrr(nf) + KEYC * (DIFF * max(0.0, dot(nf, LU)) * (1.0 - kb));
