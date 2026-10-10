@@ -1,9 +1,7 @@
-// 진행 중 독서: 다른 화면에서 다시 들어갈 수 있는 작은 표시 + 강제 종료 뒤 복구 창.
+// 진행 중 독서: 시간 표시 도구(공통 미니 타이머 MiniTimer가 쓴다) + 강제 종료 뒤 복구 창.
 import { router, usePathname } from 'expo-router';
-import { BookOpen } from '@/ui/icons';
 import { useEffect, useState } from 'react';
-import { Modal, Pressable, StyleSheet, Text, View } from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { Modal, StyleSheet, Text, View } from 'react-native';
 
 import { formatDuration } from '@/domain/library';
 import { useLibrary } from '@/store/library-store';
@@ -35,51 +33,6 @@ export function useElapsed(running: boolean) {
 export function bookTitle(lib: ReturnType<typeof useLibrary>['lib'], myBookId?: string) {
   const b = myBookId ? lib.books[myBookId] : undefined;
   return b ? lib.editions[b.editionId]?.title : undefined;
-}
-
-export function ReadingPill() {
-  const { active } = useReading();
-  const { lib } = useLibrary();
-  const path = usePathname();
-  const insets = useSafeAreaInsets();
-  // 탭 화면(책장·갈피)에서는 떠 있는 표시를 두지 않고 '읽기' 탭이 시간을 보여 준다(ReadTabLabel). 떠 있으면 아래 선반 책을 가렸다
-  // (2026-10-10 사용자: 타이머가 왜 저렇게 뜨는지, 손봐야겠다)
-  const onTabs = path === '/' || path === '/bookmarks';
-  const hidden = !active || onTabs || path === '/read' || path.startsWith('/reading');
-  const ms = useElapsed(!hidden && !!active?.runningSince);
-  if (hidden) return null;
-  const title = bookTitle(lib, active!.myBookId);
-  return (
-    <Pressable
-      onPress={() => router.push('/reading/session')}
-      accessibilityRole="button"
-      accessibilityLabel={`진행 중인 독서 ${clock(ms)}${active!.runningSince ? '' : ', 일시정지'}. 눌러서 돌아가기`}
-      style={[st.pill, { bottom: insets.bottom + 10 }]}>
-      <BookOpen size={15} color={colors.bg} strokeWidth={1.8} />
-      <Text style={st.pillText}>{clock(ms)}</Text>
-      <Text style={st.pillSub} numberOfLines={1}>
-        {active!.runningSince ? (title ?? '책 없이 읽는 중') : '일시정지'}
-      </Text>
-    </Pressable>
-  );
-}
-
-// '읽기' 탭 글자: 진행 중인 독서가 있으면 흐른 시간(읽는 중) 또는 '일시정지', 없으면 '읽기'
-export function ReadTabLabel({ color, label }: { color: string; label: string }) {
-  const { active } = useReading();
-  const ms = useElapsed(!!active?.runningSince);
-  const text = !active ? label : active.runningSince ? clock(ms) : '일시정지';
-  return (
-    <Text style={[st.tabLabel, { color }, active ? st.tabLabelLive : null]} numberOfLines={1}>
-      {text}
-    </Text>
-  );
-}
-// '읽기' 탭 아이콘 위 작은 점: 진행 중인 독서가 있으면(일시정지도) 표시
-export function ReadTabDot() {
-  const { active } = useReading();
-  if (!active) return null;
-  return <View style={[st.dot, { backgroundColor: active.runningSince ? colors.ink : colors.inkFaint }]} />;
 }
 
 export function RecoveryDialog() {
@@ -143,12 +96,6 @@ export function RecoveryDialog() {
 }
 
 const st = StyleSheet.create({
-  pill: { position: 'absolute', alignSelf: 'center', maxWidth: 280, height: 36, borderRadius: 18, backgroundColor: colors.ink, flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 14, elevation: 3 },
-  pillText: { color: colors.bg, fontSize: 14, fontVariant: ['tabular-nums'] },
-  pillSub: { color: '#C9C4BA', fontSize: 12.5, flexShrink: 1 },
-  tabLabel: { fontSize: 12.5, fontWeight: '600', marginTop: 2 },
-  tabLabelLive: { fontVariant: ['tabular-nums'] },
-  dot: { position: 'absolute', top: 0, right: -2, width: 7, height: 7, borderRadius: 3.5 },
   dim: { flex: 1, backgroundColor: 'rgba(20,18,15,0.4)', justifyContent: 'center', padding: 24 },
   card: { backgroundColor: colors.bg, borderRadius: 16, padding: 22 },
   title: { fontFamily: fonts.serif, fontSize: 19, color: colors.ink, marginBottom: 10 },

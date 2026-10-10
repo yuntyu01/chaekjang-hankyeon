@@ -79,6 +79,7 @@ import type { FrontState } from '@/domain/front-pose';
 import { colors, fonts, motion, navigation } from '@/ui/theme';
 
 import { BookPopover } from './BookPopover';
+import { miniTimerStore } from '@/store/mini-timer-store';
 import { tabBarStyle } from '@/ui/tabBar';
 
 import { DecoratePanel } from './DecoratePanel';
@@ -186,6 +187,11 @@ export function HomeScreen() {
   // 줄 화면(스크롤 영역) 위 끝의 화면 y: 머리글 뒤 벽(HeaderWall) 높이
   const [vpTop, setVpTop] = useState(0);
   const [editing, setEditing] = useState(false);
+  // 꾸미기 조작부가 화면 아래를 차지하는 동안 공통 미니 타이머는 숨긴다
+  useEffect(() => {
+    miniTimerStore.setHidden(editing);
+    return () => miniTimerStore.setHidden(false);
+  }, [editing]);
   const [panelH, setPanelH] = useState(0);
   const leanRef = useRef<boolean | undefined>(undefined); // 앞뒤 막대를 끄는 동안의 벽 기대기 상태
   const [drawerOpen, setDrawerOpen] = useState(false);

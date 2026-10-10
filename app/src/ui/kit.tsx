@@ -1,12 +1,14 @@
 // 공통 화면 부품. 아이보리 종이 바탕, 먹색 글자, 제목은 명조, 메뉴·숫자는 고딕(시스템). 색은 책에서 온다.
 import { router } from 'expo-router';
 import { ChevronLeft, Star } from '@/ui/icons';
-import { useState, type ReactNode } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import { ActivityIndicator, Image, Pressable, ScrollView, StyleSheet, Text, TextInput, View, type StyleProp, type TextInputProps, type ViewStyle } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { MINI_TIMER_SPACE, miniTimerStore } from '@/store/mini-timer-store';
+import { useReading } from '@/store/reading-store';
 import { colors, fonts, screenTheme } from '@/ui/screenTheme';
-import { ButtonShading, PaperSurface } from '@/ui/PaperSurface';
+import { PaperSurface } from '@/ui/PaperSurface';
 
 export const ui = {
   pad: 20,
@@ -37,8 +39,13 @@ export function Screen({
   bottomPad?: number;
 }) {
   const insets = useSafeAreaInsets();
+  // 진행 중 독서가 있으면 오른쪽 아래 미니 타이머가 마지막 내용을 가리지 않게 그만큼 더 내린다
+  const { active } = useReading();
+  const timerPad = active ? MINI_TIMER_SPACE : 0;
+  // 화면 아래 고정 버튼이 있으면 미니 타이머를 그 위에 둔다(떠날 때 되돌린다)
+  useEffect(() => () => miniTimerStore.setBottom(null), []);
   const body = scroll ? (
-    <ScrollView contentContainerStyle={{ paddingHorizontal: ui.pad, paddingBottom: 32 + bottomPad + (footer ? 0 : insets.bottom) }} keyboardShouldPersistTaps="handled">
+    <ScrollView contentContainerStyle={{ paddingHorizontal: ui.pad, paddingBottom: 32 + bottomPad + timerPad + (footer ? 0 : insets.bottom) }} keyboardShouldPersistTaps="handled">
       {children}
     </ScrollView>
   ) : (
@@ -62,7 +69,7 @@ export function Screen({
         <View style={[s.right, back && { minWidth: 44 }]}>{right}</View>
       </View>
       {body}
-      {footer ? <View style={{ paddingHorizontal: ui.pad, paddingTop: 10, paddingBottom: 12 + insets.bottom, backgroundColor: 'rgba(251,247,240,0.96)' }}>{footer}</View> : null}
+      {footer ? <View onLayout={(e) => miniTimerStore.setBottom(e.nativeEvent.layout.height)} style={{ paddingHorizontal: ui.pad, paddingTop: 10, paddingBottom: 12 + insets.bottom, backgroundColor: 'rgba(251,247,240,0.96)' }}>{footer}</View> : null}
     </View>
   );
 }
@@ -113,7 +120,6 @@ export function Btn({
         pressed && { opacity: 0.75 },
         style,
       ]}>
-      {primary ? <ButtonShading /> : null}
       {busy ? <ActivityIndicator color={primary ? colors.bg : colors.ink} size="small" /> : icon}
       <Text style={[s.btnText, primary && { color: colors.bg }, kind === 'danger' && { color: colors.danger }]}>{label}</Text>
     </Pressable>

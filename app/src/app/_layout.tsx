@@ -6,7 +6,8 @@ import { useCallback, useEffect, useState } from 'react';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
-import { ReadingPill, RecoveryDialog } from '@/features/reading/ActiveReading';
+import { RecoveryDialog } from '@/features/reading/ActiveReading';
+import { MiniTimer } from '@/features/reading/MiniTimer';
 import { bootStores } from '@/store/boot';
 import { bootMark } from '@/ui/boot-trace';
 import { BookArtProvider } from '@/ui/book3d/art';
@@ -50,7 +51,7 @@ export default function RootLayout() {
           <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: 'transparent' }, animation: 'fade' }}>
             <Stack.Screen name="reading/session" options={{ animation: 'fade', contentStyle: { backgroundColor: '#0E1016' } }} />
           </Stack>
-          <ReadingPill />
+          <MiniTimer />
           <RecoveryDialog />
         </BookArtProvider> : null}
         {loadingVisible ? <LoadingScreen ready={ready} onFinished={finishLoading} /> : null}
