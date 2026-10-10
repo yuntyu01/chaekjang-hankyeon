@@ -1,4 +1,6 @@
 // 내 서재 규칙: 읽기 상태와 회차(재독은 새 회차, 지난 기록은 그대로), 통계 기준(완독 권수·재독), 책장용 책 모양.
+import { bookTone } from '../binding-material';
+import { ARTWORK_INK } from '../cover-artworks';
 import { ensureShelves, pruneEmptyShelves } from '../layout-engine';
 import { applyStatus, completions, defaultBinding, emptyLibrary, finishedYear, monthPeriod, periodStats, roundsOf, toShelfBook, yearPeriod, type Library, type Session } from '../library';
 
@@ -87,6 +89,25 @@ describe('책장용 책 모양', () => {
     expect(toShelfBook(lib, 'bk1')!.art.material).toBeUndefined();
     lib.bindings[bdId] = { ...lib.bindings[bdId], material: 'cloth' };
     expect(toShelfBook(lib, 'bk1')!.art.material).toBe('cloth');
+  });
+
+  it('표지 그림을 고르면 정면에 그 그림을 입히고 책 색(책등·몸체)은 그대로, AI 표지 그림은 지우지 않고 가려 둔다', () => {
+    const lib = withBook();
+    const bdId = lib.books.bk1.bindingId!;
+    const plain = toShelfBook(lib, 'bk1')!;
+    expect(plain.cover).toBeUndefined();
+    expect(plain.art.vectorCover).toBe(true);
+    lib.bindings[bdId] = { ...lib.bindings[bdId], coverArtId: 'autumn-field', coverArtUri: 'file:///ai.png' };
+    const b = toShelfBook(lib, 'bk1')!;
+    expect(b.cover).toMatchObject({ artworkId: 'autumn-field', ink: ARTWORK_INK.dark, edge: lib.bindings[bdId].spineColor });
+    expect(b.art.vectorCover).toBe(false);
+    expect(b.themeColor).toBe(plain.themeColor);
+    expect(bookTone(b)).toBe(bookTone(plain));
+    expect(b.coverArtUri).toBeUndefined();
+    expect(lib.bindings[bdId].coverArtUri).toBe('file:///ai.png');
+    // 모르는 id(예전 앱·잘못된 값)는 단색 정면
+    lib.bindings[bdId] = { ...lib.bindings[bdId], coverArtId: 'nope' as never };
+    expect(toShelfBook(lib, 'bk1')!.cover).toBeUndefined();
   });
 
   it('기본 장정(재장정)은 입력이 같으면 같고 제목이 다르면 달라질 수 있다', () => {

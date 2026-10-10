@@ -11,7 +11,7 @@ const lib = (): Library => ({
   editions: { ed1: { id: 'ed1', isbn13: '9788937462788', title: '채식주의자', authors: ['한강', '번역가'], size: { widthMm: 128, heightMm: 205 }, coverUri: `${DIR}cover_a.jpg`, coverSource: 'photo', source: 'photo', createdAt: T1, updatedAt: T1,
     art: { baseColor: '#6B7F92', inkColor: '#F7EEDC', accentColor: '#C9A46A', motifId: 'moon', layoutVariant: 'spine_b', heightClass: 'tall', thicknessClass: 'medium', generatedAt: T1, version: 1 } } },
   books: { bk1: { id: 'bk1', editionId: 'ed1', status: 'read', bindingId: 'bd1', createdAt: T1, updatedAt: T1 } },
-  bindings: { bd1: { id: 'bd1', myBookId: 'bk1', spineColor: '#6B7F92', motif: 'moon', layout: 'spine_b', material: 'cloth', source: 'custom', status: 'ready', seed: 0, createdAt: T1, updatedAt: T1 } },
+  bindings: { bd1: { id: 'bd1', myBookId: 'bk1', spineColor: '#6B7F92', motif: 'moon', layout: 'spine_b', material: 'cloth', coverArtId: 'moon-lake', source: 'custom', status: 'ready', seed: 0, createdAt: T1, updatedAt: T1 } },
   bookmarks: { bm1: { id: 'bm1', myBookId: 'bk1', text: '', photoUri: `${DIR}page_x1.jpg`, photoRatio: 1.32, createdAt: T1, updatedAt: T1 } },
 });
 const emptyPull = (p: Partial<PullBody> = {}): PullBody => ({ rev: 1, more: false, editions: [], books: [], bindings: [], rounds: [], sessions: [], bookmarks: [], layout: null, ...p });
@@ -79,6 +79,14 @@ describe('받은 변경 병합', () => {
     expect(m.bindings.c.material).toBeUndefined();
     expect(m.bindings.d.material).toBeUndefined();
   });
+  it('표지 그림 id: 아는 그림만 받고 모르는 값·빈 값은 없음(단색 정면)으로', () => {
+    const bd = (coverArtId: string | null | undefined, id: string) => ({ id, myBookId: 'bk1', spineColor: '#6B7F92', motif: 'moon', coverArtId, source: 'custom', status: 'ready', createdAt: T1, updatedAt: T2, deleted: false });
+    const m = mergeRemote(emptyLibrary(), emptyPull({ bindings: [bd('winter-forest', 'a'), bd('mars', 'b'), bd(null, 'c'), bd(undefined, 'd')] }), DIR).lib;
+    expect(m.bindings.a.coverArtId).toBe('winter-forest');
+    expect(m.bindings.b.coverArtId).toBeUndefined();
+    expect(m.bindings.c.coverArtId).toBeUndefined();
+    expect(m.bindings.d.coverArtId).toBeUndefined();
+  });
   it('올렸다 받은 서재는 같은 모양으로 돌아온다(왕복)', () => {
     const original = lib();
     const wire = buildPush(original, fullDirty(original), DIR).body;
@@ -87,7 +95,7 @@ describe('받은 변경 병합', () => {
     }), DIR).lib;
     expect(back.editions.ed1).toMatchObject({ title: '채식주의자', authors: ['한강', '번역가'], size: { widthMm: 128, heightMm: 205 }, coverUri: `${DIR}cover_a.jpg` });
     expect(back.editions.ed1.art).toMatchObject({ baseColor: '#6B7F92', motifId: 'moon', layoutVariant: 'spine_b' });
-    expect(back.bindings.bd1).toMatchObject({ source: 'custom', motif: 'moon', layout: 'spine_b', material: 'cloth' });
+    expect(back.bindings.bd1).toMatchObject({ source: 'custom', motif: 'moon', layout: 'spine_b', material: 'cloth', coverArtId: 'moon-lake' });
     expect(back.bookmarks.bm1).toMatchObject({ text: '', photoUri: `${DIR}page_x1.jpg`, photoRatio: 1.32 });
   });
 });

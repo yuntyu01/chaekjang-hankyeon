@@ -153,15 +153,15 @@ public class SyncService {
     private boolean upsertBinding(long user, Binding b, OffsetDateTime at) {
         if (b.myBookId() == null || b.spineColor() == null || b.motif() == null || b.source() == null || b.status() == null) throw ApiException.BAD_REQUEST;
         return jdbc.update("""
-                INSERT INTO bindings (user_id, id, my_book_id, spine_color, ink_color, accent_color, motif, layout, material, source, status, seed, cover_art_file_id,
+                INSERT INTO bindings (user_id, id, my_book_id, spine_color, ink_color, accent_color, motif, layout, material, cover_art_id, source, status, seed, cover_art_file_id,
                     spine_art_file_id, created_at, updated_at, deleted_at, rev)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, %s)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, %s)
                 ON CONFLICT (user_id, id) DO UPDATE SET my_book_id = EXCLUDED.my_book_id, spine_color = EXCLUDED.spine_color, ink_color = EXCLUDED.ink_color,
-                    accent_color = EXCLUDED.accent_color, motif = EXCLUDED.motif, layout = EXCLUDED.layout, material = EXCLUDED.material, source = EXCLUDED.source, status = EXCLUDED.status,
+                    accent_color = EXCLUDED.accent_color, motif = EXCLUDED.motif, layout = EXCLUDED.layout, material = EXCLUDED.material, cover_art_id = EXCLUDED.cover_art_id, source = EXCLUDED.source, status = EXCLUDED.status,
                     seed = EXCLUDED.seed, cover_art_file_id = EXCLUDED.cover_art_file_id, spine_art_file_id = EXCLUDED.spine_art_file_id,
                     updated_at = EXCLUDED.updated_at, deleted_at = NULL, rev = EXCLUDED.rev
                 WHERE bindings.updated_at <= EXCLUDED.updated_at
-                """.formatted(REV), user, b.id(), b.myBookId(), b.spineColor(), blank(b.inkColor()), blank(b.accentColor()), b.motif(), blank(b.layout()), blank(b.material()), b.source(),
+                """.formatted(REV), user, b.id(), b.myBookId(), b.spineColor(), blank(b.inkColor()), blank(b.accentColor()), b.motif(), blank(b.layout()), blank(b.material()), blank(b.coverArtId()), b.source(),
                 b.status(), b.seed() == null ? 0 : b.seed(), blank(b.coverArtFileId()), blank(b.spineArtFileId()), ts(orNow(b.createdAt(), b.updatedAt())), at) > 0;
     }
 
@@ -244,9 +244,9 @@ public class SyncService {
                 : new MyBook(rs.getString("id"), rs.getString("edition_id"), rs.getString("status"), (Integer) rs.getObject("rating"), rs.getString("note"),
                         (Integer) rs.getObject("current_page"), rs.getString("binding_id"), iso(rs, "created_at"), iso(rs, "updated_at"), false));
         Fetched<Binding> bindings = fetch("bindings", user, since, limit, (rs, i) -> rs.getObject("deleted_at") != null
-                ? new Binding(rs.getString("id"), null, null, null, null, null, null, null, null, null, null, null, null, null, iso(rs, "updated_at"), true)
+                ? new Binding(rs.getString("id"), null, null, null, null, null, null, null, null, null, null, null, null, null, null, iso(rs, "updated_at"), true)
                 : new Binding(rs.getString("id"), rs.getString("my_book_id"), rs.getString("spine_color"), rs.getString("ink_color"), rs.getString("accent_color"),
-                        rs.getString("motif"), rs.getString("layout"), rs.getString("material"), rs.getString("source"), rs.getString("status"), rs.getInt("seed"), rs.getString("cover_art_file_id"),
+                        rs.getString("motif"), rs.getString("layout"), rs.getString("material"), rs.getString("cover_art_id"), rs.getString("source"), rs.getString("status"), rs.getInt("seed"), rs.getString("cover_art_file_id"),
                         rs.getString("spine_art_file_id"), iso(rs, "created_at"), iso(rs, "updated_at"), false));
         Fetched<Round> rounds = fetch("rounds", user, since, limit, (rs, i) -> rs.getObject("deleted_at") != null
                 ? new Round(rs.getString("id"), null, null, null, null, null, null, iso(rs, "updated_at"), true)

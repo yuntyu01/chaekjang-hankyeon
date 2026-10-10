@@ -5,9 +5,10 @@
 // - 표지 면: 표지 그림(달·풍경 등) + 제목(시안처럼 제목만. 저자는 표지에 쓰지 않는다)
 // - 갈피: 머리 뒤에서 나오는 끈(원점 = 아래 가운데)
 import { ColorType, AlphaType, Group, Image as SkiaImage, PaintStyle, StrokeJoin, ImageSVG, Path, Picture, Rect, Skia, Text, drawAsPicture, useImage, useTypeface, type SkFont, type SkImage, type SkPath, type SkPicture, type SkTypeface } from '@shopify/react-native-skia';
-import { createContext, useContext, useEffect, useState, type ReactNode } from 'react';
+import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
 
 import { rgbHex, tabColors, TITLE_LIGHT, titleInk } from '@/domain/color';
+import { COVER_ARTWORKS } from '@/domain/cover-artworks';
 import { COVER_LINE_H, COVER_SPACE, COVER_TRACK, coverTitleLayout, LYING_TRACK, lyingTitleLayout, SPINE_SPACE, spineTitleLayout } from '@/domain/title-layout';
 import type { Book, CoverArt } from '@/domain/types';
 import { motifSvg } from '@/ui/art/motifs';
@@ -24,17 +25,28 @@ import { ORIGINAL_ART, ReferenceGlyph, ReferenceMotif, ReferencePrint, drawOrigi
 const REGULAR = require('@expo-google-fonts/gowun-batang/400Regular/GowunBatang_400Regular.ttf');
 
 // 제목은 보통 굵기 + 윤곽 덧그리기로 굵기를 정하므로 Skia에는 보통 굵기 글꼴 하나만 읽는다(굵은 글꼴 8MB를 따로 읽지 않는다)
-export type Shared = { regular: SkTypeface | null; original: SkImage | null };
-const Ctx = createContext<Shared>({ regular: null, original: null });
+// artworks: 기본 정면 장정 그림(cover-artworks) 여섯 장. 앱을 켤 때 한 번 읽어 모든 책이 같이 쓴다
+// (책마다 따로 읽으면 그 책만 몇 초 늦게 나타나 책장에 빈자리가 보였다)
+export type Shared = { regular: SkTypeface | null; original: SkImage | null; artworks: Record<string, SkImage | null> };
+const Ctx = createContext<Shared>({ regular: null, original: null, artworks: {} });
 
-// 앱 뿌리에 한 번: 제목 글꼴
+// 앱 뿌리에 한 번: 제목 글꼴, 시안 원본 그림, 기본 정면 장정 그림
 export function BookArtProvider({ children }: { children: ReactNode }) {
   const regular = useTypeface(REGULAR);
   const original = useImage(ORIGINAL_ART);
+  // 훅 순서가 바뀌지 않게 여섯 장을 고정 순서로 읽는다
+  const a0 = useImage(COVER_ARTWORKS[0].image);
+  const a1 = useImage(COVER_ARTWORKS[1].image);
+  const a2 = useImage(COVER_ARTWORKS[2].image);
+  const a3 = useImage(COVER_ARTWORKS[3].image);
+  const a4 = useImage(COVER_ARTWORKS[4].image);
+  const a5 = useImage(COVER_ARTWORKS[5].image);
+  const artworks = useMemo(() => Object.fromEntries(COVER_ARTWORKS.map((a, i) => [a.id, [a0, a1, a2, a3, a4, a5][i] ?? null])), [a0, a1, a2, a3, a4, a5]);
   useEffect(() => {
     if (regular) bootMark('skia-font-regular');
   }, [regular]);
-  return <Ctx.Provider value={{ regular, original }}>{children}</Ctx.Provider>;
+  const value = useMemo(() => ({ regular, original, artworks }), [regular, original, artworks]);
+  return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
 }
 
 export const useBookShared = () => useContext(Ctx);
@@ -344,8 +356,9 @@ async function buildArt(book: Book, s: number, dims: { T: number; H: number; W: 
   const cx0 = (cw + GROOVE.at * s) / 2;
   // 제목 색: 제목이 놓이는 그림 띠의 실제 색에 대해 공통 규칙으로(밝으면 먹색, 어두우면 따뜻한 밝은색)
   const bandW = Math.min(cw * 0.84, Math.max(...lines.map((l) => cfont.measureText(l).width)) + cfs);
-  const band = coverImg && !cover.sourceRect ? bandColor(coverImg, cw, h, cx0 - bandW / 2, top, cx0 + bandW / 2, top + lines.length * lh) : null;
-  const cink = vector ? ink : cover.sourceRect ? cover.ink : band ? titleInk(band) : titleInk(face);
+  const band = coverImg && !cover.sourceRect && !cover.artworkId ? bandColor(coverImg, cw, h, cx0 - bandW / 2, top, cx0 + bandW / 2, top + lines.length * lh) : null;
+  // 기본 정면 장정 그림은 그림마다 정해 둔 제목 색(cover-artworks ink: 밝은 하늘 따뜻한 먹색, 어두운 하늘 아이보리)
+  const cink = vector ? ink : cover.sourceRect || cover.artworkId ? cover.ink : band ? titleInk(band) : titleInk(face);
   const lineEls = lines.map((line, i) => {
     const chars = [...line];
     const ws = chars.map((c) => (c === ' ' ? cfs * COVER_SPACE : cfont.measureText(c).width));
@@ -371,7 +384,7 @@ async function buildArt(book: Book, s: number, dims: { T: number; H: number; W: 
   const coverPic = await record(
     made.cover ? <Group clip={bookFacePath(cw, h, s)}><SkiaImage image={made.cover} x={0} y={0} width={cw} height={h} fit="cover" /></Group> :
     <Group>
-      {originalCover ? <ReferenceCover image={coverImg!} cover={cover} w={cw} h={h} s={s} retainTitle={retainTitle} /> : <CoverFaceArt w={cw} h={h} s={s} face={toneOf(book)} image={coverImg} motif={book.body ? motif : null} />}
+      {originalCover ? <ReferenceCover image={coverImg!} cover={cover} w={cw} h={h} s={s} retainTitle={retainTitle} /> : <CoverFaceArt w={cw} h={h} s={s} face={toneOf(book)} image={coverImg} motif={book.body ? motif : null} focusY={cover.artworkId ? cover.focusY : undefined} />}
       {coverMotif}
       {book.art.plainCover || retainTitle ? null : lineEls}
     </Group>,
@@ -397,8 +410,8 @@ export function useBookArt(book: Book, s: number, dims: { T: number; H: number; 
   const cover = jacketFor(book);
   const needCover = !!cover.image && !book.art.plainCover && !vector;
   const motif = useImage(needMotif ? (book.body?.motif ?? null) : null);
-  const customCoverImg = useImage(book.art.plainCover || vector || cover.sourceRect ? null : cover.image);
-  const coverImg = book.art.plainCover || vector ? null : cover.sourceRect ? shared.original : customCoverImg;
+  const customCoverImg = useImage(book.art.plainCover || vector || cover.sourceRect || cover.artworkId ? null : cover.image);
+  const coverImg = book.art.plainCover || vector ? null : cover.sourceRect ? shared.original : cover.artworkId ? shared.artworks[cover.artworkId] ?? null : customCoverImg;
   // 서버가 만든 표지·책등 그림(주소). 못 읽으면 코드로 그리는 장정으로 돌아간다.
   const [badCover, setBadCover] = useState(false);
   const [badSpine, setBadSpine] = useState(false);
@@ -443,5 +456,6 @@ export function useBookArt(book: Book, s: number, dims: { T: number; H: number; 
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [key, ready]);
   if (art && art.key === key) return art.art;
-  return done.get(key) ?? null;
+  // 장정을 바꾸는 동안(새 그림을 기록하는 사이)에는 직전 그림을 그대로 보여 준다(빈 표지가 잠깐 보이지 않게)
+  return done.get(key) ?? art?.art ?? null;
 }

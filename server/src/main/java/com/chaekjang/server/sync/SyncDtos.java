@@ -23,9 +23,9 @@ public final class SyncDtos {
             String createdAt, String updatedAt, Boolean deleted) {
     }
 
-    /** material: 장정 재질(paper/cloth/coated). 비우면 무광 종이. */
+    /** material: 장정 재질(paper/cloth/coated). 비우면 무광 종이. coverArtId: 기본 정면 장정 그림 id(앱 cover-artworks). 비우면 단색 정면. */
     public record Binding(String id, String myBookId, String spineColor, String inkColor, String accentColor, String motif, String layout,
-            String material, String source, String status, Integer seed, String coverArtFileId, String spineArtFileId, String createdAt,
+            String material, String coverArtId, String source, String status, Integer seed, String coverArtFileId, String spineArtFileId, String createdAt,
             String updatedAt, Boolean deleted) {
     }
 

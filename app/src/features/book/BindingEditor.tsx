@@ -1,10 +1,12 @@
 // 재장정 미리보기·편집(책 추가 확인 화면과 책 상세가 함께 쓴다).
-// 책장과 같은 3D 책 렌더러로 책등·정면을 벡터로 그린다(실제 표지 이미지는 쓰지 않는다).
-// 색 5개 추천 중 선택 + 재질(무광 종이·천·코팅지) + 모티프 바꾸기 + 책등 조판 변형. 저장하면 사용자 오버라이드(source 'custom')가 된다.
+// 책장과 같은 3D 책 렌더러로 책등·정면을 그린다(실제 도서 표지 사진은 쓰지 않는다).
+// 색 5개 추천 중 선택 + 재질(무광 종이·천·코팅지) + 표지 그림(기본 정면 장정 6종, 없으면 단색) + 모티프 바꾸기 + 책등 조판 변형.
+// 저장하면 사용자 오버라이드(source 'custom')가 된다.
 // "실물 표지로 보기"는 이번 범위 밖이라 자리만 둔다(비활성).
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { FlatList, Pressable, StyleSheet, Text, View } from 'react-native';
+import { FlatList, Image, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
+import { artworkCover, COVER_ARTWORKS } from '@/domain/cover-artworks';
 import { ESTIMATED_PAGES, ESTIMATED_SIZE, type Binding, type SizeMm } from '@/domain/library';
 import { MOTIF_SLOTS } from '@/domain/motif-slots';
 import { BOOK_COLORS, LAYOUT_VARIANTS, layoutArt, suggestColors, tonesFor, type LayoutVariant } from '@/domain/rebinding';
@@ -13,13 +15,14 @@ import { StandaloneBook } from '@/ui/book3d/StandaloneBook';
 import { Btn, Muted, Row } from '@/ui/kit';
 import { colors, fonts } from '@/ui/screenTheme';
 
-export type BindingDraft = Pick<Binding, 'spineColor' | 'motif' | 'seed' | 'source' | 'inkColor' | 'accentColor' | 'layout' | 'material'>;
+export type BindingDraft = Pick<Binding, 'spineColor' | 'motif' | 'seed' | 'source' | 'inkColor' | 'accentColor' | 'layout' | 'material' | 'coverArtId'>;
 
 const LAYOUT_NAMES: Record<LayoutVariant, string> = { spine_a: '가', spine_b: '나', spine_c: '다' };
 const MATERIAL_NAMES: Record<BindingMaterial, string> = { paper: '무광 종이', cloth: '천', coated: '코팅지' };
 
 export function previewBook(p: { title: string; author?: string; size?: SizeMm; pages?: number; binding: BindingDraft }): Book {
   const size = p.size ?? ESTIMATED_SIZE;
+  const cover = artworkCover(p.binding.coverArtId, p.binding.spineColor);
   return {
     id: 'preview',
     title: p.title || '제목',
@@ -29,7 +32,8 @@ export function previewBook(p: { title: string; author?: string; size?: SizeMm; 
     thicknessClass: 'medium',
     coverAspectRatio: size.widthMm / size.heightMm,
     physical: { ...size, pages: p.pages ?? ESTIMATED_PAGES },
-    art: { motif: p.binding.motif, inkColor: p.binding.inkColor, accentColor: p.binding.accentColor, material: p.binding.material, vectorCover: true, ...layoutArt(p.binding.layout ?? 'spine_a') },
+    art: { motif: p.binding.motif, inkColor: p.binding.inkColor, accentColor: p.binding.accentColor, material: p.binding.material, vectorCover: !cover, ...layoutArt(p.binding.layout ?? 'spine_a') },
+    cover,
   };
 }
 
@@ -46,7 +50,7 @@ export function BindingEditor({ title, author, size, pages, value, recommended, 
   }, [recommended.spineColor]);
   const custom = (patch: Partial<BindingDraft>): BindingDraft => ({ ...value, ...patch, source: 'custom' });
   const material = value.material ?? 'paper';
-  const same = value.spineColor === recommended.spineColor && value.motif === recommended.motif && value.layout === recommended.layout && material === (recommended.material ?? 'paper');
+  const same = value.spineColor === recommended.spineColor && value.motif === recommended.motif && value.layout === recommended.layout && material === (recommended.material ?? 'paper') && !value.coverArtId;
   const book = useMemo(() => previewBook({ title, author, size, pages, binding: value }), [title, author, size, pages, value]);
   const [w, setW] = useState(0);
   const list = useRef<FlatList>(null);
@@ -109,6 +113,23 @@ export function BindingEditor({ title, author, size, pages, value, recommended, 
         ))}
       </Row>
 
+      <Text style={st.h}>표지 그림 <Text style={st.hint}>정면에 입혀요 · 책등은 책 색 그대로</Text></Text>
+      <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginHorizontal: -2 }} contentContainerStyle={{ paddingHorizontal: 2, paddingVertical: 4, gap: 10 }}>
+        <Pressable onPress={() => onChange(custom({ coverArtId: undefined }))} accessibilityRole="button" accessibilityLabel="표지 그림 없음(단색 정면)" accessibilityState={{ selected: !value.coverArtId }} style={st.artCell}>
+          <View style={[st.artThumb, { backgroundColor: value.spineColor }, !value.coverArtId && st.artOn]} />
+          <Text style={[st.swatchName, !value.coverArtId && { color: colors.ink }]}>단색</Text>
+        </Pressable>
+        {COVER_ARTWORKS.map((a) => {
+          const on = value.coverArtId === a.id;
+          return (
+            <Pressable key={a.id} onPress={() => onChange(custom({ coverArtId: a.id }))} accessibilityRole="button" accessibilityLabel={`표지 그림 ${a.name}`} accessibilityState={{ selected: on }} style={st.artCell}>
+              <Image source={a.thumb} style={[st.artThumb, on && st.artOn]} resizeMode="cover" />
+              <Text style={[st.swatchName, on && { color: colors.ink }]}>{a.name}</Text>
+            </Pressable>
+          );
+        })}
+      </ScrollView>
+
       <Text style={st.h}>책등 조판</Text>
       <Row gap={10}>
         {LAYOUT_VARIANTS.map((v) => (
@@ -164,6 +185,9 @@ export function BindingEditor({ title, author, size, pages, value, recommended, 
 
 const st = StyleSheet.create({
   stage: { flexDirection: 'row', justifyContent: 'center', alignItems: 'flex-end', gap: 28, paddingVertical: 18, borderRadius: 14, backgroundColor: '#F4EDE2' },
+  artCell: { alignItems: 'center', width: 62 },
+  artThumb: { width: 54, height: 81, borderRadius: 6, borderWidth: 2, borderColor: 'transparent' },
+  artOn: { borderColor: '#594541' },
   design: { borderRadius: 12, borderWidth: 1.5, borderColor: 'transparent', backgroundColor: '#F4EDE2', paddingBottom: 8, alignItems: 'center' },
   designOn: { borderColor: '#594541', backgroundColor: '#F7F0E4' },
   designName: { fontFamily: fonts.serif, fontSize: 13, color: colors.inkSoft, marginTop: 2 },

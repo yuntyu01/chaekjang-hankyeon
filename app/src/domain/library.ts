@@ -8,6 +8,7 @@
 // - Session(독서 세션): 연결 책·회차, 시작·종료 시각, 실제 독서 시간(일시정지 제외)
 // - Bookmark(갈피): 연결 책, 문장, 쪽수, 메모, 날짜
 // - Binding(재장정 자산): 책등 색, 모티프, 그림 파일, 생성 상태(기본 장정 / AI)
+import { artworkCover, type CoverArtworkId } from './cover-artworks';
 import { formatMm } from './catalog';
 import { illustratedDimensions } from './jacket-proportions';
 import { buildBookArt, heightClassOf, layoutArt, thicknessClassOf, type BookArtParams, type LayoutVariant, type RebindInput } from './rebinding';
@@ -96,6 +97,7 @@ export type Binding = {
   layout?: LayoutVariant; // 책등 조판 변형
   material?: BindingMaterial; // 장정 재질, 없으면 무광 종이
   coverArtUri?: string; // AI 표지 그림(평평한 그림, 제목 없음)
+  coverArtId?: CoverArtworkId; // 기본 정면 장정 그림(cover-artworks). 있으면 AI 표지 그림보다 먼저 정면에 입힌다(그림은 지우지 않고 남겨 둔다)
   spineArtUri?: string; // AI 책등 그림
   source: 'default' | 'ai' | 'custom'; // custom = 사용자가 색·모티프·조판을 바꿈(추천 장정 대신 적용)
   status: 'ready' | 'generating' | 'failed';
@@ -257,6 +259,9 @@ export function toShelfBook(lib: Library, myBookId: string): Book | null {
   const pages = e.pageCount ?? ESTIMATED_PAGES;
   const r = currentRound(lib, myBookId);
   const marks = bookmarksOf(lib, myBookId).length;
+  const themeColor = bd?.spineColor ?? e.art?.baseColor ?? SPINE_PALETTE[0];
+  // 고른 정면 그림(없으면 지금처럼 단색 정면). 책 색은 그대로 둔다
+  const art = artworkCover(bd?.coverArtId, themeColor);
   return {
     id: b.id,
     title: e.title,
@@ -264,16 +269,17 @@ export function toShelfBook(lib: Library, myBookId: string): Book | null {
     publisher: e.publisher,
     publishedAt: e.publishedAt,
     originalCoverUri: e.coverUri,
-    coverArtUri: bd?.coverArtUri,
+    coverArtUri: art ? undefined : bd?.coverArtUri,
     spineArtUri: bd?.spineArtUri,
-    themeColor: bd?.spineColor ?? e.art?.baseColor ?? SPINE_PALETTE[0],
+    themeColor,
     heightClass: heightClassOf(size.heightMm),
     thicknessClass: thicknessClassOf(pages),
     coverAspectRatio: size.widthMm / size.heightMm,
     physical: { widthMm: size.widthMm, heightMm: size.heightMm, pages },
     dims: illustratedDimensions({ widthMm: size.widthMm, heightMm: size.heightMm, pages }),
     // 갈피가 있으면 책 위로 작은 종이 탭(최대 두 장, art.tsx Ribbons)
-    art: { motif: bd?.motif ?? e.art?.motifId ?? 'none', inkColor: bd?.inkColor, accentColor: bd?.accentColor, material: bd?.material, vectorCover: true, ...layoutArt(bd?.layout ?? e.art?.layoutVariant ?? 'spine_a'), ribbon: marks ? PAPER_TAB : undefined },
+    art: { motif: bd?.motif ?? e.art?.motifId ?? 'none', inkColor: bd?.inkColor, accentColor: bd?.accentColor, material: bd?.material, vectorCover: !art, ...layoutArt(bd?.layout ?? e.art?.layoutVariant ?? 'spine_a'), ribbon: marks ? PAPER_TAB : undefined },
+    cover: art,
     startedAt: r?.startedAt,
     finishedAt: b.status === 'read' ? r?.finishedAt : undefined,
     quotes: marks,

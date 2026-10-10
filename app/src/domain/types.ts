@@ -60,6 +60,9 @@ export type CoverArt = import('./body-art.generated').CoverArt & {
   sourceRect?: { x: number; y: number; width: number; height: number };
   printedTitle?: string;
   titleRect?: { x: number; y: number; width: number; height: number; cleanX: number };
+  // 기본 정면 장정 그림(cover-artworks): 제목 색은 ink 그대로, 판형이 넓으면 위에서 focusY 몫만큼 자른다
+  artworkId?: string;
+  focusY?: number;
 };
 
 export type Book = {
