@@ -4,6 +4,7 @@
     "slug": "chaekjang-hankyeon",
     "version": "0.1.0",
     "orientation": "portrait",
+    "icon": "./assets/icon/icon.png",
     "scheme": "chaekjang",
     "userInterfaceStyle": "light",
     "backgroundColor": "#FCF8F1",
@@ -13,6 +14,10 @@
     },
     "android": {
       "package": "app.covebook",
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/icon/adaptive-foreground.png",
+        "backgroundColor": "#FEFCF5"
+      },
       "predictiveBackGestureEnabled": false
     },
     "plugins": [
