@@ -23,7 +23,7 @@ describe('기본 정면 장정 그림', () => {
     expect(artworkCover('mars', '#8DA5B9')).toBeUndefined();
     expect(isCoverArtworkId('winter-forest')).toBe(true);
     expect(isCoverArtworkId('Winter-Forest')).toBe(false);
-    expect(coverArtwork('forest-path')?.name).toBe('숲속 오솔길');
+    expect(coverArtwork('forest-path')?.name).toBe('숲길');
   });
   it('판형에 맞춘 자리: 가로세로 비를 지키며 면을 덮고, 넓은 판형은 위보다 아래를 더 자른다', () => {
     // 2:3 그림, 표지 118×169(그림보다 조금 넓다)

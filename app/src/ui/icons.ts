@@ -3,6 +3,7 @@ export { default as BookMarked } from 'lucide-react-native/icons/book-bookmark';
 export { default as BookOpen } from 'lucide-react-native/icons/book-open';
 export { default as Bookmark } from 'lucide-react-native/icons/bookmark';
 export { default as Camera } from 'lucide-react-native/icons/camera';
+export { default as Check } from 'lucide-react-native/icons/check';
 export { default as ChartNoAxesColumn } from 'lucide-react-native/icons/chart-no-axes-column';
 export { default as ChevronDown } from 'lucide-react-native/icons/chevron-down';
 export { default as ChevronLeft } from 'lucide-react-native/icons/chevron-left';

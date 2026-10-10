@@ -23,7 +23,7 @@ export default function EditBinding() {
       title="장정 편집"
       footer={
         <Btn
-          label="이 장정으로 사용"
+          label="저장"
           onPress={() => {
             // 추천으로 되돌려 재질·표지 그림이 비면 예전 값도 지운다
             libraryStore.setBinding(id, { ...v, material: v.material, coverArtId: v.coverArtId });

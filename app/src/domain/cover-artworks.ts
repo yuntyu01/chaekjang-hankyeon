@@ -17,7 +17,7 @@ export const ARTWORK_TITLE_TOP = 0.11;
 export const ARTWORK_FOCUS_Y = 0.35;
 
 export const COVER_ARTWORKS: CoverArtwork[] = [
-  { id: 'forest-path', name: '숲속 오솔길', image: require('../../assets/covers/artworks/forest-path.jpg'), thumb: require('../../assets/covers/artworks/forest-path-thumb.jpg'), ink: 'dark' },
+  { id: 'forest-path', name: '숲길', image: require('../../assets/covers/artworks/forest-path.jpg'), thumb: require('../../assets/covers/artworks/forest-path-thumb.jpg'), ink: 'dark' },
   { id: 'sunset-sea', name: '노을 바다', image: require('../../assets/covers/artworks/sunset-sea.jpg'), thumb: require('../../assets/covers/artworks/sunset-sea-thumb.jpg'), ink: 'dark' },
   { id: 'moon-lake', name: '달빛 호수', image: require('../../assets/covers/artworks/moon-lake.jpg'), thumb: require('../../assets/covers/artworks/moon-lake-thumb.jpg'), ink: 'light' },
   { id: 'autumn-field', name: '가을 들판', image: require('../../assets/covers/artworks/autumn-field.jpg'), thumb: require('../../assets/covers/artworks/autumn-field-thumb.jpg'), ink: 'dark' },
