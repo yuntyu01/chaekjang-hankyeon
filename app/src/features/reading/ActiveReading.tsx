@@ -10,7 +10,6 @@ import { useLibrary } from '@/store/library-store';
 import { elapsedMs, readingStore, useReading } from '@/store/reading-store';
 import { Btn } from '@/ui/kit';
 import { colors, fonts } from '@/ui/screenTheme';
-import { navigation } from '@/ui/theme';
 
 export function clock(ms: number) {
   const t = Math.floor(ms / 1000);
@@ -43,17 +42,19 @@ export function ReadingPill() {
   const { lib } = useLibrary();
   const path = usePathname();
   const insets = useSafeAreaInsets();
-  const hidden = !active || path === '/read' || path.startsWith('/reading');
+  // 탭 화면(책장·갈피)에서는 떠 있는 표시를 두지 않고 '읽기' 탭이 시간을 보여 준다(ReadTabLabel). 떠 있으면 아래 선반 책을 가렸다
+  // (2026-10-10 사용자: 타이머가 왜 저렇게 뜨는지, 손봐야겠다)
+  const onTabs = path === '/' || path === '/bookmarks';
+  const hidden = !active || onTabs || path === '/read' || path.startsWith('/reading');
   const ms = useElapsed(!hidden && !!active?.runningSince);
   if (hidden) return null;
   const title = bookTitle(lib, active!.myBookId);
-  const onTabs = path === '/' || path === '/bookmarks' || path === '/read';
   return (
     <Pressable
       onPress={() => router.push('/reading/session')}
       accessibilityRole="button"
       accessibilityLabel={`진행 중인 독서 ${clock(ms)}${active!.runningSince ? '' : ', 일시정지'}. 눌러서 돌아가기`}
-      style={[st.pill, { bottom: (onTabs ? navigation.height : 0) + insets.bottom + 10 }]}>
+      style={[st.pill, { bottom: insets.bottom + 10 }]}>
       <BookOpen size={15} color={colors.bg} strokeWidth={1.8} />
       <Text style={st.pillText}>{clock(ms)}</Text>
       <Text style={st.pillSub} numberOfLines={1}>
@@ -61,6 +62,24 @@ export function ReadingPill() {
       </Text>
     </Pressable>
   );
+}
+
+// '읽기' 탭 글자: 진행 중인 독서가 있으면 흐른 시간(읽는 중) 또는 '일시정지', 없으면 '읽기'
+export function ReadTabLabel({ color, label }: { color: string; label: string }) {
+  const { active } = useReading();
+  const ms = useElapsed(!!active?.runningSince);
+  const text = !active ? label : active.runningSince ? clock(ms) : '일시정지';
+  return (
+    <Text style={[st.tabLabel, { color }, active ? st.tabLabelLive : null]} numberOfLines={1}>
+      {text}
+    </Text>
+  );
+}
+// '읽기' 탭 아이콘 위 작은 점: 진행 중인 독서가 있으면(일시정지도) 표시
+export function ReadTabDot() {
+  const { active } = useReading();
+  if (!active) return null;
+  return <View style={[st.dot, { backgroundColor: active.runningSince ? colors.ink : colors.inkFaint }]} />;
 }
 
 export function RecoveryDialog() {
@@ -127,6 +146,9 @@ const st = StyleSheet.create({
   pill: { position: 'absolute', alignSelf: 'center', maxWidth: 280, height: 36, borderRadius: 18, backgroundColor: colors.ink, flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 14, elevation: 3 },
   pillText: { color: colors.bg, fontSize: 14, fontVariant: ['tabular-nums'] },
   pillSub: { color: '#C9C4BA', fontSize: 12.5, flexShrink: 1 },
+  tabLabel: { fontSize: 12.5, fontWeight: '600', marginTop: 2 },
+  tabLabelLive: { fontVariant: ['tabular-nums'] },
+  dot: { position: 'absolute', top: 0, right: -2, width: 7, height: 7, borderRadius: 3.5 },
   dim: { flex: 1, backgroundColor: 'rgba(20,18,15,0.4)', justifyContent: 'center', padding: 24 },
   card: { backgroundColor: colors.bg, borderRadius: 16, padding: 22 },
   title: { fontFamily: fonts.serif, fontSize: 19, color: colors.ink, marginBottom: 10 },

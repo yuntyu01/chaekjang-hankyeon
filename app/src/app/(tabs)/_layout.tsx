@@ -2,6 +2,7 @@ import { Tabs } from 'expo-router';
 import { StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { ReadTabDot, ReadTabLabel } from '@/features/reading/ActiveReading';
 import { ko } from '@/i18n/ko';
 import { BookmarkTabIcon, ReadTabIcon, ShelfIcon } from '@/ui/TabIcons';
 import { ReferenceUI } from '@/ui/ReferenceUI';
@@ -47,7 +48,14 @@ export default function TabsLayout() {
           tabBarStyle: { display: 'none' },
           title: ko.tabs.read,
           tabBarAccessibilityLabel: ko.tabs.read,
-          tabBarIcon: ({ color, focused }) => <ReadTabIcon color={String(color)} bg={colors.bg} size={navigation.iconSize} filled={focused} />,
+          // 진행 중인 독서가 있으면 글자 자리에 흐른 시간·'일시정지'(떠 있는 표시 대신)
+          tabBarLabel: ({ color }) => <ReadTabLabel color={String(color)} label={ko.tabs.read} />,
+          tabBarIcon: ({ color, focused }) => (
+            <View>
+              <ReadTabIcon color={String(color)} bg={colors.bg} size={navigation.iconSize} filled={focused} />
+              <ReadTabDot />
+            </View>
+          ),
         }}
       />
     </Tabs>

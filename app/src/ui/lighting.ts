@@ -68,8 +68,9 @@ export const materials = {
   // 선반 판: 무광 마감(오일·무광 래커)한 결 대비가 낮은 밝은 나무(자작·단풍류: 늦재 띠가 2% 안팎만 짙다. 시안 판 앞면은 결이 거의 안 보인다,
   // 고역 표준편차 0.5단계). 결 방향(판 길이)으로 길게 늘어난 굴곡
   wood: { roughness: 0.7, bump: { size: [30, 0.8], slope: 0.02 }, grain: { kind: 'wood', size: [3.5, 60], contrast: [0.02, 0.005] } },
-  // 벽: 무광 수성 페인트(평광)
-  paint: { roughness: 0.9, bump: { size: [1, 1], slope: 0.01 }, grain: NONE },
+  // 벽: 무광 종이 벽지(2026-10-10 사용자: 종이 질감). 그림자 참고 그림의 벽은 지름 6~18mm 부드러운 얼룩과 고운 섬유 결이 있고
+  // 밝기 편차는 약 0.7%(8비트 두 단계 안팎)다: 섬유 0.8mm(세기 0.01)·얼룩 8mm(값 잡음이라 두 배쯤 크게 보인다, 세기 0.03)
+  paint: { roughness: 0.9, bump: { size: [1, 1], slope: 0.01 }, grain: { kind: 'fiber', size: [0.8, 8], contrast: [0.01, 0.03] } },
 } satisfies Record<string, SurfaceMaterial>;
 export type MaterialName = keyof typeof materials;
 
