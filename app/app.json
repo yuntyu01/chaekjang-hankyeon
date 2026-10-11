@@ -45,7 +45,8 @@
           "cameraPermission": "책 표지나 페이지를 찍어 책을 찾고 갈피를 남기기 위해 카메라를 사용합니다.",
           "microphonePermission": false
         }
-      ]
+      ],
+      "expo-web-browser"
     ],
     "experiments": {
       "typedRoutes": false

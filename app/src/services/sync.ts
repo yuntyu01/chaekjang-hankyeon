@@ -2,7 +2,9 @@
 // 흐름: 첫 연결 때 기기 계정을 만들어 토큰을 받고, 서재 전체를 올린다 → 이후에는 바뀐 것만 올리고(push) 서버의 변경을 받는다(pull).
 // 사진은 파일 API로 따로 올리고 받는다. 충돌은 updatedAt이 더 새로운 쪽이 이긴다(domain/sync.ts).
 import * as FS from 'expo-file-system/legacy';
+import * as Linking from 'expo-linking';
 import Storage from 'expo-sqlite/kv-store';
+import * as WebBrowser from 'expo-web-browser';
 import { AppState } from 'react-native';
 
 import { buildPush, fullDirty, mergeRemote, type Dirty, type PullBody, type PushBody, type WireLayout } from '@/domain/sync';
@@ -15,6 +17,7 @@ const TOKEN_KEY = 'sync-token:v1';
 const REV_KEY = 'sync-rev:v1';
 const FILES_KEY = 'sync-files:v1'; // 이미 올린 파일 id
 const LAYOUT_KV = 'shelf-layout';
+const ACCOUNT_KEY = 'account:v1'; // 카카오 연결 여부·닉네임(화면 표시용 사본)
 
 export type SyncStatus = { state: 'off' | 'idle' | 'syncing' | 'error'; lastAt?: string; error?: string; pending: number };
 let status: SyncStatus = { state: BASE ? 'idle' : 'off', pending: 0 };
@@ -24,6 +27,15 @@ function setStatus(p: Partial<SyncStatus>) {
   listeners.forEach((l) => l());
 }
 export const syncStatus = { get: () => status, subscribe: (l: () => void) => (listeners.add(l), () => listeners.delete(l)), available: !!BASE };
+
+export type AccountInfo = { kakao: boolean; nickname: string };
+let account: AccountInfo = { kakao: false, nickname: '' };
+export const accountInfo = { get: () => account };
+function setAccount(a: AccountInfo) {
+  account = a;
+  void Storage.setItem(ACCOUNT_KEY, JSON.stringify(a));
+  setStatus({});
+}
 
 class ApiError extends Error {
   constructor(public status: number, public code: string, message: string) {
@@ -138,6 +150,7 @@ async function applyLayout(remote: WireLayout) {
 }
 
 let running = false;
+let accountChecked = false; // 앱을 켠 뒤 첫 동기화 때 한 번만 서버의 계정 정보를 읽는다
 let again = false;
 let timer: ReturnType<typeof setTimeout> | null = null;
 
@@ -171,6 +184,10 @@ export async function syncNow() {
       }
     }
     setStatus({ state: 'idle', lastAt: new Date().toISOString() });
+    if (!accountChecked) {
+      accountChecked = true;
+      void refreshAccount(token);
+    }
   } catch (e) {
     setStatus({ state: 'error', error: String((e as Error)?.message ?? e) });
     schedule(60_000); // 연결이 안 되면 1분 뒤 다시
@@ -180,6 +197,47 @@ export async function syncNow() {
       again = false;
       schedule(1000);
     }
+  }
+}
+
+// ---------- 카카오 로그인(선택) ----------
+// 서버가 코드를 교환한다(앱에는 카카오 키가 없다). 앱은 기기 토큰으로 시작 → 브라우저에서 동의 → 돌아온 티켓을 서버에 내고 그 계정의 토큰을 받는다.
+// 이미 카카오에 이어진 다른 계정이면(다른 기기에서 먼저 로그인) 그 계정으로 바꾸고, 이 기기의 기록을 올려 합친다(updatedAt이 새로운 쪽이 이김).
+export type KakaoResult = { ok: true; nickname: string; switched: boolean } | { ok: false; cancelled?: boolean; message: string };
+
+export async function linkKakao(): Promise<KakaoResult> {
+  if (!BASE) return { ok: false, message: '이 빌드에는 서버 주소가 없어요' };
+  try {
+    await loadDirty();
+    const token = await ensureToken();
+    const returnUrl = Linking.createURL('auth/kakao'); // 릴리스: chaekjang://auth/kakao, Expo Go: exp://…
+    const { url } = await api<{ url: string }>('POST', '/auth/kakao/start', token, { returnUrl });
+    const r = await WebBrowser.openAuthSessionAsync(url, returnUrl);
+    if (r.type !== 'success') return { ok: false, cancelled: true, message: '로그인을 취소했어요' };
+    const q = Linking.parse(r.url).queryParams ?? {};
+    if (q.error) return { ok: false, cancelled: q.error === 'denied', message: q.error === 'denied' ? '카카오 로그인을 취소했어요' : '카카오 로그인을 마치지 못했어요. 잠시 뒤 다시 시도해 주세요' };
+    if (typeof q.ticket !== 'string') return { ok: false, message: '로그인 응답을 읽지 못했어요' };
+    const c = await api<{ token: string; switched: boolean; nickname: string }>('POST', '/auth/kakao/claim', token, { ticket: q.ticket });
+    await Storage.setItem(TOKEN_KEY, c.token);
+    if (c.switched) {
+      await Storage.setItem(REV_KEY, '0');
+      await Storage.setItem(FILES_KEY, '[]');
+      markAllDirty(fullDirty(libraryStore.get().lib));
+    }
+    setAccount({ kakao: true, nickname: c.nickname });
+    void syncNow();
+    return { ok: true, nickname: c.nickname, switched: c.switched };
+  } catch (e) {
+    return { ok: false, message: String((e as Error)?.message ?? e) };
+  }
+}
+
+async function refreshAccount(token: string) {
+  try {
+    const me = await api<{ kakao: boolean; nickname: string }>('GET', '/me', token);
+    if (me.kakao !== account.kakao || me.nickname !== account.nickname) setAccount({ kakao: me.kakao, nickname: me.nickname });
+  } catch {
+    // 표시용이라 실패해도 동기화는 계속한다
   }
 }
 
@@ -197,6 +255,14 @@ export function initSync(hooks: { reloadLayout: () => Promise<void> | void }) {
   reloadLayout = hooks.reloadLayout;
   if (!BASE) return;
   void loadDirty().then(() => setStatus({}));
+  void Storage.getItem(ACCOUNT_KEY).then((raw) => {
+    try {
+      if (raw) account = JSON.parse(raw) as AccountInfo;
+      setStatus({});
+    } catch {
+      // 깨진 값은 무시
+    }
+  });
   onLocalChange(() => schedule(4000));
   AppState.addEventListener('change', (s) => {
     if (s === 'active') schedule(500);
