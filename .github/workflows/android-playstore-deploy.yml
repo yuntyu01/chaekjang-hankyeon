@@ -7,11 +7,11 @@ on:
       track:
         description: "Play Console release track"
         required: true
-        default: "internal"
+        default: "alpha"
         type: choice
         options:
-          - internal
           - alpha
+          - internal
           - beta
           - production
       version_name:
@@ -23,18 +23,24 @@ on:
         required: false
         default: true
         type: boolean
-  # v1.2.3 같은 태그를 밀면 내부 테스트(internal) 트랙으로 자동 업로드.
+  # main 에 앱 코드가 바뀌어 푸시되면 비공개 테스트(alpha) 트랙으로 자동으로 올린다.
+  # v1.2.3 같은 태그를 밀어도 alpha 로 올린다(버전 이름 = 태그).
   push:
+    branches: [main]
     tags:
       - "v*"
+    paths:
+      - "app/**"
+      - ".github/workflows/android-playstore-deploy.yml"
 
 permissions:
   contents: read
 
 # versionCode 가 겹치지 않게 한 번에 한 빌드만 돈다.
+# main 푸시가 연달아 오면 앞 빌드는 취소하고 마지막 것만 올린다(versionCode 가 분 단위 시각이라 겹치지 않는다).
 concurrency:
   group: android-playstore
-  cancel-in-progress: false
+  cancel-in-progress: ${{ github.event_name == 'push' && github.ref_type == 'branch' }}
 
 jobs:
   deploy-android:
@@ -115,10 +121,13 @@ jobs:
               echo "ANDROID_VERSION_NAME=${{ inputs.version_name }}" >> "$GITHUB_ENV"
             fi
           else
-            # 태그 푸시는 내부 테스트 트랙으로 나간다. 상위 트랙 승격은 Play Console 이나 수동 실행으로.
-            echo "PLAY_TRACK=internal" >> "$GITHUB_ENV"
+            # main·태그 푸시는 비공개 테스트(alpha) 트랙으로 나간다. 상위 트랙 승격은 Play Console 이나 수동 실행으로.
+            echo "PLAY_TRACK=alpha" >> "$GITHUB_ENV"
             echo "DRY_RUN=false" >> "$GITHUB_ENV"
-            echo "ANDROID_VERSION_NAME=${GITHUB_REF_NAME#v}" >> "$GITHUB_ENV"
+            # 태그면 버전 이름 = 태그, main 푸시면 app.json 값을 쓴다.
+            if [ "$GITHUB_REF_TYPE" = "tag" ]; then
+              echo "ANDROID_VERSION_NAME=${GITHUB_REF_NAME#v}" >> "$GITHUB_ENV"
+            fi
           fi
 
       - name: Stamp version into app.json

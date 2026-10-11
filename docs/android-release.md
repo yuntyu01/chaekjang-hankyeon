@@ -43,7 +43,8 @@ base64 -w 0 chaekjang-upload.jks > chaekjang-upload.jks.base64
 
 - **드라이런(기본값)**: Actions > "CD: Android AAB" > Run workflow. `dry_run`이 켜져 있으면 AAB만 만들어 아티팩트로 남긴다. 첫 업로드용 AAB를 이렇게 받는다.
 - **손으로 올리기**: `dry_run`을 끄고 트랙(`internal`, `alpha`, `beta`, `production`)을 고른다.
-- **태그 푸시**: `git tag v1.0.0 && git push origin v1.0.0` → 버전 이름 `1.0.0`으로 `internal` 트랙에 올라간다.
+- **main 푸시**: `app/` 이 바뀐 커밋이 main 에 푸시되면 비공개 테스트(`alpha`) 트랙에 자동으로 올라간다(버전 이름은 app.json 값). 연달아 푸시하면 마지막 것만 올린다. `PLAY_SERVICE_ACCOUNT_JSON` 이 없으면 첫 단계에서 실패한다.
+- **태그 푸시**: `git tag v1.0.0 && git push origin v1.0.0` → 버전 이름 `1.0.0`으로 `alpha` 트랙에 올라간다.
 
 versionCode는 2025-01-01부터의 분 단위 시각이라 어느 경로로 돌아도 겹치지 않는다.
 
