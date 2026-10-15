@@ -1,0 +1,29 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- 다른 앱 위 표시: 사용자가 '켜기'를 처음 누를 때 설명하고 시스템 설정에서 직접 허용한다 -->
+    <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
+    <!-- 효과가 켜져 있는 동안 프로세스를 유지하고 '끄기' 알림을 띄우는 포그라운드 서비스 -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
+    <!-- Android 13+: 실행 중 알림(끄기 버튼). 거부해도 효과와 앱 안 끄기는 그대로 동작한다 -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+
+    <application>
+        <!-- 화면 색조 오버레이는 정해진 포그라운드 서비스 유형(카메라·위치·미디어 재생 등)에 해당하지 않아 specialUse로 선언한다.
+             Play Console의 포그라운드 서비스 신고에 같은 용도를 적는다(docs/android-paper-mode.md).
+             앱(React Native)과 다른 프로세스에 둔다: 켜져 있는 동안에도 앱 프로세스는 백그라운드에서 평소처럼 동결되게(PaperBus.kt) -->
+        <service
+            android:name=".PaperOverlayService"
+            android:exported="false"
+            android:process=":paper"
+            android:foregroundServiceType="specialUse">
+            <property
+                android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+                android:value="User-enabled reading tint: draws a faint, non-interactive paper-colored overlay over other apps until the user turns it off" />
+        </service>
+        <!-- 알림의 '끄기'. 외부에 열지 않는다(우리 알림의 PendingIntent만 보낸다) -->
+        <receiver
+            android:name=".PaperStopReceiver"
+            android:exported="false"
+            android:process=":paper" />
+    </application>
+</manifest>

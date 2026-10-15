@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 책장 한켠 로고(책 세 권과 선반, assets/icon/adaptive-foreground.png를 따라 그렸다)의 알림용 단색 실루엣 -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="560"
+    android:viewportHeight="560">
+    <group android:translateX="-244" android:translateY="-232">
+        <path
+            android:pathData="M295,384 L295,700 Q295,742 337,742 L746,742"
+            android:strokeColor="#FFFFFFFF"
+            android:strokeWidth="48"
+            android:strokeLineCap="round"
+            android:strokeLineJoin="round" />
+        <path
+            android:fillColor="#FFFFFFFF"
+            android:pathData="M362,310 L404,310 Q428,310 428,334 L428,680 Q428,704 404,704 L362,704 Q338,704 338,680 L338,334 Q338,310 362,310 Z" />
+        <path
+            android:fillColor="#FFFFFFFF"
+            android:pathData="M469,259 L528,259 Q552,259 552,283 L552,680 Q552,704 528,704 L469,704 Q445,704 445,680 L445,283 Q445,259 469,259 Z" />
+        <group android:pivotX="637" android:pivotY="508" android:rotation="-7.5">
+            <path
+                android:fillColor="#FFFFFFFF"
+                android:pathData="M611,317 L663,317 Q687,317 687,341 L687,675 Q687,699 663,699 L611,699 Q587,699 587,675 L587,341 Q587,317 611,317 Z" />
+        </group>
+    </group>
+</vector>

@@ -19,6 +19,8 @@ import { BookPicker } from '@/features/bookmark/BookPicker';
 import { Btn, Row } from '@/ui/kit';
 import { StatusBar } from 'expo-status-bar';
 import { ButtonShading, PaperSurface } from '@/ui/PaperSurface';
+import { PaperModeGlyph, PaperModeSheet } from '@/features/reading/PaperModeSheet';
+import { paperModeAvailable, usePaperState } from '../../../modules/paper-mode';
 
 const LIGHT = '#F3EEE4';
 
@@ -38,6 +40,9 @@ export function ReadingScreen({ initialBookId, soundOnly = false, inTab = false 
   const [open, setOpen] = useState(true);
   const [bookPicker, setBookPicker] = useState(false);
   const [controls, setControls] = useState<'sound' | 'scene' | 'goal' | null>(null);
+  // 종이 모드(Android): 타이머와 따로 켜고 끈다
+  const [paperOpen, setPaperOpen] = useState(false);
+  const [paper] = usePaperState();
   const [draftBookId, setDraftBookId] = useState<string | undefined>(initialBookId);
   const selectedBookId = active ? active.myBookId : draftBookId;
   const bookId = selectedBookId && lib.books[selectedBookId] ? selectedBookId : undefined;
@@ -124,12 +129,20 @@ export function ReadingScreen({ initialBookId, soundOnly = false, inTab = false 
               <Pressable onPress={() => setControls('scene')} style={st.sideButton} accessibilityRole="button" accessibilityLabel="장면 변경"><ImageIcon size={32} color={colors.ink} strokeWidth={1.8} /></Pressable>
             </View>
             {audio.error ? <Text style={st.error}>{audio.error}</Text> : null}
+            {paperModeAvailable ? (
+              <Pressable onPress={() => setPaperOpen(true)} style={({ pressed }) => [st.paperEntry, pressed && { opacity: 0.7 }]} accessibilityRole="button" accessibilityLabel={`종이 모드 설정, ${paper.running ? '켜짐' : '꺼짐'}`}>
+                <PaperModeGlyph size={17} />
+                <Text style={st.paperEntryText}>종이 모드</Text>
+                <Text style={st.paperEntryState}>{paper.running ? '켜짐' : '꺼짐'}</Text>
+              </Pressable>
+            ) : null}
             {soundOnly ? <Btn label="지금부터 독서 기록" kind="ghost" onPress={() => { start(); router.replace('/read'); }} /> : null}
           </ScrollView>
         </View>
       {!open ? (
         <Pressable onPress={() => setOpen(true)} style={[st.reopen, { bottom: insets.bottom + 18 }]} accessibilityRole="button" accessibilityLabel="조작부 열기"><ChevronUp size={18} color={colors.ink} /><Text style={st.reopenText}>{soundOnly ? '조작부 열기' : clock(ms)}</Text></Pressable>
       ) : null}
+      {paperModeAvailable ? <PaperModeSheet visible={paperOpen} onClose={() => setPaperOpen(false)} /> : null}
       <BookPicker lib={lib} visible={bookPicker} allowNone onClose={() => setBookPicker(false)} onPick={(id) => { setDraftBookId(id); if (active) readingStore.setBook(id); setBookPicker(false); }} />
       <Modal visible={controls !== null} transparent animationType="slide" onRequestClose={() => setControls(null)}>
         <Pressable style={{ flex: 1, backgroundColor: 'rgba(20,18,15,0.32)' }} onPress={() => setControls(null)} accessibilityLabel="닫기" />
@@ -184,6 +197,9 @@ const st = StyleSheet.create({
   controlText: { color: colors.inkSoft, fontFamily: fonts.round, fontSize: 13, textAlign: 'center' },
   icon: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center' },
   error: { color: '#A45140', fontSize: 13, marginTop: 12 },
+  paperEntry: { alignSelf: 'center', flexDirection: 'row', alignItems: 'center', gap: 7, minHeight: 36, paddingHorizontal: 14, marginTop: 14, borderRadius: 18, borderWidth: StyleSheet.hairlineWidth, borderColor: '#DCCFBF' },
+  paperEntryText: { color: colors.ink, fontFamily: fonts.round, fontSize: 13 },
+  paperEntryState: { color: colors.inkSoft, fontFamily: fonts.round, fontSize: 12 },
   reopen: { position: 'absolute', alignSelf: 'center', minHeight: 44, borderRadius: 22, paddingHorizontal: 18, paddingVertical: 10, flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: colors.bg },
   reopenText: { color: colors.ink, fontSize: 14, fontVariant: ['tabular-nums'] },
   modal: { backgroundColor: colors.bg, padding: 24, borderTopLeftRadius: 20, borderTopRightRadius: 20 },

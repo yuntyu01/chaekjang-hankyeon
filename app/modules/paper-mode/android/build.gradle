@@ -1,0 +1,21 @@
+// 종이 모드(Android 전용): 다른 앱 위에 옅은 종이 색과 결을 얹는 오버레이 창과 그 포그라운드 서비스
+plugins {
+  id 'com.android.library'
+  id 'expo-module-gradle-plugin'
+}
+
+group = 'app.covebook.papermode'
+version = '0.1.0'
+
+android {
+  namespace "app.covebook.papermode"
+  defaultConfig {
+    versionCode 1
+    versionName '0.1.0'
+  }
+}
+
+dependencies {
+  // 합성 수식·결 잡음 단위 시험(기기 없이 JVM에서): ./gradlew :paper-mode:testReleaseUnitTest
+  testImplementation 'junit:junit:4.13.2'
+}
