@@ -46,6 +46,8 @@ jobs:
   deploy-android:
     name: Build AAB and upload to Play
     runs-on: ubuntu-latest
+    env:
+      EXPO_PUBLIC_API_URL: https://covebook.kodeploy.com
     defaults:
       run:
         working-directory: ./app

@@ -44,7 +44,7 @@ export const syncStatus = { get: () => status, subscribe: (l: () => void) => (li
 export type AccountInfo = { kakao: boolean; google?: boolean; nickname: string };
 let account: AccountInfo = { kakao: false, nickname: '' };
 export const accountInfo = { get: () => account };
-let providers = { google: false, kakao: true };
+let providers = { google: false, kakao: false };
 export const loginProviders = { get: () => providers };
 function setAccount(a: AccountInfo) {
   account = a;
@@ -316,7 +316,7 @@ export function initSync(hooks: { reloadLayout: () => Promise<void> | void }) {
   void api<{ google: boolean; kakao: boolean }>('GET', '/auth/providers', null).then((available) => {
     providers = { google: available.google === true, kakao: available.kakao === true };
     setStatus({});
-  }).catch(() => { /* Older servers support only the existing Kakao flow. */ });
+  }).catch(() => { /* Keep login hidden until the server confirms lifecycle support. */ });
   void loadDirty().then(() => setStatus({}));
   void Storage.getItem(ACCOUNT_KEY).then((raw) => {
     try {
