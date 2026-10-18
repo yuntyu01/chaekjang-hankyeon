@@ -42,6 +42,7 @@ class AccountDeletionApiTest extends PostgresIntegrationTest {
     @Autowired AccountDeletionService deletions;
     @Autowired AccountService accounts;
     @Autowired FileStore files;
+    @Autowired org.springframework.transaction.PlatformTransactionManager transactions;
     MockMvc mvc; JdbcTemplate jdbc;
     @BeforeEach void setup(){mvc=MockMvcBuilders.webAppContextSetup(context).build();jdbc=new JdbcTemplate(ds);UNLINK_FAILS.set(true);}
     void untilGone(long id)throws Exception {
@@ -89,5 +90,30 @@ class AccountDeletionApiTest extends PostgresIntegrationTest {
         assertThat(jdbc.queryForObject("SELECT count(*) FROM kakao_disconnect_jobs WHERE subject=?",Integer.class,subject)).isEqualTo(1);
         mvc.perform(get("/me").header("Authorization","Bearer "+other.token())).andExpect(status().isOk());
         mvc.perform(post("/auth/kakao/unlink").header("Authorization","KakaoAK isolated-admin").param("app_id","isolated-app").param("user_id",subject)).andExpect(status().isOk());
+    }
+    @Test void deletionWaitsForInFlightUploadMetadataBeforeEnumeratingFiles()throws Exception {
+        var owner=accounts.createDeviceAccount();
+        String key=owner.userId()+"/concurrent.jpg";
+        var authenticated=new java.util.concurrent.CountDownLatch(1);
+        var finishUpload=new java.util.concurrent.CountDownLatch(1);
+        var executor=java.util.concurrent.Executors.newSingleThreadExecutor();
+        try {
+            var upload=executor.submit(()->new org.springframework.transaction.support.TransactionTemplate(transactions).execute(status->{
+                accounts.authenticate("Bearer "+owner.token());authenticated.countDown();
+                try {
+                    if(!finishUpload.await(3,java.util.concurrent.TimeUnit.SECONDS))throw new IllegalStateException("test_timeout");
+                    files.put(key,new byte[]{1});
+                    jdbc.update("INSERT INTO files(user_id,id,content_type,size_bytes,sha256,storage_key) VALUES (?,'concurrent','image/jpeg',1,'test',?)",owner.userId(),key);
+                }catch(Exception e){throw new IllegalStateException(e);}
+                return null;
+            }));
+            assertThat(authenticated.await(3,java.util.concurrent.TimeUnit.SECONDS)).isTrue();
+            deletions.request(owner.userId());
+            finishUpload.countDown();upload.get(4,java.util.concurrent.TimeUnit.SECONDS);
+            untilGone(owner.userId());
+            long deadline=System.nanoTime()+5_000_000_000L;
+            while(Files.exists(DIR.resolve(key))&&System.nanoTime()<deadline)Thread.sleep(20);
+            assertThat(Files.exists(DIR.resolve(key))).isFalse();
+        }finally{finishUpload.countDown();executor.shutdownNow();}
     }
 }

@@ -60,11 +60,14 @@ public class AccountService {
         if (header == null || !header.startsWith("Bearer ")) throw UNAUTHORIZED;
         String token = header.substring(7).trim();
         if (token.isEmpty() || token.length() > 200) throw UNAUTHORIZED;
-        List<Object[]> ids = jdbc.query("UPDATE api_tokens t SET last_used_at=now() FROM users u WHERE t.user_id=u.id AND t.token_hash=? RETURNING t.user_id,u.created_at",
+        // An upload/sync transaction holds this lock until its metadata is committed. Erasure
+        // locks the same user before enumerating files, so an in-flight upload cannot be orphaned.
+        List<Object[]> ids = jdbc.query("SELECT u.id,u.created_at FROM api_tokens t JOIN users u ON t.user_id=u.id WHERE t.token_hash=? FOR KEY SHARE OF u",
                 (rs,i)->new Object[]{rs.getLong(1),rs.getTimestamp(2).toInstant().toString()},sha256(token));
         if (ids.isEmpty()) throw UNAUTHORIZED;
         long id=(Long)ids.get(0)[0];
         if(deletions.blocked(id,(String)ids.get(0)[1]))throw UNAUTHORIZED;
+        jdbc.update("UPDATE api_tokens SET last_used_at=now() WHERE token_hash=?",sha256(token));
         return id;
     }
 
