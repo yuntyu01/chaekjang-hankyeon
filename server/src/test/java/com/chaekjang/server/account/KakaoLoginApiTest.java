@@ -30,7 +30,7 @@ import com.chaekjang.server.PostgresIntegrationTest;
 import com.jayway.jsonpath.JsonPath;
 
 /** 카카오 로그인 흐름(start → callback → claim)을 가짜 카카오로 끝까지 시험한다. */
-@TestPropertySource(properties = {"KAKAO_REST_KEY=test-rest-key", "KAKAO_CLIENT_SECRET=test-secret", "PUBLIC_BASE_URL=https://api.example.test/"})
+@TestPropertySource(properties = {"KAKAO_ADMIN_KEY=test-admin", "KAKAO_APP_ID=test-app", "KAKAO_REST_KEY=test-rest-key", "KAKAO_CLIENT_SECRET=test-secret", "PUBLIC_BASE_URL=https://api.example.test/"})
 class KakaoLoginApiTest extends PostgresIntegrationTest {
 
     static final Map<String, KakaoOAuth.Identity> CODES = new ConcurrentHashMap<>();
@@ -73,7 +73,7 @@ class KakaoLoginApiTest extends PostgresIntegrationTest {
     /** start → 인가 주소의 state 반환 */
     String start(String token, String returnUrl) throws Exception {
         String body = mvc.perform(post("/auth/kakao/start").header("Authorization", bearer(token)).contentType(MediaType.APPLICATION_JSON)
-                .content("{\"returnUrl\":\"" + returnUrl + "\"}")).andExpect(status().isOk()).andReturn().getResponse().getContentAsString();
+                .content("{\"accountLifecycle\":\"1\",\"returnUrl\":\"" + returnUrl + "\"}")).andExpect(status().isOk()).andReturn().getResponse().getContentAsString();
         String url = JsonPath.read(body, "$.url");
         assertThat(url).startsWith("https://kauth.kakao.com/oauth/authorize?response_type=code&client_id=test-rest-key");
         assertThat(url).contains("redirect_uri=https%3A%2F%2Fapi.example.test%2Fauth%2Fkakao%2Fcallback");
@@ -159,8 +159,8 @@ class KakaoLoginApiTest extends PostgresIntegrationTest {
         mvc.perform(get("/auth/kakao/callback?code=c&state=nope")).andExpect(status().isBadRequest());
         String token = newToken();
         mvc.perform(post("/auth/kakao/start").header("Authorization", bearer(token)).contentType(MediaType.APPLICATION_JSON)
-                .content("{\"returnUrl\":\"https://evil.example/steal\"}")).andExpect(status().isBadRequest());
-        mvc.perform(post("/auth/kakao/start").contentType(MediaType.APPLICATION_JSON).content("{\"returnUrl\":\"" + RETURN + "\"}"))
+                .content("{\"accountLifecycle\":\"1\",\"returnUrl\":\"https://evil.example/steal\"}")).andExpect(status().isBadRequest());
+        mvc.perform(post("/auth/kakao/start").contentType(MediaType.APPLICATION_JSON).content("{\"accountLifecycle\":\"1\",\"returnUrl\":\"" + RETURN + "\"}"))
                 .andExpect(status().isUnauthorized());
     }
 }
