@@ -18,8 +18,21 @@ const REV_KEY = 'sync-rev:v1';
 const FILES_KEY = 'sync-files:v1'; // 이미 올린 파일 id
 const LAYOUT_KV = 'shelf-layout';
 const ACCOUNT_KEY = 'account:v1'; // 카카오 연결 여부·닉네임(화면 표시용 사본)
+const PAUSE_KEY = 'sync-paused:v1';
+let paused = false;
+let pauseLoaded: Promise<void> | undefined;
+function loadPause() {
+  return pauseLoaded ??= Storage.getItem(PAUSE_KEY).then((value) => { paused = value === '1'; setStatus({ paused }); });
+}
+async function pauseCloud() {
+  paused = true;
+  await Storage.setItem(PAUSE_KEY, '1');
+  if (timer) clearTimeout(timer);
+  again = false;
+  setStatus({ state: 'off', paused: true });
+}
 
-export type SyncStatus = { state: 'off' | 'idle' | 'syncing' | 'error'; lastAt?: string; error?: string; pending: number };
+export type SyncStatus = { state: 'off' | 'idle' | 'syncing' | 'error'; lastAt?: string; error?: string; pending: number; paused?: boolean };
 let status: SyncStatus = { state: BASE ? 'idle' : 'off', pending: 0 };
 const listeners = new Set<() => void>();
 function setStatus(p: Partial<SyncStatus>) {
@@ -28,9 +41,11 @@ function setStatus(p: Partial<SyncStatus>) {
 }
 export const syncStatus = { get: () => status, subscribe: (l: () => void) => (listeners.add(l), () => listeners.delete(l)), available: !!BASE };
 
-export type AccountInfo = { kakao: boolean; nickname: string };
+export type AccountInfo = { kakao: boolean; google?: boolean; nickname: string };
 let account: AccountInfo = { kakao: false, nickname: '' };
 export const accountInfo = { get: () => account };
+let providers = { google: false, kakao: false };
+export const loginProviders = { get: () => providers };
 function setAccount(a: AccountInfo) {
   account = a;
   void Storage.setItem(ACCOUNT_KEY, JSON.stringify(a));
@@ -44,7 +59,10 @@ class ApiError extends Error {
 }
 
 async function api<T>(method: string, path: string, token: string | null, body?: unknown): Promise<T> {
-  const res = await fetch(`${BASE}${path}`, { method, headers: { ...(token ? { Authorization: `Bearer ${token}` } : {}), ...(body ? { 'Content-Type': 'application/json' } : {}) }, body: body ? JSON.stringify(body) : undefined });
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 30_000);
+  try {
+  const res = await fetch(`${BASE}${path}`, { method, signal: controller.signal, headers: { ...(token ? { Authorization: `Bearer ${token}` } : {}), ...(body ? { 'Content-Type': 'application/json' } : {}) }, body: body ? JSON.stringify(body) : undefined });
   if (!res.ok) {
     let code = 'http';
     let msg = `서버 응답 ${res.status}`;
@@ -57,10 +75,13 @@ async function api<T>(method: string, path: string, token: string | null, body?:
     }
     throw new ApiError(res.status, code, msg);
   }
-  return (res.status === 204 ? undefined : await res.json()) as T;
+  return (res.status === 204 || res.status === 202 ? undefined : await res.json()) as T;
+  } finally { clearTimeout(timeout); }
 }
 
 async function ensureToken(): Promise<string> {
+  await loadPause();
+  if (paused) throw new Error('서버 동기화가 중지되어 있어요');
   const saved = await Storage.getItem(TOKEN_KEY);
   if (saved) return saved;
   const created = await api<{ token: string }>('POST', '/auth/device', null);
@@ -156,6 +177,8 @@ let timer: ReturnType<typeof setTimeout> | null = null;
 
 export async function syncNow() {
   if (!BASE) return;
+  await loadPause();
+  if (paused) return;
   if (running) {
     again = true;
     return;
@@ -164,17 +187,16 @@ export async function syncNow() {
   setStatus({ state: 'syncing', error: undefined });
   try {
     await loadDirty();
-    let token = await ensureToken();
+    const token = await ensureToken();
     for (let attempt = 0; attempt < 2; attempt++) {
       try {
         await pushOnce(token, { ...getDirty() }, isLayoutDirty());
         await pullAll(token);
         break;
       } catch (e) {
-        if (e instanceof ApiError && e.status === 401 && attempt === 0) {
-          await Storage.removeItem(TOKEN_KEY); // 계정이 사라졌다 → 새로 만들고 전부 다시 올린다
-          token = await ensureToken();
-          continue;
+        if (e instanceof ApiError && e.status === 401) {
+          await pauseCloud();
+          throw new Error('계정 인증이 만료되었거나 삭제되어 동기화를 중지했어요. 이 기기의 기록은 남아 있어요.');
         }
         if (e instanceof ApiError && e.code === 'missing_reference' && attempt === 0) {
           markAllDirty(fullDirty(libraryStore.get().lib)); // 부모가 서버에 없다 → 전부 올려 참조를 채운다
@@ -183,13 +205,13 @@ export async function syncNow() {
         throw e;
       }
     }
-    setStatus({ state: 'idle', lastAt: new Date().toISOString() });
+    if (!paused) setStatus({ state: 'idle', lastAt: new Date().toISOString() });
     if (!accountChecked) {
       accountChecked = true;
       void refreshAccount(token);
     }
   } catch (e) {
-    setStatus({ state: 'error', error: String((e as Error)?.message ?? e) });
+    setStatus({ state: paused ? 'off' : 'error', error: String((e as Error)?.message ?? e) });
     schedule(60_000); // 연결이 안 되면 1분 뒤 다시
   } finally {
     running = false;
@@ -205,26 +227,36 @@ export async function syncNow() {
 // 이미 카카오에 이어진 다른 계정이면(다른 기기에서 먼저 로그인) 그 계정으로 바꾸고, 이 기기의 기록을 올려 합친다(updatedAt이 새로운 쪽이 이김).
 export type KakaoResult = { ok: true; nickname: string; switched: boolean } | { ok: false; cancelled?: boolean; message: string };
 
-export async function linkKakao(): Promise<KakaoResult> {
+export const linkKakao = (): Promise<KakaoResult> => linkSocial('kakao');
+export const linkGoogle = (): Promise<KakaoResult> => linkSocial('google');
+
+async function linkSocial(provider: 'kakao' | 'google'): Promise<KakaoResult> {
   if (!BASE) return { ok: false, message: '이 빌드에는 서버 주소가 없어요' };
+  const label = provider === 'google' ? 'Google' : '카카오';
   try {
     await loadDirty();
     const token = await ensureToken();
-    const returnUrl = Linking.createURL('auth/kakao'); // 릴리스: chaekjang://auth/kakao, Expo Go: exp://…
-    const { url } = await api<{ url: string }>('POST', '/auth/kakao/start', token, { returnUrl });
+    const returnUrl = Linking.createURL(`auth/${provider}`);
+    if (provider === 'google' && returnUrl !== 'chaekjang://auth/google') {
+      return { ok: false, message: 'Google 로그인은 설치한 개발·시험 빌드에서 사용할 수 있어요' };
+    }
+    const { url } = await api<{ url: string }>('POST', `/auth/${provider}/start`, token, { returnUrl, accountLifecycle: '1' });
     const r = await WebBrowser.openAuthSessionAsync(url, returnUrl);
     if (r.type !== 'success') return { ok: false, cancelled: true, message: '로그인을 취소했어요' };
     const q = Linking.parse(r.url).queryParams ?? {};
-    if (q.error) return { ok: false, cancelled: q.error === 'denied', message: q.error === 'denied' ? '카카오 로그인을 취소했어요' : '카카오 로그인을 마치지 못했어요. 잠시 뒤 다시 시도해 주세요' };
+    if (q.error) return { ok: false, cancelled: q.error === 'denied', message: q.error === 'denied' ? `${label} 로그인을 취소했어요` : `${label} 로그인을 마치지 못했어요. 잠시 뒤 다시 시도해 주세요` };
     if (typeof q.ticket !== 'string') return { ok: false, message: '로그인 응답을 읽지 못했어요' };
-    const c = await api<{ token: string; switched: boolean; nickname: string }>('POST', '/auth/kakao/claim', token, { ticket: q.ticket });
+    const c = await api<{ token: string; switched: boolean; nickname: string }>('POST', `/auth/${provider}/claim`, token, { ticket: q.ticket });
     await Storage.setItem(TOKEN_KEY, c.token);
     if (c.switched) {
       await Storage.setItem(REV_KEY, '0');
       await Storage.setItem(FILES_KEY, '[]');
       markAllDirty(fullDirty(libraryStore.get().lib));
     }
-    setAccount({ kakao: true, nickname: c.nickname });
+    setAccount(c.switched
+      ? { kakao: provider === 'kakao', google: provider === 'google', nickname: c.nickname }
+      : { ...account, [provider]: true, nickname: c.nickname });
+    await refreshAccount(c.token);
     void syncNow();
     return { ok: true, nickname: c.nickname, switched: c.switched };
   } catch (e) {
@@ -234,15 +266,17 @@ export async function linkKakao(): Promise<KakaoResult> {
 
 async function refreshAccount(token: string) {
   try {
-    const me = await api<{ kakao: boolean; nickname: string }>('GET', '/me', token);
-    if (me.kakao !== account.kakao || me.nickname !== account.nickname) setAccount({ kakao: me.kakao, nickname: me.nickname });
+    const me = await api<AccountInfo>('GET', '/me', token);
+    if (me.kakao !== account.kakao || !!me.google !== !!account.google || me.nickname !== account.nickname) {
+      setAccount({ kakao: me.kakao, google: !!me.google, nickname: me.nickname });
+    }
   } catch {
     // 표시용이라 실패해도 동기화는 계속한다
   }
 }
 
 function schedule(ms: number) {
-  if (!BASE) return;
+  if (!BASE || paused) return;
   if (timer) clearTimeout(timer);
   timer = setTimeout(() => {
     timer = null;
@@ -250,10 +284,39 @@ function schedule(ms: number) {
   }, ms);
 }
 
+/** Local records remain on the device; only the authenticated server account is erased. */
+export async function deleteCloudAccount() {
+  await loadPause();
+  const token = await Storage.getItem(TOKEN_KEY);
+  await pauseCloud();
+  if (!token) throw new Error('이 기기에 삭제할 서버 계정 인증이 없어요');
+  while (running) await new Promise((resolve) => setTimeout(resolve, 50));
+  await api('DELETE', '/me', token, { confirmation: 'DELETE' });
+  await Promise.all([Storage.removeItem(TOKEN_KEY), Storage.removeItem(REV_KEY), Storage.removeItem(FILES_KEY)]);
+  accountChecked = false;
+  setAccount({ kakao: false, google: false, nickname: '' });
+  setStatus({ error: undefined });
+}
+
+/** Resuming explicitly creates a new account and uploads this device's records again. */
+export async function resumeCloudSync() {
+  await loadPause();
+  await Promise.all([Storage.removeItem(TOKEN_KEY), Storage.removeItem(REV_KEY), Storage.removeItem(FILES_KEY), Storage.removeItem(PAUSE_KEY)]);
+  paused = false;
+  accountChecked = false;
+  setAccount({ kakao: false, google: false, nickname: '' });
+  setStatus({ paused: false, state: 'idle', error: undefined });
+  await syncNow();
+}
+
 // 앱 시작 때 한 번 연결: 바뀔 때마다 4초 뒤 묶어 올리고, 앱이 다시 앞으로 오면 받아 온다.
 export function initSync(hooks: { reloadLayout: () => Promise<void> | void }) {
   reloadLayout = hooks.reloadLayout;
   if (!BASE) return;
+  void api<{ google: boolean; kakao: boolean }>('GET', '/auth/providers', null).then((available) => {
+    providers = { google: available.google === true, kakao: available.kakao === true };
+    setStatus({});
+  }).catch(() => { /* Keep login hidden until the server confirms lifecycle support. */ });
   void loadDirty().then(() => setStatus({}));
   void Storage.getItem(ACCOUNT_KEY).then((raw) => {
     try {

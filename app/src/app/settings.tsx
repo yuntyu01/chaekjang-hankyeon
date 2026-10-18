@@ -3,12 +3,12 @@
 // 서버 주소가 없는 빌드는 모든 기록이 이 기기에만 있고 로그인 버튼도 없다(작동하지 않는 버튼을 두지 않는다).
 import Constants from 'expo-constants';
 import { useState, useSyncExternalStore } from 'react';
-import { Alert, Linking, Switch, Text, View } from 'react-native';
+import { Alert, Image, Linking, Pressable, Switch, Text, View } from 'react-native';
 
 import { exportShare, exportToFolder, readBackupFile, restoreBackup } from '@/store/backup';
 import { PERF_ENABLED } from '@/ui/perf';
 import { settingsStore, useSettings } from '@/store/settings-store';
-import { accountInfo, linkKakao, syncNow, syncStatus } from '@/services/sync';
+import { accountInfo, deleteCloudAccount, linkGoogle, linkKakao, loginProviders, resumeCloudSync, syncNow, syncStatus } from '@/services/sync';
 import { Btn, Card, Chip, H2, ListItem, Muted, Row, Screen } from '@/ui/kit';
 import { colors } from '@/ui/screenTheme';
 
@@ -140,7 +140,7 @@ export default function SettingsScreen() {
         <Card style={{ marginTop: 10 }}>
           <Text style={{ fontSize: 13.5, lineHeight: 21, color: colors.ink }}>
             {syncStatus.available
-              ? '책장 한켠은 로그인 없이 쓸 수 있으며, 책·독서 기록·갈피·사진은 이 기기에 저장되고 이 기기 전용 계정으로 책장 한켠 서버에도 동기화돼요. 카카오로 로그인하면 카카오 회원번호와 닉네임이 서버에 저장되고, 다른 기기에서 같은 기록을 이어 볼 수 있어요.'
+              ? '책장 한켠은 로그인 없이 쓸 수 있으며, 책·독서 기록·갈피·사진은 이 기기에 저장되고 이 기기 전용 계정으로 책장 한켠 서버에도 동기화돼요. 제공되는 Google·카카오 로그인을 선택하면 해당 서비스의 회원번호와 이름을 계정 연결에 사용하고, 다른 기기에서 같은 기록을 이어 볼 수 있어요. 프로필 사진과 공급자의 인증 토큰은 저장하지 않아요.'
               : '책장 한켠은 로그인 없이 쓰며, 책·독서 기록·갈피·사진은 이 기기 안에만 저장돼요.'}
             {'\n'}
             책을 검색하면 입력한 검색어가 도서 검색 서비스(Google Books, Open Library)로 전송돼요. 검색 요청과 표지 이미지 요청에는 IP 주소 등 통신 정보가 함께 전달돼요.{'\n'}
@@ -167,8 +167,16 @@ function localTime(iso: string) {
 function SyncSection() {
   const st = useSyncExternalStore(syncStatus.subscribe, syncStatus.get);
   const acct = accountInfo.get();
+  const available = loginProviders.get();
   const [loggingIn, setLoggingIn] = useState(false);
-  const label = !syncStatus.available ? '이 기기에만 저장돼요' : st.state === 'syncing' ? '동기화하는 중…' : st.state === 'error' ? '동기화하지 못했어요' : st.lastAt ? `마지막 동기화 ${localTime(st.lastAt)}` : '아직 동기화 전이에요';
+  const label = !syncStatus.available ? '이 기기에만 저장돼요' : st.paused ? '서버 동기화를 중지했어요' : st.state === 'syncing' ? '동기화하는 중…' : st.state === 'error' ? '동기화하지 못했어요' : st.lastAt ? `마지막 동기화 ${localTime(st.lastAt)}` : '아직 동기화 전이에요';
+  const eraseAccount = () => Alert.alert('서버 계정을 삭제할까요?', '연결한 모든 로그인과 서버의 독서 기록·사진을 삭제합니다. 이 기기의 기록은 남고 자동 동기화를 중지합니다. 카카오에서 이 앱의 연결을 해제해도 서버 계정 전체 삭제가 접수됩니다.', [
+    { text: '취소', style: 'cancel' },
+    { text: '서버 계정 삭제', style: 'destructive', onPress: () => { setLoggingIn(true); void deleteCloudAccount().then(() => Alert.alert('삭제를 접수했어요', '서버 접근을 차단했고 데이터 삭제를 처리합니다. 이 기기의 기록은 남아 있어요.')).catch((e: unknown) => Alert.alert('삭제 완료를 확인하지 못했어요', `${String(e)}\n서버 동기화는 중지했어요. 다시 삭제를 요청하거나 지원팀에 문의해 주세요.`)).finally(() => setLoggingIn(false)); } },
+  ]);
+  const resume = () => Alert.alert('새 계정으로 동기화할까요?', '서버에 새 기기 계정을 만들고 이 기기에 남은 기록·사진을 다시 업로드합니다.', [
+    { text: '취소', style: 'cancel' }, { text: '동기화 시작', onPress: () => { setLoggingIn(true); void resumeCloudSync().finally(() => setLoggingIn(false)); } },
+  ]);
   const login = async () => {
     setLoggingIn(true);
     const r = await linkKakao();
@@ -176,19 +184,41 @@ function SyncSection() {
     if (r.ok) Alert.alert('카카오 계정을 연결했어요', r.switched ? '이미 연결된 계정의 기록과 이 기기의 기록을 합쳤어요.' : '이 기기의 기록이 카카오 계정에 이어졌어요.');
     else if (!r.cancelled) Alert.alert('로그인하지 못했어요', r.message);
   };
+  const googleLogin = async () => {
+    setLoggingIn(true);
+    try {
+      const result = await linkGoogle();
+      if (result.ok) Alert.alert('Google 계정을 연결했어요', result.switched ? '이미 연결된 계정의 기록과 이 기기의 기록을 합쳤어요.' : '이 기기의 기록이 Google 계정에 이어졌어요.');
+      else if (!result.cancelled) Alert.alert('로그인하지 못했어요', result.message);
+    } finally { setLoggingIn(false); }
+  };
   return (
     <View style={{ marginTop: 18 }}>
       <H2>동기화</H2>
       <Card>
         <Text style={{ fontSize: 15, color: '#34302C' }}>{label}</Text>
-        {syncStatus.available ? <Muted style={{ marginTop: 4 }}>{st.pending ? `올리지 못한 변경 ${st.pending}개` : '모든 변경이 서버에 있어요'}{st.error ? `\n${st.error}` : ''}</Muted> : <Muted style={{ marginTop: 4 }}>서버 주소가 없는 빌드예요. 기록은 이 기기에만 있고, 백업 파일로 옮길 수 있어요.</Muted>}
-        {syncStatus.available ? <Btn label="지금 동기화" kind="secondary" style={{ marginTop: 10 }} disabled={st.state === 'syncing'} onPress={() => void syncNow()} /> : null}
+        {syncStatus.available ? <Muted style={{ marginTop: 4 }}>{st.paused ? '기록은 이 기기에 남아 있어요. 새 계정으로 동기화를 시작하기 전에는 업로드하지 않아요.' : st.pending ? `올리지 못한 변경 ${st.pending}개` : '모든 변경이 서버에 있어요'}{st.error ? `\n${st.error}` : ''}</Muted> : <Muted style={{ marginTop: 4 }}>서버 주소가 없는 빌드예요. 기록은 이 기기에만 있고, 백업 파일로 옮길 수 있어요.</Muted>}
+        {syncStatus.available ? <>
+          <Btn label={st.paused ? '새 계정으로 동기화 시작' : '지금 동기화'} kind="secondary" style={{ marginTop: 10 }} disabled={loggingIn || st.state === 'syncing'} onPress={st.paused ? resume : () => void syncNow()} />
+          <Btn label="서버 계정·데이터 삭제" kind="secondary" style={{ marginTop: 10 }} disabled={loggingIn} onPress={eraseAccount} />
+        </> : null}
       </Card>
-      {syncStatus.available ? (
+      {syncStatus.available && !st.paused && available.kakao ? (
         <Card style={{ marginTop: 10 }}>
           <Text style={{ fontSize: 15, color: '#34302C' }}>{acct.kakao ? `카카오 계정 연결됨${acct.nickname ? ` · ${acct.nickname}` : ''}` : '카카오 계정 연결'}</Text>
           <Muted style={{ marginTop: 4 }}>{acct.kakao ? '다른 기기에서 같은 카카오 계정으로 로그인하면 이 기록을 이어 볼 수 있어요.' : '연결하면 기기를 바꾸거나 앱을 지웠다 깔아도 기록을 이어 볼 수 있어요. 연결하지 않아도 앱은 그대로 써요.'}</Muted>
           {acct.kakao ? null : <Btn label={loggingIn ? '카카오 로그인 중…' : '카카오로 계속하기'} kind="secondary" style={{ marginTop: 10 }} disabled={loggingIn} onPress={() => void login()} />}
+        </Card>
+      ) : null}
+      {syncStatus.available && !st.paused && available.google ? (
+        <Card style={{ marginTop: 10 }}>
+          <Text style={{ fontSize: 15, color: '#34302C' }}>{acct.google ? `Google 계정 연결됨${acct.nickname ? ` · ${acct.nickname}` : ''}` : 'Google 계정 연결'}</Text>
+          <Muted style={{ marginTop: 4 }}>연결하면 다른 기기에서도 기록을 이어 볼 수 있어요. 이메일 주소가 같다는 이유만으로 다른 계정과 자동 연결하지 않아요.</Muted>
+          {acct.google ? null : (
+            <Pressable accessibilityRole="button" accessibilityLabel="Google 계정으로 계속하기" disabled={loggingIn} onPress={() => void googleLogin()} style={{ marginTop: 10, alignSelf: 'flex-start', opacity: loggingIn ? 0.5 : 1 }}>
+              <Image source={require('../../assets/google-signin-light.png')} style={{ width: 189, height: 40 }} resizeMode="contain" />
+            </Pressable>
+          )}
         </Card>
       ) : null}
     </View>

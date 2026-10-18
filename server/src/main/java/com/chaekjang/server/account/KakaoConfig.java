@@ -20,7 +20,7 @@ public class KakaoConfig {
     }
 
     @Bean
-    Settings kakaoSettings(@Value("${KAKAO_REST_KEY:}") String restKey, @Value("${KAKAO_CLIENT_SECRET:}") String secret,
+    Settings kakaoSettings(@Value("${KAKAO_LOGIN_REST_KEY:${KAKAO_REST_KEY:}}") String restKey, @Value("${KAKAO_CLIENT_SECRET:}") String secret,
             @Value("${PUBLIC_BASE_URL:https://covebook.kodeploy.com}") String base) {
         if (!restKey.isEmpty() && secret.isEmpty()) log.warn("KAKAO_CLIENT_SECRET 없음: 클라이언트 시크릿이 켜진 앱이면 카카오 로그인이 실패해요");
         return new Settings(restKey, secret, base.replaceAll("/+$", ""));
