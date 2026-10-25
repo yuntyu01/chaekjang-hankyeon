@@ -245,7 +245,7 @@ export function HomeScreen() {
   const vpOrigin = useSharedValue({ x: 0, y: 0 }); // 뷰포트의 창(window) 좌표
   const pointer = useSharedValue({ x: 0, y: 0 }); // 뷰포트 좌표
 
-  // ---------- 보기 각(내려다보기 3°~8°): 꾸미기에서 선반 앞면을 위아래로 끌어 바꾼다(빈 벽을 끌면 스크롤) ----------
+  // ---------- 보기 각(내려다보기 4°~8°): 꾸미기에서 선반 앞면을 위아래로 끌어 바꾼다(빈 벽을 끌면 스크롤) ----------
   // 화면 카메라는 공유 값 하나(UI 스레드, 끄는 동안 매 프레임). 그리기·그림자·터치가 모두 이것을 읽는다.
   // 보기 각은 카메라만 바꾼다: 책 배치·줄 간격(3D)은 그대로다. 확정된 각은 보기 설정으로 저장한다.
   const view = useViewStore();
@@ -848,7 +848,7 @@ export function HomeScreen() {
   });
 
   // ---------- 성능 측정(EXPO_PUBLIC_PERF=1 번들에서만 메뉴에 보인다) ----------
-  // 같은 배치에서 그리기 단계를 바꿔 가며: ① 가만히 있을 때 ② 시점 3°→8°→3° 두 번(UI 스레드만, React 없음)의 실제 프레임 간격,
+  // 같은 배치에서 그리기 단계를 바꿔 가며: ① 가만히 있을 때 ② 시점 4°→8°→4° 두 번(UI 스레드만, React 없음)의 실제 프레임 간격,
   // ③ 투영 계산만(그리기 없이 같은 함수), ④ 시점 확정 후 React 갱신(렌더·커밋) 시간과 그 뒤 프레임.
   const [perfKey, setPerfKey] = useState(0);
   const [shelfView, setShelfViewState] = useState<(typeof SHELF_VIEWS)[number]>('전체');

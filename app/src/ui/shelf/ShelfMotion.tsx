@@ -293,7 +293,7 @@ export const RowBooks = memo(function RowBooks({ m, shelfId, st, books, glowId =
 });
 
 // 끄는 책이 놓일 가로 범위: 책 바닥의 좌우 끝을 선반 앞턱(판 앞 윗모서리) 바로 아래에 얇은 선으로.
-// 3°처럼 앞 책에 가려 자리가 잘 안 보일 때도 어디에 놓이는지 읽히게. 끄는 동안만(상시 선택 막대가 아니다).
+// 낮은 시점(기본 4°)처럼 앞 책에 가려 자리가 잘 안 보일 때도 어디에 놓이는지 읽히게. 끄는 동안만(상시 선택 막대가 아니다).
 function LipRange({ m, id, shelfId, cam, px, order, space }: { m: Motion; id: string; shelfId: string; cam: CamSV; px: Affine; order: Order; space: number }) {
   // 선반 앞면 위의 선이라 판 바로 다음(판 위 그림자·접촉보다 위, 판 위에 선 책들보다 아래): 선반 앞으로 빼낸 책이 있으면 그 책이 가린다
   const z = useDerivedValue(() => zOf(order, `plank:${shelfId}`, 6));

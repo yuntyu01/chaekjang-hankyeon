@@ -35,7 +35,7 @@ function layoutUnder(deg: number) {
   return out!;
 }
 
-it('3°~8° 안으로 제한, 다른 각의 카메라를 만들어도 기본 카메라(3°)는 그대로', () => {
+it('4°~8° 안으로 제한, 다른 각의 카메라를 만들어도 기본 카메라(4°)는 그대로', () => {
   expect(clampPitch(1)).toBe(VIEW_PITCH_MIN);
   expect(clampPitch(20)).toBe(VIEW_PITCH_MAX);
   expect(clampPitch(5)).toBe(5);
@@ -49,7 +49,7 @@ it('각을 바꿔도 책의 3D 자세·자리·공간 판정은 같고, 화면 �
   const steep = layoutUnder(VIEW_PITCH_MAX);
   expect(steep.ky).toBeCloseTo(kyOf(VIEW_PITCH_MAX), 12); // 바꿔 넣은 카메라가 실제로 쓰였다
   expect(steep.result).toEqual(layoutOf(engine, scene));
-  // 같은 상자를 3°·8°로 투영한 외곽(그림·터치)은 다르다
+  // 같은 상자를 4°·8°로 투영한 외곽(그림·터치)은 다르다
   const outlines = (deg: number) => scene.computeShelf(SAMPLE_LAYOUT, books, 'shelf-2').frames.map((f) => scene.outlineOf(camAt(deg), fromPlaced(f.box)));
   expect(outlines(VIEW_PITCH_MAX)).not.toEqual(outlines(VIEW_PITCH_MIN));
 });
@@ -70,7 +70,7 @@ describe('시점 끌기를 놓았을 때 정착', () => {
   });
 
   it('정착 중에 다시 잡고 조금만 움직이면 향하던 시점으로', () => {
-    // 3 → 8로 정착하던 중 5.2°에서 잡아 0.3°만 움직임: 원래 목표(8°)
+    // 4 → 8로 정착하던 중 5.2°에서 잡아 0.3°만 움직임: 원래 목표(8°)
     expect(viewSettle(VIEW_PITCH_MAX, 5.2, 4.9, 0)).toBe(VIEW_PITCH_MAX);
   });
 

@@ -121,7 +121,7 @@ describe('책 몸체 구조', () => {
     }
   });
 
-  it('얇은 윗면 띠(표지 전시 책, 3°에서 몇 px)가 있어도 위 모서리는 반지름 r로 둥글다(꼭짓점마다 깎으면 1~2px로 줄던 것)', () => {
+  it('얇은 윗면 띠(표지 전시 책, 기본 4°에서 몇 px)가 있어도 위 모서리는 반지름 r로 둥글다(꼭짓점마다 깎으면 1~2px로 줄던 것)', () => {
     const cam = camAt(3);
     const b = fromPlaced({ bookId: 'f', pose: 'front', size: { w: 100, h: 150, d: 22 }, x: 10, y: 0, z: 0, angle: 0 });
     const box = hull(corners(b).map((c) => {

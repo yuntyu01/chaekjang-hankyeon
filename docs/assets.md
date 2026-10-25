@@ -5,7 +5,7 @@
 | 구분 | 위치 | 상태 |
 |---|---|---|
 | **최종** 종이 배경 | `app/assets/bookshelf/paper-background.png` | 받은 자산 |
-| **최종** 선반 | `app/assets/bookshelf/shelf-plank.png` | 받은 v4에서 그림자 분리 |
+| 선반 | 코드(3D 판: `app/src/ui/shelf/ShelfPlank.tsx`, 치수 `app/src/domain/geometry.ts`) | 받은 선반 PNG(shelf-plank, 원본 v3·v4)는 3D 판으로 바꾼 뒤 쓰지 않아 2026-10-26 지움 |
 | **임시** 책 재료 | `app/assets/body/` (`motif/`, `cover/`, `brush-detail.png`) | `scripts/extract-body-assets.py`가 시안 원본(`app/assets/source/books-source.png`, 앱 번들 제외)에서 평평한 재료만 추출: 책등 색·모티프·책등 장면, 제목 지운 표지 그림, 붓결 질감. 최종 재장정 아트로 교체 대상 |
 
 책 형태(크기·윤곽·옆면·윗면·명암)는 코드(`app/src/ui/book/BookBody.tsx`)가 그린다. 잘라 붙인 책 이미지는 쓰지 않는다.
@@ -27,23 +27,17 @@
 - 그림자: 빛 반대쪽(오른쪽 아래)으로만 떨어진다. 흐림이 왼쪽·위로 새지 않게 시작 윤곽도 조금 민다.
 - 예시 18권은 실제 책(판형·쪽수는 공개 서지 기준 대략값, 서지 API 연동 시 교체).
 
-## 선반 PNG 측정값(shelf-plank, 정규화, 투명 여백 포함)
+## 선반(코드)
 
-`scripts/measure-shelf.py`가 잰다. 나무판 본체는 불투명 픽셀의 가장 큰 연결 덩어리. 윗면/앞면 경계는 두 면 대표 밝기의 중간값으로 찾는다(앞면 아래 어두운 테두리에 속지 않게).
-plankLeft 0.0239 · plankRight 0.9761 · plankTopY 0.395 · frontTopY 0.5 · plankBottom 0.5829 · contactY 0.4685(기존 측정 기준선) · usableLeft 0.0433 · usableRight 0.9563.
-실제 책 접촉선은 `geometry.ts`의 `BOOK_SHELF_DEPTH=0.28`로 계산한다. 윗면 뒤쪽에서 28% 지점(이미지 정규화 y=0.4244)이며 책 앞에 약 9.6DU의 나무 면을 남긴다. 원본 측정 메타데이터는 유지한다.
-표시: 나무판이 화면 좌우 2DU에 오도록 폭·오프셋 계산, 세로 두께 배율 0.94. 모든 선반에 같은 줄 간격(전체 책·쌓기의 최대 높이 + 갈피 8DU + 위 여백 12DU + 선반 아래 영역)을 적용한다. 3개 선반을 헤더와 하단 아이콘 사이에 중앙 정렬한다.
+선반 판은 3D 상자(깊이 230mm = 앞 끝 → 책 기준선 70mm + 벽까지 160mm, 두께 21.5mm, 모서리 둥글기 2mm)를 책과 같은 원근 카메라로 투영해 그린다(`ShelfPlank.tsx`, `domain/shelf-geom.ts`).
+예전 선반 PNG 측정값(`shelf-asset.generated.ts`)과 측정·그림자 분리 스크립트(`measure-shelf.py`, `separate-shelf-shadow.py`)는 2026-10-26 지웠다.
 
-## 그림자(코드)
+## 빛과 그림자(코드)
 
-빛은 왼쪽 위. 책·선반 모두 윤곽을 오른쪽 아래로 옮긴 모양과 원래 윤곽을 이은 볼록 껍질을 Skia `BlurMask`로 흐린다. SVG 블러 폭 제한 없이 접촉층과 넓은 확산층을 그린다. 책갈피는 작은 View 안에만 그려 반복 텍스처가 벽으로 새어 나오지 않게 한다. 드래그 중의 단일 그림자는 `SoftShadow.tsx`를 사용한다.
-- 책: `theme.ts` `shadow.cast.layers`(dx·dy·blur·opacity), `fade`(높이별) → `src/ui/shelf/ShelfShadows.tsx`
-- 선반: `theme.ts` `shelfShadow.layers`(짧은 접촉층 2개) + `tail`(82DU 연속 감쇠층) → `src/ui/shelf/ShelfShadow.tsx`. 꼬리 뒤에도 블러 3배의 캔버스 여백을 둔다.
-- 선반 두께: `geometry.ts` `SHELF_THICKNESS`(0.94)
-- 그리는 순서: 책의 벽 그림자 → 선반 그림자·본체 → 책 접촉 그림자 → 책 → 선반 앞턱. 벽 그림자가 나무 면 위에 칠해지거나 책이 앞턱을 덮지 않게 한다.
+모든 면에 같은 빛 두 개만 쓴다: 창빛(왼쪽 9°·위 17°, 반지름 14° 원반)과 방 빛(위·앞이 밝은 방, 하늘 가림 세기 0.55). 값과 근거는 `app/src/ui/lighting.ts`, 계산은 `app/src/domain/light-model.ts`(빛 격자·판 그림자)·`cast-shadow.ts`(책 그림자)·`app/src/ui/scene-light-sksl.ts`(셰이더).
+판 아래 그림자는 판 바로 아래가 가장 짙고 길게 옅어진다(2026-10-26, 그림자 참고 그림에 맞춤). 손으로 정한 그림자 층(예전 `theme.ts` `shadow`·`SoftShadow.tsx`)은 없다.
 
 시안 대조 도구: `app/scripts/qa/cmpshadow.py 시안.png 캡처.png`, `rightprof.py`(벽색→그림자색 방향으로 그림자 세기를 떼어 같은 지점 비교).
-그림자 길이·거리별 감쇠·책 깊이는 3차 수정에서 변경됐다. 현재 검증 내용은 `HOME_VISUAL_REVIEW.md` 참고.
 
 ## 추가로 필요한 최종 자산
 

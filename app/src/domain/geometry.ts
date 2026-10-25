@@ -35,7 +35,7 @@ export const SHELF = {
   innerLeft: 0,
   innerRight: 0,
   gap: 0, // 서 있는 책 사이 틈: 붙인다(깊이 145mm 책 사이 2~3mm 틈은 빛이 들지 않아 검은 선이 된다. 그림자 참고 그림도 책끼리 맞닿는다)
-  rowTopPad: 2, // 가장 높은 책(갈피 포함) 위 여백(기본 3°에서): 시안처럼 위 선반 바로 밑까지
+  rowTopPad: 2, // 가장 높은 책(갈피 포함) 위 여백(기본 4°에서): 시안처럼 위 선반 바로 밑까지
   minClear: 110,
 };
 
@@ -67,7 +67,7 @@ export function thicknessMm(pages: number) {
 export const BOOK_HEIGHT: Record<HeightClass, number> = { short: 136, medium: 174, tall: 188 };
 export const BOOK_THICKNESS: Record<ThicknessClass, number> = { thin: 28, medium: 36, thick: 42 };
 
-// 예전 이름(다른 화면 호환). 값이 바뀌지 않는 기본 3° 카메라다. 보기 각은 view-store → 화면 카메라(camSV)로만 바뀐다.
+// 예전 이름(다른 화면 호환). 값이 바뀌지 않는 기본 4° 카메라다(2026-10-06 사용자 결정). 보기 각은 view-store → 화면 카메라(camSV)로만 바뀐다.
 export const CAMERA = BASE_CAM;
 
 // ---------- 보기 설정: 내려다보는 각(VIEW_PITCH_MIN ~ 8°, 원근 카메라의 눈높이) ----------
@@ -177,7 +177,7 @@ export function frontExt(book: Book, p: { pitch?: number; spin?: number }) {
   return frontExtent(frontDims(book), p.pitch ?? 0, p.spin ?? 0);
 }
 
-// ky: 화면 높이를 잴 카메라(기본 3°). 폭(width)은 배치(packing)가 쓴다. 줄 간격은 이 값이 아니라 3D 높이로 정한다(ui/shelf/metrics).
+// ky: 화면 높이를 잴 카메라(기본 4°). 폭(width)은 배치(packing)가 쓴다. 줄 간격은 이 값이 아니라 3D 높이로 정한다(ui/shelf/metrics).
 export function singleFootprint(book: Book, p: Pick<BookPlacement, 'pose' | 'tilt'> & { spin?: number; depth?: number; pitch?: number }, ky = BASE_CAM.ky) {
   const h = bookHeight(book);
   const t = bookThickness(book);

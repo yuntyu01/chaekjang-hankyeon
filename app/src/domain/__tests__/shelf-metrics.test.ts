@@ -68,7 +68,7 @@ it.each([280, 390, 520, 768])('폭 %i에서 실제로 그린 책 위치가 올�
   const rows = computeRows(SAMPLE_LAYOUT, books, m.scale);
   rows.forEach((row, i) => {
     const frame = computeShelf(SAMPLE_LAYOUT, books, row.shelfId).frames[0];
-    const bb = frameBBox(frame, BASE_CAM); // 기본 3°로 그린 책의 화면 외곽
+    const bb = frameBBox(frame, BASE_CAM); // 기본 4°로 그린 책의 화면 외곽
     const p = { x: bb.minX + bb.width / 2, y: bb.minY + bb.height / 2 };
     const pixel = toContent(m, row, p);
     const restored = toScene(m, row, pixel.x, pixel.y);
