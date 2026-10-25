@@ -77,6 +77,8 @@ import { HANDLE_HIT, handlePoint, HeaderWall, SHELF_CAST_EXTENT, ShelfScene, typ
 import { ANIM, frameStats, logChunks, MENU_FLAGS, PERF_DETAIL, PERF_ENABLED, PERF_LEVELS, PUSH_DEBUG, setLightOff, setPerfLevel, TL, tl, tlEv, tlOn, tlu, TRANSIT_DEBUG, setShelfMode, setShelfView, SHELF_MODES, SHELF_VIEWS, type PerfLevel, type ShelfMode } from '@/ui/perf';
 import type { FrontState } from '@/domain/front-pose';
 import { colors, fonts, motion, navigation } from '@/ui/theme';
+// 책장 밖 UI(메뉴 시트·알림·빈 책장 안내)는 화면 공통 토큰을 쓴다(책장 장면·머리글은 theme.ts 그대로)
+import { colors as ui, fonts as uiFonts, icon, shape, space, type } from '@/ui/screenTheme';
 
 import { BookPopover } from './BookPopover';
 import { miniTimerStore } from '@/store/mini-timer-store';
@@ -1510,7 +1512,7 @@ export function HomeScreen() {
       {/* 머리글 뒤 벽: 맨 윗줄 벽이 화면 위 끝까지 이어진다 */}
       <HeaderWall rows={sceneRows} motions={motions} books={sceneBooks} m={m} width={winW} height={vpTop} cam={camSV} />
       {PERF_ENABLED && camDebug === '1' ? (
-        <Text pointerEvents="none" style={{ position: 'absolute', zIndex: 99, left: 8, bottom: navigation.height + insets.bottom + 4, fontSize: 11, color: '#7A2E1E', backgroundColor: 'rgba(255,255,255,0.8)' }}>
+        <Text pointerEvents="none" style={{ position: 'absolute', zIndex: 99, left: 8, bottom: navigation.height + insets.bottom + 4, fontSize: 11, color: '#7A2E1E', backgroundColor: 'rgba(255,255,255,0.8)' }}>{/* 측정용 */}
           {`저장 ${view.pitch}° · ${camNow || `적용 ${view.pitch}°`} · 배율 ${m.scale.toFixed(4)}dp/DU(${(m.scale * PixelRatio.get()).toFixed(3)}px/DU) · 3D 줄 간격 ${(rows[0]?.space ?? 0).toFixed(1)}DU · 꾸미기 ${editing ? '켬' : '끔'}`}
         </Text>
       ) : null}
@@ -1551,7 +1553,7 @@ export function HomeScreen() {
                 accessibilityRole="button"
                 accessibilityLabel={ko.undo}
                 style={{ opacity: store.undo ? 1 : 0.35, padding: 4 }}>
-                <Undo2 size={20 * m.scale} color={colors.ink} strokeWidth={1.6} />
+                <Undo2 size={20 * m.scale} color={colors.homeTitle} strokeWidth={1.6} />
               </Pressable>
               <Pressable onPress={finishEditing} accessibilityRole="button" accessibilityLabel={ko.done} style={[styles.pill, { height: 30 * m.scale, paddingHorizontal: 16 * m.scale }]}>
                 <Text style={[styles.pillText, { fontSize: 13.5 * m.scale }]}>{ko.done}</Text>
@@ -1655,7 +1657,7 @@ export function HomeScreen() {
               <Text style={styles.emptyTitle}>{ko.empty.title}</Text>
               <Text style={styles.emptyBody}>{layout.drawer.length ? `${ko.empty.body}\n서랍에 ${layout.drawer.length}권이 있어요.` : ko.empty.body}</Text>
               <Pressable onPress={() => router.push('/book/add')} accessibilityRole="button" style={styles.emptyBtn}>
-                <Plus size={16} color={colors.bg} strokeWidth={1.8} />
+                <Plus size={icon.small} color={ui.onAccent} strokeWidth={icon.stroke} />
                 <Text style={styles.emptyBtnText}>{ko.add}</Text>
               </Pressable>
               {layout.drawer.length ? (
@@ -1716,27 +1718,27 @@ export function HomeScreen() {
         <View style={[styles.menuSheet, { paddingBottom: insets.bottom + 24 }]}>
           <Text style={styles.menuTitle}>{ko.menu.title}</Text>
           <Pressable accessibilityRole="button" style={styles.menuItem} onPress={() => { setShelfMenuOpen(false); setPopId(null); setSelectedId(null); setEditingKeep(true); }}>
-            <Paintbrush size={20} color={colors.ink} strokeWidth={1.6} /><Text style={styles.menuText}>{ko.decorate}</Text>
+            <Paintbrush size={icon.size} color={ui.ink} strokeWidth={icon.stroke} /><Text style={styles.menuText}>{ko.decorate}</Text>
           </Pressable>
           <Pressable accessibilityRole="button" style={styles.menuItem} onPress={() => { setShelfMenuOpen(false); router.push('/search'); }}>
-            <Search size={20} color={colors.ink} strokeWidth={1.6} /><Text style={styles.menuText}>{ko.menu.search}</Text>
+            <Search size={icon.size} color={ui.ink} strokeWidth={icon.stroke} /><Text style={styles.menuText}>{ko.menu.search}</Text>
           </Pressable>
           <Pressable accessibilityRole="button" style={styles.menuItem} onPress={() => { setShelfMenuOpen(false); router.push('/drawer'); }}>
-            <BookMarked size={20} color={colors.ink} strokeWidth={1.6} /><Text style={styles.menuText}>{ko.drawer.title}{layout.drawer.length ? ` · ${layout.drawer.length}권` : ''}</Text>
+            <BookMarked size={icon.size} color={ui.ink} strokeWidth={icon.stroke} /><Text style={styles.menuText}>{ko.drawer.title}{layout.drawer.length ? ` · ${layout.drawer.length}권` : ''}</Text>
           </Pressable>
           <Pressable accessibilityRole="button" style={styles.menuItem} onPress={() => { setShelfMenuOpen(false); router.push('/stats'); }}>
-            <ChartNoAxesColumn size={20} color={colors.ink} strokeWidth={1.6} /><Text style={styles.menuText}>{ko.menu.stats}</Text>
+            <ChartNoAxesColumn size={icon.size} color={ui.ink} strokeWidth={icon.stroke} /><Text style={styles.menuText}>{ko.menu.stats}</Text>
           </Pressable>
           <Pressable accessibilityRole="button" style={styles.menuItem} onPress={() => { setShelfMenuOpen(false); router.push('/settings'); }}>
-            <Settings size={20} color={colors.ink} strokeWidth={1.6} /><Text style={styles.menuText}>{ko.menu.settings}</Text>
+            <Settings size={icon.size} color={ui.ink} strokeWidth={icon.stroke} /><Text style={styles.menuText}>{ko.menu.settings}</Text>
           </Pressable>
           <View style={styles.menuDivider} />
           <Pressable accessibilityRole="button" style={styles.menuItem} onPress={() => { setShelfMenuOpen(false); showToast({ text: placementStore.addShelf() ? ko.menu.shelfAdded : ko.menu.shelfFail }); }}>
-            <Plus size={20} color={colors.ink} strokeWidth={1.6} /><Text style={styles.menuText}>{ko.menu.addShelf}</Text>
+            <Plus size={icon.size} color={ui.ink} strokeWidth={icon.stroke} /><Text style={styles.menuText}>{ko.menu.addShelf}</Text>
           </Pressable>
           {layout.shelves.length > 3 && layout.shelves.some((sh) => !layout.placements.some((p) => p.shelfId === sh.id)) ? (
             <Pressable accessibilityRole="button" style={styles.menuItem} onPress={() => { setShelfMenuOpen(false); showToast({ text: placementStore.pruneShelves() ? ko.menu.pruned : ko.menu.shelfFail }); }}>
-              <Eraser size={20} color={colors.ink} strokeWidth={1.6} /><Text style={styles.menuText}>{ko.menu.prune}</Text>
+              <Eraser size={icon.size} color={ui.ink} strokeWidth={icon.stroke} /><Text style={styles.menuText}>{ko.menu.prune}</Text>
             </Pressable>
           ) : null}
           {PERF_ENABLED ? (
@@ -1800,7 +1802,7 @@ const styles = StyleSheet.create({
   summary: { fontFamily: fonts.round, color: colors.homeSummary, letterSpacing: 0.2 },
   actions: { flexDirection: 'row', alignItems: 'center', alignSelf: 'center' },
   circle: { borderWidth: 1, borderColor: colors.circle, alignItems: 'center', justifyContent: 'center' },
-  circleOn: { backgroundColor: colors.ink, borderColor: colors.ink },
+  circleOn: { backgroundColor: ui.accent, borderColor: ui.accent },
   pill: { borderWidth: 1, borderColor: colors.circle, borderRadius: 999, alignItems: 'center', justifyContent: 'center' },
   pillText: { fontFamily: fonts.round, color: colors.homeTitle },
   badge: {
@@ -1811,38 +1813,40 @@ const styles = StyleSheet.create({
     height: 18,
     borderRadius: 9,
     paddingHorizontal: 4,
-    backgroundColor: colors.ink,
+    backgroundColor: ui.accent,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  badgeText: { fontSize: 11, color: colors.sheet, fontWeight: '600' },
+  badgeText: { fontFamily: uiFonts.uiBold, fontSize: 11, color: ui.onAccent },
   toast: {
     position: 'absolute',
     left: 16,
     right: 16,
     bottom: 12,
-    minHeight: 46,
-    borderRadius: 12,
-    backgroundColor: colors.ink,
-    paddingHorizontal: 16,
+    minHeight: 50,
+    borderRadius: shape.input,
+    backgroundColor: ui.ink,
+    paddingHorizontal: 18,
+    paddingVertical: 12,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     gap: 12,
+    ...shape.floatShadow,
   },
-  toastText: { color: colors.sheet, fontSize: 13.5, flexShrink: 1 },
-  toastAction: { color: '#F2D9A6', fontSize: 13.5, fontWeight: '600' },
-  menuBackdrop: { flex: 1, backgroundColor: 'rgba(34,30,24,0.2)' },
-  menuSheet: { backgroundColor: colors.sheet, borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: 24 },
-  menuTitle: { fontFamily: fonts.serif, fontSize: 22, color: colors.ink, marginBottom: 12 },
-  menuItem: { flexDirection: 'row', alignItems: 'center', gap: 14, minHeight: 54 },
-  menuText: { fontSize: 16, color: colors.ink },
+  toastText: { ...type.sub, color: ui.onAccent, flexShrink: 1 },
+  toastAction: { ...type.button, fontSize: 14, color: ui.inkAction },
+  menuBackdrop: { flex: 1, backgroundColor: ui.scrim },
+  menuSheet: { backgroundColor: ui.raised, borderTopLeftRadius: shape.sheet, borderTopRightRadius: shape.sheet, paddingHorizontal: space.page, paddingTop: 22 },
+  menuTitle: { ...type.heading, marginBottom: space.tight },
+  menuItem: { flexDirection: 'row', alignItems: 'center', gap: 16, minHeight: space.row },
+  menuText: type.row,
   emptyWrap: { position: 'absolute', left: 0, right: 0, top: 0, bottom: 0, alignItems: 'center', justifyContent: 'center', paddingBottom: 60 },
-  emptyCard: { alignItems: 'center', backgroundColor: 'rgba(251,247,240,0.92)', borderRadius: 18, paddingVertical: 24, paddingHorizontal: 28 },
-  emptyTitle: { fontFamily: fonts.serif, fontSize: 21, color: colors.ink },
-  emptyBody: { fontSize: 13.5, lineHeight: 20, color: colors.inkSoft, textAlign: 'center', marginTop: 8 },
-  emptyBtn: { marginTop: 16, height: 44, borderRadius: 22, backgroundColor: colors.ink, paddingHorizontal: 22, flexDirection: 'row', alignItems: 'center', gap: 6 },
-  emptyBtnText: { color: colors.bg, fontSize: 15 },
-  emptyLink: { fontSize: 13.5, color: colors.inkSoft, textDecorationLine: 'underline' },
-  menuDivider: { height: StyleSheet.hairlineWidth, backgroundColor: colors.line, marginVertical: 6 },
+  emptyCard: { alignItems: 'center', backgroundColor: 'rgba(255,253,249,0.94)', borderRadius: shape.dialog, paddingVertical: 28, paddingHorizontal: 28, marginHorizontal: space.page },
+  emptyTitle: { ...type.heading, textAlign: 'center' },
+  emptyBody: { ...type.sub, textAlign: 'center', marginTop: 8 },
+  emptyBtn: { marginTop: space.group, minHeight: 48, borderRadius: shape.button, backgroundColor: ui.accent, paddingHorizontal: 24, flexDirection: 'row', alignItems: 'center', gap: 6 },
+  emptyBtnText: { ...type.button, color: ui.onAccent },
+  emptyLink: { ...type.sub, textDecorationLine: 'underline' },
+  menuDivider: { height: shape.hairline, backgroundColor: ui.line, marginVertical: 6 },
 });

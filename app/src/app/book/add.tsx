@@ -1,9 +1,9 @@
 // 책 추가: 책 찾기(검색·사진·직접 입력) → 책·판본 확인 → 재장정 미리보기 → 내 책에 추가 → 책장에 꽂기 또는 서랍에 보관.
 // 검색 결과·표지·쪽수가 없어도 직접 입력과 기본 장정으로 끝낼 수 있다. 추정 크기를 확인된 정보처럼 저장하지 않는다.
 import { router, useLocalSearchParams } from 'expo-router';
-import { Camera, ImageIcon, PenLine, Search, X } from '@/ui/icons';
+import { Camera, ImageIcon, PenLine } from '@/ui/icons';
 import { useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, Alert, Image, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Alert, Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { BindingEditor, type BindingDraft } from '@/features/book/BindingEditor';
 import { buildBookArt, type BookArtParams, type PaletteEntry } from '@/domain/rebinding';
@@ -17,8 +17,8 @@ import { keepImage } from '@/store/files';
 import { libraryStore } from '@/store/library-store';
 import { placementStore } from '@/store/placement-store';
 import { uiBus } from '@/store/ui-bus';
-import { Btn, Card, Chip, Empty, Field, H2, Muted, RealCover, Row, Screen, ui } from '@/ui/kit';
-import { colors, fonts, screenTheme } from '@/ui/screenTheme';
+import { Btn, Chip, Empty, Field, H2, ListGroup, Muted, Notice, RealCover, Row, Screen, SearchField } from '@/ui/kit';
+import { colors, icon, shape, space, type } from '@/ui/screenTheme';
 
 type Step = 'find' | 'confirm' | 'binding' | 'done';
 
@@ -168,19 +168,16 @@ export default function AddBook() {
             }}
           />
         }>
-        {notice ? (
-          <Card style={{ marginBottom: 14, backgroundColor: '#F6EEDF' }}>
-            <Text style={{ fontSize: 13.5, lineHeight: 20, color: colors.ink }}>{notice}</Text>
-          </Card>
-        ) : null}
-        <Row style={{ alignItems: 'flex-start', flexWrap: 'nowrap' }} gap={16}>
+        {notice ? <Notice style={{ marginTop: space.item, marginBottom: space.group }}>{notice}</Notice> : null}
+        <Row style={{ alignItems: 'flex-start', flexWrap: 'nowrap', marginTop: notice ? 0 : space.item }} gap={16}>
           <RealCover uri={draft.coverUri} title={draft.title || '표지'} color="#B7AE9F" width={96} />
-          <View style={{ flex: 1, gap: 8 }}>
+          <View style={{ flex: 1, gap: 10 }}>
             <Muted>{draft.coverUri ? (draft.coverSource === 'photo' ? '내가 찍은 사진' : `${draft.sourceName ?? '도서 정보'} 표지`) : '표지가 없어요. 사진을 등록할 수 있어요.'}</Muted>
             <Btn
               label={draft.coverUri ? '사진으로 바꾸기' : '표지 사진 등록'}
               kind="secondary"
-              icon={<ImageIcon size={16} color={colors.ink} strokeWidth={1.6} />}
+              size="s"
+              icon={<ImageIcon size={icon.small} color={colors.ink} strokeWidth={icon.stroke} />}
               onPress={async () => {
                 const r = await pickPhoto('library');
                 if (r.ok) setDraft({ ...draft, coverUri: r.uri, coverSource: 'photo' });
@@ -189,7 +186,7 @@ export default function AddBook() {
             />
           </View>
         </Row>
-        <View style={{ height: 18 }} />
+        <View style={{ height: space.group + 4 }} />
         <Field label="제목 (필수)" value={draft.title} onChangeText={(t) => setDraft({ ...draft, title: t })} placeholder="책 제목" />
         <Field label="저자" value={draft.authors} onChangeText={(t) => setDraft({ ...draft, authors: t })} placeholder="여러 명은 쉼표로" />
         <Field label="출판사" value={draft.publisher} onChangeText={(t) => setDraft({ ...draft, publisher: t })} />
@@ -231,18 +228,18 @@ export default function AddBook() {
     <Screen title="추가했어요" back={false}>
       <Text style={st.doneTitle}>《{draft.title}》을(를) 내 책에 추가했어요.</Text>
       {placed === null ? (
-        <View style={{ gap: 10, marginTop: 20 }}>
+        <View style={{ gap: 10, marginTop: space.section }}>
           <Btn label="책장에 꽂기" onPress={() => place('shelf')} />
           <Btn label="서랍에 보관" kind="secondary" onPress={() => place('drawer')} />
         </View>
       ) : placed === 'none' ? (
-        <View style={{ gap: 10, marginTop: 20 }}>
+        <View style={{ gap: 10, marginTop: space.section }}>
           <Muted>책장에 빈 자리가 없어요.</Muted>
           <Btn label="선반을 하나 더하고 꽂기" onPress={() => place('newShelf')} />
           <Btn label="서랍에 보관" kind="secondary" onPress={() => place('drawer')} />
         </View>
       ) : (
-        <View style={{ gap: 10, marginTop: 20 }}>
+        <View style={{ gap: 10, marginTop: space.section }}>
           <Muted>{placed === 'shelf' ? '책장에 꽂았어요. 꾸미기에서 자리와 자세를 바꿀 수 있어요.' : '서랍에 넣었어요. 서랍에서 언제든 꺼내 놓을 수 있어요.'}</Muted>
           {placed === 'shelf' ? (
             <Btn
@@ -291,49 +288,53 @@ function FindStep({ initial, notice, onPick, onPhoto, onManual }: { initial?: st
   }, []);
   return (
     <Screen title="책 추가">
-      <View style={st.searchBox}>
-        <Pressable onPress={() => run()} accessibilityRole="button" accessibilityLabel="검색" style={st.searchAction}><Search size={23} color={colors.ink} strokeWidth={1.6} /></Pressable>
-        <TextInput
-          value={q}
-          onChangeText={setQ}
-          onSubmitEditing={() => run()}
-          returnKeyType="search"
-          placeholder="제목이나 저자로 찾기"
-          placeholderTextColor={colors.inkFaint}
-          style={st.searchInput}
-          accessibilityLabel="제목이나 저자로 찾기"
-        />
-        {busy ? <ActivityIndicator size="small" color={colors.inkSoft} /> : q ? <Pressable onPress={() => { ctrl.current?.abort(); setBusy(false); setQ(''); setItems(null); setErr(null); }} accessibilityRole="button" accessibilityLabel="검색어 지우기" style={st.searchAction}><View style={st.clear}><X size={16} color={colors.inkSoft} /></View></Pressable> : null}
-      </View>
+      <SearchField
+        value={q}
+        onChangeText={(t) => {
+          setQ(t);
+          if (!t) {
+            ctrl.current?.abort();
+            setBusy(false);
+            setItems(null);
+            setErr(null);
+          }
+        }}
+        onSubmit={() => run()}
+        busy={busy}
+        placeholder="제목이나 저자로 찾기"
+        accessibilityLabel="제목이나 저자로 찾기"
+        style={{ marginTop: space.item }}
+      />
       <View style={st.findMethods}>
-        <Pressable accessibilityRole="button" accessibilityLabel="사진으로 찾기" onPress={() => Alert.alert('사진으로 찾기', '표지 사진을 선택해 주세요.', [{ text: '사진 찍기', onPress: () => onPhoto('camera') }, { text: '사진 고르기', onPress: () => onPhoto('library') }, { text: '취소', style: 'cancel' }])} style={st.method}><Camera size={24} color={colors.ink} strokeWidth={1.5} /><Text style={st.methodText}>사진으로 찾기</Text></Pressable>
-        <View style={{ width: 1, height: 22, backgroundColor: screenTheme.border }} />
-        <Pressable accessibilityRole="button" accessibilityLabel="직접 입력" onPress={() => onManual(q)} style={st.method}><PenLine size={24} color={colors.ink} strokeWidth={1.5} /><Text style={st.methodText}>직접 입력</Text></Pressable>
+        <Pressable accessibilityRole="button" accessibilityLabel="사진으로 찾기" onPress={() => Alert.alert('사진으로 찾기', '표지 사진을 선택해 주세요.', [{ text: '사진 찍기', onPress: () => onPhoto('camera') }, { text: '사진 고르기', onPress: () => onPhoto('library') }, { text: '취소', style: 'cancel' }])} style={({ pressed }) => [st.method, pressed && { opacity: 0.6 }]}><Camera size={icon.size} color={colors.ink} strokeWidth={icon.stroke} /><Text style={st.methodText}>사진으로 찾기</Text></Pressable>
+        <View style={{ width: shape.hairline * 2, height: 22, backgroundColor: colors.line }} />
+        <Pressable accessibilityRole="button" accessibilityLabel="직접 입력" onPress={() => onManual(q)} style={({ pressed }) => [st.method, pressed && { opacity: 0.6 }]}><PenLine size={icon.size} color={colors.ink} strokeWidth={icon.stroke} /><Text style={st.methodText}>직접 입력</Text></Pressable>
       </View>
-      {notice ? <Muted style={{ marginTop: 8, lineHeight: 19 }}>{notice}</Muted> : null}
+      {notice ? <Muted style={{ marginTop: space.tight }}>{notice}</Muted> : null}
 
       {err ? (
-        <Card style={{ marginTop: 16 }}>
-          <Text style={{ fontSize: 14, color: colors.ink, lineHeight: 20 }}>{err}</Text>
-          <Row style={{ marginTop: 10 }}>
-            <Btn label="다시 시도" kind="secondary" onPress={() => run()} />
-          </Row>
-        </Card>
+        <Notice tone="error" style={{ marginTop: space.group }}>
+          {err}
+        </Notice>
       ) : null}
+      {err ? <Btn label="다시 시도" kind="secondary" size="s" onPress={() => run()} style={{ marginTop: 10, alignSelf: 'flex-start' }} /> : null}
       {items && !items.length ? <Empty title="찾는 책이 없어요" body="검색어를 바꾸거나 위의 직접 입력으로 추가해 주세요." /> : null}
       {items?.length ? (
-        <View style={{ marginTop: 27 }}><Row gap={13}><Text style={st.resultHeading}>검색 결과</Text><Text style={st.resultCount}>{items.length}권</Text></Row>
-          {items.map((c) => (
-            <Pressable key={c.key} onPress={() => onPick(c)} style={({ pressed }) => [st.result, pressed && { opacity: 0.7 }]} accessibilityRole="button" accessibilityLabel={`${c.title}, ${c.authors.join(', ')}`}>
-              <View style={st.coverShadow}><RealCover uri={c.coverUrl} title={c.title} color="#B8ADA0" width={94} ratio={0.77} /></View>
-              <View style={{ flex: 1, gap: 6 }}>
-                <Text style={st.rTitle}>{c.title}</Text>
-                {c.authors.length ? <Text style={st.rAuthor}>{c.authors.join(', ')}</Text> : null}
-                <Text style={st.rMeta}>{[c.publisher, c.publishedAt?.match(/\b\d{4}\b/)?.[0]].filter(Boolean).join(' · ')}</Text>
-              </View>
-              <View style={st.add}><Text style={{ color: colors.ink, fontSize: 15 }}>추가</Text></View>
-            </Pressable>
-          ))}
+        <View style={{ marginTop: space.section }}>
+          <Row gap={10}><Text style={type.heading}>검색 결과</Text><Text style={type.sub}>{items.length}권</Text></Row>
+          <ListGroup style={{ marginTop: space.tight }}>
+            {items.map((c) => (
+              <Pressable key={c.key} onPress={() => onPick(c)} style={({ pressed }) => [st.result, pressed && { opacity: 0.7 }]} accessibilityRole="button" accessibilityLabel={`${c.title}, ${c.authors.join(', ')}, 추가`}>
+                <View style={st.coverShadow}><RealCover uri={c.coverUrl} title={c.title} color="#B8ADA0" width={84} ratio={0.77} /></View>
+                <View style={{ flex: 1, gap: 4 }}>
+                  <Text style={type.rowStrong}>{c.title}</Text>
+                  {c.authors.length ? <Text style={type.sub}>{c.authors.join(', ')}</Text> : null}
+                  <Text style={type.caption}>{[c.publisher, c.publishedAt?.match(/\b\d{4}\b/)?.[0]].filter(Boolean).join(' · ')}</Text>
+                </View>
+                <View style={st.add}><Text style={st.addText}>추가</Text></View>
+              </Pressable>
+            ))}
+          </ListGroup>
         </View>
       ) : null}
     </Screen>
@@ -341,20 +342,12 @@ function FindStep({ initial, notice, onPick, onPhoto, onManual }: { initial?: st
 }
 
 const st = StyleSheet.create({
-  searchBox: { minHeight: 51, marginTop: 12, borderRadius: 15, backgroundColor: '#F4EEE5', flexDirection: 'row', alignItems: 'center', paddingHorizontal: 5, gap: 1 },
-  searchAction: { width: 43, minHeight: 48, alignItems: 'center', justifyContent: 'center' },
-  clear: { width: 24, height: 24, borderRadius: 12, backgroundColor: '#DDD6CC', alignItems: 'center', justifyContent: 'center' },
-  searchInput: { flex: 1, fontFamily: fonts.serif, fontSize: 18, lineHeight: 28, color: colors.ink, paddingVertical: 10, includeFontPadding: false },
-  findMethods: { flexDirection: 'row', alignItems: 'center', marginTop: 9 },
-  method: { flex: 1, flexDirection: 'row', gap: 10, alignItems: 'center', justifyContent: 'center', paddingVertical: 13, minHeight: 50 },
-  methodText: { fontSize: 14.5, color: colors.ink, flexShrink: 1 },
-  resultHeading: { fontFamily: fonts.roundTitle, fontSize: 22, color: colors.ink },
-  resultCount: { fontSize: 15, color: colors.inkSoft },
-  result: { flexDirection: 'row', alignItems: 'center', gap: 16, paddingHorizontal: 7, paddingVertical: 17, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: '#E4DCD2' },
+  findMethods: { flexDirection: 'row', alignItems: 'center', marginTop: space.tight },
+  method: { flex: 1, flexDirection: 'row', gap: 10, alignItems: 'center', justifyContent: 'center', paddingVertical: 12, minHeight: 52 },
+  methodText: { ...type.row, fontSize: 15, flexShrink: 1 },
+  result: { flexDirection: 'row', alignItems: 'center', gap: 16, paddingVertical: 18 },
   coverShadow: { borderRadius: 3, boxShadow: [{ offsetX: 0, offsetY: 5, blurRadius: 6, color: 'rgba(118,77,38,0.16)' }] },
-  add: { backgroundColor: '#F5E7D6', borderRadius: 13, minWidth: 64, minHeight: 38, paddingVertical: 9, paddingHorizontal: 10, alignItems: 'center' },
-  rTitle: { fontFamily: fonts.serifMedium, fontSize: 18, lineHeight: 28, color: '#27231F', includeFontPadding: false },
-  rAuthor: { fontSize: 14, lineHeight: 22, color: '#756B63' },
-  rMeta: { fontSize: 12.5, lineHeight: 20, color: colors.inkFaint },
-  doneTitle: { fontFamily: fonts.serif, fontSize: 20, lineHeight: 30, color: colors.ink, marginTop: 20 },
+  add: { backgroundColor: colors.accentSoft, borderRadius: shape.input, minWidth: 60, minHeight: 40, paddingHorizontal: 12, alignItems: 'center', justifyContent: 'center' },
+  addText: { ...type.button, fontSize: 15, color: colors.accent },
+  doneTitle: { ...type.body, fontSize: 17, lineHeight: 26, marginTop: space.item },
 });

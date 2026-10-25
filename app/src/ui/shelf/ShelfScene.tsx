@@ -30,7 +30,8 @@ import { BookNode } from '@/ui/book3d/BookNode';
 import { LIGHT_ON, RENDER, TL, tl, TRANSIT_DEBUG } from '@/ui/perf';
 import { areaItem, bakeAtlas, bookItems, bookKeyImage, NO_ATLAS, NO_BOOK_KEY, type BakeItem } from '@/ui/SceneLight';
 import { SHOW } from '@/ui/shelf/shadow-debug';
-import { colors, fonts } from '@/ui/theme';
+import { colors } from '@/ui/theme';
+import { colors as ui, type } from '@/ui/screenTheme';
 
 import { rowAffine, type RowGeom, type ShelfMetrics } from './metrics';
 import { useRowPlanner } from './planner';
@@ -562,6 +563,6 @@ const styles = StyleSheet.create({
     borderColor: colors.line,
   },
   hintBad: { borderColor: colors.danger },
-  hintText: { fontSize: 12.5, color: colors.ink, fontFamily: fonts.sans },
+  hintText: { ...type.caption, color: ui.ink },
 });
 

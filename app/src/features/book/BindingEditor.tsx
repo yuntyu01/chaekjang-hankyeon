@@ -15,7 +15,7 @@ import { BINDING_MATERIALS, type BindingMaterial, type Book } from '@/domain/typ
 import { StandaloneBook } from '@/ui/book3d/StandaloneBook';
 import { Check } from '@/ui/icons';
 import { Row } from '@/ui/kit';
-import { colors } from '@/ui/screenTheme';
+import { colors, fonts, shape, space, type } from '@/ui/screenTheme';
 
 export type BindingDraft = Pick<Binding, 'spineColor' | 'motif' | 'seed' | 'source' | 'inkColor' | 'accentColor' | 'layout' | 'material' | 'coverArtId'>;
 
@@ -48,7 +48,7 @@ const TABS: { id: Tab; label: string }[] = [
   { id: 'color', label: '색상' },
   { id: 'material', label: '재질' },
 ];
-const INK = '#594541';
+const INK = colors.accent; // 고른 것 표시(공통 강조색)
 
 export function BindingEditor({ title, author, size, pages, value, recommended, onChange }: { title: string; author?: string; size?: SizeMm; pages?: number; value: BindingDraft; recommended: BindingDraft; onChange: (v: BindingDraft) => void }) {
   const [tab, setTab] = useState<Tab>('art');
@@ -233,38 +233,38 @@ function MaterialPane({ value, custom, onChange }: PaneProps) {
 const st = StyleSheet.create({
   stage: { flexDirection: 'row', justifyContent: 'center', alignItems: 'flex-end', gap: 22, paddingTop: 4, paddingBottom: 6 },
   col: { alignItems: 'center', gap: 4 },
-  cap: { fontSize: 12, color: colors.inkSoft },
-  tabs: { flexDirection: 'row', marginTop: 14, marginHorizontal: 18, padding: 3, borderRadius: 22, backgroundColor: '#F2EADF', borderWidth: StyleSheet.hairlineWidth * 2, borderColor: '#E5D9C9' },
-  tab: { flex: 1, minHeight: 40, borderRadius: 19, alignItems: 'center', justifyContent: 'center' },
+  cap: type.caption,
+  tabs: { flexDirection: 'row', marginTop: 16, padding: 3, borderRadius: shape.input + 3, backgroundColor: colors.surface },
+  tab: { flex: 1, minHeight: 42, borderRadius: shape.input, alignItems: 'center', justifyContent: 'center' },
   tabOn: { backgroundColor: INK },
-  tabText: { fontSize: 15, color: colors.inkSoft },
-  tabTextOn: { color: '#FBF6EE', fontWeight: '600' },
-  artGrid: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between', rowGap: 14, marginTop: 16 },
+  tabText: { ...type.row, fontSize: 15, color: colors.inkSoft },
+  tabTextOn: { fontFamily: fonts.uiBold, color: colors.onAccent },
+  artGrid: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between', rowGap: 16, marginTop: 18 },
   artCell: { width: '31.5%', alignItems: 'center' },
   artFrame: { width: '100%', aspectRatio: 1, borderRadius: 8, padding: 3, borderWidth: 1.5, borderColor: 'transparent', overflow: 'hidden' },
   artFrameOn: { borderColor: INK },
   // 정적 자산 Image는 원본 크기(180px)를 기본 너비로 잡아 칸을 넘친다: 틀 안을 꽉 채우도록 크기를 못박는다
   artImage: { width: '100%', height: '100%', borderRadius: 5 },
   check: { position: 'absolute', top: 7, right: 7, width: 20, height: 20, borderRadius: 10, backgroundColor: INK, alignItems: 'center', justifyContent: 'center' },
-  artName: { fontSize: 13, color: colors.inkSoft, marginTop: 5 },
-  nameOn: { color: colors.ink, fontWeight: '600' },
-  noneRow: { flexDirection: 'row', alignItems: 'center', gap: 10, marginTop: 16, minHeight: 48, paddingHorizontal: 12, borderRadius: 12, borderWidth: 1, borderColor: '#E5D9C9' },
+  artName: { ...type.caption, marginTop: 6 },
+  nameOn: { fontFamily: fonts.uiBold, color: colors.ink },
+  noneRow: { flexDirection: 'row', alignItems: 'center', gap: 10, marginTop: 18, minHeight: 50, paddingHorizontal: 14, borderRadius: shape.input, borderWidth: shape.border, borderColor: colors.border },
   noneRowOn: { borderColor: INK },
   noneSwatch: { width: 22, height: 30, borderRadius: 4, borderWidth: StyleSheet.hairlineWidth * 2, borderColor: 'rgba(0,0,0,0.12)' },
-  noneText: { flex: 1, fontSize: 14, color: colors.inkSoft },
-  design: { borderRadius: 12, borderWidth: 1.5, borderColor: 'transparent', backgroundColor: '#F4EDE2', paddingBottom: 8, alignItems: 'center' },
-  designOn: { borderColor: INK, backgroundColor: '#F7F0E4' },
-  designName: { fontSize: 12.5, color: colors.inkSoft, marginTop: 2 },
-  h: { fontSize: 14, fontWeight: '600', color: colors.ink, marginTop: 20, marginBottom: 10 },
-  hint: { fontSize: 12.5, fontWeight: '400', color: colors.inkSoft },
+  noneText: { ...type.sub, flex: 1 },
+  design: { borderRadius: shape.input, borderWidth: 1.5, borderColor: 'transparent', backgroundColor: colors.surface, paddingBottom: 8, alignItems: 'center' },
+  designOn: { borderColor: INK, backgroundColor: colors.accentSoft },
+  designName: { ...type.caption, marginTop: 2 },
+  h: { ...type.section, marginTop: space.group + 4, marginBottom: space.item },
+  hint: { ...type.caption },
   swatches: { flexDirection: 'row', flexWrap: 'wrap', gap: 12 },
   swatchCell: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center' },
   swatch: { width: 40, height: 40, borderRadius: 20, borderWidth: 1, borderColor: 'rgba(0,0,0,0.08)', alignItems: 'center', justifyContent: 'center' },
   swatchOn: { borderWidth: 2.5, borderColor: INK },
-  reset: { alignSelf: 'flex-start', marginTop: 22, minHeight: 44, justifyContent: 'center' },
-  resetText: { fontSize: 13.5, color: colors.inkSoft, textDecorationLine: 'underline' },
-  chip: { minHeight: 44, minWidth: 64, paddingHorizontal: 16, borderRadius: 22, borderWidth: 1, borderColor: '#DDD4C6', alignItems: 'center', justifyContent: 'center', backgroundColor: '#FBF6EE' },
+  reset: { alignSelf: 'flex-start', marginTop: space.group, minHeight: space.touch, justifyContent: 'center' },
+  resetText: { ...type.sub, textDecorationLine: 'underline' },
+  chip: { minHeight: 44, minWidth: 64, paddingHorizontal: 16, borderRadius: 22, borderWidth: shape.border, borderColor: colors.border, alignItems: 'center', justifyContent: 'center' },
   chipOn: { backgroundColor: INK, borderColor: INK },
-  chipText: { fontSize: 14, color: colors.ink },
-  chipTextOn: { color: '#FBF6EE' },
+  chipText: { ...type.sub, fontSize: 15, color: colors.ink },
+  chipTextOn: { color: colors.onAccent },
 });

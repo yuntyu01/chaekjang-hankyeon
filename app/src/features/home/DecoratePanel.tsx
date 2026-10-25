@@ -9,7 +9,7 @@ import Svg, { Path, Rect } from 'react-native-svg';
 import { DU_PER_MM, MAX_FRONT_SPIN, MAX_SPIN, SHELF_DEPTH, SHELF_FRONT } from '@/domain/geometry';
 import type { Pose } from '@/domain/types';
 import { ko } from '@/i18n/ko';
-import { colors, fonts } from '@/ui/theme';
+import { colors, shape, type } from '@/ui/screenTheme';
 import { PERF_ENABLED } from '@/ui/perf';
 
 export type LeanDir = -1 | 0 | 1;
@@ -315,30 +315,30 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     bottom: 0,
-    backgroundColor: colors.sheet,
-    borderTopLeftRadius: 18,
-    borderTopRightRadius: 18,
-    paddingHorizontal: 22,
+    backgroundColor: colors.raised,
+    borderTopLeftRadius: shape.sheet,
+    borderTopRightRadius: shape.sheet,
+    paddingHorizontal: 20,
     paddingTop: 16,
-    borderTopWidth: StyleSheet.hairlineWidth,
-    borderColor: colors.line,
+    borderTopWidth: shape.hairline,
+    borderColor: colors.border,
   },
-  head: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingBottom: 10, borderBottomWidth: StyleSheet.hairlineWidth, borderColor: colors.line },
-  title: { flex: 1, fontFamily: fonts.bookTitle, fontSize: 17, color: colors.ink },
-  caption: { fontSize: 12.5, color: colors.inkFaint },
-  msg: { fontSize: 12, color: colors.danger, marginTop: 8 },
-  row: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingVertical: 8, borderBottomWidth: StyleSheet.hairlineWidth, borderColor: colors.line },
+  head: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8, paddingBottom: 10, borderBottomWidth: shape.hairline, borderColor: colors.line },
+  title: { ...type.rowStrong, flex: 1 },
+  caption: type.caption,
+  msg: { ...type.caption, color: colors.danger, marginTop: 8 },
+  row: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingVertical: 8, borderBottomWidth: shape.hairline, borderColor: colors.line },
   rowLast: { borderBottomWidth: 0 },
-  label: { width: 52, fontSize: 13.5, color: colors.inkSoft },
-  choice: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, height: 44, borderRadius: 12 },
-  choiceOn: { backgroundColor: '#F1E7D8' },
-  pressed: { backgroundColor: colors.line },
-  choiceText: { fontSize: 13, color: colors.ink },
+  label: { ...type.sub, width: 52 },
+  choice: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, height: 44, borderRadius: shape.input },
+  choiceOn: { backgroundColor: colors.accentSoft },
+  pressed: { backgroundColor: colors.surface },
+  choiceText: { ...type.caption, fontSize: 13.5, color: colors.ink },
   slider: { flex: 1, height: 44, justifyContent: 'center', marginHorizontal: 8 },
   track: { height: 3, borderRadius: 2, backgroundColor: colors.line },
   tick: { position: 'absolute', width: 1, height: 10, top: 17, backgroundColor: colors.inkFaint },
-  thumb: { position: 'absolute', width: 22, height: 22, borderRadius: 11, top: 11, backgroundColor: colors.sheet, borderWidth: 1.5, borderColor: colors.ink },
-  deg: { width: 48, textAlign: 'right', fontSize: 13, color: colors.inkSoft },
+  thumb: { position: 'absolute', width: 22, height: 22, borderRadius: 11, top: 11, backgroundColor: colors.raised, borderWidth: 1.5, borderColor: colors.accent },
+  deg: { ...type.caption, width: 48, textAlign: 'right' },
   range: { position: 'absolute', height: 3, top: 20.5, borderRadius: 2, backgroundColor: colors.inkFaint, opacity: 0.45 },
-  end: { fontSize: 11.5, color: colors.inkFaint },
+  end: { ...type.caption, fontSize: 12 },
 });

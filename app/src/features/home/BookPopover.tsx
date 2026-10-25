@@ -6,7 +6,7 @@ import Animated, { FadeIn, FadeOut } from 'react-native-reanimated';
 
 import type { Book } from '@/domain/types';
 import { ko } from '@/i18n/ko';
-import { colors, fonts } from '@/ui/theme';
+import { colors, fonts, shape, type } from '@/ui/screenTheme';
 
 // 뷰포트 좌표(px). box: 정보 상자가 들어갈 자리(위 또는 아래 선반 칸 크기), cx: 가리킬 책 가운데, above: 책 위쪽 칸인지
 export type Anchor = { cx: number; box: { left: number; top: number; width: number; height: number }; above: boolean };
@@ -124,31 +124,32 @@ export function BookPopover({ book, anchor, reduceMotion, onClose, onDetail, onR
 const styles = StyleSheet.create({
   card: {
     position: 'absolute',
-    backgroundColor: colors.sheet,
-    borderRadius: 14,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: colors.line,
+    backgroundColor: colors.raised,
+    borderRadius: shape.button,
+    borderWidth: shape.hairline,
+    borderColor: colors.border,
+    ...shape.floatShadow,
   },
   arrow: {
     position: 'absolute',
     width: ARROW,
     height: ARROW,
-    backgroundColor: colors.sheet,
-    borderColor: colors.line,
+    backgroundColor: colors.raised,
+    borderColor: colors.border,
     transform: [{ rotate: '45deg' }],
   },
   head: { flex: 1, flexDirection: 'row', gap: 14 },
   actions: { flexDirection: 'row', gap: 8, alignItems: 'flex-end' },
-  action: { flex: 1, height: 34, borderRadius: 17, borderWidth: StyleSheet.hairlineWidth, borderColor: '#D6CCBC', alignItems: 'center', justifyContent: 'center' },
-  actionText: { fontSize: 13, color: colors.ink },
+  action: { flex: 1, height: 36, borderRadius: 18, borderWidth: shape.border, borderColor: colors.border, alignItems: 'center', justifyContent: 'center' },
+  actionText: { ...type.caption, fontFamily: fonts.uiBold, color: colors.ink },
   photo: { borderRadius: 4, overflow: 'hidden', backgroundColor: colors.line },
   photoEmpty: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 6 },
-  photoEmptyText: { fontSize: 11, lineHeight: 15, color: colors.inkFaint, textAlign: 'center' },
+  photoEmptyText: { fontFamily: fonts.ui, fontSize: 11, lineHeight: 15, color: colors.inkSoft, textAlign: 'center' },
   info: { flex: 1, minWidth: 0 },
-  title: { fontFamily: fonts.bookTitle, fontSize: 17, lineHeight: 23, color: colors.ink },
-  author: { fontSize: 12.5, color: colors.inkSoft, marginTop: 2 },
+  title: { ...type.rowStrong, fontSize: 16, lineHeight: 22 },
+  author: { ...type.caption, marginTop: 3 },
   lines: { marginTop: 6, gap: 2 },
   line: { flexDirection: 'row', gap: 8 },
-  label: { width: 50, fontSize: 12, color: colors.inkFaint },
-  value: { flex: 1, fontSize: 12.5, color: colors.ink },
+  label: { width: 50, fontFamily: fonts.ui, fontSize: 12, lineHeight: 17, color: colors.inkSoft },
+  value: { flex: 1, fontFamily: fonts.ui, fontSize: 12.5, lineHeight: 17, color: colors.ink },
 });

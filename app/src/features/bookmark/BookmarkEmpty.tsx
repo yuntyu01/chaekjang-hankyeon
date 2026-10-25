@@ -8,7 +8,7 @@ import { MINI_TIMER_SPACE } from '@/store/mini-timer-store';
 import { useReading } from '@/store/reading-store';
 import { Btn, ui } from '@/ui/kit';
 import { PaperSurface } from '@/ui/PaperSurface';
-import { colors, fonts } from '@/ui/screenTheme';
+import { colors, fonts, type } from '@/ui/screenTheme';
 import { navigation } from '@/ui/theme';
 
 const SAMPLE = '어떤 문장은\n책을 덮은 뒤에도\n곁에 남아요.';
@@ -56,10 +56,10 @@ const st = StyleSheet.create({
     elevation: 2,
     overflow: 'visible',
   },
-  tag: { alignSelf: 'flex-start', fontSize: 11.5, color: colors.inkSoft, borderWidth: StyleSheet.hairlineWidth * 2, borderColor: '#DCCFBE', borderRadius: 10, paddingHorizontal: 8, paddingVertical: 2, overflow: 'hidden' },
+  tag: { alignSelf: 'flex-start', fontFamily: fonts.ui, fontSize: 12, color: colors.inkSoft, borderWidth: StyleSheet.hairlineWidth * 2, borderColor: '#DCCFBE', borderRadius: 10, paddingHorizontal: 8, paddingVertical: 2, overflow: 'hidden' },
   quote: { flex: 1, textAlignVertical: 'center', fontFamily: fonts.reading, fontSize: 19, lineHeight: 32, color: colors.ink, marginTop: 6 },
-  brand: { fontSize: 11.5, color: colors.inkFaint, letterSpacing: 0.5 },
-  title: { marginTop: 34, fontFamily: fonts.round, fontSize: 19, color: colors.ink, textAlign: 'center' },
-  desc: { marginTop: 10, fontSize: 14.5, lineHeight: 22, color: colors.inkSoft, textAlign: 'center' },
-  button: { marginTop: 22, alignSelf: 'stretch' },
+  brand: { fontFamily: fonts.ui, fontSize: 12, color: colors.inkFaint, letterSpacing: 0.5 },
+  title: { ...type.heading, marginTop: 36, textAlign: 'center' },
+  desc: { ...type.sub, fontSize: 15, lineHeight: 22, marginTop: 10, textAlign: 'center' },
+  button: { marginTop: 28, alignSelf: 'stretch' },
 });

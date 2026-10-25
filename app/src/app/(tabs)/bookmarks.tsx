@@ -1,6 +1,6 @@
 import { router, useLocalSearchParams } from 'expo-router';
 import { useEffect, useMemo, useState } from 'react';
-import { Alert, FlatList, Pressable, StyleSheet, Text, TextInput, useWindowDimensions, View } from 'react-native';
+import { Alert, FlatList, Pressable, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 import { ymd } from '@/features/book/labels';
 import { toShelfBook } from '@/domain/library';
 import { BookmarkCard } from '@/features/bookmark/BookmarkCard';
@@ -10,8 +10,8 @@ import { MINI_TIMER_SPACE } from '@/store/mini-timer-store';
 import { useReading } from '@/store/reading-store';
 import { bookmarkPreferencesStore, useBookmarkPreferences } from '@/store/bookmark-preferences-store';
 import { Plus, Search, X } from '@/ui/icons';
-import { Chip, Empty, Row, Screen, ui, s as kit } from '@/ui/kit';
-import { colors, fonts, screenTheme } from '@/ui/screenTheme';
+import { Chip, Empty, Row, Screen, SearchField, ui } from '@/ui/kit';
+import { colors, icon, shape, space, type } from '@/ui/screenTheme';
 import { navigation } from '@/ui/theme';
 
 export default function BookmarksTab() {
@@ -33,15 +33,15 @@ export default function BookmarksTab() {
   if (!loaded) return <Screen title="갈피" back={false} scroll={false}><View /></Screen>;
   if (!all.length) return <Screen title="갈피" back={false} scroll={false}><BookmarkEmpty /></Screen>;
   return <Screen title="갈피" subtitle={`${all.length}개의 문장`} back={false} scroll={false} right={
-    <View style={{ flexDirection: 'row', marginRight: 18, gap: 4 }}>
-      <Pressable onPress={() => setSearching(!searching)} style={st.icon} accessibilityRole="button" accessibilityLabel="갈피 검색">{searching ? <X size={21} color={colors.ink} /> : <Search size={21} color={colors.ink} />}</Pressable>
-      <Pressable onPress={() => router.push({ pathname: '/bookmark/new', params: { ...(book ? { book } : {}), ...(tab === 'photo' ? { mode: 'photo' } : {}) } })} style={st.icon} accessibilityRole="button" accessibilityLabel="갈피 추가"><View style={st.addCircle}><Plus size={23} color={colors.ink} strokeWidth={1.8} /></View></Pressable>
+    <View style={{ flexDirection: 'row', gap: 4 }}>
+      <Pressable onPress={() => { if (searching) setQ(''); setSearching(!searching); }} style={st.icon} accessibilityRole="button" accessibilityLabel={searching ? '갈피 검색 닫기' : '갈피 검색'}>{searching ? <X size={icon.size} color={colors.ink} strokeWidth={icon.stroke} /> : <Search size={icon.size} color={colors.ink} strokeWidth={icon.stroke} />}</Pressable>
+      <Pressable onPress={() => router.push({ pathname: '/bookmark/new', params: { ...(book ? { book } : {}), ...(tab === 'photo' ? { mode: 'photo' } : {}) } })} style={st.icon} accessibilityRole="button" accessibilityLabel="갈피 추가"><View style={st.addCircle}><Plus size={icon.size} color={colors.ink} strokeWidth={icon.stroke} /></View></Pressable>
     </View>}>
-    {searching ? <TextInput accessibilityLabel="갈피 검색어" value={q} onChangeText={setQ} autoFocus placeholder="문장·메모에서 찾기" placeholderTextColor={colors.inkFaint} style={[kit.input, { marginBottom: 12 }]} /> : null}
-    <Row gap={8} style={{ marginTop: 3, marginBottom: 9, borderBottomWidth: 0.6, borderBottomColor: screenTheme.border }}>
+    {searching ? <SearchField accessibilityLabel="갈피 검색어" value={q} onChangeText={setQ} autoFocus placeholder="문장·메모에서 찾기" style={{ marginTop: space.tight, marginBottom: space.item }} /> : null}
+    <Row gap={4} style={{ marginTop: 4, marginBottom: space.item, borderBottomWidth: shape.hairline, borderBottomColor: colors.line }}>
       {([{ id: 'all', label: '전체' }, { id: 'photo', label: '사진' }, { id: 'books', label: '책별' }, { id: 'saved', label: '아껴둔' }] as const).map((item) => <Pressable key={item.id} onPress={() => { setTab(item.id); if (item.id === 'all') setBook(null); }} accessibilityRole="tab" accessibilityState={{ selected: tab === item.id }} style={[st.tab, tab === item.id && st.selected]}><Text style={[st.tabText, tab === item.id && st.selectedText]}>{item.label}</Text></Pressable>)}
     </Row>
-    {tab === 'books' ? <Row style={{ marginBottom: 10 }}><Chip label="모든 책" on={!book} onPress={() => setBook(null)} />{booksWith.map((id) => <Chip key={id} label={lib.editions[lib.books[id].editionId]?.title ?? '제목 없음'} on={book === id} onPress={() => setBook(id)} />)}</Row> : null}
+    {tab === 'books' ? <Row style={{ marginBottom: space.item }}><Chip label="모든 책" on={!book} onPress={() => setBook(null)} />{booksWith.map((id) => <Chip key={id} label={lib.editions[lib.books[id].editionId]?.title ?? '제목 없음'} on={book === id} onPress={() => setBook(id)} />)}</Row> : null}
     <FlatList data={list} keyExtractor={(m) => m.id} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled" initialNumToRender={4} windowSize={5} style={{ marginHorizontal: -ui.pad }} contentContainerStyle={{ paddingHorizontal: ui.pad, paddingBottom: navigation.height + 40 + (active ? MINI_TIMER_SPACE : 0) }}
       // 갈피는 있지만 검색·분류 결과만 없을 때: 조작부는 그대로 두고 안내만
       ListEmptyComponent={<Empty title={tab === 'photo' && !q ? '사진 갈피가 없어요' : tab === 'saved' && !q ? '아껴둔 갈피가 없어요' : '맞는 갈피가 없어요'} body={tab === 'photo' && !q ? '페이지를 찍어 그대로 붙여 두세요.' : tab === 'saved' && !q ? '갈피 오른쪽 아래의 표시를 눌러 모아 보세요.' : q.trim() ? '다른 낱말로 찾아보세요.' : undefined} />}
@@ -49,10 +49,10 @@ export default function BookmarksTab() {
   </Screen>;
 }
 const st = StyleSheet.create({
-  icon: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center' },
-  addCircle: { width: 36, height: 36, borderWidth: 1, borderColor: '#D7D0C7', borderRadius: 18, alignItems: 'center', justifyContent: 'center' },
-  tab: { minHeight: 44, minWidth: 64, alignItems: 'center', paddingHorizontal: 12, paddingVertical: 12, borderBottomWidth: 2, borderBottomColor: 'transparent' },
-  selected: { borderBottomColor: '#594541' },
-  tabText: { fontSize: 15, color: colors.inkSoft },
-  selectedText: { fontFamily: fonts.round, color: colors.ink },
+  icon: { width: space.touch, height: space.touch, alignItems: 'center', justifyContent: 'center' },
+  addCircle: { width: 36, height: 36, borderWidth: shape.border, borderColor: colors.border, borderRadius: 18, alignItems: 'center', justifyContent: 'center' },
+  tab: { minHeight: 46, minWidth: 60, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 12, borderBottomWidth: 2, borderBottomColor: 'transparent', marginBottom: -shape.hairline },
+  selected: { borderBottomColor: colors.accent },
+  tabText: { ...type.row, fontSize: 16, color: colors.inkSoft },
+  selectedText: { fontFamily: type.button.fontFamily, color: colors.ink },
 });

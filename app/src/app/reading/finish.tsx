@@ -2,7 +2,7 @@
 // 저장 후 이 책에 갈피를 남기러 갈 수 있다. 완독 여부는 여기서 자동으로 정하지 않는다.
 import { router } from 'expo-router';
 import { useState } from 'react';
-import { Alert, Pressable, Text, View } from 'react-native';
+import { Alert, Text, View } from 'react-native';
 
 import { hm } from '@/features/book/labels';
 import { BookPicker } from '@/features/bookmark/BookPicker';
@@ -10,8 +10,8 @@ import { formatDuration } from '@/domain/library';
 import { ambient } from '@/services/ambient';
 import { libraryStore, useLibrary } from '@/store/library-store';
 import { readingStore, useReading } from '@/store/reading-store';
-import { Btn, Card, Empty, Field, Muted, Row, Screen } from '@/ui/kit';
-import { colors, fonts } from '@/ui/screenTheme';
+import { Btn, Empty, Field, Row, Screen, SelectField } from '@/ui/kit';
+import { colors, fonts, shape, space, type } from '@/ui/screenTheme';
 
 export default function Finish() {
   const { pending } = useReading();
@@ -24,8 +24,8 @@ export default function Finish() {
   if (saved)
     return (
       <Screen title="저장했어요" back={false}>
-        <Text style={{ fontFamily: fonts.serif, fontSize: 19, color: colors.ink, marginTop: 16 }}>독서 기록을 저장했어요.</Text>
-        <View style={{ gap: 10, marginTop: 20 }}>
+        <Text style={[type.body, { fontSize: 17, marginTop: space.item }]}>독서 기록을 저장했어요.</Text>
+        <View style={{ gap: 10, marginTop: space.section }}>
           {saved.bookId ? <Btn label="이 책에 갈피 남기기" onPress={() => router.replace({ pathname: '/bookmark/new', params: { book: saved.bookId } })} /> : null}
           {saved.bookId ? <Btn label="책 상세 보기" kind="secondary" onPress={() => router.replace(`/book/${saved.bookId}`)} /> : null}
           <Btn label="내 기록 보기" kind="secondary" onPress={() => router.replace('/stats')} />
@@ -67,22 +67,16 @@ export default function Finish() {
     ]);
   return (
     <Screen title="독서 끝" back={false} footer={<Btn label="기록 저장" onPress={save} disabled={pending.durationMs < 1000} />}>
-      <Card style={{ alignItems: 'center', paddingVertical: 24 }}>
-        <Muted>실제 독서 시간</Muted>
-        <Text style={{ fontSize: 34, color: colors.ink, marginTop: 6 }}>{formatDuration(pending.durationMs)}</Text>
-        <Muted style={{ marginTop: 4 }}>
+      <View style={{ alignItems: 'center', paddingVertical: space.section, marginTop: space.tight, marginBottom: space.group, borderBottomWidth: shape.hairline, borderBottomColor: colors.line }} accessible accessibilityLabel={`실제 독서 시간 ${formatDuration(pending.durationMs)}`}>
+        <Text style={type.sub}>실제 독서 시간</Text>
+        <Text style={st.time}>{formatDuration(pending.durationMs)}</Text>
+        <Text style={[type.caption, { marginTop: 6 }]}>
           {hm(pending.startedAt)} ~ {hm(pending.endedAt)} · 일시정지 시간 제외
-        </Muted>
-      </Card>
-      <Muted style={{ marginTop: 18 }}>연결된 책</Muted>
-      <Pressable onPress={() => setPicking(true)} accessibilityRole="button" style={{ marginTop: 6 }}>
-        <Card>
-          <Text style={{ fontFamily: fonts.serif, fontSize: 16, color: e ? colors.ink : colors.inkSoft }}>{e?.title ?? '책 연결하기 (선택)'}</Text>
-        </Card>
-      </Pressable>
-      <View style={{ height: 14 }} />
+        </Text>
+      </View>
+      <SelectField label="연결된 책" value={e?.title} placeholder="책 연결하기 (선택)" onPress={() => setPicking(true)} />
       <Row style={{ flexWrap: 'nowrap', alignItems: 'flex-start' }} gap={10}>
-        <View style={{ width: 130 }}>
+        <View style={{ width: 136 }}>
           <Field label="읽은 쪽수까지 (선택)" value={pages} onChangeText={setPages} keyboardType="number-pad" placeholder={b?.currentPage ? `지난번 ${b.currentPage}쪽` : '쪽'} />
         </View>
         <View style={{ flex: 1 }}>
@@ -103,3 +97,5 @@ export default function Finish() {
     </Screen>
   );
 }
+
+const st = { time: { fontFamily: fonts.ui, fontSize: 36, lineHeight: 44, color: colors.ink, marginTop: 8, includeFontPadding: false } as const };

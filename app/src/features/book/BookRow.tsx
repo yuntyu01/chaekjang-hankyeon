@@ -1,11 +1,10 @@
-// 책 한 줄(서랍·책 찾기·기록): 책장과 같은 렌더러로 그린 작은 정면 + 제목·저자·상태.
+// 책 한 줄(서랍·책 찾기·기록): 책장과 같은 렌더러로 그린 작은 정면 + 제목·저자·상태. 카드 없이 ListGroup의 구분선으로 나눈다.
 import { memo } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import type { Book } from '@/domain/types';
 import { StandaloneBook } from '@/ui/book3d/StandaloneBook';
-import { ui } from '@/ui/kit';
-import { colors, fonts } from '@/ui/screenTheme';
+import { type } from '@/ui/screenTheme';
 
 export const BookRow = memo(function BookRow({ book, sub, right, onPress }: { book: Book; sub?: string; right?: React.ReactNode; onPress?: () => void }) {
   return (
@@ -13,7 +12,7 @@ export const BookRow = memo(function BookRow({ book, sub, right, onPress }: { bo
       <View style={st.thumb}>
         <StandaloneBook book={book} pose="front" scale={0.42} />
       </View>
-      <View style={{ flex: 1, gap: 3 }}>
+      <View style={{ flex: 1, gap: 4 }}>
         <Text style={st.title} numberOfLines={2}>
           {book.title}
         </Text>
@@ -22,7 +21,7 @@ export const BookRow = memo(function BookRow({ book, sub, right, onPress }: { bo
             {book.author}
           </Text>
         ) : null}
-        {sub ? <Text style={st.meta}>{sub}</Text> : null}
+        {sub ? <Text style={st.sub}>{sub}</Text> : null}
       </View>
       {right}
     </Pressable>
@@ -30,8 +29,9 @@ export const BookRow = memo(function BookRow({ book, sub, right, onPress }: { bo
 });
 
 const st = StyleSheet.create({
-  row: { flexDirection: 'row', alignItems: 'center', gap: 14, padding: 10, borderRadius: 12, backgroundColor: ui.card, borderWidth: StyleSheet.hairlineWidth, borderColor: '#E6DCCB' },
+  row: { flexDirection: 'row', alignItems: 'center', gap: 16, paddingVertical: 14 },
   thumb: { width: 64, alignItems: 'center', justifyContent: 'center' },
-  title: { fontFamily: fonts.serif, fontSize: 15.5, color: colors.ink },
-  meta: { fontSize: 12.5, color: colors.inkSoft },
+  title: type.rowStrong,
+  meta: type.sub,
+  sub: type.caption,
 });

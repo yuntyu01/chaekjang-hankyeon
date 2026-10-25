@@ -1,13 +1,11 @@
 // 진행 중 독서: 시간 표시 도구(공통 미니 타이머 MiniTimer가 쓴다) + 강제 종료 뒤 복구 창.
 import { router, usePathname } from 'expo-router';
 import { useEffect, useState } from 'react';
-import { Modal, StyleSheet, Text, View } from 'react-native';
 
 import { formatDuration } from '@/domain/library';
 import { useLibrary } from '@/store/library-store';
 import { elapsedMs, readingStore, useReading } from '@/store/reading-store';
-import { Btn } from '@/ui/kit';
-import { colors, fonts } from '@/ui/screenTheme';
+import { Btn, Dialog } from '@/ui/kit';
 
 export function clock(ms: number) {
   const t = Math.floor(ms / 1000);
@@ -41,63 +39,42 @@ export function RecoveryDialog() {
   // 끝냈지만 저장·버리기를 고르기 전에 앱이 꺼졌던 기록
   if (!interrupted && pending && pendingRestored && !path.startsWith('/reading/finish'))
     return (
-      <Modal transparent animationType="fade" visible onRequestClose={() => readingStore.ackPendingRestored()}>
-        <View style={st.dim}>
-          <View style={st.card}>
-            <Text style={st.title}>저장하지 않은 독서 기록이 있어요</Text>
-            <Text style={st.body}>지난번에 끝낸 {formatDuration(pending.durationMs)} 기록을 아직 저장하거나 버리지 않았어요.</Text>
-            <View style={{ gap: 8, marginTop: 16 }}>
-              <Btn
-                label="기록 확인하기"
-                onPress={() => {
-                  readingStore.ackPendingRestored();
-                  router.push('/reading/finish');
-                }}
-              />
-              <Btn label="나중에" kind="ghost" onPress={() => readingStore.ackPendingRestored()} />
-            </View>
-          </View>
-        </View>
-      </Modal>
+      <Dialog visible onClose={() => readingStore.ackPendingRestored()} title="저장하지 않은 독서 기록이 있어요" body={`지난번에 끝낸 ${formatDuration(pending.durationMs)} 기록을 아직 저장하거나 버리지 않았어요.`}>
+        <Btn
+          label="기록 확인하기"
+          onPress={() => {
+            readingStore.ackPendingRestored();
+            router.push('/reading/finish');
+          }}
+        />
+        <Btn label="나중에" kind="ghost" onPress={() => readingStore.ackPendingRestored()} />
+      </Dialog>
     );
   if (!interrupted) return null;
   const at = new Date(interrupted.lastBeat);
   const hm = `${at.getHours()}:${String(at.getMinutes()).padStart(2, '0')}`;
   return (
-    <Modal transparent animationType="fade" visible onRequestClose={() => readingStore.dismissInterrupted()}>
-      <View style={st.dim}>
-        <View style={st.card}>
-          <Text style={st.title}>지난 독서가 중간에 멈췄어요</Text>
-          <Text style={st.body}>
-            마지막으로 확인된 {hm}까지 {formatDuration(interrupted.countedMs)}을 읽은 것으로 저장해 두었어요. 앱이 꺼져 있던 {formatDuration(interrupted.gapMs)}은 독서 시간에 넣지 않았어요.
-          </Text>
-          <View style={{ gap: 8, marginTop: 16 }}>
-            <Btn
-              label="이어 읽기"
-              onPress={() => {
-                readingStore.resume();
-                router.push('/reading/session');
-              }}
-            />
-            <Btn
-              label={`${hm}에 끝낸 것으로 기록하기`}
-              kind="secondary"
-              onPress={() => {
-                readingStore.finish(interrupted.lastBeat);
-                router.push('/reading/finish');
-              }}
-            />
-            <Btn label="나중에 정하기(일시정지로 둠)" kind="ghost" onPress={() => readingStore.dismissInterrupted()} />
-          </View>
-        </View>
-      </View>
-    </Modal>
+    <Dialog
+      visible
+      onClose={() => readingStore.dismissInterrupted()}
+      title="지난 독서가 중간에 멈췄어요"
+      body={`마지막으로 확인된 ${hm}까지 ${formatDuration(interrupted.countedMs)}을 읽은 것으로 저장해 두었어요. 앱이 꺼져 있던 ${formatDuration(interrupted.gapMs)}은 독서 시간에 넣지 않았어요.`}>
+      <Btn
+        label="이어 읽기"
+        onPress={() => {
+          readingStore.resume();
+          router.push('/reading/session');
+        }}
+      />
+      <Btn
+        label={`${hm}에 끝낸 것으로 기록하기`}
+        kind="secondary"
+        onPress={() => {
+          readingStore.finish(interrupted.lastBeat);
+          router.push('/reading/finish');
+        }}
+      />
+      <Btn label="나중에 정하기(일시정지로 둠)" kind="ghost" onPress={() => readingStore.dismissInterrupted()} />
+    </Dialog>
   );
 }
-
-const st = StyleSheet.create({
-  dim: { flex: 1, backgroundColor: 'rgba(20,18,15,0.4)', justifyContent: 'center', padding: 24 },
-  card: { backgroundColor: colors.bg, borderRadius: 16, padding: 22 },
-  title: { fontFamily: fonts.serif, fontSize: 19, color: colors.ink, marginBottom: 10 },
-  body: { fontSize: 14, lineHeight: 21, color: colors.inkSoft },
-});

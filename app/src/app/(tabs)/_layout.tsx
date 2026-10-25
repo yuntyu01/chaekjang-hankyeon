@@ -7,6 +7,7 @@ import { BookmarkTabIcon, ReadTabIcon, ShelfIcon } from '@/ui/TabIcons';
 import { ReferenceUI } from '@/ui/ReferenceUI';
 import { tabBarStyle } from '@/ui/tabBar';
 import { colors, navigation } from '@/ui/theme';
+import { colors as ui, fonts } from '@/ui/screenTheme';
 
 // 하단 탭: 책장 · 갈피 · 읽기. 시안처럼 아이콘 아래에 글자를 두고, 선택된 탭만 속이 차고 진하게 나머지는 연한 윤곽선. 아이콘은 책장 장면과 같은 종이 위에 뜬다.
 export default function TabsLayout() {
@@ -16,7 +17,7 @@ export default function TabsLayout() {
       screenOptions={{
         headerShown: false,
         tabBarShowLabel: true,
-        tabBarLabelStyle: { fontSize: 12.5, fontWeight: '600', marginTop: 2 },
+        tabBarLabelStyle: { fontFamily: fonts.uiBold, fontSize: 12.5, marginTop: 2 },
         tabBarActiveTintColor: colors.tabActive,
         tabBarInactiveTintColor: colors.tabInactive,
         tabBarStyle: tabBarStyle(insets.bottom),
@@ -34,7 +35,7 @@ export default function TabsLayout() {
         name="bookmarks"
         options={{
           // 책장 밖 화면은 탭 바에 종이 바탕을 깐다(내용이 비쳐 보이지 않게)
-          tabBarStyle: { ...tabBarStyle(insets.bottom), backgroundColor: colors.tabBar, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.line },
+          tabBarStyle: { ...tabBarStyle(insets.bottom), backgroundColor: ui.bg, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: ui.line },
           title: ko.tabs.bookmarks,
           tabBarAccessibilityLabel: ko.tabs.bookmarks,
           tabBarIcon: ({ color, focused }) => <BookmarkTabIcon color={String(color)} size={navigation.iconSize} filled={focused} />,

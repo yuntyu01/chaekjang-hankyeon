@@ -1,13 +1,13 @@
 // 독서 기록 수정: 잘못 저장한 시간·날짜·책 연결을 고치거나 삭제한다.
 import { router, useLocalSearchParams } from 'expo-router';
 import { useState } from 'react';
-import { Alert, Pressable, Text, View } from 'react-native';
+import { Alert, View } from 'react-native';
 
 import { BookPicker } from '@/features/bookmark/BookPicker';
 import { formatDuration } from '@/domain/library';
 import { libraryStore, useLibrary } from '@/store/library-store';
-import { Btn, Card, Empty, Field, Muted, Row, Screen } from '@/ui/kit';
-import { colors, fonts } from '@/ui/screenTheme';
+import { Btn, Empty, Field, Muted, Row, Screen, SelectField } from '@/ui/kit';
+import { space } from '@/ui/screenTheme';
 
 const pad = (n: number) => String(n).padStart(2, '0');
 const localParts = (iso: string) => {
@@ -41,13 +41,8 @@ export default function EditSession() {
   };
   return (
     <Screen title="독서 기록 수정" footer={<Btn label="저장" onPress={save} disabled={!valid} />}>
-      <Muted>지금 저장된 시간: {formatDuration(s.durationMs)}</Muted>
-      <Muted style={{ marginTop: 14 }}>연결된 책</Muted>
-      <Pressable onPress={() => setPicking(true)} accessibilityRole="button" style={{ marginTop: 6, marginBottom: 14 }}>
-        <Card>
-          <Text style={{ fontFamily: fonts.serif, fontSize: 16, color: e ? colors.ink : colors.inkSoft }}>{e?.title ?? '책 없음 (눌러서 연결)'}</Text>
-        </Card>
-      </Pressable>
+      <Muted style={{ marginTop: space.item, marginBottom: space.group }}>지금 저장된 시간: {formatDuration(s.durationMs)}</Muted>
+      <SelectField label="연결된 책" value={e?.title} placeholder="책 없음 (눌러서 연결)" onPress={() => setPicking(true)} />
       <Row style={{ flexWrap: 'nowrap' }} gap={10}>
         <View style={{ flex: 1.3 }}>
           <Field label="날짜" value={day} onChangeText={setDay} placeholder="YYYY-MM-DD" keyboardType="numbers-and-punctuation" />
@@ -62,6 +57,7 @@ export default function EditSession() {
       <Btn
         label="이 기록 삭제"
         kind="danger"
+        style={{ marginTop: space.item }}
         onPress={() =>
           Alert.alert('이 독서 기록을 삭제할까요?', '통계에서도 빠져요. 되돌릴 수 없어요.', [
             { text: '취소', style: 'cancel' },

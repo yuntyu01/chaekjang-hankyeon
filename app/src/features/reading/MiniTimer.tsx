@@ -13,7 +13,7 @@ import { readingStore, useReading } from '@/store/reading-store';
 import { MINI_TIMER_SIZE, useMiniTimerPlace } from '@/store/mini-timer-store';
 import { settingsStore } from '@/store/settings-store';
 import { BookOpen, Play } from '@/ui/icons';
-import { colors } from '@/ui/screenTheme';
+import { colors, fonts, icon, shape } from '@/ui/screenTheme';
 import { navigation } from '@/ui/theme';
 
 import { clock, useElapsed } from './ActiveReading';
@@ -98,7 +98,7 @@ export function MiniTimer() {
             style={st.action}
             accessibilityRole="button"
             accessibilityLabel="읽기 화면으로 가기">
-            <BookOpen size={22} color={colors.ink} strokeWidth={1.7} />
+            <BookOpen size={icon.size} color={colors.ink} strokeWidth={icon.stroke} />
           </Pressable>
           <View style={st.divider} />
           <Pressable
@@ -140,21 +140,17 @@ const st = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     borderRadius: MINI_TIMER_SIZE / 2,
-    backgroundColor: '#FBF4EA',
-    borderWidth: StyleSheet.hairlineWidth * 2,
-    borderColor: '#E3D6C5',
-    shadowColor: '#6F5843',
-    shadowOpacity: 0.12,
-    shadowRadius: 8,
-    shadowOffset: { width: 0, height: 3 },
-    elevation: 3,
+    backgroundColor: colors.raised,
+    borderWidth: shape.hairline * 2,
+    borderColor: colors.border,
+    ...shape.floatShadow,
     overflow: 'hidden',
   },
   actions: { flexDirection: 'row', alignItems: 'center', height: MINI_TIMER_SIZE, overflow: 'hidden' },
   action: { width: 52, height: MINI_TIMER_SIZE, alignItems: 'center', justifyContent: 'center' },
-  divider: { width: StyleSheet.hairlineWidth * 2, height: 22, backgroundColor: '#E0D2C0' },
+  divider: { width: shape.hairline * 2, height: 22, backgroundColor: colors.line },
   time: { height: MINI_TIMER_SIZE, alignItems: 'center', justifyContent: 'center' },
-  timeText: { fontSize: 15, color: '#5B463E', fontVariant: ['tabular-nums'], includeFontPadding: false },
+  timeText: { fontFamily: fonts.uiBold, fontSize: 15, color: colors.ink, includeFontPadding: false },
   pause: { flexDirection: 'row', gap: 5 },
   pauseBar: { width: 3.5, height: 16, borderRadius: 1.5, backgroundColor: colors.ink },
 });

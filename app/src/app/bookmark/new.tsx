@@ -5,7 +5,7 @@
 import { router, useLocalSearchParams } from 'expo-router';
 import { Camera, ImageIcon } from '@/ui/icons';
 import { useState } from 'react';
-import { Image, Pressable, Text, View } from 'react-native';
+import { Image, Text, View } from 'react-native';
 
 import { BookPicker } from '@/features/bookmark/BookPicker';
 import { PhotoPlate } from '@/features/bookmark/PhotoPlate';
@@ -13,8 +13,8 @@ import { ocr } from '@/services/connectors';
 import { deniedMessage, pickPhoto } from '@/services/photos';
 import { keepImage } from '@/store/files';
 import { libraryStore, useLibrary } from '@/store/library-store';
-import { Btn, Card, Chip, Field, Muted, Row, Screen } from '@/ui/kit';
-import { colors, fonts } from '@/ui/screenTheme';
+import { Btn, Chip, Field, Muted, Row, Screen, SelectField } from '@/ui/kit';
+import { colors, fonts, icon, shape, space, type } from '@/ui/screenTheme';
 
 export default function NewBookmark() {
   const { book, text: initialText, page: initialPage, mode: initialMode } = useLocalSearchParams<{ book?: string; text?: string; page?: string; mode?: string }>();
@@ -62,19 +62,13 @@ export default function NewBookmark() {
 
   return (
     <Screen title={isPhoto ? '사진 갈피 남기기' : '갈피 남기기'} footer={<Btn label="갈피 저장" onPress={save} busy={saving} disabled={!canSave} />}>
-      <Row gap={8} style={{ marginBottom: 14 }}>
+      <Row gap={8} style={{ marginTop: space.item, marginBottom: space.group }}>
         {([['text', '문장'], ['photo', '사진']] as const).map(([k, label]) => <Chip key={k} label={label} on={mode === k} onPress={() => setMode(k)} />)}
       </Row>
-      <Muted>연결할 책</Muted>
-      <Pressable onPress={() => setPicking(true)} accessibilityRole="button" style={{ marginTop: 6, marginBottom: 16 }}>
-        <Card>
-          <Text style={{ fontFamily: fonts.serif, fontSize: 16, color: e ? colors.ink : colors.inkSoft }}>{e ? e.title : '책을 골라 주세요'}</Text>
-          {e?.authors.length ? <Muted style={{ marginTop: 2 }}>{e.authors.join(', ')}</Muted> : null}
-        </Card>
-      </Pressable>
+      <SelectField label="연결할 책" value={e?.title} sub={e?.authors.length ? e.authors.join(', ') : undefined} placeholder="책을 골라 주세요" onPress={() => setPicking(true)} />
 
       {isPhoto ? (
-        <View style={{ marginBottom: 14 }}>
+        <View style={{ marginBottom: space.group }}>
           {photo ? (
             <View style={{ alignItems: 'center' }}>
               <PhotoPlate uri={photo} ratio={ratio} width={320} seed="new" />
@@ -84,20 +78,20 @@ export default function NewBookmark() {
               </Row>
             </View>
           ) : (
-            <View style={{ borderWidth: 1, borderStyle: 'dashed', borderColor: '#CFC6B6', borderRadius: 10, paddingVertical: 28, paddingHorizontal: 16, alignItems: 'center', gap: 12, backgroundColor: '#FBF6EE' }}>
-              <Muted style={{ textAlign: 'center', lineHeight: 20 }}>마음에 남은 페이지를 찍어 그대로 붙여 두세요.{'\n'}찍은 뒤 문장 부분만 잘라 낼 수 있어요.</Muted>
+            <View style={{ borderWidth: shape.border, borderStyle: 'dashed', borderColor: colors.border, borderRadius: shape.input, paddingVertical: 28, paddingHorizontal: 16, alignItems: 'center', gap: 16, backgroundColor: colors.surface }}>
+              <Muted style={{ textAlign: 'center' }}>마음에 남은 페이지를 찍어 그대로 붙여 두세요.{'\n'}찍은 뒤 문장 부분만 잘라 낼 수 있어요.</Muted>
               <Row style={{ flexWrap: 'nowrap', width: '100%' }}>
-                <Btn label="페이지 찍기" icon={<Camera size={16} color="#FFF" strokeWidth={1.6} />} onPress={() => fromPhoto('camera')} style={{ flex: 1 }} />
-                <Btn label="사진 고르기" kind="secondary" icon={<ImageIcon size={16} color={colors.ink} strokeWidth={1.6} />} onPress={() => fromPhoto('library')} style={{ flex: 1 }} />
+                <Btn label="페이지 찍기" size="s" icon={<Camera size={icon.small} color={colors.onAccent} strokeWidth={icon.stroke} />} onPress={() => fromPhoto('camera')} style={{ flex: 1 }} />
+                <Btn label="사진 고르기" size="s" kind="secondary" icon={<ImageIcon size={icon.small} color={colors.ink} strokeWidth={icon.stroke} />} onPress={() => fromPhoto('library')} style={{ flex: 1, backgroundColor: colors.raised }} />
               </Row>
             </View>
           )}
-          {msg ? <Muted style={{ marginTop: 8, lineHeight: 19 }}>{msg}</Muted> : null}
+          {msg ? <Muted style={{ marginTop: 8 }}>{msg}</Muted> : null}
         </View>
       ) : null}
-      <Field label={isPhoto ? '옮겨 적기 (선택, 검색에 쓰여요)' : '문장'} value={text} onChangeText={setText} placeholder={isPhoto ? '사진 속 문장을 적어 두면 찾기 쉬워요' : '마음에 남은 문장을 옮겨 적어 주세요'} multiline style={{ fontFamily: fonts.serif, fontSize: 16, lineHeight: 28, minHeight: isPhoto ? 90 : 140 }} />
-      <Row style={{ flexWrap: 'nowrap' }} gap={10}>
-        <View style={{ width: 110 }}>
+      <Field label={isPhoto ? '옮겨 적기 (선택, 검색에 쓰여요)' : '문장'} value={text} onChangeText={setText} placeholder={isPhoto ? '사진 속 문장을 적어 두면 찾기 쉬워요' : '마음에 남은 문장을 옮겨 적어 주세요'} multiline style={{ fontFamily: fonts.serif, fontSize: 17, lineHeight: 28, minHeight: isPhoto ? 96 : 150 }} />
+      <Row style={{ flexWrap: 'nowrap', alignItems: 'flex-start' }} gap={10}>
+        <View style={{ width: 116 }}>
           <Field label="쪽수 (선택)" value={page} onChangeText={setPage} keyboardType="number-pad" />
         </View>
         <View style={{ flex: 1 }}>
@@ -106,12 +100,12 @@ export default function NewBookmark() {
       </Row>
 
       {isPhoto ? null : <>
-      <Muted style={{ marginTop: 8 }}>사진으로 가져오기</Muted>
+      <Text style={[type.label, { marginTop: space.tight }]}>사진으로 가져오기</Text>
       <Row style={{ marginTop: 8, flexWrap: 'nowrap' }}>
-        <Btn label="페이지 찍기" kind="secondary" icon={<Camera size={16} color={colors.ink} strokeWidth={1.6} />} onPress={() => fromPhoto('camera')} style={{ flex: 1 }} />
-        <Btn label="사진 고르기" kind="secondary" icon={<ImageIcon size={16} color={colors.ink} strokeWidth={1.6} />} onPress={() => fromPhoto('library')} style={{ flex: 1 }} />
+        <Btn label="페이지 찍기" size="s" kind="secondary" icon={<Camera size={icon.small} color={colors.ink} strokeWidth={icon.stroke} />} onPress={() => fromPhoto('camera')} style={{ flex: 1 }} />
+        <Btn label="사진 고르기" size="s" kind="secondary" icon={<ImageIcon size={icon.small} color={colors.ink} strokeWidth={icon.stroke} />} onPress={() => fromPhoto('library')} style={{ flex: 1 }} />
       </Row>
-      {msg ? <Muted style={{ marginTop: 8, lineHeight: 19 }}>{msg}</Muted> : null}
+      {msg ? <Muted style={{ marginTop: 8 }}>{msg}</Muted> : null}
       {lines?.length ? (
         <View style={{ marginTop: 10, gap: 6 }}>
           <Muted>인식한 줄을 눌러 문장에 넣어요(그대로 저장되지 않아요)</Muted>
@@ -122,7 +116,7 @@ export default function NewBookmark() {
       ) : null}
       {photo ? (
         <View style={{ marginTop: 12 }}>
-          <Image source={{ uri: photo }} style={{ width: '100%', aspectRatio: 0.75, borderRadius: 8, backgroundColor: '#EEE6D8' }} resizeMode="contain" accessibilityLabel="가져온 페이지 사진" />
+          <Image source={{ uri: photo }} style={{ width: '100%', aspectRatio: 0.75, borderRadius: shape.input, backgroundColor: colors.surface }} resizeMode="contain" accessibilityLabel="가져온 페이지 사진" />
           <Row style={{ marginTop: 8 }}>
             <Chip label={keepPhoto ? '사진도 함께 보관함' : '사진은 보관하지 않음'} on={keepPhoto} onPress={() => setKeepPhoto((v) => !v)} />
             <Chip label="사진 치우기" onPress={() => setPhoto(null)} />

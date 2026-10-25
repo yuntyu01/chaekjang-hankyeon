@@ -2,7 +2,6 @@
 // 검색·필터는 저장된 책장 배치를 바꾸지 않는다.
 import { router } from 'expo-router';
 import { useMemo, useState } from 'react';
-import { TextInput, View } from 'react-native';
 
 import { BookRow } from '@/features/book/BookRow';
 import { STATUS_LABEL } from '@/features/book/labels';
@@ -11,8 +10,8 @@ import { finishedYear, READ_STATUSES, type ReadStatus } from '@/domain/library';
 import { useLibrary } from '@/store/library-store';
 import { usePlacementStore } from '@/store/placement-store';
 import { uiBus } from '@/store/ui-bus';
-import { Chip, Empty, Muted, Row, Screen, s as kit } from '@/ui/kit';
-import { colors } from '@/ui/screenTheme';
+import { Chip, Empty, ListGroup, Muted, Row, Screen, SearchField } from '@/ui/kit';
+import { space } from '@/ui/screenTheme';
 
 export default function SearchMine() {
   const { lib } = useLibrary();
@@ -32,15 +31,15 @@ export default function SearchMine() {
   const where = (id: string) => (placementOf(place.layout, id) ? '책장' : place.layout.drawer.includes(id) ? '서랍' : '');
   return (
     <Screen title="책 찾기">
-      <TextInput value={q} onChangeText={setQ} autoFocus placeholder="제목·저자" placeholderTextColor={colors.inkFaint} style={kit.input} accessibilityLabel="내 책 찾기" />
-      <Row style={{ marginTop: 10 }}>
+      <SearchField value={q} onChangeText={setQ} autoFocus placeholder="제목·저자" accessibilityLabel="내 책 찾기" style={{ marginTop: space.item }} />
+      <Row style={{ marginTop: space.item }}>
         {READ_STATUSES.map((st) => (
           <Chip key={st} label={STATUS_LABEL[st]} on={status === st} onPress={() => setStatus(status === st ? null : st)} />
         ))}
       </Row>
       {years.length ? (
-        <Row style={{ marginTop: 8 }}>
-          <Muted>완독 연도</Muted>
+        <Row style={{ marginTop: space.item }}>
+          <Muted style={{ marginRight: 4 }}>완독 연도</Muted>
           {years.map((y) => (
             <Chip key={y} label={`${y}`} on={year === y} onPress={() => setYear(year === y ? null : y)} />
           ))}
@@ -51,7 +50,7 @@ export default function SearchMine() {
       ) : !list.length ? (
         <Empty title="맞는 책이 없어요" body="검색어나 필터를 바꿔 보세요." />
       ) : (
-        <View style={{ gap: 10, marginTop: 14 }}>
+        <ListGroup style={{ marginTop: space.tight }}>
           {list.map((b) => (
             <BookRow
               key={b.id}
@@ -65,7 +64,7 @@ export default function SearchMine() {
               }}
             />
           ))}
-        </View>
+        </ListGroup>
       )}
     </Screen>
   );

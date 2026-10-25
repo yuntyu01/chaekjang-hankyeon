@@ -1,15 +1,15 @@
 // 서랍: 아직 책장에 두지 않은 책. 장정·별점·갈피·독서 시간은 그대로 유지된다.
 import { router } from 'expo-router';
 import { useMemo, useState } from 'react';
-import { Alert, TextInput, View } from 'react-native';
+import { Alert } from 'react-native';
 
 import { BookRow } from '@/features/book/BookRow';
 import { STATUS_LABEL } from '@/features/book/labels';
 import { READ_STATUSES, type ReadStatus } from '@/domain/library';
 import { useLibrary } from '@/store/library-store';
 import { placementStore, usePlacementStore } from '@/store/placement-store';
-import { Btn, Chip, Empty, Muted, Row, Screen, s as kit } from '@/ui/kit';
-import { colors } from '@/ui/screenTheme';
+import { Btn, Chip, Empty, ListGroup, Muted, Row, Screen, SearchField } from '@/ui/kit';
+import { space } from '@/ui/screenTheme';
 
 export default function Drawer() {
   const place = usePlacementStore();
@@ -30,9 +30,9 @@ export default function Drawer() {
   );
   return (
     <Screen title={`서랍${place.layout.drawer.length ? ` · ${place.layout.drawer.length}권` : ''}`}>
-      <Muted>책장에 두지 않은 책을 보관해요. 꺼내 놓으면 책장 빈 자리에 꽂혀요.</Muted>
-      <TextInput value={q} onChangeText={setQ} placeholder="제목·저자" placeholderTextColor={colors.inkFaint} style={[kit.input, { marginTop: 14 }]} accessibilityLabel="서랍에서 찾기" />
-      <Row style={{ marginTop: 10 }}>
+      <Muted style={{ marginTop: space.item }}>책장에 두지 않은 책을 보관해요. 꺼내 놓으면 책장 빈 자리에 꽂혀요.</Muted>
+      <SearchField value={q} onChangeText={setQ} placeholder="제목·저자" accessibilityLabel="서랍에서 찾기" style={{ marginTop: space.group }} />
+      <Row style={{ marginTop: space.item }}>
         <Chip label="전체" on={!status} onPress={() => setStatus(null)} />
         {READ_STATUSES.map((st) => (
           <Chip key={st} label={STATUS_LABEL[st]} on={status === st} onPress={() => setStatus(status === st ? null : st)} />
@@ -43,7 +43,7 @@ export default function Drawer() {
       ) : !list.length ? (
         <Empty title="맞는 책이 없어요" />
       ) : (
-        <View style={{ gap: 10, marginTop: 14 }}>
+        <ListGroup style={{ marginTop: space.tight }}>
           {list.map((b) => (
             <BookRow
               key={b.id}
@@ -54,7 +54,7 @@ export default function Drawer() {
                 <Btn
                   label="꺼내 놓기"
                   kind="secondary"
-                  style={{ minHeight: 36, paddingHorizontal: 12 }}
+                  size="s"
                   onPress={() => {
                     if (placementStore.fromDrawer(b.id) === 'none') Alert.alert('책장에 빈 자리가 없어요', '선반을 추가하거나 다른 책을 서랍에 넣어 주세요.', [{ text: '확인' }, { text: '선반 추가 후 꽂기', onPress: () => { placementStore.addShelf(); placementStore.fromDrawer(b.id); } }]);
                   }}
@@ -62,7 +62,7 @@ export default function Drawer() {
               }
             />
           ))}
-        </View>
+        </ListGroup>
       )}
     </Screen>
   );

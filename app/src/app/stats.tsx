@@ -3,15 +3,15 @@
 import { router, useLocalSearchParams } from 'expo-router';
 import { ChevronLeft, ChevronRight } from '@/ui/icons';
 import { useMemo, useState } from 'react';
-import { Pressable, Text, View } from 'react-native';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { BookRow } from '@/features/book/BookRow';
 import { hm } from '@/features/book/labels';
 import { formatDuration, monthPeriod, periodStats, sessionDay, yearPeriod } from '@/domain/library';
 import { useLibrary } from '@/store/library-store';
 import { usePlacementStore } from '@/store/placement-store';
-import { Card, Chip, Empty, H2, Muted, Row, Screen } from '@/ui/kit';
-import { colors, fonts } from '@/ui/screenTheme';
+import { Chip, Empty, H2, ListGroup, Muted, Row, Screen } from '@/ui/kit';
+import { colors, icon, shape, space, type } from '@/ui/screenTheme';
 
 export default function Stats() {
   const params = useLocalSearchParams<{ book?: string }>();
@@ -23,8 +23,8 @@ export default function Stats() {
   const [m, setM] = useState(now.getMonth() + 1);
   const [book, setBook] = useState<string | undefined>(params.book);
   const period = mode === 'month' ? monthPeriod(y, m) : yearPeriod(y);
-  const st = useMemo(() => periodStats(lib, period), [lib, period.from, period.to]); // eslint-disable-line react-hooks/exhaustive-deps
-  const sessions = book ? st.sessions.filter((s) => s.myBookId === book) : st.sessions;
+  const st0 = useMemo(() => periodStats(lib, period), [lib, period.from, period.to]); // eslint-disable-line react-hooks/exhaustive-deps
+  const sessions = book ? st0.sessions.filter((s) => s.myBookId === book) : st0.sessions;
   const byDay = useMemo(() => {
     const out: { day: string; items: typeof sessions }[] = [];
     for (const s of sessions) {
@@ -51,47 +51,47 @@ export default function Stats() {
   const title = (id?: string) => (id ? lib.editions[lib.books[id]?.editionId]?.title : undefined);
   return (
     <Screen title="내 기록">
-      <Row>
+      <Row style={{ marginTop: space.item }}>
         <Chip label="월" on={mode === 'month'} onPress={() => setMode('month')} />
         <Chip label="연도" on={mode === 'year'} onPress={() => setMode('year')} />
       </Row>
-      <Row style={{ marginTop: 14, justifyContent: 'space-between', flexWrap: 'nowrap' }}>
-        <Pressable onPress={() => shift(-1)} hitSlop={12} accessibilityRole="button" accessibilityLabel="이전">
-          <ChevronLeft size={24} color={colors.ink} strokeWidth={1.6} />
+      <Row style={{ marginTop: space.group, justifyContent: 'space-between', flexWrap: 'nowrap' }}>
+        <Pressable onPress={() => shift(-1)} hitSlop={6} style={st.nav} accessibilityRole="button" accessibilityLabel={mode === 'month' ? '이전 달' : '이전 해'}>
+          <ChevronLeft size={icon.size} color={colors.ink} strokeWidth={icon.stroke} />
         </Pressable>
-        <Text style={{ fontFamily: fonts.serif, fontSize: 20, color: colors.ink }}>{mode === 'month' ? `${y}년 ${m}월` : `${y}년`}</Text>
-        <Pressable onPress={() => shift(1)} hitSlop={12} accessibilityRole="button" accessibilityLabel="다음">
-          <ChevronRight size={24} color={colors.ink} strokeWidth={1.6} />
+        <Text style={type.heading} accessibilityRole="header">{mode === 'month' ? `${y}년 ${m}월` : `${y}년`}</Text>
+        <Pressable onPress={() => shift(1)} hitSlop={6} style={st.nav} accessibilityRole="button" accessibilityLabel={mode === 'month' ? '다음 달' : '다음 해'}>
+          <ChevronRight size={icon.size} color={colors.ink} strokeWidth={icon.stroke} />
         </Pressable>
       </Row>
 
-      <Row style={{ marginTop: 16, flexWrap: 'nowrap' }} gap={10}>
+      <View style={st.summary}>
         {[
-          { k: '완독', v: `${st.completedCount}권`, sub: st.rereads ? `재독 ${st.rereads}회 포함` : undefined },
-          { k: '독서 시간', v: formatDuration(st.readMs), sub: `${st.sessions.length}회` },
-          { k: '남긴 갈피', v: `${st.bookmarkCount}개` },
-        ].map((c) => (
-          <Card key={c.k} style={{ flex: 1, paddingVertical: 14, paddingHorizontal: 12 }}>
-            <Muted>{c.k}</Muted>
-            <Text style={{ fontSize: 19, color: colors.ink, marginTop: 4 }}>{c.v}</Text>
-            {c.sub ? <Muted style={{ fontSize: 11.5 }}>{c.sub}</Muted> : null}
-          </Card>
+          { k: '완독', v: `${st0.completedCount}권`, sub: st0.rereads ? `재독 ${st0.rereads}회 포함` : undefined },
+          { k: '독서 시간', v: formatDuration(st0.readMs), sub: `${st0.sessions.length}회` },
+          { k: '남긴 갈피', v: `${st0.bookmarkCount}개` },
+        ].map((c, i) => (
+          <View key={c.k} style={[st.cell, i > 0 && st.cellLine]} accessible accessibilityLabel={`${c.k} ${c.v}${c.sub ? `, ${c.sub}` : ''}`}>
+            <Text style={type.sub}>{c.k}</Text>
+            <Text style={[type.number, { marginTop: 6 }]}>{c.v}</Text>
+            {c.sub ? <Text style={[type.caption, { marginTop: 2 }]}>{c.sub}</Text> : null}
+          </View>
         ))}
-      </Row>
-      <Muted style={{ marginTop: 8, fontSize: 12 }}>완독: 이 기간에 완독일이 있는 책 수(같은 책을 다시 완독해도 1권, 재독은 따로 표시). 독서 시간: 저장한 독서 기록의 실제 시간(일시정지 제외).</Muted>
+      </View>
+      <Text style={[type.caption, { marginTop: space.item }]}>완독: 이 기간에 완독일이 있는 책 수(같은 책을 다시 완독해도 1권, 재독은 따로 표시). 독서 시간: 저장한 독서 기록의 실제 시간(일시정지 제외).</Text>
 
       <H2>이 기간에 읽은 책</H2>
-      {st.booksRead.length ? (
-        <View style={{ gap: 10 }}>
-          {st.booksRead.map((id) => (place.books[id] ? <BookRow key={id} book={place.books[id]} sub={st.completedBooks.includes(id) ? '완독' : '읽음'} onPress={() => router.push(`/book/${id}`)} /> : null))}
-        </View>
+      {st0.booksRead.length ? (
+        <ListGroup>
+          {st0.booksRead.map((id) => (place.books[id] ? <BookRow key={id} book={place.books[id]} sub={st0.completedBooks.includes(id) ? '완독' : '읽음'} onPress={() => router.push(`/book/${id}`)} /> : null))}
+        </ListGroup>
       ) : (
         <Muted>이 기간에 읽은 책 기록이 없어요.</Muted>
       )}
 
       <H2>날짜별 독서 기록</H2>
       {book ? (
-        <Row style={{ marginBottom: 10 }}>
+        <Row style={{ marginBottom: space.item }}>
           <Chip label={`${title(book) ?? '책'}만 보기 · 해제`} on onPress={() => setBook(undefined)} />
         </Row>
       ) : null}
@@ -100,27 +100,30 @@ export default function Stats() {
       ) : !byDay.length ? (
         <Muted>이 기간에는 기록이 없어요.</Muted>
       ) : (
-        <View style={{ gap: 14 }}>
+        <View style={{ gap: space.group }}>
           {byDay.map((d) => (
             <View key={d.day}>
-              <Text style={{ fontSize: 13, color: colors.inkSoft, marginBottom: 6 }}>{d.day.replace(/-/g, '.')}</Text>
-              <View style={{ gap: 8 }}>
+              <Text style={type.caption}>{d.day.replace(/-/g, '.')}</Text>
+              <ListGroup>
                 {d.items.map((s) => (
-                  <Card key={s.id} onPress={() => router.push(`/session/${s.id}`)} style={{ paddingVertical: 12 }}>
-                    <Row style={{ justifyContent: 'space-between', flexWrap: 'nowrap' }}>
-                      <Text style={{ fontFamily: fonts.serif, fontSize: 15, color: colors.ink, flex: 1 }} numberOfLines={1}>
-                        {title(s.myBookId) ?? '책 없음'}
+                  <Pressable key={s.id} onPress={() => router.push(`/session/${s.id}`)} style={({ pressed }) => [st.session, pressed && { opacity: 0.6 }]} accessibilityRole="button" accessibilityLabel={`${title(s.myBookId) ?? '책 없음'}, ${formatDuration(s.durationMs)}, 기록 수정`}>
+                    <View style={{ flex: 1 }}>
+                      <Row style={{ justifyContent: 'space-between', flexWrap: 'nowrap' }}>
+                        <Text style={[type.row, { flex: 1 }]} numberOfLines={1}>
+                          {title(s.myBookId) ?? '책 없음'}
+                        </Text>
+                        <Text style={type.row}>{formatDuration(s.durationMs)}</Text>
+                      </Row>
+                      <Text style={[type.sub, { marginTop: 4 }]}>
+                        {hm(s.startedAt)} ~ {hm(s.endedAt)}
+                        {s.pagesRead ? ` · ${s.pagesRead}쪽까지` : ''}
+                        {s.memo ? ` · ${s.memo}` : ''}
                       </Text>
-                      <Text style={{ fontSize: 15, color: colors.ink }}>{formatDuration(s.durationMs)}</Text>
-                    </Row>
-                    <Muted style={{ marginTop: 2 }}>
-                      {hm(s.startedAt)} ~ {hm(s.endedAt)}
-                      {s.pagesRead ? ` · ${s.pagesRead}쪽까지` : ''}
-                      {s.memo ? ` · ${s.memo}` : ''}
-                    </Muted>
-                  </Card>
+                    </View>
+                    <ChevronRight size={20} color={colors.inkSoft} strokeWidth={icon.stroke} style={{ marginLeft: 8, marginRight: -4 }} />
+                  </Pressable>
                 ))}
-              </View>
+              </ListGroup>
             </View>
           ))}
         </View>
@@ -128,3 +131,11 @@ export default function Stats() {
     </Screen>
   );
 }
+
+const st = StyleSheet.create({
+  nav: { width: space.touch, height: space.touch, alignItems: 'center', justifyContent: 'center' },
+  summary: { flexDirection: 'row', marginTop: space.group, paddingVertical: space.group, borderTopWidth: shape.hairline, borderBottomWidth: shape.hairline, borderColor: colors.line },
+  cell: { flex: 1, paddingHorizontal: 12 },
+  cellLine: { borderLeftWidth: shape.hairline, borderLeftColor: colors.line },
+  session: { flexDirection: 'row', alignItems: 'center', paddingVertical: 14 },
+});
