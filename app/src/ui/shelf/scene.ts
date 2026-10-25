@@ -356,6 +356,7 @@ export type Pick = { shelfId: string; bookId: string } | null;
 
 // 콘텐츠 px의 한 점에서 가장 앞에 보이는 책. 선반 판(앞면·윗면)이 앞에 있으면 책이 아니다.
 // 윤곽 안에 들어간 것이 없으면 slopPx 안에서 가장 가까운(같으면 앞에 있는) 책.
+// 줄 공간 밖에 있는 책(다른 줄로 옮겨 가는 중)은 이동 캔버스가 그린 대로(맨 윗줄 좌표로 내려 그 높이 눈으로) 윤곽을 잰다.
 export function pickAt(list: SceneMotion[], geo: SceneGeo, cam: Cam, x: number, y: number, slopPx: number): Pick {
   'worklet';
   const order = sceneOrder(list, geo, cam);
@@ -364,6 +365,7 @@ export function pickAt(list: SceneMotion[], geo: SceneGeo, cam: Cam, x: number, 
   let near: Pick = null;
   let nearD = Infinity;
   let nearRank = -1;
+  const top = geo.rows.length ? rowPx(geo, geo.rows[0]) : null;
   for (const row of geo.rows) {
     const aff = rowPx(geo, row);
     const px = (q: { x: number; y: number; z: number }) => toPx(cam, aff, q);
@@ -381,8 +383,15 @@ export function pickAt(list: SceneMotion[], geo: SceneGeo, cam: Cam, x: number, 
     const tracks = m.tracks.value;
     const t = m.t.value;
     for (const id in tracks) {
-      const b = bookAt(tracks[id], t);
-      const poly = hull(corners(b).map((q) => toPx(bookViewCam(cam, b), aff, q)));
+      let b = bookAt(tracks[id], t);
+      let c = cam;
+      let a = aff;
+      if (top && outsideRow(b, row.space)) {
+        b = lowered(b, row.dy);
+        c = camWithDy(cam, eyeDyAt(geo, b));
+        a = top;
+      }
+      const poly = hull(corners(b).map((q) => toPx(bookViewCam(c, b), a, q)));
       const r = order[id] ?? 0;
       if (pointInPoly({ x, y }, poly)) {
         if (r > bestRank) {

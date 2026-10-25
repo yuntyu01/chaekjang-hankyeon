@@ -4,12 +4,13 @@
 jest.mock('react-native-reanimated', () => ({ makeMutable: <T>(value: T) => ({ value }) }));
 
 import { computeRows, makeMetrics, toContent, type RowGeom } from '@/ui/shelf/metrics';
-import { makeMotion, pickAt, sceneOrder, type SceneGeo, type SceneMotion } from '@/ui/shelf/scene';
+import { camWithDy, eyeDyAt, lowered, makeMotion, outsideRow, pickAt, rowPx, sceneOrder, type SceneGeo, type SceneMotion } from '@/ui/shelf/scene';
+import { holdTrack } from '../transition';
 
 import { corners, fromPlaced, type Book3 } from '../book3';
 import { bookViewCam } from '../book-view';
 import { hull, type Placed } from '../box';
-import { BASE_CAM, camAt, project, type Cam, type Vec3 } from '../camera';
+import { BASE_CAM, camAt, project, toPx, type Cam, type Vec3 } from '../camera';
 import { SHELF_DEPTH, SHELF_FRONT, SHELF_THICK, VIEW_PITCH_MAX } from '../geometry';
 import { applySwapTarget, bookXs, findSwapTarget, normalize, setDepth, type BookMap, type Result } from '../layout-engine';
 import { SAMPLE_BOOKS, SAMPLE_LAYOUT } from '../onboarding-sample';
@@ -98,7 +99,7 @@ describe('가림 순서대로 가장 앞에 보이는 책', () => {
   const back = boxOf(l, 'shelf-3', 'b16');
 
   it.each([
-    ['3°', BASE_CAM],
+    ['4°', BASE_CAM],
     ['8°', STEEP],
   ])('%s: 두 책 외곽이 겹친 곳은 앞으로 당긴 책, 가리지 않은 뒤 책 표지는 뒤 책', (_n, cam) => {
     const p = at(row, cam, { x: front.x + front.size.w / 2, y: front.size.h / 2, z: front.z });
@@ -173,9 +174,40 @@ describe('윗선반 판이 아래 줄 책 머리를 가린다', () => {
     expect(order.b07).toBeGreaterThan(order['plank:low']);
   });
 
-  it('기본 3°에서는 같은 머리 점이 윗선반 판 아래로 드러나 책이 잡힌다', () => {
+  it('기본 4°에서는 같은 머리 점이 윗선반 판 아래로 드러나 책이 잡힌다', () => {
     const p = at(rows[1], BASE_CAM, head);
     expect(pointInPoly(p, hull(shelfBoxCorners().map((q) => at(rows[0], BASE_CAM, q))))).toBe(false);
     expect(pickAt(list, geo, BASE_CAM, p.x, p.y, 0)).toEqual({ shelfId: 'low', bookId: 'b07' });
+  });
+});
+
+describe('줄 사이로 옮겨 가는 책', () => {
+  it('이동 캔버스가 그린 윤곽(맨 윗줄 좌표로 내려 그 높이 눈으로)에서 잡힌다', () => {
+    const { geo, list } = sceneOf(SAMPLE_LAYOUT);
+    const row = geo.rows[2];
+    const mo = list.find((e) => e.shelfId === row.shelfId)!.m;
+    const id = Object.keys(mo.tracks.value)[0];
+    const b0 = fromPlaced(boxOf(SAMPLE_LAYOUT, row.shelfId, id));
+    // 선반 앞으로 다 빼서(판 앞 끝보다 앞) 윗선반 높이에 걸치게 들어 올린 자세(줄 공간 밖: 이동 캔버스가 그린다)
+    const back = Math.max(...corners(b0).map((q) => q.z));
+    const ys0 = corners(b0).map((q) => q.y);
+    const lift = row.space - (Math.max(...ys0) - Math.min(...ys0)) / 2 - Math.min(...ys0);
+    const lifted: Book3 = { ...b0, t: { x: b0.t.x, y: b0.t.y + lift, z: b0.t.z - (back + SHELF_FRONT + 5) } };
+    expect(outsideRow(lifted, row.space)).toBe(true);
+    mo.tracks.value = { ...mo.tracks.value, [id]: holdTrack(lifted) };
+    const L = lowered(lifted, row.dy);
+    const drawn = hull(corners(L).map((q) => toPx(camWithDy(STEEP, eyeDyAt(geo, L)), rowPx(geo, geo.rows[0]), q)));
+    const own = hull(corners(lifted).map((q) => toPx(STEEP, rowPx(geo, row), q)));
+    // 그린 윤곽 안이지만 제 줄 눈으로 잰 윤곽 밖인 점(고치기 전에는 여기서 놓쳤다)
+    const xs = drawn.map((q) => q.x);
+    const ys = drawn.map((q) => q.y);
+    let probe: { x: number; y: number } | null = null;
+    for (let i = 0; i <= 40 && !probe; i++)
+      for (let j = 0; j <= 40 && !probe; j++) {
+        const q = { x: Math.min(...xs) + ((Math.max(...xs) - Math.min(...xs)) * i) / 40, y: Math.min(...ys) + ((Math.max(...ys) - Math.min(...ys)) * j) / 40 };
+        if (pointInPoly(q, drawn) && !pointInPoly(q, own)) probe = q;
+      }
+    expect(probe).not.toBeNull();
+    expect(pickAt(list, geo, STEEP, probe!.x, probe!.y, 0)).toEqual({ shelfId: row.shelfId, bookId: id });
   });
 });
