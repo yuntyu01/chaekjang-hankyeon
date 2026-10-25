@@ -8,7 +8,10 @@ import { BookmarkPaper } from './BookmarkPaper';
 import { BookmarkTape } from './BookmarkTape';
 import { PhotoPlate } from './PhotoPlate';
 
-export const CARD_PAPER = '#FCF7F0';
+// 갈피 종이: 화면 바탕(흰색)과 같은 계열. 앞 종이는 흰색(그림자로 구분), 뒤 종이는 노란기 없는 옅은 회백색,
+// 책 색에 따른 색 종이·테이프는 원래 색을 흰 바탕 쪽으로 섞어 연하게(종이 45%, 테이프 35%). 왼쪽 막대(ink)는 원래 색.
+export const CARD_PAPER = '#FFFFFF';
+export const BACK_PAPER = '#F0EDE8';
 export const PAGE_BG = colors.bg;
 export type BookmarkCardData = { text: string; title: string; author?: string; page?: number; date: string; memo?: string; color: string; coverUri?: string; book?: Book; photoUri?: string; photoRatio?: number };
 
@@ -26,11 +29,11 @@ export function WordWrap({ text, style, maxLines }: { text: string; style: Style
 
 function paperTone(color: string) {
   const c = /^#([\da-f]{6})$/i.exec(color)?.[1];
-  if (!c) return { paper: '#ABC4D6', tape: '#99B6CF', ink: '#6896B5' };
+  if (!c) return { paper: '#D0DEE8', tape: '#BCCFDF', ink: '#6896B5' };
   const [r, g, b] = [0, 2, 4].map((i) => parseInt(c.slice(i, i + 2), 16));
-  if (g > r && g > b) return { paper: '#BAC5AB', tape: '#A5B195', ink: '#718569' };
-  if (b > r || b > g) return { paper: '#ABC4D6', tape: '#99B6CF', ink: '#6896B5' };
-  return { paper: '#EDC0A9', tape: '#ECC0AA', ink: '#E0A08A' };
+  if (g > r && g > b) return { paper: '#D9DFD0', tape: '#C4CCB9', ink: '#718569' };
+  if (b > r || b > g) return { paper: '#D0DEE8', tape: '#BCCFDF', ink: '#6896B5' };
+  return { paper: '#F5DCCF', tape: '#F2D6C7', ink: '#E0A08A' };
 }
 
 export function BookmarkCard({ data, showMemo, width, seed, compact = false, rasterizeBook = false, onCoverReady, onPhotoReady, onOpen, saved = false, onToggleSaved }: { data: BookmarkCardData; showMemo: boolean; width: number; seed: string; compact?: boolean; rasterizeBook?: boolean; onCoverReady?: () => void; onPhotoReady?: () => void; onOpen?: () => void; saved?: boolean; onToggleSaved?: () => void }) {
@@ -44,8 +47,8 @@ export function BookmarkCard({ data, showMemo, width, seed, compact = false, ras
     <View style={{ width, paddingTop: compact ? 17 : 37, paddingBottom: compact ? 15 : 38, alignItems: 'center' }}>
       {/* In the list, cream tapers behind the front sheet on the left; colour
           projects at the upper right and lower left, as in the reference. */}
-      <View style={[st.sheet, { width: cardW - (compact ? 14 : 36), borderRadius: compact ? 5 : 8, transform: [{ translateX: compact ? -8 : 6 }, { rotate: compact ? '-5.2deg' : '-10deg' }], top: compact ? 20 : 15, bottom: compact ? 19 : 28, backgroundColor: '#F3E6D4' }]}>
-        <BookmarkPaper color="#F3E6D4" colored radius={compact ? 5 : 8} seed={`${seed}-back`} />
+      <View style={[st.sheet, { width: cardW - (compact ? 14 : 36), borderRadius: compact ? 5 : 8, transform: [{ translateX: compact ? -8 : 6 }, { rotate: compact ? '-5.2deg' : '-10deg' }], top: compact ? 20 : 15, bottom: compact ? 19 : 28, backgroundColor: BACK_PAPER }]}>
+        <BookmarkPaper color={BACK_PAPER} colored radius={compact ? 5 : 8} seed={`${seed}-back`} />
       </View>
       <View style={[st.sheet, { width: cardW - (compact ? -5 : 17), transform: [{ translateX: compact ? -1 : 0 }, { rotate: compact ? '3.6deg' : '7deg' }], top: compact ? 20 : 30, bottom: compact ? 11.5 : 34, backgroundColor: tone.paper }]}>
         <BookmarkPaper color={tone.paper} colored radius={8} seed={`${seed}-color`} />
@@ -91,11 +94,11 @@ export function BookmarkCard({ data, showMemo, width, seed, compact = false, ras
 }
 
 const st = StyleSheet.create({
-  sheet: { position: 'absolute', borderRadius: 8, borderTopWidth: 0.7, borderLeftWidth: 0.5, borderBottomWidth: 0.6, borderColor: 'rgba(255,253,245,0.65)', borderBottomColor: 'rgba(144,117,85,0.20)', boxShadow: [{ offsetX: 0, offsetY: 1, blurRadius: 2, color: 'rgba(119,88,57,0.14)' }, { offsetX: 1, offsetY: 7, blurRadius: 15, color: 'rgba(143,107,67,0.17)' }] },
+  sheet: { position: 'absolute', borderRadius: 8, borderTopWidth: 0.7, borderLeftWidth: 0.5, borderBottomWidth: 0.6, borderColor: 'rgba(255,255,255,0.65)', borderBottomColor: 'rgba(108,83,74,0.18)', boxShadow: [{ offsetX: 0, offsetY: 1, blurRadius: 2, color: 'rgba(86,68,60,0.13)' }, { offsetX: 1, offsetY: 7, blurRadius: 15, color: 'rgba(108,83,74,0.15)' }] },
   // A narrow contact shadow holds the sheets together; the soft lower shadow
   // describes their lift from the page without darkening the illuminated top.
-  card: { backgroundColor: CARD_PAPER, borderWidth: 0.7, borderTopWidth: 1, borderColor: '#FFFDFA', borderBottomColor: '#E8DCCB', borderRadius: 10, boxShadow: [{ offsetX: 0, offsetY: 1.2, blurRadius: 2.2, color: 'rgba(118,85,55,0.16)' }, { offsetX: 1.5, offsetY: 11, blurRadius: 25, color: 'rgba(139,101,60,0.30)' }, { offsetX: 0, offsetY: 18, blurRadius: 36, color: 'rgba(146,111,72,0.085)' }] },
-  compactShadow: { boxShadow: [{ offsetX: 0, offsetY: 1.2, blurRadius: 2.2, color: 'rgba(118,85,55,0.15)' }, { offsetX: 1, offsetY: 7, blurRadius: 16, color: 'rgba(139,101,60,0.20)' }] },
+  card: { backgroundColor: CARD_PAPER, borderWidth: 0.7, borderTopWidth: 1, borderColor: '#FFFFFF', borderBottomColor: colors.line, borderRadius: 10, boxShadow: [{ offsetX: 0, offsetY: 1.2, blurRadius: 2.2, color: 'rgba(86,68,60,0.15)' }, { offsetX: 1.5, offsetY: 11, blurRadius: 25, color: 'rgba(108,83,74,0.24)' }, { offsetX: 0, offsetY: 18, blurRadius: 36, color: 'rgba(108,83,74,0.07)' }] },
+  compactShadow: { boxShadow: [{ offsetX: 0, offsetY: 1.2, blurRadius: 2.2, color: 'rgba(86,68,60,0.14)' }, { offsetX: 1, offsetY: 7, blurRadius: 16, color: 'rgba(108,83,74,0.17)' }] },
   save: { position: 'absolute', bottom: 14, right: 10, width: 44, height: 44, alignItems: 'center', justifyContent: 'center' },
   tape: { position: 'absolute', transform: [{ rotate: '0.7deg' }] },
   pageRow: { flexDirection: 'row', alignItems: 'center', minHeight: 28, marginLeft: -9 },

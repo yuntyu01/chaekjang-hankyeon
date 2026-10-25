@@ -1,7 +1,7 @@
 // 책 추가: 책 찾기(검색·사진·직접 입력) → 책·판본 확인 → 재장정 미리보기 → 내 책에 추가 → 책장에 꽂기 또는 서랍에 보관.
 // 검색 결과·표지·쪽수가 없어도 직접 입력과 기본 장정으로 끝낼 수 있다. 추정 크기를 확인된 정보처럼 저장하지 않는다.
 import { router, useLocalSearchParams } from 'expo-router';
-import { Camera, ImageIcon, PenLine } from '@/ui/icons';
+import { Camera, ImageIcon, PenLine, Plus } from '@/ui/icons';
 import { useEffect, useRef, useState } from 'react';
 import { Alert, Pressable, StyleSheet, Text, View } from 'react-native';
 
@@ -17,8 +17,8 @@ import { keepImage } from '@/store/files';
 import { libraryStore } from '@/store/library-store';
 import { placementStore } from '@/store/placement-store';
 import { uiBus } from '@/store/ui-bus';
-import { Btn, Chip, Empty, Field, H2, ListGroup, Muted, Notice, RealCover, Row, Screen, SearchField } from '@/ui/kit';
-import { colors, icon, shape, space, type } from '@/ui/screenTheme';
+import { Btn, Chip, Empty, Field, H2, Muted, Notice, RealCover, Row, Screen, SearchField } from '@/ui/kit';
+import { colors, icon, space, type } from '@/ui/screenTheme';
 
 type Step = 'find' | 'confirm' | 'binding' | 'done';
 
@@ -306,9 +306,8 @@ function FindStep({ initial, notice, onPick, onPhoto, onManual }: { initial?: st
         style={{ marginTop: space.item }}
       />
       <View style={st.findMethods}>
-        <Pressable accessibilityRole="button" accessibilityLabel="사진으로 찾기" onPress={() => Alert.alert('사진으로 찾기', '표지 사진을 선택해 주세요.', [{ text: '사진 찍기', onPress: () => onPhoto('camera') }, { text: '사진 고르기', onPress: () => onPhoto('library') }, { text: '취소', style: 'cancel' }])} style={({ pressed }) => [st.method, pressed && { opacity: 0.6 }]}><Camera size={icon.size} color={colors.ink} strokeWidth={icon.stroke} /><Text style={st.methodText}>사진으로 찾기</Text></Pressable>
-        <View style={{ width: shape.hairline * 2, height: 22, backgroundColor: colors.line }} />
-        <Pressable accessibilityRole="button" accessibilityLabel="직접 입력" onPress={() => onManual(q)} style={({ pressed }) => [st.method, pressed && { opacity: 0.6 }]}><PenLine size={icon.size} color={colors.ink} strokeWidth={icon.stroke} /><Text style={st.methodText}>직접 입력</Text></Pressable>
+        <Pressable accessibilityRole="button" accessibilityLabel="사진으로 찾기" onPress={() => Alert.alert('사진으로 찾기', '표지 사진을 선택해 주세요.', [{ text: '사진 찍기', onPress: () => onPhoto('camera') }, { text: '사진 고르기', onPress: () => onPhoto('library') }, { text: '취소', style: 'cancel' }])} style={({ pressed }) => [st.method, pressed && { opacity: 0.6 }]}><Camera size={icon.size + 2} color={colors.accent} strokeWidth={icon.stroke} /><Text style={st.methodText}>사진으로 찾기</Text></Pressable>
+        <Pressable accessibilityRole="button" accessibilityLabel="직접 입력" onPress={() => onManual(q)} style={({ pressed }) => [st.method, pressed && { opacity: 0.6 }]}><PenLine size={icon.size + 2} color={colors.accent} strokeWidth={icon.stroke} /><Text style={st.methodText}>직접 입력</Text></Pressable>
       </View>
       {notice ? <Muted style={{ marginTop: space.tight }}>{notice}</Muted> : null}
 
@@ -320,21 +319,21 @@ function FindStep({ initial, notice, onPick, onPhoto, onManual }: { initial?: st
       {err ? <Btn label="다시 시도" kind="secondary" size="s" onPress={() => run()} style={{ marginTop: 10, alignSelf: 'flex-start' }} /> : null}
       {items && !items.length ? <Empty title="찾는 책이 없어요" body="검색어를 바꾸거나 위의 직접 입력으로 추가해 주세요." /> : null}
       {items?.length ? (
-        <View style={{ marginTop: space.section }}>
-          <Row gap={10}><Text style={type.heading}>검색 결과</Text><Text style={type.sub}>{items.length}권</Text></Row>
-          <ListGroup style={{ marginTop: space.tight }}>
+        <View style={{ marginTop: space.section - 2 }}>
+          <Row gap={12}><Text style={st.resultHeading}>검색 결과</Text><Text style={type.sub}>{items.length}권</Text></Row>
+          {/* 책 추가 시안: 표지 76×105, 제목·지은이 두 줄, 오른쪽 갈색 '+', 줄 사이 구분선 없이 여백만 */}
+          <View style={{ marginTop: space.tight }}>
             {items.map((c) => (
               <Pressable key={c.key} onPress={() => onPick(c)} style={({ pressed }) => [st.result, pressed && { opacity: 0.7 }]} accessibilityRole="button" accessibilityLabel={`${c.title}, ${c.authors.join(', ')}, 추가`}>
-                <View style={st.coverShadow}><RealCover uri={c.coverUrl} title={c.title} color="#B8ADA0" width={84} ratio={0.77} /></View>
-                <View style={{ flex: 1, gap: 4 }}>
-                  <Text style={type.rowStrong}>{c.title}</Text>
-                  {c.authors.length ? <Text style={type.sub}>{c.authors.join(', ')}</Text> : null}
-                  <Text style={type.caption}>{[c.publisher, c.publishedAt?.match(/\b\d{4}\b/)?.[0]].filter(Boolean).join(' · ')}</Text>
+                <View style={st.coverShadow}><RealCover uri={c.coverUrl} title={c.title} color="#B8ADA0" width={76} ratio={0.72} /></View>
+                <View style={{ flex: 1, gap: 6 }}>
+                  <Text style={type.row} numberOfLines={2}>{c.title}</Text>
+                  {c.authors.length ? <Text style={st.author} numberOfLines={1}>{c.authors.join(', ')}</Text> : null}
                 </View>
-                <View style={st.add}><Text style={st.addText}>추가</Text></View>
+                <View style={st.add}><Plus size={28} color={colors.accent} strokeWidth={icon.stroke} /></View>
               </Pressable>
             ))}
-          </ListGroup>
+          </View>
         </View>
       ) : null}
     </Screen>
@@ -343,11 +342,12 @@ function FindStep({ initial, notice, onPick, onPhoto, onManual }: { initial?: st
 
 const st = StyleSheet.create({
   findMethods: { flexDirection: 'row', alignItems: 'center', marginTop: space.tight },
-  method: { flex: 1, flexDirection: 'row', gap: 10, alignItems: 'center', justifyContent: 'center', paddingVertical: 12, minHeight: 52 },
-  methodText: { ...type.row, fontSize: 15, flexShrink: 1 },
-  result: { flexDirection: 'row', alignItems: 'center', gap: 16, paddingVertical: 18 },
+  method: { flex: 1, flexDirection: 'row', gap: 12, alignItems: 'center', justifyContent: 'center', paddingVertical: 12, minHeight: 52 },
+  methodText: { ...type.row, fontSize: 16, color: colors.inkSoft, flexShrink: 1 },
+  result: { flexDirection: 'row', alignItems: 'center', gap: 20, paddingVertical: 11 },
+  author: { ...type.sub, fontSize: 15 },
+  resultHeading: { ...type.heading, fontSize: 20 },
   coverShadow: { borderRadius: 3, boxShadow: [{ offsetX: 0, offsetY: 5, blurRadius: 6, color: 'rgba(118,77,38,0.16)' }] },
-  add: { backgroundColor: colors.accentSoft, borderRadius: shape.input, minWidth: 60, minHeight: 40, paddingHorizontal: 12, alignItems: 'center', justifyContent: 'center' },
-  addText: { ...type.button, fontSize: 15, color: colors.accent },
+  add: { width: space.touch + 4, height: space.touch + 4, alignItems: 'center', justifyContent: 'center', marginRight: -10 },
   doneTitle: { ...type.body, fontSize: 17, lineHeight: 26, marginTop: space.item },
 });

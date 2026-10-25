@@ -37,7 +37,8 @@ export const fonts = {
   round: 'NanumSquareRoundB',
 };
 
-export const navigation = { height: 78, bottomAir: 22, iconSize: 25 };
+// 하단 탭 바: 2026-10-26 12dp 내림(height 78→66, bottomAir 22→10). shelfReserve는 책장 줄 배치 계산용으로 예전 높이를 유지한다(시안에 맞춘 배치가 바뀌지 않게)
+export const navigation = { height: 66, bottomAir: 10, iconSize: 25, shelfReserve: 78 };
 
 // 글자 크기. 제목은 명조(serif), 메뉴·숫자는 고딕. 숫자는 "16권"처럼 단위와 함께 작게.
 export const typeScale = {

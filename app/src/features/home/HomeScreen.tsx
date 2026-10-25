@@ -295,7 +295,7 @@ export function HomeScreen() {
   // 줄 간격은 3D 값(가장 키 큰 책 + 여유)이라 보기 각·꾸미기와 상관없다
   const rowsRef = useRef<RowGeom[]>([]);
   const rows = useMemo(() => {
-    const next = computeRows(shown, books, m.scale, vpH, navigation.height + insets.bottom);
+    const next = computeRows(shown, books, m.scale, vpH, navigation.shelfReserve + insets.bottom);
     const prev = rowsRef.current;
     const same = prev.length === next.length && prev.every((r, i) => r.shelfId === next[i].shelfId && r.top === next[i].top && r.space === next[i].space && r.height === next[i].height && r.baseline === next[i].baseline);
     if (!same) rowsRef.current = next;

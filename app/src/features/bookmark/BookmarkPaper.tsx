@@ -40,20 +40,20 @@ export const BookmarkPaper = memo(function BookmarkPaper({ color, radius, seed, 
         <LinearGradient id={`${id}wash`} x1="0" y1="0" x2="75%" y2="100%">
           <Stop offset="0" stopColor="#FFFFFF" stopOpacity={colored ? 0.10 : 0.20} />
           <Stop offset="0.42" stopColor="#FFFFFF" stopOpacity="0" />
-          <Stop offset="1" stopColor={colored ? '#536575' : '#A58A73'} stopOpacity={colored ? 0.045 : 0.022} />
+          <Stop offset="1" stopColor={colored ? '#536575' : '#9C928C'} stopOpacity={colored ? 0.045 : 0.022} />
         </LinearGradient>
         <Pattern id={`${id}fine`} width="64" height="64" patternUnits="userSpaceOnUse">
-          <Path d={grain.fine} stroke={colored ? '#52616A' : '#87725C'} strokeWidth={tape ? 0.55 : 0.35} strokeOpacity={tape ? 0.115 : colored ? 0.20 : 0.12} fill="none" />
+          <Path d={grain.fine} stroke={colored ? '#52616A' : '#827772'} strokeWidth={tape ? 0.55 : 0.35} strokeOpacity={tape ? 0.115 : colored ? 0.20 : 0.12} fill="none" />
           <Path d={grain.fine} transform="translate(.2 .3)" stroke="#FFFFFF" strokeWidth={tape ? 0.65 : 0.45} strokeOpacity={tape ? 0.19 : colored ? 0.25 : 0.17} fill="none" />
         </Pattern>
         <Pattern id={`${id}soft`} width="91" height="91" patternUnits="userSpaceOnUse">
-          <Path d={grain.broad} stroke={colored ? '#526570' : '#8E765C'} strokeWidth={tape ? 1.4 : 0.8} strokeOpacity={tape ? 0.036 : colored ? 0.06 : 0.04} strokeLinecap="round" fill="none" />
+          <Path d={grain.broad} stroke={colored ? '#526570' : '#897E78'} strokeWidth={tape ? 1.4 : 0.8} strokeOpacity={tape ? 0.036 : colored ? 0.06 : 0.04} strokeLinecap="round" fill="none" />
           <Path d={grain.broad} transform="translate(.15 .35)" stroke="#FFFFFF" strokeWidth={0.65} strokeOpacity={colored ? 0.075 : 0.045} strokeLinecap="round" fill="none" />
         </Pattern>
         <Pattern id={`${id}pulp`} width="137" height="137" patternUnits="userSpaceOnUse">
-          <Path d={grain.cloud} fill={colored ? '#526570' : '#9A8268'} fillOpacity={colored ? 0.028 : 0.014} />
+          <Path d={grain.cloud} fill={colored ? '#526570' : '#958B85'} fillOpacity={colored ? 0.028 : 0.014} />
           <Path d={grain.cloud} transform="translate(23 51)" fill="#FFFFFF" fillOpacity={colored ? 0.05 : 0.035} />
-          <Path d={grain.pulp} fill={colored ? '#53616B' : '#8E765C'} fillOpacity={colored ? 0.035 : 0.025} />
+          <Path d={grain.pulp} fill={colored ? '#53616B' : '#897E78'} fillOpacity={colored ? 0.035 : 0.025} />
           <Path d={grain.pulp} transform="translate(37 19)" fill="#FFFFFF" fillOpacity={colored ? 0.085 : 0.055} />
         </Pattern>
       </Defs>

@@ -23,7 +23,7 @@ export function BookmarkEmpty() {
       showsVerticalScrollIndicator={false}>
       {/* 예시 갈피 종이: 밝은 아이보리, 아주 옅은 결, 작은 둥근 모서리, 약한 그림자 */}
       <View style={st.paper} accessible accessibilityLabel={`예시 갈피. ${SAMPLE.replace(/\n/g, ' ')} 책장 한켠`}>
-        <PaperSurface color="#FFFBF3" radius={8} grain={0.03} shaded={false} />
+        <PaperSurface color="#FFFFFF" radius={8} grain={0.03} shaded={false} />
         <Text style={st.tag}>예시</Text>
         <Text style={st.quote}>{SAMPLE}</Text>
         <Text style={st.brand}>책장 한켠</Text>
@@ -48,7 +48,7 @@ const st = StyleSheet.create({
     paddingHorizontal: 26,
     paddingTop: 22,
     paddingBottom: 18,
-    backgroundColor: '#FFFBF3',
+    backgroundColor: '#FFFFFF',
     shadowColor: '#6F5843',
     shadowOpacity: 0.08,
     shadowRadius: 10,
