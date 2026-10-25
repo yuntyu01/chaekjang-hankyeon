@@ -7,7 +7,8 @@
 //  - 받침: 기댄 책이 미는 힘에 받침이 되는 세운 책이 반대쪽 바닥 모서리로 넘어가는지(그 너머에 닿은 책이 있으면 줄 전체가 버틴다).
 // 정할 값(2026-10-26 사용자 결정): 바닥 마찰 0.4, 메뉴로 기울이는 한도 20°.
 import { corners, fromPlaced, gap } from './book3';
-import { hull, type Placed } from './box';
+import type { Placed } from './box';
+import { hull } from './hull';
 import type { Point } from './camera';
 
 export const FLOOR_FRICTION = 0.4;

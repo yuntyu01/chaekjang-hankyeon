@@ -5,6 +5,7 @@
 import { project, viewAt, type Cam } from './camera';
 import { bookHeight, bookThickness, frontWidth } from './geometry';
 import { fromPlaced, gap } from './book3';
+import { hull } from './hull';
 import type { Point } from './shelf-scene';
 import type { Book, Pose } from './types';
 
@@ -43,26 +44,10 @@ export function aabbD(p: Placed) {
   return Math.abs(p.size.w * Math.sin(r)) + Math.abs(p.size.d * Math.cos(r));
 }
 
-// 볼록 껍질(모노톤 체인)
-export function hull(points: Point[]): Point[] {
-  'worklet';
-  const p = [...points].sort((a, b) => a.x - b.x || a.y - b.y);
-  if (p.length < 3) return p;
-  const cross = (o: Point, a: Point, b: Point) => (a.x - o.x) * (b.y - o.y) - (a.y - o.y) * (b.x - o.x);
-  const lower: Point[] = [];
-  for (const q of p) {
-    while (lower.length >= 2 && cross(lower[lower.length - 2], lower[lower.length - 1], q) <= 0) lower.pop();
-    lower.push(q);
-  }
-  const upper: Point[] = [];
-  for (const q of [...p].reverse()) {
-    while (upper.length >= 2 && cross(upper[upper.length - 2], upper[upper.length - 1], q) <= 0) upper.pop();
-    upper.push(q);
-  }
-  return [...lower.slice(0, -1), ...upper.slice(0, -1)];
-}
+// 볼록 껍질: domain/hull(가만히 있는 자세 판정 statics도 쓴다 — geometry → front-pose → statics가 box를 거쳐 geometry로 돌아오지 않게 따로 둔다)
+export { hull };
 
-// 워클릿은 만들어질 때 쓰는 함수를 붙잡으므로, 쓰이는 함수(hull·rad·at)를 먼저 정의한다.
+// 워클릿은 만들어질 때 쓰는 함수를 붙잡으므로, 쓰이는 함수(rad·at)를 먼저 정의한다(hull은 가져온다).
 // 놓인 상자. angle(도): +면 오른쪽으로 기울어 오른쪽 아래 모서리가 축, -면 왼쪽 아래 모서리가 축(세운 책만).
 export type Placed = {
   bookId: string;
