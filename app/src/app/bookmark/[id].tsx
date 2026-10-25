@@ -204,6 +204,9 @@ export default function BookmarkDetail() {
 }
 
 function EditBookmark({ m, onDone }: { m: Bookmark; onDone: () => void }) {
+  const { lib } = useLibrary();
+  const ed = lib.editions[lib.books[m.myBookId]?.editionId];
+  const bookLine = ed ? [ed.title, ed.authors.join(', ')].filter(Boolean).join(' · ') : '';
   const [text, setText] = useState(m.text);
   const [page, setPage] = useState(m.page ? String(m.page) : '');
   const [memo, setMemo] = useState(m.memo ?? '');
@@ -238,8 +241,10 @@ function EditBookmark({ m, onDone }: { m: Bookmark; onDone: () => void }) {
           }}
         />
       }>
+      {/* 갈피 수정 시안: 머리줄 아래 연결된 책 한 줄, 이름 굵게 + '선택', 쪽수는 꽉 찬 칸에 '쪽', 메모는 두 줄 높이 */}
+      {bookLine ? <Text style={[type.sub, { marginTop: space.page }]} numberOfLines={1}>{bookLine}</Text> : null}
       {photo.uri ? (
-        <View style={{ alignItems: 'center', marginTop: space.item, marginBottom: space.group }}>
+        <View style={{ alignItems: 'center', marginTop: space.group + 8, marginBottom: space.group + 8 }}>
           <PhotoPlate uri={photo.uri} ratio={photo.ratio} width={300} seed={m.id} />
           <Row style={{ marginTop: 10 }}>
             <Chip label="다시 찍기" onPress={() => swap('camera')} />
@@ -248,10 +253,10 @@ function EditBookmark({ m, onDone }: { m: Bookmark; onDone: () => void }) {
           </Row>
           {msg ? <Muted style={{ marginTop: 8 }}>{msg}</Muted> : null}
         </View>
-      ) : <View style={{ height: space.item }} />}
-      <Field label={isPhoto ? '옮겨 적기 (선택)' : '문장 (줄바꿈으로 문단을 나눠요)'} value={text} onChangeText={setText} multiline style={{ fontFamily: fonts.serif, fontSize: 17, lineHeight: 28, minHeight: 180 }} />
-      <Field label="쪽수 (선택)" value={page} onChangeText={setPage} keyboardType="number-pad" style={{ width: 140 }} />
-      <Field label="한 줄 메모 (선택, 공유 이미지에는 기본으로 빠져요)" value={memo} onChangeText={setMemo} />
+      ) : <View style={{ height: space.group + 2 }} />}
+      <Field label={isPhoto ? '옮겨 적기 (선택)' : '문장 (줄바꿈으로 문단을 나눠요)'} value={text} onChangeText={setText} multiline style={{ fontFamily: fonts.serif, fontSize: 16, lineHeight: 26, minHeight: isPhoto ? 120 : 190 }} />
+      <Field label="쪽수 (선택)" unit="쪽" value={page} onChangeText={setPage} keyboardType="number-pad" />
+      <Field label="한 줄 메모 (선택, 공유 이미지에는 기본으로 빠져요)" value={memo} onChangeText={setMemo} multiline submitBehavior="blurAndSubmit" returnKeyType="done" style={{ minHeight: 80 }} />
     </Screen>
   );
 }

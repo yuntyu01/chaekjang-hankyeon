@@ -19,14 +19,15 @@ const contrast = (a: string, b: string) => {
   return (x + 0.05) / (y + 0.05);
 };
 
-// 2026-10-26 색상 기준(갈피 수정 시안): 사용자가 정한 값 그대로
+// 2026-10-26 색상 기준(갈피 수정 시안): 바탕·입력칸·구분선·버튼 글자는 사용자 지정값, 글자색·대표색은 시안에서 뽑은 값
 describe('색: 지정한 기준값', () => {
   it('배경·입력칸·대표색·글자·구분선·버튼 글자', () => {
     expect(colors.bg).toBe('#FEFEFD');
     expect(colors.input).toBe('#F6F5F2');
-    expect(colors.accent).toBe('#6D534B');
-    expect(colors.ink).toBe('#2B2725');
-    expect(colors.inkSoft).toBe('#7A706A');
+    expect(colors.accent).toBe('#6C534A');
+    expect(colors.ink).toBe('#1A1716');
+    expect(colors.inkSoft).toBe('#6A5854');
+    expect(colors.title).toBe('#624C47');
     expect(colors.line).toBe('#E8E5E0');
     expect(colors.border).toBe('#E8E5E0');
     expect(colors.onAccent).toBe('#FFFFFF');
@@ -61,8 +62,8 @@ describe('색: 읽을 수 있는 대비', () => {
       expect(contrast(colors.danger, bg)).toBeGreaterThanOrEqual(4.5);
     }
   });
-  it('보조 글자는 바탕·시트 위에서 4.5:1 이상(입력칸 바탕 위에는 쓰지 않는다: 4.4:1)', () => {
-    for (const bg of [colors.bg, colors.raised]) expect(contrast(colors.inkSoft, bg)).toBeGreaterThanOrEqual(4.5);
+  it('보조 글자는 바탕·입력칸·시트 위에서 4.5:1 이상', () => {
+    for (const bg of [colors.bg, colors.input, colors.raised]) expect(contrast(colors.inkSoft, bg)).toBeGreaterThanOrEqual(4.5);
   });
   it('주요 버튼 글자는 강조색 위에서 4.5:1 이상', () => {
     expect(contrast(colors.onAccent, colors.accent)).toBeGreaterThanOrEqual(4.5);
@@ -78,15 +79,15 @@ describe('색: 읽을 수 있는 대비', () => {
   });
 });
 
-describe('글자·간격 범위(지시: 제목 22~24, 본문·메뉴 16~17, 보조 13~14, 좌우 24~28, 묶음 사이 28~36)', () => {
+describe('글자·간격 범위(지시: 제목 22~24를 출발점으로 시안에 맞춤 → 20~24, 본문·메뉴 16~17, 보조 13~14, 좌우 24~28, 묶음 사이 28~36)', () => {
   it('글자 크기', () => {
-    expect(type.title.fontSize).toBeGreaterThanOrEqual(22);
+    expect(type.title.fontSize).toBeGreaterThanOrEqual(20);
     expect(type.title.fontSize).toBeLessThanOrEqual(24);
-    for (const t of [type.row, type.body, type.input, type.button]) {
+    for (const t of [type.row, type.body, type.input, type.button, type.label]) {
       expect(t.fontSize).toBeGreaterThanOrEqual(16);
       expect(t.fontSize).toBeLessThanOrEqual(17);
     }
-    for (const t of [type.sub, type.section, type.label, type.caption]) {
+    for (const t of [type.sub, type.section, type.caption]) {
       expect(t.fontSize).toBeGreaterThanOrEqual(13);
       expect(t.fontSize).toBeLessThanOrEqual(14);
     }

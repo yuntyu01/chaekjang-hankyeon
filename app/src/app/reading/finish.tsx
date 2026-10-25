@@ -75,14 +75,8 @@ export default function Finish() {
         </Text>
       </View>
       <SelectField label="연결된 책" value={e?.title} placeholder="책 연결하기 (선택)" onPress={() => setPicking(true)} />
-      <Row style={{ flexWrap: 'nowrap', alignItems: 'flex-start' }} gap={10}>
-        <View style={{ width: 150 }}>
-          <Field label="읽은 쪽수까지 (선택)" value={pages} onChangeText={setPages} keyboardType="number-pad" placeholder={b?.currentPage ? `지난번 ${b.currentPage}쪽` : '쪽'} />
-        </View>
-        <View style={{ flex: 1 }}>
-          <Field label="짧은 메모 (선택)" value={memo} onChangeText={setMemo} />
-        </View>
-      </Row>
+      <Field label="읽은 쪽수까지 (선택)" unit="쪽" value={pages} onChangeText={setPages} keyboardType="number-pad" placeholder={b?.currentPage ? `지난번 ${b.currentPage}쪽` : undefined} />
+      <Field label="짧은 메모 (선택)" value={memo} onChangeText={setMemo} multiline submitBehavior="blurAndSubmit" returnKeyType="done" style={{ minHeight: 80 }} />
       <Btn label="버리기" kind="ghost" onPress={discard} />
       <BookPicker
         lib={lib}

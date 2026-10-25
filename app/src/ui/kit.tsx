@@ -39,6 +39,7 @@ export const ui = {
 // 뒤로가 없는 화면(탭 첫 화면·완료 화면)은 제목을 왼쪽에 둔다. 키보드가 열리면 아래 고정 버튼이 키보드 위로 올라온다.
 export function Screen({
   title,
+  titleNote,
   subtitle,
   right,
   back = true,
@@ -48,6 +49,7 @@ export function Screen({
   bottomPad = 0,
 }: {
   title?: string;
+  titleNote?: string; // 제목 옆 회색 꼬리글(서랍 시안의 '· 4권')
   subtitle?: string;
   right?: ReactNode;
   back?: boolean;
@@ -77,6 +79,7 @@ export function Screen({
           <View pointerEvents="none" style={s.titleCenter}>
             <Text style={type.title} numberOfLines={1} accessibilityRole="header">
               {title ?? ''}
+              {titleNote ? <Text style={s.titleNote}>{`  ${titleNote}`}</Text> : null}
             </Text>
             {subtitle ? <Text style={[type.caption, { marginTop: 2 }]} numberOfLines={1}>{subtitle}</Text> : null}
           </View>
@@ -184,41 +187,73 @@ export function Btn({
 }
 
 // 입력창: 표면색 바탕, 테두리 없음, 누르면 갈색 테두리. 이름은 위에 작게, 도움말·오류는 아래에.
-export function Field({ label, hint, error, ...p }: TextInputProps & { label: string; hint?: string; error?: string }) {
-  const [focus, setFocus] = useState(false);
+// 입력칸 이름 줄(2026-10-26 갈피 수정 시안): 굵은 이름 + 작은 회색 '선택'/'필수'. '쪽수 (선택)', '메모 (선택, 설명)'처럼 적은 이름을 나눈다.
+// 괄호 안 나머지 설명은 입력 안내(비어 있을 때)로 보내고, 안내가 따로 있으면 칸 아래 도움말로 둔다.
+function splitLabel(label: string) {
+  const m = /^(.+?) \((.+)\)$/.exec(label);
+  if (!m) return { name: label, tag: undefined as string | undefined, note: undefined as string | undefined };
+  const parts = m[2].split(', ');
+  const tag = parts[0] === '선택' || parts[0] === '필수' ? parts.shift() : undefined;
+  return { name: m[1], tag, note: parts.length ? parts.join(', ') : undefined };
+}
+
+function LabelRow({ name, tag }: { name: string; tag?: string }) {
   return (
-    <View style={{ marginBottom: space.group - 4 }}>
-      <Text style={s.label}>{label}</Text>
-      <TextInput
-        placeholderTextColor={colors.inkFaint}
-        accessibilityLabel={label}
-        {...p}
-        onFocus={(e) => {
-          setFocus(true);
-          p.onFocus?.(e);
-        }}
-        onBlur={(e) => {
-          setFocus(false);
-          p.onBlur?.(e);
-        }}
-        style={[s.input, p.multiline && s.inputMulti, focus && s.inputFocus, !!error && { borderColor: colors.danger }, p.editable === false && { opacity: 0.55 }, p.style]}
-      />
-      {error ? <Text style={[s.muted, { marginTop: 6, color: colors.danger }]}>{error}</Text> : hint ? <Text style={[s.muted, { marginTop: 6 }]}>{hint}</Text> : null}
+    <View style={s.labelRow}>
+      <Text style={s.label}>{name}</Text>
+      {tag ? <Text style={s.labelTag}>{tag}</Text> : null}
     </View>
   );
 }
 
-// 고르는 칸(연결할 책 등): 입력창과 같은 모양, 누르면 고르는 시트가 열린다
-export function SelectField({ label, value, placeholder, sub, onPress }: { label: string; value?: string; placeholder: string; sub?: string; onPress: () => void }) {
+// 입력칸: 입력칸색 단색 바탕, 테두리 없음, 누르면 갈색 테두리. 이름은 위에, 단위('쪽')는 칸 안 오른쪽, 도움말·오류는 아래.
+export function Field({ label, hint, error, unit, ...p }: TextInputProps & { label: string; hint?: string; error?: string; unit?: string }) {
+  const [focus, setFocus] = useState(false);
+  const { name, tag, note } = splitLabel(label);
+  const placeholder = p.placeholder ?? note;
+  const help = p.placeholder && note ? note : hint;
   return (
-    <View style={{ marginBottom: space.group - 4 }}>
-      <Text style={s.label}>{label}</Text>
+    <View style={s.field}>
+      <LabelRow name={name} tag={tag} />
+      <View>
+        <TextInput
+          placeholderTextColor={colors.inkFaint}
+          accessibilityLabel={label}
+          {...p}
+          placeholder={placeholder}
+          onFocus={(e) => {
+            setFocus(true);
+            p.onFocus?.(e);
+          }}
+          onBlur={(e) => {
+            setFocus(false);
+            p.onBlur?.(e);
+          }}
+          style={[s.input, p.multiline && s.inputMulti, !!unit && { paddingRight: 44 }, focus && s.inputFocus, !!error && { borderColor: colors.danger }, p.editable === false && { opacity: 0.55 }, p.style]}
+        />
+        {unit ? (
+          <View pointerEvents="none" style={s.unit}>
+            <Text style={s.unitText}>{unit}</Text>
+          </View>
+        ) : null}
+      </View>
+      {error ? <Text style={[s.muted, { marginTop: 6, color: colors.danger }]}>{error}</Text> : help ? <Text style={[s.muted, { marginTop: 6 }]}>{help}</Text> : null}
+    </View>
+  );
+}
+
+// 고르는 칸(연결할 책 등): 입력칸과 같은 모양, 누르면 고르는 시트가 열린다
+export function SelectField({ label, value, placeholder, sub, onPress }: { label: string; value?: string; placeholder: string; sub?: string; onPress: () => void }) {
+  const { name, tag } = splitLabel(label);
+  return (
+    <View style={s.field}>
+      <LabelRow name={name} tag={tag} />
       <Pressable onPress={onPress} accessibilityRole="button" accessibilityLabel={`${label}, ${value ?? placeholder}`} style={({ pressed }) => [s.select, pressed && { borderColor: colors.border }]}>
         <View style={{ flex: 1 }}>
           <Text style={[type.input, { color: value ? colors.ink : colors.inkFaint }]} numberOfLines={2}>
             {value ?? placeholder}
           </Text>
-          {sub ? <Text style={[type.caption, { marginTop: 2, color: colors.ink }]} numberOfLines={1}>{sub}</Text> : null}
+          {sub ? <Text style={[type.caption, { marginTop: 2 }]} numberOfLines={1}>{sub}</Text> : null}
         </View>
         <ChevronRight size={20} color={colors.inkSoft} strokeWidth={icon.stroke} />
       </Pressable>
@@ -300,7 +335,7 @@ export function Notice({ children, tone = 'info', style }: { children: ReactNode
 export function Empty({ title, body, action, onAction }: { title: string; body?: string; action?: string; onAction?: () => void }) {
   return (
     <View style={{ alignItems: 'center', paddingVertical: 48, gap: 10 }}>
-      <Text style={[type.heading, { textAlign: 'center' }]}>{title}</Text>
+      <Text style={[type.heading, { fontSize: 18, textAlign: 'center' }]}>{title}</Text>
       {body ? <Text style={[type.sub, { textAlign: 'center' }]}>{body}</Text> : null}
       {action && onAction ? <Btn label={action} onPress={onAction} style={{ marginTop: 10, minWidth: 180 }} /> : null}
     </View>
@@ -414,6 +449,25 @@ export function ListItem({
   );
 }
 
+// 고르게 나눈 탭(서랍 시안): 칸마다 같은 폭, 고른 칸은 갈색 굵은 글자 + 짧은 갈색 밑줄. 탭 아래 구분선은 없다.
+export function Tabs<T extends string>({ items, value, onChange, style }: { items: readonly { id: T; label: string }[]; value: T; onChange: (id: T) => void; style?: StyleProp<ViewStyle> }) {
+  return (
+    <View style={[s.tabs, style]} accessibilityRole="tablist">
+      {items.map((it) => {
+        const on = it.id === value;
+        return (
+          <Pressable key={it.id} onPress={() => onChange(it.id)} style={s.tab} accessibilityRole="tab" accessibilityState={{ selected: on }}>
+            <Text style={[s.tabText, on && s.tabTextOn]} numberOfLines={1}>
+              {it.label}
+            </Text>
+            <View style={[s.tabBar, !on && { backgroundColor: 'transparent' }]} />
+          </Pressable>
+        );
+      })}
+    </View>
+  );
+}
+
 // 목록 묶음: 줄 사이에만 얇은 구분선(마지막 줄 아래는 없음)
 export function ListGroup({ children, style }: { children: ReactNode; style?: StyleProp<ViewStyle> }) {
   const items = Children.toArray(children).filter(isValidElement);
@@ -491,18 +545,30 @@ export const s = StyleSheet.create({
   titleCenter: { position: 'absolute', left: 64, right: 64, top: 4, bottom: 0, alignItems: 'center', justifyContent: 'center' },
   back: { width: space.touch, height: space.touch, alignItems: 'center', justifyContent: 'center', marginLeft: 8 },
   right: { flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-end', minWidth: space.touch, marginRight: 10 },
-  footer: { paddingHorizontal: space.page, paddingTop: 10, backgroundColor: colors.bg },
+  footer: { paddingHorizontal: space.page - 4, paddingTop: 12, backgroundColor: colors.bg }, // 시안: 버튼은 입력칸보다 좌우로 조금 넓다(19~20)
   muted: { ...type.sub },
-  btn: { minHeight: 52, borderRadius: shape.button, borderWidth: shape.border, borderColor: colors.border, paddingHorizontal: 18, paddingVertical: 12, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, backgroundColor: 'transparent' },
+  btn: { minHeight: 46, borderRadius: shape.button, borderWidth: shape.border, borderColor: colors.border, paddingHorizontal: 18, paddingVertical: 12, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, backgroundColor: 'transparent' },
   btnSmall: { minHeight: 40, paddingVertical: 8, paddingHorizontal: 14, borderRadius: shape.input },
   btnText: { ...type.button, flexShrink: 1, textAlign: 'center' },
-  label: { ...type.label, marginBottom: 8 },
-  input: { ...type.input, minHeight: 50, borderRadius: shape.input, borderWidth: shape.border, borderColor: colors.input, backgroundColor: colors.input, paddingHorizontal: 14, paddingVertical: 12 },
-  inputMulti: { minHeight: 110, textAlignVertical: 'top', lineHeight: 24 },
+  field: { marginBottom: 26 }, // 갈피 수정 시안: 칸 아래 → 다음 이름 글자 위 약 30
+  labelRow: { flexDirection: 'row', alignItems: 'baseline', gap: 8, marginBottom: 7 },
+  label: type.label,
+  labelTag: { ...type.caption, color: colors.inkSoft },
+  unit: { position: 'absolute', right: 16, top: 0, bottom: 0, justifyContent: 'center' },
+  unitText: { ...type.input, color: colors.inkSoft },
+  input: { ...type.input, minHeight: 52, borderRadius: shape.input, borderWidth: shape.border, borderColor: colors.input, backgroundColor: colors.input, paddingHorizontal: 16, paddingVertical: 13 },
+  inputMulti: { minHeight: 110, textAlignVertical: 'top', lineHeight: 25, paddingTop: 14 },
   inputFocus: { borderColor: colors.accent },
-  select: { minHeight: 50, borderRadius: shape.input, borderWidth: shape.border, borderColor: colors.input, backgroundColor: colors.input, paddingHorizontal: 14, paddingVertical: 12, flexDirection: 'row', alignItems: 'center', gap: 8 },
-  search: { minHeight: 50, borderRadius: shape.input, backgroundColor: colors.input, flexDirection: 'row', alignItems: 'center', paddingRight: 2 },
-  searchIcon: { width: space.touch, minHeight: 48, alignItems: 'center', justifyContent: 'center' },
+  select: { minHeight: 52, borderRadius: shape.input, borderWidth: shape.border, borderColor: colors.input, backgroundColor: colors.input, paddingHorizontal: 16, paddingVertical: 13, flexDirection: 'row', alignItems: 'center', gap: 8 },
+  // 검색칸(서랍·책 추가 시안): 높이 44~46, 모서리 약 12
+  search: { minHeight: 46, borderRadius: 12, backgroundColor: colors.input, flexDirection: 'row', alignItems: 'center', paddingRight: 2 },
+  searchIcon: { width: space.touch + 4, minHeight: 46, alignItems: 'center', justifyContent: 'center' },
+  titleNote: { fontFamily: type.sub.fontFamily, color: colors.inkSoft },
+  tabs: { flexDirection: 'row' },
+  tab: { flex: 1, alignItems: 'center', paddingTop: 4, minHeight: space.touch },
+  tabText: { ...type.row, fontSize: 14, lineHeight: 20, color: colors.inkSoft },
+  tabTextOn: { fontFamily: type.button.fontFamily, color: colors.accent },
+  tabBar: { width: 32, height: 3, borderRadius: 2, backgroundColor: colors.accent, marginTop: 8 },
   searchInput: { ...type.input, flex: 1, paddingVertical: 12 },
   clear: { width: 22, height: 22, borderRadius: 11, backgroundColor: colors.inkFaint, alignItems: 'center', justifyContent: 'center' },
   chip: { minHeight: 38, paddingVertical: 8, borderRadius: shape.pill, borderWidth: shape.border, borderColor: colors.border, paddingHorizontal: 15, flexDirection: 'row', alignItems: 'center', gap: 6 },

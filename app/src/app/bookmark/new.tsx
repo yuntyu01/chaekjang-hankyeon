@@ -89,15 +89,10 @@ export default function NewBookmark() {
           {msg ? <Muted style={{ marginTop: 8 }}>{msg}</Muted> : null}
         </View>
       ) : null}
-      <Field label={isPhoto ? '옮겨 적기 (선택, 검색에 쓰여요)' : '문장'} value={text} onChangeText={setText} placeholder={isPhoto ? '사진 속 문장을 적어 두면 찾기 쉬워요' : '마음에 남은 문장을 옮겨 적어 주세요'} multiline style={{ fontFamily: fonts.serif, fontSize: 17, lineHeight: 28, minHeight: isPhoto ? 96 : 150 }} />
-      <Row style={{ flexWrap: 'nowrap', alignItems: 'flex-start' }} gap={10}>
-        <View style={{ width: 116 }}>
-          <Field label="쪽수 (선택)" value={page} onChangeText={setPage} keyboardType="number-pad" />
-        </View>
-        <View style={{ flex: 1 }}>
-          <Field label="한 줄 메모 (선택)" value={memo} onChangeText={setMemo} hint="공유 이미지에는 넣지 않아요" />
-        </View>
-      </Row>
+      <Field label={isPhoto ? '옮겨 적기 (선택, 검색에 쓰여요)' : '문장'} value={text} onChangeText={setText} placeholder={isPhoto ? '사진 속 문장을 적어 두면 찾기 쉬워요' : '마음에 남은 문장을 옮겨 적어 주세요'} multiline style={{ fontFamily: fonts.serif, fontSize: 16, lineHeight: 26, minHeight: isPhoto ? 120 : 190 }} />
+      {/* 갈피 수정 시안과 같은 칸: 쪽수는 꽉 찬 칸에 '쪽', 메모는 두 줄 높이 */}
+      <Field label="쪽수 (선택)" unit="쪽" value={page} onChangeText={setPage} keyboardType="number-pad" />
+      <Field label="한 줄 메모 (선택)" value={memo} onChangeText={setMemo} placeholder="공유 이미지에는 넣지 않아요" multiline submitBehavior="blurAndSubmit" returnKeyType="done" style={{ minHeight: 80 }} />
 
       {isPhoto ? null : <>
       <Text style={[type.label, { marginTop: space.tight }]}>사진으로 가져오기</Text>
