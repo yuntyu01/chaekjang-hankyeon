@@ -15,7 +15,8 @@ import { PaperBackground } from '@/ui/PaperBackground';
 import { LoadingScreen } from '@/ui/LoadingScreen';
 import { colors } from '@/ui/theme';
 
-// 홈 머리글의 작고 둥근 고딕(나눔스퀘어라운드, assets/fonts/README.md)
+// 화면 UI 글꼴: 나눔스퀘어라운드 R·B(본문·제목), EB(홈 머리글). assets/fonts/README.md
+const NanumSquareRoundR = require('../../assets/fonts/NanumSquareRoundR.ttf');
 const NanumSquareRoundEB = require('../../assets/fonts/NanumSquareRoundEB.ttf');
 const NanumSquareRoundB = require('../../assets/fonts/NanumSquareRoundB.ttf');
 const ReadingSerif = require('../../assets/fonts/NotoSerifKR-Regular.otf');
@@ -26,7 +27,7 @@ bootMark('js-layout-module');
 void SplashScreen.preventAutoHideAsync();
 
 export default function RootLayout() {
-  const [loaded, error] = useFonts({ GowunBatang_400Regular, GowunBatang_700Bold, NanumSquareRoundEB, NanumSquareRoundB, ReadingSerif, ReadingSerifMedium, ReadingSerifSemiBold });
+  const [loaded, error] = useFonts({ GowunBatang_400Regular, GowunBatang_700Bold, NanumSquareRoundR, NanumSquareRoundEB, NanumSquareRoundB, ReadingSerif, ReadingSerifMedium, ReadingSerifSemiBold });
   const [booted, setBooted] = useState(false);
   const [loadingVisible, setLoadingVisible] = useState(true);
   const finishLoading = useCallback(() => setLoadingVisible(false), []);
