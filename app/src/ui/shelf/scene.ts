@@ -87,6 +87,34 @@ export function lowered(b: Book3, dy: number): Book3 {
   return dy ? { ...b, t: { x: b.t.x, y: b.t.y - dy, z: b.t.z } } : b;
 }
 
+// 줄 캔버스는 저마다 자기 판 윗면을 기준으로 같은 눈높이에서 본다(세 줄이 같은 각으로 보인다, 의도한 단순화).
+// 맨 윗줄 좌표로 내린 책(lowered)을 그 줄 캔버스와 똑같이 그리려면 눈도 같은 dy만큼 내린다.
+export function camWithDy(cam: Cam, dy: number): Cam {
+  'worklet';
+  return dy && cam.eye ? { ...cam, eye: { ...cam.eye, y: cam.eye.y - dy } } : cam;
+}
+
+// 맨 윗줄 좌표의 책(줄 사이로 옮겨 가는 중일 수 있다)을 그릴 눈의 dy: 책 바닥 높이가 어느 줄 판 윗면 위에 있으면 그 줄의 dy(그 줄 캔버스와
+// 똑같이 그린다), 두 줄 사이면 판 윗면 높이 사이로 이어서 바꾼다(줄을 건너는 동안 눈이 튀지 않게).
+export function eyeDyAt(geo: SceneGeo, b: Book3): number {
+  'worklet';
+  const rows = geo.rows;
+  if (!rows.length) return 0;
+  let lo = Infinity;
+  for (const c of corners(b)) lo = Math.min(lo, c.y);
+  // 판 윗면(맨 윗줄 좌표) = -dy. 위에서 아래로(dy 오름차순) 놓여 있다
+  if (lo >= -rows[0].dy) return rows[0].dy;
+  for (let i = 0; i + 1 < rows.length; i++) {
+    const a = -rows[i].dy;
+    const c = -rows[i + 1].dy;
+    if (lo >= c) {
+      const u = a === c ? 0 : (lo - c) / (a - c);
+      return rows[i + 1].dy + (rows[i].dy - rows[i + 1].dy) * u;
+    }
+  }
+  return rows[rows.length - 1].dy;
+}
+
 // 줄 캔버스에 실제로 올라간 책(책 id → 올라간 줄들). 줄 캔버스의 책이 첫 그림을 낸 뒤 표시된다(ShelfMotion RowBook).
 // 한 책이 여러 줄에 올라가 있을 수 있다: 끄는 책은 손가락이 지나간 줄에 미리 올려 둔다(그 줄의 트랙이 생기면 바로 그 줄이 그린다).
 // 다른 줄로 막 옮겨 간 책은 새 줄 캔버스에 올라가기 전까지 이동 캔버스가 계속 그린다(캔버스에 책을 올리는 일은 JS에서 늦게 끝난다).
@@ -242,7 +270,8 @@ export function frontOccluders(list: SceneMotion[], geo: SceneGeo, cam: Cam, she
     }
   }
   if (!B) return out;
-  const bb = screenBox(B, cam);
+  // 옮겨 가는 책은 이동 캔버스가 책 높이에 맞춘 눈으로, 다른 책·판은 제 줄 캔버스의 눈으로 그린다(화면 상자도 같은 눈으로 잰다)
+  const bb = screenBox(B, camWithDy(cam, eyeDyAt(geo, B)));
   for (const row of geo.rows) {
     const aff = rowPx(geo, row);
     for (const e of list) {
@@ -254,7 +283,7 @@ export function frontOccluders(list: SceneMotion[], geo: SceneGeo, cam: Cam, she
         const b = bookAt(tracks[k], t);
         if (outsideRow(b, row.space) && !(transit && transit[k])) continue;
         const L = lowered(b, row.dy);
-        const lb = screenBox(L, cam);
+        const lb = screenBox(L, camWithDy(cam, row.dy));
         const ribbon = ribbons?.[k];
         const up = ribbon ? ribbon.out - ribbon.y + 2 : 0;
         if (lb.x1 < bb.x0 - 0.5 || bb.x1 < lb.x0 - 0.5 || lb.y1 + up < bb.y0 - 0.5 || bb.y1 < lb.y0 - 0.5) continue;
@@ -265,7 +294,7 @@ export function frontOccluders(list: SceneMotion[], geo: SceneGeo, cam: Cam, she
     }
     const pb = plankBody(row.shelfId, 0);
     const PL = lowered(pb, row.dy);
-    const pbb = screenBox(PL, cam);
+    const pbb = screenBox(PL, camWithDy(cam, row.dy));
     if (pbb.x1 < bb.x0 - 0.5 || bb.x1 < pbb.x0 - 0.5 || pbb.y1 < bb.y0 - 0.5 || bb.y1 < pbb.y0 - 0.5) continue;
     if (frontOf(PL, B, cam) < 0) out.push(hull(corners(pb).map((q) => toPx(cam, aff, q))));
   }

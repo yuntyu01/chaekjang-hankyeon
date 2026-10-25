@@ -34,7 +34,7 @@ import { colors, fonts } from '@/ui/theme';
 
 import { rowAffine, type RowGeom, type ShelfMetrics } from './metrics';
 import { useRowPlanner } from './planner';
-import { bodyOf, frontOccluders, liveSV, locate, lowered, outsideDist, presentSV, sceneOrder, TRANSIT_ROW, transitLead, transitVisible, warmSV, type Motion, type SceneGeo, type SceneMotion } from './scene';
+import { bodyOf, camWithDy, eyeDyAt, frontOccluders, liveSV, locate, lowered, outsideDist, presentSV, sceneOrder, TRANSIT_ROW, transitLead, transitVisible, warmSV, type Motion, type SceneGeo, type SceneMotion } from './scene';
 import { GlowOf, makeStruct, occludersOf, RowBooks, structKeyOf, useFloorKey, useRestPoses, useRowBoxes, useShadePoses, useWallKey, Z_WALL, type CamSV, type Ghost, type RowStruct } from './ShelfMotion';
 import { FRONT_AREA, FRONT_KEY, plankOutlinePath, rowEnv, SHELF_CAST_EXTENT, ShelfBoard, ShelfWall, TOP_AREA, TOP_KEY, UNDER_ENV, wallArea } from './ShelfPlank';
 
@@ -300,7 +300,8 @@ function TransitBook({ id, book, dims, frozen, motions, geo, cam, px0, shared, g
     return at ? lowered(at.b, at.row.dy) : frozen;
   });
   const frozenCam = useMemo(() => ({ ...cam.value }), []); // eslint-disable-line react-hooks/exhaustive-deps
-  const camT = useDerivedValue(() => (vis.value ? cam.value : frozenCam));
+  // 맨 윗줄 좌표로 내린 책을 그 높이의 줄 캔버스와 같은 눈으로 그린다(줄마다 눈이 따로라, 맨 윗줄 눈으로 그리면 아래 줄 책이 어긋난다)
+  const camT = useDerivedValue(() => (vis.value ? camWithDy(cam.value, eyeDyAt(geo.value, state.value)) : frozenCam));
   const clip = useDerivedValue(() => {
     if (!vis.value) return HIDE_ALL;
     const at = locate(motions, geo.value, id);
