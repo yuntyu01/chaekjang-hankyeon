@@ -2,17 +2,16 @@
 // 설정·목록은 카드 대신 여백과 구분선으로 나누고, 입력창처럼 구분이 필요한 곳만 표면색을 깐다.
 import { router } from 'expo-router';
 import { ChevronLeft, ChevronRight, Search, Star, X } from '@/ui/icons';
-import { Children, Fragment, isValidElement, useEffect, useState, type ReactNode } from 'react';
+import { Children, Fragment, isValidElement, useEffect, useRef, useState, type ReactNode } from 'react';
 import {
   ActivityIndicator,
+  Animated,
   Image,
   KeyboardAvoidingView,
   Modal,
-  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
-  Switch,
   Text,
   TextInput,
   View,
@@ -99,7 +98,9 @@ export function Screen({
           {right ? <View style={[s.right, { marginRight: -10 }]}>{right}</View> : null}
         </View>
       )}
-      <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+      {/* 안드로이드도 padding: 화면 끝까지 그리는(edge-to-edge) 창은 키보드가 열려도 줄지 않아 아래 저장 버튼이 가려진다.
+          창이 줄어드는 환경이면 겹치는 높이가 0이라 두 번 비키지 않는다. */}
+      <KeyboardAvoidingView style={{ flex: 1 }} behavior="padding">
         {body}
         {footer ? (
           <View onLayout={(e) => miniTimerStore.setBottom(e.nativeEvent.layout.height)} style={[s.footer, { paddingBottom: 12 + insets.bottom }]}>
@@ -114,7 +115,7 @@ export function Screen({
 // 구역 이름(시안의 '독서 환경'·'내 기록'): 작은 회갈색 글자, 위로 넉넉한 간격
 export function H2({ children, style, first }: { children: ReactNode; style?: StyleProp<ViewStyle>; first?: boolean }) {
   return (
-    <View style={[{ marginTop: first ? space.item : space.section, marginBottom: space.tight + 2 }, style]}>
+    <View style={[{ marginTop: first ? space.group + 8 : space.section, marginBottom: space.tight + 2 }, style]}>
       <Text style={type.section} accessibilityRole="header">
         {children}
       </Text>
@@ -345,17 +346,26 @@ export function Stars({ value, onChange, size = 24, color = colors.star }: { val
   );
 }
 
-// 켜고 끄는 스위치(시안: 갈색 바탕 + 흰 손잡이)
+// 켜고 끄는 스위치(시안: 갈색 둥근 바탕 안에 흰 손잡이). 안드로이드 기본 Switch는 손잡이가 바탕 밖으로 커서 시안과 달라 직접 그린다.
+const TRACK_W = 50;
+const TRACK_H = 30;
+const KNOB = 24;
 export function Toggle({ value, onValueChange, label }: { value: boolean; onValueChange: (v: boolean) => void; label: string }) {
+  const x = useRef(new Animated.Value(value ? 1 : 0)).current;
+  useEffect(() => {
+    Animated.timing(x, { toValue: value ? 1 : 0, duration: 160, useNativeDriver: false }).start();
+  }, [value, x]);
   return (
-    <Switch
-      value={value}
-      onValueChange={onValueChange}
-      trackColor={{ false: colors.border, true: colors.accent }}
-      thumbColor={colors.raised}
-      ios_backgroundColor={colors.border}
+    <Pressable
+      onPress={() => onValueChange(!value)}
+      hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+      accessibilityRole="switch"
       accessibilityLabel={label}
-    />
+      accessibilityState={{ checked: value }}>
+      <Animated.View style={[s.track, { backgroundColor: x.interpolate({ inputRange: [0, 1], outputRange: [colors.border, colors.accent] }) }]}>
+        <Animated.View style={[s.knob, { transform: [{ translateX: x.interpolate({ inputRange: [0, 1], outputRange: [0, TRACK_W - KNOB - 6] }) }] }]} />
+      </Animated.View>
+    </Pressable>
   );
 }
 
@@ -391,7 +401,7 @@ export function ListItem({
       accessibilityState={selected !== undefined ? { selected } : undefined}
       accessibilityLabel={[label, sub, value].filter(Boolean).join(', ')}>
       {iconNode ? <View style={s.itemIcon}>{iconNode}</View> : null}
-      <View style={{ flex: 1, paddingVertical: sub ? 14 : 12 }}>
+      <View style={{ flex: 1, paddingVertical: sub ? 14 : 12, paddingRight: right || value || arrow ? 12 : 0 }}>
         <Text style={[type.row, danger && { color: colors.danger }]}>{label}</Text>
         {sub ? <Text style={[type.sub, { marginTop: 4 }]}>{sub}</Text> : null}
       </View>
@@ -508,6 +518,8 @@ export const s = StyleSheet.create({
   itemIcon: { width: 32, alignItems: 'flex-start' },
   itemValue: { ...type.sub, fontSize: 15, flexShrink: 1, textAlign: 'right', marginLeft: 12, maxWidth: '55%' },
   divider: { height: shape.hairline, backgroundColor: colors.line },
+  track: { width: TRACK_W, height: TRACK_H, borderRadius: TRACK_H / 2, padding: 3, justifyContent: 'center' },
+  knob: { width: KNOB, height: KNOB, borderRadius: KNOB / 2, backgroundColor: colors.raised, shadowColor: '#3B2A24', shadowOpacity: 0.18, shadowRadius: 2, shadowOffset: { width: 0, height: 1 }, elevation: 2 },
   sheet: { backgroundColor: colors.raised, borderTopLeftRadius: shape.sheet, borderTopRightRadius: shape.sheet, paddingHorizontal: space.page, paddingTop: 10 },
   handle: { width: 36, height: 4, borderRadius: 2, backgroundColor: colors.line, alignSelf: 'center', marginBottom: 14 },
   dialogWrap: { flex: 1, backgroundColor: colors.scrim, justifyContent: 'center', padding: space.page },

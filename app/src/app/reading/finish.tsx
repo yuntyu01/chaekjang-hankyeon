@@ -76,7 +76,7 @@ export default function Finish() {
       </View>
       <SelectField label="연결된 책" value={e?.title} placeholder="책 연결하기 (선택)" onPress={() => setPicking(true)} />
       <Row style={{ flexWrap: 'nowrap', alignItems: 'flex-start' }} gap={10}>
-        <View style={{ width: 136 }}>
+        <View style={{ width: 150 }}>
           <Field label="읽은 쪽수까지 (선택)" value={pages} onChangeText={setPages} keyboardType="number-pad" placeholder={b?.currentPage ? `지난번 ${b.currentPage}쪽` : '쪽'} />
         </View>
         <View style={{ flex: 1 }}>

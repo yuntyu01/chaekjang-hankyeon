@@ -95,7 +95,7 @@ export default function NewBookmark() {
           <Field label="쪽수 (선택)" value={page} onChangeText={setPage} keyboardType="number-pad" />
         </View>
         <View style={{ flex: 1 }}>
-          <Field label="한 줄 메모 (선택)" value={memo} onChangeText={setMemo} placeholder="공유 이미지에는 넣지 않아요" />
+          <Field label="한 줄 메모 (선택)" value={memo} onChangeText={setMemo} hint="공유 이미지에는 넣지 않아요" />
         </View>
       </Row>
 
