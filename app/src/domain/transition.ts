@@ -31,6 +31,9 @@ export type Seg = {
   b1: number;
   z0: number;
   z1: number;
+  // 조각 안의 진행 곡선. 없거나 0 = 고르게(경로 전체 감속은 줄 시계가 맡는다), 1 = 점점 빨라지다 닿는 순간 멈춤(중력으로 넘어짐),
+  // 2 = 천천히 출발해 천천히 멈춤(넘어지는 책과 같은 경로에서 손이 하는 움직임: 줄 시계가 고르게 흐를 때). gravityPlan이 정한다.
+  e?: number;
 };
 // 이어 주기: 경로를 적용하는 순간 실제로 보이던 자세와 경로 출발점의 차이(위치 DU·각도 °). 진행 OFF_T까지 줄어 없어진다.
 // 경로는 JS가 JS 쪽 진행 어림으로 짠다. UI는 짜서 보내는 사이에도 움직이고(긴 프레임이면 더) 경로 출발 시각도 프레임에 따라 어긋나,
@@ -39,7 +42,8 @@ export type Off = { x: number; y: number; z: number; roll: number; yaw: number; 
 export const OFF_T = 0.4;
 // rest: 움직이지 않는 트랙의 자세(늘 같은 객체). bookAt이 그대로 돌려줘서, 이 책을 읽는 화면 계산이 매 프레임 다시 돌지 않는다.
 export type Track = { id: string; dims: Book3['dims']; segs: Seg[]; moving: boolean; rest?: Book3; off?: Off };
-export type Plan = { tracks: Track[]; strategy: string };
+// fall: 넘어지는 조각이 있어 줄 시계를 고르게 돌린다(gravityPlan)
+export type Plan = { tracks: Track[]; strategy: string; fall?: boolean };
 
 const ZERO = { x: 0, y: 0, z: 0 };
 
@@ -74,7 +78,8 @@ function segPose(tr: Track, t: number): Book3 {
     s = segs[i];
     if (t <= segs[i].t1) break;
   }
-  const u = s.t1 > s.t0 ? clamp01((t - s.t0) / (s.t1 - s.t0)) : t >= s.t1 ? 1 : 0;
+  const lin = s.t1 > s.t0 ? clamp01((t - s.t0) / (s.t1 - s.t0)) : t >= s.t1 ? 1 : 0;
+  const u = s.e === 1 ? lin * lin * lin : s.e === 2 ? (lin < 0.5 ? 4 * lin * lin * lin : 1 - Math.pow(-2 * lin + 2, 3) / 2) : lin;
   const roll = s.r0 + (s.r1 - s.r0) * u;
   const yaw = s.y0 + (s.y1 - s.y0) * u;
   const spin = s.sp0 + (s.sp1 - s.sp0) * u;
@@ -530,6 +535,120 @@ export function firstOverlap(tracks: Track[], bounds?: { min: number; max: numbe
       }
     }
   return null;
+}
+
+// ---------- 넘어지는 동작 ----------
+// 받침에 닿은 점을 그대로 둔 채 기울기만 바뀌며 무게중심이 내내 내려가는 조각은 중력이 하는 움직임이다: 멈춘 자세에서 점점 빨라지다가
+// 닿는 순간 멈춘다(e 1). 무게중심을 한 번이라도 들어 올리거나(세우기, 똑바로 선 책을 기울이기) 받침에서 떨어지거나 멀리 옮기는 조각은
+// 손이 하는 움직임이라 천천히 출발해 천천히 멈춘다(e 2). 넘어지는 조각이 하나라도 있으면 줄 시계를 고르게(linear) 돌리고 감속은
+// 조각마다 맡긴다. 조각마다 시간을 다르게 쓰면 책끼리 지나가는 때가 바뀌므로 다시 충돌 검사하고, 겹치면 null(원래 경로 그대로).
+const comY = (b: Book3) => {
+  let y = 0;
+  for (const c of corners(b)) y += c.y;
+  return y / 8;
+};
+const comXZ = (b: Book3) => {
+  let x = 0;
+  let z = 0;
+  for (const c of corners(b)) {
+    x += c.x;
+    z += c.z;
+  }
+  return { x: x / 8, z: z / 8 };
+};
+
+export function fallsUnderGravity(tr: Track, s: Seg): boolean {
+  if (!(s.t1 > s.t0)) return false;
+  if (Math.abs(s.y1 - s.y0) > 0.01 || Math.abs(s.sp1 - s.sp0) > 0.01) return false;
+  if (Math.abs(s.r1 - s.r0) < 0.05 && Math.abs(s.pi1 - s.pi0) < 0.05) return false;
+  const one: Track = { id: tr.id, dims: tr.dims, segs: [{ ...s, e: 0 }], moving: true };
+  const at = (u: number) => segPose(one, s.t0 + (s.t1 - s.t0) * u);
+  const b0 = at(0);
+  const foot = lowest(b0);
+  const c0 = comXZ(b0);
+  const reach = Math.max(tr.dims.T, tr.dims.H);
+  let prev = comY(b0);
+  for (let k = 1; k <= 12; k++) {
+    const b = at(k / 12);
+    if (Math.abs(lowest(b) - foot) > 0.5) return false; // 받침에서 떨어지거나 파고든다
+    const c = comXZ(b);
+    if (Math.abs(c.x - c0.x) > reach || Math.abs(c.z - c0.z) > 1) return false; // 넘어지는 것만으로는 갈 수 없는 곳
+    const y = comY(b);
+    if (y > prev + 1e-6) return false;
+    prev = y;
+  }
+  return prev < comY(b0) - 1e-3;
+}
+
+export function gravityPlan(plan: Plan, bounds?: { min: number; max: number }): Plan | null {
+  let any = false;
+  const tracks = plan.tracks.map((tr) => {
+    if (!tr.moving) return tr;
+    const segs = tr.segs.map((s) => {
+      const still = same(segPose({ ...tr, segs: [{ ...s, e: 0 }] }, s.t0), segPose({ ...tr, segs: [{ ...s, e: 0 }] }, s.t1));
+      if (still) return s;
+      const g = fallsUnderGravity(tr, s);
+      if (g) any = true;
+      return { ...s, e: g ? 1 : 2 };
+    });
+    return { ...tr, segs };
+  });
+  if (!any || firstOverlap(tracks, bounds)) return null;
+  return { tracks, strategy: plan.strategy, fall: true };
+}
+
+// ---------- 이어 주기도 충돌 검사 안에 ----------
+// 이어 주기(off)는 UI가 적용하는 순간에 더하므로 계획 때 한 충돌 검사 밖이다. 더한 앞부분(t < OFF_T)에서 두 책이 겹치면(원래 경로로는
+// 안 겹치는데) 그 차이를 반씩 줄이고, 세 번 줄여도 겹치면 이어 주기를 버린다(한 프레임 조금 튀는 쪽이 책끼리 파고드는 것보다 낫다).
+// base: 이어 주기를 더하기 전 트랙들(같은 열쇠).
+const OFF_CHECKS = 8;
+function scaledOff(o: Off, k: number): Off {
+  'worklet';
+  return { x: o.x * k, y: o.y * k, z: o.z * k, roll: o.roll * k, yaw: o.yaw * k, spin: o.spin * k, pitch: o.pitch * k };
+}
+
+export function safeOffsets(rec: Record<string, Track>, base: Record<string, Track>): Record<string, Track> {
+  'worklet';
+  const ids = Object.keys(rec);
+  let has = false;
+  for (const id of ids) if (rec[id].off) has = true;
+  if (!has) return rec;
+  let out = rec;
+  for (let round = 0; round < 4; round++) {
+    let bad: Record<string, boolean> | null = null;
+    for (let k = 0; k < OFF_CHECKS; k++) {
+      const t = (OFF_T * k) / OFF_CHECKS;
+      const bs: Book3[] = [];
+      const rs: { lo: number; hi: number }[] = [];
+      for (const id of ids) {
+        const b = bookAt(out[id], t);
+        bs.push(b);
+        rs.push(xRange(b));
+      }
+      for (let i = 0; i < ids.length; i++)
+        for (let j = i + 1; j < ids.length; j++) {
+          const oi = out[ids[i]].off;
+          const oj = out[ids[j]].off;
+          if (!oi && !oj) continue;
+          if (rs[i].hi < rs[j].lo - 1 || rs[j].hi < rs[i].lo - 1) continue;
+          if (gap(bs[i], bs[j]) >= -MARGIN) continue;
+          if (gap(bookAt(base[ids[i]] ?? out[ids[i]], t), bookAt(base[ids[j]] ?? out[ids[j]], t)) < -MARGIN) continue; // 원래 경로부터 맞닿게 짠 곳
+          if (!bad) bad = {};
+          if (oi) bad[ids[i]] = true;
+          if (oj) bad[ids[j]] = true;
+        }
+    }
+    if (!bad) return out;
+    const next: Record<string, Track> = {};
+    for (const id of ids) {
+      const tr = out[id];
+      if (!bad[id] || !tr.off) next[id] = tr;
+      else if (round < 3) next[id] = { id: tr.id, dims: tr.dims, segs: tr.segs, moving: true, off: scaledOff(tr.off, 0.5) };
+      else next[id] = base[id] ?? { id: tr.id, dims: tr.dims, segs: tr.segs, moving: tr.moving };
+    }
+    out = next;
+  }
+  return out;
 }
 
 // 경로 계획: 후보 경로를 차례로 검사해 처음 통과하는 것을 쓴다. 시간 안에 못 찾거나 모두 막히면 앞으로 빼서 옮기는 경로로

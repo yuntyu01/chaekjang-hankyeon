@@ -13,7 +13,7 @@ import { scheduleOnRN, scheduleOnUI } from 'react-native-worklets';
 import { fromPlaced, type Book3 } from '@/domain/book3';
 import { SHELF_THICK } from '@/domain/geometry';
 import { PLANK_BOUNDS, type BookFrame } from '@/domain/shelf-scene';
-import { awayShift, awayTrack, bookAt, holdTrack, offBetween, planTransition, shiftTrack, withOff, type Off, type Track } from '@/domain/transition';
+import { awayShift, awayTrack, bookAt, gravityPlan, holdTrack, offBetween, planTransition, safeOffsets, shiftTrack, withOff, type Off, type Track } from '@/domain/transition';
 import { ANIM, TL, tl, tlOn, tlu } from '@/ui/perf';
 
 import { awayAt, easeOf, OUT_SHADE_MAX, outsideDist, outsideRow, presentSV, type AwayEntry, type Aways, type Motion, type Tracks } from './scene';
@@ -25,8 +25,9 @@ export const PULL_MS = 560; // 앞으로 빼서 옮기기(다른 줄로, 막혀�
 // ---------- JS 쪽 사본 ----------
 // target: 트랙이 향하는 배치(프레임 키). 같은 배치로 다시 짜지 않고, 조작이 끝나면 확정 배치로 맞췄는지 여기로 안다.
 // ease: 멈춰 있다가 떠나면 천천히 출발(inOut), 가는 도중 목표가 바뀌면 지금 속도를 잃지 않게 바로 출발(out).
+//   넘어지는 책이 있는 경로는 줄 시계를 고르게(lin) 돌리고 감속은 경로 조각마다 맡긴다(transition gravityPlan).
 // start: UI에서 실제로 움직이기 시작한 시각(적용을 미뤘으면 적용될 때까지 Infinity = 아직 출발 전).
-type Ease = 'inOut' | 'out';
+type Ease = 'inOut' | 'out' | 'lin';
 type Mirror = { tracks: Tracks; start: number; dur: number; ease: Ease; target: string | null; key: number };
 const mirrors = new WeakMap<Motion, Mirror>();
 
@@ -45,7 +46,7 @@ export function mirrorOf(m: Motion): Mirror {
 function progress(mr: Mirror) {
   if (!mr.dur) return 1;
   const u = Math.max(0, Math.min(1, (Date.now() - mr.start) / mr.dur));
-  return mr.ease === 'out' ? easeOutCubic(u) : easeInOutCubic(u);
+  return mr.ease === 'lin' ? u : mr.ease === 'out' ? easeOutCubic(u) : easeInOutCubic(u);
 }
 
 // 지금 움직이는 중인가(출발 전 = start Infinity는 아직 멈춰 있다: 그때 다시 짜면 천천히 출발한다)
@@ -72,6 +73,7 @@ type Apply = {
   animate: boolean;
   dur: number;
   out: boolean;
+  fall: boolean;
   key: number;
   space?: number;
   left?: Record<string, Book3>;
@@ -99,7 +101,7 @@ const awayRows = new Map<string, AwayRow[]>();
 // 돌지 않은 경로를 따라 앞서가 적용 순간 책이 튀지 않게)
 const openKeys = new Set<number>();
 
-export function queueApply(m: Motion, shelfId: string, rec: Tracks, animate: boolean, dur: number, target: string | null, waits: Wait[] = [], space?: number) {
+export function queueApply(m: Motion, shelfId: string, rec: Tracks, animate: boolean, dur: number, target: string | null, waits: Wait[] = [], space?: number, fall = false) {
   const mr = mirrorOf(m);
   const out = animate && moving(mr);
   const key = nextKey++;
@@ -110,12 +112,12 @@ export function queueApply(m: Motion, shelfId: string, rec: Tracks, animate: boo
   mr.tracks = rec;
   mr.start = Date.now();
   mr.dur = animate ? dur : 0;
-  mr.ease = out ? 'out' : 'inOut';
+  mr.ease = fall && animate ? 'lin' : out ? 'out' : 'inOut';
   mr.target = target;
   mr.key = key;
   byKey.set(key, m);
   batch = batch.filter((a) => a.shelfId !== shelfId);
-  batch.push({ m, shelfId, rec, animate, dur, out, key, space, left });
+  batch.push({ m, shelfId, rec, animate, dur, out, fall: fall && animate, key, space, left });
   batchWaits.push(...waits);
 }
 
@@ -268,6 +270,8 @@ function applyNow(list: Apply[], late = false, ups: AwayUpd[] = []) {
         rec[id] = withOff(nt, d);
         if (tlOn.value && offText(d)) log += ` ${id}@${a.shelfId}:${offText(d)}(t=${t.toFixed(3)})`;
       }
+      // 이어 주기를 더한 앞부분도 책끼리 겹치지 않게(겹치면 줄이거나 버린다)
+      if (rec !== a.rec) rec = safeOffsets(rec, a.rec);
     }
     recs.push(rec);
   }
@@ -316,7 +320,7 @@ function applyNow(list: Apply[], late = false, ups: AwayUpd[] = []) {
       const a = list[i];
       if (a.m.tracks.value !== recs[i]) continue;
       keys.push(a.key);
-      const ease = a.out ? Easing.out(Easing.cubic) : Easing.inOut(Easing.cubic);
+      const ease = a.fall ? Easing.linear : a.out ? Easing.out(Easing.cubic) : Easing.inOut(Easing.cubic);
       if (a.animate) a.m.t.value = withTiming(1, { duration: a.dur, easing: ease });
       if (tlOn.value && a.animate) {
         let ids = '';
@@ -453,7 +457,11 @@ export function planInto(m: Motion, shelfId: string, next: Book3[], target: stri
   const pull = plan.strategy === 'pull' || (!!arrive && next.some((b) => arrive![b.id]));
   const posing = /al|pull/.test(plan.strategy);
   const dur = (pull ? PULL_MS : posing ? POSE_MS : MOTION_MS) * ANIM.slow;
-  queueApply(m, shelfId, Object.fromEntries(plan.tracks.map((tr) => [tr.id, tr])), animate, dur, target, waits, opts.space);
+  // 넘어지는 책(받침을 잃음, 놓은 각이 넘어짐 한계 아래)은 점점 빨라지다 닿는 순간 멈춘다. 줄 사이로 옮기는 책·다른 줄에 남는 경로가
+  // 있는 책과 같은 경로면 남는 경로가 줄 시계 감속을 따라가므로 그대로 둔다.
+  const fall = animate && !pull && !next.some((b) => awayRows.has(b.id)) ? gravityPlan(plan, PLANK_BOUNDS) : null;
+  if (fall && TL.on) tl(`plan ${shelfId} fall`);
+  queueApply(m, shelfId, Object.fromEntries((fall ?? plan).tracks.map((tr) => [tr.id, tr])), animate, dur, target, waits, opts.space, !!fall);
 }
 
 const keyOf = (frames: BookFrame[]) => frames.map((f) => f.bookId + JSON.stringify(f.box)).join('|');
