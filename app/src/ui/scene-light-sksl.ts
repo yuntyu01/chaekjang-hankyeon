@@ -5,7 +5,7 @@
 //   lit: 구운 그림(tex)을 읽고 나머지(하늘·창빛 직접 몫, 둥근 모서리 법선, 반사광)를 화소마다. 곱하기·컬러 닷지 두 가지로 컴파일한다.
 import { EDGE_R, GROOVE, SPINE_CURVE } from '@/domain/book-parts';
 import { SHELF_DEPTH, SHELF_FRONT, SHELF_THICK, SHELF_X0, SHELF_X1 } from '@/domain/geometry';
-import { ALBEDO, BOX_MAX, BOX_VEC, DESIGN, ENV_COLS, ENV_NY, CAM, EREF, EXPOSURE, FAR, GAMMA, GRID_N, KEY_C, KEY_DIRS, L_ELEV, L_UNIT, RAD, SKY_C, TONE, TOUCH, type C3 } from '@/domain/light-model';
+import { ALBEDO, BOX_MAX, BOX_VEC, DESIGN, ENV_COLS, ENV_NY, CAM, EREF, EXPOSURE, FAR, GAMMA, GRID_N, KEY_BANDS, KEY_C, KEY_DIRS, L_ELEV, L_UNIT, RAD, SKY_C, TONE, TOUCH, type C3 } from '@/domain/light-model';
 import type { Affine, Cam, Vec3 } from '@/domain/camera';
 import { F0, light } from '@/ui/lighting';
 
@@ -168,23 +168,42 @@ function header() {
     if (v1 <= v0) return 0.0;
     return clamp((diskCum(v1, u0) - diskCum(v0, u0)) / PI, 0.0, 1.0);
   }
-  // 위 판 + 아래 판(가로는 판 범위, 원반 가운데 방위 LAZ 기준: light-model plankKeyBlocked)
+  // 원판에서 uA ≤ u ≤ uB, v0 ≤ v ≤ v1인 넓이 비율(light-model diskBand)
+  float diskBand(float uA, float uB, float v0, float v1) {
+    if (uB <= uA || v1 <= v0) return 0.0;
+    return max(0.0, diskBlocked(uA, v0, v1) - diskBlocked(uB, v0, v1));
+  }
+  // 판 하나(높이 yb ~ yt, 가로 X0 ~ X1, 앞 끝 ~ 벽인 상자)가 창빛 원반을 가리는 몫(light-model plankBlock):
+  // 원반을 앙각 띠로 나눠 띠마다 광선이 판 높이를 지나는 앞뒤 거리 s0 ~ s1에서 가로가 판 범위에 걸리는 방위 구간
+  const int KEY_BANDS = ${KEY_BANDS};
+  float plankBlock(float3 p, float yb, float yt, float zf) {
+    float a = yb - p.y;
+    float b = yt - p.y;
+    if (b <= 0.0 || zf <= 0.0) return 0.0;
+    float uMin = a <= 0.0 ? -2.0 : (atan(a, zf) - LELEV) / LRAD;
+    float k = 0.0;
+    for (int i = 0; i < KEY_BANDS; i++) {
+      float uA = -1.0 + 2.0 * float(i) / float(KEY_BANDS);
+      float uB = uA + 2.0 / float(KEY_BANDS);
+      float lo = max(uA, uMin);
+      if (lo >= uB) continue;
+      float tn = tan(LELEV + 0.5 * (lo + uB) * LRAD);
+      if (tn <= 1e-6) continue;
+      float s0 = max(1e-3, max(0.0, a) / tn);
+      float s1 = max(s0, min(zf, b / tn));
+      float t0 = min((X0 - p.x) / s0, (X0 - p.x) / s1);
+      float t1 = max((X1 - p.x) / s0, (X1 - p.x) / s1);
+      k += diskBand(lo, uB, (atan(t0) - LAZ) / LRAD, (atan(t1) - LAZ) / LRAD);
+    }
+    return min(1.0, k);
+  }
+  // 위 판(ceil ~ ceil + 두께) + 아래 판(floor − 두께 ~ floor)(light-model plankKeyBlocked)
   float plankKeyOf(float3 p) {
     if (env.x < 0.5) return 0.0;
-    float zf = max(0.001, p.z + FRONT);
-    float v0 = (atan(X0 - p.x, zf) - LAZ) / LRAD;
-    float v1 = (atan(X1 - p.x, zf) - LAZ) / LRAD;
+    float zf = p.z + FRONT;
     float k = 0.0;
-    if (env.z < FARV) {
-      float d = env.z - p.y;
-      k += diskBlocked(d <= 0.0 ? -2.0 : (atan(d, zf) - LELEV) / LRAD, v0, v1);
-    }
-    if (env.y > -FARV) {
-      float h = p.y - env.y;
-      // 판 끝 너머 판 두께 높이는 판 쪽 방향이 판 끝면에 막힌다(light-model keyBlockedBelow)
-      bool beyond = p.x < X0 || p.x > X1;
-      k += h <= 0.0 ? (beyond && h > -THICK ? diskBlocked(-2.0, v0, v1) : 0.0) : diskBlocked((LELEV + atan(h, zf)) / LRAD, v0, v1);
-    }
+    if (env.z < FARV) k += plankBlock(p, env.z, env.z + THICK, zf);
+    if (env.y > -FARV) k += plankBlock(p, env.y - THICK, env.y, zf);
     return min(1.0, k);
   }
   // 가림이 없을 때 받는 빛(light-model openE)

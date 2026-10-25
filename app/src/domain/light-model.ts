@@ -915,30 +915,49 @@ export function diskBlocked(u0: number, v0: number, v1: number) {
   if (v1 <= v0) return 0;
   return Math.max(0, Math.min(1, (diskCum(v1, u0) - diskCum(v0, u0)) / Math.PI));
 }
-// 위 판(점보다 d 위, 판 앞 끝까지 zf, 판 가로 범위 v0 ~ v1: 원반 반지름 단위 방위)이 가리는 몫. d ≤ 0(판 높이)이면 그 가로 범위 전체
-// (기본값 식은 워클릿에 잡히지 않으므로 본문에서 정한다)
-export function keyBlocked(d: number, zf: number, v0?: number, v1?: number) {
+// 원판에서 uA ≤ u ≤ uB, v0 ≤ v ≤ v1인 넓이 비율
+export function diskBand(uA: number, uB: number, v0: number, v1: number) {
   'worklet';
-  const u0 = d <= 0 ? -2 : (Math.atan2(d, Math.max(1e-3, zf)) - L_ELEV) / light.radius;
-  return diskBlocked(u0, v0 ?? -2, v1 ?? 2);
+  if (uB <= uA || v1 <= v0) return 0;
+  return Math.max(0, diskBlocked(uA, v0, v1) - diskBlocked(uB, v0, v1));
 }
-// 아래 판(점보다 h 아래)이 원반의 수평선 아래쪽을 가리는 몫. 판 앞면·판 아래(h ≤ 0, 판 범위 안)는 그 판의 그늘이 아니다.
-// 판 끝 너머 판 두께 높이(−SHELF_THICK < h ≤ 0, beyond)의 점은 판 쪽으로 가는 방향(그 가로 범위)이 판 끝면에 막힌다(위 판 d ≤ 0과 같은 규칙)
-export function keyBlockedBelow(h: number, zf: number, v0?: number, v1?: number, beyond?: boolean) {
+// 판 하나(높이 yb ~ yt, 가로 SHELF_X0 ~ SHELF_X1, 앞 끝 z = −SHELF_FRONT부터 벽까지인 상자)가 점 p에서 창빛 원반을 가리는 몫.
+// 광선(앙각 θ, 방위 φ, 작은 각)은 p에서 앞(−z)으로 s만큼 갈 때 높이 s·tanθ, 가로 s·tanφ만큼 간다. 판 높이 띠를 지나는 앞뒤 거리
+// s0 = max(0, yb − p.y)/tanθ ~ s1 = (yt − p.y)/tanθ(판 앞 끝 zf까지)에서 가로가 판 범위에 걸리면 판(아랫면·끝면)에 막힌다.
+// 원반을 앙각 띠 KEY_BANDS개로 나눠, 띠마다 막히는 방위 구간 [atan(t0), atan(t1)]과 '판 앞 끝을 넘기 전에 판 높이에 닿는' 앙각 범위
+// (tanθ ≥ (yb − p.y)/zf)의 넓이를 더한다. 판 아래·판 끝 근처·판 끝 너머(판 두께 높이에서 끝면에 막히는 쪽)가 한 식이다:
+// 판 끝의 그림자는 판 앞 모서리에서 시작하는 대각선이 된다(예전에는 가로 범위를 판 앞 끝 거리로만 재서 세로선이 되고 빛 방향 쪽으로 밀렸다).
+export const KEY_BANDS = 12;
+export function plankBlock(p: Vec3, yb: number, yt: number, zf: number) {
   'worklet';
-  if (h <= 0) return beyond && h > -SHELF_THICK ? diskBlocked(-2, v0 ?? -2, v1 ?? 2) : 0;
-  return diskBlocked((L_ELEV + Math.atan2(h, Math.max(1e-3, zf))) / light.radius, v0 ?? -2, v1 ?? 2);
+  const a = yb - p.y;
+  const b = yt - p.y;
+  if (b <= 0 || zf <= 0) return 0;
+  const uMin = a <= 0 ? -2 : (Math.atan2(a, zf) - L_ELEV) / light.radius;
+  let k = 0;
+  for (let i = 0; i < KEY_BANDS; i++) {
+    const uA = -1 + (2 * i) / KEY_BANDS;
+    const uB = uA + 2 / KEY_BANDS;
+    const lo = Math.max(uA, uMin);
+    if (lo >= uB) continue;
+    const tn = Math.tan(L_ELEV + ((lo + uB) / 2) * light.radius);
+    if (tn <= 1e-6) continue;
+    const s0 = Math.max(1e-3, Math.max(0, a) / tn);
+    const s1 = Math.max(s0, Math.min(zf, b / tn));
+    const t0 = Math.min((SHELF_X0 - p.x) / s0, (SHELF_X0 - p.x) / s1);
+    const t1 = Math.max((SHELF_X1 - p.x) / s0, (SHELF_X1 - p.x) / s1);
+    k += diskBand(lo, uB, (Math.atan(t0) - L_AZ) / light.radius, (Math.atan(t1) - L_AZ) / light.radius);
+  }
+  return Math.min(1, k);
 }
-// 둘레의 판이 점 p에서 창빛 원반을 가리는 몫: 위 판 + 아래 판(가로는 판 범위, 원반 가운데 방위 L_AZ 기준)
+// 둘레의 판이 점 p에서 창빛 원반을 가리는 몫: 위 판(ceil ~ ceil + 두께) + 아래 판(floor − 두께 ~ floor)
 export function plankKeyBlocked(p: Vec3, env: Env | null) {
   'worklet';
   if (!env) return 0;
-  const zf = Math.max(1e-3, p.z + SHELF_FRONT);
-  const v0 = (Math.atan2(SHELF_X0 - p.x, zf) - L_AZ) / light.radius;
-  const v1 = (Math.atan2(SHELF_X1 - p.x, zf) - L_AZ) / light.radius;
+  const zf = p.z + SHELF_FRONT;
   let k = 0;
-  if (env.ceil < FAR) k += keyBlocked(env.ceil - p.y, zf, v0, v1);
-  if (env.floor > -FAR) k += keyBlockedBelow(p.y - env.floor, zf, v0, v1, p.x < SHELF_X0 || p.x > SHELF_X1);
+  if (env.ceil < FAR) k += plankBlock(p, env.ceil, env.ceil + SHELF_THICK, zf);
+  if (env.floor > -FAR) k += plankBlock(p, env.floor - SHELF_THICK, env.floor, zf);
   return Math.min(1, k);
 }
 
@@ -1419,7 +1438,7 @@ export function runCalibration(log?: (s: string) => void): Calibration {
   return { gain: CAM.gain, eref: { wall: EREF.wall, plank: EREF.plank, book: EREF.book, paper: EREF.paper }, albedo: { wall: ALBEDO.wall, plank: ALBEDO.plank, paper: ALBEDO.paper }, sref: SREF };
 }
 // 맞추기 입력(이 값이 바뀌면 미리 계산한 값을 다시 만든다). method: 맞추기 방법을 바꾸면 올린다
-const CALIBRATION_METHOD = 4;
+const CALIBRATION_METHOD = 5; // 5: 판 그림자를 광선 기준으로(판 끝 대각선, 2026-10-26)
 export function calibrationInputs() {
   return JSON.stringify({ method: CALIBRATION_METHOD, light, F0, ALBEDO_MAX, materials, surfaces, palette: Object.keys(palette), TONE, REF_SPACE, REF_BOOK_H, SHELF_DEPTH, SHELF_FRONT, SHELF_THICK, SHELF_X0, SHELF_X1, GRID_N, ENV_NY, ENV_COLS, GRID_PASSES, TOUCH, eye: REF_EYE });
 }
