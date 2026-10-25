@@ -1,7 +1,7 @@
 // 빛 모델(domain/light-model): 해석적인 하늘 가림(램버트 윤곽 적분 + 앞 가리개는 뒤에 보일 것과의 차이)이
 // 같은 장면을 광선으로 직접 적분한 값(몬테카를로)과 맞는지, 그리고 반사·창빛 가림의 기본 성질.
 import type { Book3, Vec3 } from '../book3';
-import { ALBEDO, diskBlocked, ggxKey, KEY_C, lum, RAD, ROUGH, skyIrradiance, SREF, bookAlbedo, bookEref, boxOf, tone, toneInv, toneTarget, TONE, darkening, DESIGN, EREF, envBRDF, faceAlbedo, lightWithLoss, FAR, irradiance, L_ELEV, L_UNIT, linearOf, plankKeyBlocked, polyVF, sceneLight, skyLossAt, skyRadiance, solveGrid, traceRadiance, withCovers, type Box, type C3, type Env, type Grid } from '../light-model';
+import { ALBEDO, diskBlocked, gridKeyFree, ggxKey, KEY_C, lum, RAD, ROUGH, skyIrradiance, SREF, bookAlbedo, bookEref, boxOf, tone, toneInv, toneTarget, TONE, darkening, DESIGN, EREF, envBRDF, faceAlbedo, lightWithLoss, FAR, irradiance, L_ELEV, L_UNIT, linearOf, plankKeyBlocked, polyVF, sceneLight, skyLossAt, skyRadiance, solveGrid, traceRadiance, withCovers, type Box, type C3, type Env, type Grid } from '../light-model';
 import { SHELF_DEPTH, SHELF_FRONT, SHELF_THICK, SHELF_X0, SHELF_X1 } from '../geometry';
 import palette from '@/ui/art/reference-bindings.generated.json';
 import { ALBEDO_MAX, light } from '@/ui/lighting';
@@ -463,13 +463,16 @@ describe('빛 모델: 창빛 가림·반사', () => {
 
   it('판 끝 너머 벽은 판 앞 모서리에서 시작하는 대각선 쐐기 밖이면 밝다(오른쪽 여백 전체가 그늘이 되지 않는다)', () => {
     const env = { ...row, ceil: 190, floor: 0 };
-    // 오른쪽 끝 너머 15DU, 판 두께 높이: 빛이 왼쪽에서 오므로 판 끝면이 거의 가리지 못한다
-    expect(plankKeyBlocked({ x: SHELF_X1 + 15, y: 195, z: SHELF_DEPTH }, env)).toBeLessThan(0.05);
+    // 오른쪽 끝 너머, 판 두께 높이(판 안쪽은 다 가린다): 빛이 왼쪽에서 오므로 판 끝면은 원반의 오른쪽 일부만 가려 끝에서 멀어질수록
+    // 빨리 밝아진다(반지름 14° 원반이라 쐐기 가장자리가 15DU쯤 번진다)
+    expect(plankKeyBlocked({ x: SHELF_X1 + 15, y: 195, z: SHELF_DEPTH }, env)).toBeLessThan(0.2);
+    expect(plankKeyBlocked({ x: SHELF_X1 + 25, y: 195, z: SHELF_DEPTH }, env)).toBeLessThan(0.05);
     // 같은 거리 왼쪽 끝 너머는 판 쪽(오른쪽)이 빛과 반대라 가리지 않는다
     expect(plankKeyBlocked({ x: SHELF_X0 - 15, y: 195, z: SHELF_DEPTH }, env)).toBeLessThan(0.05);
-    // 판 범위 안 끝 가까이(판 아래)는 판 안쪽과 거의 같게 가린다
+    // 판 범위 안 끝 가까이(판 아래)는 판 안쪽과 거의 같게 가린다(끝에서 10DU 안은 왼쪽 끝 너머로 빠지는 낮은 빛만 조금 든다)
     const inner = plankKeyBlocked({ x: (SHELF_X0 + SHELF_X1) / 2, y: 182, z: SHELF_DEPTH }, env);
-    expect(plankKeyBlocked({ x: SHELF_X0 + 10, y: 182, z: SHELF_DEPTH }, env)).toBeGreaterThan(inner - 0.1);
+    expect(plankKeyBlocked({ x: SHELF_X0 + 15, y: 182, z: SHELF_DEPTH }, env)).toBeGreaterThan(inner - 0.1);
+    expect(plankKeyBlocked({ x: SHELF_X0 + 10, y: 182, z: SHELF_DEPTH }, env)).toBeGreaterThan(inner - 0.2);
   });
 
   it('원반을 수평선과 두 수직선으로 자른 넓이(diskBlocked) = 수치 적분, 수직선이 원반 밖이면 활꼴', () => {
@@ -531,5 +534,68 @@ describe('빛 모델: 창빛 가림·반사', () => {
 
   it('하늘은 위가 밝다', () => {
     expect(lum(skyRadiance({ x: 0, y: 1, z: 0 }))).toBeGreaterThan(lum(skyRadiance({ x: 0, y: 0, z: -1 })));
+  });
+});
+
+describe('빛 격자 창빛: 판과 책 가림의 합집합', () => {
+  // 원반 위 고른 방향(촘촘히)으로 판 덩어리·책 상자(축 정렬)를 지나는지 센 값
+  const dense = (P: Vec3, env: Env, book: { lo: Vec3; hi: Vec3 } | null) => {
+    const t = { x: 0, y: 1, z: 0 };
+    const c = { x: t.y * L_UNIT.z - t.z * L_UNIT.y, y: t.z * L_UNIT.x - t.x * L_UNIT.z, z: t.x * L_UNIT.y - t.y * L_UNIT.x };
+    const cl = Math.hypot(c.x, c.y, c.z);
+    const u = { x: c.x / cl, y: c.y / cl, z: c.z / cl };
+    const v = { x: L_UNIT.y * u.z - L_UNIT.z * u.y, y: L_UNIT.z * u.x - L_UNIT.x * u.z, z: L_UNIT.x * u.y - L_UNIT.y * u.x };
+    const hits = (w: Vec3, lo: Vec3, hi: Vec3) => {
+      let t0 = 1e-4;
+      let t1 = Infinity;
+      for (const k of ['x', 'y', 'z'] as const) {
+        if (Math.abs(w[k]) < 1e-12) {
+          if (P[k] < lo[k] || P[k] > hi[k]) return false;
+          continue;
+        }
+        const a = (lo[k] - P[k]) / w[k];
+        const b = (hi[k] - P[k]) / w[k];
+        t0 = Math.max(t0, Math.min(a, b));
+        t1 = Math.min(t1, Math.max(a, b));
+      }
+      return t0 < t1;
+    };
+    const slabs = [
+      { lo: { x: SHELF_X0, y: env.ceil, z: -SHELF_FRONT }, hi: { x: SHELF_X1, y: env.ceil + SHELF_THICK, z: SHELF_DEPTH } },
+      { lo: { x: SHELF_X0, y: env.floor - SHELF_THICK, z: -SHELF_FRONT }, hi: { x: SHELF_X1, y: env.floor, z: SHELF_DEPTH } },
+    ];
+    const N = 6000;
+    let plank = 0;
+    let either = 0;
+    for (let i = 0; i < N; i++) {
+      const r = Math.tan(light.radius) * Math.sqrt((i + 0.5) / N);
+      const a = i * Math.PI * (3 - Math.sqrt(5));
+      const d = { x: L_UNIT.x + (u.x * Math.cos(a) + v.x * Math.sin(a)) * r, y: L_UNIT.y + (u.y * Math.cos(a) + v.y * Math.sin(a)) * r, z: L_UNIT.z + (u.z * Math.cos(a) + v.z * Math.sin(a)) * r };
+      const p = slabs.some((s) => hits(d, s.lo, s.hi));
+      const b = !!book && hits(d, book.lo, book.hi);
+      if (p) plank++;
+      if (p || b) either++;
+    }
+    return { plank: plank / N, union: either / N };
+  };
+
+  it('책이 없으면 판이 가린 활꼴 넓이 그대로', () => {
+    for (const y of [150, 170, 190]) {
+      const P = { x: 180, y, z: SHELF_DEPTH };
+      expect(gridKeyFree(P, row, [], [])).toBeCloseTo(1 - plankKeyBlocked(P, row), 9);
+      expect(plankKeyBlocked(P, row)).toBeCloseTo(dense(P, row, null).plank, 1);
+    }
+  });
+
+  it('판이 원반 위쪽, 책 머리가 아래쪽을 가리면 겹친 몫을 두 번 빼지 않는다(따로 곱하면 너무 밝다)', () => {
+    // 위 판 아래 60DU 벽 점: 판이 위 약 19° 위쪽을, 앞에 선 책(머리가 점보다 8DU 위)이 약 20° 아래쪽을 가린다
+    const P = { x: 180, y: 140, z: SHELF_DEPTH };
+    const book: Book3 = { id: 'b', dims: { T: 50, H: 148, W: 100 }, roll: 0, yaw: 0, t: { x: 150, y: 0, z: 0 } };
+    const exact = dense(P, row, { lo: { x: 150, y: 0, z: 0 }, hi: { x: 200, y: 148, z: 100 } });
+    const got = gridKeyFree(P, row, [boxOf(book, [0.5, 0.5, 0.5])], [false]);
+    expect(Math.abs(got - (1 - exact.union))).toBeLessThan(0.08);
+    // 따로 곱한 값(판 활꼴 × 책 방향 몫)은 합집합보다 눈에 띄게 밝다
+    const bookOnly = dense(P, { floor: -FAR, ceil: FAR }, { lo: { x: 150, y: 0, z: 0 }, hi: { x: 200, y: 148, z: 100 } }).union;
+    expect((1 - exact.plank) * (1 - bookOnly) - (1 - exact.union)).toBeGreaterThan(0.1);
   });
 });

@@ -778,6 +778,22 @@ ${boxCode()}
     }
     return 1.0;
   }
+  // 광선 P + t·w가 둘레 판 덩어리(위 판·아래 판, light-model rayHitsPlank)를 지나면 1
+  float slabHit(float3 P, float3 w, float y0, float y1) {
+    float3 lo = float3(X0, y0, -FRONT);
+    float3 hi = float3(X1, y1, DEPTH);
+    float3 inv = 1.0 / (abs(w) + 1e-12) * sign(w + 1e-15);
+    float3 ta = (lo - P) * inv;
+    float3 tb = (hi - P) * inv;
+    float3 mn = min(ta, tb);
+    float3 mx = max(ta, tb);
+    return max(1e-4, max(mn.x, max(mn.y, mn.z))) < min(mx.x, min(mx.y, mx.z)) ? 1.0 : 0.0;
+  }
+  float plankHit(float3 P, float3 w) {
+    float c = env.z < FARV ? slabHit(P, w, env.z, env.z + THICK) : 0.0;
+    float f = env.y > -FARV ? slabHit(P, w, env.y - THICK, env.y) : 0.0;
+    return max(c, f);
+  }
   half4 main(float2 pc) {
     float ix = floor(pc.x);
     float iy = floor(pc.y);
@@ -846,9 +862,11 @@ ${boxCode()}
     float nl = dot(n, LU);
     float key = 0.0;
     if (nl > 0.0) {
-      // 판은 원반을 자른 활꼴, 책은 원반 위 방향들(light-model KEY_DIRS) 가운데 막힌 몫
-      float kfree = ${KEY_DIRS.map((w) => `keyFree(P, ${v3(w)}, self, skipA, skipB)`).join(' + ')};
-      key = DIFF * nl * (1.0 - plankKeyOf(P)) * kfree / ${f(KEY_DIRS.length)};
+      // 판은 원반을 자른 활꼴, 책은 판이 막지 않은 원반 위 방향들(light-model KEY_DIRS) 가운데 막힌 몫(합집합, light-model gridKeyFree)
+      float kopen = 0.0;
+      float kfree = 0.0;
+      ${KEY_DIRS.map((w) => `{ float o = 1.0 - plankHit(P, ${v3(w)}); kopen += o; kfree += o > 0.5 ? keyFree(P, ${v3(w)}, self, skipA, skipB) : 0.0; }`).join(' ')}
+      key = DIFF * nl * (1.0 - plankKeyOf(P)) * (kopen > 0.5 ? kfree / kopen : 1.0);
     }
     float3 lossE = envLoss(P, n);
     float3 E = max(float3(0.0), skyIrr(n) + KEYC * key - lossE - boxesLoss(P, n, self, skipA, skipB));

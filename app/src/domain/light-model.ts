@@ -1202,6 +1202,47 @@ function rayHitsBox(p: Vec3, w: Vec3, b: Box) {
   }
   return t0 <= t1;
 }
+// 광선 p + t·w(t > 0)가 둘레 판 덩어리(위 판 [ceil, ceil + 두께], 아래 판 [floor − 두께, floor], 가로 판 길이, 깊이 판 앞 끝 ~ 벽)를 지나는지
+function rayHitsPlank(p: Vec3, w: Vec3, env: Env) {
+  'worklet';
+  const slab = (y0: number, y1: number) => {
+    let t0 = 1e-4;
+    let t1 = Infinity;
+    const lo = [SHELF_X0, y0, -SHELF_FRONT];
+    const hi = [SHELF_X1, y1, SHELF_DEPTH];
+    const o = [p.x, p.y, p.z];
+    const d = [w.x, w.y, w.z];
+    for (let k = 0; k < 3; k++) {
+      if (Math.abs(d[k]) < 1e-12) {
+        if (o[k] < lo[k] || o[k] > hi[k]) return false;
+        continue;
+      }
+      const ta = (lo[k] - o[k]) / d[k];
+      const tb = (hi[k] - o[k]) / d[k];
+      t0 = Math.max(t0, Math.min(ta, tb));
+      t1 = Math.min(t1, Math.max(ta, tb));
+    }
+    return t0 < t1;
+  };
+  return (env.ceil < FAR && slab(env.ceil, env.ceil + SHELF_THICK)) || (env.floor > -FAR && slab(env.floor - SHELF_THICK, env.floor));
+}
+// 빛 격자점이 받는 창빛 몫(0~1, 판과 책 가림의 합집합): 판은 원반을 자른 활꼴 넓이(plankKeyBlocked) 그대로, 책은 판이 막지 않은
+// 원반 위 방향들(KEY_DIRS) 가운데 막힌 비율로 남은 넓이를 줄인다. 판과 책이 원반의 같은 곳을 가리면 두 번 빼지 않는다
+// (판과 책 가림을 따로 곱하면 판이 원반 위쪽, 책이 아래쪽을 가릴 때 겹친 몫만큼 밝았다). 판이 모든 방향을 막으면 책은 상관없다.
+// skip: 뺄 상자(제 상자, 점을 덮은 상자)
+export function gridKeyFree(P: Vec3, env: Env, boxes: Box[], skip: boolean[]) {
+  'worklet';
+  let open = 0;
+  let free = 0;
+  for (const w of KEY_DIRS) {
+    if (rayHitsPlank(P, w, env)) continue;
+    open++;
+    let hit = false;
+    for (let i = 0; i < boxes.length && !hit; i++) if (!skip[i] && rayHitsBox(P, w, boxes[i])) hit = true;
+    if (!hit) free++;
+  }
+  return (1 - plankKeyBlocked(P, env)) * (open ? free / open : 1);
+}
 function nodeE(nd: GridNode, env: Env, boxes: Box[], G?: Grid): C3 {
   'worklet';
   const { P, n, self } = nd;
@@ -1211,16 +1252,7 @@ function nodeE(nd: GridNode, env: Env, boxes: Box[], G?: Grid): C3 {
   const skip = boxes.map((b, i) => i === self || insideBox(q, b));
   const nl = dot3(n, L_UNIT);
   let key = 0;
-  if (nl > 0) {
-    // 판은 원반을 자른 활꼴(plankKeyBlocked), 책은 원반 위 방향들 가운데 막힌 몫(KEY_DIRS)
-    let free = 0;
-    for (const w of KEY_DIRS) {
-      let hit = false;
-      for (let i = 0; i < boxes.length && !hit; i++) if (!skip[i] && rayHitsBox(P, w, boxes[i])) hit = true;
-      if (!hit) free++;
-    }
-    key = light.diffuse * nl * (1 - plankKeyBlocked(P, env)) * (free / KEY_DIRS.length);
-  }
+  if (nl > 0) key = light.diffuse * nl * gridKeyFree(P, env, boxes, skip);
   const E: C3 = [0, 0, 0];
   const { loss, cols } = envLossCols(P, n, env, G);
   for (let i = 0; i < boxes.length; i++) {
@@ -1438,7 +1470,7 @@ export function runCalibration(log?: (s: string) => void): Calibration {
   return { gain: CAM.gain, eref: { wall: EREF.wall, plank: EREF.plank, book: EREF.book, paper: EREF.paper }, albedo: { wall: ALBEDO.wall, plank: ALBEDO.plank, paper: ALBEDO.paper }, sref: SREF };
 }
 // 맞추기 입력(이 값이 바뀌면 미리 계산한 값을 다시 만든다). method: 맞추기 방법을 바꾸면 올린다
-const CALIBRATION_METHOD = 5; // 5: 판 그림자를 광선 기준으로(판 끝 대각선, 2026-10-26)
+const CALIBRATION_METHOD = 6; // 5: 판 그림자를 광선 기준으로(판 끝 대각선), 6: 빛 격자 창빛을 판·책 가림 합집합으로(2026-10-26)
 export function calibrationInputs() {
   return JSON.stringify({ method: CALIBRATION_METHOD, light, F0, ALBEDO_MAX, materials, surfaces, palette: Object.keys(palette), TONE, REF_SPACE, REF_BOOK_H, SHELF_DEPTH, SHELF_FRONT, SHELF_THICK, SHELF_X0, SHELF_X1, GRID_N, ENV_NY, ENV_COLS, GRID_PASSES, TOUCH, eye: REF_EYE });
 }
