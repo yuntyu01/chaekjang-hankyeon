@@ -1,11 +1,10 @@
 // 책 상자 모델(순수). 책 한 권 = 상자 하나이고, 자세(책등·표지·눕힘)는 같은 상자를 돌린 것이다.
 // 선반 공간: x = 선반 판 안쪽 왼쪽에서 오른쪽(DU), y = 선반 바닥에서 위(DU), z = 책 줄 앞선에서 벽 쪽(DU).
 // 카메라는 앱 전체에 하나: 직교 투영 + 고정 사선(깊이 1DU가 화면에서 오른쪽 kx, 위로 ky). 줄·가로 위치로 바뀌지 않는다.
-// 역할: 그리기는 투영(project/faces), 충돌·기대기는 선반 공간(collide/solveLean), 터치는 투영 외곽(silhouette).
+// 역할: 그리기는 투영(project/faces), 충돌은 선반 공간(collide), 기대기 각은 lean.ts, 버틸 수 있는지는 statics.ts, 터치는 투영 외곽(silhouette).
 import { project, viewAt, type Cam } from './camera';
 import { bookHeight, bookThickness, frontWidth } from './geometry';
 import { fromPlaced, gap } from './book3';
-import { firstContact } from './lean';
 import type { Point } from './shelf-scene';
 import type { Book, Pose } from './types';
 
@@ -157,23 +156,3 @@ export function collide(a: Placed, b: Placed, margin = TOLERANCE) {
   return gap(fromPlaced(a), fromPlaced(b)) < -margin;
 }
 
-// 기대기: 선반 공간에서 옆 상자에 처음 닿는 각도(0.5도 탐색 + 이분 탐색, lean.ts). 깊이가 겹치는 상자만 장애물.
-// bounds: 선반 판 좌우 끝(x). 닿을 곳이 없거나 판 밖이면 바로 선다.
-// 기대기: 기우는 쪽 바닥 모서리를 축으로 돌리며(0.5도 탐색 → 첫 접촉 주변 이분 탐색) 주변 책의 실제 3D 상자와 처음 닿는 각도.
-// 화면에서 나란해도 깊이가 달라 실제로 닿지 않는 책은 받침이 되지 못한다. 받칠 곳이 없거나 선반 밖이면 바로 선다.
-// (정역학 안정성 해석이 아니라, 바닥 접촉 + 이웃 접촉이 모두 있는 배치만 허용하는 정적 배치 규칙)
-export function solveLean(p: Placed, dir: -1 | 1, others: Placed[], bounds: { min: number; max: number }) {
-  const obstacles = others.filter((o) => o.bookId !== p.bookId).map((o) => ({ id: o.bookId, b: fromPlaced(o) }));
-  const at = (deg: number) => fromPlaced({ ...p, angle: dir * deg });
-  const hits = (deg: number) => {
-    const me = at(deg);
-    return obstacles.some((o) => gap(me, o.b) < -CONTACT);
-  };
-  const c = firstContact(hits);
-  if (!c.found) return { angle: 0, supported: false, on: undefined };
-  const poly = frontPoly({ ...p, angle: dir * c.angle });
-  if (poly.some((q) => q.x < bounds.min - 0.01 || q.x > bounds.max + 0.01)) return { angle: 0, supported: false, on: undefined };
-  const more = at(c.angle + 0.6);
-  const on = c.angle > 0 ? obstacles.find((o) => gap(more, o.b) < -CONTACT)?.id : undefined;
-  return { angle: dir * c.angle, supported: true, on };
-}

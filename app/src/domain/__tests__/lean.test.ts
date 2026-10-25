@@ -1,8 +1,10 @@
 // 기대기: 먼저 "똑바로 선 책 + 기대는 책 한 권", 그다음 연쇄·마주 기대기, 마지막으로 높이·두께가 다른 세 권의 이동·저장·복원.
+// 버틸 수 있는지(넘어짐·미끄러짐·받침)는 statics.ts 규칙: 각은 넘어짐 한계 atan(두께/키)를 넘어야 하고, 받침을 잃은 책은 더 넘어진다.
 import { corners, fromPlaced, lowest } from '../book3';
 import { bookHeight, bookThickness } from '../geometry';
 import { bookXs, moveBook, normalize, setTilt, shelfItems, type BookMap } from '../layout-engine';
-import { MAX_LEAN, overlaps } from '../lean';
+import { overlaps } from '../test-fixtures/overlap';
+import { LEAN_MARGIN, LEAN_MENU_MAX, tipAngle } from '../statics';
 import { computeShelf, frontOutline, withLeans, type BookFrame } from '../shelf-scene';
 import type { Book, BookPlacement, ShelfLayout } from '../types';
 
@@ -56,8 +58,8 @@ function expectTouching(f: BookFrame, other: BookFrame) {
 
 describe('한 권이 똑바로 선 책에 기댄다', () => {
   it('더 큰 책에 기대면 윗모서리가 옆면에 닿는다: sin θ = 빈틈 / 키', () => {
-    // A는 똑바로, B는 A 오른쪽에 빈틈 g를 두고 왼쪽으로 기댄다
-    const g = 15;
+    // A는 똑바로, B는 A 오른쪽에 빈틈 g를 두고 왼쪽으로 기댄다(약 11.5°: B의 넘어짐 한계 10.6°보다 크다)
+    const g = 30;
     const l = layoutOf(place('A', 0, 0), place('B', 1, 40 + g, -7));
     const b = frameOf(l, 'B');
     const a = frameOf(l, 'A');
@@ -70,7 +72,7 @@ describe('한 권이 똑바로 선 책에 기댄다', () => {
   });
 
   it('더 작은 책에 기대면 옆 책 윗모서리에 걸린다: tan θ = 빈틈 / 옆 책 키', () => {
-    const g = 20;
+    const g = 30; // 약 14°(A의 넘어짐 한계 12.5°보다 크다)
     const l = layoutOf(place('C', 0, 0), place('A', 1, 34 + g, -7));
     const a = frameOf(l, 'A');
     expect(Math.abs(a.box.angle)).toBeCloseTo(Math.atan(g / bookHeight(C)) * (180 / Math.PI), 0);
@@ -80,7 +82,7 @@ describe('한 권이 똑바로 선 책에 기댄다', () => {
   });
 
   it('오른쪽으로도 같은 규칙', () => {
-    const g = 12;
+    const g = 30;
     const l = layoutOf(place('B', 0, 0, 7), place('A', 1, 28 + g));
     const b = frameOf(l, 'B');
     expect(b.box.angle).toBeGreaterThan(0);
@@ -94,12 +96,25 @@ describe('한 권이 똑바로 선 책에 기댄다', () => {
     expect(leanOf(frameOf(l, 'B'))).toBe(0);
   });
 
+  it('닿는 각이 넘어짐 한계 이하면 무게중심이 축 안쪽이라 다시 선다(옛 규칙의 7° 기대기)', () => {
+    const tip = tipAngle(bookThickness(B), bookHeight(B));
+    expect(tip).toBeCloseTo((Math.atan(28 / 150) * 180) / Math.PI, 6);
+    for (const deg of [5, 7, tip - 0.3]) {
+      const g = bookHeight(B) * Math.sin(rad(deg));
+      const f = frameOf(layoutOf(place('A', 0, 0), place('B', 1, 40 + g, -7)), 'B');
+      expect(leanOf(f)).toBe(0);
+      expect(f.leanFailed).toBe(true);
+    }
+    const g = bookHeight(B) * Math.sin(rad(tip + 0.5));
+    expect(leanOf(frameOf(layoutOf(place('A', 0, 0), place('B', 1, 40 + g, -7)), 'B'))).toBeCloseTo(tip + 0.5, 1);
+  });
+
   it('기댈 책이 없거나 최대 각도를 넘으면 바로 선다', () => {
     const alone = layoutOf(place('B', 0, 100, 7));
     const f = frameOf(alone, 'B');
     expect(leanOf(f)).toBe(0);
     expect(f.leanFailed).toBe(true);
-    const far = bookHeight(B) * Math.sin(rad(MAX_LEAN + 3));
+    const far = bookHeight(B) * Math.sin(rad(LEAN_MENU_MAX + 3));
     const wide = layoutOf(place('A', 0, 0), place('B', 1, 40 + far, -7));
     expect(leanOf(frameOf(wide, 'B'))).toBe(0);
     expect(frameOf(wide, 'B').leanFailed).toBe(true);
@@ -121,11 +136,37 @@ describe('메뉴로 기울이기', () => {
     expect(c.box.angle).toBeLessThan(-3);
     expect(c.leanOn).toBe('B');
   });
+
+  it('책마다 넘어짐 한계 + 여유로 기울도록 틈을 맞춘다(양쪽 모두, 넓으면 좁힌다)', () => {
+    for (const [id, dir, l] of [
+      ['B', -7, layoutOf(place('A', 0, 0), place('B', 1, 45))],
+      ['B', -7, layoutOf(place('A', 0, 0), place('B', 1, 110))], // 틈이 넓다
+      ['B', 7, layoutOf(place('B', 0, 10), place('A', 1, 45))],
+      ['A', -7, layoutOf(place('C', 0, 0), place('A', 1, 40))],
+    ] as const) {
+      const r = setTilt(l, books, id, dir);
+      if (!r.ok) throw new Error(r.reason);
+      const f = frameOf(r.layout, id);
+      const want = tipAngle(bookThickness(books[id]), bookHeight(books[id])) + LEAN_MARGIN;
+      expect(Math.sign(f.box.angle)).toBe(Math.sign(dir));
+      expect(leanOf(f)).toBeCloseTo(want, 1);
+      expectSeated(f);
+      expectNoOverlap(allFrames(r.layout));
+    }
+  });
+
+  it('메뉴 한도 안에서 버틸 수 없는 두꺼운 책은 기울이지 않는다', () => {
+    const fat = book('F', 120, 50); // 넘어짐 한계 22.6°
+    const l = layoutOf(place('A', 0, 0), place('F', 1, 60));
+    const r = setTilt(l, { ...books, F: fat }, 'F', -7);
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.reason).toBe('cannot-lean');
+  });
 });
 
 describe('여러 권', () => {
   it('연쇄: C가 B에, B가 A에 기댄다', () => {
-    const l = layoutOf(place('A', 0, 0), place('B', 1, 40 + 12, -7), place('C', 2, 40 + 12 + 28 + 14, -7));
+    const l = layoutOf(place('A', 0, 0), place('B', 1, 40 + 30, -7), place('C', 2, 40 + 30 + 28 + 12, -7));
     const frames = allFrames(l);
     for (const f of frames) expectSeated(f);
     expectNoOverlap(frames);
@@ -134,7 +175,7 @@ describe('여러 권', () => {
   });
 
   it('마주 기대기: A는 오른쪽, B는 왼쪽으로 서로 기댄다', () => {
-    const l = layoutOf(place('A', 0, 0, 7), place('B', 1, 40 + 16, -7));
+    const l = layoutOf(place('A', 0, 0, 7), place('B', 1, 40 + 70, -7));
     const frames = allFrames(l);
     for (const f of frames) expectSeated(f);
     expectNoOverlap(frames);
@@ -172,10 +213,69 @@ describe('세 권: 세우고, 옮기고, 기대게 하고, 저장 후 복원', (
       expect(g.box.z).toBeCloseTo(f.box.z, 4);
       expect(g.box.angle).toBeCloseTo(f.box.angle, 3);
     }
-    // 기댄 상대가 없어지면 다시 계산해 바로 선다
+    // 기댄 상대가 없어지면 그 각에서 더 넘어진다: 왼쪽에 닿을 책이 없어 바닥에 눕는다(무게중심이 판 안이라 선반에 남는다)
     const noA = withLeans({ ...restored, placements: restored.placements.filter((p) => p.bookId !== 'A') }, books);
-    expect(noA.placements.find((p) => p.bookId === 'B')!.tilt).toBe(0);
+    expect(noA.placements.find((p) => p.bookId === 'B')!.pose).toBe('horizontal');
     expect(shelfItems(noA, 's')).toHaveLength(2);
+    // 선반 끝 가까이에서 넘어져 무게중심이 판 밖으로 나가면 선반에서 떨어진다(서랍)
+    const edge = withLeans(layoutOf(place('A', 0, 0), place('B', 1, 40 + 30, -7)), books);
+    const off = withLeans({ ...edge, placements: edge.placements.filter((p) => p.bookId !== 'A') }, books);
+    expect(off.placements.find((p) => p.bookId === 'B')).toBeUndefined();
+    expect(off.drawer).toContain('B');
     expect(bookThickness(B)).toBe(28);
   });
 });
+
+describe('받침을 잃거나 받침이 밀릴 때(도미노)', () => {
+  const D = book('D', 160, 30);
+  const S = book('S', 120, 20); // 가볍고 얇은 받침
+  const all: BookMap = { ...books, D, S };
+  const frame = (l: ShelfLayout, id: string) => computeShelf(l, all, 's').frames.find((f) => f.bookId === id)!;
+  const lean = (l: ShelfLayout) => withLeans(l, all);
+
+  it('받치던 책을 빼면 그 각에서 더 넘어져 다음 책에 기댄다', () => {
+    // A ... C ... B(기댐: C에). C를 빼면 B는 A까지(약 34°, 미끄러짐 한계 44.6° 안) 넘어진다
+    let l = lean(layoutOf(place('A', 0, 60), place('C', 1, 120), place('B', 2, 120 + 34 + 30, -7)));
+    expect(frame(l, 'B').leanOn).toBe('C');
+    const was = leanOf(frame(l, 'B'));
+    l = lean({ ...l, placements: l.placements.filter((p) => p.bookId !== 'C') });
+    const b = frame(l, 'B');
+    expect(b.leanOn).toBe('A');
+    expect(leanOf(b)).toBeGreaterThan(was + 5);
+    expectSeated(b);
+    expectNoOverlap(computeShelf(l, all, 's').frames);
+  });
+
+  it('닿을 곳이 미끄러짐 한계(약 45°)보다 멀면 바닥에 눕는다', () => {
+    // D가 C에 기대 있다가 C를 빼면 왼쪽으로 넘어진다. 그쪽에는 판 안쪽으로 빈 바닥뿐이다
+    let l = lean(layoutOf(place('C', 0, 150), place('D', 1, 150 + 34 + 30, -7)));
+    expect(frame(l, 'D').leanOn).toBe('C');
+    l = lean({ ...l, placements: l.placements.filter((p) => p.bookId !== 'C') });
+    const d = l.placements.find((p) => p.bookId === 'D')!;
+    expect(d.pose).toBe('horizontal');
+    expect(d.tilt).toBe(0);
+    // 축 모서리에서 키만큼 넘어진 쪽에 눕는다
+    const f = frame(l, 'D');
+    expect(f.box.x).toBeCloseTo(150 + 34 + 30 - 160, 0);
+    expect(lowestY(f)).toBeCloseTo(0, 6);
+  });
+
+  it('미는 힘에 받침이 넘어간다: 그 너머가 비었으면 받침도 기울고, 붙은 책이 있으면 버틴다', () => {
+    // 무거운 D가 C에 기대 있다가 C를 빼면 얇은 S까지 크게 넘어진다. S 왼쪽이 비었으면 S가 밀려 넘어간다
+    const open = lean(layoutOf(place('S', 0, 120), place('C', 1, 175), place('D', 2, 175 + 34 + 30, -7)));
+    const pushed = lean({ ...open, placements: open.placements.filter((p) => p.bookId !== 'C') });
+    const s = pushed.placements.find((p) => p.bookId === 'S');
+    expect(!s || s.pose === 'horizontal' || s.tilt !== 0).toBe(true);
+    // S 왼쪽에 A가 붙어 서 있으면 줄이 함께 버틴다
+    const backed = lean(layoutOf(place('A', 0, 80), place('S', 1, 120), place('C', 2, 175), place('D', 3, 175 + 34 + 30, -7)));
+    const held = lean({ ...backed, placements: backed.placements.filter((p) => p.bookId !== 'C') });
+    const hs = held.placements.find((p) => p.bookId === 'S')!;
+    expect(hs.pose).toBe('spine');
+    expect(hs.tilt).toBe(0);
+    expect(frame(held, 'D').leanOn).toBe('S');
+  });
+});
+
+function lowestY(f: BookFrame) {
+  return Math.min(...corners(fromPlaced(f.box)).map((c) => c.y));
+}

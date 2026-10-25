@@ -398,7 +398,10 @@ export function HomeScreen() {
     (r: Result, text: string = ko.moved): string | null => {
       if (!r.ok) return ko.fail[r.reason] || null;
       if (!placementStore.commit(r.layout)) return ko.fail['no-space'];
-      showToast({ text, action: 'undo' });
+      // 받침을 잃고 선반에서 떨어진 책이 있으면 그것을 알린다(되돌리기는 그대로)
+      const fell = placementStore.get().fell;
+      if (fell) placementStore.clearFell();
+      showToast({ text: fell ? ko.fellToDrawer(fell) : text, action: 'undo' });
       return null;
     },
     [showToast],

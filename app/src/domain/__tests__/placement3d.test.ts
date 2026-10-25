@@ -138,7 +138,7 @@ describe('수평 쌓기 받침', () => {
 
 describe('높이·깊이가 다른 책의 기대기', () => {
   it('큰 책이 작은 책의 실제 윗모서리에 기댄다(바닥 접촉 유지)', () => {
-    const l = withLeans(layoutOf(place('C', 0, 0), place('A', 1, 34 + 20, { tilt: -7 })), books);
+    const l = withLeans(layoutOf(place('C', 0, 0), place('A', 1, 34 + 32, { tilt: -7 })), books); // 약 14.9°(넘어짐 한계 12.9°보다 크다)
     const a = computeShelf(l, books, 's').frames.find((f) => f.bookId === 'A')!;
     expect(a.leanOn).toBe('C');
     expect(lowest(fromPlaced(a.box!))).toBeCloseTo(0, 3);

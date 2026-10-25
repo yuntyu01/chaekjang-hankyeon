@@ -607,6 +607,24 @@ function restsOn(o: State, b: State) {
   return Math.abs(ro.y0 - rb.y1) < 0.8 && overlap1(ro.x0, ro.x1, rb.x0, rb.x1) && overlap1(ro.z0, ro.z1, rb.z0, rb.z1);
 }
 
+// 기울기가 바뀌며 옆으로 밀리는 책(옆 책과 같은 빠르기로 [o0, o1] 동안 민다): 덜 기울거나 세울 때는 먼저 발(기우는 쪽 바닥 모서리)을
+// 축으로 세운 뒤 밀고, 더 기울 때는 먼저 같은 자세로 밀어 틈이 벌어진 뒤 발을 축으로 기운다(밀리는 동안 옆 책에 걸리지 않게).
+function leanSlideSegs(from: State, to: State, o0: number, o1: number): Seg[] {
+  if (from.roll * to.roll < 0) {
+    const up = reorientPivot(from, 0, from.yaw, pivotLocal(from.dims, from.roll));
+    return [pivotSeg(from, up, 0, o0, pivotLocal(from.dims, from.roll)), ...leanSlideSegs(up, to, o0, o1)];
+  }
+  const a = pivotLocal(to.dims, to.roll !== 0 ? to.roll : from.roll);
+  if (Math.abs(to.roll) >= Math.abs(from.roll)) {
+    const wa = toWorld(from, a);
+    const wb = toWorld(to, a);
+    const pre: State = { ...from, t: { x: from.t.x + (wb.x - wa.x), y: from.t.y + (wb.y - wa.y), z: from.t.z + (wb.z - wa.z) } };
+    return [pivotSeg(from, pre, o0, o1, ZERO), pivotSeg(pre, to, o1, 1, a)];
+  }
+  const turned = reorientPivot(from, to.roll, to.yaw, a);
+  return [pivotSeg(from, turned, 0, o0, a), pivotSeg(turned, to, o0, o1, ZERO)];
+}
+
 function pullPlan(prev: State[], next: State[], arriving: Set<string>, resting: Set<string> = new Set(prev.map((p) => p.id))): Track[] {
   const before = new Map(prev.map((p) => [p.id, p]));
   const after = new Map(next.map((p) => [p.id, p]));
@@ -712,6 +730,7 @@ function pullPlan(prev: State[], next: State[], arriving: Set<string>, resting: 
     // 제자리에서 밀리는 책: 빼낸 책이 모두 선반 앞에 있는 동안
     // All neighbours slide at the same rate. A lifted neighbour must not finish
     // its horizontal move early while the next book is still halfway across.
+    if (!sameRot(from, to)) return { id: to.id, dims: to.dims, segs: leanSlideSegs(from, to, OUT, IN), moving: true };
     return { id: to.id, dims: to.dims, segs: [pivotSeg(from, to, OUT, IN, ZERO)], moving: true };
   });
 }

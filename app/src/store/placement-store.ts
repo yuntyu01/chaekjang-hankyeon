@@ -5,7 +5,7 @@ import Storage from 'expo-sqlite/kv-store';
 import { noteLayoutChange } from './sync-dirty';
 
 import { addBook as placeNewBook, addShelf, applySwapTarget, bookXs, ensureShelves, findSwapTarget, fitToShelf, migrate, moveToDrawer, normalize, placeFromDrawer, pruneEmptyShelves, setDepth, validate, withNormalizedX, type BookMap } from '@/domain/layout-engine';
-import { withLeans } from '@/domain/shelf-scene';
+import { ensureLeanGaps, withLeans } from '@/domain/shelf-scene';
 import { SHELF_DEPTH, SHELF_FRONT } from '@/domain/geometry';
 import { MOCKUP_BOOKS, MOCKUP_LAYOUT } from '@/domain/mockup-sample';
 import { SAMPLE_BOOKS, SAMPLE_LAYOUT } from '@/domain/onboarding-sample';
@@ -23,13 +23,14 @@ type State = {
   save: SaveStatus;
   loaded: boolean;
   notice: number | null; // 복원하면서 선반에 들어가지 않아 서랍으로 옮긴 책 수(한 번 알리고 지운다)
+  fell: number | null; // 마지막 확정에서 받침을 잃고 선반에서 떨어져 서랍에 들어간 책 수(domain/statics, 한 번 알리고 지운다)
   demo: boolean; // 측정 번들 전용 예시 책장(메모리에만, 저장하지 않는다. 사용자 데이터와 섞지 않는다)
 };
 
 // 첫 실행: 빈 선반 세 칸
 export const EMPTY_LAYOUT: ShelfLayout = ensureShelves({ version: 2, shelves: [], placements: [], drawer: [] });
 
-let state: State = { books: {}, layout: EMPTY_LAYOUT, undo: null, save: 'idle', loaded: false, notice: null, demo: false };
+let state: State = { books: {}, layout: EMPTY_LAYOUT, undo: null, save: 'idle', loaded: false, notice: null, fell: null, demo: false };
 let userSnapshot: { books: BookMap; layout: ShelfLayout } | null = null;
 export type DemoKind = 'sample' | 'mockup';
 let demoKind: DemoKind = 'sample';
@@ -63,7 +64,9 @@ export function repair(saved: ShelfLayout | ShelfLayoutV1, bookMap: BookMap): Sh
 export function restore(saved: ShelfLayout | ShelfLayoutV1, bookMap: BookMap) {
   const base = repair(saved, bookMap);
   const fit = fitToShelf(base, bookMap);
-  return { layout: withLeans(fit.layout, bookMap), moved: fit.moved, changed: fit.changed };
+  // 예전 규칙으로 버티지 못하는 각에 기대 있던 책은 틈을 맞춰 다시 기댄다(domain/statics.ts)
+  const lean = ensureLeanGaps(fit.layout, bookMap);
+  return { layout: withLeans(lean.layout, bookMap), moved: fit.moved, changed: fit.changed || lean.changed };
 }
 
 async function persist(layout: ShelfLayout) {
@@ -192,11 +195,14 @@ export const placementStore = {
     const placed = new Set([...next.placements.map((p) => p.bookId), ...next.drawer]);
     const missing = Object.keys(state.books).filter((id) => !placed.has(id));
     if (missing.length) next = { ...next, drawer: [...next.drawer, ...missing] };
-    // 기대기 결과(최종 각도·상대)를 함께 저장하고, 기댈 곳이 없던 책은 바로 세운다.
+    // 기대기 결과(최종 각도·상대)를 함께 저장하고, 기댈 곳이 없던 책은 바로 세운다. 받침을 잃고 넘어진 책은 눕히거나
+    // (선반 끝 밖으로 떨어지면) 서랍에 넣는다.
+    const inDrawer = new Set(next.drawer);
     next = withLeans(ensureShelves(next), state.books);
     const errors = validate(next, state.books, Object.keys(state.books));
     if (errors.length) return false;
-    set({ undo: state.layout, layout: next });
+    const fell = next.drawer.filter((id) => !inDrawer.has(id)).length;
+    set({ undo: state.layout, layout: next, fell: fell || null });
     void persist(next);
     return true;
   },
@@ -234,6 +240,10 @@ export const placementStore = {
 
   clearNotice() {
     set({ notice: null });
+  },
+
+  clearFell() {
+    set({ fell: null });
   },
 
   // 개발용: 3번째 선반에 두 권만. 뒤쪽 벽 앞에 표지 전시(우리가 빛의 속도로), 앞쪽 선반 앞 끝에 세운 책(쇼코의 미소)이 표지 일부를 가린다.

@@ -6,10 +6,9 @@ import { bookHeight, bookThickness, singleFootprint } from '../geometry';
 import type { BookMap } from '../layout-engine';
 import { SAMPLE_BOOKS, SAMPLE_LAYOUT } from '../onboarding-sample';
 import { computeShelf, frontOutline, outlineOf, PLANK_BOUNDS, pointInPoly, standaloneFrame } from '../shelf-scene';
+import { overlaps } from '../test-fixtures/overlap';
 
 const books: BookMap = Object.fromEntries(SAMPLE_BOOKS.map((b) => [b.id, b]));
-// 앞면 겹침을 훑는 높이(예전 장면 높이: 바닥 위 178DU)
-const SCAN_H = 178;
 
 describe('기울인 책', () => {
   it.each([7, -7] as const)('%i°: 발은 제자리, 가장 낮은 점이 선반 바닥에 닿는다', (tilt) => {
@@ -59,14 +58,13 @@ describe('선반 장면', () => {
         expect(Math.min(...xs)).toBeGreaterThanOrEqual(PLANK_BOUNDS.min - 1e-6);
         expect(Math.max(...xs)).toBeLessThanOrEqual(PLANK_BOUNDS.max + 1e-6);
       }
-      // 같은 깊이의 앞면끼리 겹치면 안 된다(뒤에 놓인 눕힌 책은 화면에서 겹쳐도 닿지 않는다).
-      for (let y = 0.5 - SCAN_H; y < 0; y += 2) {
-        for (let x = 0.5; x < 365; x += 2) {
-          const touching = frames.filter((f) => f.box.z === 0 && pointInPoly({ x, y }, frontOutline(f)));
-          const groups = new Set(touching.map((f) => f.itemKey));
-          expect(groups.size).toBeLessThanOrEqual(1);
+      // 같은 깊이의 앞면끼리 파고들면 안 된다(맞닿음은 된다. 뒤에 놓인 눕힌 책은 화면에서 겹쳐도 닿지 않는다).
+      const front = frames.filter((f) => f.box.z === 0);
+      for (let i = 0; i < front.length; i++)
+        for (let j = i + 1; j < front.length; j++) {
+          if (front[i].itemKey === front[j].itemKey) continue;
+          expect(overlaps(frontOutline(front[i]), frontOutline(front[j]), 0.05)).toBe(false);
         }
-      }
     }
   });
 

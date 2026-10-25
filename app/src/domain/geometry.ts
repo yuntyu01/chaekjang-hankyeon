@@ -107,11 +107,7 @@ export const STACK_OFFSETS = [0, 8, 3];
 export const MAX_STACK = 3;
 export const HOME_SHELF_COUNT = 3;
 
-// tilt 값은 부호만 쓴다(기대는 방향: -1 왼쪽, +1 오른쪽). 실제 각도는 빈틈과 옆 책 3D 상자로 계산한다.
-// 예전 저장본(빈틈 없음)의 기울인 책이 기댈 수 있게 만들어 주는 각도
-export const LEGACY_LEAN = 7;
-// 메뉴로 기울일 때 벌려 주는 각도(최대 기울기는 lean.ts MAX_LEAN)
-export const MENU_LEAN = 8;
+// tilt 값은 부호만 쓴다(기대는 방향: -1 왼쪽, +1 오른쪽). 실제 각도는 빈틈과 옆 책 3D 상자로 계산하고, 버티는지는 statics.ts가 정한다.
 
 export function bookHeight(book: Book) {
   if (book.dims?.height) return book.dims.height;

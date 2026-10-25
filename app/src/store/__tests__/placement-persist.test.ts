@@ -58,7 +58,7 @@ describe('저장 후 다시 실행', () => {
       commit(ok(setDepth(now(), books, 'b07', depthRange(now(), books, 'b07').hi)));
       const l = now();
       const f = frontStateOf(l, books, 'b07')!;
-      const r = frontTilt(l, books, 'b07', f.state, f.qx, 12)!;
+      const r = frontTilt(l, books, 'b07', f.state, f.qx, 22)!; // 넘어짐 한계(두께/키)보다 크게 젖혀야 벽에 기대 남는다
       const fin = frontRelease(r.layout, books, 'b07', r.state, f.qx);
       expect(fin).not.toBeNull();
       commit(fin!);

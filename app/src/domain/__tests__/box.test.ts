@@ -1,4 +1,5 @@
-import { boxSize, collide, CONTACT, frontPoly, project, silhouette, solveLean, visibleFaces, type Placed } from '../box';
+import { boxSize, collide, CONTACT, frontPoly, project, silhouette, visibleFaces, type Placed } from '../box';
+import { leanContact } from '../lean';
 import { LYING_BACK_Z } from '../geometry';
 import { SAMPLE_BOOKS } from '../onboarding-sample';
 import { PLANK_BOUNDS } from '../shelf-scene';
@@ -53,9 +54,10 @@ describe('책 상자', () => {
   it('기대기: 뒤에 놓인 눕힌 책에 틈·파고듦 없이 닿는다', () => {
     const lying: Placed = { bookId: 'b12', pose: 'horizontal', size: boxSize(books.b12, 'horizontal'), x: 4, y: 0, z: LYING_BACK_Z, angle: 0 };
     const spine: Placed = { bookId: 'b06', pose: 'spine', size: boxSize(books.b06, 'spine'), x: 4 + lying.size.w + 6, y: 0, z: 0, angle: 0 };
-    const r = solveLean(spine, -1, [lying], PLANK_BOUNDS);
-    expect(r.supported).toBe(true);
-    expect(r.on).toBe('b12');
+    const c = leanContact(spine, -1, [lying], PLANK_BOUNDS);
+    expect(c.found).toBe(true);
+    expect(c.on).toBe('b12');
+    const r = { angle: -c.angle };
     expect(r.angle).toBeLessThan(0);
     expect(collide({ ...spine, angle: r.angle }, lying)).toBe(false);
     expect(collide({ ...spine, angle: r.angle - 0.05 }, lying, CONTACT)).toBe(true); // 이분 탐색: 0.05도만 더 가도 닿는다

@@ -4,6 +4,7 @@ import { frontDims, SHELF_DEPTH, SHELF_FRONT } from '../geometry';
 import { frontRelease, frontStateOf, frontTilt, normalize, placementOf, setDepth, setPose, validate, type BookMap } from '../layout-engine';
 import { SAMPLE_BOOKS } from '../onboarding-sample';
 import { bodiesOf, PLANK_BOUNDS } from '../shelf-scene';
+import { slipAngle } from '../statics';
 import { bookAt, planTransition } from '../transition';
 import type { ShelfLayout } from '../types';
 
@@ -55,21 +56,27 @@ it('벽이 먼저면 그 각도에서 멈추고 발은 옮겨지지 않는다', 
   expect(wallReach(dims, f)).toBeCloseTo(SHELF_DEPTH, 1);
 });
 
-it('기댄 책을 멀리 당겨도 갑자기 서지 않고 바닥까지 넘어간다', () => {
+it('기댄 책을 멀리 당기면 연속으로 더 기울다가, 바닥 마찰이 버티지 못하는 각(약 45°)을 넘으면 눕는다', () => {
   let l = layoutAt(SHELF_DEPTH - dims.T - dims.H * Math.sin(15 * Math.PI / 180), 15);
+  const depthFor = (deg: number) => SHELF_DEPTH - dims.T - dims.H * Math.sin((deg * Math.PI) / 180);
   let previous = 15;
-  for (const depth of [30, 10, 0, -15, -30]) {
-    const r = setDepth(l, books, book.id, depth);
+  for (const deg of [20, 30, 40]) {
+    const r = setDepth(l, books, book.id, depthFor(deg));
     expect(r.ok).toBe(true);
     if (!r.ok) throw new Error(r.reason);
     l = r.layout;
     const f = frontStateOf(l, books, book.id)!.state;
-    expect(f.pitch).toBeGreaterThanOrEqual(previous);
+    expect(f.pitch).toBeCloseTo(deg, 1);
+    expect(f.pitch).toBeGreaterThan(previous);
     expect(lowest(bodiesOf(l, books, 's')[0])).toBeCloseTo(0, 6);
-    if (f.pitch < 90) expect(wallReach(dims, f)).toBeCloseTo(SHELF_DEPTH, 1);
+    expect(wallReach(dims, f)).toBeCloseTo(SHELF_DEPTH, 1);
     previous = f.pitch;
   }
-  expect(previous).toBe(90);
+  expect(slipAngle(dims.T, dims.H)).toBeCloseTo(45, 0);
+  const r = setDepth(l, books, book.id, depthFor(50));
+  if (!r.ok) throw new Error(r.reason);
+  expect(frontStateOf(r.layout, books, book.id)!.state.pitch).toBe(90);
+  expect(lowest(bodiesOf(r.layout, books, 's')[0])).toBeCloseTo(0, 6);
 });
 
 it('넘어지는 애니메이션 전체에서 바닥 축이 고정되고 위로 들리지 않는다', () => {

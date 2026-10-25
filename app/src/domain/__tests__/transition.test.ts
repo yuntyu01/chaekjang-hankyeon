@@ -120,7 +120,7 @@ describe('기울이기 경로', () => {
       const r = setTilt(base, small, id, tilt);
       if (r.ok) expectClean(base, r.layout, small, 's');
     }
-    const leaning = withLeans(layoutOf(place('A', 0, 0), place('B', 1, 40 + 16, -7)), small);
+    const leaning = withLeans(layoutOf(place('A', 0, 0), place('B', 1, 40 + 30, -7)), small); // 약 11.5°(넘어짐 한계 10.6°보다 크다)
     expectClean(leaning, ok(setTilt(leaning, small, 'B', 0)), small, 's');
   });
 

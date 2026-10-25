@@ -5,6 +5,7 @@ import { bookXs, boxOf, depthRange, frontRelease, frontSpin, frontStateOf, front
 import { MOCKUP_BOOKS, MOCKUP_LAYOUT } from '../mockup-sample';
 import { SAMPLE_BOOKS, SAMPLE_LAYOUT } from '../onboarding-sample';
 import { bodiesOf } from '../shelf-scene';
+import { tipAngle } from '../statics';
 import type { ShelfLayout } from '../types';
 
 const books: BookMap = Object.fromEntries(SAMPLE_BOOKS.map((b) => [b.id, b]));
@@ -32,10 +33,12 @@ const footZ = (l: ShelfLayout) => boxOf(l, books, ID)!.z + T; // 뒤쪽 아래 �
 // 벽에서 z만큼 떨어진 자리(뒤쪽 아래 모서리 기준)
 const depthAtGap = (g: number) => SHELF_DEPTH - T - g;
 
-it('벽에 기댄 책을 당기면 20°를 넘어도 더 기울며 벽과 바닥 접촉을 유지한다', () => {
+it('벽에 기댄 책을 당기면 20°를 넘어도 더 기울며 벽과 바닥 접촉을 유지하고, 마찰이 버티지 못하면 눕는다', () => {
   let l = lone(depthAtGap(H * 0.6)); // 멀리
   expect(body(l).pitch ?? 0).toBe(0);
-  const steps = [H * Math.sin((10 * Math.PI) / 180), H * Math.sin((15 * Math.PI) / 180), H * Math.sin((5 * Math.PI) / 180), H * 0.6];
+  // 넘어짐 한계(약 12.9°)와 미끄러짐 한계(약 45.8°) 사이에서는 그 각으로 기댄다
+  expect(tipAngle(T, H)).toBeGreaterThan(12);
+  const steps = [20, 30, 14, Math.asin(0.6) * 180 / Math.PI].map((deg) => H * Math.sin((deg * Math.PI) / 180));
   const pitches: number[] = [];
   for (const [i, g] of steps.entries()) {
     // 첫 걸음은 기댄 채로 옮긴다(머리 손잡이로 젖힌 뒤처럼): 서 있는 책은 앞뒤로 옮겨도 저절로 기대지 않는다
@@ -50,10 +53,21 @@ it('벽에 기댄 책을 당기면 20°를 넘어도 더 기울며 벽과 바닥
     expect(back).toBeLessThanOrEqual(SHELF_DEPTH + 1e-6); // 벽을 뚫지 않음
     if (b.pitch) expect(back).toBeCloseTo(SHELF_DEPTH, 1); // 기대면 윗모서리가 벽에 닿는다(각은 0.01° 단위로 저장)
   }
-  expect(pitches[0]).toBeCloseTo(10, 1);
-  expect(pitches[1]).toBeCloseTo(15, 1);
-  expect(pitches[2]).toBeCloseTo(5, 1);
+  expect(pitches[0]).toBeCloseTo(20, 1);
+  expect(pitches[1]).toBeCloseTo(30, 1);
+  expect(pitches[2]).toBeCloseTo(14, 1);
   expect(pitches[3]).toBeCloseTo(Math.asin(0.6) * 180 / Math.PI, 1);
+  // 미끄러짐 한계를 넘게 당기면 바닥이 앞으로 미끄러져 눕는다(선반 안)
+  const flat = ok(setDepth(l, books, ID, depthAtGap(H * Math.sin((50 * Math.PI) / 180))));
+  expect(placementOf(flat, ID)!.pitch).toBe(90);
+  for (const c of corners(body(flat))) expect(c.z).toBeGreaterThanOrEqual(-SHELF_FRONT - 0.01);
+});
+
+it('기댄 책을 넘어짐 한계 아래로 밀어 넣으면 다시 선다', () => {
+  let l = ok(setDepth(lone(depthAtGap(H * 0.6)), books, ID, depthAtGap(H * Math.sin((20 * Math.PI) / 180)), true));
+  expect(placementOf(l, ID)!.pitch).toBeCloseTo(20, 1);
+  l = ok(setDepth(l, books, ID, depthAtGap(H * Math.sin((8 * Math.PI) / 180))));
+  expect(placementOf(l, ID)!.pitch ?? 0).toBe(0);
 });
 
 it('각도는 책 높이·두께·거리에서: 같은 틈이면 키가 큰 책이 덜 기운다', () => {
@@ -70,8 +84,8 @@ it('서 있던 책은 앞뒤로 옮겨도(벽 바로 앞까지) 서 있고, 기�
     const standing = ok(setDepth(lone(depthAtGap(H * 0.6)), books, ID, depthAtGap(g)));
     expect(placementOf(standing, ID)!.pitch ?? 0).toBe(0);
   }
-  // 기대 있던 책은 같은 틈에서 계속 기댄다
-  let leaning = ok(setDepth(lone(depthAtGap(H * 0.6)), books, ID, depthAtGap(5), true));
+  // 기대 있던 책(버티는 각 20°)은 더 먼 틈에서도 계속 기댄다
+  let leaning = ok(setDepth(lone(depthAtGap(H * 0.6)), books, ID, depthAtGap(H * Math.sin((20 * Math.PI) / 180)), true));
   leaning = ok(setDepth(leaning, books, ID, depthAtGap(mid)));
   expect(placementOf(leaning, ID)!.pitch ?? 0).toBeGreaterThan(0);
   // 끄는 도중 상태(prevLean)로도 같은 판단
@@ -137,6 +151,13 @@ describe('머리 손잡이: 젖히기·좌우 돌리기(하나의 3D 자세)', (
     const lean = drag(start, [{ pitch: 5 }, { pitch: 12 }, { pitch: 18 }]);
     const kept = frontRelease(start, books, ID, lean.cur, lean.qx)!;
     expect(placementOf(kept, ID)!.pitch).toBeCloseTo(lean.cur.pitch, 1);
+ 
+    // 벽에 닿아 있어도 넘어짐 한계 이하로 살짝 기댄 자세는 놓으면 다시 선다(무게중심이 바닥 축 안쪽)
+    const near = lone(depthAtGap(8));
+    const slight = drag(near, [{ pitch: 3 }, { pitch: 6 }, { pitch: 9 }]);
+    expect(slight.cur.pitch).toBeLessThan(tipAngle(T, H));
+    expect(touching(slight.l)).toBeCloseTo(SHELF_DEPTH, 1);
+    expect(placementOf(frontRelease(near, books, ID, slight.cur, slight.qx)!, ID)!.pitch ?? 0).toBe(0);
   });
 
   it('좌우로 돌려도 축 위치(가로)는 그대로, 기댄 채 돌리면 벽 접촉을 다시 계산해 유지', () => {
