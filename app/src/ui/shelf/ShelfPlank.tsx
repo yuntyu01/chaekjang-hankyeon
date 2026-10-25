@@ -1,5 +1,5 @@
 // 선반 판과 벽. 장면(ShelfScene)이 줄마다 그린다.
-// 모양: 3D 판 꼭짓점을 책과 같은 카메라로 투영한 면(domain/shelf-geom). 화면에 보이는 선반 외곽 = 이 면들의 외곽(모서리 반지름 EDGE_R).
+// 모양: 3D 판 꼭짓점을 책과 같은 카메라로 투영한 면(domain/shelf-geom). 화면에 보이는 선반 외곽 = 이 면들의 외곽(모서리 반지름 PLANK_EDGE_R).
 // 그리는 순서는 장면 전체의 가림 순서(판도 책과 같은 3D 상자로 정렬): 아래 줄 책머리 위, 이 줄 책 아래.
 // 재질: 판 색 하나(ui/lighting surfaces.plank). 나무 결(반사율·미세 높이)과 벽 칠(무광 페인트)은 빛 셰이더가 재질(ui/lighting materials)로 계산한다.
 // 밝기: 빛 모델 하나(SceneLight). 판 윗면은 그 위 책·벽·위 판이 가린 하늘, 둥근 앞 모서리는 원호 법선의 빛이다.
@@ -11,7 +11,7 @@ import { useDerivedValue, type SharedValue } from 'react-native-reanimated';
 
 import { toPx, VIEW_CX, VIEW_DIST, type Affine, type Cam, type Vec3 } from '@/domain/camera';
 import type { Camera } from '@/domain/box';
-import { EDGE_R } from '@/domain/book-parts';
+import { PLANK_EDGE_R } from '@/domain/book-parts';
 import { DESIGN_WIDTH, SHELF, SHELF_DEPTH, SHELF_FRONT, SHELF_THICK, SHELF_X0, SHELF_X1 } from '@/domain/geometry';
 import { darkening, DESIGN, EREF, FAR, NEGLIGIBLE, shadowAlpha, SREF, type Env } from '@/domain/light-model';
 import { hull } from '@/domain/shadow-shape';
@@ -140,7 +140,7 @@ function Face({ poly, children }: { poly: RO<SkPath>; children?: React.ReactNode
   );
 }
 
-// 판의 화면 모양(px 변환 px로): 윗면·앞면 다각형과 두 면의 투영 껍질을 모서리 반지름(EDGE_R)으로 둥글린 윤곽.
+// 판의 화면 모양(px 변환 px로): 윗면·앞면 다각형과 두 면의 투영 껍질을 모서리 반지름(PLANK_EDGE_R)으로 둥글린 윤곽.
 // 판 그리기(ShelfBoard)와 아래 줄 캔버스가 이 판 자리를 비우는 윤곽이 같은 모양을 쓴다(판 끝 둥근 모서리로 깎인 곳은 아래 줄이 판 밑 벽을 칠한다)
 export function plankShape(c: Camera, px: Affine) {
   'worklet';
@@ -150,7 +150,7 @@ export function plankShape(c: Camera, px: Affine) {
   const top = f.top.poly.map(P);
   // 앞면은 위 변(윗면과 공유)을 위로 조금 덮는다
   const front = grow(f.front.poly.map(P), 0, 1, { x: 0, y: -1 });
-  return { top, front, outline: roundedPolygon(hull([...top, ...front]), EDGE_R * s) };
+  return { top, front, outline: roundedPolygon(hull([...top, ...front]), PLANK_EDGE_R * s) };
 }
 export function plankOutlinePath(c: Camera, px: Affine) {
   'worklet';

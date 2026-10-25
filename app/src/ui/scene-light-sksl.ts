@@ -3,7 +3,7 @@
 // 두 가지:
 //   bake: 하늘 가림(둘레·책 상자가 가린 하늘, 시점과 상관없다)을 면 좌표 그림에 굽는다. 무거운 몫은 모두 여기(책이 멈췄을 때만 돈다).
 //   lit: 구운 그림(tex)을 읽고 나머지(하늘·창빛 직접 몫, 둥근 모서리 법선, 반사광)를 화소마다. 곱하기·컬러 닷지 두 가지로 컴파일한다.
-import { EDGE_R, GROOVE, SPINE_CURVE } from '@/domain/book-parts';
+import { EDGE_R, GROOVE, PLANK_EDGE_R, SPINE_CURVE } from '@/domain/book-parts';
 import { SHELF_DEPTH, SHELF_FRONT, SHELF_THICK, SHELF_X0, SHELF_X1 } from '@/domain/geometry';
 import { ALBEDO, BOX_MAX, BOX_VEC, DESIGN, ENV_COLS, ENV_NY, CAM, EREF, EXPOSURE, FAR, GAMMA, GRID_N, KEY_BANDS, KEY_C, KEY_DIRS, L_ELEV, L_UNIT, RAD, SKY_C, TONE, TOUCH, type C3 } from '@/domain/light-model';
 import type { Affine, Cam, Vec3 } from '@/domain/camera';
@@ -116,6 +116,7 @@ function header() {
   const float3 PAPER = ${c3(ALBEDO.paper)};
   const float3 PAPER_COLOR = ${c3(DESIGN.paper)};
   const float EDGER = ${f(EDGE_R)};
+  const float PLANKR = ${f(PLANK_EDGE_R)};
   const float IG = ${f(1 / GAMMA)};
   const float LOSS_G0 = ${f(LOSS_G0)};
   const float LOSS_RP = ${f(LOSS_RP)};
@@ -1082,8 +1083,8 @@ ${shadeCode(mode)}
     // 화소 한 칸이 평면에서 덮는 길이(사상의 미분): 재질 무늬를 화소 크기로 거른다
     float3 JX = (Ux - P * Hw.x) / w;
     float3 JY = (Vy - P * Hw.y) / w;
-    float b0 = slope(arc(bev0.w - dot(P, bev0.xyz), EDGER));
-    float b1 = slope(arc(bev1.w - dot(P, bev1.xyz), EDGER));
+    float b0 = slope(arc(bev0.w - dot(P, bev0.xyz), PLANKR));
+    float b1 = slope(arc(bev1.w - dot(P, bev1.xyz), PLANKR));
     float3 n = normalize(tN + bev0.xyz * b0 + bev1.xyz * b1);
     // 면 좌표: u = 판 길이 방향(x), v = 면 안의 다른 방향
     float3 Au = float3(1.0, 0.0, 0.0);
