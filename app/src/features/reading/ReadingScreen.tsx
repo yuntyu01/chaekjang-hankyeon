@@ -18,7 +18,7 @@ import { LibraryCover } from '@/ui/BookVisual';
 import { BookPicker } from '@/features/bookmark/BookPicker';
 import { Btn, ListGroup, ListItem, Row, Sheet } from '@/ui/kit';
 import { StatusBar } from 'expo-status-bar';
-import { ButtonShading, PaperSurface } from '@/ui/PaperSurface';
+import { ButtonShading } from '@/ui/PaperSurface';
 
 const LIGHT = night.ink;
 
@@ -98,7 +98,6 @@ export function ReadingScreen({ initialBookId, soundOnly = false, inTab = false 
       </View>
       {/* Preserve the cover canvas and paper surface while folded. */}
         <View pointerEvents={open ? 'auto' : 'none'} onLayout={(e) => { if (open) setPanelHeight(e.nativeEvent.layout.height); }} style={[st.panel, { maxHeight: height * 0.65, display: open ? 'flex' : 'none' }]}>
-          <PaperSurface color={colors.bg} radius={shape.sheet} grain={0.04} shaded={false} />
           <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingHorizontal: space.page, paddingTop: 18, paddingBottom: insets.bottom + 22 }}>
             <View style={st.bookRow}>
               <Pressable onPress={() => setBookPicker(true)} accessibilityRole="button" accessibilityLabel={bookId ? '책 변경' : '책 연결하기'} style={st.bookPicker}>

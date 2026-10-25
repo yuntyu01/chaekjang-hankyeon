@@ -19,19 +19,50 @@ const contrast = (a: string, b: string) => {
   return (x + 0.05) / (y + 0.05);
 };
 
+// 2026-10-26 색상 기준(갈피 수정 시안): 사용자가 정한 값 그대로
+describe('색: 지정한 기준값', () => {
+  it('배경·입력칸·대표색·글자·구분선·버튼 글자', () => {
+    expect(colors.bg).toBe('#FEFEFD');
+    expect(colors.input).toBe('#F6F5F2');
+    expect(colors.accent).toBe('#6D534B');
+    expect(colors.ink).toBe('#2B2725');
+    expect(colors.inkSoft).toBe('#7A706A');
+    expect(colors.line).toBe('#E8E5E0');
+    expect(colors.border).toBe('#E8E5E0');
+    expect(colors.onAccent).toBe('#FFFFFF');
+  });
+  it('화면 배경과 입력칸 배경은 다른 토큰이고, 입력칸은 바탕과 구별된다', () => {
+    expect(colors.input).not.toBe(colors.bg);
+    expect(contrast(colors.input, colors.bg)).toBeGreaterThan(1.05);
+  });
+  it('바탕·입력칸·시트·작은 강조 바탕은 노란 크림이나 진한 베이지가 아니다(빨강−파랑 차 10 이하, 밝기 높음)', () => {
+    for (const c of [colors.bg, colors.input, colors.surface, colors.raised, colors.accentSoft]) {
+      const [r, , b] = [1, 3, 5].map((i) => parseInt(c.slice(i, i + 2), 16));
+      expect(r - b).toBeLessThanOrEqual(10);
+      expect(lum(c)).toBeGreaterThan(0.8);
+    }
+  });
+  it('비활성·오류는 서로, 그리고 강조색·입력칸과 구별된다', () => {
+    expect(new Set([colors.disabled, colors.danger, colors.accent, colors.input]).size).toBe(4);
+    expect(contrast(colors.disabled, colors.input)).toBeGreaterThan(1.05);
+  });
+});
+
 describe('색: 읽을 수 있는 대비', () => {
-  it('본문·제목은 바탕과 표면 위에서 7:1 이상', () => {
-    for (const bg of [colors.bg, colors.surface, colors.raised]) {
+  it('본문·제목은 바탕·입력칸·시트 위에서 7:1 이상', () => {
+    for (const bg of [colors.bg, colors.input, colors.raised]) {
       expect(contrast(colors.ink, bg)).toBeGreaterThanOrEqual(7);
       expect(contrast(colors.title, bg)).toBeGreaterThanOrEqual(7);
     }
   });
-  it('보조 글자·강조색·오류색은 4.5:1 이상(바탕·표면·시트)', () => {
-    for (const bg of [colors.bg, colors.surface, colors.raised]) {
-      expect(contrast(colors.inkSoft, bg)).toBeGreaterThanOrEqual(4.5);
+  it('강조색·오류색은 바탕·입력칸·시트 위에서 4.5:1 이상', () => {
+    for (const bg of [colors.bg, colors.input, colors.raised]) {
       expect(contrast(colors.accent, bg)).toBeGreaterThanOrEqual(4.5);
       expect(contrast(colors.danger, bg)).toBeGreaterThanOrEqual(4.5);
     }
+  });
+  it('보조 글자는 바탕·시트 위에서 4.5:1 이상(입력칸 바탕 위에는 쓰지 않는다: 4.4:1)', () => {
+    for (const bg of [colors.bg, colors.raised]) expect(contrast(colors.inkSoft, bg)).toBeGreaterThanOrEqual(4.5);
   });
   it('주요 버튼 글자는 강조색 위에서 4.5:1 이상', () => {
     expect(contrast(colors.onAccent, colors.accent)).toBeGreaterThanOrEqual(4.5);

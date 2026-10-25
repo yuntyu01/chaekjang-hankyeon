@@ -101,7 +101,7 @@ function ArtPane({ title, author, size, pages, value, custom, onChange }: PanePr
                 <Image source={a.thumb} style={st.artImage} resizeMode="cover" />
                 {on ? (
                   <View style={st.check}>
-                    <Check size={13} color="#FBF6EE" strokeWidth={2.4} />
+                    <Check size={13} color={colors.onAccent} strokeWidth={2.4} />
                   </View>
                 ) : null}
               </View>
@@ -237,7 +237,7 @@ const st = StyleSheet.create({
   tabs: { flexDirection: 'row', marginTop: 16, padding: 3, borderRadius: shape.input + 3, backgroundColor: colors.surface },
   tab: { flex: 1, minHeight: 42, borderRadius: shape.input, alignItems: 'center', justifyContent: 'center' },
   tabOn: { backgroundColor: INK },
-  tabText: { ...type.row, fontSize: 15, color: colors.inkSoft },
+  tabText: { ...type.row, fontSize: 15, color: colors.ink }, // 입력칸색 바탕 위라 보조색 대신 본문색
   tabTextOn: { fontFamily: fonts.uiBold, color: colors.onAccent },
   artGrid: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between', rowGap: 16, marginTop: 18 },
   artCell: { width: '31.5%', alignItems: 'center' },
@@ -254,7 +254,7 @@ const st = StyleSheet.create({
   noneText: { ...type.sub, flex: 1 },
   design: { borderRadius: shape.input, borderWidth: 1.5, borderColor: 'transparent', backgroundColor: colors.surface, paddingBottom: 8, alignItems: 'center' },
   designOn: { borderColor: INK, backgroundColor: colors.accentSoft },
-  designName: { ...type.caption, marginTop: 2 },
+  designName: { ...type.caption, color: colors.ink, marginTop: 2 },
   h: { ...type.section, marginTop: space.group + 4, marginBottom: space.item },
   hint: { ...type.caption },
   swatches: { flexDirection: 'row', flexWrap: 'wrap', gap: 12 },

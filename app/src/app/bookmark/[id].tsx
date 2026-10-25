@@ -19,7 +19,6 @@ import { libraryStore, useLibrary } from '@/store/library-store';
 import { ChevronLeft, MoreHorizontal, PenLine, Share } from '@/ui/icons';
 import { Btn, Chip, Empty, Field, ListGroup, ListItem, Muted, Row, Screen, Sheet } from '@/ui/kit';
 import { colors, fonts, icon, screenTheme, shape, space, type } from '@/ui/screenTheme';
-import { PaperSurface } from '@/ui/PaperSurface';
 
 export function cardData(lib: Library, m: Bookmark): BookmarkCardData | null {
   const b = lib.books[m.myBookId];
@@ -104,7 +103,6 @@ export default function BookmarkDetail() {
 
   return (
     <View style={{ flex: 1, backgroundColor: PAGE_BG, paddingTop: insets.top }}>
-      <PaperSurface color={PAGE_BG} radius={0} grain={0.035} shaded={false} />
       <View style={st.header}>
         <Pressable onPress={() => router.back()} hitSlop={8} style={st.headerBtn} accessibilityRole="button" accessibilityLabel="뒤로">
           <ChevronLeft size={28} color={colors.title} strokeWidth={icon.stroke} />
@@ -261,7 +259,7 @@ function EditBookmark({ m, onDone }: { m: Bookmark; onDone: () => void }) {
 const st = StyleSheet.create({
   header: { minHeight: 60, paddingTop: 4, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 8 },
   headerBtn: { width: space.touch, height: space.touch, alignItems: 'center', justifyContent: 'center' },
-  dot: { width: 7, height: 7, borderRadius: 3.5, backgroundColor: '#C9C2B6' },
+  dot: { width: 7, height: 7, borderRadius: 3.5, backgroundColor: colors.inkFaint, opacity: 0.6 },
   count: type.caption,
   bottom: { flexDirection: 'row', flexWrap: 'wrap', gap: 16, alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: space.page, paddingTop: 12 },
   barBtn: { flexDirection: 'row', alignItems: 'center', gap: 6, minHeight: space.touch, paddingHorizontal: 2 },

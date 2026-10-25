@@ -1842,7 +1842,7 @@ const styles = StyleSheet.create({
   menuItem: { flexDirection: 'row', alignItems: 'center', gap: 16, minHeight: space.row },
   menuText: type.row,
   emptyWrap: { position: 'absolute', left: 0, right: 0, top: 0, bottom: 0, alignItems: 'center', justifyContent: 'center', paddingBottom: 60 },
-  emptyCard: { alignItems: 'center', backgroundColor: 'rgba(255,253,249,0.94)', borderRadius: shape.dialog, paddingVertical: 28, paddingHorizontal: 28, marginHorizontal: space.page },
+  emptyCard: { alignItems: 'center', backgroundColor: 'rgba(254,254,253,0.94)', borderRadius: shape.dialog, paddingVertical: 28, paddingHorizontal: 28, marginHorizontal: space.page },
   emptyTitle: { ...type.heading, textAlign: 'center' },
   emptyBody: { ...type.sub, textAlign: 'center', marginTop: 8 },
   emptyBtn: { marginTop: space.group, minHeight: 48, borderRadius: shape.button, backgroundColor: ui.accent, paddingHorizontal: 24, flexDirection: 'row', alignItems: 'center', gap: 6 },

@@ -2,29 +2,30 @@ import { StyleSheet, type TextStyle } from 'react-native';
 
 import { colors as shelfColors, fonts as shelfFonts } from './theme';
 
-// 화면 UI 공통 기준(2026-10-26 설정 시안: 따뜻한 아이보리 바탕, 짙은 갈색 글자, 차분한 갈색 강조, 둥근 고딕, 넉넉한 여백).
+// 화면 UI 공통 기준. 색은 2026-10-26 갈피 수정 시안(부드러운 흰 바탕, 옅은 아이보리 입력칸, 차분한 갈색), 글꼴·간격은 설정 시안.
 // 색·글꼴·간격·모양은 여기서만 정한다. 화면마다 비슷한 값을 따로 적지 말고 아래 토큰과 ui/kit 부품을 쓴다.
 // 책장 재질·빛·치수는 theme.ts의 따로 된 토큰을 쓴다(시안 벽색에 맞춰 보정돼 있다).
 export const colors = {
   ...shelfColors,
-  bg: '#FEFBF6', // 화면 바탕(시안 #FEFBF6~F7)
-  surface: '#F6F0E7', // 입력창·검색창처럼 구분이 필요한 곳만
-  raised: '#FFFDF9', // 하단 시트·확인창·정보 상자
-  ink: '#2E2220', // 본문·목록 글자(짙은 갈색)
-  title: '#4D3B39', // 화면 제목(시안의 부드러운 갈색)
-  inkSoft: '#6E6160', // 보조 글자·구역 이름·값(바탕 대비 5.7:1)
-  inkFaint: '#A0938F', // 입력 안내 글자·장식 선(본문에 쓰지 않는다)
-  line: '#E8E0D9', // 구분선(얇게)
-  border: '#E0D5CB', // 보조 버튼·칩 테두리
-  accent: '#775C53', // 주요 버튼·선택 상태·켜진 스위치(시안 #785E54)
-  accentPressed: '#654C44',
-  accentSoft: '#F4E9DE', // 작은 강조 바탕(검색 결과 '추가' 등)
-  onAccent: '#FFFCF8',
-  disabled: '#ECE5DE', // 누를 수 없는 주요 버튼 바탕
-  disabledInk: '#A99D97',
-  danger: '#A5483A',
+  bg: '#FEFEFD', // 화면 배경: 부드러운 흰색(시트·확인창·메뉴도 같은 바탕)
+  input: '#F6F5F2', // 입력칸·검색창 배경: 노란기 없는 아주 옅은 아이보리(균일한 단색, 질감·그라데이션 없음)
+  surface: '#F6F5F2', // 입력칸 말고 구분이 필요한 작은 영역(안내 상자·눌린 줄)
+  raised: '#FEFEFD', // 하단 시트·확인창·정보 상자(화면 배경과 같은 흰색)
+  ink: '#2B2725', // 본문 글자·입력칸 이름
+  title: '#4D3B39', // 화면 제목(시안 실측 #503B36 근처의 짙은 갈색)
+  inkSoft: '#7A706A', // 보조 글자·구역 이름·값(흰 바탕 대비 4.8:1). 입력칸 바탕 위에는 쓰지 않는다(4.4:1)
+  inkFaint: '#A9A29C', // 입력 안내 글자·장식 선(본문에 쓰지 않는다)
+  line: '#E8E5E0', // 구분선
+  border: '#E8E5E0', // 기본 테두리(보조 버튼·칩)
+  accent: '#6D534B', // 대표색: 주요 버튼·선택 상태·입력 포커스·켜진 스위치
+  accentPressed: '#5A443D',
+  accentSoft: '#F2EDEA', // 작은 강조 바탕(검색 결과 '추가', 고른 칸). 크림·베이지가 아닌 옅은 갈색 기운
+  onAccent: '#FFFFFF', // 갈색 버튼 안 글자
+  disabled: '#ECE9E5', // 누를 수 없는 주요 버튼 바탕(입력칸과 구별되게 한 단계 짙게)
+  disabledInk: '#ADA6A0',
+  danger: '#A5483A', // 오류·삭제(갈색과 구별되는 붉은 기)
   star: '#A8865F',
-  scrim: 'rgba(36,26,22,0.32)',
+  scrim: 'rgba(43,39,37,0.32)',
   inkAction: '#F2D9A6', // 짙은 알림(토스트) 위 행동 글자(되돌리기)
 };
 
@@ -54,7 +55,7 @@ export const type = {
   caption: text(fonts.ui, 13, 18, colors.inkSoft), // 날짜·작은 메타
   button: text(fonts.uiBold, 16, 22, colors.ink),
   input: { fontFamily: fonts.ui, fontSize: 16, color: colors.ink } as TextStyle, // 입력창(줄 높이는 플랫폼에 맡긴다)
-  label: text(fonts.ui, 14, 20, colors.inkSoft), // 입력창 이름
+  label: text(fonts.ui, 14, 20, colors.ink), // 입력칸 이름(시안: 본문색)
   number: text(fonts.uiBold, 22, 28, colors.ink), // 요약 숫자(16권·2분)
 };
 

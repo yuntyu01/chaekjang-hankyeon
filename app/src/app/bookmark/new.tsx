@@ -78,11 +78,11 @@ export default function NewBookmark() {
               </Row>
             </View>
           ) : (
-            <View style={{ borderWidth: shape.border, borderStyle: 'dashed', borderColor: colors.border, borderRadius: shape.input, paddingVertical: 28, paddingHorizontal: 16, alignItems: 'center', gap: 16, backgroundColor: colors.surface }}>
+            <View style={{ borderWidth: shape.border, borderStyle: 'dashed', borderColor: colors.border, borderRadius: shape.input, paddingVertical: 28, paddingHorizontal: 16, alignItems: 'center', gap: 16, backgroundColor: colors.bg }}>
               <Muted style={{ textAlign: 'center' }}>마음에 남은 페이지를 찍어 그대로 붙여 두세요.{'\n'}찍은 뒤 문장 부분만 잘라 낼 수 있어요.</Muted>
               <Row style={{ flexWrap: 'nowrap', width: '100%' }}>
                 <Btn label="페이지 찍기" size="s" icon={<Camera size={icon.small} color={colors.onAccent} strokeWidth={icon.stroke} />} onPress={() => fromPhoto('camera')} style={{ flex: 1 }} />
-                <Btn label="사진 고르기" size="s" kind="secondary" icon={<ImageIcon size={icon.small} color={colors.ink} strokeWidth={icon.stroke} />} onPress={() => fromPhoto('library')} style={{ flex: 1, backgroundColor: colors.raised }} />
+                <Btn label="사진 고르기" size="s" kind="secondary" icon={<ImageIcon size={icon.small} color={colors.ink} strokeWidth={icon.stroke} />} onPress={() => fromPhoto('library')} style={{ flex: 1 }} />
               </Row>
             </View>
           )}

@@ -558,7 +558,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 5,
     borderRadius: 14,
-    backgroundColor: 'rgba(251, 248, 241, 0.94)',
+    backgroundColor: 'rgba(254, 254, 253, 0.94)', // 화면 배경(ui bg)을 살짝 비치게
     borderWidth: StyleSheet.hairlineWidth,
     borderColor: colors.line,
   },

@@ -26,7 +26,6 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { MINI_TIMER_SPACE, miniTimerStore } from '@/store/mini-timer-store';
 import { useReading } from '@/store/reading-store';
 import { colors, fonts, icon, shape, space, type } from '@/ui/screenTheme';
-import { PaperSurface } from '@/ui/PaperSurface';
 
 export const ui = {
   pad: space.page,
@@ -72,7 +71,6 @@ export function Screen({
   );
   return (
     <View style={{ flex: 1, paddingTop: insets.top, backgroundColor: colors.bg }}>
-      <PaperSurface color={colors.bg} radius={0} grain={0.03} shaded={false} />
       {back ? (
         <View style={s.header}>
           {/* 제목은 화면 가운데(양옆 버튼 폭과 상관없이) */}
@@ -220,7 +218,7 @@ export function SelectField({ label, value, placeholder, sub, onPress }: { label
           <Text style={[type.input, { color: value ? colors.ink : colors.inkFaint }]} numberOfLines={2}>
             {value ?? placeholder}
           </Text>
-          {sub ? <Text style={[type.caption, { marginTop: 2 }]} numberOfLines={1}>{sub}</Text> : null}
+          {sub ? <Text style={[type.caption, { marginTop: 2, color: colors.ink }]} numberOfLines={1}>{sub}</Text> : null}
         </View>
         <ChevronRight size={20} color={colors.inkSoft} strokeWidth={icon.stroke} />
       </Pressable>
@@ -493,17 +491,17 @@ export const s = StyleSheet.create({
   titleCenter: { position: 'absolute', left: 64, right: 64, top: 4, bottom: 0, alignItems: 'center', justifyContent: 'center' },
   back: { width: space.touch, height: space.touch, alignItems: 'center', justifyContent: 'center', marginLeft: 8 },
   right: { flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-end', minWidth: space.touch, marginRight: 10 },
-  footer: { paddingHorizontal: space.page, paddingTop: 10, backgroundColor: colors.bg, borderTopWidth: shape.hairline, borderTopColor: colors.line },
+  footer: { paddingHorizontal: space.page, paddingTop: 10, backgroundColor: colors.bg },
   muted: { ...type.sub },
   btn: { minHeight: 52, borderRadius: shape.button, borderWidth: shape.border, borderColor: colors.border, paddingHorizontal: 18, paddingVertical: 12, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, backgroundColor: 'transparent' },
   btnSmall: { minHeight: 40, paddingVertical: 8, paddingHorizontal: 14, borderRadius: shape.input },
   btnText: { ...type.button, flexShrink: 1, textAlign: 'center' },
   label: { ...type.label, marginBottom: 8 },
-  input: { ...type.input, minHeight: 50, borderRadius: shape.input, borderWidth: shape.border, borderColor: colors.surface, backgroundColor: colors.surface, paddingHorizontal: 14, paddingVertical: 12 },
+  input: { ...type.input, minHeight: 50, borderRadius: shape.input, borderWidth: shape.border, borderColor: colors.input, backgroundColor: colors.input, paddingHorizontal: 14, paddingVertical: 12 },
   inputMulti: { minHeight: 110, textAlignVertical: 'top', lineHeight: 24 },
   inputFocus: { borderColor: colors.accent },
-  select: { minHeight: 50, borderRadius: shape.input, borderWidth: shape.border, borderColor: colors.surface, backgroundColor: colors.surface, paddingHorizontal: 14, paddingVertical: 12, flexDirection: 'row', alignItems: 'center', gap: 8 },
-  search: { minHeight: 50, borderRadius: shape.input, backgroundColor: colors.surface, flexDirection: 'row', alignItems: 'center', paddingRight: 2 },
+  select: { minHeight: 50, borderRadius: shape.input, borderWidth: shape.border, borderColor: colors.input, backgroundColor: colors.input, paddingHorizontal: 14, paddingVertical: 12, flexDirection: 'row', alignItems: 'center', gap: 8 },
+  search: { minHeight: 50, borderRadius: shape.input, backgroundColor: colors.input, flexDirection: 'row', alignItems: 'center', paddingRight: 2 },
   searchIcon: { width: space.touch, minHeight: 48, alignItems: 'center', justifyContent: 'center' },
   searchInput: { ...type.input, flex: 1, paddingVertical: 12 },
   clear: { width: 22, height: 22, borderRadius: 11, backgroundColor: colors.inkFaint, alignItems: 'center', justifyContent: 'center' },
