@@ -97,7 +97,7 @@ export function stackMembers(item: ShelfItem, layout: ShelfLayout, books: BookMa
   const base = placementOf(layout, item.bookIds[0]);
   return item.bookIds.map((id) => {
     const p = placementOf(layout, id);
-    return { bookId: id, book: books[id], spin: p?.spin, depth: base?.depth, dx: p?.stackDx, dz: p?.stackDz };
+    return { bookId: id, book: books[id], spin: p?.spin, depth: base?.depth, dx: p?.stackDx, dz: p?.stackDz, flip: p?.flip };
   });
 }
 
@@ -148,7 +148,8 @@ export function itemBoxes(item: ShelfItem, layout: ShelfLayout, books: BookMap, 
   const spin = p.pose === 'horizontal' || p.pose === 'front' ? p.spin : undefined;
   const z = p.depth ?? defaultDepth(b, p.pose);
   const pitch = p.pose === 'front' ? frontPitchOf(b, p, z) || undefined : undefined;
-  return [{ bookId: p.bookId, pose: p.pose, size: boxSize(b, p.pose), x, y: 0, z, angle: 0, spin, pitch }];
+  const flip = p.pose === 'horizontal' && p.flip ? true : undefined;
+  return [{ bookId: p.bookId, pose: p.pose, size: boxSize(b, p.pose), x, y: 0, z, angle: 0, spin, pitch, flip }];
 }
 
 // 한 항목이 차지하는 깊이 구간(선반 공간 z): 실제 상자 꼭짓점에서
@@ -470,6 +471,7 @@ export function normalize(layout: ShelfLayout): ShelfLayout {
         // 선반 공간 깊이·수직축 회전(눕힌 책만)은 그대로 보존
         if (p.depth !== undefined) next.depth = p.depth;
         if (p.spin && (p.pose === 'horizontal' || p.pose === 'front')) next.spin = p.spin;
+        if (p.flip && p.pose === 'horizontal') next.flip = true;
         if (p.pose === 'front' && !stackId) {
           if (p.pitch) next.pitch = p.pitch;
           else if (p.wallLean && p.pitch === undefined) next.wallLean = true; // 예전 저장본
@@ -527,6 +529,7 @@ function insertItem(
   if (placement.depth !== undefined) kept.depth = placement.depth;
   if (placement.spin && (placement.pose === 'horizontal' || placement.pose === 'front')) kept.spin = placement.spin;
   if (placement.pose === 'front' && placement.pitch) kept.pitch = placement.pitch;
+  if (placement.pose === 'horizontal' && placement.flip) kept.flip = true;
   placements.push(kept);
   const next = normalize({ ...layout, placements });
   if (!books) return next;
@@ -803,7 +806,7 @@ export function setPose(layout: ShelfLayout, books: BookMap, bookId: string, pos
       const base = detach(layout, bookId, books);
       last = finish(layout, insertItem(base, { bookId, pose, tilt: 0, depth }, p.shelfId, index + 1, books), books);
     } else {
-      const placements = layout.placements.map((q) => (q.bookId === bookId ? { ...q, pose, tilt: 0 as Tilt, depth, spin: undefined, pitch: undefined, wallLean: undefined } : q));
+      const placements = layout.placements.map((q) => (q.bookId === bookId ? { ...q, pose, tilt: 0 as Tilt, depth, spin: undefined, pitch: undefined, wallLean: undefined, flip: undefined } : q));
       last = finish(layout, settle(normalize({ ...layout, placements }), books, bookXs(layout, books)), books);
     }
     if (last.ok) return last;

@@ -59,6 +59,7 @@ export type Placed = {
   angle: number;
   spin?: number; // 눕힌 책의 수직축 회전(도). size는 돌리기 전 치수, x·z는 돌린 뒤 축 정렬 상자의 최솟값
   pitch?: number; // 표지 책이 벽에 기댄 각도(도). z는 똑바로 섰을 때의 앞면(뒤쪽 아래 모서리 = z + 두께)
+  flip?: boolean; // 눕힌 책의 머리가 오른쪽(roll +90). 상자 범위는 같다
 };
 
 function rad(d: number) {
@@ -125,12 +126,6 @@ export function visibleFaces(cam: Camera, p: Placed): { front: Point[]; sides: F
   return { front: f.map((q) => project(cam, at(q, p.z))), sides };
 }
 
-// 선반 공간 충돌: 깊이 구간이 겹치고 앞면 윤곽이 겹칠 때만(깊이가 다르면 화면에서 겹쳐도 닿지 않는다)
-const EPS = 0.05;
-export function zOverlap(a: Placed, b: Placed) {
-  'worklet';
-  return a.z < b.z + aabbD(b) - EPS && b.z < a.z + aabbD(a) - EPS;
-}
 // 공통 허용 오차(DU ≈ 1.3mm × 값): 이보다 얕게 파고드는 것은 맞닿음·계산 오차로 본다.
 export const TOLERANCE = 0.25;
 // 접촉 탐색(기대기 각도를 찾을 때)의 기준: 더 얕게 잡아 멈춘 자리가 허용 오차 안에 들어오게 한다

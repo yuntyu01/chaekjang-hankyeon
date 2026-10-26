@@ -6,6 +6,8 @@ import type { Placed } from '../box';
 import { tipAngle } from '../statics';
 import { bookAt, fallsUnderGravity, gravityPlan, holdTrack, OFF_T, planTransition, safeOffsets, withOff, type Seg, type Track } from '../transition';
 
+// 경로 검사 시간 제한(기본 40ms)을 넘기면 앞으로 빼는 경로가 되어 결과가 바뀐다: 시험은 넉넉히
+const NO_RUSH = { budgetMs: 60_000 };
 const T = 30;
 const H = 150;
 const spine = (id: string, x: number, angle = 0): Placed => ({ bookId: id, pose: 'spine', size: { w: T, h: H, d: 100 }, x, y: 0, z: 0, angle });
@@ -17,7 +19,7 @@ describe('넘어지는 동작', () => {
     const from = b3(spine('L', 100, -12));
     const to = b3(spine('L', 100, -25));
     expect(12).toBeGreaterThan(tipAngle(T, H));
-    const plan = planTransition([from], [to]);
+    const plan = planTransition([from], [to], undefined, NO_RUSH);
     const g = gravityPlan(plan);
     expect(g?.fall).toBe(true);
     const tr = g!.tracks[0];
@@ -40,23 +42,23 @@ describe('넘어지는 동작', () => {
   it('넘어짐 한계 아래로 놓은 책이 다시 서는 것도 중력: 점점 빨라진다', () => {
     const from = b3(spine('L', 100, -tipAngle(T, H) + 3));
     const to = b3(spine('L', 100, 0));
-    const g = gravityPlan(planTransition([from], [to]));
+    const g = gravityPlan(planTransition([from], [to], undefined, NO_RUSH));
     expect(g?.fall).toBe(true);
   });
 
   it('똑바로 선 책을 기울이기·기댄 책을 세우기는 무게중심을 들어 올리므로 손이 하는 움직임(경로 그대로)', () => {
     const up = b3(spine('L', 100, 0));
     const lean = b3(spine('L', 100, -15));
-    expect(gravityPlan(planTransition([up], [lean]))).toBeNull();
-    expect(gravityPlan(planTransition([lean], [up]))).toBeNull();
+    expect(gravityPlan(planTransition([up], [lean], undefined, NO_RUSH))).toBeNull();
+    expect(gravityPlan(planTransition([lean], [up], undefined, NO_RUSH))).toBeNull();
   });
 
   it('옆으로 옮기기만 하는 경로는 넘어짐이 아니다', () => {
-    expect(gravityPlan(planTransition([b3(spine('A', 100))], [b3(spine('A', 160))]))).toBeNull();
+    expect(gravityPlan(planTransition([b3(spine('A', 100))], [b3(spine('A', 160))], undefined, NO_RUSH))).toBeNull();
   });
 
   it('넘어지는 책과 같은 경로의 다른 움직임은 조각 안에서 천천히 출발·멈춤(줄 시계가 고르게 흘러도 부드럽게)', () => {
-    const plan = planTransition([b3(spine('L', 100, -12)), b3(spine('M', 300))], [b3(spine('L', 100, -25)), b3(spine('M', 340))]);
+    const plan = planTransition([b3(spine('L', 100, -12)), b3(spine('M', 300))], [b3(spine('L', 100, -25)), b3(spine('M', 340))], undefined, NO_RUSH);
     const g = gravityPlan(plan)!;
     expect(g.fall).toBe(true);
     const m = g.tracks.find((t) => t.id === 'M')!;
@@ -71,7 +73,7 @@ describe('넘어지는 동작', () => {
   it('조각 판정: 받침에서 떨어지거나(들어 올림) 멀리 가며 기울면 넘어짐이 아니다', () => {
     const from = b3(spine('L', 100, -12));
     const to = b3(spine('L', 100, -25));
-    const tr = planTransition([from], [to]).tracks[0];
+    const tr = planTransition([from], [to], undefined, NO_RUSH).tracks[0];
     const s = tr.segs.find((q) => q.r0 !== q.r1)!;
     expect(fallsUnderGravity(tr, s)).toBe(true);
     const lifted: Seg = { ...s, w1: { ...s.w1, y: s.w1.y + 20 } };

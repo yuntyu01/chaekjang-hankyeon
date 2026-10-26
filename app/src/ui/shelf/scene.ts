@@ -8,7 +8,6 @@
 import { makeMutable, type SharedValue } from 'react-native-reanimated';
 
 import { corners, depthKey, drawOrder, frontOf, toWorld, type Book3 } from '@/domain/book3';
-import { bookViewCam } from '@/domain/book-view';
 import { hull } from '@/domain/box';
 import { project, toPx, type Affine, type Cam, type Point } from '@/domain/camera';
 import { SHELF, SHELF_DEPTH, SHELF_FRONT, SHELF_THICK, SHELF_X0, SHELF_X1 } from '@/domain/geometry';
@@ -288,7 +287,7 @@ export function frontOccluders(list: SceneMotion[], geo: SceneGeo, cam: Cam, she
         const up = ribbon ? ribbon.out - ribbon.y + 2 : 0;
         if (lb.x1 < bb.x0 - 0.5 || bb.x1 < lb.x0 - 0.5 || lb.y1 + up < bb.y0 - 0.5 || bb.y1 < lb.y0 - 0.5) continue;
         if (frontOf(L, B, cam) >= 0) continue;
-        out.push(silhouette(bookViewCam(cam, b), b, aff));
+        out.push(silhouette(cam, b, aff));
         if (ribbon) out.push(ribbonQuad(cam, aff, b, ribbon));
       }
     }
@@ -391,7 +390,7 @@ export function pickAt(list: SceneMotion[], geo: SceneGeo, cam: Cam, x: number, 
         c = camWithDy(cam, eyeDyAt(geo, b));
         a = top;
       }
-      const poly = hull(corners(b).map((q) => toPx(bookViewCam(c, b), a, q)));
+      const poly = hull(corners(b).map((q) => toPx(c, a, q)));
       const r = order[id] ?? 0;
       if (pointInPoly({ x, y }, poly)) {
         if (r > bestRank) {

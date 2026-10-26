@@ -2,12 +2,11 @@
 // 매 프레임 같은 카메라로 투영해 쓴다(투영 결과를 여기 저장하지 않는다).
 import { boxSize, collide, CONTACT, frontPoly, hull, type Placed } from './box';
 import { corners, fromPlaced, type Book3 } from './book3';
-import { bookViewCam } from './book-view';
 import { project, type Cam, type Point } from './camera';
 import { SHELF, SHELF_USABLE_WIDTH, SHELF_X0, SHELF_X1 } from './geometry';
 import { bookXs, checkSpace, itemBoxes, itemPositions, moveToDrawer, normalize, placementOf, setTilt, settle, shelfItems, type BookMap } from './layout-engine';
 import { firstContact, leanContact, type LeanContact } from './lean';
-import { contactOf, fallenSpan, isBacked, LEAN_MENU_MAX, leanStatics, slipAngle, supportTips, tipAngle, type Force } from './statics';
+import { contactOf, fallenSpan, isBacked, LEAN_MENU_MAX, leanStatics, supportTips, tipAngle, type Force } from './statics';
 import type { Book, Pose, ShelfLayout, Tilt } from './types';
 
 export type { Point };
@@ -75,7 +74,7 @@ const MAX_ROUNDS = 8;
 type Rest = { angle: number; on?: string; failed?: boolean; fell?: boolean };
 
 function solveLeans(frames: BookFrame[], layout: ShelfLayout) {
-  // 받침으로 쓰이다 넘어간 책(저장된 기울기 없이 이번 계산에서 기운 책)
+  // 기운 책은 모두 기대기 결과를 처음부터 다시 푼다(받침으로 쓰이다 넘어간 책, 곧 저장된 기울기 없이 이번 계산에서 기운 책도)
   for (const f of frames) if (f.pose === 'spine' && f.tilt !== 0 && f.stackIndex === 0) f.leanFailed = false;
   if (!frames.some((f) => f.pose === 'spine' && f.tilt !== 0)) return;
   const standing = new Set<string>(); // 넘어짐 한계 이하라 다시 선 책
@@ -145,6 +144,9 @@ function solveLeans(frames: BookFrame[], layout: ShelfLayout) {
         else fallen.add(f.bookId);
         continue;
       }
+      // 마주 기댄 짝은 서로의 받침이다: 둘 사이 접촉 힘은 하나뿐이라 상대가 미는 힘을 또 더하지 않고 각자 판정한다
+      // (더하면 먼저 푼 책의 힘이 두 번 세어져 좌우를 바꾸면 결과가 달라진다)
+      if (s.leanOn === f.bookId) continue;
       loads.set(s.bookId, [...(loads.get(s.bookId) ?? []), st.onSupport]);
     }
     // 받침이 되는 똑바로 선 세운 책: 미는 힘에 넘어가면 그쪽으로 기운다(다음 바퀴에 넘어지는 책으로 푼다)
@@ -179,10 +181,11 @@ function restOf(f: BookFrame, others: Placed[], stored?: { angle: number; on: st
   const base = { ...f.box, angle: 0 };
   const T = base.size.w;
   const H = base.size.h;
+  // 미끄러짐은 여기서 보지 않는다: 평평한 받침 공식(slipAngle)은 낮은 받침의 모서리에 닿을 때 맞지 않아(버틸 책이 눕는다)
+  // 실제 접촉점의 힘 평형(solveLeans의 leanStatics)이 정한다
   const holds = (c: LeanContact): Rest => {
     if (c.outside || !c.found) return { angle: 0, fell: true };
     if (c.angle <= tipAngle(T, H)) return { angle: 0, failed: true };
-    if (c.angle > slipAngle(T, H)) return { angle: 0, fell: true };
     return { angle: dir * c.angle, on: c.on };
   };
   if (falling) return holds(leanContact(base, dir, others, PLANK_BOUNDS, 0, 90));
@@ -207,7 +210,8 @@ function restOf(f: BookFrame, others: Placed[], stored?: { angle: number; on: st
   return holds(c);
 }
 
-// 바닥에 누운 책을 눕힌 책 자리로 바꾼다: 축 모서리에서 키만큼 넘어진 쪽으로. 무게중심이 선반 판 끝 밖이면 선반에서 떨어진 것이라
+// 바닥에 누운 책을 눕힌 책 자리로 바꾼다: 축 모서리에서 키만큼 넘어진 쪽으로, 깊이는 서 있던 그대로(발을 축으로 돌 뿐 앞뒤로 움직이지 않는다).
+// 오른쪽으로 넘어진 책은 머리가 오른쪽(flip)이다. 무게중심이 선반 판 끝 밖이면 선반에서 떨어진 것이라
 // 서랍으로 간다. 판 안이지만 끝을 조금 넘으면(배치 규칙상 튀어나올 수 없어) 안쪽으로 밀어 눕히고, 그 줄에 자리가 없으면 서랍으로.
 function layFallen(layout: ShelfLayout, books: BookMap, fallen: BookFrame[]): ShelfLayout {
   let next = layout;
@@ -224,7 +228,9 @@ function layFallen(layout: ShelfLayout, books: BookMap, fallen: BookFrame[]): Sh
     const x = Math.max(SHELF.innerLeft, Math.min(SHELF.innerLeft + SHELF_USABLE_WIDTH - f.box.size.h, span.x0));
     desired.set(f.bookId, x);
     const placements = next.placements.map((q) =>
-      q.bookId === f.bookId ? { ...q, pose: 'horizontal' as const, tilt: 0 as Tilt, lean: undefined, pos: x, spin: undefined, pitch: undefined } : q,
+      q.bookId === f.bookId
+        ? { ...q, pose: 'horizontal' as const, tilt: 0 as Tilt, lean: undefined, pos: x, spin: undefined, pitch: undefined, depth: f.box.z, flip: f.fell! > 0 || undefined }
+        : q,
     );
     const laid = settle(normalize({ ...next, placements }), books, desired, p.shelfId);
     // 미끄러지며 눕는 책은 넘어진 반대쪽으로 밀려날 수 있다(받침 쪽 책에 머리가 닿아 바닥이 미끄러짐). 키만큼까지만 본다.
@@ -299,7 +305,6 @@ export function pointInPoly(pt: Point, poly: Point[]) {
 // 상자를 카메라로 투영한 외곽(설계 단위, 원점 = 책 기준선 왼쪽 끝)
 export function outlineOf(cam: Cam, b: Book3): Point[] {
   'worklet';
-  cam = bookViewCam(cam, b);
   const out: Point[] = [];
   for (const c of corners(b)) out.push(project(cam, c));
   return hull(out);

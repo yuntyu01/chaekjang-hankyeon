@@ -1,10 +1,11 @@
 // 기대기: 먼저 "똑바로 선 책 + 기대는 책 한 권", 그다음 연쇄·마주 기대기, 마지막으로 높이·두께가 다른 세 권의 이동·저장·복원.
 // 버틸 수 있는지(넘어짐·미끄러짐·받침)는 statics.ts 규칙: 각은 넘어짐 한계 atan(두께/키)를 넘어야 하고, 받침을 잃은 책은 더 넘어진다.
 import { corners, fromPlaced, lowest } from '../book3';
-import { bookHeight, bookThickness } from '../geometry';
-import { bookXs, moveBook, normalize, setTilt, shelfItems, type BookMap } from '../layout-engine';
+import type { Placed } from '../box';
+import { bookHeight, bookThickness, SHELF_USABLE_WIDTH } from '../geometry';
+import { bookXs, checkSpace, moveBook, normalize, setTilt, shelfItems, type BookMap } from '../layout-engine';
 import { overlaps } from '../test-fixtures/overlap';
-import { LEAN_MARGIN, LEAN_MENU_MAX, tipAngle } from '../statics';
+import { contactOf, LEAN_MARGIN, LEAN_MENU_MAX, leanStatics, slipAngle, supportTips, tipAngle } from '../statics';
 import { computeShelf, frontOutline, withLeans, type BookFrame } from '../shelf-scene';
 import type { Book, BookPlacement, ShelfLayout } from '../types';
 
@@ -279,3 +280,114 @@ describe('받침을 잃거나 받침이 밀릴 때(도미노)', () => {
 function lowestY(f: BookFrame) {
   return Math.min(...corners(fromPlaced(f.box)).map((c) => c.y));
 }
+
+// 좌우를 뒤집은 배치: 자리·기울기·저장된 기대기 각을 거울로(세운 책만)
+function mirrored(l: ShelfLayout, all: BookMap): ShelfLayout {
+  const n = l.placements.length;
+  return {
+    ...l,
+    placements: l.placements.map((p) => ({
+      ...p,
+      order: n - 1 - p.order,
+      pos: SHELF_USABLE_WIDTH - (p.pos ?? 0) - bookThickness(all[p.bookId]),
+      tilt: -p.tilt as -7 | 0 | 7,
+      lean: p.lean ? { ...p.lean, angle: -p.lean.angle } : undefined,
+    })),
+  };
+}
+// 뒤집은 배치의 결과도 뒤집혀야 한다: 각도 부호, 기댄 상대, 넘어진 방향, 선 책
+function expectMirror(l: ShelfLayout, all: BookMap) {
+  const a = computeShelf(l, all, 's').frames;
+  const b = computeShelf(mirrored(l, all), all, 's').frames;
+  for (const f of a) {
+    const g = b.find((q) => q.bookId === f.bookId)!;
+    expect(g.box.angle).toBeCloseTo(-f.box.angle, 2);
+    expect(g.leanOn).toBe(f.leanOn);
+    expect((g.fell ?? 0) + (f.fell ?? 0)).toBe(0);
+    expect(!!g.leanFailed).toBe(!!f.leanFailed);
+  }
+}
+
+describe('좌우 대칭', () => {
+  const D = book('D', 160, 30);
+  const S = book('S', 120, 20);
+  const all: BookMap = { ...books, D, S };
+
+  it('마주 기댄 두 책은 좌우를 바꿔도 같다(접촉 힘을 두 번 세지 않는다)', () => {
+    // 얇은 B(150×28)와 두꺼운 A(180×40)가 70만큼 떨어져 마주 기댄다. 예전에는 B가 왼쪽이면 A가 밀려 둘 다 섰다
+    const ab = withLeans(layoutOf(place('A', 0, 100, 7), place('B', 1, 100 + 40 + 70, -7)), all);
+    const ba = withLeans(layoutOf(place('B', 0, 100, 7), place('A', 1, 100 + 28 + 70, -7)), all);
+    const angle = (l: ShelfLayout, id: string) => l.placements.find((p) => p.bookId === id)!.lean?.angle;
+    expect(angle(ab, 'A')).toBeGreaterThan(tipAngle(40, 180));
+    expect(angle(ba, 'B')).toBeGreaterThan(tipAngle(28, 150));
+    expect(Math.abs(angle(ab, 'A')!)).toBeCloseTo(Math.abs(angle(ba, 'A')!), 2);
+    expect(Math.abs(angle(ab, 'B')!)).toBeCloseTo(Math.abs(angle(ba, 'B')!), 2);
+  });
+
+  it('기대기·연쇄·마주 기대기·도미노를 거울로 뒤집으면 결과도 뒤집힌다', () => {
+    const cases = [
+      layoutOf(place('A', 0, 60), place('C', 1, 120), place('B', 2, 120 + 34 + 30, -7)),
+      layoutOf(place('A', 0, 60), place('C', 1, 140, -7), place('B', 2, 200, -7)),
+      layoutOf(place('A', 0, 100, 7), place('B', 1, 100 + 40 + 70, -7)),
+      layoutOf(place('B', 0, 100, 7), place('A', 1, 100 + 28 + 70, -7)),
+      layoutOf(place('S', 0, 120), place('D', 1, 175 + 34 + 30, -7)),
+      layoutOf(place('C', 0, 150), place('D', 1, 150 + 34 + 30, -7)),
+    ];
+    for (const l of cases) {
+      expectMirror(l, all);
+      expectMirror(withLeans(l, all), all);
+    }
+  });
+});
+
+describe('낮은 받침과 연쇄', () => {
+  it('낮은 받침의 모서리에 기댄 책은 평평한 받침 공식보다 큰 각에서도 버틴다(실제 접촉점의 힘 평형)', () => {
+    // 174×30 D가 C에 기대 있다가 C를 빼면 키 80인 S의 윗모서리까지 넘어진다(56°). S 왼쪽에 A가 붙어 받침이 넘어가지 않는다.
+    // 평평한 받침이면 미끄러질 각(44°)이지만 모서리가 미는 방향이 가팔라 바닥 마찰이 버틴다. 예전에는 눕혔다.
+    const A2 = book('A', 150, 30);
+    const S = book('S', 80, 30);
+    const C2 = book('C', 174, 30);
+    const D = book('D', 174, 30);
+    const all: BookMap = { A: A2, S, C: C2, D };
+    const l = withLeans(layoutOf(place('A', 0, 120), place('S', 1, 150), place('C', 2, 228), place('D', 3, 300, -7)), all);
+    const after = withLeans({ ...l, placements: l.placements.filter((p) => p.bookId !== 'C') }, all);
+    const d = after.placements.find((p) => p.bookId === 'D')!;
+    expect(d.pose).toBe('spine');
+    expect(d.lean?.on).toBe('S');
+    expect(Math.abs(d.lean!.angle)).toBeGreaterThan(slipAngle(30, 174));
+    const fs = computeShelf(after, all, 's').frames;
+    const f = fs.find((q) => q.bookId === 'D')!;
+    const s = fs.find((q) => q.bookId === 'S')!;
+    expect(leanStatics(f.box, contactOf(f.box, s.box)).ok).toBe(true);
+  });
+
+  it('받침은 넘어가지 않아도 바닥이 미끄러지면 밀려난다(supportTips 미끄러짐 갈래)', () => {
+    // 낮고 두꺼운 받침(60×40)을 낮은 곳에서 옆으로 민다: 돌림힘은 버티지만 마찰(0.4)을 넘으면 그쪽으로 밀린다
+    const sup: Placed = { bookId: 'S', pose: 'spine', size: { w: 60, h: 40, d: 100 }, x: 100, y: 0, z: 0, angle: 0 };
+    const m = 60 * 40 * 100;
+    const push = (fx: number) => [{ f: { x: fx * m, y: 0 }, at: { x: 160, y: 10 } }];
+    expect(supportTips(sup, push(-0.5), () => false)).toBe(-1);
+    expect(supportTips(sup, push(-0.3), () => false)).toBe(0);
+    expect(supportTips(sup, push(-0.5), () => true)).toBe(0);
+  });
+
+  it('세 권 넘게 이어지는 도미노도 겹치지 않고 다시 풀어도 그대로다', () => {
+    const D = book('D', 180, 44);
+    const C2 = book('C', 120, 34);
+    const S1 = book('S1', 120, 20);
+    const S2 = book('S2', 110, 18);
+    const S3 = book('S3', 100, 16);
+    const all: BookMap = { D, C: C2, S1, S2, S3 };
+    const l = withLeans(layoutOf(place('S3', 0, 40), place('S2', 1, 80), place('S1', 2, 125), place('C', 3, 175), place('D', 4, 175 + 34 + 30, -7)), all);
+    const after = withLeans({ ...l, placements: l.placements.filter((p) => p.bookId !== 'C') }, all);
+    // 밀린 받침들이 차례로 넘어간다(선 채로 남은 받침 없음), 선반 밖으로 떨어진 책·누울 자리가 없는 책은 서랍으로
+    for (const id of ['S1', 'S2']) {
+      const p = after.placements.find((q) => q.bookId === id);
+      expect(!p || p.pose === 'horizontal' || p.tilt !== 0).toBe(true);
+    }
+    expect(after.placements.length + after.drawer.length).toBe(4);
+    expect(checkSpace(after, all, 's')).toBeNull();
+    expect(withLeans(after, all)).toEqual(after);
+    expectNoOverlap(computeShelf(after, all, 's').frames);
+  });
+});

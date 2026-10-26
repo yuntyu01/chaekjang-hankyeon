@@ -2,7 +2,6 @@
 import { faceMatrix } from '@/ui/book3d/face-geometry';
 
 import { corners, faceCorners, faceFrame, fromPlaced, lowest } from '../book3';
-import { bookViewCam } from '../book-view';
 import { facePanel } from '../book-parts';
 import { project } from '../box';
 import { camAt, VIEW_KX, type Cam, type Vec3 } from '../camera';
@@ -118,7 +117,7 @@ describe('눕힌 책 한 권 돌리기(-12 / 0 / +12)', () => {
     const px = { s: 2.2, tx: 26, ty: 630 };
     for (const d of [-12, 0, 12]) {
       const { b } = at(d);
-      const cam = bookViewCam(CAMERA, b);
+      const cam = CAMERA;
       for (const face of ['spine', 'cover', 'back'] as const) {
         const matrix = faceMatrix(b, face, cam, px);
         const fr = facePanel(b.dims, face);
@@ -137,7 +136,7 @@ describe('눕힌 책 한 권 돌리기(-12 / 0 / +12)', () => {
     for (const spin of [-12, 0, 12]) {
       const { b } = at(spin);
       const base = corners(b).map(p => project(CAMERA, p));
-      const view = bookViewCam(CAMERA, b);
+      const view = CAMERA;
       const shown = corners(b).map(p => project(view, p));
       expect(Math.min(...shown.map(p => p.x))).toBeCloseTo(Math.min(...base.map(p => p.x)), 8);
       expect(Math.max(...shown.map(p => p.x))).toBeCloseTo(Math.max(...base.map(p => p.x)), 8);
@@ -149,10 +148,6 @@ describe('눕힌 책 한 권 돌리기(-12 / 0 / +12)', () => {
         expect(cover.x).toBeCloseTo(floor.x, 8);
         expect(floor.y - cover.y).toBeCloseTo(b.dims.T / dOf(CAMERA, p.z), 8);
       }
-    }
-    for (const f of computeShelf(SAMPLE_LAYOUT, books, 'shelf-3').frames) {
-      const b = fromPlaced(f.box);
-      expect(bookViewCam(CAMERA, b)).toBe(CAMERA);
     }
   });
 });

@@ -122,10 +122,10 @@ export function ShelfScene(p: Props) {
         return mo ? <RowCanvas key={r.shelfId} last={i === p.rows.length - 1} r={r} upper={i > 0 ? p.rows[i - 1].row : null} mo={mo} books={p.books} m={p.m} width={p.width} cam={p.cam} shared={p.shared} debug={p.debug} /> : null;
       })}
       <TransitCanvas ids={p.transitIds} rows={p.rows} motions={p.motions} geo={p.geo} books={p.books} m={p.m} width={p.width} height={p.height} cam={p.cam} shared={p.shared} glowId={p.glowId} />
-      {p.rows.map((r) => {
+      {p.rows.map((r, i) => {
         const mo = motionOf(p.motions, r.shelfId);
         if (!mo) return null;
-        return <RowOverlay key={r.shelfId} r={r} mo={mo} m={p.m} reduceMotion={p.reduceMotion} planBudgetMs={p.planBudgetMs} a11yLabelOf={p.a11yLabelOf} onA11y={p.onA11y} viewPitch={p.viewPitch} />;
+        return <RowOverlay key={r.shelfId} r={r} roofed={i > 0} mo={mo} m={p.m} reduceMotion={p.reduceMotion} planBudgetMs={p.planBudgetMs} a11yLabelOf={p.a11yLabelOf} onA11y={p.onA11y} viewPitch={p.viewPitch} />;
       })}
       {p.handle ? <HeadHandle key={p.handle.bookId} mo={motionOf(p.motions, p.handle.shelfId)} row={p.rows.find((r) => r.shelfId === p.handle!.shelfId)} id={p.handle.bookId} cam={p.cam} m={p.m} gesture={p.handle.gesture} offX={p.handle.offX} offY={p.handle.offY} /> : null}
     </>
@@ -415,8 +415,8 @@ const TransitCanvas = memo(function TransitCanvas({ ids, rows, motions, geo, boo
   a.rows[0]?.row.baseline === b.rows[0]?.row.baseline);
 
 // 줄 하나의 RN 쪽: 경로 계획, 접근성 칸(보이지 않는 버튼), 끄는 동안 안내
-const RowOverlay = memo(function RowOverlay({ r, mo, m, reduceMotion, planBudgetMs, a11yLabelOf, onA11y, viewPitch }: { r: SceneRowProps; mo: Motion; m: ShelfMetrics; reduceMotion: boolean; planBudgetMs: number; a11yLabelOf: (bookId: string) => string; onA11y: (bookId: string, action: string) => void; viewPitch: number }) {
-  useRowPlanner(mo, r.shelfId, r.frames, reduceMotion, r.arrive, planBudgetMs, r.row.space);
+const RowOverlay = memo(function RowOverlay({ r, roofed, mo, m, reduceMotion, planBudgetMs, a11yLabelOf, onA11y, viewPitch }: { r: SceneRowProps; roofed: boolean; mo: Motion; m: ShelfMetrics; reduceMotion: boolean; planBudgetMs: number; a11yLabelOf: (bookId: string) => string; onA11y: (bookId: string, action: string) => void; viewPitch: number }) {
+  useRowPlanner(mo, r.shelfId, r.frames, reduceMotion, r.arrive, planBudgetMs, r.row.space, roofed);
   const s = m.scale;
   return (
     <>

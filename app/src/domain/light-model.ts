@@ -1144,17 +1144,6 @@ function openE(p: Vec3, n: Vec3, env: Env | null): C3 {
   const ky = light.diffuse * Math.max(0, dot3(n, L_UNIT)) * (1 - plankKeyBlocked(p, env));
   return [SKY_C[0] * sk + KEY_C[0] * ky, SKY_C[1] * sk + KEY_C[1] * ky, SKY_C[2] * sk + KEY_C[2] * ky];
 }
-// 책 없는 둘레의 빛 격자(높이로 옮겨도 같다: 판 사이 간격·열린 쪽마다 한 번만 푼다)
-const FREE_GRIDS = new Map<string, C3[]>();
-export function freeGrid(env: Env): Grid {
-  const key = `${env.floor > -FAR},${env.ceil < FAR},${env.floor > -FAR && env.ceil < FAR ? env.ceil - env.floor : 0}`;
-  let e = FREE_GRIDS.get(key);
-  if (!e) {
-    e = solveGrid(env, []).e;
-    FREE_GRIDS.set(key, e);
-  }
-  return { e, nBox: 0, nx: 1, env };
-}
 // 받는 면의 상대 어둠(0이면 그대로, 휘도): 가림 없을 때보다 빛이 빠진 비율
 export function darkening(p: Vec3, n: Vec3, env: Env | null, boxes: Box[], key = true) {
   'worklet';

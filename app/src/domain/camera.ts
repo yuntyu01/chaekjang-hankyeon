@@ -86,24 +86,3 @@ export function toPx(cam: Cam, px: Affine, v: Vec3): Point {
   const q = project(cam, v);
   return { x: q.x * px.s + px.tx, y: q.y * px.s + px.ty };
 }
-
-// 방향(길이 있는 벡터)의 화면 변화량(설계 단위, 사선 근사: 원근 카메라는 판 높이·줄 가운데 값)
-export function projectDir(cam: Cam, v: Vec3): Point {
-  'worklet';
-  return { x: v.x + v.z * cam.kx, y: -(v.y + v.z * cam.ky) };
-}
-
-// 사용자 쪽에서 벽 쪽으로 가는 시선 방향(화면의 한 점으로 모이는 3D 방향): (-kx, -ky, 1). p를 주면 그 자리 값
-export function viewDir(cam: Cam, p?: Vec3): Vec3 {
-  'worklet';
-  const k = p ? viewAt(cam, p) : cam;
-  return { x: -k.kx, y: -k.ky, z: 1 };
-}
-
-// 면이 카메라를 향하는 정도(바깥 법선 n, 길이 1): > 0이면 보인다. p를 주면 그 자리에서 본다
-export function facingOf(cam: Cam, n: Vec3, p?: Vec3) {
-  'worklet';
-  const k = p ? viewAt(cam, p) : cam;
-  const l = Math.hypot(k.kx, k.ky, 1);
-  return (n.x * k.kx + n.y * k.ky - n.z) / l;
-}

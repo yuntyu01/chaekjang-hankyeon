@@ -11,7 +11,6 @@ import { useDerivedValue, type SharedValue } from 'react-native-reanimated';
 
 import { corners, depthKey, faceCorners, facing, rot, toWorld, type Book3, type Cam } from '@/domain/book3';
 import { EDGE_R } from '@/domain/book-parts';
-import { bookViewCam } from '@/domain/book-view';
 import { project } from '@/domain/camera';
 import { linearOf, NO_BOXES, othersOf, skyLossAt } from '@/domain/light-model';
 import { RIBBON_Z } from '@/domain/ribbon-design';
@@ -155,8 +154,7 @@ export { depthKey } from '@/domain/book3';
 // clip: 이 책을 그릴 영역(없으면 전부). 줄 캔버스는 다른 줄로 옮겨 가는 동안 빈 영역을 준다(그동안은 이동 캔버스가 그린다)
 // env: 이 책이 받는 빛의 둘레(판·벽, 없으면 열린 방: 서랍·단독), atlas: 이 책이 있는 줄의 구운 하늘 가림(없으면 둘레만 그 자리에서),
 // boxes·self: 갈피 한 점의 하늘 가림에 쓸 줄의 책 상자(그중 self 번째가 이 책)
-export function BookNode({ book, dims, state, cam: sceneCam, px, shared, keyShadow, order, clip, env, atlas, boxes, self }: { book: Book; dims: Book3['dims']; state: RO<Book3>; cam: RO<Cam>; px: Affine; shared: Shared; keyShadow?: RO<BookKey>; order?: RO<number>; clip?: RO<SkRect> } & Omit<Surround, 'id'>) {
-  const cam = useDerivedValue(() => bookViewCam(sceneCam.value, state.value));
+export function BookNode({ book, dims, state, cam, px, shared, keyShadow, order, clip, env, atlas, boxes, self }: { book: Book; dims: Book3['dims']; state: RO<Book3>; cam: RO<Cam>; px: Affine; shared: Shared; keyShadow?: RO<BookKey>; order?: RO<number>; clip?: RO<SkRect> } & Omit<Surround, 'id'>) {
   const art = useBookArt(book, px.s, dims, shared);
   const z = useDerivedValue(() => (order ? order.value : depthKey(state.value)));
   // 둥근 모서리: 투영 윤곽을 판 모서리 반지름으로 깎은 모양(face-geometry silhouette)

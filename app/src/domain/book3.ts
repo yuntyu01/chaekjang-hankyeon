@@ -3,6 +3,7 @@
 // 방향(합성 순서 고정): ① 책 세로축으로 yaw(+90 = 앞표지가 앞으로 오고 책등은 왼쪽) → ② 앞뒤축으로 roll(+ = 시계 방향, 오른쪽으로 기울기)
 //   → ③ 선반의 수직축으로 spin(+ = 오른쪽 끝이 벽 쪽으로 물러남, 위에서 보아 반시계). 기대기(roll)·자세(yaw/roll)·비스듬히 놓기(spin)는 따로 다룬다.
 //   세움 = (roll 기대기 각, yaw 0), 눕힘 = (roll -90: 책등이 앞, 앞표지가 위, 뒤표지가 받침, 머리가 왼쪽), 표지 전시 = (roll 0, yaw 90: 앞표지가 앞, 아래 면이 받침).
+//   오른쪽으로 넘어져 누운 책은 roll +90(머리가 오른쪽, 앞표지가 받침: flip).
 // 선반 공간(월드): x 오른쪽, y 위, z 벽 쪽. 월드 점 = R·책좌표 + t.
 // 워클릿은 만들어질 때 쓰는 함수를 붙잡으므로, 쓰이는 함수를 먼저 정의한다.
 import { project, viewAt, type Cam, type Vec3 } from './camera';
@@ -119,19 +120,6 @@ export function facing(cam: Cam, b: Book3, f: FaceId) {
   return (n.x * k.kx + n.y * k.ky - n.z) / l;
 }
 
-// 광원(램버트): 밝기 = ambient + diffuse·(n·L), [min, max]로 제한
-export type Light = { dir: Vec3; ambient: number; diffuse: number; min: number; max: number; skyUp?: number };
-
-export function brightness(light: Light, b: Book3, f: FaceId) {
-  'worklet';
-  const n = rot(b.roll, b.yaw, faceNormal(f), b.spin ?? 0, b.pitch ?? 0);
-  const d = light.dir;
-  const l = Math.hypot(d.x, d.y, d.z) || 1;
-  // 램버트: 빛을 등진 면은 창빛을 받지 않는다(max 0). 천장 확산광은 위를 향한 만큼
-  const k = light.ambient + (light.skyUp ?? 0) * n.y + light.diffuse * Math.max(0, (n.x * d.x + n.y * d.y + n.z * d.z) / l);
-  return Math.max(light.min, Math.min(light.max, k));
-}
-
 // ---------- 놓인 상자(Placed, 정지 자세) ↔ 3D 자세 ----------
 
 export function dimsOf(p: Placed): Dims {
@@ -140,23 +128,18 @@ export function dimsOf(p: Placed): Dims {
   return { T: p.size.h, H: p.size.w, W: p.size.d };
 }
 
-export function orientOf(pose: Pose, angle: number) {
+export function orientOf(pose: Pose, angle: number, flip = false) {
   'worklet';
-  if (pose === 'horizontal') return { roll: -90, yaw: 0 };
+  if (pose === 'horizontal') return { roll: flip ? 90 : -90, yaw: 0 };
   if (pose === 'front') return { roll: 0, yaw: 90 };
   return { roll: angle, yaw: 0 };
 }
 
-// 회전 기준점(책 좌표): 기울기·눕히기는 기우는 쪽 바닥 모서리, 표지로 돌기는 바닥 가운데(세로 중심축)
+// 회전 기준점(책 좌표): 기울기와 받침을 잃고 바닥에 눕기는 기우는 쪽 바닥 모서리(발)
 export function pivotLocal(d: Dims, roll: number): Vec3 {
   'worklet';
   return roll > 0 ? { x: d.T, y: 0, z: 0 } : { x: 0, y: 0, z: 0 };
 }
-
-export const axisLocal = (d: Dims): Vec3 => {
-  'worklet';
-  return { x: d.T / 2, y: 0, z: d.W / 2 };
-};
 
 // 놓인 상자의 원점 정의: (x, y, z) = 선반 공간에서 책이 차지하는 축 정렬 상자(AABB)의 최솟값 모서리.
 // 예외: 기댄 세운 책은 x가 "똑바로 섰을 때 왼쪽 면"이고, 기우는 쪽 바닥 모서리(발)가 제자리에 있다.
@@ -174,7 +157,7 @@ export function frontBook3(id: string, dims: Dims, qx: number, depth: number, pi
 
 export function fromPlaced(p: Placed): Book3 {
   const dims = dimsOf(p);
-  const o = orientOf(p.pose, p.angle);
+  const o = orientOf(p.pose, p.angle, !!p.flip);
   const spin = p.pose === 'horizontal' ? p.spin ?? 0 : 0;
   const b: Book3 = { id: p.bookId, dims, roll: o.roll, yaw: o.yaw, spin, t: { x: 0, y: 0, z: 0 } };
   if (p.pose === 'front' && (p.pitch || p.spin)) {

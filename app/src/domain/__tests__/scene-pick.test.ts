@@ -8,7 +8,6 @@ import { camWithDy, eyeDyAt, lowered, makeMotion, outsideRow, pickAt, rowPx, sce
 import { holdTrack } from '../transition';
 
 import { corners, fromPlaced, type Book3 } from '../book3';
-import { bookViewCam } from '../book-view';
 import { hull, type Placed } from '../box';
 import { BASE_CAM, camAt, project, toPx, type Cam, type Vec3 } from '../camera';
 import { SHELF_DEPTH, SHELF_FRONT, SHELF_THICK, VIEW_PITCH_MAX } from '../geometry';
@@ -58,7 +57,7 @@ describe('쌓인 책과 빈 곳', () => {
   it('눕힌 표지도 실제 투영 윤곽 안에서 선택되고 바닥선은 선반과 일치한다', () => {
     const top = boxOf(SAMPLE_LAYOUT, 'shelf-3', 'b13');
     const b = fromPlaced(top);
-    const cam = bookViewCam(BASE_CAM, b);
+    const cam = BASE_CAM;
     const cover = { x: top.x + top.size.w / 2, y: top.y + top.size.h, z: top.z + top.size.d * 0.8 };
     const p = at(row, cam, cover);
     const oldOutline = hull(corners(b).map(q => at(row, BASE_CAM, q)));

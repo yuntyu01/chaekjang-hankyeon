@@ -56,10 +56,20 @@ function axes(n: Vec3) {
 // 1×1 그림에 셰이더를 그려 회색 값(0~1)을 읽는다. child: 셰이더 자식(구운 그림 자리. true면 검정, 그림 셰이더면 그것)
 const black = () => CK.Shader.MakeColor(CK.Color4f(0, 0, 0, 1), CK.ColorSpace.SRGB);
 const linear = (img: CK) => img.makeShaderOptions(CK.TileMode.Clamp, CK.TileMode.Clamp, CK.FilterMode.Linear, CK.MipmapMode.None);
+// 같은 소스는 한 번만 컴파일한다
+const effects = new Map<string, CK>();
+function effectOf(src: string) {
+  let effect = effects.get(src);
+  if (!effect) {
+    const err: string[] = [];
+    effect = CK.RuntimeEffect.Make(src, (e: string) => err.push(e));
+    if (!effect) throw new Error(err.join('\n'));
+    effects.set(src, effect);
+  }
+  return effect;
+}
 function draw(src: string, values: Record<string, number | number[]>, child: boolean | CK = false, more: CK[] = []): C3 {
-  const err: string[] = [];
-  const effect = CK.RuntimeEffect.Make(src, (e: string) => err.push(e));
-  if (!effect) throw new Error(err.join('\n'));
+  const effect = effectOf(src);
   const uni = uniformArray(effect, values);
   const kids = child ? [child === true ? black() : child, ...more] : [];
   const shader = child ? effect.makeShaderWithChildren(uni, kids) : effect.makeShader(uni);
@@ -195,9 +205,7 @@ describe('빛 격자 셰이더 = JS', () => {
   const W = 6 * N;
   const H = list.length * N + 3 * ENV_NY;
   function gpuGrid(env: Env, passes: number) {
-    const err: string[] = [];
-    const effect = CK.RuntimeEffect.Make(gridSource(), (e: string) => err.push(e));
-    if (!effect) throw new Error(err.join('\n'));
+    const effect = effectOf(gridSource());
     const surf = CK.MakeSurface(W, H);
     const paint = new CK.Paint();
     let img: CK = null;
@@ -233,14 +241,19 @@ describe('빛 격자 셰이더 = JS', () => {
   it('되풀이(지난 격자를 읽는다): 8비트로 반올림한 격자를 다시 읽어도 몇 단계 안(원반 한 방향 몫 더)', () => {
     expect(compare(row, 2)).toBeLessThan((3 * GRID_SCALE) / 255 + oneDir);
   });
+  // 아래 네 경우는 같은 격자를 읽는다: JS·GPU 격자 풀기(이 파일 시간의 대부분)를 한 번만
+  let solved: { G: ReturnType<typeof solveGrid>; img: CK } | null = null;
+  const solvedGrid = () => {
+    if (!solved) solved = { G: solveGrid(row, list), img: gpuGrid(row, GRID_PASSES).img };
+    return solved;
+  };
   it.each([
     ['책 사이 틈 뒤 벽', { x: 99, y: 60, z: SHELF_DEPTH }, { x: 0, y: 0, z: -1 }, -1],
     ['책 앞 판 윗면', { x: 111, y: 0, z: -10 }, { x: 0, y: 1, z: 0 }, -1],
     ['책등 아래쪽(받는 책 빼고)', { x: 111, y: 3, z: 0 }, { x: 0, y: 0, z: -1 }, 1],
     ['틈 안 표지', { x: 122, y: 60, z: 20 }, { x: 1, y: 0, z: 0 }, 1],
   ] as [string, Vec3, Vec3, number][])('격자를 읽는 굽기 = JS, %s', (_, P, n, self) => {
-    const G = solveGrid(row, list);
-    const { img } = gpuGrid(row, GRID_PASSES);
+    const { G, img } = solvedGrid();
     const js = skyLossAt(P, n, row, list, G, self);
     withinStep(shaderLoss(P, n, row, bx, img, self), js, n, 3);
   });

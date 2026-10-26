@@ -2,7 +2,8 @@
 // 입력은 "지금 화면에 보이는 자세"(움직이는 도중이면 그 보간값)와 목표 자세. 끝 모습만 맞추면 도중에 겹칠 수 있으므로
 // 후보 경로를 t 전 구간에서 3D 충돌로 검사해(접촉에 가까운 구간은 촘촘히) 처음 통과하는 것을 쓴다. 통과하는 경로가 없으면 null.
 //
-// 기울이기: 기우는 쪽 바닥 모서리(발)를 축으로(pivot). 자세 바꾸기(표지로·눕히기): 도는 동안 책이 차지하는 가로 범위를 한쪽(또는 가운데)에
+// 기울이기: 기우는 쪽 바닥 모서리(발)를 축으로(pivot). 받침을 잃고 바닥에 눕는 책도 발을 축으로 넘어지는 쪽으로 돈다(fallSegs).
+// 손으로 자세 바꾸기(표지로·눕히기): 도는 동안 책이 차지하는 가로 범위를 한쪽(또는 가운데)에
 // 맞추고 가장 낮은 점을 받침에 댄 채 돈다(box). 도는 도중에는 대각선만큼 폭이 잠깐 커지므로, 옆 책이 그만큼 더 비켜 줬다가 끝에 붙는다.
 // 높이가 바뀌는 이동(쌓인 책 내리기)은 L자로 나눠 대각선으로 다른 책을 가로지르지 않게 한다.
 import { cornerLocal, corners, gap, lowest, pivotLocal, rot, sub3, toWorld, xRange, type Book3, type Vec3 } from './book3';
@@ -267,6 +268,23 @@ function poseSegs(from: State, to: State, t0: number, t1: number, al: number, or
   return segs;
 }
 
+// 받침을 잃고 바닥에 눕는 세운 책(세운 책 → 눕힘, 발 자리 거의 그대로): 기우는 쪽 바닥 모서리(발)를 축으로 넘어지는 쪽으로 눕는다.
+// 오른쪽으로 넘어진 책은 머리가 오른쪽(roll +90, flip)이라 한 번 일어서거나 반대로 돌지 않는다. 눕는 자리가 판 끝에 걸려 안쪽으로
+// 밀렸거나 머리가 옆 책에 닿아 밀리면 그만큼 발이 바닥을 미끄러진다(축이 바닥을 따라 옮겨 간다).
+// 손으로 눕히는 것(눕힌 상자가 놓던 자리 왼쪽 끝부터라 발 자리가 키만큼 옮겨 간다)은 여기 들지 않고 poseSegs가 맡는다.
+// 받침에서 바로 출발한다(옆 책이 비키는 동안 기다리지 않는다): 넘어지는 책은 손이 아니라 중력이 움직인다.
+function fallSegs(from: State, to: State, t1: number): Seg[] | null {
+  if (!near(from.yaw, 0) || !near(to.yaw, 0) || Math.abs(from.roll) >= 45 || !near(Math.abs(to.roll), 90)) return null;
+  if ((from.spin ?? 0) || (to.spin ?? 0) || (from.pitch ?? 0) || (to.pitch ?? 0)) return null;
+  const d = Math.sign(to.roll);
+  if (from.roll * d < 0) return null;
+  const a = pivotLocal(from.dims, d);
+  const w0 = toWorld(from, a);
+  const w1 = toWorld(to, a);
+  if (Math.abs(w0.y - w1.y) > 0.5 || Math.abs(w0.z - w1.z) > 0.5 || Math.abs(w1.x - w0.x) > from.dims.H / 2) return null;
+  return [pivotSeg(from, to, 0, t1, a)];
+}
+
 type Candidate = { name: string; lean: 'sync' | 'moveFirst' | 'turnFirst'; turn: [number, number]; others: [number, number]; al: number; order: string; spread: number };
 
 function hold(b: State): Seg[] {
@@ -292,7 +310,7 @@ export function build(prev: State[], next: State[], c: Candidate): Track[] {
     const from = before.get(to.id);
     if (!from) return holdTrack(to);
     let segs: Seg[];
-    if (posed(from, to)) segs = poseSegs(from, to, c.turn[0], c.turn[1], c.al, c.order);
+    if (posed(from, to)) segs = fallSegs(from, to, c.turn[1]) ?? poseSegs(from, to, c.turn[0], c.turn[1], c.al, c.order);
     else if (onlyPitch(from, to)) {
       // 벽에 기대기·떼기: 뒤쪽 아래 모서리를 축으로 젖히며, 그 축은 바닥을 따라 새 자리로
       const seg = pivotSeg(from, to, c.turn[0], c.turn[1], wallPivot(to));
@@ -460,9 +478,28 @@ export function candidates(growing: boolean, posing: boolean): Candidate[] {
 const MARGIN = 0.25; // 이만큼 파고드는 것까지는 맞닿음·계산 오차로 본다
 export const SAMPLES = 48;
 
-// 처음 겹치는 곳(없으면 null). 균등 시점(바닥·선반 끝) + 책 쌍마다 구간 검사:
+// 상자 중 윗선반 판 아래(z ≥ 판 앞 끝)에 든 부분의 가장 높은 y(그 부분이 없으면 -Infinity).
+// 볼록한 그 부분의 꼭짓점 = 판 아래 꼭짓점 + 판 앞 끝 면을 지나는 모서리의 교점(꼭짓점만 보면 앞으로 기운 모서리가 판을 뚫는 것을 놓친다)
+function topUnderPlank(cs: Vec3[]) {
+  const front = -SHELF_FRONT;
+  let top = -Infinity;
+  for (let i = 0; i < 8; i++) {
+    const a = cs[i];
+    if (a.z >= front) top = Math.max(top, a.y);
+    for (const bit of [1, 2, 4]) {
+      if (i & bit) continue;
+      const b = cs[i | bit];
+      if ((a.z - front) * (b.z - front) < 0) top = Math.max(top, a.y + ((b.y - a.y) * (front - a.z)) / (b.z - a.z));
+    }
+  }
+  return top;
+}
+
+// 처음 겹치는 곳(없으면 null). 균등 시점(바닥·선반 끝·윗선반 판) + 책 쌍마다 구간 검사:
 // 구간 양 끝의 틈에서 그 사이 두 책이 움직인 거리를 빼도 겹칠 수 없으면 통과, 아니면 반씩 나눠 더 본다(적응형).
-export function firstOverlap(tracks: Track[], bounds?: { min: number; max: number }, deadline = Infinity) {
+// ceil: 윗선반 판 아랫면 높이(이 줄 공간 높이, 위에 줄이 있을 때만). 키 큰 책을 돌리면 대각선이 줄 높이를 넘을 수 있다.
+// 처음부터 판 아래 높이를 넘던 책(다른 줄에서 들어오는 책)은 판 앞으로 빼서 오므로 보지 않는다.
+export function firstOverlap(tracks: Track[], bounds?: { min: number; max: number }, deadline = Infinity, ceil?: number) {
   const n = tracks.length;
   if (!tracks.some((t) => t.moving)) return null;
   const late = () => deadline < Infinity && Date.now() > deadline;
@@ -492,6 +529,7 @@ export function firstOverlap(tracks: Track[], bounds?: { min: number; max: numbe
     for (let k = 0; k < 8; k++) m = Math.max(m, Math.hypot(pa[k].x - pb[k].x, pa[k].y - pb[k].y, pa[k].z - pb[k].z));
     return m * 1.1; // 회전하면 가운데가 현보다 조금 더 나간다
   };
+  const roofed = ceil === undefined ? null : tracks.map((tr, i) => tr.moving && topUnderPlank(cornersAt(0)[i]) <= ceil + 0.3);
   for (let k = 0; k <= SAMPLES; k++) {
     const t = k / SAMPLES;
     const bs = at(t);
@@ -510,6 +548,7 @@ export function firstOverlap(tracks: Track[], bounds?: { min: number; max: numbe
         if (c.z > SHELF_DEPTH + 0.3) return { t, a: tracks[i].id, b: 'wall' };
         if (c.y < 0.5 && c.z < -SHELF_FRONT - 0.3) return { t, a: tracks[i].id, b: 'edge' };
       }
+      if (roofed?.[i] && topUnderPlank(cornersAt(t)[i]) > ceil! + 0.3) return { t, a: tracks[i].id, b: 'ceiling' };
     }
   }
   const pairGap = (i: number, j: number, t: number) => gap(at(t)[i], at(t)[j]);
@@ -580,7 +619,8 @@ export function fallsUnderGravity(tr: Track, s: Seg): boolean {
   return prev < comY(b0) - 1e-3;
 }
 
-export function gravityPlan(plan: Plan, bounds?: { min: number; max: number }): Plan | null {
+// budgetMs: 이 다시 검사에 쓸 시간(넘기면 원래 경로 그대로). ceil: firstOverlap과 같다.
+export function gravityPlan(plan: Plan, bounds?: { min: number; max: number }, opts: { budgetMs?: number; ceil?: number } = {}): Plan | null {
   let any = false;
   const tracks = plan.tracks.map((tr) => {
     if (!tr.moving) return tr;
@@ -593,7 +633,9 @@ export function gravityPlan(plan: Plan, bounds?: { min: number; max: number }): 
     });
     return { ...tr, segs };
   });
-  if (!any || firstOverlap(tracks, bounds)) return null;
+  if (!any) return null;
+  const deadline = opts.budgetMs === undefined ? Infinity : Date.now() + opts.budgetMs;
+  if (firstOverlap(tracks, bounds, deadline, opts.ceil)) return null;
   return { tracks, strategy: plan.strategy, fall: true };
 }
 
@@ -657,7 +699,8 @@ export function safeOffsets(rec: Record<string, Track>, base: Record<string, Tra
 //   이 줄에 이미 트랙이 있는 책이라도(들어오는 도중 경로를 다시 짤 때) arrive에 있으면 들어오는 책으로 본다: 곧장 가면 옆 줄 책·판을
 //   뚫고 지나가거나(가림 순서가 뒤집힌다) 다시 짤 때마다 다른 길로 가 버린다.
 // pitch: 줄 간격(판 윗면 사이 세로 거리, DU). 받침에 놓인 책인지 볼 때 쓴다(떠 있는 책은 다시 들어 올리지 않는다).
-export type PlanOptions = { budgetMs?: number; arrive?: Record<string, State>; pitch?: number };
+// ceil: 윗선반 판 아랫면 높이(위에 줄이 있을 때, firstOverlap).
+export type PlanOptions = { budgetMs?: number; arrive?: Record<string, State>; pitch?: number; ceil?: number };
 export function planTransition(prev: State[], next: State[], bounds?: { min: number; max: number }, opts: PlanOptions = {}): Plan {
   const arrive = opts.arrive ?? {};
   const inPrev = new Set(prev.map((p) => p.id));
@@ -688,7 +731,7 @@ export function planTransition(prev: State[], next: State[], bounds?: { min: num
   });
   for (const c of candidates(growing, posers.length > 0)) {
     const tracks = withArrivals(build(all, next, c));
-    const hit = firstOverlap(tracks, bounds, deadline);
+    const hit = firstOverlap(tracks, bounds, deadline, opts.ceil);
     if (!hit) return { tracks, strategy: c.name };
     if (hit.b === 'timeout' || Date.now() > deadline) break;
   }
