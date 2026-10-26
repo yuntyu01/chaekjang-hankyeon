@@ -1,6 +1,6 @@
-// 받침을 잃고 넘어진 책이 머무는 곳(shelf-scene layFallen·fallRest): 판 끝에 걸쳐 눕기(overhang), 먼저 누운 책에 막혀 다시 서기,
-// 서로 쪽으로 넘어진 두 권의 A자 기대기, 서랍으로 떨어지는 책의 사라지는 경로(transition dropTrack).
-import { pivotLocal, toWorld } from '../book3';
+// 받침을 잃고 넘어진 책이 머무는 곳(shelf-scene layFallen·fallRest): 판 끝에 걸쳐 눕기(overhang), 서로 쪽으로 넘어진 두 권의 A자 기대기,
+// 발이 미끄러지다 뒤 책에 기운 몸이 닿아 막힌 기대기(lean.slide), 서랍으로 떨어지는 책의 사라지는 경로(transition dropTrack).
+import { fromPlaced, gap, pivotLocal, toWorld } from '../book3';
 import { bookXs, checkSpace, fitToShelf, OVERHANG_MARGIN, placementOf, validate, withNormalizedX, type BookMap } from '../layout-engine';
 import { computeShelf, PLANK_BOUNDS, withLeans } from '../shelf-scene';
 import { bookAt, dropTrack } from '../transition';
@@ -57,24 +57,27 @@ describe('판 끝에 걸쳐 눕기', () => {
   });
 });
 
-describe('먼저 누운 책에 막혀 다시 서기', () => {
-  // A는 오른쪽 R에, B는 왼쪽 R에 기대 있다. R을 빼면 B가 먼저 왼쪽으로 누워 A의 발 바로 앞을 막고, A는 넘어지지 않고 선다
+describe('키가 다른 두 권이 서로 쪽으로 넘어질 때', () => {
+  // A는 오른쪽 R에, B는 왼쪽 R에 기대 있다. R을 빼면 둘이 함께 넘어져 가운데서 만난다(한 권씩 풀면 B가 먼저 누워 A의 발 앞을 막았다)
   const A = book('A', 196, 30);
   const R = book('R', 140, 35);
   const B = book('B', 160, 32);
   const books: BookMap = { A, R, B };
-  it('넘어지자마자 누운 책에 닿으면 다시 똑바로 선다(눕혀 옆 책을 밀거나 서랍으로 보내지 않는다)', () => {
+  it('함께 넘어져 A자로 기대 선다(어느 쪽도 눕거나 서랍으로 가지 않는다)', () => {
     const before = withLeans(layoutOf(place('A', 0, 58, 7), place('R', 1, 130), place('B', 2, 212, -7)), books);
     const fs = computeShelf(before, books, 's').frames;
     expect(fs.find((f) => f.bookId === 'A')!.leanOn).toBe('R');
     expect(fs.find((f) => f.bookId === 'B')!.leanOn).toBe('R');
     const after = withLeans(without(before, 'R'), books);
     expect(after.drawer).toEqual([]);
-    expect(placementOf(after, 'B')!.pose).toBe('horizontal');
-    const a = placementOf(after, 'A')!;
-    expect(a.pose).toBe('spine');
-    expect(a.tilt).toBe(0);
+    const l = computeShelf(after, books, 's').frames;
+    expect(l.find((f) => f.bookId === 'A')!.leanOn).toBe('B');
+    expect(l.find((f) => f.bookId === 'B')!.leanOn).toBe('A');
+    // 자리는 그대로(두 권 다 발이 제자리)
+    expect(bookXs(after, books).get('A')).toBeCloseTo(58, 6);
+    expect(bookXs(after, books).get('B')).toBeCloseTo(212, 6);
     expect(validate(after, books, ['A', 'B'])).toEqual([]);
+    expect(withLeans(after, books).placements).toEqual(after.placements);
   });
 });
 
@@ -127,4 +130,29 @@ describe('서랍으로 떨어지는 책의 경로(dropTrack)', () => {
       }
     });
   }
+});
+
+describe('발이 미끄러지다 뒤 책에 막힌 기대기(lean.slide)', () => {
+  // D가 C에 기대 있다가 C를 빼면 키 50인 S 모서리에 닿는다. 그 각(약 63°)은 바닥 마찰로 버티지 못해 발이 왼쪽으로 미끄러지고,
+  // 기운 몸의 아래 모서리가 바로 왼쪽 Z에 닿는 데서 막힌다. 배치 자리(pos)는 그대로, 미끄러진 만큼은 slide
+  const D = book('D', 160, 30);
+  const C = book('C', 120, 34);
+  const S = book('S', 50, 20);
+  const Z = book('Z', 130, 25);
+  const books: BookMap = { D, C, S, Z };
+  it('기운 몸이 뒤 책에 실제로 닿아 있고(37mm 떨어진 채 버티지 않는다), 다시 풀어도 그대로다', () => {
+    const l = withLeans(layoutOf(place('Z', 0, 75), place('D', 1, 100, 7), place('C', 2, 160), place('S', 3, 230)), books);
+    const after = withLeans(without(l, 'C'), books);
+    const d = placementOf(after, 'D')!;
+    expect(d.lean?.on).toBe('S');
+    expect(d.lean!.slide).toBeGreaterThan(5);
+    expect(bookXs(after, books).get('D')).toBeCloseTo(100, 6);
+    const fs = computeShelf(after, books, 's').frames;
+    const fd = fs.find((f) => f.bookId === 'D')!;
+    const fz = fs.find((f) => f.bookId === 'Z')!;
+    const g = gap(fromPlaced(fd.box), fromPlaced(fz.box));
+    expect(g).toBeLessThan(0.5);
+    expect(g).toBeGreaterThan(-0.26);
+    expect(withLeans(after, books).placements).toEqual(after.placements);
+  });
 });
