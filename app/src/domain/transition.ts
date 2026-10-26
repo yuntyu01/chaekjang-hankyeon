@@ -585,11 +585,20 @@ export function build(prev: State[], next: State[], c: Candidate): Track[] {
 }
 
 // 받침을 잃고 선반에서 떨어져 서랍으로 가는 책: 지금 자세에서 넘어지는 쪽(d) 발을 축으로 점점 빨라지며 눕고(진행 0 ~ 0.6),
-// 그 사이부터 끝까지 옅어져 사라진다. 이미 누운 책은 옅어지기만 한다(서랍은 배치 밖이라 갈 곳을 그리지 않는다)
-export function dropTrack(b: State, d: -1 | 1): Track {
+// 그 사이부터 끝까지 옅어져 사라진다. 이미 누운 책은 옅어지기만 한다(서랍은 배치 밖이라 갈 곳을 그리지 않는다).
+// others: 옆 책들(앞뒤 자세). 넘어지다 옆 책에 닿으면 그 각에서 멈춰 옅어진다(옆 책을 뚫고 눕지 않는다)
+export function dropTrack(b: State, d: -1 | 1, others: State[] = []): Track {
   if (lying(b)) return { id: b.id, dims: b.dims, segs: hold(b), moving: true, fade: [0, 1] };
   const a = pivotLocal(b.dims, d);
-  const down = reorientPivot(b, d * 90, b.yaw, a);
+  const hits = (q: State) => others.some((o) => o.id !== b.id && gap(q, o) < -0.3);
+  let to = 90;
+  for (let th = Math.max(0, b.roll * d) + 2; th <= 90; th += 2) {
+    if (hits(reorientPivot(b, d * th, b.yaw, a))) {
+      to = th - 2;
+      break;
+    }
+  }
+  const down = reorientPivot(b, d * Math.max(b.roll * d, to), b.yaw, a);
   return { id: b.id, dims: b.dims, segs: [{ ...pivotSeg(b, down, 0, 0.6, a), e: 1 }, pivotSeg(down, down, 0.6, 1, ZERO)], moving: true, fade: [0.35, 1] };
 }
 

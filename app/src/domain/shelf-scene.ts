@@ -309,6 +309,8 @@ function restOf(f: BookFrame, others: Placed[], stored?: { angle: number; on: st
 //  - 그래도 머물 자리가 없으면(발 뒤도 막혀 있다) 예전처럼 넘어진 쪽에 눕히며 옆 책을 밀고, 그 줄에 자리가 없으면 서랍으로.
 const SLIDE_STEP = 1; // DU: 발을 미끄러뜨리며 머물 자리를 찾는 걸음
 const MAX_FALL_SHOVE = 20; // DU: 머물 자리를 못 찾아 눕힐 때 옆 책을 밀 수 있는 거리
+const NO_SHOVE = 0.5; // DU: 판 끝 밖으로 넘어진 책이 안쪽으로 미끄러질 때 옆 책을 민 것으로 보지 않는 거리
+const EDGE_PAD = 1; // DU: 판 끝에 걸친 책이 화면 가장자리에서 떨어져 있을 거리
 
 type FallRest = { kind: 'lean'; x: number; angle: number; on: string; slide?: number } | { kind: 'lie'; x: number; d: -1 | 1 } | { kind: 'stand'; x: number } | { kind: 'drawer' } | null;
 
@@ -492,24 +494,63 @@ function layFallen(layout: ShelfLayout, books: BookMap, fallen: BookFrame[], sim
       }
     }
     const lie = rest?.kind === 'lie' ? rest.x : fallenSpan({ ...f.box, angle: 0 }, d).x0;
-    // 사용 폭 밖으로 나가는 자리: 넘어져 누운 자리 그대로 판 끝에 걸친다(무게중심이 판 위, fallRest가 확인). 안쪽으로 끌어 넣으면 옆 책을 밀게 된다
-    const over = rest?.kind === 'lie' && (lie < SHELF.innerLeft - 0.01 || lie + f.box.size.h > SHELF.innerLeft + SHELF_USABLE_WIDTH + 0.01);
-    const x = over ? lie : Math.max(SHELF.innerLeft, Math.min(SHELF.innerLeft + SHELF_USABLE_WIDTH - f.box.size.h, lie));
-    const desired = bookXs(next, books);
-    desired.set(f.bookId, x);
-    const placements = next.placements.map((q) =>
-      q.bookId === f.bookId
-        ? { ...q, pose: 'horizontal' as const, tilt: 0 as Tilt, lean: undefined, pos: x, spin: undefined, pitch: undefined, depth: f.box.z, flip: d > 0 || undefined, overhang: over || undefined }
-        : q,
-    );
-    const laid = settle(normalize({ ...next, placements }), books, desired, p.shelfId);
+    const h = f.box.size.h;
+    const lo = SHELF.innerLeft;
+    const hi = SHELF.innerLeft + SHELF_USABLE_WIDTH;
+    // x에 눕혀 본다: 옆 책이 밀린 거리(shoved)와 이 책이 넘어진 반대쪽으로 밀려난 거리(moved)
+    const tryAt = (x: number) => {
+      const over = x < lo - 0.01 || x + h > hi + 0.01;
+      const desired = bookXs(next, books);
+      desired.set(f.bookId, x);
+      const placements = next.placements.map((q) =>
+        q.bookId === f.bookId
+          ? { ...q, pose: 'horizontal' as const, tilt: 0 as Tilt, lean: undefined, pos: x, spin: undefined, pitch: undefined, depth: f.box.z, flip: d > 0 || undefined, overhang: over || undefined }
+          : q,
+      );
+      const laid = settle(normalize({ ...next, placements }), books, desired, p.shelfId);
+      const after = bookXs(laid, books);
+      const moved = ((after.get(f.bookId) ?? x) - x) * -d;
+      const shoved = Math.max(0, ...[...desired].filter(([id]) => id !== f.bookId).map(([id, v]) => Math.abs((after.get(id) ?? v) - v)));
+      return { laid, moved, shoved, space: !checkSpace(laid, books, p.shelfId) };
+    };
+    if (rest?.kind === 'lie' && (lie < lo - 0.01 || lie + h > hi + 0.01)) {
+      // 판 끝 밖으로 넘어진 책(무게중심은 판 위, fallRest가 확인): 옆 책을 밀지 않고 남는 빈자리만큼 안쪽으로 미끄러져 눕는다.
+      // 다 들어가지 못하면 화면에 보이는 데까지만(판 끝 너머 화면 가장자리 EDGE_PAD 안) 판 끝에 걸친다. 그래도 옆 책을 밀어야 하면 서랍으로.
+      // 물리대로 걸치면 선반이 화면 폭과 같아 책이 반쯤 화면 밖으로 잘렸다(사용자 결정 2026-10-27)
+      const inside = Math.max(lo, Math.min(hi - h, lie));
+      const vis = Math.max(-SHELF.sideMargin + EDGE_PAD, Math.min(hi + SHELF.sideMargin - EDGE_PAD - h, lie));
+      const ok = (r: ReturnType<typeof tryAt>) => r.space && Math.abs(r.moved) < 0.5 && r.shoved <= NO_SHOVE;
+      const a = tryAt(inside);
+      if (ok(a)) {
+        next = a.laid;
+        continue;
+      }
+      const b = tryAt(vis);
+      if (!ok(b)) {
+        next = detachToDrawer(next, books, f.bookId);
+        continue;
+      }
+      // 밀지 않는 데까지 안쪽으로(빈자리만큼)
+      let good = vis;
+      let bad = inside;
+      let best = b;
+      for (let i = 0; i < 10; i++) {
+        const m = (good + bad) / 2;
+        const r = tryAt(m);
+        if (ok(r)) {
+          good = m;
+          best = r;
+        } else bad = m;
+      }
+      next = best.laid;
+      continue;
+    }
     // 머물 자리를 못 찾아 넘어진 쪽에 눕힌 책은 넘어진 반대쪽으로 밀려날 수 있다(키만큼까지만 본다). 옆 책은 조금만 밀 수 있다:
     // 더 밀어야 하면 실제로는 옆 책 위에 걸쳐 눕는데 그 자세는 나타낼 수 없어 서랍으로 보낸다(알림·되돌리기)
-    const after = bookXs(laid, books);
-    const moved = ((after.get(f.bookId) ?? x) - x) * -d;
-    const shoved = Math.max(0, ...[...desired].filter(([id]) => id !== f.bookId).map(([id, v]) => Math.abs((after.get(id) ?? v) - v)));
-    const fits = !checkSpace(laid, books, p.shelfId) && moved > -1 && moved < f.box.size.h && shoved <= MAX_FALL_SHOVE;
-    next = fits ? laid : detachToDrawer(next, books, f.bookId);
+    const x = Math.max(lo, Math.min(hi - h, lie));
+    const r = tryAt(x);
+    const fits = r.space && r.moved > -1 && r.moved < h && r.shoved <= MAX_FALL_SHOVE;
+    next = fits ? r.laid : detachToDrawer(next, books, f.bookId);
   }
   return next;
 }

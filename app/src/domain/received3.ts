@@ -46,7 +46,7 @@ export function receivedShadow3(b: Book3 | null, occBodies: Book3[], s: number, 
   const LN = { x: -LIGHT.x, y: -LIGHT.y, z: -LIGHT.z };
   const occs = occBodies.map((ob) => {
     const cs = corners(ob);
-    return { cs, dims: ob.dims, seen: seenSize(cs) };
+    return { cs, dims: ob.dims, seen: seenSize(cs), alpha: ob.alpha ?? 1 };
   });
   const cs = corners(b);
   const B = physShadow.bands;
@@ -98,7 +98,8 @@ export function receivedShadow3(b: Book3 | null, occBodies: Book3[], s: number, 
         const L = bands[k];
         L.polys.push(part.pts);
         L.sigma = Math.max(L.sigma, penumbraSigma(pen) * s);
-        L.w = Math.max(L.w, thinOccluder(occ.seen, physShadow.spread * Math.max(lo, part.dist)));
+        // 서랍으로 떨어지며 옅어지는 책(alpha)은 드리우는 그림자도 함께 옅다
+        L.w = Math.max(L.w, thinOccluder(occ.seen, physShadow.spread * Math.max(lo, part.dist)) * occ.alpha);
         any = true;
       }
     }

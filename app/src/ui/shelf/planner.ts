@@ -482,7 +482,7 @@ export function planInto(m: Motion, shelfId: string, next: Book3[], target: stri
   const plan = planTransition(prev, next, PLANK_BOUNDS, { budgetMs: opts.budgetMs, arrive, pitch, ceil, keep });
   // 떨어져 서랍으로 가는 책(이 줄 배치에는 없다): 지금 보이는 자세에서 넘어지며 사라진다. 다른 책 경로 검사에는 넣지 않는다(곧 사라진다)
   const drops: Track[] = [];
-  for (const [id, dr] of Object.entries(opts.drops ?? {})) if (!next.some((b) => b.id === id)) drops.push(dropTrack(shown[id] ?? dr.from, dr.d));
+  for (const [id, dr] of Object.entries(opts.drops ?? {})) if (!next.some((b) => b.id === id)) drops.push(dropTrack(shown[id] ?? dr.from, dr.d, [...next, ...prev]));
   lastPlan.strategy = plan.strategy;
   lastPlan.ms = Date.now() - t0;
   lastPlan.log?.push(lastPlan.ms);

@@ -214,6 +214,15 @@ describe('받는 그림자: 가리개 모델 하나(벽·선반과 같은 빛 �
     for (let i = 1; i < total.length; i++) expect(Math.abs(total[i] - total[i - 1])).toBeLessThan(fin * 0.25);
   });
 
+  it('서랍으로 떨어지며 옅어지는 가리개(alpha)는 드리우는 그림자 몫도 그만큼 옅다', () => {
+    const full = receivedShadow3(recv, [near1], 3, TEST_DIR);
+    const half = receivedShadow3(recv, [{ ...near1, alpha: 0.4 }], 3, TEST_DIR);
+    const fw = faceOf(full, 'spine')!.bands.map((l) => l.w);
+    const hw = faceOf(half, 'spine')!.bands.map((l) => l.w);
+    expect(fw.some((w) => w > 0)).toBe(true);
+    fw.forEach((w, k) => expect(hw[k]).toBeCloseTo(w * 0.4, 9));
+  });
+
   it('창빛을 향한 면만 받는다(진하기는 셰이더가 그 면의 빛으로): 빛을 등진 옆면은 받지 않는다', () => {
     const r = receivedShadow3(recv, [near1, near2], 3, TEST_DIR);
     expect(faceOf(r, 'spine')).toBeTruthy();

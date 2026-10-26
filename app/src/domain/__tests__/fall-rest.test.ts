@@ -4,6 +4,7 @@ import { fromPlaced, gap, pivotLocal, toWorld } from '../book3';
 import { bookXs, checkSpace, fitToShelf, OVERHANG_MARGIN, placementOf, setTilt, validate, withNormalizedX, type BookMap } from '../layout-engine';
 import { bodiesOf, computeShelf, PLANK_BOUNDS, withLeans } from '../shelf-scene';
 import { bookAt, dropTrack, planTransition } from '../transition';
+import { SHELF } from '../geometry';
 import type { Book, BookPlacement, ShelfLayout } from '../types';
 
 const book = (id: string, height: number, thickness: number): Book => ({
@@ -21,32 +22,50 @@ const layoutOf = (...placements: BookPlacement[]): ShelfLayout => ({ version: 2,
 const without = (l: ShelfLayout, id: string): ShelfLayout => ({ ...l, placements: l.placements.filter((p) => p.bookId !== id) });
 
 describe('판 끝에 걸쳐 눕기', () => {
-  // D가 왼쪽 C에 기대 있다가 C를 빼면 왼쪽으로 넘어진다. 무게중심(발 - 키/2)은 판 위라 판 왼쪽 끝 밖으로 걸쳐 눕는다
+  // D가 왼쪽 C에 기대 있다가 C를 빼면 왼쪽으로 넘어진다. 넘어진 자리(발 − 키)는 판 왼쪽 끝 밖이지만 무게중심은 판 위다.
+  // 옆 책을 밀지 않고 남는 빈자리만큼 안쪽으로 미끄러지고, 모자라면 화면에 보이는 데까지만 걸치고, 그래도 안 되면 서랍으로(사용자 결정 2026-10-27)
   const C = book('C', 120, 34);
   const D = book('D', 160, 30);
-  const books: BookMap = { C, D };
-  const before = withLeans(layoutOf(place('C', 0, 50), place('D', 1, 114, -7)), books);
-
-  it('기대 있던 책이 판 끝 밖으로 걸쳐 눕는다(서랍으로 가지 않는다)', () => {
+  const E = book('E', 150, 30);
+  const books: BookMap = { C, D, E };
+  const fallWith = (ex?: number) => {
+    const ps = [place('C', 0, 50), place('D', 1, 114, -7)];
+    if (ex !== undefined) ps.push(place('E', 2, ex));
+    const before = withLeans(layoutOf(...ps), books);
     expect(computeShelf(before, books, 's').frames.find((f) => f.bookId === 'D')!.box.angle).toBeLessThan(0);
-    const after = withLeans(without(before, 'C'), books);
+    return { before, after: withLeans(without(before, 'C'), books) };
+  };
+
+  it('빈자리가 있으면 안쪽으로 미끄러져 판 안에 눕는다', () => {
+    const { after } = fallWith();
+    expect(after.drawer).toEqual([]);
+    const p = placementOf(after, 'D')!;
+    expect(p.pose).toBe('horizontal');
+    expect(p.overhang).toBeUndefined();
+    expect(bookXs(after, books).get('D')).toBeCloseTo(0, 6);
+  });
+
+  it('빈자리가 모자라면 옆 책을 밀지 않고 화면에 보이는 데까지만 판 끝에 걸친다', () => {
+    const { before, after } = fallWith(156);
     expect(after.drawer).toEqual([]);
     const p = placementOf(after, 'D')!;
     expect(p.pose).toBe('horizontal');
     expect(p.overhang).toBe(true);
     const x = bookXs(after, books).get('D')!;
     expect(x).toBeLessThan(0);
-    // 무게중심은 판 끝에서 OVERHANG_MARGIN 안
-    expect(x + 160 / 2).toBeGreaterThanOrEqual(PLANK_BOUNDS.min + OVERHANG_MARGIN - 1e-6);
+    expect(x).toBeGreaterThanOrEqual(-SHELF.sideMargin + 1 - 1e-6);
+    expect(Math.abs(bookXs(after, books).get('E')! - bookXs(before, books).get('E')!)).toBeLessThanOrEqual(0.5);
     expect(checkSpace(after, books)).toBeNull();
-    expect(validate(after, books, ['D'])).toEqual([]);
-  });
-
-  it('저장했다 불러와도 그대로 걸쳐 있다', () => {
-    const after = withLeans(without(before, 'C'), books);
+    expect(validate(after, books, ['D', 'E'])).toEqual([]);
+    // 저장했다 불러와도 그대로 걸쳐 있다
     const saved = JSON.parse(JSON.stringify(withNormalizedX(after, books)));
     expect(fitToShelf(saved, books).changed).toBe(false);
-    expect(bookXs(withLeans(saved, books), books).get('D')).toBeCloseTo(bookXs(after, books).get('D')!, 6);
+    expect(bookXs(withLeans(saved, books), books).get('D')).toBeCloseTo(x, 6);
+  });
+
+  it('화면 안에서 걸쳐도 옆 책을 밀어야 하면 서랍으로 간다', () => {
+    const { after } = fallWith(148);
+    expect(after.drawer).toEqual(['D']);
   });
 
   it('무게중심이 판 끝에서 OVERHANG_MARGIN 안쪽이 아니면 판에서 떨어져 서랍으로 간다', () => {
@@ -109,6 +128,17 @@ describe('서로 쪽으로 넘어진 두 권: A자로 기댄다', () => {
 });
 
 describe('서랍으로 떨어지는 책의 경로(dropTrack)', () => {
+  it('넘어지다 옆 책에 닿으면 그 각에서 멈춰 옅어진다(옆 책을 뚫고 눕지 않는다)', () => {
+    const b = { id: 'x', dims: { T: 30, H: 160, W: 110 }, roll: 5, yaw: 0, t: { x: 100, y: 0, z: 5 } };
+    const n = { id: 'n', dims: { T: 30, H: 150, W: 110 }, roll: 0, yaw: 0, t: { x: 190, y: 0, z: 5 } };
+    const tr = dropTrack(b, 1, [n]);
+    const end = bookAt(tr, 1);
+    expect(end.roll).toBeGreaterThan(20);
+    expect(end.roll).toBeLessThan(90);
+    for (let k = 0; k <= 40; k++) expect(gap(bookAt(tr, k / 40), n)).toBeGreaterThan(-0.31);
+    expect(end.alpha).toBe(0);
+  });
+
   const b = { id: 'x', dims: { T: 30, H: 160, W: 110 }, roll: 12, yaw: 0, t: { x: 100, y: 0, z: 5 } };
   for (const d of [-1, 1] as const) {
     it(`${d > 0 ? '오른쪽' : '왼쪽'}: 발을 축으로 눕고 옅어져 사라진다`, () => {
