@@ -464,7 +464,7 @@ export function Tabs<T extends string>({ items, value, onChange, style }: { item
       {items.map((it) => {
         const on = it.id === value;
         return (
-          <Pressable key={it.id} onPress={() => onChange(it.id)} style={s.tab} accessibilityRole="tab" accessibilityState={{ selected: on }}>
+          <Pressable key={it.id} onPress={() => onChange(it.id)} hitSlop={{ left: 4, right: 4 }} style={s.tab} accessibilityRole="tab" accessibilityState={{ selected: on }}>
             <Text style={[s.tabText, on && s.tabTextOn]} numberOfLines={1}>
               {it.label}
             </Text>
@@ -572,8 +572,10 @@ export const s = StyleSheet.create({
   search: { minHeight: 46, borderRadius: 12, backgroundColor: colors.input, flexDirection: 'row', alignItems: 'center', paddingRight: 2 },
   searchIcon: { width: space.touch + 4, minHeight: 46, alignItems: 'center', justifyContent: 'center' },
   titleNote: { fontFamily: type.sub.fontFamily, color: colors.inkSoft },
-  tabs: { flexDirection: 'row' },
-  tab: { flex: 1, alignItems: 'center', paddingTop: 4, minHeight: space.touch },
+  // 칸 폭을 똑같이 나누면 두 글자('완독'·'보류')와 세 글자('읽는 중') 탭 사이가 들쭉날쭉해 보였다(사용자 의견 2026-10-26):
+  // 글자 폭대로 두고 탭 사이 간격을 같게 벌린다. 양 끝 탭의 글자는 화면 좌우 여백에 맞는다(부르는 쪽이 -6으로 당긴다)
+  tabs: { flexDirection: 'row', justifyContent: 'space-between' },
+  tab: { alignItems: 'center', paddingTop: 4, paddingHorizontal: 6, minHeight: space.touch },
   tabText: { ...type.row, fontSize: 14, lineHeight: 20, color: colors.inkSoft },
   tabTextOn: { fontFamily: type.button.fontFamily, color: colors.accent },
   tabBar: { width: 32, height: 3, borderRadius: 2, backgroundColor: colors.accent, marginTop: 8 },

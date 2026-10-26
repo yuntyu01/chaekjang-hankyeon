@@ -80,7 +80,9 @@ import { colors, fonts, motion, navigation } from '@/ui/theme';
 // 책장 밖 UI(메뉴 시트·알림·빈 책장 안내)는 화면 공통 토큰을 쓴다(책장 장면·머리글은 theme.ts 그대로)
 import { colors as ui, fonts as uiFonts, icon, shape, space, type } from '@/ui/screenTheme';
 
-import { BookPopover } from './BookPopover';
+import { BookSheet } from './BookSheet';
+import { STATUS_LABEL } from '@/features/book/labels';
+import { useLibrary } from '@/store/library-store';
 import { miniTimerStore } from '@/store/mini-timer-store';
 import { tabBarStyle } from '@/ui/tabBar';
 
@@ -169,6 +171,7 @@ export function HomeScreen() {
   const insets = useSafeAreaInsets();
   const store = usePlacementStore();
   const { books, layout } = store;
+  const { lib } = useLibrary();
   const m = useShelfMetrics();
   const bookShared = useBookShared(); // 책 그림 공용 자원(글꼴·종이 결). 캔버스 안에는 컨텍스트가 닿지 않아 여기서 읽어 넘긴다
   const { width: winW } = useWindowDimensions();
@@ -237,7 +240,6 @@ export function HomeScreen() {
     }, WAIT_MAX + PULL_MS * ANIM.slow + 600);
   }, []);
   const lastDragEnd = useRef(0);
-  const popScroll = useRef(0); // 정보 상자를 연 순간의 스크롤(렌더 중에 공유값을 읽지 않으려고)
 
   const scrollRef = useAnimatedRef<Animated.ScrollView>();
   const scrollY = useSharedValue(0);
@@ -490,7 +492,6 @@ export function HomeScreen() {
     setPopId(null);
     scrollRef.current?.scrollTo({ y: Math.max(0, row.top - 60), animated: !reduceMotion });
     setTimeout(() => {
-      popScroll.current = scrollY.value;
       setSelectedId(id);
       setPopId(id);
     }, reduceMotion ? 50 : 450);
@@ -522,7 +523,6 @@ export function HomeScreen() {
       return;
     }
     setSelectedId(pick.bookId);
-    popScroll.current = scrollY.value;
     setPopId(pick.bookId);
   };
 
@@ -1111,33 +1111,42 @@ export function HomeScreen() {
     setEditing(on);
   };
 
-  // 정보 상자 위치: 위 선반 칸(화면 밖이면 아래 칸)을 덮는 선반 크기 상자. 한 줄뿐이면 책 위 빈 곳.
-  const popAnchor = useMemo(() => {
-    if (!popId) return null;
-    const p = placementOf(shown, popId);
-    const idx = p ? rows.findIndex((r) => r.shelfId === p.shelfId) : -1;
-    const row = rows[idx];
-    const f = row && frames.get(p!.shelfId)?.find((fr) => fr.bookId === popId);
-    if (!row || !f) return null;
-    const sy = popScroll.current;
+  // 책 정보 시트(BookSheet)가 누른 책을 가리면 책장을 그만큼 올린다. 맨 아랫줄도 올라오게 아래 여백을 시트가 덮는 만큼 늘리고,
+  // 시트를 닫으면 넘친 만큼 부드럽게 되돌린 뒤 뺀다(꾸미기 조작부와 같은 방식)
+  const viewportRef = useRef<View>(null);
+  const sheetPad = useRef(false);
+  const revealAboveSheet = (sheetTop: number) => {
+    const id = popId;
+    const p = id ? placementOf(shown, id) : null;
+    const row = p && rows.find((r) => r.shelfId === p.shelfId);
+    const f = row && frames.get(p!.shelfId)?.find((fr) => fr.bookId === id);
+    if (!row || !f) return;
     const box = frameBBox(f, camAt(view.pitch));
-    const cx = toContent(m, row, { x: box.minX + box.width / 2, y: 0 }).x;
-    const left = m.originX + PLANK_INSET * m.scale;
-    const width = (DESIGN_WIDTH - PLANK_INSET * 2) * m.scale;
-    // 칸: 줄 윗끝부터 선반 판 윗면 조금 위까지(책이 서는 공간)
-    const slot = (r: (typeof rows)[number]) => ({ left, width, top: r.top - sy + 2, height: r.clear * m.scale - 2 });
-    const fits = (b: { top: number; height: number }) => b.top >= 0 && b.top + b.height <= vpH - navigation.height - insets.bottom;
-    const up = idx > 0 ? slot(rows[idx - 1]) : null;
-    const down = idx + 1 < rows.length ? slot(rows[idx + 1]) : null;
-    if (up && fits(up)) return { cx, box: up, above: true };
-    if (down && fits(down)) return { cx, box: down, above: false };
-    const bookTop = toContent(m, row, { x: 0, y: box.minY }).y - sy;
-    const h = (row.clear - 2) * m.scale - 4;
-    return bookTop - h - 10 >= 0 || !down
-      ? { cx, box: { left, width, top: Math.max(4, bookTop - h - 10), height: h }, above: true }
-      : { cx, box: down, above: false };
+    const bottom = toContent(m, row, { x: 0, y: box.minY + box.height }).y;
+    viewportRef.current?.measureInWindow((_x, vy, _w, vh) => {
+      const limit = sheetTop - vy - 14; // 뷰포트 좌표에서 시트 위 끝(조금 띄운다)
+      const need = bottom - scrollY.value - limit;
+      if (need <= 0) return;
+      sheetPad.current = true;
+      setTailPad(Math.max(0, vy + vh - sheetTop));
+      const y = scrollY.value + need;
+      setTimeout(() => scrollRef.current?.scrollTo({ y, animated: !reduceMotion }), 0);
+    });
+  };
+  useEffect(() => {
+    if (popId || !sheetPad.current) return;
+    sheetPad.current = false;
+    if (editing) return;
+    const last = rows.at(-1);
+    const h = Math.max(vpH, (last ? last.top + last.height : 0) + (SHELF_CAST_EXTENT + 8) * m.scale);
+    const max = Math.max(0, h - vpH);
+    if (scrollY.value > max) {
+      scrollRef.current?.scrollTo({ y: max, animated: !reduceMotion });
+      setTimeout(() => setTailPad(0), 450);
+    } else setTailPad(0);
+    // 시트가 닫힐 때만
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [popId, shown, rows, frames, m, vpH, insets.bottom, view.pitch]);
+  }, [popId]);
 
   const hints = useRef(new Map<string, DropHint>());
   const hintFor = (shelfId: string): DropHint => {
@@ -1399,7 +1408,6 @@ export function HomeScreen() {
   const onA11y = useCallback(
     (bookId: string, action: string) => {
       if (action === 'activate') {
-        popScroll.current = scrollY.value;
         setPopId(bookId);
       }
       else if (action === 'prev' || action === 'next') {
@@ -1552,11 +1560,12 @@ export function HomeScreen() {
                 hitSlop={10}
                 accessibilityRole="button"
                 accessibilityLabel={ko.undo}
-                style={{ opacity: store.undo ? 1 : 0.35, padding: 4 }}>
-                <Undo2 size={20 * m.scale} color={colors.homeTitle} strokeWidth={1.6} />
+                style={{ opacity: store.undo ? 1 : 0.35, padding: 6 }}>
+                <Undo2 size={23 * m.scale} color={colors.homeTitle} strokeWidth={1.5} />
               </Pressable>
-              <Pressable onPress={finishEditing} accessibilityRole="button" accessibilityLabel={ko.done} style={[styles.pill, { height: 30 * m.scale, paddingHorizontal: 16 * m.scale }]}>
-                <Text style={[styles.pillText, { fontSize: 13.5 * m.scale }]}>{ko.done}</Text>
+              {/* 2026-10-26 꾸미기 시안: 테두리 없는 굵은 '완료' 글자 */}
+              <Pressable onPress={finishEditing} hitSlop={10} accessibilityRole="button" accessibilityLabel={ko.done} style={({ pressed }) => [styles.doneBtn, { marginLeft: 18 * m.scale }, pressed && { opacity: 0.55 }]}>
+                <Text style={[styles.doneText, { fontSize: 16.5 * m.scale }]}>{ko.done}</Text>
               </Pressable>
             </>
           ) : (
@@ -1571,6 +1580,7 @@ export function HomeScreen() {
       </View>
 
       <View
+        ref={viewportRef}
         style={{ flex: 1 }}
         onLayout={(e) => {
           viewportH.value = e.nativeEvent.layout.height;
@@ -1620,11 +1630,13 @@ export function HomeScreen() {
         </Animated.ScrollView>
         </GestureDetector>
 
-        {popId && popAnchor && books[popId] && placementOf(layout, popId) ? (
-          <BookPopover
+        {popId && books[popId] && placementOf(layout, popId) ? (
+          <BookSheet
             book={books[popId]}
-            anchor={popAnchor}
+            status={lib.books[popId] ? STATUS_LABEL[lib.books[popId].status] : undefined}
+            bottomInset={insets.bottom}
             reduceMotion={reduceMotion}
+            onTop={revealAboveSheet}
             onClose={() => {
               setPopId(null);
               setSelectedId(null);
@@ -1803,8 +1815,8 @@ const styles = StyleSheet.create({
   actions: { flexDirection: 'row', alignItems: 'center', alignSelf: 'center' },
   circle: { borderWidth: 1, borderColor: colors.circle, alignItems: 'center', justifyContent: 'center' },
   circleOn: { backgroundColor: ui.accent, borderColor: ui.accent },
-  pill: { borderWidth: 1, borderColor: colors.circle, borderRadius: 999, alignItems: 'center', justifyContent: 'center' },
-  pillText: { fontFamily: fonts.round, color: colors.homeTitle },
+  doneBtn: { minHeight: 40, justifyContent: 'center' },
+  doneText: { fontFamily: uiFonts.uiBold, color: colors.homeTitle },
   badge: {
     position: 'absolute',
     top: -2,
