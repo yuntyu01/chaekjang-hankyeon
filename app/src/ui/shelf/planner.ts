@@ -13,7 +13,7 @@ import { scheduleOnRN, scheduleOnUI } from 'react-native-worklets';
 import { fromPlaced, type Book3 } from '@/domain/book3';
 import { SHELF_THICK } from '@/domain/geometry';
 import { PLANK_BOUNDS, type BookFrame } from '@/domain/shelf-scene';
-import { awayShift, awayTrack, bookAt, gravityPlan, holdTrack, offBetween, planTransition, safeOffsets, shiftTrack, withOff, type Off, type Track } from '@/domain/transition';
+import { awayShift, awayTrack, bookAt, gravityPlan, holdTrack, offBetween, planTransition, retime, safeOffsets, shiftTrack, withOff, type Off, type Track } from '@/domain/transition';
 import { ANIM, TL, tl, tlOn, tlu } from '@/ui/perf';
 
 import { awayAt, easeOf, OUT_SHADE_MAX, outsideDist, outsideRow, presentSV, type AwayEntry, type Aways, type Motion, type Tracks } from './scene';
@@ -58,6 +58,26 @@ export function displayedPoses(m: Motion): Record<string, Book3> {
   const t = progress(mr);
   const out: Record<string, Book3> = {};
   for (const [id, tr] of Object.entries(mr.tracks)) out[id] = bookAt(tr, t);
+  return out;
+}
+
+// 넘어지는 도중 다시 짤 때(끌기 미리보기가 바뀔 때 등) 목표가 그대로인 책은 지금 경로를 그대로 이어 간다: 지금(JS 어림 진행)부터 남은
+// 경로를 새 경로 기준 시간(넘어지는 경로 = POSE_MS)으로 옮긴다. 줄 시계가 고르게 흐르는 경로(넘어지는 경로)끼리라 빠르기도 그대로 이어진다.
+// 넘어지는 조각(점점 빨라짐·맞아서 넘어짐)이 아직 남은 책만. 예전 경로가 고르게 흐르지 않았으면(감속 시계) 없다.
+const samePose = (a: Book3, b: Book3) =>
+  [a.t.x - b.t.x, a.t.y - b.t.y, a.t.z - b.t.z, a.roll - b.roll, a.yaw - b.yaw, (a.spin ?? 0) - (b.spin ?? 0), (a.pitch ?? 0) - (b.pitch ?? 0)].every((d) => Math.abs(d) < 1e-3);
+export function fallingKeep(m: Motion, next: Book3[]): Record<string, Track> | undefined {
+  const mr = mirrorOf(m);
+  if (mr.ease !== 'lin' || !moving(mr)) return undefined;
+  const tc = progress(mr);
+  const unit = POSE_MS * ANIM.slow;
+  let out: Record<string, Track> | undefined;
+  for (const b of next) {
+    const tr = mr.tracks[b.id];
+    if (!tr?.moving || !tr.segs.some((s) => (s.e === 1 || s.e === 3) && s.t1 > tc && Math.abs(s.r1 - s.r0) > 0.05)) continue;
+    if (!samePose(bookAt(tr, 1), b)) continue;
+    out = { ...(out ?? {}), [b.id]: retime(tr, tc, mr.dur / unit) };
+  }
   return out;
 }
 
@@ -450,18 +470,24 @@ export function planInto(m: Motion, shelfId: string, next: Book3[], target: stri
   // 줄 간격(판 윗면 사이): 받침에 놓인 책인지 볼 때 쓴다(모든 줄이 같은 3D 간격)
   const pitch = opts.space !== undefined ? opts.space + SHELF_THICK : undefined;
   const ceil = opts.roofed ? opts.space : undefined;
-  const plan = planTransition(prev, next, PLANK_BOUNDS, { budgetMs: opts.budgetMs, arrive, pitch, ceil });
+  // 줄 사이로 옮기는 책·다른 줄에 남는 경로가 있는 책과 같은 경로면 남는 경로가 줄 시계 감속을 따라가므로 줄 시계를 고르게 돌리지 않는다
+  const away = next.some((b) => awayRows.has(b.id));
+  const keep = away ? undefined : fallingKeep(m, next);
+  // 계획 시간(budgetMs)은 경로 짜기와 넘어지는 경로 다시 검사가 함께 쓴다
+  const deadline = t0 + (opts.budgetMs ?? 40);
+  const plan = planTransition(prev, next, PLANK_BOUNDS, { budgetMs: opts.budgetMs, arrive, pitch, ceil, keep });
   lastPlan.strategy = plan.strategy;
   lastPlan.ms = Date.now() - t0;
   lastPlan.log?.push(lastPlan.ms);
-  if (TL.on) tl(`plan ${shelfId} ${plan.strategy} ${lastPlan.ms}ms waits=${waits.length}${arrive !== opts.arrive ? ' arriving' : ''}${est}`);
+  if (TL.on) tl(`plan ${shelfId} ${plan.strategy} ${lastPlan.ms}ms waits=${waits.length}${arrive !== opts.arrive ? ' arriving' : ''}${keep ? ` keep=${Object.keys(keep).join(',')}` : ''}${est}`);
   const animate = plan.strategy !== 'still';
   const pull = plan.strategy === 'pull' || (!!arrive && next.some((b) => arrive![b.id]));
-  const posing = /al|pull/.test(plan.strategy);
-  const dur = (pull ? PULL_MS : posing ? POSE_MS : MOTION_MS) * ANIM.slow;
-  // 넘어지는 책(받침을 잃음, 놓은 각이 넘어짐 한계 아래)은 점점 빨라지다 닿는 순간 멈춘다. 줄 사이로 옮기는 책·다른 줄에 남는 경로가
-  // 있는 책과 같은 경로면 남는 경로가 줄 시계 감속을 따라가므로 그대로 둔다.
-  const fall = animate && !pull && !next.some((b) => awayRows.has(b.id)) ? gravityPlan(plan, PLANK_BOUNDS, { budgetMs: opts.budgetMs, ceil }) : null;
+  const posing = /al|pull|fall/.test(plan.strategy);
+  // 넘어지는 책이 차례로 넘어지면(도미노) 경로가 그만큼 길다(plan.len)
+  const dur = (pull ? PULL_MS : posing ? POSE_MS : MOTION_MS) * (plan.len ?? 1) * ANIM.slow;
+  // 넘어지는 책(받침을 잃음, 놓은 각이 넘어짐 한계 아래)은 점점 빨라지다 닿는 순간 멈춘다. 받침을 잃고 눕는 책이 있는 경로는
+  // planTransition이 이미 그렇게 짜서 검사했다(plan.fall). 그 밖의 경로는 남은 계획 시간으로 다시 검사한다(gravityPlan).
+  const fall = !animate || away ? null : plan.fall ? plan : !pull ? gravityPlan(plan, PLANK_BOUNDS, { budgetMs: Math.max(0, deadline - Date.now()), ceil }) : null;
   if (fall && TL.on) tl(`plan ${shelfId} fall`);
   queueApply(m, shelfId, Object.fromEntries((fall ?? plan).tracks.map((tr) => [tr.id, tr])), animate, dur, target, waits, opts.space, !!fall);
 }

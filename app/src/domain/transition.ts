@@ -3,13 +3,15 @@
 // 후보 경로를 t 전 구간에서 3D 충돌로 검사해(접촉에 가까운 구간은 촘촘히) 처음 통과하는 것을 쓴다. 통과하는 경로가 없으면 null.
 //
 // 기울이기: 기우는 쪽 바닥 모서리(발)를 축으로(pivot). 받침을 잃고 바닥에 눕는 책도 발을 축으로 넘어지는 쪽으로 돈다(fallSegs).
+// 여러 권이 넘어지면 받침을 잃은 때·밀려서 닿은 때의 차례대로 출발한다(도미노, sequenceFalls). 넘어지기만 하는 책은 앞으로 빼서 옮기지 않는다.
 // 손으로 자세 바꾸기(표지로·눕히기): 도는 동안 책이 차지하는 가로 범위를 한쪽(또는 가운데)에
 // 맞추고 가장 낮은 점을 받침에 댄 채 돈다(box). 도는 도중에는 대각선만큼 폭이 잠깐 커지므로, 옆 책이 그만큼 더 비켜 줬다가 끝에 붙는다.
 // 높이가 바뀌는 이동(쌓인 책 내리기)은 L자로 나눠 대각선으로 다른 책을 가로지르지 않게 한다.
 import { cornerLocal, corners, gap, lowest, pivotLocal, rot, sub3, toWorld, xRange, type Book3, type Vec3 } from './book3';
 import { SHELF_DEPTH, SHELF_FRONT } from './geometry';
 
-// kind 0 = pivot(기준점 a의 월드 위치를 w0→w1), 1 = box(가로 정렬 al의 x를 x0→x1, 가장 낮은 y를 b0→b1, 가장 앞 z를 z0→z1)
+// kind 0 = pivot(기준점 a의 월드 위치를 w0→w1), 1 = box(가로 정렬 al의 x를 x0→x1, 가장 낮은 y를 b0→b1, 가장 앞 z를 z0→z1),
+// 2 = 벽에 기댄 발 미끄러짐(pivot + 벽 안쪽으로), 3 = 머리가 닿아 발이 미끄러지며 넘어짐(pivot, 넘어지는 쪽 끝이 lim을 넘지 않게 발이 반대로)
 export type Seg = {
   kind: number;
   t0: number;
@@ -34,7 +36,16 @@ export type Seg = {
   z1: number;
   // 조각 안의 진행 곡선. 없거나 0 = 고르게(경로 전체 감속은 줄 시계가 맡는다), 1 = 점점 빨라지다 닿는 순간 멈춤(중력으로 넘어짐),
   // 2 = 천천히 출발해 천천히 멈춤(넘어지는 책과 같은 경로에서 손이 하는 움직임: 줄 시계가 고르게 흐를 때). gravityPlan이 정한다.
+  // 3 = 맞아서 넘어짐: 닿는 순간 밀린 빠르기로 출발해 점점 빨라지다 닿는 순간 멈춤(넘어지는 책에 밀려 넘어지는 책, sequenceFalls).
+  //   진행 = ea·lin + (1 - ea)·lin³(ea: 처음 빠르기의 몫, 없으면 0.5). 앞부분만 잘라도 같은 꼴이다(cutFall).
   e?: number;
+  ea?: number;
+  // kind 3: 넘어지는 쪽(side -1 왼쪽, +1 오른쪽) 끝의 한계 x(목표 자리의 그쪽 끝 = 머리가 닿는 곳), 뒤쪽 끝의 한계 x(뒤에 옆 책이 붙어 있을 때)와
+  // 그 한계를 지키기 시작하는 기울기(tfrom: 뒤쪽 끝이 처음 그 선 안으로 들어오는 각, 없으면 처음부터)
+  lim?: number;
+  tlim?: number;
+  tfrom?: number;
+  side?: number;
 };
 // 이어 주기: 경로를 적용하는 순간 실제로 보이던 자세와 경로 출발점의 차이(위치 DU·각도 °). 진행 OFF_T까지 줄어 없어진다.
 // 경로는 JS가 JS 쪽 진행 어림으로 짠다. UI는 짜서 보내는 사이에도 움직이고(긴 프레임이면 더) 경로 출발 시각도 프레임에 따라 어긋나,
@@ -43,8 +54,9 @@ export type Off = { x: number; y: number; z: number; roll: number; yaw: number; 
 export const OFF_T = 0.4;
 // rest: 움직이지 않는 트랙의 자세(늘 같은 객체). bookAt이 그대로 돌려줘서, 이 책을 읽는 화면 계산이 매 프레임 다시 돌지 않는다.
 export type Track = { id: string; dims: Book3['dims']; segs: Seg[]; moving: boolean; rest?: Book3; off?: Off };
-// fall: 넘어지는 조각이 있어 줄 시계를 고르게 돌린다(gravityPlan)
-export type Plan = { tracks: Track[]; strategy: string; fall?: boolean };
+// fall: 넘어지는 조각이 있어 줄 시계를 고르게 돌린다(gravityPlan, 또는 planTransition이 넘어지는 책의 차례까지 정해 검사한 경로).
+// len: 경로 길이(기준 시간의 몇 배, 없으면 1). 넘어지는 책이 차례로 넘어지면(도미노) 늦게 출발한 책도 같은 시간 동안 넘어지도록 길어진다.
+export type Plan = { tracks: Track[]; strategy: string; fall?: boolean; len?: number };
 
 const ZERO = { x: 0, y: 0, z: 0 };
 
@@ -80,7 +92,8 @@ function segPose(tr: Track, t: number): Book3 {
     if (t <= segs[i].t1) break;
   }
   const lin = s.t1 > s.t0 ? clamp01((t - s.t0) / (s.t1 - s.t0)) : t >= s.t1 ? 1 : 0;
-  const u = s.e === 1 ? lin * lin * lin : s.e === 2 ? (lin < 0.5 ? 4 * lin * lin * lin : 1 - Math.pow(-2 * lin + 2, 3) / 2) : lin;
+  const ea = s.ea ?? 0.5;
+  const u = s.e === 1 ? lin * lin * lin : s.e === 2 ? (lin < 0.5 ? 4 * lin * lin * lin : 1 - Math.pow(-2 * lin + 2, 3) / 2) : s.e === 3 ? ea * lin + (1 - ea) * lin * lin * lin : lin;
   const roll = s.r0 + (s.r1 - s.r0) * u;
   const yaw = s.y0 + (s.y1 - s.y0) * u;
   const spin = s.sp0 + (s.sp1 - s.sp0) * u;
@@ -107,6 +120,20 @@ function segPose(tr: Track, t: number): Book3 {
     let back = -Infinity;
     for (const c of corners(b)) back = Math.max(back, c.z);
     if (back > SHELF_DEPTH) b.t.z -= back - SHELF_DEPTH;
+  }
+  if (s.kind === 3) {
+    // 넘어지는 책의 머리가 목표 자리 끝(옆 책·판 끝, lim)에 닿으면 그 뒤로는 머리가 그 선을 따라 내려오고 발이 반대쪽으로 미끄러진다.
+    // 끝 자세에서 발이 꼭 목표 자리에 온다. tlim: 뒤쪽(발 쪽) 끝도 넘지 않는다(대각선만큼 남는 것은 머리 쪽으로)
+    const side = s.side ?? -1;
+    let lead = side < 0 ? Infinity : -Infinity;
+    let back = side < 0 ? -Infinity : Infinity;
+    for (const c of corners(b)) {
+      lead = side < 0 ? Math.min(lead, c.x) : Math.max(lead, c.x);
+      back = side < 0 ? Math.max(back, c.x) : Math.min(back, c.x);
+    }
+    let dx = s.lim !== undefined && (lead - s.lim) * side > 0 ? s.lim - lead : 0;
+    if (s.tlim !== undefined && (s.tfrom === undefined || (roll - s.tfrom) * side >= 0) && (s.tlim - back - dx) * side > 0) dx = s.tlim - back;
+    b.t.x += dx;
   }
   return b;
 }
@@ -271,11 +298,15 @@ function poseSegs(from: State, to: State, t0: number, t1: number, al: number, or
 }
 
 // 받침을 잃고 바닥에 눕는 세운 책(세운 책 → 눕힘, 발 자리 거의 그대로): 기우는 쪽 바닥 모서리(발)를 축으로 넘어지는 쪽으로 눕는다.
-// 오른쪽으로 넘어진 책은 머리가 오른쪽(roll +90, flip)이라 한 번 일어서거나 반대로 돌지 않는다. 눕는 자리가 판 끝에 걸려 안쪽으로
-// 밀렸거나 머리가 옆 책에 닿아 밀리면 그만큼 발이 바닥을 미끄러진다(축이 바닥을 따라 옮겨 간다).
+// 오른쪽으로 넘어진 책은 머리가 오른쪽(roll +90, flip)이라 한 번 일어서거나 반대로 돌지 않는다.
+// 눕는 자리가 판 끝·옆 책에 막혀 넘어지는 반대쪽으로 밀렸으면(발이 뒤로 미끄러짐, 키만큼까지) 머리가 그 끝에 닿을 때까지 발은 제자리이고
+// 그 뒤로 머리가 그 끝을 따라 내려오며 발이 미끄러진다(kind 3: 발을 고르게 옮기면 머리가 끝 직전에 목표 자리보다 더 나가 옆 책을 파고든다).
+// 상자의 대각선이 키보다 길어 눕는 끝 무렵에는 그만큼(대각선 - 키) 어느 한쪽으로 더 나가야 한다: 뒤쪽(발 쪽)에 옆 책이 붙어 있으면
+// 뒤쪽을 지키고(tlim) 머리가 끝을 조금 넘는다(판 끝 너머 허공, 또는 맞닿은 눕힌 책을 스친다). 발이 넘어지는 쪽으로 밀렸으면(키의 반까지) 고르게 옮긴다.
 // 손으로 눕히는 것(눕힌 상자가 놓던 자리 왼쪽 끝부터라 발 자리가 키만큼 옮겨 간다)은 여기 들지 않고 poseSegs가 맡는다.
-// 받침에서 바로 출발한다(옆 책이 비키는 동안 기다리지 않는다): 넘어지는 책은 손이 아니라 중력이 움직인다.
-function fallSegs(from: State, to: State, t1: number): Seg[] | null {
+// 넘어지는 책은 손이 아니라 중력이 움직인다: 점점 빨라지다 닿는 순간 멈춘다(e 1). 기준 시간 [0, 1]에 넘어지고, 언제 출발하는지(받침을 잃은 때,
+// 밀려 넘어지면 닿은 때)는 planTransition이 정한다(sequenceFalls). others: 다른 책의 목표 자세(뒤쪽에 붙은 책을 찾는다).
+function fallSegs(from: State, to: State, others: State[] = []): Seg[] | null {
   if (!near(from.yaw, 0) || !near(to.yaw, 0) || lying(from) || !lying(to)) return null;
   if ((from.spin ?? 0) || (to.spin ?? 0) || (from.pitch ?? 0) || (to.pitch ?? 0)) return null;
   const d = Math.sign(to.roll);
@@ -283,9 +314,63 @@ function fallSegs(from: State, to: State, t1: number): Seg[] | null {
   const a = pivotLocal(from.dims, d);
   const w0 = toWorld(from, a);
   const w1 = toWorld(to, a);
-  if (Math.abs(w0.y - w1.y) > 0.5 || Math.abs(w0.z - w1.z) > 0.5 || Math.abs(w1.x - w0.x) > from.dims.H / 2) return null;
-  return [pivotSeg(from, to, 0, t1, a)];
+  if (Math.abs(w0.y - w1.y) > 0.5 || Math.abs(w0.z - w1.z) > 0.5) return null;
+  const slide = (w1.x - w0.x) * d; // + 넘어지는 쪽, - 반대쪽
+  const seg: Seg = { ...pivotSeg(from, to, 0, 1, a), e: 1 };
+  if (slide < -0.05 && slide >= -from.dims.H) {
+    const end = (b: State, s: number) => {
+      let v = s < 0 ? Infinity : -Infinity;
+      for (const c of corners(b)) v = s < 0 ? Math.min(v, c.x) : Math.max(v, c.x);
+      return v;
+    };
+    const lim = end(to, d);
+    // 출발 자세부터 머리가 그 끝을 넘어 있으면(닿을 곳이 없다) 아래(고르게)
+    if ((end(from, d) - lim) * d <= 0) {
+      const out: Seg = { ...seg, kind: 3, w1: { ...seg.w1, x: seg.w0.x }, lim, side: d };
+      // 대각선이 키보다 긴 만큼(excess) 끝 무렵 뒤쪽이 목표 자리보다 더 나간다. 뒤쪽 옆 책이 그보다 가까우면 그 면을 넘지 않고
+      // 남는 것은 머리 쪽으로(머리 쪽 끝이 판 끝 너머 허공이면 얼마든지). 양쪽 다 모자라면 모자라는 만큼을 반씩 스친다.
+      const excess = Math.hypot(from.dims.T, from.dims.H) - from.dims.H;
+      const room = (x: number, s: number) => {
+        let m = Infinity;
+        for (const o of others) {
+          if (o.id === to.id || gap(o, to) > excess + 1) continue;
+          const r = xRange(o);
+          const dist = ((s > 0 ? r.lo : r.hi) - x) * s; // s쪽 옆 책 면까지
+          if (dist > -0.5) m = Math.min(m, Math.max(0, dist));
+        }
+        return m;
+      };
+      const tl = end(to, -d);
+      const back = room(tl, -d);
+      if (back < excess) {
+        const tlim = tl - d * (back + Math.max(0, (excess - back - room(lim, d)) / 2));
+        // 뒤쪽 옆 책이 이 책이 서 있던 자리까지 와서 눕는다면(이 책이 비킨 뒤에 온다) 뒤쪽 끝이 처음 그 선 안으로 들어온 각부터 지킨다(tfrom)
+        const probe: Track = { id: to.id, dims: to.dims, segs: [{ ...out, e: 0 }], moving: true };
+        const inside = (u: number) => (tlim - end(segPose(probe, u), -d)) * d <= 1e-9;
+        let u0 = inside(0) ? 0 : -1;
+        for (let k = 1; k <= 32 && u0 < 0; k++)
+          if (inside(k / 32)) {
+            let lo = (k - 1) / 32;
+            let hi = k / 32;
+            for (let i = 0; i < 20; i++) {
+              const m = (lo + hi) / 2;
+              if (inside(m)) hi = m;
+              else lo = m;
+            }
+            u0 = hi;
+          }
+        if (u0 >= 0) {
+          out.tlim = tlim;
+          if (u0 > 0) out.tfrom = from.roll + (to.roll - from.roll) * u0;
+        }
+      }
+      return [out];
+    }
+  }
+  if (slide < -from.dims.H / 2 || slide > from.dims.H / 2) return null;
+  return [seg];
 }
+const falls = (from: State, to: State) => fallSegs(from, to) !== null;
 
 type Candidate = { name: string; lean: 'sync' | 'moveFirst' | 'turnFirst'; turn: [number, number]; others: [number, number]; al: number; order: string; spread: number };
 
@@ -293,11 +378,12 @@ function hold(b: State): Seg[] {
   return [pivotSeg(b, b, 0, 1, ZERO)];
 }
 
+// 넘어지는 책(fallSegs)은 기준 시간 [0, 1]에 넘어진다(출발 시각은 planTransition이 정한다). 옆 책을 비키게 하는 것은 손으로 자세를 바꾸는 책뿐이다.
 export function build(prev: State[], next: State[], c: Candidate): Track[] {
   const before = new Map(prev.map((p) => [p.id, p]));
   const posers = next.filter((b) => {
     const a = before.get(b.id);
-    return a && posed(a, b);
+    return a && posed(a, b) && !falls(a, b);
   });
   const growing = posers.some((b) => {
     const a = before.get(b.id)!;
@@ -312,7 +398,7 @@ export function build(prev: State[], next: State[], c: Candidate): Track[] {
     const from = before.get(to.id);
     if (!from) return holdTrack(to);
     let segs: Seg[];
-    if (posed(from, to)) segs = fallSegs(from, to, c.turn[1]) ?? poseSegs(from, to, c.turn[0], c.turn[1], c.al, c.order);
+    if (posed(from, to)) segs = fallSegs(from, to, next) ?? poseSegs(from, to, c.turn[0], c.turn[1], c.al, c.order);
     else if (onlyPitch(from, to)) {
       // 벽에 기대기·떼기: 뒤쪽 아래 모서리를 축으로 젖히며, 그 축은 바닥을 따라 새 자리로
       const seg = pivotSeg(from, to, c.turn[0], c.turn[1], wallPivot(to));
@@ -538,7 +624,8 @@ export function firstOverlap(tracks: Track[], bounds?: { min: number; max: numbe
     for (let i = 0; i < n; i++) {
       if (!tracks[i].moving) continue;
       if (lowest(bs[i]) < -0.05) return { t, a: tracks[i].id, b: 'floor' };
-      if (bounds && Math.abs(bs[i].roll) < 45) {
+      // 넘어지며 발이 미끄러지는 책(kind 3)은 머리가 판 끝 너머 허공으로 잠깐 나갈 수 있다(판 끝에는 옆판이 없다)
+      if (bounds && Math.abs(bs[i].roll) < 45 && !tracks[i].segs.some((s) => s.kind === 3 && t > s.t0 && t < s.t1)) {
         const r = xRange(bs[i]);
         // 판 앞 끝보다 앞으로 빼낸 책은 판 끝 범위와 상관없다(선반 앞 허공에서 옮긴다)
         let zhi = -Infinity;
@@ -554,28 +641,33 @@ export function firstOverlap(tracks: Track[], bounds?: { min: number; max: numbe
     }
   }
   const pairGap = (i: number, j: number, t: number) => gap(at(t)[i], at(t)[j]);
-  const safe = (i: number, j: number, a: number, b: number, ga: number, gb: number, depth: number): number | null => {
-    if (ga < -MARGIN) return a;
-    if (gb < -MARGIN) return b;
-    if (Math.min(ga, gb) - (disp(i, a, b) + disp(j, a, b)) / 2 >= -MARGIN || depth <= 0) return null;
-    const m = (a + b) / 2;
-    const gm = pairGap(i, j, m);
-    return safe(i, j, a, m, ga, gm, depth - 1) ?? safe(i, j, m, b, gm, gb, depth - 1);
-  };
   for (let i = 0; i < n; i++)
     for (let j = i + 1; j < n; j++) {
       if (!tracks[i].moving && !tracks[j].moving) continue;
       if (late()) return { t: 0, a: tracks[i].id, b: 'timeout' };
-      let prev = pairGap(i, j, 0);
+      const g = (t: number) => pairGap(i, j, t);
+      const d = (a: number, b: number) => disp(i, a, b) + disp(j, a, b);
+      let prev = g(0);
       for (let k = 1; k <= SAMPLES; k++) {
         const t = k / SAMPLES;
-        const g = pairGap(i, j, t);
-        const hit = safe(i, j, (k - 1) / SAMPLES, t, prev, g, 6);
+        const gt = g(t);
+        const hit = firstBelow(g, d, -MARGIN, (k - 1) / SAMPLES, t, prev, gt, 6);
         if (hit !== null) return { t: hit, a: tracks[i].id, b: tracks[j].id };
-        prev = g;
+        prev = gt;
       }
     }
   return null;
+}
+
+// 구간 [a, b]에서 두 책 사이 틈이 처음 thr 밑으로 가는 때(없으면 null). ga, gb: 양 끝의 틈, moved(a, b): 그 사이 두 책이 움직인 거리의 합.
+// 양 끝의 틈에서 움직인 거리(의 반)를 빼도 thr 밑으로 갈 수 없으면 통과, 아니면 반씩 나눠 더 본다(적응형, depth번까지).
+function firstBelow(gapAt: (t: number) => number, moved: (a: number, b: number) => number, thr: number, a: number, b: number, ga: number, gb: number, depth: number): number | null {
+  if (ga < thr) return a;
+  if (gb < thr) return b;
+  if (Math.min(ga, gb) - moved(a, b) / 2 >= thr || depth <= 0) return null;
+  const m = (a + b) / 2;
+  const gm = gapAt(m);
+  return firstBelow(gapAt, moved, thr, a, m, ga, gm, depth - 1) ?? firstBelow(gapAt, moved, thr, m, b, gm, gb, depth - 1);
 }
 
 // ---------- 넘어지는 동작 ----------
@@ -621,12 +713,17 @@ export function fallsUnderGravity(tr: Track, s: Seg): boolean {
   return prev < comY(b0) - 1e-3;
 }
 
-// budgetMs: 이 다시 검사에 쓸 시간(넘기면 원래 경로 그대로). ceil: firstOverlap과 같다.
-export function gravityPlan(plan: Plan, bounds?: { min: number; max: number }, opts: { budgetMs?: number; ceil?: number } = {}): Plan | null {
+// 조각마다 진행 곡선을 정한다(줄 시계를 고르게 돌릴 때): 중력으로 넘어지는 조각 1, 그 밖의 움직임 2. 이미 정해 둔 조각(넘어지는 책 e 1,
+// 이어 가는 경로)은 그대로. any: 중력으로 넘어지는 조각이 있다.
+function markGravity(tracks: Track[]): { tracks: Track[]; any: boolean } {
   let any = false;
-  const tracks = plan.tracks.map((tr) => {
+  const out = tracks.map((tr) => {
     if (!tr.moving) return tr;
     const segs = tr.segs.map((s) => {
+      if (s.e !== undefined) {
+        if (s.e === 1 || s.e === 3) any = true;
+        return s;
+      }
       const still = same(segPose({ ...tr, segs: [{ ...s, e: 0 }] }, s.t0), segPose({ ...tr, segs: [{ ...s, e: 0 }] }, s.t1));
       if (still) return s;
       const g = fallsUnderGravity(tr, s);
@@ -635,10 +732,398 @@ export function gravityPlan(plan: Plan, bounds?: { min: number; max: number }, o
     });
     return { ...tr, segs };
   });
+  return { tracks: out, any };
+}
+
+// budgetMs: 이 다시 검사에 쓸 시간(넘기면 원래 경로 그대로). ceil: firstOverlap과 같다.
+// planTransition이 이미 넘어지는 경로로 짜서 검사한 계획(fall)은 그대로 돌려준다(다시 검사하지 않는다).
+export function gravityPlan(plan: Plan, bounds?: { min: number; max: number }, opts: { budgetMs?: number; ceil?: number } = {}): Plan | null {
+  if (plan.fall) return plan;
+  const { tracks, any } = markGravity(plan.tracks);
   if (!any) return null;
   const deadline = opts.budgetMs === undefined ? Infinity : Date.now() + opts.budgetMs;
   if (firstOverlap(tracks, bounds, deadline, opts.ceil)) return null;
   return { tracks, strategy: plan.strategy, fall: true };
+}
+
+// ---------- 넘어지는 차례(도미노) ----------
+// 받침을 잃고 바닥에 눕는 책(fallSegs)은 기준 시간 1 동안 넘어진다. 여러 권이 한꺼번에 출발하면 서로(또는 옆 책을) 파고들므로
+// 출발 시각을 정한다(기준 시간에서; 늦게 출발한 책이 끝나는 만큼 경로가 길어진다, Plan.len):
+//  - 기댄 책(받침을 잃음): 기대던 책이 넘어지는 책이면 그 책이 출발한 뒤, 아니면 바로. 그때부터 겹치지 않는 가장 이른 때.
+//  - 똑바로 선 책에 다른 책이 기대 있으면(미는 힘에 받침 책이 넘어감) 바로. 기대던 책이 그 뒤를 따른다.
+//  - 아무도 기대지 않은 똑바로 선 책: 넘어지는 책(또는 움직이는 책)이 와서 닿는 순간 밀린 빠르기로 넘어지기 시작한다(sequenceFalls struck).
+//    눕는 자리가 비켜 있어 닿지 않으면 가장 가까이 떨어지는 순간(키의 반 안), 가까이 오는 책도 없으면(혼자 넘어짐) 바로.
+//  - 아직 출발하지 않은 책은 제자리에 서 있는 장애물이다. 밀려 넘어질 책은 장애물로 보지 않는다(닿을 때 비킨다).
+// 겹치지 않는 때를 못 찾으면 그 책이 출발할 때(받침을 잃은 때·닿은 때) 그대로 둔다: 전체 검사(firstOverlap)가 걸러 다음 후보로 간다.
+const FALL_STEP = 1 / 24; // 출발 시각 눈금(기준 시간)
+const FALL_DELAY_MAX = 1.25; // 이보다 늦게 출발하지 않는다
+const CONTACT = 0.5; // 이만큼 가까우면 닿아 있다(기댄 받침, 밀려 넘어지는 때)
+const LEAN_EPS = 0.5; // 이보다 덜 기울면 똑바로 선 책
+
+type Faller = { id: string; from: State; to: State; on: string | null; push: boolean };
+
+// 책 b가 기대 있는 책(기우는 쪽에서 닿아 있는 책, 똑바로 선 책이면 null)
+function leanOnOf(b: State, bodies: State[]): string | null {
+  if (Math.abs(b.roll) <= LEAN_EPS || lying(b)) return null;
+  const d = Math.sign(b.roll);
+  const foot = toWorld(b, pivotLocal(b.dims, d)).x;
+  let best: string | null = null;
+  let bg = CONTACT;
+  for (const o of bodies) {
+    if (o.id === b.id) continue;
+    const r = xRange(o);
+    if (((r.lo + r.hi) / 2 - foot) * d <= 0) continue;
+    const g = gap(b, o);
+    if (g < bg) {
+      bg = g;
+      best = o.id;
+    }
+  }
+  return best;
+}
+
+// 지금 자세 → 목표 자세가 받침을 잃고 눕는 책들(exclude: 넘어지는 경로를 따로 받은 책)
+function fallersOf(bodies: State[], next: State[], before: Map<string, State>, exclude: Set<string>): Faller[] {
+  const ids = next.filter((b) => !exclude.has(b.id) && before.has(b.id) && falls(before.get(b.id)!, b)).map((b) => b.id);
+  if (!ids.length) return [];
+  const on = new Map(bodies.map((b) => [b.id, leanOnOf(b, bodies)]));
+  const leanedOn = new Set([...on.values()].filter((v): v is string => !!v));
+  return ids.map((id) => {
+    const from = before.get(id)!;
+    return { id, from, to: next.find((b) => b.id === id)!, on: on.get(id) ?? null, push: Math.abs(from.roll) <= LEAN_EPS && !leanedOn.has(id) };
+  });
+}
+
+// 경로 하나의 자세·꼭짓점(시각마다 한 번만 계산), 움직이는 동안 [w0, w1], 그동안 차지하는 가로 범위 [x0, x1](넉넉히)
+type Probe = { tr: Track; at: (t: number) => Book3; cs: (t: number) => Vec3[]; w0: number; w1: number; x0: number; x1: number };
+const segStill = (s: Seg) =>
+  near(s.r0, s.r1) &&
+  near(s.y0, s.y1) &&
+  near(s.sp0, s.sp1) &&
+  near(s.pi0, s.pi1) &&
+  (s.kind === 1 ? near(s.x0, s.x1) && near(s.b0, s.b1) && near(s.z0, s.z1) : near(s.w0.x, s.w1.x) && near(s.w0.y, s.w1.y) && near(s.w0.z, s.w1.z));
+function probeOf(tr: Track): Probe {
+  const poses = new Map<number, Book3>();
+  const pts = new Map<number, Vec3[]>();
+  const at = (t: number) => {
+    let v = poses.get(t);
+    if (!v) {
+      v = bookAt(tr, t);
+      poses.set(t, v);
+    }
+    return v;
+  };
+  const cs = (t: number) => {
+    let v = pts.get(t);
+    if (!v) {
+      v = corners(at(t));
+      pts.set(t, v);
+    }
+    return v;
+  };
+  let w0 = Infinity;
+  let w1 = -Infinity;
+  if (tr.moving)
+    for (const s of tr.segs)
+      if (s.t1 > s.t0 && !segStill(s)) {
+        w0 = Math.min(w0, Math.max(0, s.t0));
+        w1 = Math.max(w1, s.t1);
+      }
+  let x0 = Infinity;
+  let x1 = -Infinity;
+  const take = (t: number) => {
+    const r = xRange(at(t));
+    x0 = Math.min(x0, r.lo - 1);
+    x1 = Math.max(x1, r.hi + 1);
+  };
+  take(0);
+  if (w1 > w0) for (let k = 0; k <= 16; k++) take(w0 + ((w1 - w0) * k) / 16);
+  return { tr, at, cs, w0, w1, x0, x1 };
+}
+function moved(p: Probe, a: number, b: number) {
+  if (!(p.w1 > p.w0) || b <= p.w0 || a >= p.w1) return 0;
+  const pa = p.cs(a);
+  const pb = p.cs(b);
+  let m = 0;
+  for (let k = 0; k < 8; k++) m = Math.max(m, Math.hypot(pa[k].x - pb[k].x, pa[k].y - pb[k].y, pa[k].z - pb[k].z));
+  return m * 1.1;
+}
+// 두 경로가 처음 thr보다 가까워지는 때(없으면 null). 둘 중 하나라도 움직이는 동안만 본다(그 밖은 둘 다 멈춰 있어 끝의 틈과 같다).
+function closeAt(A: Probe, B: Probe, thr: number): number | null {
+  if (A.x1 < B.x0 || B.x1 < A.x0) return null;
+  const w0 = Math.min(A.w0, B.w0);
+  const w1 = Math.max(A.w1, B.w1);
+  const g = (t: number) => gap(A.at(t), B.at(t));
+  if (!(w1 > w0)) return g(0) < thr ? 0 : null;
+  const n = Math.max(1, Math.ceil((w1 - w0) * SAMPLES));
+  const d = (a: number, b: number) => moved(A, a, b) + moved(B, a, b);
+  let prev = g(w0);
+  if (prev < thr) return w0;
+  for (let k = 1; k <= n; k++) {
+    const a = w0 + ((w1 - w0) * (k - 1)) / n;
+    const t = w0 + ((w1 - w0) * k) / n;
+    const gt = g(t);
+    const hit = firstBelow(g, d, thr, a, t, prev, gt, 6);
+    if (hit !== null) {
+      // 처음 thr 밑으로 가는 때를 반씩 좁혀 찾는다(밀려 넘어지는 책이 닿는 순간 출발하도록)
+      let lo = a;
+      let hi = hit;
+      for (let i = 0; i < 12; i++) {
+        const m = (lo + hi) / 2;
+        if (g(m) < thr) hi = m;
+        else lo = m;
+      }
+      return hi;
+    }
+    prev = gt;
+  }
+  return null;
+}
+
+// 두 경로가 가장 가까워지는 때와 그때의 틈(표본으로, 둘 중 하나라도 움직이는 동안)
+function closest(A: Probe, B: Probe): { g: number; t: number } {
+  const w0 = Math.min(A.w0, B.w0);
+  const w1 = Math.max(A.w1, B.w1);
+  if (!(w1 > w0)) return { g: gap(A.at(0), B.at(0)), t: 0 };
+  const n = Math.max(1, Math.ceil((w1 - w0) * SAMPLES));
+  let best = { g: Infinity, t: w0 };
+  for (let k = 0; k <= n; k++) {
+    const t = w0 + ((w1 - w0) * k) / n;
+    const g = gap(A.at(t), B.at(t));
+    if (g < best.g) best = { g, t };
+  }
+  return best;
+}
+
+// 넘어지는 책들의 출발 시각을 정한 트랙(기준 시간). tracks: 넘어지는 책은 [0, 1]에 넘어지는 트랙(fallSegs), 나머지는 정해진 트랙.
+// 밀려 넘어지는 책은 닿는 순간 밀린 빠르기로 출발한다(e 3, 세게 맞으면 더 빨리 넘어진다: span). 넘어지던 책이 끝 무렵 빠르게 와서
+// 부딪히면(그 책이 서 있던 곳에 눕는다) 미는 책도 부딪힌 순간 느려져 함께 넘어진다(cut: 그 뒤로는 span 동안 e 3).
+// 그래도 미는 책이 파고들면 닿기 조금 전에 천천히 출발한다(e 1). 시간을 넘기면(deadline) 남은 책은 출발할 때(받침을 잃은 때·닿은 때) 그대로 둔다.
+type Timing = { d: number; span: number; e: number; cut?: { at: number; span: number } };
+const PUSH_SPANS = [1, 0.7, 0.5, 0.35, 0.25];
+const COUPLED_SPANS = [0.7, 0.5, 1, 0.35, 0.25]; // 함께 넘어질 때(너무 길어지지 않게 가운데 것부터)
+const HEAD_START = 5; // 맞기 전에 먼저 출발해도 되는 눈금 수(이보다 일찍 움직이면 맞기 전에 넘어지는 것이 보인다)
+// 넘어지는 조각 s(e 1·3)를 at에서 둘로: 앞은 at까지 같은 곡선 그대로(e 3의 앞부분은 ea만 다른 e 3), 뒤는 그때 자세에서 목표까지 span 동안 e 3
+function cutFall(s: Seg, at: number, span: number): Seg[] {
+  const lin = (at - s.t0) / (s.t1 - s.t0);
+  const a = s.e === 3 ? (s.ea ?? 0.5) : 0;
+  const u = a * lin + (1 - a) * lin * lin * lin;
+  const lerp = (p: number, q: number) => p + (q - p) * u;
+  const w = { x: lerp(s.w0.x, s.w1.x), y: lerp(s.w0.y, s.w1.y), z: lerp(s.w0.z, s.w1.z) };
+  const mid = { r: lerp(s.r0, s.r1), y: lerp(s.y0, s.y1), sp: lerp(s.sp0, s.sp1), pi: lerp(s.pi0, s.pi1) };
+  const head: Seg = { ...s, t1: at, r1: mid.r, y1: mid.y, sp1: mid.sp, pi1: mid.pi, w1: w };
+  if (s.e === 3) head.ea = a / (a + (1 - a) * lin * lin);
+  const rest: Seg = { ...s, t0: at, t1: at + span, r0: mid.r, y0: mid.y, sp0: mid.sp, pi0: mid.pi, w0: w, e: 3 };
+  delete rest.ea;
+  return [head, rest];
+}
+function sequenceFalls(tracks: Track[], fallers: Faller[], deadline: number): { tracks: Track[]; done: boolean } {
+  if (!fallers.length) return { tracks, done: true };
+  const fid = new Set(fallers.map((f) => f.id));
+  const base = new Map(tracks.filter((t) => fid.has(t.id)).map((t) => [t.id, t.segs[0]]));
+  const fixed = tracks.filter((t) => !fid.has(t.id)).map(probeOf);
+  const cache = new Map<string, Probe>();
+  const timed = (f: Faller, m: Timing): Track => {
+    const s: Seg = { ...base.get(f.id)!, t0: m.d, t1: m.d + m.span, e: m.e };
+    return { id: f.id, dims: f.from.dims, segs: m.cut ? cutFall(s, m.cut.at, m.cut.span) : [s], moving: true };
+  };
+  const fallP = (f: Faller, m: Timing) => {
+    const key = `${f.id}@${m.d}/${m.span}/${m.e}${m.cut ? `/${m.cut.at}/${m.cut.span}` : ''}`;
+    let p = cache.get(key);
+    if (!p) {
+      p = probeOf(timed(f, m));
+      cache.set(key, p);
+    }
+    return p;
+  };
+  const holdP = (f: Faller) => {
+    const key = `${f.id}@hold`;
+    let p = cache.get(key);
+    if (!p) {
+      p = probeOf(holdTrack(f.from));
+      cache.set(key, p);
+    }
+    return p;
+  };
+  const plan = new Map<string, Timing>();
+  const late = () => Date.now() > deadline;
+  // f가 m으로 넘어지면 다른 책과 겹치지 않는가: 정해진 트랙, 출발 시각을 정한 책, 아직 출발하지 않은 책(제자리). 밀려 넘어질 책은 빼고 본다.
+  // stuck: 부딪히는 책이 그 뒤로 더 움직이지 않는다(늦게 출발해도 같은 곳에서 부딪힌다)
+  let stuck = false;
+  const clear = (f: Faller, m: Timing) => {
+    const me = fallP(f, m);
+    const hits = (o: Probe) => {
+      const t = closeAt(me, o, -MARGIN);
+      if (t === null) return false;
+      stuck = !(o.w1 > o.w0) || t >= o.w1;
+      return true;
+    };
+    for (const o of fixed) if (hits(o)) return false;
+    for (const g of fallers) {
+      if (g === f) continue;
+      const s = plan.get(g.id);
+      const o = s ? fallP(g, s) : g.push ? null : holdP(g);
+      if (o && hits(o)) return false;
+    }
+    return true;
+  };
+  const fall = (d: number): Timing => ({ d, span: 1, e: 1 });
+  const earliest = (f: Faller, lo: number) => {
+    for (let k = 0; lo + k * FALL_STEP <= FALL_DELAY_MAX + 1e-9; k++) {
+      if (late()) break;
+      if (clear(f, fall(lo + k * FALL_STEP))) return fall(lo + k * FALL_STEP);
+      if (stuck) break;
+    }
+    return fall(lo);
+  };
+  // 밀려 넘어지는 책 f에 움직이는 책(정해진 트랙·출발 시각을 정한 책)이 처음 닿는 때와 그 책(넘어지는 책일 때)
+  const touched = (f: Faller) => {
+    const me = holdP(f);
+    let c = Infinity;
+    let by: Faller | null = null;
+    for (const o of fixed) if (o.w1 > o.w0) c = Math.min(c, closeAt(me, o, CONTACT) ?? Infinity);
+    for (const g of fallers) {
+      const s = plan.get(g.id);
+      if (g === f || !s) continue;
+      const t = closeAt(me, fallP(g, s), CONTACT);
+      if (t !== null && t < c) [c, by] = [t, g];
+    }
+    return { c, by };
+  };
+  const strikers = new Map<string, Faller>(); // 밀려 넘어진 책 → 민 책
+  const struck = (f: Faller, c: number, by: Faller | null): Timing => {
+    for (const span of PUSH_SPANS) if (!late() && clear(f, { d: c, span, e: 3 })) return { d: c, span, e: 3 };
+    // 함께 넘어진다: 미는 책이 부딪힌 순간부터 느려지고, 그 책을 밀던 책(그 위에 기대어 따라오던 책)도 함께 느려진다
+    const chain: { g: Faller; m: Timing }[] = [];
+    for (let g = by; g && chain.length < fallers.length; g = strikers.get(g.id) ?? null) {
+      const m = plan.get(g.id);
+      if (!m || m.cut || !(m.e === 1 || m.e === 3) || !(c > m.d + 1e-6 && c < m.d + m.span - 1e-6)) break;
+      chain.push({ g, m });
+    }
+    if (chain.length)
+      for (const span of COUPLED_SPANS)
+        for (const k of [1, 1.5, 2, 3])
+          for (const back of chain.length > 1 ? [1.5, 2.5] : [1]) {
+            if (late()) break;
+            const mine: Timing = { d: c, span, e: 3 };
+            // 뒤따르던 책일수록 남은 각이 작아 같은 시간이면 앞 책을 따라잡으므로 더 천천히(한 권 뒤마다 back배)
+            const slowed = chain.map(({ g, m }, i) => ({ g, s: { ...m, cut: { at: c, span: span * k * Math.pow(back, i) } } as Timing }));
+            for (const { g, s } of slowed) plan.set(g.id, s);
+            plan.set(f.id, mine);
+            let ok = clear(f, mine);
+            for (const { g, s } of slowed) ok = ok && clear(g, s);
+            plan.delete(f.id);
+            if (ok) return mine;
+            for (const { g, m } of chain) plan.set(g.id, m);
+            // 바로 민 책만 느려져도 되면 그것으로(뒤따르던 책은 그대로)
+            if (chain.length > 1) {
+              plan.set(chain[0].g.id, slowed[0].s);
+              plan.set(f.id, mine);
+              ok = clear(f, mine) && clear(chain[0].g, slowed[0].s);
+              plan.delete(f.id);
+              if (ok) return mine;
+              plan.set(chain[0].g.id, chain[0].m);
+            }
+          }
+    const top = Math.ceil(c / FALL_STEP - 1e-9) - 1;
+    for (let k = top; k >= Math.max(0, top - HEAD_START) && !late(); k--) if (clear(f, fall(k * FALL_STEP))) return fall(k * FALL_STEP);
+    return { d: c, span: PUSH_SPANS[PUSH_SPANS.length - 1], e: 3 };
+  };
+  const pending = [...fallers];
+  const take = (f: Faller, m: Timing) => {
+    plan.set(f.id, m);
+    pending.splice(pending.indexOf(f), 1);
+  };
+  while (pending.length) {
+    // 1) 받침을 잃은 책(기대던 책이 이미 출발했거나 넘어지는 책이 아니면)
+    const ready = pending.find((f) => !f.push && !(f.on && fid.has(f.on) && !plan.has(f.on)));
+    if (ready) {
+      const lo = ready.on && plan.has(ready.on) ? plan.get(ready.on)!.d : 0;
+      take(ready, late() ? fall(lo) : earliest(ready, lo));
+      continue;
+    }
+    // 2) 밀려 넘어지는 책: 가장 먼저 닿는 책부터, 닿는 순간 출발
+    let best: Faller | null = null;
+    let bc = Infinity;
+    let bby: Faller | null = null;
+    if (!late())
+      for (const f of pending) {
+        if (!f.push) continue;
+        const { c, by } = touched(f);
+        if (c < bc) [best, bc, bby] = [f, c, by];
+      }
+    if (best) {
+      take(best, struck(best, bc, bby));
+      if (bby) strikers.set(best.id, bby);
+      continue;
+    }
+    // 3) 닿는 책이 없는 똑바로 선 책: 눕는 자리가 비켜 있어 넘어지는 책이 닿지는 않지만 바로 옆(키의 반 안)으로 떨어지면 그 순간 넘어진다
+    //    (가장 가까이 오는 책부터: 그 책이 다음 책을 친다). 가까이 오는 책이 없으면 혼자 넘어짐, 서로 기댄 책(순환)과 함께 바로.
+    if (!late()) {
+      let near: Faller | null = null;
+      let ng = Infinity;
+      let nt = 0;
+      let nby: Faller | null = null;
+      for (const f of pending) {
+        if (!f.push) continue;
+        const me = holdP(f);
+        const movers: { p: Probe; by: Faller | null }[] = fixed.filter((o) => o.w1 > o.w0).map((p) => ({ p, by: null }));
+        for (const g of fallers) if (g !== f && plan.has(g.id)) movers.push({ p: fallP(g, plan.get(g.id)!), by: g });
+        for (const { p, by } of movers) {
+          const a = closest(me, p);
+          if (a.g < f.from.dims.H / 2 && a.g < ng) [near, ng, nt, nby] = [f, a.g, a.t, by];
+        }
+      }
+      if (near) {
+        take(near, struck(near, nt, nby));
+        if (nby) strikers.set(near.id, nby);
+        continue;
+      }
+    }
+    const f = pending.find((q) => q.push) ?? pending[0];
+    take(f, late() ? fall(0) : earliest(f, 0));
+  }
+  const byId = new Map(fallers.map((f) => [f.id, f]));
+  const out = tracks.map((tr) => {
+    const f = byId.get(tr.id);
+    const m = plan.get(tr.id);
+    return f && m && (m.d || m.span !== 1 || m.e !== 1 || m.cut) ? timed(f, m) : tr;
+  });
+  return { tracks: out, done: !late() };
+}
+
+// 가장 깊이 파고드는 깊이(DU, 겹치지 않으면 0 이하): 대신하는 경로들 가운데 고를 때만(촘촘히 재므로 느리다)
+function deepest(tracks: Track[]): number {
+  const ps = tracks.map(probeOf);
+  let worst = -Infinity;
+  for (let i = 0; i < ps.length; i++)
+    for (let j = i + 1; j < ps.length; j++) {
+      const A = ps[i];
+      const B = ps[j];
+      if (A.x1 < B.x0 || B.x1 < A.x0) continue;
+      const w0 = Math.min(A.w0, B.w0, 0);
+      const w1 = Math.max(A.w1, B.w1, 0);
+      const n = Math.max(1, Math.ceil((w1 - w0) * SAMPLES * 4));
+      for (let k = 0; k <= n; k++) worst = Math.max(worst, -gap(A.at(w0 + ((w1 - w0) * k) / n), B.at(w0 + ((w1 - w0) * k) / n)));
+    }
+  return worst;
+}
+
+// 기준 시간으로 짠 트랙을 경로 길이 [0, 1]로 줄인 것과 그 길이(1보다 짧으면 1)
+function normalized(tracks: Track[]): { tracks: Track[]; len: number } {
+  let len = 1;
+  for (const tr of tracks) if (tr.moving) for (const s of tr.segs) len = Math.max(len, s.t1);
+  if (len <= 1 + 1e-9) return { tracks, len: 1 };
+  return { tracks: tracks.map((tr) => (tr.moving ? { ...tr, segs: tr.segs.map((s) => ({ ...s, t0: s.t0 / len, t1: s.t1 / len })) } : tr)), len };
+}
+
+// 움직이던 경로를 지금(진행 tc)부터 이어 가는 트랙: 시각을 tc만큼 당기고 k배로 늘린다(k = 예전 경로 길이 / 새 기준 시간, 줄 시계가 둘 다 고를 때
+// 자세와 빠르기가 그대로 이어진다). 이미 지나간 조각은 버린다(지나가는 조각은 출발이 0보다 앞).
+export function retime(tr: Track, tc: number, k: number): Track {
+  const segs = tr.segs.map((s) => ({ ...s, t0: (s.t0 - tc) * k, t1: (s.t1 - tc) * k }));
+  let i = 0;
+  while (i < segs.length - 1 && segs[i].t1 <= 0) i++;
+  return { id: tr.id, dims: tr.dims, segs: segs.slice(i), moving: true };
 }
 
 // ---------- 이어 주기도 충돌 검사 안에 ----------
@@ -702,7 +1187,14 @@ export function safeOffsets(rec: Record<string, Track>, base: Record<string, Tra
 //   뚫고 지나가거나(가림 순서가 뒤집힌다) 다시 짤 때마다 다른 길로 가 버린다.
 // pitch: 줄 간격(판 윗면 사이 세로 거리, DU). 받침에 놓인 책인지 볼 때 쓴다(떠 있는 책은 다시 들어 올리지 않는다).
 // ceil: 윗선반 판 아랫면 높이(위에 줄이 있을 때, firstOverlap).
-export type PlanOptions = { budgetMs?: number; arrive?: Record<string, State>; pitch?: number; ceil?: number };
+// keep: 넘어지는 도중 목표가 그대로인 책의 지금 경로(retime으로 지금부터 이어 가게 옮긴 것, 기준 시간). 다시 짜도 그 경로를 그대로 써서
+//   넘어지던 빠르기가 이어진다(처음부터 다시 천천히 출발하지 않는다). 나머지 책은 그 경로와 겹치지 않게 짜고, 그럴 수 없으면 keep 없이 짠다.
+// 받침을 잃고 눕는 책(fallSegs)이 있거나 keep이 있으면 줄 시계를 고르게 돌리는 경로(fall)로 짠다: 넘어지는 책은 점점 빨라지고 나머지
+// 움직임은 조각마다 천천히 출발·멈춤(markGravity), 넘어지는 책의 출발 시각은 차례대로(sequenceFalls), 길이는 len.
+// 넘어지기만 하는 책은 앞으로 빼서 옮기지 않는다: 제자리 후보가 모두 막히면 다른 책만 앞으로 빼서 옮기는 경로(pullPlan)에 넘어지는 책을
+// 차례대로 넣는다(다른 책을 건너가야 하는 책만 앞으로 빼서 옮긴다). 그래도 겹치면 스치는 깊이가 BRUSH 이하인 넘어지는 경로를 쓰고,
+// 더 깊이 파고들 때만(또는 시간이 다 됐을 때) 넘어지는 책도 앞으로 빼서 옮기는 예전 경로를 쓴다.
+export type PlanOptions = { budgetMs?: number; arrive?: Record<string, State>; pitch?: number; ceil?: number; keep?: Record<string, Track> };
 export function planTransition(prev: State[], next: State[], bounds?: { min: number; max: number }, opts: PlanOptions = {}): Plan {
   const arrive = opts.arrive ?? {};
   const inPrev = new Set(prev.map((p) => p.id));
@@ -716,29 +1208,87 @@ export function planTransition(prev: State[], next: State[], bounds?: { min: num
     return a && !same(a, b);
   });
   if (!changed.length) return { tracks: build(all, next, candidates(false, false)[0]), strategy: 'still' };
-  const deadline = Date.now() + (opts.budgetMs ?? 40);
+  const start = Date.now();
+  const deadline = start + (opts.budgetMs ?? 40);
   // 다른 줄에서 들어오는 책은 늘 앞으로 빼서 들어온다(판을 뚫고 지나가지 않게)
   const arriving = new Set(next.filter((b) => arrive[b.id] && before.has(b.id)).map((b) => b.id));
   const resting = restingSet(all, opts.pitch);
   const liftOf = (id: string) => (resting.has(id) ? PULL_LIFT : 0);
   const withArrivals = (tracks: Track[]) =>
     arriving.size ? tracks.map((tr) => (arriving.has(tr.id) ? { id: tr.id, dims: tr.dims, segs: pullSegs(before.get(tr.id)!, next.find((b) => b.id === tr.id)!, 0, 1, 0, liftOf(tr.id)), moving: true } : tr)) : tracks;
-  const posers = next.filter((b) => {
-    const a = before.get(b.id);
-    return a && !arriving.has(b.id) && posed(a, b);
-  });
-  const growing = posers.some((b) => {
-    const a = before.get(b.id)!;
-    return xRange(b).hi - xRange(b).lo > xRange(a).hi - xRange(a).lo + 0.5;
-  });
-  for (const c of candidates(growing, posers.length > 0)) {
-    const tracks = withArrivals(build(all, next, c));
-    const hit = firstOverlap(tracks, bounds, deadline, opts.ceil);
-    if (!hit) return { tracks, strategy: c.name };
-    if (hit.b === 'timeout' || Date.now() > deadline) break;
+  const keep = opts.keep ?? {};
+  const kept = new Set(next.filter((b) => keep[b.id] && before.has(b.id) && !arriving.has(b.id)).map((b) => b.id));
+  let firstFall: Plan | null = null;
+  // 넘어지는 책이 있으면 대신하는 경로에도 차례를 정하고 검사할 시간을 남겨 둔다
+  const anyFall = kept.size > 0 || next.some((b) => before.has(b.id) && !arriving.has(b.id) && falls(before.get(b.id)!, b));
+  const loopEnd = anyFall ? start + (deadline - start) * 0.7 : deadline;
+  // 먼저 이어 가는 경로(keep)를 그대로 두고, 안 되면 keep 없이
+  for (const useKeep of kept.size ? [true, false] : [false]) {
+    const fixed = useKeep ? kept : new Set<string>();
+    const fallers = fallersOf(all, next, before, new Set([...fixed, ...arriving]));
+    const gravity = fallers.length > 0 || fixed.size > 0;
+    const posers = next.filter((b) => {
+      const a = before.get(b.id);
+      return a && !arriving.has(b.id) && !fixed.has(b.id) && posed(a, b) && !falls(a, b);
+    });
+    const growing = posers.some((b) => {
+      const a = before.get(b.id)!;
+      return xRange(b).hi - xRange(b).lo > xRange(a).hi - xRange(a).lo + 0.5;
+    });
+    const fid = new Set(fallers.map((f) => f.id));
+    const pushy = fallers.some((f) => f.push);
+    for (const c of candidates(growing, posers.length > 0)) {
+      const built = withArrivals(build(all, next, c));
+      if (!gravity) {
+        const hit = firstOverlap(built, bounds, loopEnd, opts.ceil);
+        if (!hit) return { tracks: built, strategy: c.name };
+        if (hit.b === 'timeout' || Date.now() > loopEnd) break;
+        continue;
+      }
+      // 넘어지는 경로: 밀려 넘어질 책이 없으면 먼저 모두 바로 출발해 보고, 넘어지는 책이 부딪히면 차례를 정해 다시 본다
+      // (다른 책끼리 부딪히면 차례로는 안 된다). 밀려 넘어질 책이 있으면 늘 차례를 정한다(닿을 때 출발).
+      const marked = markGravity(fixed.size ? built.map((tr) => (fixed.has(tr.id) ? keep[tr.id] : tr)) : built).tracks;
+      let n = normalized(marked);
+      let plan: Plan = { tracks: n.tracks, strategy: `fall-${c.name}`, fall: true, len: n.len };
+      let hit = pushy ? null : firstOverlap(plan.tracks, bounds, loopEnd, opts.ceil);
+      if (pushy || (hit && hit.b !== 'timeout' && (fid.has(hit.a) || fid.has(hit.b)))) {
+        n = normalized(sequenceFalls(marked, fallers, loopEnd).tracks);
+        plan = { tracks: n.tracks, strategy: `fall-${c.name}`, fall: true, len: n.len };
+        hit = firstOverlap(plan.tracks, bounds, loopEnd, opts.ceil);
+      }
+      if (!useKeep && !firstFall) firstFall = plan;
+      if (!hit) return plan;
+      if (hit.b === 'timeout' || Date.now() > loopEnd) break;
+    }
+    if (Date.now() > loopEnd) break;
   }
-  return { tracks: pullPlan(all, next, arriving, resting), strategy: 'pull' };
+  // 제자리 후보가 모두 막혔다: 다른 책을 건너가야 하는 책만 앞으로 빼서 옮기고, 넘어지는 책은 제자리에서 차례대로 넘어진다
+  const old = (): Plan => ({ tracks: pullPlan(all, next, arriving, resting).tracks, strategy: 'pull' });
+  const all0 = fallersOf(all, next, before, arriving);
+  const pulled = pullPlan(all, next, arriving, resting, new Set(all0.map((f) => f.id)));
+  const fallers = all0.filter((f) => !pulled.movers.has(f.id)); // 건너가야 해서 빼는 책은 넘어지는 차례에서 뺀다
+  if (!fallers.length) return { tracks: pulled.tracks, strategy: 'pull' };
+  const seq = sequenceFalls(markGravity(pulled.tracks).tracks, fallers, deadline);
+  // 차례를 다 못 정했으면(시간 초과) 넘어지는 책도 앞으로 빼서 옮기는 예전 경로(늘 비켜 가는 길)
+  if (!seq.done) return old();
+  const n = normalized(seq.tracks);
+  const falling: Plan = { tracks: n.tracks, strategy: 'pull', fall: true, len: n.len };
+  const hit = firstOverlap(falling.tracks, bounds, deadline, opts.ceil);
+  if (!hit) return falling;
+  // 검사를 다 못 했으면: 앞으로 빼서 옮기는 책이 있으면 그 길과 엇갈릴 수 있어 예전 경로, 없으면 차례를 정한 그대로
+  if (hit.b === 'timeout') return pulled.movers.size ? old() : falling;
+  // 그래도 겹치면: 스치는 깊이가 BRUSH 이하인 넘어지는 경로(제자리 첫 후보·위 경로 중 얕은 것). 더 깊으면 넘어지는 책도 앞으로 빼서
+  // 옮기는 예전 경로와 견주어 덜 파고드는 것(깨끗하면 그것). 잴 시간이 없으면 예전 경로.
+  if (Date.now() > deadline) return old();
+  const options = (firstFall ? [falling, firstFall] : [falling]).map((p) => ({ p, depth: deepest(p.tracks) })).sort((a, b) => a.depth - b.depth);
+  if (options[0].depth <= BRUSH) return options[0].p;
+  const o = old();
+  const oh = firstOverlap(o.tracks, bounds, deadline, opts.ceil);
+  if (!oh || oh.b === 'timeout' || deepest(o.tracks) < options[0].depth) return o;
+  return options[0].p;
 }
+// 넘어지는 책이 옆 책을 스쳐도 되는 깊이(DU, 약 1px·2mm): 상자의 대각선이 키보다 길어 눕는 자리에 꼭 맞으면 끝 무렵 조금 밀어야 한다
+const BRUSH = 1;
 
 // 대신하는 경로(후보가 모두 막혔거나 시간이 다 됐을 때, 다른 줄에서 들어오는 책): 자리가 크게 바뀌는 책을 선반 앞으로 빼서 옮긴다.
 // 빼낼 책 = 자세가 바뀌는 책, 다른 책을 건너가는 책, 다른 줄에서 오는 책 + 그 위에 쌓여 있던 책 + 빼거나 밀어 넣는 길(상자를 앞으로
@@ -789,7 +1339,15 @@ function leanSlideSegs(from: State, to: State, o0: number, o1: number): Seg[] {
   return [pivotSeg(from, turned, 0, o0, a), pivotSeg(turned, to, o0, o1, ZERO)];
 }
 
-function pullPlan(prev: State[], next: State[], arriving: Set<string>, resting: Set<string> = new Set(prev.map((p) => p.id))): Track[] {
+// falling: 받침을 잃고 눕는 책(fallSegs). 빼지 않고 제자리에서 넘어지는 트랙([0, 1], 출발 시각은 planTransition이 정한다)을 준다.
+// 다른 책을 건너가야 하는 책만 뺀다(위에 얹혔거나 길을 막아 빼는 책에 넣지 않는다). movers: 앞으로 빼서 옮기는 책.
+function pullPlan(
+  prev: State[],
+  next: State[],
+  arriving: Set<string>,
+  resting: Set<string> = new Set(prev.map((p) => p.id)),
+  falling: Set<string> = new Set(),
+): { tracks: Track[]; movers: Set<string> } {
   const before = new Map(prev.map((p) => [p.id, p]));
   const after = new Map(next.map((p) => [p.id, p]));
   const cx = (b: State) => {
@@ -801,7 +1359,7 @@ function pullPlan(prev: State[], next: State[], arriving: Set<string>, resting: 
   for (const b of moved) {
     const from = before.get(b.id)!;
     // Interrupted pulls still need their return corridor, even if rotation is done.
-    if (posed(from, b) || box3(from).z0 < -SHELF_FRONT) movers.add(b.id);
+    if ((posed(from, b) && !falling.has(b.id)) || box3(from).z0 < -SHELF_FRONT) movers.add(b.id);
   }
   // 순서가 바뀌는 책: 앞뒤 자세의 가운데 x 순서가 다른 쌍에 든 책 중 더 많이 움직인 쪽
   for (let i = 0; i < moved.length; i++)
@@ -817,7 +1375,7 @@ function pullPlan(prev: State[], next: State[], arriving: Set<string>, resting: 
   for (let grew = true; grew; ) {
     grew = false;
     for (const b of moved) {
-      if (movers.has(b.id)) continue;
+      if (movers.has(b.id) || falling.has(b.id)) continue;
       const from = before.get(b.id)!;
       const fb = box3(from);
       const tb = box3(b);
@@ -886,15 +1444,17 @@ function pullPlan(prev: State[], next: State[], arriving: Set<string>, resting: 
     const segs = [pivotSeg(from, up0, o0, o0 + slot * 0.3, ZERO), pivotSeg(up0, out0, o0 + slot * 0.3, o0 + slot, ZERO), mid, pivotSeg(out1, up1, i0, i0 + slot * 0.7, ZERO), pivotSeg(up1, to, i0 + slot * 0.7, i0 + slot, ZERO)];
     tracks.set(to.id, { id: to.id, dims: to.dims, segs, moving: true });
   });
-  return next.map((to) => {
+  const out = next.map((to) => {
     const tr = tracks.get(to.id);
     if (tr) return tr;
     const from = before.get(to.id);
     if (!from || same(from, to)) return holdTrack(from ?? to);
+    if (falling.has(to.id)) return { id: to.id, dims: to.dims, segs: fallSegs(from, to, next)!, moving: true };
     // 제자리에서 밀리는 책: 빼낸 책이 모두 선반 앞에 있는 동안
     // All neighbours slide at the same rate. A lifted neighbour must not finish
     // its horizontal move early while the next book is still halfway across.
     if (!sameRot(from, to)) return { id: to.id, dims: to.dims, segs: leanSlideSegs(from, to, OUT, IN), moving: true };
     return { id: to.id, dims: to.dims, segs: [pivotSeg(from, to, OUT, IN, ZERO)], moving: true };
   });
+  return { tracks: out, movers };
 }
