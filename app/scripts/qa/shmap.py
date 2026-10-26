@@ -1,7 +1,7 @@
 import sys
 from PIL import Image
 import numpy as np
-def shadow_map(path, W0=(251,246,237)):
+def shadow_map(path, W0=(254,254,253)):  # 벽색 #FEFEFD(ui/theme.ts)
     im=np.asarray(Image.open(path).convert('RGB')).astype(float)
     W=np.array(W0,float); d=np.array([40,55,65],float); d/=np.linalg.norm(d)
     v=W-im; proj=v@d; res=np.linalg.norm(v-proj[...,None]*d,axis=2)

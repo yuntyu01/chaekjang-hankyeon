@@ -59,7 +59,7 @@ import {
 } from '@/domain/layout-engine';
 import { corners, fromPlaced, type Book3 } from '@/domain/book3';
 import { computeShelf, frameBBox, withLeans, type BookFrame } from '@/domain/shelf-scene';
-import type { Pose, ShelfLayout, Tilt } from '@/domain/types';
+import { tiltToward, type Pose, type ShelfLayout, type Tilt } from '@/domain/types';
 import { ko } from '@/i18n/ko';
 import { settingsStore, useSettings } from '@/store/settings-store';
 import { uiBus } from '@/store/ui-bus';
@@ -1246,7 +1246,7 @@ export function HomeScreen() {
         out[d] = true;
         continue;
       }
-      const r = setTilt(layout, books, editId, (d * 7) as Tilt);
+      const r = setTilt(layout, books, editId, tiltToward(d));
       out[d] = r.ok && placementOf(withLeans(r.layout, books), editId)?.tilt !== 0;
     }
     return out;
@@ -1257,7 +1257,7 @@ export function HomeScreen() {
   };
   const editLean = (d: -1 | 0 | 1) => {
     if (!editId || !editPlacement || Math.sign(editPlacement.tilt) === d) return;
-    setEditMsg(commitPath(setTilt(layout, books, editId, (d * 7) as Tilt)));
+    setEditMsg(commitPath(setTilt(layout, books, editId, tiltToward(d))));
   };
   // ---------- 표지 책 머리 손잡이: 위아래 = 뒤로 젖히기, 좌우 = 돌리기 ----------
   // 각도 = 기준 각도 + 비율 × (손잡이를 잡은 지점에서 끈 거리의 축 방향 성분). 기준은 잡을 때의 지금 각도.

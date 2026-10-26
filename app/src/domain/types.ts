@@ -1,7 +1,10 @@
 // 책과 배치의 기본 타입. 화면 픽셀이 아니라 선반·순서·쌓기 그룹으로 저장한다.
 
 export type Pose = 'spine' | 'horizontal' | 'front';
+// 기울기(기대는 방향). 저장 값 ±7은 옛 '7° 고정' 규칙의 흔적이고 이제 부호만 뜻이 있다(-: 왼쪽, +: 오른쪽).
+// 실제 각도는 옆 책 3D 상자와 statics.ts가 정한다. 저장 형식은 그대로 두고 방향 → 값은 tiltToward로만 만든다.
 export type Tilt = -7 | 0 | 7;
+export const tiltToward = (dir: -1 | 0 | 1) => (dir * 7) as Tilt;
 export type HeightClass = 'short' | 'medium' | 'tall';
 export type ThicknessClass = 'thin' | 'medium' | 'thick';
 

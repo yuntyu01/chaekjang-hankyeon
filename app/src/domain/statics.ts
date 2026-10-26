@@ -34,7 +34,8 @@ export function slipAngle(T: number, H: number, mu = FLOOR_FRICTION) {
 // 메뉴로 기울일 때 노리는 각: 넘어짐 한계 + 여유. 한도(LEAN_MENU_MAX)를 넘으면 null(두꺼워서 기댈 수 없는 책)
 export function menuLeanAngle(T: number, H: number) {
   const want = tipAngle(T, H) + LEAN_MARGIN;
-  return want <= LEAN_MENU_MAX && want < slipAngle(T, H) ? want : null;
+  // 한도(20°)는 늘 미끄러짐 한계(atan(2μ) ≈ 38.7° 이상)보다 작아 미끄러짐은 따로 보지 않는다
+  return want <= LEAN_MENU_MAX ? want : null;
 }
 
 // 표지 책이 벽에 기댈 때(뒤쪽 아래 모서리가 축, 윗모서리가 벽) 손을 놓은 뒤 머무는 젖힘 각:
@@ -148,12 +149,13 @@ export function contact2(l: Pick<Leaner2, 'pivot' | 'top' | 'dir'>, S: Vec2[]): 
   return { at: best.at, n: best.n };
 }
 
-// 세운 책의 2D 값(선반 x-y 평면). 기우는 쪽 윗모서리: 위쪽 꼭짓점 둘 중 기우는 쪽으로 더 나간 것
+// 세운 책의 2D 값(선반 x-y 평면). 기우는 쪽 윗모서리 = 발 바로 위 모서리(발에서 책의 위 방향으로 키만큼).
+// '위쪽 꼭짓점 둘'로 고르면 크게 기울 때(tan θ > 키/두께, 약 80°) 반대쪽 아래 모서리가 더 높아져 엉뚱한 점을 고른다
 function spineLeaner2(p: Placed): Pick<Leaner2, 'pivot' | 'top' | 'dir'> {
-  const L = outlineXY({ ...p }); // 회전한 직사각형(반시계)
   const dir = Math.sign(p.angle) || 1;
-  const [u, v] = [...L].sort((a, b) => b.y - a.y);
-  return { pivot: pivotOf(p), top: dir * (u.x - v.x) >= 0 ? u : v, dir };
+  const P = pivotOf(p);
+  const a = (p.angle * Math.PI) / 180;
+  return { pivot: P, top: { x: P.x + p.size.h * Math.sin(a), y: P.y + p.size.h * Math.cos(a) }, dir };
 }
 
 // 기댄 세운 책(angle ≠ 0)과 받침 상자의 접촉(contact2를 x-y 평면에서)

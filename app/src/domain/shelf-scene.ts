@@ -7,7 +7,7 @@ import { SHELF, SHELF_USABLE_WIDTH, SHELF_X0, SHELF_X1 } from './geometry';
 import { bookXs, checkSpace, itemBoxes, itemPositions, moveToDrawer, normalize, placementOf, setTilt, settle, shelfItems, type BookMap } from './layout-engine';
 import { firstContact, leanContact, type LeanContact } from './lean';
 import { contactOf, fallenSpan, isBacked, LEAN_MENU_MAX, leanStatics, supportTips, tipAngle, type Force } from './statics';
-import type { Book, Pose, ShelfLayout, Tilt } from './types';
+import { tiltToward, type Book, type Pose, type ShelfLayout, type Tilt } from './types';
 
 export type { Point };
 
@@ -157,7 +157,7 @@ function solveLeans(frames: BookFrame[], layout: ShelfLayout) {
       const d = supportTips(s.box, pushes, (dir) => isBacked(s.box, dir, others));
       if (!d) continue;
       changed = true;
-      s.tilt = (d * 7) as Tilt;
+      s.tilt = tiltToward(d);
       s.leanFailed = false;
       toppled.add(s.bookId);
     }

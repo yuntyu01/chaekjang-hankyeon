@@ -146,10 +146,9 @@ export function spunExtent(book: Book, spin = 0) {
   return { w: Math.abs(L * Math.cos(r)) + Math.abs(W * Math.sin(r)), d: Math.abs(L * Math.sin(r)) + Math.abs(W * Math.cos(r)) };
 }
 
-// ---------- 표지 전시 책의 벽 기대기 ----------
-// 뒤쪽 아래 모서리(z = depth + 두께)는 사용자가 둔 자리 그대로 선반에, 뒤쪽 윗모서리는 벽(z = SHELF_DEPTH)에 닿는다:
-//   sin(각) = 벽까지 틈 / 책 높이. 벽에서 멀어질수록 더 기울고, 닿지 못하면 바닥에 눕는다.
-// 서 있는 책은 앞뒤로 옮겨도 저절로 기대지 않는다(벽 가까이 가도 서 있다): 기대기는 머리 손잡이로 젖힐 때만.
+// ---------- 표지 전시 책의 벽 기대기(예전 저장본 wallLean만) ----------
+// 지금은 젖힘을 pitch로 저장하고 벽 접촉은 front-pose가 회전한 상자로 판정한다. 아래는 pitch 없이 wallLean만 있는 옛 저장본을 읽을 때:
+// 뒤쪽 아래 모서리(z = depth + 두께)는 그 자리, 뒤쪽 윗모서리는 벽(z = SHELF_DEPTH)에 닿는다: sin(각) = 벽까지 틈 / 책 높이.
 export function wallGap(book: Book, depth: number) {
   return SHELF_DEPTH - (depth + bookThickness(book));
 }

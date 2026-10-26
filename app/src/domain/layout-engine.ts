@@ -19,7 +19,6 @@ import {
   SHELF,
   SHELF_USABLE_WIDTH,
   singleFootprint,
-  stackFootprint,
   HOME_SHELF_COUNT,
 } from './geometry';
 import { corners, frontBook3, fromPlaced, gap, lowest, xRange, type Book3 } from './book3';
@@ -28,7 +27,7 @@ import { frontFall2, frontLean, frontLeaner2, frontSupport2, pitchForWall, relea
 import { leanContact } from './lean';
 import { LEAN_MENU_MAX, menuLeanAngle, penetration2, wallLeanRest } from './statics';
 import { stackBoxes, stackSupported } from './support';
-import type { Book, BookPlacement, Pose, ShelfLayout, ShelfLayoutV1, Tilt } from './types';
+import { tiltToward, type Book, type BookPlacement, type Pose, type ShelfLayout, type ShelfLayoutV1, type Tilt } from './types';
 
 export type BookMap = Record<string, Book>;
 
@@ -90,7 +89,6 @@ export function placementOf(layout: ShelfLayout, bookId: string) {
   return layout.placements.find((p) => p.bookId === bookId);
 }
 
-const spinsOf = (item: ShelfItem, layout: ShelfLayout) => item.bookIds.map((id) => placementOf(layout, id)?.spin ?? 0);
 
 // 쌓기 더미 구성원(아래 → 위): 받침 깊이는 맨 아래 책 것, 위 책은 사용자가 옮긴 어긋남(stackDx/Dz)을 함께
 export function stackMembers(item: ShelfItem, layout: ShelfLayout, books: BookMap) {
@@ -110,25 +108,6 @@ export function itemWidth(item: ShelfItem, layout: ShelfLayout, books: BookMap) 
   }
   const p = placementOf(layout, item.bookIds[0])!;
   return singleFootprint(books[p.bookId], p).width;
-}
-
-export function itemHeight(item: ShelfItem, layout: ShelfLayout, books: BookMap, ky?: number) {
-  if (item.stacked) return stackFootprint(item.bookIds.map((id) => books[id]), spinsOf(item, layout), ky).height;
-  const p = placementOf(layout, item.bookIds[0])!;
-  return singleFootprint(books[p.bookId], p, ky).height;
-}
-
-type XY = { x: number; y: number };
-
-function intervalAt(poly: XY[], y: number) {
-  const xs: number[] = [];
-  poly.forEach((a, i) => {
-    const b = poly[(i + 1) % poly.length];
-    if (y < Math.min(a.y, b.y) - 1e-6 || y > Math.max(a.y, b.y) + 1e-6) return;
-    if (Math.abs(a.y - b.y) < 1e-6) xs.push(a.x, b.x);
-    else xs.push(a.x + (b.x - a.x) * (y - a.y) / (b.y - a.y));
-  });
-  return xs.length ? { left: Math.min(...xs), right: Math.max(...xs) } : null;
 }
 
 // 눕힌 책(더미) 바로 뒤에 두는 틈(DU): 뒤에 놓인 더미의 오른쪽 끝면이 옆 책에 가리지 않게, 더미 깊이에 비례해 조금 띄운다.
@@ -1224,7 +1203,7 @@ export function rotateStep(layout: ShelfLayout, books: BookMap, bookId: string, 
   if (p.pose === 'horizontal') return dir > 0 ? setPose(layout, books, bookId, 'spine') : { ok: false, reason: 'no-change' };
   const side = Math.sign(p.tilt);
   if (side === -dir) return setTilt(layout, books, bookId, 0);
-  if (side === 0) return setTilt(layout, books, bookId, (dir * 7) as Tilt);
+  if (side === 0) return setTilt(layout, books, bookId, tiltToward(dir));
   if (dir > 0) return { ok: false, reason: 'no-change' };
   return setPose(layout, books, bookId, 'horizontal');
 }
@@ -1349,12 +1328,6 @@ export function findDropTarget(
   // 그 자리(끄는 책의 3D 상자 가운데 기준, 같은 선반과 같은 0.5DU 단위)에 놓고, 부딪히는 옆 책은 pushOneSide가 한쪽으로 비킨다
   const index = insertIndex(positions, centerX);
   return { kind: 'insert', shelfId, index, x: Math.round((centerX - draggedWidth / 2) * 2) / 2 };
-}
-
-export function sameTarget(a: DropTarget | null, b: DropTarget | null) {
-  if (!a || !b) return a === b;
-  if (a.kind !== b.kind || a.shelfId !== b.shelfId) return false;
-  return a.kind === 'insert' ? a.index === (b as typeof a).index && a.x === (b as typeof a).x : a.itemKey === (b as typeof a).itemKey;
 }
 
 // ---------- 책 서랍 ----------

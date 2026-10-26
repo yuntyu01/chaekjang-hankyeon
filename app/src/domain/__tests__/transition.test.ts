@@ -70,9 +70,6 @@ const roomy = () => {
 const thin: BookMap = { A: book('A', 180, 22), B: book('B', 170, 24, 110), C: book('C', 160, 60) };
 const thinBase = () => withLeans(layoutOf(place('A', 0, 0), place('B', 1, 23), place('C', 2, 366 - 60)), thin);
 
-// 제자리 후보가 모두 막혀 앞으로 빼서 옮기는 경로(pull)로 대신할 때 그 경로가 깨끗하지 않은 경우(transition.ts pullPlan·pullSegs).
-// 아래 '알려진 문제' 시험이 따로 붙잡고 있다. 고치면 거기서 .failing을 떼고 여기서도 뺀다.
-const KNOWN_PULL_BUGS = ['b03>front', 'b12>spine'];
 
 describe('3D 자세', () => {
   it('정지 자세의 상자 = 배치 상자, 보이는 면: 세움(책등·앞표지 옆·머리), 눕힘(책등·앞표지 위·꼬리 끝), 표지(앞표지·책배·머리)', () => {
@@ -164,7 +161,7 @@ describe('자세 변경 경로', () => {
     expectClean(next, ok(rotateStep(next, all, 'b09', 1)), all, 'shelf-2');
   });
 
-  it('얇은 책·좁은 틈 책도 표지로 돌 수 있다(선반 끝 책은 아래 알려진 문제)', () => {
+  it('얇은 책·좁은 틈 책도 표지로 돌 수 있다(선반 끝 책은 아래 앞으로 빼서 옮기는 경로에서)', () => {
     const base = thinBase();
     let tried = 0;
     for (const id of ['A', 'B']) {
@@ -207,7 +204,7 @@ describe('자세 변경 경로', () => {
     let count = 0;
     for (const p of base.placements.filter((q) => q.shelfId !== 'drawer')) {
       for (const pose of ['spine', 'front', 'horizontal'] as const) {
-        if (p.pose === pose || KNOWN_PULL_BUGS.includes(`${p.bookId}>${pose}`)) continue;
+        if (p.pose === pose) continue;
         const r = setPose(base, all, p.bookId, pose);
         if (!r.ok) continue;
         count++;

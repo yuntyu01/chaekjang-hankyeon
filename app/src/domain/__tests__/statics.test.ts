@@ -164,8 +164,33 @@ function legacyLeanStatics(leaner: Placed, contact: Contact, external: Force[] =
   return { normal: N / m, onSupport, floor, ok: true };
 }
 
+// 수는 상대 오차 1e-9 안(윗모서리를 꼭짓점 정렬 대신 발에서 바로 계산해 마지막 자리가 다를 수 있다), 나머지는 그대로
+function expectNear(a: unknown, b: unknown): void {
+  if (typeof a === 'number' && typeof b === 'number') {
+    expect(Math.abs(a - b)).toBeLessThanOrEqual(1e-9 * Math.max(1, Math.abs(b)));
+    return;
+  }
+  if (a && b && typeof a === 'object' && typeof b === 'object') {
+    expect(Object.keys(a).sort()).toEqual(Object.keys(b).sort());
+    for (const k of Object.keys(b)) expectNear((a as Record<string, unknown>)[k], (b as Record<string, unknown>)[k]);
+    return;
+  }
+  expect(a).toBe(b);
+}
+
 describe('2D 핵심으로 나눈 뒤에도 세운 책 계산은 그대로', () => {
-  it('접촉·미는 힘·바닥 반력·판정이 예전 계산과 똑같다(받침 높낮이·양쪽·밖에서 오는 힘)', () => {
+  it('크게 기운 책(tan θ > 키/두께)도 기우는 쪽 윗모서리는 발 바로 위: 낮은 받침 꼭짓점이 옆면을 수직으로 받친다', () => {
+    // 150×30 책이 85°(> atan(5) = 78.7°)로 왼쪽에 기울어 높이 12인 받침 꼭짓점에 옆면이 얹혔다
+    const leaner = spine('L', 200, 30, 150, 100, -85);
+    const reach = 12 * Math.tan(rad(85)); // 옆면이 높이 12를 지나는 곳(발에서 가로 거리, 옆면은 바닥에서 5° 들려 있다)
+    const support = spine('S', 200 - reach - 40, 40, 12);
+    const c = contactOf(leaner, support);
+    expect(c.n.y).toBeGreaterThan(0.99);
+    expect(c.n.x).toBeCloseTo(Math.cos(rad(85)), 3);
+    expect(c.at.y).toBeCloseTo(12, 3);
+  });
+
+  it('접촉·미는 힘·바닥 반력·판정이 예전 계산과 같다(받침 높낮이·양쪽·밖에서 오는 힘)', () => {
     let n = 0;
     for (const h of [40, 60, 120, 200])
       for (const deg of [-40, -25, -15, -8, 8, 15, 25, 40])
@@ -173,11 +198,11 @@ describe('2D 핵심으로 나눈 뒤에도 세운 책 계산은 그대로', () =
           const leaner = spine('L', x, 30, 150, 100, deg);
           const support = deg < 0 ? spine('S', 0, 40, h) : spine('S', x + 30 + 150 * Math.sin(rad(Math.abs(deg))) - 10, 40, h);
           const c = contactOf(leaner, support);
-          expect(c).toEqual(legacyContactOf(leaner, support));
+          expectNear(c, legacyContactOf(leaner, support));
           const push: Force[] = [{ f: { x: -0.2 * 30 * 150 * 100 * Math.sign(deg), y: -500 }, at: { x: x + 10, y: 120 } }];
           for (const ext of [[], push]) {
             const st = leanStatics(leaner, c, ext);
-            expect(st).toEqual(legacyLeanStatics(leaner, c, ext));
+            expectNear(st, legacyLeanStatics(leaner, c, ext));
             n += st.ok ? 1 : 0;
           }
         }
