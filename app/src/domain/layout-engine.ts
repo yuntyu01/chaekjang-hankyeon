@@ -748,6 +748,7 @@ export function moveBook(layout: ShelfLayout, books: BookMap, bookId: string, ta
   const placements = base.placements.map((q) =>
     item.bookIds.includes(q.bookId) ? { ...q, stackId, stackOrder: item.bookIds.indexOf(q.bookId) } : q,
   );
+  // 눕힌 책을 그대로 얹을 때는 머리 방향(flip)도 그대로(빠지면 들어 올린 채 180° 구른다)
   placements.push({
     bookId,
     shelfId: target.shelfId,
@@ -756,6 +757,7 @@ export function moveBook(layout: ShelfLayout, books: BookMap, bookId: string, ta
     tilt: 0,
     stackId,
     stackOrder: item.bookIds.length,
+    ...(p.pose === 'horizontal' && p.flip ? { flip: true } : null),
   });
   return finish(layout, settle(normalize({ ...base, placements }), books, bookXs(base, books)), books);
 }

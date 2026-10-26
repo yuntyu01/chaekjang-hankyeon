@@ -152,13 +152,15 @@ function solveLeans(frames: BookFrame[], layout: ShelfLayout) {
     // 받침이 되는 똑바로 선 세운 책: 미는 힘에 넘어가면 그쪽으로 기운다(다음 바퀴에 넘어지는 책으로 푼다)
     for (const [id, pushes] of loads) {
       const s = byId.get(id);
-      if (!s || s.pose !== 'spine' || s.tilt !== 0 || s.stackIndex !== 0) continue;
+      // 지금 똑바로 선 책(기대려다 실패해 선 책 포함: 저장된 기울기와 상관없이 실제 각으로 본다)
+      if (!s || s.pose !== 'spine' || s.box.angle !== 0 || s.stackIndex !== 0) continue;
       const others = othersOf(s);
       const d = supportTips(s.box, pushes, (dir) => isBacked(s.box, dir, others));
       if (!d) continue;
       changed = true;
       s.tilt = tiltToward(d);
       s.leanFailed = false;
+      standing.delete(s.bookId);
       toppled.add(s.bookId);
     }
     for (const id of standing) {

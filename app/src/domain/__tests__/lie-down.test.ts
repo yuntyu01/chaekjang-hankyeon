@@ -2,7 +2,7 @@
 // 머리가 오른쪽(flip). 키 큰 책을 돌리는 경로는 윗선반 판을 뚫지 않는다(firstOverlap ceil).
 import { corners, fromPlaced, lowest, pivotLocal, toWorld, type Book3 } from '../book3';
 import { SHELF_FRONT } from '../geometry';
-import { moveBook, normalize, placementOf, setPose, type BookMap } from '../layout-engine';
+import { applySwapTarget, findSwapTarget, moveBook, normalize, placementOf, setPose, type BookMap } from '../layout-engine';
 import { bodiesOf, computeShelf, PLANK_BOUNDS, withLeans } from '../shelf-scene';
 import { fallenSpan } from '../statics';
 import { bookAt, firstOverlap, gravityPlan, planTransition, type Track } from '../transition';
@@ -119,6 +119,51 @@ describe('머리가 오른쪽인 눕힌 책(flip)', () => {
     const down = setPose(up.layout, books, 'D', 'horizontal');
     if (!down.ok) throw new Error(down.reason);
     expect(placementOf(down.layout, 'D')!.flip).toBeUndefined();
+  });
+});
+
+describe('크게 기댄 책과 쌓기', () => {
+  it('낮은 받침에 머리를 대고 80° 가까이 기대는 책도 세운 책: 발을 축으로 넘어져 간다(상자 경로로 기다리지 않는다)', () => {
+    const L = book('L', 140, 28);
+    const all: BookMap = { C, D, L };
+    const l = withLeans(layoutOf(place('D', 0, 40, 7), place('C', 1, 100), { bookId: 'L', shelfId: 's', order: 2, pose: 'horizontal', tilt: 0, pos: 250 }), all);
+    const after = withLeans({ ...l, placements: l.placements.filter((p) => p.bookId !== 'C') }, all);
+    const d = placementOf(after, 'D')!;
+    expect(d.pose).toBe('spine');
+    expect(d.lean?.on).toBe('L');
+    expect(Math.abs(d.lean!.angle)).toBeGreaterThan(60);
+    const prev = bodiesOf(l, all, 's').filter((b) => b.id !== 'C');
+    const plan = planTransition(prev, bodiesOf(after, all, 's'), PLANK_BOUNDS, NO_RUSH);
+    const g = gravityPlan(plan, PLANK_BOUNDS)!;
+    const tr = g.tracks.find((t) => t.id === 'D')!;
+    expect(tr.segs.some((s) => s.e === 1)).toBe(true);
+    const from = prev.find((b) => b.id === 'D')!;
+    const foot = toWorld(from, pivotLocal(from.dims, 1));
+    for (let k = 0; k <= 40; k++) {
+      const f = toWorld(bookAt(tr, k / 40), pivotLocal(from.dims, 1));
+      expect(Math.hypot(f.x - foot.x, f.y - foot.y, f.z - foot.z)).toBeLessThan(0.01);
+    }
+  });
+
+  it('머리가 오른쪽인 책을 다른 눕힌 책 위에 얹어도 그 방향 그대로(들어 올린 채 구르지 않는다)', () => {
+    const all: BookMap = { L: book('L', 185, 28), F: book('F', 160, 30) };
+    const base: ShelfLayout = {
+      version: 2,
+      shelves: [{ id: 's', order: 0 }],
+      drawer: [],
+      placements: [
+        { bookId: 'L', shelfId: 's', order: 0, pose: 'horizontal', tilt: 0, pos: 0 },
+        { bookId: 'F', shelfId: 's', order: 1, pose: 'horizontal', tilt: 0, pos: 200, flip: true },
+      ],
+    };
+    const t = findSwapTarget(base, all, 'F', 90);
+    expect(t.kind).toBe('stack');
+    const r = applySwapTarget(base, all, 'F', t);
+    if (!r.ok) throw new Error(r.reason);
+    expect(placementOf(r.layout, 'F')!.flip).toBe(true);
+    const plan = planTransition(bodiesOf(base, all, 's'), bodiesOf(r.layout, all, 's'), PLANK_BOUNDS, NO_RUSH);
+    const tr = plan.tracks.find((x) => x.id === 'F')!;
+    for (let k = 0; k <= 20; k++) expect(bookAt(tr, k / 20).roll).toBeCloseTo(90, 6);
   });
 });
 

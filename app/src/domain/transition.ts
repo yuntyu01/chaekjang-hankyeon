@@ -190,7 +190,9 @@ const wallPivot = (b: State) => ({ x: 0, y: 0, z: b.dims.W / 2 });
 const sameRY = (a: State, b: State) => near(a.roll, b.roll) && near(a.yaw, b.yaw);
 const same = (a: State, b: State) => sameRot(a, b) && near(a.t.x, b.t.x) && near(a.t.y, b.t.y) && near(a.t.z, b.t.z);
 
-const posed = (a: State, b: State) => !near(a.yaw, b.yaw) || Math.abs(a.roll) > 45 !== Math.abs(b.roll) > 45;
+// 자세가 바뀌는지: 표지 ↔ 세움(yaw), 눕힘(roll ±90) ↔ 그 밖. 세운 책은 아주 크게 기대도(낮은 받침에 머리를 대고 80°까지) 세운 책이다
+const lying = (b: State) => Math.abs(Math.abs(b.roll) - 90) < 1e-3;
+const posed = (a: State, b: State) => !near(a.yaw, b.yaw) || lying(a) !== lying(b);
 const shift = (b: State, dx: number): State => ({ ...b, t: { ...b.t, x: b.t.x + dx } });
 
 // 기울기만 바뀌는 책(발을 축으로). 부호가 바뀌면 똑바로 선 자세를 거친다.
@@ -245,7 +247,7 @@ function poseSegs(from: State, to: State, t0: number, t1: number, al: number, or
     b = flat;
     t += span * 0.2;
   }
-  if (!near(b.roll, 0) && Math.abs(b.roll) < 45 && !near(from.yaw, to.yaw)) {
+  if (!near(b.roll, 0) && !lying(b) && !near(from.yaw, to.yaw)) {
     const up = reorientPivot(b, 0, b.yaw, pivotLocal(b.dims, b.roll));
     segs.push(pivotSeg(b, up, t, t + span * 0.15, pivotLocal(b.dims, b.roll)));
     b = up;
@@ -274,7 +276,7 @@ function poseSegs(from: State, to: State, t0: number, t1: number, al: number, or
 // 손으로 눕히는 것(눕힌 상자가 놓던 자리 왼쪽 끝부터라 발 자리가 키만큼 옮겨 간다)은 여기 들지 않고 poseSegs가 맡는다.
 // 받침에서 바로 출발한다(옆 책이 비키는 동안 기다리지 않는다): 넘어지는 책은 손이 아니라 중력이 움직인다.
 function fallSegs(from: State, to: State, t1: number): Seg[] | null {
-  if (!near(from.yaw, 0) || !near(to.yaw, 0) || Math.abs(from.roll) >= 45 || !near(Math.abs(to.roll), 90)) return null;
+  if (!near(from.yaw, 0) || !near(to.yaw, 0) || lying(from) || !lying(to)) return null;
   if ((from.spin ?? 0) || (to.spin ?? 0) || (from.pitch ?? 0) || (to.pitch ?? 0)) return null;
   const d = Math.sign(to.roll);
   if (from.roll * d < 0) return null;

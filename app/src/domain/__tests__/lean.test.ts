@@ -371,6 +371,14 @@ describe('낮은 받침과 연쇄', () => {
     expect(supportTips(sup, push(-0.5), () => true)).toBe(0);
   });
 
+  it('기대려다 실패해 선 책도 받침으로 밀리는지 본다: 한 번 푼 결과를 다시 풀어도 그대로다', () => {
+    // Q는 오른쪽으로 기대려 했지만 P가 먼저 Q에 기댄다. 예전에는 Q의 저장된 기울기 때문에 받침 검사를 건너뛰어, 다음에 풀 때(앱을 켤 때) 결과가 바뀌었다
+    const all: BookMap = { P: book('P', 141, 28.7), Q: book('Q', 82, 20.7), R: book('R', 144, 30.4) };
+    const once = withLeans(layoutOf(place('R', 0, 164.8), place('Q', 1, 230.79, 7), place('P', 2, 274.25, -7)), all);
+    expect(withLeans(once, all)).toEqual(once);
+    for (const f of computeShelf(once, all, 's').frames) expect(f.fell).toBeUndefined();
+  });
+
   it('세 권 넘게 이어지는 도미노도 겹치지 않고 다시 풀어도 그대로다', () => {
     const D = book('D', 180, 44);
     const C2 = book('C', 120, 34);
