@@ -392,6 +392,15 @@ export function HomeScreen() {
   useEffect(() => {
     if (store.save === 'error') setToast({ text: ko.saveError, action: 'retry' });
   }, [store.save]);
+  // 받침을 잃고 선반에서 떨어져 서랍에 들어간 책(끌기·메뉴·꾸미기 어느 확정이든): 꾸미는 중이면 조작부에, 아니면 알림(되돌리기)으로.
+  // 확정한 손길의 알림·조작부 문구를 덮도록 그린 뒤에 띄운다
+  useEffect(() => {
+    if (!store.fell) return;
+    const text = ko.fellToDrawer(store.fell);
+    placementStore.clearFell();
+    if (editingRef.current) setEditMsg(text);
+    else setToast({ text, action: 'undo' });
+  }, [store.fell]);
   useEffect(() => {
     if (!store.notice) return;
     setToast({ text: ko.refitMoved(store.notice) });
@@ -402,10 +411,8 @@ export function HomeScreen() {
     (r: Result, text: string = ko.moved): string | null => {
       if (!r.ok) return ko.fail[r.reason] || null;
       if (!placementStore.commit(r.layout)) return ko.fail['no-space'];
-      // 받침을 잃고 선반에서 떨어진 책이 있으면 그것을 알린다(되돌리기는 그대로)
-      const fell = placementStore.get().fell;
-      if (fell) placementStore.clearFell();
-      showToast({ text: fell ? ko.fellToDrawer(fell) : text, action: 'undo' });
+      // 받침을 잃고 선반에서 떨어진 책은 아래 store.fell 효과가 알린다(이 알림을 덮는다)
+      showToast({ text, action: 'undo' });
       return null;
     },
     [showToast],

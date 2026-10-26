@@ -152,11 +152,11 @@ export const placementStore = {
   },
   addToDrawer(bookId: string) {
     if (state.layout.drawer.includes(bookId) || state.layout.placements.some((p) => p.bookId === bookId)) return true;
-    return placementStore.commit(normalize({ ...state.layout, drawer: [bookId, ...state.layout.drawer] }));
+    return placementStore.commit(normalize({ ...state.layout, drawer: [bookId, ...state.layout.drawer] }), [bookId]);
   },
   toDrawer(bookId: string) {
     const r = moveToDrawer(state.layout, bookId, state.books);
-    return r.ok ? placementStore.commit(r.layout) : false;
+    return r.ok ? placementStore.commit(r.layout, [bookId]) : false;
   },
   fromDrawer(bookId: string): 'shelf' | 'none' {
     const r = placeFromDrawer(state.layout, state.books, bookId);
@@ -189,7 +189,8 @@ export const placementStore = {
   },
 
   // 검증된 레이아웃만 받는다. 무결성이 깨졌으면 거절한다.
-  commit(next: ShelfLayout) {
+  // sent: 사용자가 직접 서랍에 넣은 책(떨어진 책 알림에서 뺀다)
+  commit(next: ShelfLayout, sent: string[] = []) {
     // 서재에는 있는데 배치(선반·서랍) 어디에도 없는 책(추가하고 자리를 고르지 않은 책)은 서랍에 넣는다.
     // 그러지 않으면 '모든 책이 한 곳에' 검사에 걸려 이후 모든 확정이 실패한다.
     const placed = new Set([...next.placements.map((p) => p.bookId), ...next.drawer]);
@@ -197,7 +198,8 @@ export const placementStore = {
     if (missing.length) next = { ...next, drawer: [...next.drawer, ...missing] };
     // 기대기 결과(최종 각도·상대)를 함께 저장하고, 기댈 곳이 없던 책은 바로 세운다. 받침을 잃고 넘어진 책은 눕히거나
     // (선반 끝 밖으로 떨어지면) 서랍에 넣는다.
-    const inDrawer = new Set(next.drawer);
+    // 떨어진 책은 확정된 배치와 견준다(끌기 미리보기처럼 이미 기대기를 푼 배치가 들어와도 센다)
+    const inDrawer = new Set([...state.layout.drawer, ...sent, ...missing]);
     next = withLeans(ensureShelves(next), state.books);
     const errors = validate(next, state.books, Object.keys(state.books));
     if (errors.length) return false;

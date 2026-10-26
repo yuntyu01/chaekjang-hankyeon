@@ -50,6 +50,10 @@ function expectNoOverlap(frames: BookFrame[]) {
   for (let i = 0; i < frames.length; i++)
     for (let j = i + 1; j < frames.length; j++) expect(overlaps(frontOutline(frames[i]), frontOutline(frames[j]), 0.2)).toBe(false);
 }
+// 저장한 세운 책의 기울기는 늘 실제로 기댄 상대와 함께다(기울기만 남으면 다시 열 때 새로 기대려 해 배치가 바뀐다)
+function expectNoBareTilt(l: ShelfLayout) {
+  for (const p of l.placements) if (p.pose === 'spine' && p.tilt !== 0) expect(p.lean?.on).toBeDefined();
+}
 function expectTouching(f: BookFrame, other: BookFrame) {
   // 같은 발(축 모서리)로 0.6도만 더 기울이면 옆 책 앞면에 파고든다 = 지금 닿아 있다
   const dir = Math.sign(f.box.angle);
@@ -187,12 +191,15 @@ describe('여러 권', () => {
 
 describe('세 권: 세우고, 옮기고, 기대게 하고, 저장 후 복원', () => {
   it('형태가 깨지지 않는다', () => {
-    let l = layoutOf(place('A', 0, 10), place('B', 1, 60), place('C', 2, 100));
-    // B를 A 쪽으로 기울인다: 메뉴처럼 틈을 벌리고 기댄다
+    let l = layoutOf(place('A', 0, 35), place('B', 1, 85), place('C', 2, 125));
+    // B를 A 쪽으로 기울인다: 메뉴처럼 틈을 벌리고 기댄다(받침 A가 왼쪽 빈 공간으로 비킨다. B는 제자리)
+    const xs0 = bookXs(l, books);
     const r1 = setTilt(l, books, 'B', -7);
     if (!r1.ok) throw new Error(r1.reason);
     l = withLeans(r1.layout, books);
     expect(l.placements.find((p) => p.bookId === 'B')!.lean?.on).toBe('A');
+    expect(bookXs(l, books).get('B')).toBeCloseTo(xs0.get('B')!, 4);
+    expect(bookXs(l, books).get('A')!).toBeLessThan(xs0.get('A')!);
     // C를 빈 공간(오른쪽 끝)으로 옮긴다: A·B는 제자리
     const before = bookXs(l, books);
     const r2 = moveBook(l, books, 'C', { kind: 'insert', shelfId: 's', index: 2, x: 250 });
@@ -463,6 +470,7 @@ describe('넘어진 책이 머무는 자리', () => {
       if (ps.length < 3) continue;
       const l = withLeans(layoutOf(...ps), bs);
       expect(withLeans(l, bs)).toEqual(l);
+      expectNoBareTilt(l);
       for (const v of l.placements) {
         const before = { ...l, placements: l.placements.filter((p) => p.bookId !== v.bookId) };
         const fell = new Set(computeShelf(before, bs, 's').frames.filter((f) => f.fell).map((f) => f.bookId));
@@ -471,6 +479,7 @@ describe('넘어진 책이 머무는 자리', () => {
         checked++;
         expect(checkSpace(after, bs, 's')).toBeNull();
         expect(withLeans(after, bs)).toEqual(after);
+        expectNoBareTilt(after);
         const x0 = bookXs(before, bs);
         const x1 = bookXs(after, bs);
         for (const p of after.placements) if (!fell.has(p.bookId) && p.pose !== 'horizontal') expect(Math.abs(x1.get(p.bookId)! - x0.get(p.bookId)!)).toBeLessThanOrEqual(20.01);
@@ -478,4 +487,44 @@ describe('넘어진 책이 머무는 자리', () => {
     }
     expect(checked).toBeGreaterThan(5);
   }, 60_000);
+});
+
+describe('선반 끝과 빈 공간', () => {
+  const W = SHELF_USABLE_WIDTH;
+  const row = (bs: BookMap, ...ps: [string, number, (-7 | 0 | 7)?][]) => layoutOf(...ps.map(([id, pos, tilt], i) => place(id, i, pos, tilt ?? 0)));
+
+  it('판 끝 책이 받침을 잃으면 발이 판 위에 있는 한 미끄러져, 다음 책 앞에 자리가 있으면 판 위에 눕는다', () => {
+    const bs: BookMap = { e: book('e', 143.4, 30), s: book('s', 160, 33), n: book('n', 175, 36), m: book('m', 150, 32) };
+    const r = setTilt(row(bs, ['e', 0], ['s', 35], ['n', 148], ['m', 184]), bs, 'e', 7);
+    if (!r.ok) throw new Error(r.reason);
+    const l = withLeans(r.layout, bs);
+    expect(l.placements.find((p) => p.bookId === 'e')!.lean?.on).toBe('s');
+    // 받침 s를 뺀다: e는 n에 머리를 댄 채 발이 판 끝 쪽으로 미끄러진다(서 있던 상자는 판 끝을 넘어도 발은 두께만큼 안쪽)
+    const after = withLeans({ ...l, placements: l.placements.filter((p) => p.bookId !== 's') }, bs);
+    const e = after.placements.find((p) => p.bookId === 'e');
+    expect(after.drawer).not.toContain('e');
+    expect(e!.pose).toBe('horizontal');
+    const xs = bookXs(after, bs);
+    expect(xs.get('e')! + 143.4).toBeLessThanOrEqual(xs.get('n')! + 0.01);
+    expect(checkSpace(after, bs, 's')).toBeNull();
+  });
+
+  it('기울일 틈은 어느 쪽 끝의 빈 공간으로도 벌린다: 좌우를 바꾼 줄에서 같은 각으로 기댄다', () => {
+    const bs: BookMap = { a: book('a', 150, 30), b: book('b', 160, 35), c: book('c', 170, 40) };
+    // 왼쪽 끝에 붙은 줄에서 b를 왼쪽으로(a 너머는 판 끝) / 오른쪽 끝에 붙은 줄에서 b를 오른쪽으로(c 너머는 판 끝)
+    const left = setTilt(row(bs, ['a', 0], ['b', 30], ['c', 65]), bs, 'b', -7);
+    const right = setTilt(row(bs, ['c', W - 105], ['b', W - 65], ['a', W - 30]), bs, 'b', 7);
+    if (!left.ok || !right.ok) throw new Error('tilt');
+    const L = withLeans(left.layout, bs);
+    const R = withLeans(right.layout, bs);
+    const lb = L.placements.find((p) => p.bookId === 'b')!;
+    const rb = R.placements.find((p) => p.bookId === 'b')!;
+    expect(lb.lean?.on).toBe('a');
+    expect(rb.lean?.on).toBe('a');
+    expect(Math.abs(rb.lean!.angle)).toBeCloseTo(Math.abs(lb.lean!.angle), 3);
+    // 받침(a)은 판 끝에 붙어 있어 그대로, b와 그 너머(c)가 빈 쪽으로 비킨다
+    expect(bookXs(L, bs).get('a')).toBeCloseTo(0, 3);
+    expect(bookXs(R, bs).get('a')).toBeCloseTo(W - 30, 3);
+    expect(bookXs(L, bs).get('c')! - bookXs(L, bs).get('b')!).toBeCloseTo(35, 3);
+  });
 });

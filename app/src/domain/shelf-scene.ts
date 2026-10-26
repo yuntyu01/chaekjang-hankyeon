@@ -131,10 +131,11 @@ function solveLeans(frames: BookFrame[], layout: ShelfLayout, first: -1 | 1) {
   // 지금 자세에서 다른 책(받침 포함)을 파고든 기댄 책(맞닿음은 허용: TOLERANCE)
   const overlapping = () =>
     frames.filter((f) => f.pose === 'spine' && f.box.angle && frames.some((o) => o !== f && !fallen.has(o.bookId) && !o.fell && collide(f.box, o.box)));
+  const stateKey = () => frames.map((f) => `${f.bookId}:${f.box.angle.toFixed(3)}:${f.leanOn ?? ''}:${f.fell ?? ''}:${f.leanFailed ? 1 : 0}`).join('|');
   const seen = new Set<string>();
   for (let round = 0; round < MAX_ROUNDS; round++) {
     const leaners = frames.filter((f) => f.pose === 'spine' && f.tilt !== 0 && !standing.has(f.bookId) && !fallen.has(f.bookId));
-    const before = frames.map((f) => `${f.bookId}:${f.box.angle.toFixed(3)}:${f.leanOn ?? ''}:${f.fell ?? ''}:${f.leanFailed ? 1 : 0}`).join('|');
+    const before = stateKey();
     // 마주 보고 기대는 두 권은 같은 각도로 함께 기울여 처음 닿는 곳에서 멈춘다(한 권씩 풀면 먼저 푼 책이 빈틈을 다 차지한다).
     // 둘 다 넘어짐 한계를 넘어야 하고, 다른 책·선반 끝과 부딪히지 않아야 한다. 아니면 한 권씩 푼다.
     const paired = new Set<string>();
@@ -217,7 +218,7 @@ function solveLeans(frames: BookFrame[], layout: ShelfLayout, first: -1 | 1) {
       const f = byId.get(id)!;
       if (!f.fell) set(f, { angle: 0, fell: true });
     }
-    const after = frames.map((f) => `${f.bookId}:${f.box.angle.toFixed(3)}:${f.leanOn ?? ''}:${f.fell ?? ''}:${f.leanFailed ? 1 : 0}`).join('|');
+    const after = stateKey();
     if (!changed && after === before) break;
     if (seen.has(after)) {
       // 같은 상태가 되풀이된다(마주 기대려는 두 책이 서로를 비켜 가는 장애물로 보며 번갈아 기댄다): 다른 책을 파고든 기댄 책을 세워 끊는다
@@ -290,13 +291,17 @@ function fallRest(up: Placed, d: -1 | 1, others: Placed[]): FallRest {
   const mid = up.x + T / 2;
   const ahead = others.filter((o) => Math.sign(centerXY(o).x - mid) === d);
   const behind = others.filter((o) => Math.sign(centerXY(o).x - mid) !== d);
-  // 발을 s만큼 미끄러뜨린 자리에서: 처음 닿는 곳(앞 책)과 그 기운 상자
-  const probe = (s: number) => {
-    const at = { ...up, x: up.x - d * s };
-    const c = leanContact(at, d, ahead, PLANK_BOUNDS, 0, 90);
+  // 발을 s만큼 미끄러뜨린 자리에서: 처음 닿는 곳(앞 책)과 그 기운 상자.
+  // 판 끝은 넘어지는 쪽만 본다(발 쪽 판 끝은 아래 footX로: 기운 책의 뒤 아래 모서리는 들려 있어 판 끝 너머여도 된다)
+  const ends = d > 0 ? { min: -Infinity, max: PLANK_BOUNDS.max } : { min: PLANK_BOUNDS.min, max: Infinity };
+  // from: 이 각 아래로는 닿지 않는다(발이 앞 책에서 멀어질수록 처음 닿는 각은 커지기만 한다: 앞 걸음의 각부터 찾는다)
+  const atOf = (s: number) => ({ ...up, x: up.x - d * s });
+  const probe = (s: number, from = 0) => {
+    const at = atOf(s);
+    const c = leanContact(at, d, ahead, ends, from, 90);
     return { at, c, lean: { ...at, angle: d * c.angle } };
   };
-  const blocked = (q: ReturnType<typeof probe>) => behind.some((o) => collide(q.at, o));
+  const blocked = (s: number) => behind.some((o) => collide(atOf(s), o));
   const settleAt = (q: ReturnType<typeof probe>): FallRest | 'slip' => {
     if (!q.c.found) {
       // 닿을 곳 없이 바닥까지(또는 판 끝 너머로)
@@ -309,21 +314,29 @@ function fallRest(up: Placed, d: -1 | 1, others: Placed[]): FallRest {
     const support = ahead.find((o) => o.bookId === q.c.on)!;
     const st = leanStatics(q.lean, contactOf(q.lean, support));
     const braced = st.floor.y > 0 && Math.sign(st.floor.x) === d && isBacked(q.at, -d, behind.filter((o) => !o.angle));
-    if (st.ok || (st.reason === 'slip' && braced)) return { kind: 'lean', x: q.at.x, angle: d * q.c.angle, on: q.c.on! };
+    if (st.ok || (st.reason === 'slip' && braced)) {
+      // 서 있던 상자가 판 밖이면 배치로 나타낼 수 없다(배치는 서 있던 상자로 자리를 잡는다): 기대지 못하고 더 미끄러진다
+      return inside(frontPoly(q.at)) ? { kind: 'lean', x: q.at.x, angle: d * q.c.angle, on: q.c.on! } : 'slip';
+    }
     return st.reason === 'tip' ? null : 'slip';
   };
+  // 바닥에 닿은 발(넘어지는 쪽 아래 모서리)의 x
+  const footX = (at: Placed) => (d > 0 ? at.x + T : at.x);
   let prev = 0;
+  let from = 0;
   for (let s = 0; s <= H; s += SLIDE_STEP) {
-    const q = probe(s);
-    // 발(서 있던 상자 자리)이 판 끝 밖으로 미끄러지면 선반에서 떨어진다
-    if (s > 0 && !inside(frontPoly(q.at))) return { kind: 'drawer' };
-    if (s > 0 && blocked(q)) {
+    const q = probe(s, from);
+    if (q.c.found) from = Math.max(0, q.c.angle - 0.5);
+    // 발(바닥에 닿은 축 모서리)이 판 끝 밖으로 미끄러지면 선반에서 떨어진다. 서 있던 상자 자리는 판 끝을 넘어도 발은 두께만큼 안쪽이다
+    const fx = footX(q.at);
+    if (s > 0 && (fx < PLANK_BOUNDS.min || fx > PLANK_BOUNDS.max)) return { kind: 'drawer' };
+    if (s > 0 && blocked(s)) {
       // 발 뒤 책에 막혔다: 막히기 직전(맞닿는 곳)까지 좁혀 거기서 본다(발 뒤 책이 막으면 미끄러지지 않는다)
       let lo = prev;
       let hi = s;
       for (let i = 0; i < 12; i++) {
         const m = (lo + hi) / 2;
-        if (blocked(probe(m))) hi = m;
+        if (blocked(m)) hi = m;
         else lo = m;
       }
       const r = settleAt(probe(lo));
@@ -426,7 +439,9 @@ export function withLeans(layout: ShelfLayout, books: BookMap, only?: string): S
         if (only && p.shelfId !== only) return p;
         const f = result.get(p.bookId);
         if (!f || p.pose !== 'spine' || f.tilt === 0 || f.stackIndex !== 0) return p.lean ? { ...p, lean: undefined } : p;
-        if (f.leanFailed || f.fell) return { ...p, tilt: 0 as Tilt, lean: undefined };
+        // 기댄 상대 없이 기울기만 남은 책(밀려 넘어가다 닿기 전에 선 받침)도 선 책으로 저장한다: 기울기만 남기면 다시 열 때
+        // 새로 기대려 해 배치가 바뀐다
+        if (f.leanFailed || f.fell || !f.leanOn) return { ...p, tilt: 0 as Tilt, lean: undefined };
         return { ...p, tilt: f.tilt, lean: f.leanOn ? { angle: Math.round(f.box.angle * 1000) / 1000, on: f.leanOn } : undefined };
       }),
     };

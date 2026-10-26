@@ -1526,9 +1526,25 @@ export function setTilt(layout: ShelfLayout, books: BookMap, bookId: string, til
       const s = leanSpacing(items, next, books, i, dir, want);
       const have = pos[r].x - pos[l].x;
       if (s !== null && Math.abs(s - have) > 0.05) {
-        // 틈 오른쪽 항목들을 함께 옮긴다(그 너머 책들 사이 틈, 특히 다른 기댄 책의 틈은 그대로 둔다).
-        // 선반 끝에 걸리면 settle이 오른쪽 끝부터 되민다.
-        for (let k = r; k < items.length; k++) for (const id of items[k].bookIds) desired.set(id, desired.get(id)! + (s - have));
+        // 받침 쪽(기대는 쪽 옆 항목과 그 너머)을 함께 옮겨 틈을 맞춘다(그 너머 책들 사이 틈, 특히 다른 기댄 책의 틈은 그대로 둔다).
+        // 벌릴 때 그쪽 선반 끝의 빈 자리가 모자라면 나머지만큼 이 책 쪽(이 책과 그 너머)을 반대로 옮긴다: 어느 쪽으로 기울여도
+        // 빈 공간이 있는 쪽을 쓴다(좌우를 바꾼 줄에서 같은 결과). 어느 쪽도 끝의 빈 자리까지만 옮긴다(다른 책 사이 틈을 좁히지 않는다:
+        // 모자라면 틈이 덜 벌어져 기대지 못하고 선다).
+        const idx = (a: number, b: number) => Array.from({ length: b - a }, (_, k) => a + k);
+        const ahead = dir > 0 ? idx(r, items.length) : idx(0, l + 1);
+        const behind = dir > 0 ? idx(0, l + 1) : idx(r, items.length);
+        const lo = SHELF.innerLeft;
+        const hi = SHELF.innerLeft + SHELF_USABLE_WIDTH;
+        const room = (ks: number[], toward: number) =>
+          Math.max(0, toward > 0 ? hi - Math.max(...ks.map((k) => pos[k].x + pos[k].width)) : Math.min(...ks.map((k) => pos[k].x)) - lo);
+        const shift = (ks: number[], v: number) => {
+          for (const k of ks) for (const id of items[k].bookIds) desired.set(id, desired.get(id)! + v);
+        };
+        const delta = s - have;
+        const a = delta > 0 ? Math.min(delta, room(ahead, dir)) : delta;
+        shift(ahead, dir * a);
+        const rest = delta > 0 ? Math.min(delta - a, room(behind, -dir)) : 0;
+        if (rest > 0.05) shift(behind, -dir * rest);
       }
     }
   }

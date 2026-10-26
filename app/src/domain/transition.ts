@@ -1035,6 +1035,8 @@ function cutFall(s: Seg, at: number, span: number): Seg[] {
   const head: Seg = { ...s, t1: at, r1: mid.r, y1: mid.y, sp1: mid.sp, pi1: mid.pi, w1: w };
   if (s.e === 3) head.ea = a / (a + (1 - a) * lin * lin);
   const rest: Seg = { ...s, t0: at, t1: at + span, r0: mid.r, y0: mid.y, sp0: mid.sp, pi0: mid.pi, w0: w, e: 3 };
+  // kind 4: 닿기 전 발 자리는 w0.x다(닿은 뒤는 표 lx). 직선 보간한 자리로 두면 뒷조각 첫 프레임에 발이 튄다
+  if (s.kind === 4) rest.w0 = { ...w, x: s.w0.x };
   delete rest.ea;
   return [head, rest];
 }
