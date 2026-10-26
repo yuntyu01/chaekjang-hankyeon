@@ -6,14 +6,15 @@
 // 한 줄의 좌표 변환은 px 하나(설계 단위 → 캔버스 px, 원점 = 그 줄 책 기준선 왼쪽 끝)뿐이다.
 import { BlurMask, BlurStyle, Group, Path, Skia, type SkImage, type SkPath, type SkRect } from '@shopify/react-native-skia';
 import { memo, useLayoutEffect, useMemo } from 'react';
-import { useAnimatedReaction, useDerivedValue, useSharedValue, type SharedValue } from 'react-native-reanimated';
+import { useAnimatedReaction, useDerivedValue, useSharedValue, withDelay, withTiming, type SharedValue } from 'react-native-reanimated';
 
 import { corners, fromPlaced, lowest, type Book3, type Vec3 } from '@/domain/book3';
 import { camAt, project, toPx, VIEW_PITCH_MAX, VIEW_PITCH_MIN, type Affine, type Cam } from '@/domain/camera';
 import { SHELF_DEPTH, SHELF_FRONT, SHELF_X0, SHELF_X1 } from '@/domain/geometry';
 import { shelfFaces } from '@/domain/shelf-geom';
-import { BOX_EDGES, bookCast, type BookCast } from '@/domain/cast-shadow';
+import { BOX_EDGES, bookCast, castsIn, underCeil, type BookCast } from '@/domain/cast-shadow';
 import { bookAlbedo, boxOf, packBoxes, withCovers, type Box, type BoxBuf, type C3, type Env } from '@/domain/light-model';
+import { bookAt } from '@/domain/transition';
 import { hull } from '@/domain/shadow-shape';
 import { outlineOf, type BookFrame, type Point } from '@/domain/shelf-scene';
 import type { Recv3 } from '@/domain/received3';
@@ -28,12 +29,12 @@ import { physShadow } from '@/ui/lighting';
 import { SHOW } from '@/ui/shelf/shadow-debug';
 import { WALL_X0, WALL_X1 } from '@/ui/shelf/ShelfPlank';
 import { RENDER, TL, tl, tlOn, tlu } from '@/ui/perf';
-import { bookKeyImage, keepLatest, NO_IMAGE, type Atlas, type BookKey, type PlaneKey } from '@/ui/SceneLight';
+import { bookKeyImage, keepLatest, NO_ATLAS, NO_IMAGE, type Atlas, type BookKey, type PlaneKey } from '@/ui/SceneLight';
 
 import { scheduleOnUI } from 'react-native-worklets';
 
 import { tryApplyPending } from './planner';
-import { bodyOf, drawnOf, liveSV, OUT_SHADE_MAX, outsideDist, presentSV, shadeIn, shadeOf, TRANSIT_ROW, warmSV, type Motion, type Poses } from './scene';
+import { bodyOf, drawnOf, liveSV, presentSV, shadeIn, shadeOf, TRANSIT_ROW, warmSV, type Motion, type Poses } from './scene';
 
 export type CamSV = Readonly<SharedValue<Cam>>;
 type Order = Readonly<SharedValue<Record<string, number>>>;
@@ -46,27 +47,23 @@ const zOf = (order: Order, key: string, off = 0) => {
 };
 
 // 줄의 그림자용 자세 모음(책 id → 자세, 그림자가 없으면 null). 어느 한 권이라도 자세가 바뀔 때만 새 값이 된다:
-// 줄의 진행률이 도는 동안에도 바뀐 책이 없으면(멈춘 책은 같은 객체, 다른 줄로 멀리 가 있는 책은 null) 그림자 계산과
+// 줄의 진행률이 도는 동안에도 바뀐 책이 없으면(멈춘 책은 같은 객체, 다른 줄로 가며 판에 다 가린 책은 null) 그림자 계산과
 // 줄 캔버스 다시 그리기가 돌지 않는다. 그림자를 그리는 쪽(벽·선반 윗면·틈·접촉·기대기·받는 그림자)은 모두 이것만 읽는다.
-export function useShadePoses(m: Motion, ids: string[], space: number, shelfId = ''): Readonly<SharedValue<Poses>> {
+// ceil: 위 판 아랫면(위에 줄이 없으면 Infinity)
+export function useShadePoses(m: Motion, ids: string[], space: number, shelfId = '', ceil = space): Readonly<SharedValue<Poses>> {
   // Initialize on the UI thread through the reaction below. Reading tracks in
   // React render produced a warning over the shelf whenever a row remounted.
   const poses = useSharedValue<Poses>({});
   useAnimatedReaction(
-    () => ids.map((id) => shadeIn(m, id, space)),
+    () => ids.map((id) => shadeIn(m, id, space, ceil)),
     (cur, prev) => {
       if (prev && prev.length === cur.length && cur.every((b, i) => b === prev[i])) return;
-      // 측정 번들: 그림자가 아직 이 줄 가까이(줄 공간 밖 OUT_SHADE_MAX보다 안쪽)에 있는데 한 프레임에 없어진 경우를 적는다.
-      // 자세 자체가 없어졌으면 drop(사라짐), 경로를 따라 한 프레임에 그림자 범위 밖까지 움직였으면 exit(프레임 간격이 길 때 생긴다)
+      // 측정 번들: 그림자를 드리우던 책의 자세가 한 프레임에 없어진 경우(판에 가려 빠진 것이 아니라 자세 자체가 사라짐)를 적는다
       if (tlOn.value && prev && prev.length === cur.length)
         for (let i = 0; i < cur.length; i++) {
           const was = prev[i];
-          if (!was || cur[i]) continue;
-          const d = outsideDist(was, space);
-          if (d >= OUT_SHADE_MAX - 4) continue;
-          const now = shadeOf(m, ids[i]);
-          if (now) tlu(`shade-exit ${ids[i]}@${shelfId} d=${d.toFixed(1)}>${outsideDist(now, space).toFixed(1)}`);
-          else tlu(`shade-drop ${ids[i]}@${shelfId} d=${d.toFixed(1)}`);
+          if (!was || cur[i] || !castsIn(was, ceil)) continue;
+          if (!shadeOf(m, ids[i])) tlu(`shade-drop ${ids[i]}@${shelfId}`);
         }
       const old = poses.value;
       let same = Object.keys(old).length === ids.length;
@@ -77,35 +74,87 @@ export function useShadePoses(m: Motion, ids: string[], space: number, shelfId =
       }
       if (!same) poses.value = next;
     },
-    [ids, space],
+    [ids, space, ceil],
   );
   return poses;
 }
 
-// 줄이 멈췄는가: 경로 진행이 끝났고, 남는 경로(다른 줄로 떠난 책)도 다 갔거나 아직 출발 전(그 자리에 멈춰 있다)
-export function settledOf(m: Motion) {
+// 두 자세가 같은가(경로를 다시 짜도 도착 자세가 같으면 다시 굽지 않게)
+function samePose(a: Book3, b: Book3) {
   'worklet';
-  if (m.t.value < 1) return false;
-  const aw = m.away.value;
-  for (const id in aw) {
-    const e = aw[id];
-    if (e.t0 !== Infinity && e.dur > 0 && m.awayT.value < e.t0 + e.dur * e.k) return false;
-  }
-  return true;
+  const e = 1e-3;
+  return (
+    Math.abs(a.t.x - b.t.x) < e && Math.abs(a.t.y - b.t.y) < e && Math.abs(a.t.z - b.t.z) < e && Math.abs(a.roll - b.roll) < e && Math.abs(a.yaw - b.yaw) < e &&
+    Math.abs((a.spin ?? 0) - (b.spin ?? 0)) < e && Math.abs((a.pitch ?? 0) - (b.pitch ?? 0)) < e && Math.abs(a.dims.T - b.dims.T) < e && Math.abs(a.dims.H - b.dims.H) < e && Math.abs(a.dims.W - b.dims.W) < e
+  );
 }
 
-// 하늘 가림을 구울 자세: 줄이 멈췄을 때만 그림자용 자세를 따라간다(움직이는 동안은 마지막으로 멈췄던 자세).
-// 하늘 가림 굽기는 줄 전체를 다시 계산해 무거워서 책이 멈춘 뒤 한 번만 한다(움직이는 동안 책 면 그림은 책에 붙어 같이 간다)
-export function useRestPoses(poses: Readonly<SharedValue<Poses>>, m: Motion): Readonly<SharedValue<Poses>> {
-  const rest = useSharedValue<Poses>({});
+// 하늘 가림을 구울 자세: 이 줄 경로의 도착 자세(멈춘 책은 그 자세). 경로가 다시 짜일 때만 바뀐다(진행률이 도는 동안은 그대로).
+// 다른 줄로 떠난 책(이 줄 트랙이 없다)은 빠진다. 도착 자세가 같은 책은 앞 객체를 다시 쓴다(아무것도 안 바뀌면 굽기가 다시 돌지 않게)
+export function useTargetPoses(m: Motion, ids: string[]): Readonly<SharedValue<Poses>> {
+  const out = useSharedValue<Poses>({});
   useAnimatedReaction(
-    () => (settledOf(m) ? poses.value : null),
-    (p) => {
-      if (p && p !== rest.value) rest.value = p;
+    () => m.tracks.value,
+    (tracks) => {
+      const old = out.value;
+      const next: Poses = {};
+      let changed = Object.keys(old).length !== ids.length;
+      for (const id of ids) {
+        const tr = tracks[id];
+        let b: Book3 | null = tr ? (!tr.moving && tr.rest ? tr.rest : bookAt(tr, 1)) : null;
+        const o = old[id] ?? null;
+        if (b && o && b !== o && samePose(b, o)) b = o;
+        if (b !== o) changed = true;
+        next[id] = b;
+      }
+      if (changed) out.value = next;
     },
-    [m],
+    [ids],
   );
-  return rest;
+  return out;
+}
+
+// 하늘 가림 굽기(아틀라스)를 책이 움직이기 시작할 때 도착 자세로 하고, 앞 굽기에서 FADE_MS 동안 서서히 바꾼다(셰이더가 섞는다):
+// 책이 떠난 자리의 어둠은 책이 떠나는 동안 옅어지고, 도착할 자리는 책이 오는 동안 어두워진다.
+// 굽기는 줄 전체를 다시 계산해 무거우므로 BAKE_GAP_MS보다 자주 굽지 않는다(끄는 동안 미리보기가 바뀔 때마다 경로가 다시 짜인다): 그 사이 바뀐
+// 도착 자세는 간격이 지나면 마지막 것으로 한 번 굽는다. build: 자세 모음·상자 목록 → 굽기(워클릿, 구울 것이 없으면 NO_ATLAS)
+export const FADE_MS = 200;
+const BAKE_GAP_MS = 200;
+export function useFadingAtlas(poses: Readonly<SharedValue<Poses>>, boxes: Readonly<SharedValue<BoxBuf>>, build: (ps: Poses, bx: BoxBuf) => Atlas): Readonly<SharedValue<Atlas>> {
+  const baked = useSharedValue<Atlas>(NO_ATLAS);
+  const prev = useSharedValue<Atlas | null>(null);
+  const fade = useSharedValue(1);
+  const wake = useSharedValue(0);
+  const last = useSharedValue({ at: -1e9, ps: null as Poses | null, bx: null as BoxBuf | null, waiting: false });
+  useAnimatedReaction(
+    () => ({ ps: poses.value, bx: boxes.value, w: wake.value }),
+    (cur) => {
+      const l = last.value;
+      if (cur.ps === l.ps && cur.bx === l.bx) return;
+      const now = globalThis.performance ? globalThis.performance.now() : Date.now();
+      if (now - l.at < BAKE_GAP_MS) {
+        if (!l.waiting) {
+          last.value = { ...l, waiting: true };
+          wake.value = withDelay(Math.max(1, BAKE_GAP_MS - (now - l.at)), withTiming(wake.value + 1, { duration: 0 }));
+        }
+        return;
+      }
+      last.value = { at: now, ps: cur.ps, bx: cur.bx, waiting: false };
+      const old = baked.value;
+      const next = build(cur.ps, cur.bx);
+      baked.value = next;
+      // 처음 굽기(앞 굽기가 없다)는 바로 보인다
+      prev.value = old.image && next.image ? old : null;
+      fade.value = 0;
+      fade.value = withTiming(1, { duration: FADE_MS });
+    },
+  );
+  return useDerivedValue<Atlas>(() => {
+    const a = baked.value;
+    const p = prev.value;
+    const f = fade.value;
+    return p && f < 1 ? { image: a.image, at: a.at, prev: p, mix: f } : a;
+  });
 }
 
 // ---------- 개발용 형상 보기: 상자 모서리 12개, 바닥 지지 영역(선반 위 투영). 일반 화면에는 나오지 않는다 ----------
@@ -210,7 +259,7 @@ const SHOW_NONE: SkRect = Skia.XYWHRect(0, 0, 0, 0);
 // 제 줄 공간 밖에 걸친 동안(다른 줄로 옮겨 가는 중). 그동안은 이동 캔버스가 그린다.
 // 첫 그림을 낸 뒤 '올라감'을 알린다(그 전에는 이동 캔버스가 대신 그린다).
 const RowBook = memo(
-  function RowBook({ m, shelfId, id, dims, rest, book, cam, px, shared, recv, order, space, env, atlas, boxes }: { m: Motion; shelfId: string; id: string; dims: Book3['dims']; rest: Book3; book: Book; cam: CamSV; px: Affine; shared: Shared; recv?: { ids: string[]; debug?: boolean; poses: Readonly<SharedValue<Poses>> }; order: Order; space: number; env: Readonly<SharedValue<Env | null>>; atlas: Readonly<SharedValue<Atlas>>; boxes: Readonly<SharedValue<BoxBuf>> }) {
+  function RowBook({ m, shelfId, id, dims, rest, book, cam, px, shared, recv, order, space, env, atlas, boxes }: { m: Motion; shelfId: string; id: string; dims: Book3['dims']; rest: Book3; book: Book; cam: CamSV; px: Affine; shared: Shared; recv?: { ids: string[]; debug?: boolean; poses: Readonly<SharedValue<Poses>>; ceil: number }; order: Order; space: number; env: Readonly<SharedValue<Env | null>>; atlas: Readonly<SharedValue<Atlas>>; boxes: Readonly<SharedValue<BoxBuf>> }) {
     const first = useMemo(() => rest, []); // eslint-disable-line react-hooks/exhaustive-deps
     // 이 줄이 그리는 자세(안 그리면 null). 안 그리는 동안은 멈춘 자리 표시 자세라 책 그림 계산이 돌지 않는다.
     // 막 다른 줄로 떠난 책도 이 줄 공간 안에 있는 동안은 그린다(이동 캔버스가 같은 자세로 위에 겹친다). 이동 캔버스가 그 책을
@@ -269,15 +318,15 @@ const RowBook = memo(
   },
   (a, b) =>
     a.m === b.m && a.shelfId === b.shelfId && a.id === b.id && a.book === b.book && dimsKey(a.dims) === dimsKey(b.dims) && a.cam === b.cam && a.px === b.px && a.shared === b.shared && a.space === b.space &&
-    a.recv?.ids.join('|') === b.recv?.ids.join('|') && a.recv?.debug === b.recv?.debug && a.recv?.poses === b.recv?.poses && a.order === b.order && a.env === b.env && a.atlas === b.atlas && a.boxes === b.boxes,
+    a.recv?.ids.join('|') === b.recv?.ids.join('|') && a.recv?.debug === b.recv?.debug && a.recv?.poses === b.recv?.poses && a.recv?.ceil === b.recv?.ceil && a.order === b.order && a.env === b.env && a.atlas === b.atlas && a.boxes === b.boxes,
 );
 
 // 한 줄의 책과 그 줄에 붙는 표시(선택 빛·놓일 범위). 캔버스 안에 형제로 펼쳐 넣는다(가림 순서가 zIndex로 섞이게).
 // shared는 캔버스 밖에서 읽어 넘긴다(캔버스 안에는 React 컨텍스트가 닿지 않는다). env·boxes: 이 줄의 둘레와 책 상자 목록(빛 계산)
-export const RowBooks = memo(function RowBooks({ m, shelfId, st, books, glowId = null, dragId = null, cam, px, space, shared, order, poses, env, atlas, boxes, debug = false }: { m: Motion; shelfId: string; st: RowStruct; books: Record<string, Book>; glowId?: string | null; dragId?: string | null; cam: CamSV; px: Affine; space: number; shared: Shared; order: Order; poses: Readonly<SharedValue<Poses>>; env: Readonly<SharedValue<Env | null>>; atlas: Readonly<SharedValue<Atlas>>; boxes: Readonly<SharedValue<BoxBuf>>; debug?: boolean }) {
+export const RowBooks = memo(function RowBooks({ m, shelfId, st, books, glowId = null, dragId = null, cam, px, space, ceil = space, shared, order, poses, env, atlas, boxes, debug = false }: { m: Motion; shelfId: string; st: RowStruct; books: Record<string, Book>; glowId?: string | null; dragId?: string | null; cam: CamSV; px: Affine; space: number; ceil?: number; shared: Shared; order: Order; poses: Readonly<SharedValue<Poses>>; env: Readonly<SharedValue<Env | null>>; atlas: Readonly<SharedValue<Atlas>>; boxes: Readonly<SharedValue<BoxBuf>>; debug?: boolean }) {
   const ids = st.ids;
-  // 책 면이 받는 창빛 그림자의 가리개 후보: 같은 줄의 다른 책
-  const recv = useMemo(() => (SHOW.cast ? { ids, debug, poses } : undefined), [ids, debug, poses]);
+  // 책 면이 받는 창빛 그림자의 가리개 후보: 같은 줄의 다른 책(위 판 ceil이 막는 부분은 뺀다)
+  const recv = useMemo(() => (SHOW.cast ? { ids, debug, poses, ceil } : undefined), [ids, debug, poses, ceil]);
   return (
     <>
       {ids.map((id) => (
@@ -410,8 +459,8 @@ const BAND_KS = physShadow.bands.map((_, k) => k);
 // 벽·판 윗면이 받는 창빛 그림자(이 줄 책들이 창빛 원반을 가리는 몫, 알파)를 평면 좌표 그림으로: 벽·판 셰이더가 빛 계산 안에서
 // 창빛 몫에 곱한다(SceneLight PlaneKey). 그림자는 평면 위 모양이라 시점과 상관없다: 책 자세가 바뀔 때만 다시 그린다.
 // 벽 그림 범위: 판 윗면이 벽에 닿는 선(y = 0, 그 아래 벽으로 가는 빛은 판 윗면을 지나야 해서 책이 가릴 수 없다) ~ y1, 가로는 화면에 보이는 벽.
-// 판 윗면 그림 범위: 판 전체(가로 판 길이, 앞 끝 ~ 벽). 판 아래(다른 줄)에 있는 책은 이 판에 드리우지 않는다
-function planeShadows(key: string, poses: Poses, ids: string[], s: number, W: number, H: number, wall: boolean, toImg: (q: Vec3) => Point): SkImage {
+// 판 윗면 그림 범위: 판 전체(가로 판 길이, 앞 끝 ~ 벽). 판에 가린 부분(판 윗면 아래, 위 판 ceil이 막는 빛줄기)은 bookCast가 뺀다
+function planeShadows(key: string, poses: Poses, ids: string[], s: number, W: number, H: number, wall: boolean, toImg: (q: Vec3) => Point, ceil: number): SkImage {
   'worklet';
   // UI 스레드에서만(파생 값은 마운트 직후 UI에서 다시 돈다)
   if (!(globalThis as { _WORKLET?: boolean })._WORKLET) return NO_IMAGE;
@@ -422,9 +471,9 @@ function planeShadows(key: string, poses: Poses, ids: string[], s: number, W: nu
   paint.setColor(Skia.Color('black'));
   for (const id of ids) {
     const b = poses[id];
-    if (!b || (!wall && lowest(b) < -0.5)) continue;
+    if (!b) continue;
     for (const k of BAND_KS) {
-      const c = bookCast(b, s, k, wall);
+      const c = bookCast(b, s, k, wall, ceil);
       if (!c || c.w <= 0) continue;
       const pts = hull(c.pts.map(toImg));
       if (pts.length < 3) continue;
@@ -438,27 +487,27 @@ function planeShadows(key: string, poses: Poses, ids: string[], s: number, W: nu
   surf.dispose();
   return img;
 }
-export function useWallKey(shelfId: string, poses: Readonly<SharedValue<Poses>>, ids: string[], px: Affine, y1: number): Readonly<SharedValue<PlaneKey>> {
+export function useWallKey(shelfId: string, poses: Readonly<SharedValue<Poses>>, ids: string[], px: Affine, y1: number, ceil = Infinity): Readonly<SharedValue<PlaneKey>> {
   const s = px.s;
   const W = Math.ceil((WALL_X1 - WALL_X0) * s);
   const H = Math.ceil(y1 * s);
   const key = `wall-shadow:${shelfId}`;
   const on = SHOW.wall && RENDER.books;
   return useDerivedValue(() => ({
-    image: on ? planeShadows(key, poses.value, ids, s, W, H, true, (q) => ({ x: (q.x - WALL_X0) * s, y: (y1 - q.y) * s })) : NO_IMAGE,
+    image: on ? planeShadows(key, poses.value, ids, s, W, H, true, (q) => ({ x: (q.x - WALL_X0) * s, y: (y1 - q.y) * s }), ceil) : NO_IMAGE,
     kU: [s, 0, 0],
     kV: [0, -s, 0],
     kO: [-WALL_X0 * s, y1 * s],
   }));
 }
-export function useFloorKey(shelfId: string, poses: Readonly<SharedValue<Poses>>, ids: string[], px: Affine): Readonly<SharedValue<PlaneKey>> {
+export function useFloorKey(shelfId: string, poses: Readonly<SharedValue<Poses>>, ids: string[], px: Affine, ceil = Infinity): Readonly<SharedValue<PlaneKey>> {
   const s = px.s;
   const W = Math.ceil((SHELF_X1 - SHELF_X0) * s);
   const H = Math.ceil((SHELF_DEPTH + SHELF_FRONT) * s);
   const key = `floor-shadow:${shelfId}`;
   const on = SHOW.shelfCast && RENDER.books;
   return useDerivedValue(() => ({
-    image: on ? planeShadows(key, poses.value, ids, s, W, H, false, (q) => ({ x: (q.x - SHELF_X0) * s, y: (q.z + SHELF_FRONT) * s })) : NO_IMAGE,
+    image: on ? planeShadows(key, poses.value, ids, s, W, H, false, (q) => ({ x: (q.x - SHELF_X0) * s, y: (q.z + SHELF_FRONT) * s }), ceil) : NO_IMAGE,
     kU: [s, 0, 0],
     kV: [0, 0, s],
     kO: [-SHELF_X0 * s, SHELF_FRONT * s],
@@ -480,14 +529,16 @@ function xRangeOf(q: Book3) {
   return { lo, hi };
 }
 
-// 자세 b(이 줄 좌표)의 책에 그림자를 드리울 수 있는 책(자세 모음에서, 막 떠난 책의 남은 경로 포함)
-export function occludersIn(poses: Poses, b: Book3, id: string, ids: string[]): Book3[] {
+// 자세 b(이 줄 좌표)의 책에 그림자를 드리울 수 있는 책(자세 모음에서, 막 떠난 책의 남은 경로 포함).
+// ceil: 위 판 아랫면(위에 줄이 없으면 Infinity). 판 앞을 지나는 책은 위 판이 막는 부분을 뺀 상자로(cast-shadow underCeil)
+export function occludersIn(poses: Poses, b: Book3, id: string, ids: string[], ceil = Infinity): Book3[] {
   'worklet';
   const me = xRangeOf(b);
   const occ: Book3[] = [];
   for (const o of ids) {
     if (o === id) continue;
-    const ob = poses[o];
+    const p = poses[o];
+    const ob = p ? underCeil(p, ceil) : null;
     if (!ob) continue;
     const r = xRangeOf(ob);
     if (r.hi < me.lo - REACH_L || r.lo > me.hi + REACH_R) continue;
@@ -515,15 +566,16 @@ export function occluderBodies(m: Motion, id: string, ids: string[]): { b: Book3
 // 카메라와 무관해 시점을 끄는 동안에는 다시 그리지 않는다. vis: 이 줄이 그리는 이 책의 자세(안 그리면 null), recv: 줄의 그림자용 자세 모음과 책들(없으면 그림자 없음).
 // 이 책 자세와 가리개 후보(드리울 수 있는 범위의 이웃)가 하나라도 바뀔 때만 다시 계산한다(멈춘 책은 같은 객체라 비교가 싸다).
 // 파생 값으로 계산해 그리는 쪽과 같은 프레임에 나온다(반응으로 따로 두면 이동 캔버스에서 넘겨받는 프레임에 그림자가 비어 책 면이 한 프레임 밝아졌다)
-export function useBookKey(vis: Readonly<SharedValue<Book3 | null>>, recv: { ids: string[]; poses: Readonly<SharedValue<Poses>> } | undefined, id: string, key: string, px: Affine): Readonly<SharedValue<BookKey>> {
+export function useBookKey(vis: Readonly<SharedValue<Book3 | null>>, recv: { ids: string[]; poses: Readonly<SharedValue<Poses>>; ceil?: number } | undefined, id: string, key: string, px: Affine): Readonly<SharedValue<BookKey>> {
   const poses = recv?.poses;
   const ids = recv?.ids ?? [];
+  const ceil = recv?.ceil ?? Infinity;
   const memo = useSharedValue<{ key: Book3[]; r: Recv3 }>({ key: [], r: null });
   const r3 = useDerivedValue<Recv3>(() => {
     const b = vis.value;
     if (!b || !poses) return null;
     const last = memo.value;
-    const occ = occludersIn(poses.value, b, id, ids);
+    const occ = occludersIn(poses.value, b, id, ids, ceil);
     if (last.key.length === occ.length + 1 && last.key[0] === b && occ.every((q, i) => q === last.key[i + 1])) return last.r;
     const r = receivedShadow3(b, occ, px.s);
     memo.value = { key: [b, ...occ], r };

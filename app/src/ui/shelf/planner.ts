@@ -11,12 +11,13 @@ import { Easing, makeMutable, withTiming } from 'react-native-reanimated';
 import { scheduleOnRN, scheduleOnUI } from 'react-native-worklets';
 
 import { fromPlaced, type Book3 } from '@/domain/book3';
+import { castsIn } from '@/domain/cast-shadow';
 import { SHELF_THICK } from '@/domain/geometry';
 import { PLANK_BOUNDS, type BookFrame } from '@/domain/shelf-scene';
 import { awayShift, awayTrack, bookAt, gravityPlan, holdTrack, offBetween, planTransition, retime, safeOffsets, shiftTrack, withOff, type Off, type Track } from '@/domain/transition';
 import { ANIM, TL, tl, tlOn, tlu } from '@/ui/perf';
 
-import { awayAt, easeOf, OUT_SHADE_MAX, outsideDist, outsideRow, presentSV, type AwayEntry, type Aways, type Motion, type Tracks } from './scene';
+import { awayAt, easeOf, outsideRow, presentSV, type AwayEntry, type Aways, type Motion, type Tracks } from './scene';
 
 export const MOTION_MS = 230; // 기울이기·밀림·끌기 미리보기
 export const POSE_MS = 420; // 자세 바꾸기(표지로·눕히기)
@@ -142,11 +143,12 @@ export function queueApply(m: Motion, shelfId: string, rec: Tracks, animate: boo
 }
 
 const easeFn = (out: boolean) => (out ? easeOutCubic : easeInOutCubic);
-const goneIn = (space: number) => (b: Book3) => outsideDist(b, space) > OUT_SHADE_MAX;
+// 그 줄에 그림자가 더는 없다: 판에 다 가렸다(scene shadeIn과 같은 판정. 떠나는 책이 위로 가면 위 판, 아래로 가면 판 윗면)
+const goneIn = (space: number) => (b: Book3) => !castsIn(b, space);
 
 // 다른 줄에 남는 경로(away)를 이 묶음에 맞춘다. 책마다:
 // - 새로 다른 줄로 떠났으면(기다림 = 도착 줄) 원래 줄에 남는 경로를 둔다: 도착 줄 경로를 원래 줄 좌표로(세로만 다르다),
-//   도착 줄과 같은 시각·같은 감속으로, 원래 줄 공간 밖 OUT_SHADE_MAX를 넘는 곳(더는 그림도 그림자도 없는 곳, k)까지.
+//   도착 줄과 같은 시각·같은 감속으로, 판에 다 가려 원래 줄에 그림자가 더는 없는 곳(k)까지.
 // - 그 책이 있는 줄의 경로를 다시 짰으면(같은 줄에서 목표가 바뀌거나, 또 다른 줄로 떠났으면) 다른 줄들에 남은 경로를 새 경로로 옮겨 잇는다.
 //   그 책이 돌아온 줄은 그 줄 트랙이 맡으므로 거둔다.
 // - 경로 없이 바로 옮긴 책(동작 줄이기 등)은 남길 경로가 없다: 앞서 남긴 경로도 거둔다(책과 함께 그림자도 그 순간 옮겨 간다).
@@ -226,8 +228,8 @@ function runClock(m: Motion) {
 // 남는 경로에서 그 줄에 그림자가 더는 없는 첫 진행(실제 시간 비율 u, 1/48 단위). 출발점부터 없으면 0, 끝까지 있으면 1.
 function goneAt(tr: Track, out: boolean, space: number) {
   'worklet';
-  if (outsideDist(bookAt(tr, 0), space) > OUT_SHADE_MAX) return 0;
-  for (let i = 1; i <= 48; i++) if (outsideDist(bookAt(tr, easeOf(out, i / 48)), space) > OUT_SHADE_MAX) return i / 48;
+  if (!castsIn(bookAt(tr, 0), space)) return 0;
+  for (let i = 1; i <= 48; i++) if (!castsIn(bookAt(tr, easeOf(out, i / 48)), space)) return i / 48;
   return 1;
 }
 

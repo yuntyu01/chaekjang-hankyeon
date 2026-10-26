@@ -3,8 +3,8 @@
 // 광원은 면 밝기(램버트)와 같은 방향이다(domain/light-model). 면광원이라 가리는 물체에서 멀수록 번진다.
 import { light, physShadow } from "@/ui/lighting";
 
-import { corners, type Book3, type Vec3 } from "./book3";
-import { SHELF_DEPTH } from "./geometry";
+import { add, corners, rot, type Book3, type Vec3 } from "./book3";
+import { SHELF_DEPTH, SHELF_FRONT } from "./geometry";
 
 // 빛이 나아가는 방향(광원 → 물체). light.dir(물체 → 광원)의 반대, 길이 1.
 export function travelOf(dir: Vec3): Vec3 {
@@ -180,19 +180,104 @@ const BOOK_LIGHT = travelOf(light.dir);
 // pts: 받는 면 위 점, sigma: 흐림 시그마(캔버스 px), w: 광원 원반 중 가려지는 몫(가리개가 반그림자보다 좁으면 1보다 작다)
 export type BookCast = { pts: Vec3[]; sigma: number; w: number } | null;
 
-// 상자에서 빛 길이 f가 (lo, hi]인 부분(볼록 상자 ∩ 두 평면 사이)의 꼭짓점: 그 사이 꼭짓점 + 12개 변이 lo·hi를 지나는 점
-function bandPart(cs: Vec3[], f: number[], lo: number, hi: number): Vec3[] {
+// 볼록 다면체(꼭짓점 cs)에서 f가 (lo, hi]인 부분의 꼭짓점: 그 사이 꼭짓점 + 변이 lo·hi를 지나는 점.
+// 상자(꼭짓점 8개)는 12개 변으로, 판에 가려 잘린 조각은 모든 두 점 쌍으로(실제 변이 아닌 쌍의 점도 다면체 안이라 볼록 외곽은 같다)
+function bandPart(cs: Vec3[], f: number[], lo: number, hi: number, box = true): Vec3[] {
   "worklet";
   const out: Vec3[] = [];
-  for (let i = 0; i < 8; i++) if (f[i] >= lo && f[i] <= hi) out.push(cs[i]);
-  for (const [i, j] of BOX_EDGES) {
+  for (let i = 0; i < cs.length; i++) if (f[i] >= lo && f[i] <= hi) out.push(cs[i]);
+  const cut = (i: number, j: number) => {
     for (const L of [lo, hi]) {
       if ((f[i] - L) * (f[j] - L) >= 0) continue;
       const t = (L - f[i]) / (f[j] - f[i]);
       out.push({ x: cs[i].x + (cs[j].x - cs[i].x) * t, y: cs[i].y + (cs[j].y - cs[i].y) * t, z: cs[i].z + (cs[j].z - cs[i].z) * t });
     }
-  }
+  };
+  if (box) for (const [i, j] of BOX_EDGES) cut(i, j);
+  else for (let i = 0; i < cs.length; i++) for (let j = i + 1; j < cs.length; j++) cut(i, j);
   return out;
+}
+
+// ---------- 판에 가린 부분 ----------
+// 빛줄기는 아래·벽 쪽으로 간다. 선반 앞(z < -SHELF_FRONT)에 있는 점의 빛줄기는 판 앞 끝(z = -SHELF_FRONT)을 지날 때
+// 높이가 entryY만큼으로 내려가 있다(판 안쪽 점은 제 높이). 이 높이가 위 판 아랫면(줄 공간 높이 ceil)보다 위면 위 판이 막아
+// 이 줄의 벽·판 윗면·책에 닿지 않는다. 다른 줄로 옮겨 가는 책이 판 앞을 지나는 동안 그림자가 판에 가린 만큼만 남아 이어서 늘고 준다.
+export const CEIL_K = -BOOK_LIGHT.y / BOOK_LIGHT.z;
+export function entryY(c: Vec3) {
+  "worklet";
+  return c.y + CEIL_K * Math.min(0, c.z + SHELF_FRONT);
+}
+
+// 볼록 다면체 꼭짓점 cs에서 f(c) ≤ lim(keepBelow) 또는 ≥ lim인 부분의 꼭짓점(모든 두 점 쌍이 lim을 지나는 점 포함)
+function clipPts(cs: Vec3[], f: (c: Vec3) => number, lim: number, keepBelow: boolean): Vec3[] {
+  "worklet";
+  const v = cs.map((c) => (keepBelow ? lim - f(c) : f(c) - lim));
+  const out: Vec3[] = [];
+  for (let i = 0; i < cs.length; i++) if (v[i] >= 0) out.push(cs[i]);
+  for (let i = 0; i < cs.length; i++)
+    for (let j = i + 1; j < cs.length; j++) {
+      if (v[i] * v[j] >= 0) continue;
+      const t = v[i] / (v[i] - v[j]);
+      out.push({ x: cs[i].x + (cs[j].x - cs[i].x) * t, y: cs[i].y + (cs[j].y - cs[i].y) * t, z: cs[i].z + (cs[j].z - cs[i].z) * t });
+    }
+  return out;
+}
+
+// 이 줄(판 윗면 y = 0 ~ 위 판 아랫면 ceil)에 그림자를 드리울 수 있는가: 판 윗면보다 위인 부분이 있고, 판 앞 끝을 지나는 빛줄기 높이가
+// 위 판 아래인 부분이 있다(bookCast가 같은 경계로 자른다: 그 경계에서 그림자는 0이라 이 판정으로 빼도 튀지 않는다)
+export function castsIn(b: Book3, ceil: number) {
+  "worklet";
+  let lo = Infinity;
+  let hi = -Infinity;
+  for (const c of corners(b)) {
+    lo = Math.min(lo, entryY(c));
+    hi = Math.max(hi, c.y);
+  }
+  return hi > 0 && lo < ceil;
+}
+
+// 책 면이 받는 그림자의 가리개로 쓸 상자: 위 판이 막는 부분(entryY > ceil)을 뺀 상자. 상자로 남기려고 높이가 가장 많이 바뀌는 책 축을 따라
+// 네 변 모두 ceil 아래가 되는 만큼만 남긴다(조금 덜 남아 그림자가 조금 옅을 수는 있어도 판을 뚫고 드리우지 않는다). 다 가리면 null
+export function underCeil(b: Book3, ceil: number): Book3 | null {
+  "worklet";
+  if (!(ceil < Infinity)) return b;
+  const cs = corners(b);
+  const g = cs.map(entryY);
+  let lo = Infinity;
+  let hi = -Infinity;
+  for (const v of g) {
+    lo = Math.min(lo, v);
+    hi = Math.max(hi, v);
+  }
+  if (hi <= ceil) return b;
+  if (lo >= ceil) return null;
+  const bits = [1, 2, 4];
+  let axis = 0;
+  let best = -1;
+  for (let a = 0; a < 3; a++) {
+    let sum = 0;
+    for (let i = 0; i < 8; i++) if (!(i & bits[a])) sum += Math.abs(g[i | bits[a]] - g[i]);
+    if (sum > best) {
+      best = sum;
+      axis = a;
+    }
+  }
+  let u0 = 0;
+  let u1 = 1;
+  for (let i = 0; i < 8; i++) {
+    if (i & bits[axis]) continue;
+    const g0 = g[i];
+    const g1 = g[i | bits[axis]];
+    if (g1 > g0) {
+      if (g1 > ceil) u1 = Math.min(u1, Math.max(0, (ceil - g0) / (g1 - g0)));
+    } else if (g0 > ceil) u0 = Math.max(u0, g0 === g1 ? 1 : Math.min(1, (g0 - ceil) / (g0 - g1)));
+  }
+  if (u1 - u0 <= 1e-3) return null;
+  const d = b.dims;
+  const L = axis === 0 ? d.T : axis === 1 ? d.H : d.W;
+  const off = { x: axis === 0 ? u0 * L : 0, y: axis === 1 ? u0 * L : 0, z: axis === 2 ? u0 * L : 0 };
+  const n = (u1 - u0) * L;
+  return { ...b, dims: { T: axis === 0 ? n : d.T, H: axis === 1 ? n : d.H, W: axis === 2 ? n : d.W }, t: add(rot(b.roll, b.yaw, off, b.spin ?? 0, b.pitch ?? 0), b.t) };
 }
 
 // 반그림자 폭 w(DU)를 가우스 흐림 시그마로: 원반 광원의 반그림자는 폭 w의 경사이고, 가운데 기울기가 같은 가우스는 σ = w / √(2π)
@@ -210,14 +295,32 @@ export function thinOccluder(d: { T: number; H: number; W: number }, pen: number
   return Math.min(1, ds[0] / w) * Math.min(1, ds[1] / w);
 }
 
-// k번째 구간의 책 그림자(벽 wall = true, 선반 윗면 false). s: 캔버스 배율
-export function bookCast(b: Book3, s: number, k: number, wall: boolean): BookCast {
+// k번째 구간의 책 그림자(벽 wall = true, 선반 윗면 false). s: 캔버스 배율.
+// ceil: 위 판 아랫면 높이(위에 줄이 없으면 Infinity). 판에 가린 부분은 빼고 떨어뜨린다: 선반 윗면에는 판 윗면 위의 부분만
+// (벽은 판 윗면 아래로 떨어지는 부분이 벽 그림 밖이라 저절로 빠진다), 위에 줄이 있으면 빛줄기가 위 판 아래로 들어오는 부분만(entryY)
+export function bookCast(b: Book3, s: number, k: number, wall: boolean, ceil = Infinity): BookCast {
   "worklet";
   const B = physShadow.bands;
   const lo = k === 0 ? 0 : B[k - 1];
   const hi = B[k];
   const D = BOOK_LIGHT;
-  const cs = corners(b);
+  let cs = corners(b);
+  let box = true;
+  let y0 = Infinity;
+  let y1 = -Infinity;
+  for (const c of cs) {
+    y0 = Math.min(y0, c.y);
+    y1 = Math.max(y1, c.y);
+  }
+  if (!wall && y0 < -0.05) {
+    cs = clipPts(cs, (c) => c.y, 0, false);
+    box = false;
+  }
+  if (ceil < Infinity && y1 > ceil) {
+    cs = clipPts(cs, entryY, ceil, true);
+    box = false;
+  }
+  if (cs.length < 3) return null;
   const f = cs.map((c) => (wall ? Math.max(0, (SHELF_DEPTH - c.z) / D.z) : Math.max(0, c.y / -D.y)));
   let f0 = Infinity;
   let f1 = -Infinity;
@@ -226,7 +329,7 @@ export function bookCast(b: Book3, s: number, k: number, wall: boolean): BookCas
     f1 = Math.max(f1, v);
   }
   if (f1 <= lo || f0 > hi) return null;
-  const part = bandPart(cs, f, lo, hi);
+  const part = bandPart(cs, f, lo, hi, box);
   if (part.length < 3) return null;
   const pts: Vec3[] = part.map((c) => (wall ? onWall(c, D, SHELF_DEPTH) : onFloor(c, D, 0)));
   const pen = physShadow.spread * ((Math.max(lo, f0) + Math.min(hi, f1)) / 2);

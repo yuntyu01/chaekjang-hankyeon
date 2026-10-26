@@ -72,6 +72,7 @@ import { ReferenceUI } from '@/ui/ReferenceUI';
 import { CONTENT_TOP, computeRows, LAYOUT, rowAffine, rowAt, toContent, useShelfMetrics, type RowGeom } from '@/ui/shelf/metrics';
 import { benchProjection, type BenchRow } from '@/ui/shelf/ShelfMotion';
 import { displayedPoses, flushApply, lastPlan, previewInto, PULL_MS, settleInto, WAIT_MAX } from '@/ui/shelf/planner';
+import { fallSig, HOLD_MS, stepHold, type Hold } from '@/ui/shelf/preview-hold';
 import { liveSV, makeMotion, pickAt, plankFrontBand, rowPx, TRANSIT_ROW, warmSV, type Motion, type Pick, type SceneGeo, type SceneMotion } from '@/ui/shelf/scene';
 import { HANDLE_HIT, handlePoint, HeaderWall, SHELF_CAST_EXTENT, ShelfScene, type DropHint, type SceneRowProps } from '@/ui/shelf/ShelfScene';
 import { ANIM, frameStats, logChunks, MENU_FLAGS, PERF_DETAIL, PERF_ENABLED, PERF_LEVELS, PUSH_DEBUG, setLightOff, setPerfLevel, TL, tl, tlEv, tlOn, tlu, TRANSIT_DEBUG, setShelfMode, setShelfView, SHELF_MODES, SHELF_VIEWS, type PerfLevel, type ShelfMode } from '@/ui/perf';
@@ -108,6 +109,7 @@ type Drag = {
   startCenterDU: number;
   widthDU: number; // 끄는 항목(더미면 더미)의 3D 폭: 다른 선반에 놓을 때 왼쪽 끝 = 가운데 - 폭/2
   members: string[]; // 함께 옮겨 가는 책(더미 받침을 잡으면 더미 전체, 아니면 잡은 책 하나)
+  hold: Hold; // 보이는 미리보기의 넘어짐과 그것을 받아들인 손가락 위치(넘어짐이 손가락 따라 깜빡이지 않게, preview-hold)
 };
 
 type Toast = { text: string; action?: 'undo' | 'retry' } | null;
@@ -483,6 +485,22 @@ export function HomeScreen() {
     return { kind: 'bad', reason: r.reason, key, shelfId, index: at };
   };
 
+  // 같은 줄 안에서 다른 책의 넘어짐이 바뀌는 미리보기는 손가락이 조금 더 가거나 멈춘 뒤에 받아들인다(그동안 앞 미리보기 그대로).
+  // rest: 손가락이 HOLD_MS 동안 멈춰 있다
+  const holdPreview = (d: Drag, next: Preview, vx: number, rest = false): { preview: Preview; hold: Hold } => {
+    const x = d.startCenterDU + (vx - d.startVx) / m.scale;
+    const sig = next.kind === 'ok' ? fallSig(layout, next.layout, d.bookId) : '';
+    const cur = d.preview;
+    if (!cur || cur.kind === 'bad' || next.kind === 'bad' || cur.shelfId !== next.shelfId) return { preview: next, hold: { sig, at: x } };
+    const r = stepHold(d.hold, sig, x, rest);
+    return { preview: r.take ? next : cur, hold: r.hold };
+  };
+  const restTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const clearRest = () => {
+    if (restTimer.current) clearTimeout(restTimer.current);
+    restTimer.current = null;
+  };
+
   useEffect(() => {
     bootMark('home-mount', `books=${Object.keys(books).length}`);
     watchResponsive();
@@ -562,6 +580,7 @@ export function HomeScreen() {
       startCenterDU: (lo + hi) / 2,
       widthDU: item ? itemWidth(item, layout, books) : hi - lo,
       members,
+      hold: { sig: '', at: (lo + hi) / 2 },
     };
     vpOrigin.value = { x: absX - x, y: absY - (y - scroll) };
     pointer.value = { x, y: y - scroll };
@@ -577,8 +596,9 @@ export function HomeScreen() {
   // 미리보기는 한 프레임에 한 번(손가락 이벤트가 몰려도 마지막 위치만 계산한다)
   const movePending = useRef<{ vx: number; vy: number; scroll: number } | null>(null);
   const moveFrame = useRef(0);
-  const moveDrag = (vx: number, vy: number, scroll: number) => {
+  const moveDrag = (vx: number, vy: number, scroll: number, rest = false) => {
     movePending.current = { vx, vy, scroll };
+    if (!rest) clearRest();
     if (moveFrame.current) return;
     moveFrame.current = requestAnimationFrame(() => {
       moveFrame.current = 0;
@@ -586,8 +606,18 @@ export function HomeScreen() {
       const mv = movePending.current;
       if (!d || !mv) return;
       const c0 = PERF_ENABLED ? performance.now() : 0;
-      const preview = computePreview(d, mv.vx, mv.vy, mv.scroll);
+      const next = computePreview(d, mv.vx, mv.vy, mv.scroll);
+      const held = holdPreview(d, next, mv.vx, rest);
+      const preview = held.preview;
       if (PERF_ENABLED) dragJs.current.preview.push(performance.now() - c0);
+      // 넘어짐이 바뀌는 미리보기를 붙잡았으면, 손가락이 그대로 HOLD_MS 멈춰 있을 때 받아들인다
+      if (preview !== next) {
+        clearRest();
+        restTimer.current = setTimeout(() => {
+          restTimer.current = null;
+          if (dragRef.current && movePending.current === mv) jsRef.current.moveDrag(mv.vx, mv.vy, mv.scroll, true);
+        }, HOLD_MS);
+      }
       const h = holdsRef.current;
       if (preview.shelfId && h[d.bookId] && !h[d.bookId].includes(preview.shelfId)) {
         if (TL.on) tl(`ghost ${d.bookId}@${preview.shelfId}`);
@@ -595,15 +625,19 @@ export function HomeScreen() {
         // 다른 줄로 옮겨 갈 수 있게 됐다: 이동 캔버스가 이 책을 미리 그려 둔다(경로 첫 프레임에 첫 그림 비용이 몰리지 않게)
         warmSV.value = d.bookId;
       }
-      if (preview === d.preview) return;
+      if (preview === d.preview) {
+        if (held.hold !== d.hold) dragRef.current = { ...d, hold: held.hold };
+        return;
+      }
       if (TL.on) tl(`preview ${preview.kind}:${preview.shelfId}:${preview.index ?? ''} calc=${(performance.now() - c0).toFixed(1)}`);
       if (PERF_ENABLED) dragJs.current.commitStart = performance.now();
-      updateDrag({ ...d, preview });
+      updateDrag({ ...d, preview, hold: held.hold });
     });
   };
 
   const finishDrag = () => {
     lastDragEnd.current = Date.now();
+    clearRest();
     cancelAnimationFrame(moveFrame.current);
     moveFrame.current = 0;
     autoScroll.setActive(false);
@@ -619,10 +653,10 @@ export function HomeScreen() {
     const d = dragRef.current;
     active.value = false;
     if (!d) return;
-    // 마지막 손가락 위치의 미리보기를 먼저 반영한다(프레임 안에 밀린 이동이 있으면)
+    // 마지막 손가락 위치의 미리보기를 먼저 반영한다(프레임 안에 밀린 이동이 있으면. 넘어짐이 바뀌는 미리보기는 끄는 동안처럼 붙잡는다: 보이는 대로 놓인다)
     const mv = movePending.current;
     let preview = d.preview;
-    if (!cancelled && mv && moveFrame.current) preview = computePreview(d, mv.vx, mv.vy, mv.scroll);
+    if (!cancelled && mv && moveFrame.current) preview = holdPreview(d, computePreview(d, mv.vx, mv.vy, mv.scroll), mv.vx).preview;
     lastDragEnd.current = Date.now();
     if (TL.on) tl(`release ${preview?.kind ?? 'none'}`);
     if (!cancelled && preview?.kind === 'ok') {
@@ -647,6 +681,7 @@ export function HomeScreen() {
     if (!dragRef.current) return;
     active.value = false;
     lastDragEnd.current = Date.now();
+    clearRest();
     cancelAnimationFrame(moveFrame.current);
     moveFrame.current = 0;
     autoScroll.setActive(false);

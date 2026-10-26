@@ -29,6 +29,7 @@ import type { Shared } from '@/ui/book3d/art';
 import { BookNode } from '@/ui/book3d/BookNode';
 import { LIGHT_ON, RENDER, TL, tl, TRANSIT_DEBUG } from '@/ui/perf';
 import { areaItem, bakeAtlas, bookItems, bookKeyImage, NO_ATLAS, NO_BOOK_KEY, type BakeItem } from '@/ui/SceneLight';
+import type { BoxBuf } from '@/domain/light-model';
 import { SHOW } from '@/ui/shelf/shadow-debug';
 import { colors } from '@/ui/theme';
 import { colors as ui, type } from '@/ui/screenTheme';
@@ -36,7 +37,7 @@ import { colors as ui, type } from '@/ui/screenTheme';
 import { rowAffine, type RowGeom, type ShelfMetrics } from './metrics';
 import { useRowPlanner } from './planner';
 import { bodyOf, camWithDy, eyeDyAt, frontOccluders, liveSV, locate, lowered, outsideDist, presentSV, sceneOrder, TRANSIT_ROW, transitLead, transitVisible, warmSV, type Motion, type SceneGeo, type SceneMotion } from './scene';
-import { GlowOf, makeStruct, occludersOf, RowBooks, structKeyOf, useFloorKey, useRestPoses, useRowBoxes, useShadePoses, useWallKey, Z_WALL, type CamSV, type Ghost, type RowStruct } from './ShelfMotion';
+import { GlowOf, makeStruct, occludersOf, RowBooks, structKeyOf, useFadingAtlas, useFloorKey, useRowBoxes, useShadePoses, useTargetPoses, useWallKey, Z_WALL, type CamSV, type Ghost, type RowStruct } from './ShelfMotion';
 import { FRONT_AREA, FRONT_KEY, plankOutlinePath, rowEnv, SHELF_CAST_EXTENT, ShelfBoard, ShelfWall, TOP_AREA, TOP_KEY, UNDER_ENV, wallArea } from './ShelfPlank';
 
 // 줄 아틀라스에서 벽 띠의 자리
@@ -144,13 +145,16 @@ const RowLayers = memo(function RowLayers({ r, st, mo, order, px, upx, books, ca
   const space = r.row.space;
   const top = !upx;
   // 그림자는 모두 줄의 그림자용 자세 모음만 읽는다(바뀐 책이 있을 때만 다시 계산·다시 그리기)
-  const poses = useShadePoses(mo, st.ids, space, r.shelfId);
-  // 빛 계산: 이 줄의 둘레(판 윗면, 위 판 아랫면)와 멈췄을 때의 책 상자 목록. 하늘 가림은 줄의 면 전부를 아틀라스 한 장에 굽는다.
+  // 위 판 아랫면(맨 윗줄은 위에 판이 없다): 판 앞을 지나 다른 줄로 옮겨 가는 책의 그림자는 판이 막는 만큼 뺀다
+  const ceil = top ? Infinity : space;
+  const poses = useShadePoses(mo, st.ids, space, r.shelfId, ceil);
+  // 빛 계산: 이 줄의 둘레(판 윗면, 위 판 아랫면)와 경로 도착 자세의 책 상자 목록. 하늘 가림은 줄의 면 전부를 아틀라스 한 장에 굽는다
+  // (책이 움직이기 시작할 때 도착 자세로 굽고 앞 굽기에서 서서히 바꾼다, useFadingAtlas).
   // 판은 그린 곳에서 끝난다(판 끝 너머는 열린 벽). 판 끝 너머로 보이는 다른 줄은 하늘로 본다(light-model Env)
-  const rest = useRestPoses(poses, mo);
+  const target = useTargetPoses(mo, st.ids);
   const env = useMemo(() => rowEnv(space, top), [space, top]);
   const envSV = useDerivedValue<Env | null>(() => env);
-  const boxes = useRowBoxes(rest, st.ids, books, env);
+  const boxes = useRowBoxes(target, st.ids, books, env);
   const wallY1 = space + SHELF_THICK + (top ? HEAD_DU : 0);
   const wallA = useMemo(() => wallArea(-SHELF_THICK, wallY1), [wallY1]);
   const underA = useMemo(() => wallArea(-SHELF_THICK - SHELF_CAST_EXTENT, -SHELF_THICK), []);
@@ -159,16 +163,15 @@ const RowLayers = memo(function RowLayers({ r, st, mo, order, px, upx, books, ca
   const boardOn = SHOW.shelfBoard && SHOW.shelfShade && LIGHT_ON.plank;
   const booksOn = RENDER.books && LIGHT_ON.face;
   const bakeKey = `atlas:${r.shelfId}`;
-  const atlas = useDerivedValue(() => {
-    const ps = rest.value;
-    // 아직 멈춘 자세가 없다(마운트 직후)
+  const atlas = useFadingAtlas(target, boxes, (ps: Record<string, Book3 | null>, bx: BoxBuf) => {
+    'worklet';
+    // 아직 자세가 없다(마운트 직후)
     if (ids.length && !ids.some((id) => ps[id])) return NO_ATLAS;
     const items: BakeItem[] = [];
-    if (wallOn) items.push(areaItem(WALL_KEY, wallA, env, boxes.value));
+    if (wallOn) items.push(areaItem(WALL_KEY, wallA, env, bx));
     if (wallOn && last) items.push(areaItem(UNDER_KEY, underA, UNDER_ENV, NO_BOXES));
-    if (boardOn) items.push(areaItem(TOP_KEY, TOP_AREA, env, boxes.value), areaItem(FRONT_KEY, FRONT_AREA, env, boxes.value));
+    if (boardOn) items.push(areaItem(TOP_KEY, TOP_AREA, env, bx), areaItem(FRONT_KEY, FRONT_AREA, env, bx));
     if (booksOn) {
-      const bx = boxes.value;
       bx.ids.forEach((id, i) => {
         const b = ps[id];
         if (b) items.push(...bookItems(id, b, env, bx, i));
@@ -177,8 +180,8 @@ const RowLayers = memo(function RowLayers({ r, st, mo, order, px, upx, books, ca
     return bakeAtlas(items, bakeKey);
   });
   // 이 줄 책이 벽·판 윗면에서 창빛을 가리는 몫(벽·판 셰이더가 빛 계산 안에서 쓴다)
-  const wallKey = useWallKey(r.shelfId, poses, st.ids, px, top ? wallY1 : space + SHELF_THICK);
-  const floorKey = useFloorKey(r.shelfId, poses, st.ids, px);
+  const wallKey = useWallKey(r.shelfId, poses, st.ids, px, top ? wallY1 : space + SHELF_THICK, ceil);
+  const floorKey = useFloorKey(r.shelfId, poses, st.ids, px, ceil);
   return (
     <>
       {/* 이 줄 벽: 판 아랫면 높이(판 양 끝 너머로 보인다)부터 위 판 두께 가운데까지(그 위는 위 줄 캔버스), 맨 윗줄은 캔버스 위 끝까지.
@@ -187,7 +190,7 @@ const RowLayers = memo(function RowLayers({ r, st, mo, order, px, upx, books, ca
       {SHOW.shelf ? <ShelfWall cam={cam} px={px} y0={-SHELF_THICK} y1={wallY1} top={top ? wallY1 : space + SHELF_THICK / 2} bottom={-SHELF_THICK} env={env} atlas={atlas} akey={WALL_KEY} zIndex={Z_WALL} keyShadow={wallKey} /> : null}
       {SHOW.shelf && last ? <ShelfWall cam={cam} px={px} y0={-SHELF_THICK - SHELF_CAST_EXTENT} y1={-SHELF_THICK} env={UNDER_ENV} atlas={atlas} akey={UNDER_KEY} zIndex={Z_WALL} /> : null}
       {SHOW.shelfBoard ? <ShelfBoard px={px} cam={cam} zIndex={plankZ} env={env} atlas={atlas} keyShadow={floorKey} /> : null}
-      {RENDER.books ? <RowBooks m={mo} shelfId={r.shelfId} st={st} books={books} glowId={r.glowId} dragId={r.dragId} cam={cam} px={px} space={space} shared={shared} order={order} poses={poses} env={envSV} atlas={atlas} boxes={boxes} debug={debug} /> : null}
+      {RENDER.books ? <RowBooks m={mo} shelfId={r.shelfId} st={st} books={books} glowId={r.glowId} dragId={r.dragId} cam={cam} px={px} space={space} ceil={ceil} shared={shared} order={order} poses={poses} env={envSV} atlas={atlas} boxes={boxes} debug={debug} /> : null}
     </>
   );
 });
@@ -516,9 +519,9 @@ export function HeaderWall({ rows, motions, books, m, width, height, cam }: { ro
 function HeaderWallRow({ row, mo, books, m, width, height, cam }: { row: SceneRowProps; mo: Motion; books: Record<string, Book>; m: ShelfMetrics; width: number; height: number; cam: CamSV }) {
   const space = row.row.space;
   const ids = useMemo(() => row.frames.map((f) => f.bookId), [row.frames]);
-  const rest = useRestPoses(useShadePoses(mo, ids, space, row.shelfId), mo);
+  const target = useTargetPoses(mo, ids);
   const env = useMemo(() => rowEnv(space, true), [space]);
-  const boxes = useRowBoxes(rest, ids, books, env);
+  const boxes = useRowBoxes(target, ids, books, env);
   // 캔버스 위 끝 = 콘텐츠 좌표 −height
   const px = useMemo(() => rowAffine(m, row.row, -height), [m, row.row, height]);
   // 이 캔버스에 보이는 벽 높이(보기 각 범위 전체)
@@ -531,10 +534,10 @@ function HeaderWallRow({ row, mo, books, m, width, height, cam }: { row: SceneRo
     return [Math.min(...ys) - BAKE_MARGIN, Math.max(...ys) + BAKE_MARGIN];
   }, [px, height]);
   const area = useMemo(() => wallArea(y0, y1), [y0, y1]);
-  const atlas = useDerivedValue(() => {
-    const ps = rest.value;
+  const atlas = useFadingAtlas(target, boxes, (ps: Record<string, Book3 | null>, bx: BoxBuf) => {
+    'worklet';
     if (ids.length && !ids.some((id) => ps[id])) return NO_ATLAS;
-    return bakeAtlas([areaItem(WALL_KEY, area, env, boxes.value)], 'atlas:header');
+    return bakeAtlas([areaItem(WALL_KEY, area, env, bx)], 'atlas:header');
   });
   return (
     <Canvas style={{ position: 'absolute', left: 0, top: 0, width, height }} pointerEvents="none">

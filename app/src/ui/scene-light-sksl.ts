@@ -1061,13 +1061,16 @@ function shadeCode(mode: 0 | 1 | 2) {
 }
 
 // 평면(벽·판): 캔버스 px p → 평면 위 점 P = (O + p.x·Ux + p.y·Vy) / (Hw·(p, 1)), 법선은 판 모서리 둥글기까지.
-// 하늘 가림은 구운 그림(tex: 캔버스 px로 읽히게 행렬을 붙인 것), 없으면(liveEnv) 둘레만 그 자리에서
+// 하늘 가림은 구운 그림(tex: 캔버스 px로 읽히게 행렬을 붙인 것), 없으면(liveEnv) 둘레만 그 자리에서.
+// 책이 움직이는 동안은 앞 굽기(tex2, 움직이기 전 자리)에서 새 굽기(tex, 도착 자리)로 mixT만큼 섞는다
 // mode 2(단색 재질 base를 한 번에): 출력 = base × 이득(채널마다 1에서 자름). 곱하기·닷지 두 겹(대상 색 읽기)이 필요 없다
 export function litSource(dodge: boolean | 'direct') {
   const mode = dodge === 'direct' ? 2 : dodge ? 1 : 0;
   return `
   uniform shader tex;
   uniform shader keyTex;    // 책이 이 면에서 창빛 원반을 가리는 몫(알파, 평면 좌표 그림: 그림 px = (P·kU, P·kV) + kO)
+  uniform shader tex2;      // 앞 굽기(움직이기 전 자리의 하늘 가림, tex와 같은 캔버스 px로 읽힌다)
+  uniform float mixT;       // 새 굽기 몫(1이면 tex만)
   ${mode === 2 ? 'uniform float3 base;     // 재질 색(감마 sRGB)' : ''}
   uniform float3 O;
   uniform float3 Ux;
@@ -1111,6 +1114,7 @@ ${shadeCode(mode)}
     float4 ms = matSample(float2(dot(P, Au), dot(P, Av)) + mSeed, fp, mR, mB, mG, mS);
     n = normalize(n - ms.x * Au - ms.y * Av);
     float3 loss = liveEnv > 0.5 ? envLoss(P, tN) : lossDec(float3(tex.eval(p).rgb), skyIrr(tN));
+    if (liveEnv < 0.5 && mixT < 1.0) loss = mix(lossDec(float3(tex2.eval(p).rgb), skyIrr(tN)), loss, mixT);
     half4 g = shade(P, n, tN, normalize(float3(cam4.x, cam4.y, cam4.z - cam4.w) - P), loss, albedo, eref, ms.w, ms.z, float(keyTex.eval(float2(dot(P, kU), dot(P, kV)) + kO).a), sref);
     ${mode === 2 ? 'return half4(half3(min(base * float3(g.rgb), float3(1.0))), 1.0);' : 'return g;'}
   }
@@ -1120,11 +1124,15 @@ ${shadeCode(mode)}
 // 책 한 권(상자)을 화소마다 광선으로: 눈에서 캔버스 화소로 가는 광선이 처음 닿는 면(책등·표지·뒤표지·머리·꼬리·책배)과 그 점,
 // 면의 법선(둥근 모서리·책등 곡면·제본 홈), 종이 단면 면은 속지가 들어간 구멍 안으로 이어 닿는 곳(속지 면 또는 판 안쪽 벽).
 // 하늘 가림은 그 면의 구운 칸(rect, 줄 아틀라스 그림 px, 면 평면 좌표로 읽는다), 없으면 둘레만 그 자리에서.
+// 책이 움직이는 동안은 앞 굽기의 칸(tex2·rect2)에서 새 굽기로 mixT만큼 섞는다(앞 굽기에 없던 면은 새 굽기만).
 // 면 좌표(book-parts lightPanel과 같은 틀): 가로 u, 세로 v(DU), 면 번호 0 책등 1 표지 2 뒤표지 3 머리 4 꼬리 5 책배
 export function bookSource(dodge: boolean) {
   return `
   uniform shader tex;       // 줄 아틀라스(그림 px 그대로 읽는다)
   uniform shader keyTex;    // 이 책 면이 받는 창빛 그림자(다른 책이 창빛 원반을 가리는 몫, 알파): 면마다 칸(kRect)
+  uniform shader tex2;      // 앞 굽기 아틀라스(그림 px 그대로)
+  uniform float4 rect2[6];  // 앞 굽기에서 면마다 칸(rect와 같은 틀)
+  uniform float mixT;       // 새 굽기 몫(1이면 tex만)
   uniform float4 kRect[6];  // 면마다 그림자 칸: (칸 원점 x, y, 배율 px/DU, 있으면 1)
   uniform float4 cam4;      // 눈(x, y, 기준면 z, 거리). 거리 ≤ 0이면 사선 카메라(kx, ky = cam4.xy)
   uniform float3 pxa;       // 캔버스 px = 화면 점 × s + (tx, ty): (s, tx, ty)
@@ -1295,6 +1303,11 @@ ${shadeCode(dodge ? 1 : 0)}
     float4 R = float4(0.0);
     for (int i = 0; i < 6; i++) { if (i == fi) R = rect[i]; }
     float3 loss = R.z > 0.0 ? lossDec(float3(tex.eval(float2(R.x + u / pw * R.z, R.y + v / ph * R.w)).rgb), skyIrr(toRow(nl))) : envLoss(bO + toRow(L), toRow(nl));
+    if (mixT < 1.0) {
+      float4 R2 = float4(0.0);
+      for (int i = 0; i < 6; i++) { if (i == fi) R2 = rect2[i]; }
+      if (R2.z > 0.0) loss = mix(lossDec(float3(tex2.eval(float2(R2.x + u / pw * R2.z, R2.y + v / ph * R2.w)).rgb), skyIrr(toRow(nl))), loss, mixT);
+    }
     float3 view = cam4.w > 0.0 ? normalize(E - P) : normalize(-d);
     float4 K = float4(0.0);
     for (int i = 0; i < 6; i++) { if (i == fi) K = kRect[i]; }

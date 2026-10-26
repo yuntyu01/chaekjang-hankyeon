@@ -60,6 +60,7 @@ const BASE = {
   eref: [1, 1, 1],
   sref: [0, 0, 0],
   liveEnv: 1,
+  mixT: 1,
 };
 // 재질 셰이더 입력(scene-light-sksl matSample): 거칠기·미세 높이·결·결 크기, 무늬 자리 어긋남(같은 재질 면이 똑같아 보이지 않게)
 function matOf(m: MatUniforms, seed: number[]) {
@@ -94,7 +95,8 @@ export const BAKE_TEXEL = 2;
 // 구울 면 하나: 칸 (0, 0) 모서리 O, 칸 한 개의 이동 U·V(줄 공간), 칸 수 w × h, 면 법선 n, 그 면이 받는 빛의 둘레·가리개(self: 상자 목록에서 그 면의 책),
 export type BakeItem = { key: string; O: Vec3; U: Vec3; V: Vec3; w: number; h: number; n: Vec3; env: Env | null; bx: BoxBuf; self: number };
 // 구운 그림과 면마다 칸 (0, 0)의 자리·칸 수. 면 둘레에 한 칸씩 더 구워 둔다(겹선형 읽기가 옆 면으로 새지 않게, 값은 면 가장자리 칸 그대로)
-export type Atlas = { image: SkImage | null; at: Record<string, { x: number; y: number; w: number; h: number }> };
+// prev·mix: 책이 움직이는 동안 앞 굽기(움직이기 전 자리)와 새 굽기의 몫(mix, 0 → 1). 셰이더가 둘을 섞는다
+export type Atlas = { image: SkImage | null; at: Record<string, { x: number; y: number; w: number; h: number }>; prev?: Atlas | null; mix?: number };
 export const NO_ATLAS: Atlas = { image: null, at: {} };
 const GUTTER = 1;
 const ATLAS_W = 512;
@@ -267,10 +269,21 @@ function sampleOf(a: Atlas, key: string, M: (w: number, h: number) => number[]):
   return { image: a.image, matrix: [m[0], m[1], m[2] - m[0] * r.x - m[1] * r.y, m[3], m[4], m[5] - m[3] * r.x - m[4] * r.y, m[6], m[7], m[8] - m[6] * r.x - m[7] * r.y], live: 0 };
 }
 
-// 두 겹(곱하기·닷지)으로 영역(path)을 다시 칠한다. fx: [곱하기, 닷지] 셰이더, sample: 셰이더 자식(구운 그림과 행렬)
-function Relit({ path, fx, uniforms, sample, keyImage }: { path: RO<SkPath> | SkPath; fx: SkRuntimeEffect[]; uniforms: RO<Uniforms>; sample: RO<Sample>; keyImage: RO<SkImage> }) {
+// 앞 굽기 자리(움직이는 동안만, 아니면 빈 자리). 새 굽기 몫 mix: 앞 굽기에 이 면이 없으면 1(새 굽기만)
+function prevSampleOf(a: Atlas, key: string, M: (w: number, h: number) => number[]): { sample: Sample; mix: number } {
+  'worklet';
+  const p = a.prev;
+  if (!p || !((a.mix ?? 1) < 1)) return { sample: NO_SAMPLE, mix: 1 };
+  const s = sampleOf(p, key, M);
+  return { sample: s, mix: s.live ? 1 : a.mix ?? 1 };
+}
+
+// 두 겹(곱하기·닷지)으로 영역(path)을 다시 칠한다. fx: [곱하기, 닷지] 셰이더, sample: 셰이더 자식(구운 그림과 행렬), prev: 앞 굽기
+function Relit({ path, fx, uniforms, sample, prev, keyImage }: { path: RO<SkPath> | SkPath; fx: SkRuntimeEffect[]; uniforms: RO<Uniforms>; sample: RO<Sample>; prev: RO<Sample>; keyImage: RO<SkImage> }) {
   const image = useDerivedValue(() => sample.value.image);
   const matrix = useDerivedValue(() => sample.value.matrix);
+  const image2 = useDerivedValue(() => prev.value.image);
+  const matrix2 = useDerivedValue(() => prev.value.matrix);
   return (
     <>
       {fx.map((e, i) => (
@@ -278,6 +291,7 @@ function Relit({ path, fx, uniforms, sample, keyImage }: { path: RO<SkPath> | Sk
           <Shader source={e} uniforms={uniforms}>
             <ImageShader image={image} tx="clamp" ty="clamp" sampling={LINEAR} matrix={matrix} />
             <ImageShader image={keyImage} tx="decal" ty="decal" sampling={LINEAR} />
+            <ImageShader image={image2} tx="clamp" ty="clamp" sampling={LINEAR} matrix={matrix2} />
           </Shader>
         </Path>
       ))}
@@ -411,6 +425,19 @@ export function BookLight({ dims: d, state, cam, px, outline, albedo, material =
     }
     return out;
   });
+  // 앞 굽기(움직이는 동안): 그림·면 칸·새 굽기 몫
+  const prev = useDerivedValue(() => {
+    const a = atlas ? atlas.value : NO_ATLAS;
+    const p = a.prev;
+    if (!p || !p.image || !((a.mix ?? 1) < 1)) return { image: EMPTY, rects: NO_RECTS, mix: 1 };
+    const out: number[] = [];
+    for (const f of FACES) {
+      const r = p.at[faceKey(id, f)];
+      if (r) out.push(r.x, r.y, r.w, r.h);
+      else out.push(0, 0, 0, 0);
+    }
+    return { image: p.image, rects: out, mix: a.mix ?? 1 };
+  });
   const uniforms = useDerivedValue<Uniforms>(() => {
     const b = state.value;
     const c = cam.value;
@@ -427,6 +454,8 @@ export function BookLight({ dims: d, state, cam, px, outline, albedo, material =
       dims: [d.T, d.H, d.W],
       rig: [bd, sp, sq],
       rect: rects.value,
+      rect2: prev.value.rects,
+      mixT: prev.value.mix,
       keyOn: 1,
       albedo,
       env: envOf(ev),
@@ -437,6 +466,7 @@ export function BookLight({ dims: d, state, cam, px, outline, albedo, material =
   const image = useDerivedValue(() => sample.value.image);
   const matrix = useDerivedValue(() => sample.value.matrix);
   const keyImage = useDerivedValue(() => (keyShadow ? keyShadow.value : NO_BOOK_KEY).image);
+  const image2 = useDerivedValue(() => prev.value.image);
   return (
     <>
       {BOOK.map((e, i) => (
@@ -444,6 +474,7 @@ export function BookLight({ dims: d, state, cam, px, outline, albedo, material =
           <Shader source={e} uniforms={uniforms}>
             <ImageShader image={image} tx="clamp" ty="clamp" sampling={LINEAR} matrix={matrix} />
             <ImageShader image={keyImage} tx="decal" ty="decal" sampling={LINEAR} />
+            <ImageShader image={image2} tx="clamp" ty="clamp" sampling={LINEAR} matrix={IDENTITY} />
           </Shader>
         </Path>
       ))}
@@ -476,6 +507,8 @@ export function BakedPlane({ path, cam, px, plane, env, atlas, akey, matrix, alb
   const m = matOf(MAT_UNIFORMS[mat], seed);
   const keyImage = useDerivedValue(() => (keyShadow ? keyShadow.value : NO_PLANE_KEY).image);
   const sample = useDerivedValue(() => (atlas ? sampleOf(atlas.value, akey, (w, h) => matrix(cam.value, w, h)) : NO_SAMPLE));
+  const prevAt = useDerivedValue(() => (atlas ? prevSampleOf(atlas.value, akey, (w, h) => matrix(cam.value, w, h)) : { sample: NO_SAMPLE, mix: 1 }));
+  const prev = useDerivedValue(() => prevAt.value.sample);
   const uniforms = useDerivedValue<Uniforms>(() => {
     const c = cam.value;
     return {
@@ -490,22 +523,26 @@ export function BakedPlane({ path, cam, px, plane, env, atlas, akey, matrix, alb
       eref,
       sref,
       liveEnv: sample.value.live,
+      mixT: prevAt.value.mix,
       ...keyMapOf(keyShadow ? keyShadow.value : NO_PLANE_KEY),
       ...m,
       ...(base ? { base } : null),
     };
   });
-  if (base) return <Direct path={path} uniforms={uniforms} sample={sample} keyImage={keyImage} />;
-  return <Relit path={path} fx={LIT} uniforms={uniforms} sample={sample} keyImage={keyImage} />;
+  if (base) return <Direct path={path} uniforms={uniforms} sample={sample} prev={prev} keyImage={keyImage} />;
+  return <Relit path={path} fx={LIT} uniforms={uniforms} sample={sample} prev={prev} keyImage={keyImage} />;
 }
-function Direct({ path, uniforms, sample, keyImage }: { path: RO<SkPath> | SkPath; uniforms: RO<Uniforms>; sample: RO<Sample>; keyImage: RO<SkImage> }) {
+function Direct({ path, uniforms, sample, prev, keyImage }: { path: RO<SkPath> | SkPath; uniforms: RO<Uniforms>; sample: RO<Sample>; prev: RO<Sample>; keyImage: RO<SkImage> }) {
   const image = useDerivedValue(() => sample.value.image);
   const matrix = useDerivedValue(() => sample.value.matrix);
+  const image2 = useDerivedValue(() => prev.value.image);
+  const matrix2 = useDerivedValue(() => prev.value.matrix);
   return (
     <Path path={path}>
       <Shader source={LIT_DIRECT} uniforms={uniforms}>
         <ImageShader image={image} tx="clamp" ty="clamp" sampling={LINEAR} matrix={matrix} />
         <ImageShader image={keyImage} tx="decal" ty="decal" sampling={LINEAR} />
+        <ImageShader image={image2} tx="clamp" ty="clamp" sampling={LINEAR} matrix={matrix2} />
       </Shader>
     </Path>
   );

@@ -109,7 +109,10 @@ const CAM4 = [183, 300, 0, 4918];
 const uniOf = (m: MatUniforms, seed = [0, 0]) => ({ mR: m.mRough, mB: m.mBump, mG: m.mGrain, mS: m.mGsize, mSeed: seed });
 const PLAIN = uniOf(MAT_UNIFORMS.coated);
 // kx: 책이 창빛을 가리는 몫(그림자 그림 자리를 고른 알파로)
-function shaderLit(P: Vec3, n: Vec3, env: Env | null, dodge: boolean | 'direct', albedo: C3, base?: number[], mat = PLAIN, k = 1e-3, kx = 0) {
+// bake: 구운 하늘 가림 그림 값(새 굽기 now, 앞 굽기 was, 새 굽기 몫 mixT). 없으면 둘레만 그 자리에서(liveEnv)
+type Bake = { now: number[]; was: number[]; mixT: number };
+const solid = (g: number[]) => CK.Shader.MakeColor(CK.Color4f(g[0], g[1], g[2], 1), CK.ColorSpace.SRGB);
+function shaderLit(P: Vec3, n: Vec3, env: Env | null, dodge: boolean | 'direct', albedo: C3, base?: number[], mat = PLAIN, k = 1e-3, kx = 0, bake?: Bake) {
   const { U, V } = axes(n);
   return draw(
     litSource(dodge),
@@ -131,11 +134,12 @@ function shaderLit(P: Vec3, n: Vec3, env: Env | null, dodge: boolean | 'direct',
       keyOn: 1,
       albedo,
       eref: EREF.wall,
-      liveEnv: 1,
+      liveEnv: bake ? 0 : 1,
+      mixT: bake ? bake.mixT : 1,
       env: env ? [1, env.floor, env.ceil] : [0, 0, 0],
     },
-    true,
-    [CK.Shader.MakeColor(CK.Color4f(0, 0, 0, kx), CK.ColorSpace.SRGB)],
+    bake ? solid(bake.now) : true,
+    [CK.Shader.MakeColor(CK.Color4f(0, 0, 0, kx), CK.ColorSpace.SRGB), bake ? solid(bake.was) : black()],
   );
 }
 
@@ -318,6 +322,25 @@ describe('그리는 셰이더 = JS 빛(lightWithLoss, 둘레 하늘 가림)', ()
       expect(maxDiff(shaderLit(P, n, row, 'direct', albedo, base, PLAIN, 1e-3, kx), direct)).toBeLessThan(2 / 255);
     }
   });
+
+  it('책이 움직이는 동안 앞 굽기(tex2)와 새 굽기(tex)를 하늘 가림 값으로 mixT만큼 섞는다', () => {
+    const P = { x: 200, y: 60, z: SHELF_DEPTH };
+    const n = { x: 0, y: 0, z: -1 };
+    const albedo = linearOf('#FCF8F1');
+    const sky = skyIrradiance(n);
+    const enc = (f: number) => sky.map((v) => lossEncode(v * f, v));
+    const was = enc(0.6);
+    const now = enc(0.95);
+    for (const dodge of [false, true, 'direct'] as const) {
+      const base = dodge === 'direct' ? [0.99, 0.97, 0.945] : undefined;
+      const at = (bake: Bake) => shaderLit(P, n, row, dodge, albedo, base, PLAIN, 1e-3, 0, bake);
+      // 섞은 값 = 두 가림의 가운데를 구운 그림
+      expect(maxDiff(at({ now, was, mixT: 0.5 }), at({ now: enc(0.775), was: now, mixT: 1 }))).toBeLessThan(1.5 / 255);
+      // 끝(mixT 1)은 새 굽기만, 처음(0)은 앞 굽기만
+      expect(maxDiff(at({ now, was, mixT: 1 }), at({ now, was: now, mixT: 1 }))).toBeLessThan(0.5 / 255);
+      expect(maxDiff(at({ now, was, mixT: 0 }), at({ now: was, was: now, mixT: 1 }))).toBeLessThan(0.5 / 255);
+    }
+  });
 });
 
 // 재질 무늬(결·미세 높이·거칠기)가 셰이더와 JS 쌍둥이(surface-pattern matSample)에서 같은지: 무늬가 보이는 크기(가까이)와
@@ -380,11 +403,11 @@ describe('책 광선 셰이더 = 광선 기하 + JS 빛', () => {
       {
         kRect: kx > 0 ? [0, 0, 1, 1, ...new Array(20).fill(0)] : new Array(24).fill(0),
         cam4: CAM4, pxa: pxaOf(Q), bO: [bO.x, bO.y, bO.z], bX: [1, 0, 0], bY: [0, 1, 0], bZ: [0, 0, 1],
-        dims: [d.T, d.H, d.W], rig: [bd, sp, sq], rect: new Array(24).fill(0), keyOn: 1, albedo: tone,
+        dims: [d.T, d.H, d.W], rig: [bd, sp, sq], rect: new Array(24).fill(0), rect2: new Array(24).fill(0), mixT: 1, keyOn: 1, albedo: tone,
         env: [1, row.floor, row.ceil], erefB: EREF.book, srefB: [0, 0, 0], srefP: [0, 0, 0], ...PLAIN, pR: PLAIN.mR, pB: PLAIN.mB, pG: PLAIN.mG, pS: PLAIN.mS,
       },
       true,
-      [CK.Shader.MakeColor(CK.Color4f(0, 0, 0, kx), CK.ColorSpace.SRGB)],
+      [CK.Shader.MakeColor(CK.Color4f(0, 0, 0, kx), CK.ColorSpace.SRGB), black()],
     );
   // JS 기하: 면 평면 점 F(면 법선 nf)에서 광선을 이어 닿는 곳의 점·법선·반사율
   function expected(F: Vec3, nf: Vec3, hit: { P: Vec3; n: Vec3; a: C3 }, dodge: boolean, kx = 0): C3 {

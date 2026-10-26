@@ -8,6 +8,7 @@
 import { makeMutable, type SharedValue } from 'react-native-reanimated';
 
 import { corners, depthKey, drawOrder, frontOf, toWorld, type Book3 } from '@/domain/book3';
+import { castsIn } from '@/domain/cast-shadow';
 import { hull } from '@/domain/box';
 import { project, toPx, type Affine, type Cam, type Point } from '@/domain/camera';
 import { SHELF, SHELF_DEPTH, SHELF_FRONT, SHELF_THICK, SHELF_X0, SHELF_X1 } from '@/domain/geometry';
@@ -153,10 +154,7 @@ export function outsideRow(b: Book3, space: number) {
   return lo < -1 || hi > space + 1;
 }
 
-// 줄 공간 밖으로 이만큼(DU) 넘게 나간 책은 그 줄에 그림자를 드리우지 않는다(그 안에서는 거리에 따라 옅어진다)
-export const OUT_SHADE_MAX = 40;
-
-// 제 줄 공간 밖으로 벗어난 거리(DU, 안이면 0). 옮겨 가는 동안 그 책의 줄 그림자를 거리에 따라 옅게 하는 데 쓴다.
+// 제 줄 공간 밖으로 벗어난 거리(DU, 안이면 0). 이동 캔버스의 책이 받는 그림자를 가장 가까운 줄로 계산하는 데 쓴다.
 export function outsideDist(b: Book3, space: number) {
   'worklet';
   let lo = Infinity;
@@ -185,13 +183,14 @@ export function drawnOf(m: Motion, id: string, space: number, withAway?: boolean
   return outsideRow(b, space) ? null : b;
 }
 
-// 이 줄 그림자에 쓰는 자세(shadeOf): 줄 공간 밖으로 OUT_SHADE_MAX 넘게 떨어진 책은 그림자가 없으므로 null로 멈춘다
-export function shadeIn(m: Motion, id: string, space: number): Book3 | null {
+// 이 줄 그림자에 쓰는 자세(shadeOf): 판에 다 가려 이 줄에 그림자가 없는 책(판 윗면 아래, 또는 빛줄기가 다 위 판에 막히는 높이)은 null로 멈춘다.
+// ceil: 위 판 아랫면(위에 줄이 없으면 Infinity). 그림자는 판에 가린 만큼 잘려(cast-shadow bookCast·underCeil) 이 경계에서 0이라 튀지 않는다
+export function shadeIn(m: Motion, id: string, space: number, ceil = space): Book3 | null {
   'worklet';
   const tr = m.tracks.value[id];
   if (tr && !tr.moving && tr.rest) return tr.rest;
   const b = shadeOf(m, id);
-  return b && outsideDist(b, space) <= OUT_SHADE_MAX ? b : null;
+  return b && castsIn(b, ceil) ? b : null;
 }
 export type Poses = Record<string, Book3 | null>;
 
