@@ -423,6 +423,20 @@ export function isHorizontalItem(item: ShelfItem, layout: ShelfLayout) {
   return item.bookIds.every((id) => placementOf(layout, id)?.pose === 'horizontal');
 }
 
+// 자리를 옮기거나 다시 매겨도 지키는 자세 값(그 자세에서만 뜻이 있는 것만). normalize·insertItem이 함께 쓴다:
+// 한 곳에서 빠뜨리면 옮길 때 자세가 바뀐다(예: 눕힌 책의 머리 방향 flip이 빠지면 들어 올린 채 180° 구른다)
+function keptPose(p: Pick<BookPlacement, 'pose' | 'depth' | 'spin' | 'pitch' | 'wallLean' | 'flip'>, stacked: boolean): Partial<BookPlacement> {
+  const out: Partial<BookPlacement> = {};
+  if (p.depth !== undefined) out.depth = p.depth;
+  if (p.spin && (p.pose === 'horizontal' || p.pose === 'front')) out.spin = p.spin;
+  if (p.pose === 'horizontal' && p.flip) out.flip = true;
+  if (p.pose === 'front' && !stacked) {
+    if (p.pitch) out.pitch = p.pitch;
+    else if (p.wallLean && p.pitch === undefined) out.wallLean = true; // 예전 저장본
+  }
+  return out;
+}
+
 // 선반별 order, 그룹의 stackOrder와 stackId를 다시 매긴다. 한 권만 남은 그룹은 풀어준다.
 export function normalize(layout: ShelfLayout): ShelfLayout {
   const shelves = sortedShelves(layout).map((s, i) => ({ id: s.id, order: i }));
@@ -447,14 +461,7 @@ export function normalize(layout: ShelfLayout): ShelfLayout {
         const src = placementOf(layout, item.bookIds[0])!;
         if (src.pos !== undefined) next.pos = src.pos;
         if (p.lean && p.pose === 'spine' && p.tilt !== 0) next.lean = p.lean;
-        // 선반 공간 깊이·수직축 회전(눕힌 책만)은 그대로 보존
-        if (p.depth !== undefined) next.depth = p.depth;
-        if (p.spin && (p.pose === 'horizontal' || p.pose === 'front')) next.spin = p.spin;
-        if (p.flip && p.pose === 'horizontal') next.flip = true;
-        if (p.pose === 'front' && !stackId) {
-          if (p.pitch) next.pitch = p.pitch;
-          else if (p.wallLean && p.pitch === undefined) next.wallLean = true; // 예전 저장본
-        }
+        Object.assign(next, keptPose(p, !!stackId));
         if (stackId && stackOrder > 0) {
           if (p.stackDx) next.stackDx = p.stackDx;
           if (p.stackDz) next.stackDz = p.stackDz;
@@ -503,13 +510,8 @@ function insertItem(
   const newItem: ShelfItem = { key: placement.bookId, shelfId, order: at, bookIds: [placement.bookId], stacked: false };
   items.splice(at, 0, newItem);
   const placements = withOrders(layout, shelfId, items);
-  // 깊이·수직축 회전은 옮겨도 그대로(자리만 바뀐다)
-  const kept: BookPlacement = { bookId: placement.bookId, pose: placement.pose, tilt: placement.tilt, shelfId, order: at };
-  if (placement.depth !== undefined) kept.depth = placement.depth;
-  if (placement.spin && (placement.pose === 'horizontal' || placement.pose === 'front')) kept.spin = placement.spin;
-  if (placement.pose === 'front' && placement.pitch) kept.pitch = placement.pitch;
-  if (placement.pose === 'horizontal' && placement.flip) kept.flip = true;
-  placements.push(kept);
+  // 깊이·수직축 회전·젖힘·머리 방향은 옮겨도 그대로(자리만 바뀐다)
+  placements.push({ bookId: placement.bookId, pose: placement.pose, tilt: placement.tilt, shelfId, order: at, ...keptPose(placement, false) });
   const next = normalize({ ...layout, placements });
   if (!books) return next;
   // 다른 책은 제자리, 새 책은 x(없으면 앞 책 바로 뒤)에 두고 겹치면 민다.
