@@ -192,13 +192,22 @@ describe('2D 핵심으로 나눈 뒤에도 세운 책 계산은 그대로', () =
 
   it('접촉·미는 힘·바닥 반력·판정이 예전 계산과 같다(받침 높낮이·양쪽·밖에서 오는 힘)', () => {
     let n = 0;
+    let facing = 0;
     for (const h of [40, 60, 120, 200])
       for (const deg of [-40, -25, -15, -8, 8, 15, 25, 40])
         for (const x of [45, 60, 90]) {
           const leaner = spine('L', x, 30, 150, 100, deg);
           const support = deg < 0 ? spine('S', 0, 40, h) : spine('S', x + 30 + 150 * Math.sin(rad(Math.abs(deg))) - 10, 40, h);
           const c = contactOf(leaner, support);
-          expectNear(c, legacyContactOf(leaner, support));
+          const old = legacyContactOf(leaner, support);
+          // 예전 계산은 윗모서리가 기댄 책을 마주 보지 않는 면(받침 윗면)에 더 가까우면 그 면을 골랐다(받침에 파고든 이 배치처럼).
+          // 기우는 쪽으로 돌며 닿는 윗모서리는 마주 보는 면에 닿으므로 이제 그 면을 고른다(2026-10-27 물리 5번)
+          if (old.n.x * Math.sign(deg) > -0.3) {
+            expect(c.n.x * Math.sign(deg)).toBeLessThan(-0.3);
+            facing++;
+            continue;
+          }
+          expectNear(c, old);
           const push: Force[] = [{ f: { x: -0.2 * 30 * 150 * 100 * Math.sign(deg), y: -500 }, at: { x: x + 10, y: 120 } }];
           for (const ext of [[], push]) {
             const st = leanStatics(leaner, c, ext);
@@ -207,6 +216,18 @@ describe('2D 핵심으로 나눈 뒤에도 세운 책 계산은 그대로', () =
           }
         }
     expect(n).toBeGreaterThan(10); // 버티는 경우와 아닌 경우가 섞여 있다
+    expect(facing).toBeLessThan(12);
+  });
+
+  it('받침과 키가 같고 아주 조금 기울면 윗모서리는 받침 윗면이 아니라 마주 보는 옆면에 닿는다', () => {
+    // 받침 S가 왼쪽 세운 책에 밀려 0.8° 기울어 오른쪽 N(같은 키)에 닿았다: 윗모서리는 N 윗면에서 0.02, 옆면에서 0.09 떨어져 있다
+    const S = spine('S', 90, 16, 150, 100, 0.8);
+    const N = spine('N', 108, 40, 150);
+    const c = contactOf(S, N);
+    expect(c.n.x).toBeLessThan(-0.99);
+    // 왼쪽 책이 미는 힘을 N이 받아 바닥이 들어 올리지 않는다
+    const st = leanStatics(S, c, [{ f: { x: 52402, y: -14688 }, at: { x: 92.1, y: 150.2 } }]);
+    expect(st.floor.y).toBeGreaterThan(0);
   });
 });
 

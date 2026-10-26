@@ -128,13 +128,19 @@ export type Leaner2 = { pivot: Vec2; top: Vec2; dir: number; g: Vec2; m: number 
 // 기댄 책과 받침 다각형(볼록, 반시계)의 접촉(마찰 0): 기댄 책 윗모서리가 받침 면에 닿거나(받침이 높을 때), 받침 꼭짓점이 기댄 책 옆면에 닿는다(받침이 낮을 때).
 export function contact2(l: Pick<Leaner2, 'pivot' | 'top' | 'dir'>, S: Vec2[]): Contact {
   const { pivot: P, top, dir } = l;
-  // 후보 1: 윗모서리 → 받침 변
+  // 후보 1: 윗모서리 → 받침 변. 기우는 쪽으로 돌며 닿는 윗모서리는 기댄 책을 마주 보는 면(바깥 법선이 기댄 책 쪽)에 닿는다:
+  // 받침과 키가 거의 같고 아주 조금 기울면 윗모서리가 받침 윗면에 더 가까워 윗면(법선이 위)을 고르고, 그 접촉 힘이 책을 들어 올리는 것으로 풀렸다
   let best: { d: number; at: Vec2; n: Vec2 } = { d: Infinity, at: top, n: { x: -dir, y: 0 } };
-  for (let i = 0; i < S.length; i++) {
-    const a = S[i];
-    const b = S[(i + 1) % S.length];
-    const { d } = closestOnSegment(top, a, b);
-    if (d < best.d) best = { d, at: top, n: outward(a, b) };
+  for (const facing of [true, false]) {
+    for (let i = 0; i < S.length; i++) {
+      const a = S[i];
+      const b = S[(i + 1) % S.length];
+      const n = outward(a, b);
+      if (facing && n.x * dir > -0.3) continue;
+      const { d } = closestOnSegment(top, a, b);
+      if (d < best.d) best = { d, at: top, n };
+    }
+    if (best.d < Infinity) break;
   }
   // 후보 2: 받침 꼭짓점 → 기댄 책의 기우는 쪽 옆면(축 → 윗모서리). 미는 방향은 그 면의 안쪽 법선
   const side = { a: P, b: top };

@@ -169,7 +169,18 @@ function solveLeans(frames: BookFrame[], layout: ShelfLayout, first: -1 | 1) {
       if (!c.found || c.angle === 0 || !ok(c.angle)) continue;
       // 마주 기댄 접촉에 닿았는지(다른 책이나 선반 끝에서 멈춘 것이 아닌지)
       if (!collide({ ...ua, angle: c.angle + 0.6 }, { ...ub, angle: -(c.angle + 0.6) }, CONTACT)) continue;
-      if (c.angle <= tipAngle(a.box.size.w, a.box.size.h) || c.angle <= tipAngle(b.box.size.w, b.box.size.h)) continue;
+      // 만나는 각이 넘어짐 한계 안인 책은 무게중심이 발 위라 혼자 다시 선다: 세우고, 상대는 한 권씩 풀 때 선 책에 기댄다
+      // (그냥 한 권씩 풀면 이 책에 기댄 상대를 장애물에서 빼 바닥까지 넘어지고, 그 상대가 다른 책을 밀어 줄줄이 무너졌다)
+      const sa = c.angle <= tipAngle(a.box.size.w, a.box.size.h);
+      const sb = c.angle <= tipAngle(b.box.size.w, b.box.size.h);
+      if (sa || sb) {
+        for (const [f, st] of [[a, sa], [b, sb]] as const) {
+          if (!st) continue;
+          standing.add(f.bookId);
+          set(f, { angle: 0, failed: true });
+        }
+        continue;
+      }
       set(a, { angle: c.angle, on: b.bookId });
       set(b, { angle: -c.angle, on: a.bookId });
       paired.add(a.bookId).add(b.bookId);
@@ -249,7 +260,8 @@ function solveLeans(frames: BookFrame[], layout: ShelfLayout, first: -1 | 1) {
 }
 
 // 한 권이 쉬는 자세: 저장된 기대기·옆 상자로 처음 닿는 각과 그 각에서 버티는지(넘어짐·미끄러짐 한계, 힘의 사슬은 solveLeans)
-// falling: 받침을 잃었거나 밀려 넘어가는 책(90°까지 찾고, 닿을 곳이 없으면 바닥에 눕는다)
+// falling: 기댄 책들이 미는 힘에 밀려 넘어가는 받침 책(90°까지 찾고, 닿을 곳이 없으면 바닥에 눕는다). 미는 힘이 붙잡고 있으므로
+// 넘어짐 한계보다 작은 각에서 이웃에 닿아도 그 각으로 기댄다(예전에는 다시 세워, 미는 힘에 넘어가야 할 받침이 똑바로 서 있었다)
 // 저장된 기대기의 slide(발이 미끄러진 거리)는 그 자리에서 다시 본다. 옆 책이 파고들어 다시 찾을 때는 서 있던 자리에서
 function restOf(f: BookFrame, others: Placed[], stored?: { angle: number; on: string; slide?: number }, falling = false): Rest {
   const dir = Math.sign(f.tilt) as -1 | 1;
@@ -260,12 +272,12 @@ function restOf(f: BookFrame, others: Placed[], stored?: { angle: number; on: st
   const H = base.size.h;
   // 미끄러짐은 여기서 보지 않는다: 평평한 받침 공식(slipAngle)은 낮은 받침의 모서리에 닿을 때 맞지 않아(버틸 책이 눕는다)
   // 실제 접촉점의 힘 평형(solveLeans의 leanStatics)이 정한다
-  const holds = (c: LeanContact, at = 0): Rest => {
+  const holds = (c: LeanContact, at = 0, pushed = false): Rest => {
     if (c.outside || !c.found) return { angle: 0, fell: true };
-    if (c.angle <= tipAngle(T, H)) return { angle: 0, failed: true };
+    if (c.angle <= (pushed ? 0.01 : tipAngle(T, H))) return { angle: 0, failed: true };
     return { angle: dir * c.angle, on: c.on, slide: at || undefined };
   };
-  if (falling) return holds(leanContact(up, dir, others, PLANK_BOUNDS, 0, 90));
+  if (falling) return holds(leanContact(up, dir, others, PLANK_BOUNDS, 0, 90), 0, true);
   if (stored) {
     const q = { ...base, angle: stored.angle };
     if (!others.some((o) => collide(q, o)) && inside(frontPoly(q))) {

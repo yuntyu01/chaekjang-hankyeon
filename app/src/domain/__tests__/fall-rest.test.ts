@@ -156,3 +156,24 @@ describe('발이 미끄러지다 뒤 책에 막힌 기대기(lean.slide)', () =>
     expect(withLeans(after, books).placements).toEqual(after.placements);
   });
 });
+
+describe('기댄 책이 미는 힘에 넘어가는 받침', () => {
+  // 키 큰 L이 가는 S에 기대면 S는 미는 힘에 오른쪽으로 넘어가다 2DU 옆 N에 닿는다. 그 각(약 0.8°)은 S 혼자서는 다시 서는 각이지만
+  // 미는 힘이 붙잡고 있어 N에 기대 선다(예전에는 다시 세워, 넘어가야 할 받침이 똑바로 선 채 L을 받쳤다)
+  const L = book('L', 190, 30);
+  const S = book('S', 150, 16);
+  const N = book('N', 150, 40);
+  const books: BookMap = { L, S, N };
+  it('받침이 이웃에 작게 기대 미는 힘을 넘긴다', () => {
+    const l = withLeans(layoutOf(place('L', 0, 20, 7), place('S', 1, 90), place('N', 2, 108)), books);
+    const fs = computeShelf(l, books, 's').frames;
+    const fl = fs.find((f) => f.bookId === 'L')!;
+    const sf = fs.find((f) => f.bookId === 'S')!;
+    expect(fl.leanOn).toBe('S');
+    expect(sf.leanOn).toBe('N');
+    expect(sf.box.angle).toBeGreaterThan(0.3);
+    expect(sf.box.angle).toBeLessThan(2);
+    expect(l.drawer).toEqual([]);
+    expect(withLeans(l, books).placements).toEqual(l.placements);
+  });
+});
