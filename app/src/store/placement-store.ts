@@ -24,13 +24,14 @@ type State = {
   loaded: boolean;
   notice: number | null; // 복원하면서 선반에 들어가지 않아 서랍으로 옮긴 책 수(한 번 알리고 지운다)
   fell: number | null; // 마지막 확정에서 받침을 잃고 선반에서 떨어져 서랍에 들어간 책 수(domain/statics, 한 번 알리고 지운다)
+  fellIds: string[]; // 그 책들(홈이 떨어지는 모습을 그린다. 다음 확정까지 남는다)
   demo: boolean; // 측정 번들 전용 예시 책장(메모리에만, 저장하지 않는다. 사용자 데이터와 섞지 않는다)
 };
 
 // 첫 실행: 빈 선반 세 칸
 export const EMPTY_LAYOUT: ShelfLayout = ensureShelves({ version: 2, shelves: [], placements: [], drawer: [] });
 
-let state: State = { books: {}, layout: EMPTY_LAYOUT, undo: null, save: 'idle', loaded: false, notice: null, fell: null, demo: false };
+let state: State = { books: {}, layout: EMPTY_LAYOUT, undo: null, save: 'idle', loaded: false, notice: null, fell: null, fellIds: [], demo: false };
 let userSnapshot: { books: BookMap; layout: ShelfLayout } | null = null;
 export type DemoKind = 'sample' | 'mockup';
 let demoKind: DemoKind = 'sample';
@@ -203,8 +204,8 @@ export const placementStore = {
     next = withLeans(ensureShelves(next), state.books);
     const errors = validate(next, state.books, Object.keys(state.books));
     if (errors.length) return false;
-    const fell = next.drawer.filter((id) => !inDrawer.has(id)).length;
-    set({ undo: state.layout, layout: next, fell: fell || null });
+    const fellIds = next.drawer.filter((id) => !inDrawer.has(id));
+    set({ undo: state.layout, layout: next, fell: fellIds.length || null, fellIds });
     void persist(next);
     return true;
   },

@@ -381,6 +381,8 @@ export function pickAt(list: SceneMotion[], geo: SceneGeo, cam: Cam, x: number, 
     const tracks = m.tracks.value;
     const t = m.t.value;
     for (const id in tracks) {
+      // 떨어져 사라지는 책(서랍으로 간 책)은 고를 수 없다
+      if (tracks[id].fade) continue;
       let b = bookAt(tracks[id], t);
       let c = cam;
       let a = aff;

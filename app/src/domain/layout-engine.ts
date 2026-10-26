@@ -18,6 +18,8 @@ import {
   MAX_STACK,
   SHELF,
   SHELF_USABLE_WIDTH,
+  SHELF_X0,
+  SHELF_X1,
   singleFootprint,
   HOME_SHELF_COUNT,
 } from './geometry';
@@ -320,20 +322,20 @@ function legacyXs(items: ShelfItem[], layout: ShelfLayout, books: BookMap, packe
 }
 
 // 원하는 위치를 최대한 지키며 겹치지 않게 민다(윤곽대로 붙인 간격이 최소 간격). 오른쪽 끝을 넘으면 왼쪽으로 되민다.
-// 원하는 위치가 없는 자리는 앞 자리 바로 뒤에 붙는다.
+// 원하는 위치가 없는 자리는 앞 자리 바로 뒤에 붙는다. 판 끝 밖으로 걸쳐 누운 책(overhang)은 무게중심이 판 위인 데까지 나갈 수 있다.
 function resolveXs(items: ShelfItem[], layout: ShelfLayout, packed: { x: number; width: number; sep: number[] }[], want: (i: number) => number | undefined) {
-  const { lo, hi } = bounds(items, layout);
+  const lim = items.map((it, i) => itemBounds(it, layout, packed[i].width));
   const xs: number[] = [];
   items.forEach((_, i) => {
     const w = want(i);
-    let min = lo;
+    let min = lim[i].lo;
     for (let j = 0; j < i; j++) if (packed[i].sep[j] > -Infinity) min = Math.max(min, xs[j] + packed[i].sep[j]);
-    xs.push(w === undefined ? (i === 0 ? lo : Math.max(min, xs[i - 1] + (packed[i].sep[i - 1] > -Infinity ? packed[i].sep[i - 1] : 0))) : Math.max(w, min));
+    xs.push(w === undefined ? (i === 0 ? lim[i].lo : Math.max(min, xs[i - 1] + (packed[i].sep[i - 1] > -Infinity ? packed[i].sep[i - 1] : 0))) : Math.max(w, min));
   });
   // 오른쪽 끝을 넘는 책이 있으면 왼쪽으로 되민다(깊이가 겹치는 앞 책도 함께)
   const n = items.length;
   for (let i = n - 1; i >= 0; i--) {
-    let max = hi - packed[i].width;
+    let max = lim[i].hi - packed[i].width;
     for (let k = i + 1; k < n; k++) if (packed[k].sep[i] > -Infinity) max = Math.min(max, xs[k] - packed[k].sep[i]);
     xs[i] = Math.min(xs[i], max);
   }
@@ -348,9 +350,19 @@ export function itemPositions(items: ShelfItem[], layout: ShelfLayout, books: Bo
   return packed.map(({ item, width }, i) => ({ item, x: xs[i], width }));
 }
 
-// 선반 좌우 경계(책 줄의 사용 폭). 모든 자세 공통: 돌출 허용 없음.
+// 선반 좌우 경계(책 줄의 사용 폭). 모든 자세 공통: 돌출 허용 없음(넘어져 판 끝에 걸쳐 누운 책만 itemBounds).
 function bounds(_items: ShelfItem[], _layout: ShelfLayout) {
   return { lo: SHELF.innerLeft, hi: SHELF.innerLeft + SHELF_USABLE_WIDTH };
+}
+
+// 판 끝 밖으로 걸쳐 누운 책은 무게중심이 판 끝(SHELF_X0·SHELF_X1)에서 이만큼(DU, 약 6mm) 안에 있어야 머문다(그 밖이면 판에서 떨어진다)
+export const OVERHANG_MARGIN = 5;
+
+// 한 항목(폭 width)의 좌우 경계: 보통은 사용 폭, 판 끝에 걸쳐 누운 책(overhang)은 무게중심이 판 위인 데까지
+function itemBounds(item: ShelfItem, layout: ShelfLayout, width: number) {
+  const b = bounds([item], layout);
+  if (item.stacked || !placementOf(layout, item.bookIds[0])?.overhang) return b;
+  return { lo: Math.min(b.lo, SHELF_X0 + OVERHANG_MARGIN - width / 2), hi: Math.max(b.hi, SHELF_X1 - OVERHANG_MARGIN + width / 2) };
 }
 
 // 오른쪽 끝(점유 끝)
@@ -461,6 +473,7 @@ export function normalize(layout: ShelfLayout): ShelfLayout {
         const src = placementOf(layout, item.bookIds[0])!;
         if (src.pos !== undefined) next.pos = src.pos;
         if (p.lean && p.pose === 'spine' && p.tilt !== 0) next.lean = p.lean;
+        if (p.overhang && p.pose === 'horizontal' && !stackId) next.overhang = true;
         Object.assign(next, keptPose(p, !!stackId));
         if (stackId && stackOrder > 0) {
           if (p.stackDx) next.stackDx = p.stackDx;
@@ -530,8 +543,8 @@ export function checkSpace(layout: ShelfLayout, books: BookMap, only?: string): 
     const items = shelfItems(layout, shelf.id);
     if (!items.length) continue;
     const pos = itemPositions(items, layout, books);
-    const { lo, hi } = bounds(items, layout);
     for (const p of pos) {
+      const { lo, hi } = itemBounds(p.item, layout, p.width);
       // 받침부터: 큰 책을 작은 책 위에 올린 경우는 자리 부족이 아니라 받침 문제로 알린다
       if (p.item.stacked) {
         if (!stackSupported(stackBoxes(stackMembers(p.item, layout, books), p.x))) return 'unsupported';

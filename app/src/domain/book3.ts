@@ -12,7 +12,8 @@ import type { Pose } from './types';
 
 export type { Cam, Vec3 };
 export type Dims = { T: number; H: number; W: number };
-export type Book3 = { id: string; dims: Dims; roll: number; yaw: number; t: Vec3; spin?: number; pitch?: number };
+// alpha: 그리는 진하기(0~1). 받침을 잃고 선반에서 떨어져 서랍으로 가며 사라지는 책(transition dropTrack)만. 없으면 1
+export type Book3 = { id: string; dims: Dims; roll: number; yaw: number; t: Vec3; spin?: number; pitch?: number; alpha?: number };
 
 // ④ pitch: 선반 좌우축(월드 x)으로 뒤로 젖히기(+ = 윗부분이 벽 쪽으로). 표지 전시 책이 벽에 기댈 때. spin보다 먼저.
 export function rot(roll: number, yaw: number, v: Vec3, spin = 0, pitch = 0): Vec3 {

@@ -35,7 +35,7 @@ import { colors } from '@/ui/theme';
 import { colors as ui, type } from '@/ui/screenTheme';
 
 import { rowAffine, type RowGeom, type ShelfMetrics } from './metrics';
-import { useRowPlanner } from './planner';
+import { useRowPlanner, type Drops } from './planner';
 import { bodyOf, camWithDy, eyeDyAt, frontOccluders, liveSV, locate, lowered, outsideDist, presentSV, sceneOrder, TRANSIT_ROW, transitLead, transitVisible, warmSV, type Motion, type SceneGeo, type SceneMotion } from './scene';
 import { GlowOf, makeStruct, occludersOf, RowBooks, structKeyOf, useFadingAtlas, useFloorKey, useRowBoxes, useShadePoses, useTargetPoses, useWallKey, Z_WALL, type CamSV, type Ghost, type RowStruct } from './ShelfMotion';
 import { FRONT_AREA, FRONT_KEY, plankOutlinePath, rowEnv, SHELF_CAST_EXTENT, ShelfBoard, ShelfWall, TOP_AREA, TOP_KEY, UNDER_ENV, wallArea } from './ShelfPlank';
@@ -55,6 +55,7 @@ export type SceneRowProps = {
   glowId: string | null; // 고른 책(윤곽 빛)
   hint: DropHint;
   ghosts?: Ghost[]; // 이 줄 배치에는 없지만 캔버스에 미리 올려 둘 책(끄는 책이 지나간 줄). 이 줄 트랙이 생길 때까지 그리지 않는다
+  drops?: Drops; // 받침을 잃고 이 줄에서 떨어져 서랍으로 간 책(넘어지며 사라지는 동안 ghosts에도 남겨 둔다)
 };
 
 type Props = {
@@ -419,7 +420,7 @@ const TransitCanvas = memo(function TransitCanvas({ ids, rows, motions, geo, boo
 
 // 줄 하나의 RN 쪽: 경로 계획, 접근성 칸(보이지 않는 버튼), 끄는 동안 안내
 const RowOverlay = memo(function RowOverlay({ r, roofed, mo, m, reduceMotion, planBudgetMs, a11yLabelOf, onA11y, viewPitch }: { r: SceneRowProps; roofed: boolean; mo: Motion; m: ShelfMetrics; reduceMotion: boolean; planBudgetMs: number; a11yLabelOf: (bookId: string) => string; onA11y: (bookId: string, action: string) => void; viewPitch: number }) {
-  useRowPlanner(mo, r.shelfId, r.frames, reduceMotion, r.arrive, planBudgetMs, r.row.space, roofed);
+  useRowPlanner(mo, r.shelfId, r.frames, reduceMotion, r.arrive, planBudgetMs, r.row.space, roofed, r.drops);
   const s = m.scale;
   return (
     <>
@@ -435,7 +436,7 @@ const RowOverlay = memo(function RowOverlay({ r, roofed, mo, m, reduceMotion, pl
   );
 }, (a, b) =>
   // 경로 계획은 자세가 바뀔 때도 돌아야 하므로 프레임 자체를 비교한다(캔버스와 달리)
-  a.r.frames === b.r.frames && a.r.arrive === b.r.arrive && a.r.hint === b.r.hint && a.r.row === b.r.row && a.mo === b.mo && a.m === b.m && a.reduceMotion === b.reduceMotion && a.planBudgetMs === b.planBudgetMs && a.a11yLabelOf === b.a11yLabelOf && a.onA11y === b.onA11y && a.viewPitch === b.viewPitch);
+  a.r.frames === b.r.frames && a.r.arrive === b.r.arrive && a.r.drops === b.r.drops && a.r.hint === b.r.hint && a.r.row === b.r.row && a.mo === b.mo && a.m === b.m && a.reduceMotion === b.reduceMotion && a.planBudgetMs === b.planBudgetMs && a.a11yLabelOf === b.a11yLabelOf && a.onA11y === b.onA11y && a.viewPitch === b.viewPitch);
 
 // 책 자리(보이지 않는 접근성 칸). 그림은 캔버스가 그린다. 위치는 확정된 보기 각으로 잰 정지 자세(접근성 초점 표시용).
 const BookSlot = memo(function BookSlot({ frame, row, m, a11yLabel, onA11y, viewPitch }: { frame: BookFrame; row: RowGeom; m: ShelfMetrics; a11yLabel: string; onA11y: (bookId: string, action: string) => void; viewPitch: number }) {

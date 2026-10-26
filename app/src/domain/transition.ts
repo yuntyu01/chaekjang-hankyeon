@@ -58,7 +58,8 @@ export type Seg = {
 export type Off = { x: number; y: number; z: number; roll: number; yaw: number; spin: number; pitch: number };
 export const OFF_T = 0.4;
 // rest: 움직이지 않는 트랙의 자세(늘 같은 객체). bookAt이 그대로 돌려줘서, 이 책을 읽는 화면 계산이 매 프레임 다시 돌지 않는다.
-export type Track = { id: string; dims: Book3['dims']; segs: Seg[]; moving: boolean; rest?: Book3; off?: Off };
+// fade: 진행 [f0, f1] 동안 그리는 진하기가 1 → 0(서랍으로 떨어지며 사라지는 책, dropTrack)
+export type Track = { id: string; dims: Book3['dims']; segs: Seg[]; moving: boolean; rest?: Book3; off?: Off; fade?: [number, number] };
 // fall: 넘어지는 조각이 있어 줄 시계를 고르게 돌린다(gravityPlan, 또는 planTransition이 넘어지는 책의 차례까지 정해 검사한 경로).
 // len: 경로 길이(기준 시간의 몇 배, 없으면 1). 넘어지는 책이 차례로 넘어지면(도미노) 늦게 출발한 책도 같은 시간 동안 넘어지도록 길어진다.
 export type Plan = { tracks: Track[]; strategy: string; fall?: boolean; len?: number };
@@ -163,6 +164,8 @@ export function bookAt(tr: Track, t: number): Book3 {
   'worklet';
   if (!tr.moving && tr.rest) return tr.rest;
   const b = segPose(tr, t);
+  const f = tr.fade;
+  if (f) b.alpha = 1 - clamp01((t - f[0]) / Math.max(1e-6, f[1] - f[0]));
   const o = tr.off;
   if (!o || t >= OFF_T) return b;
   // 처음에는 속도를 바꾸지 않고(경로 속도 그대로) 가운데서 줄어든다
@@ -176,6 +179,7 @@ export function bookAt(tr: Track, t: number): Book3 {
     spin: (b.spin ?? 0) + o.spin * k,
     pitch: (b.pitch ?? 0) + o.pitch * k,
     t: { x: b.t.x + o.x * k, y: b.t.y + o.y * k, z: b.t.z + o.z * k },
+    ...(b.alpha !== undefined ? { alpha: b.alpha } : null),
   };
 }
 
@@ -541,6 +545,15 @@ export function build(prev: State[], next: State[], c: Candidate): Track[] {
     // 멈춰 있는 책은 지금 보이던 자세 객체를 그대로(다시 짜도 이 책을 읽는 계산이 돌지 않게)
     return moving ? { id: to.id, dims: to.dims, segs, moving } : holdTrack(from);
   });
+}
+
+// 받침을 잃고 선반에서 떨어져 서랍으로 가는 책: 지금 자세에서 넘어지는 쪽(d) 발을 축으로 점점 빨라지며 눕고(진행 0 ~ 0.6),
+// 그 사이부터 끝까지 옅어져 사라진다. 이미 누운 책은 옅어지기만 한다(서랍은 배치 밖이라 갈 곳을 그리지 않는다)
+export function dropTrack(b: State, d: -1 | 1): Track {
+  if (lying(b)) return { id: b.id, dims: b.dims, segs: hold(b), moving: true, fade: [0, 1] };
+  const a = pivotLocal(b.dims, d);
+  const down = reorientPivot(b, d * 90, b.yaw, a);
+  return { id: b.id, dims: b.dims, segs: [{ ...pivotSeg(b, down, 0, 0.6, a), e: 1 }, pivotSeg(down, down, 0.6, 1, ZERO)], moving: true, fade: [0.35, 1] };
 }
 
 // 그 자리에 멈춰 있는 트랙(자세 객체를 그대로 돌려준다)

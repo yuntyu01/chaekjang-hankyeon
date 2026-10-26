@@ -71,7 +71,7 @@ import { useBookShared } from '@/ui/book3d/art';
 import { ReferenceUI } from '@/ui/ReferenceUI';
 import { CONTENT_TOP, computeRows, LAYOUT, rowAffine, rowAt, toContent, useShelfMetrics, type RowGeom } from '@/ui/shelf/metrics';
 import { benchProjection, type BenchRow } from '@/ui/shelf/ShelfMotion';
-import { displayedPoses, flushApply, lastPlan, previewInto, PULL_MS, settleInto, WAIT_MAX } from '@/ui/shelf/planner';
+import { displayedPoses, flushApply, lastPlan, POSE_MS, previewInto, PULL_MS, settleInto, WAIT_MAX, type Drops } from '@/ui/shelf/planner';
 import { fallSig, HOLD_MS, stepHold, type Hold } from '@/ui/shelf/preview-hold';
 import { liveSV, makeMotion, pickAt, plankFrontBand, rowPx, TRANSIT_ROW, warmSV, type Motion, type Pick, type SceneGeo, type SceneMotion } from '@/ui/shelf/scene';
 import { HANDLE_HIT, handlePoint, HeaderWall, SHELF_CAST_EXTENT, ShelfScene, type DropHint, type SceneRowProps } from '@/ui/shelf/ShelfScene';
@@ -319,11 +319,26 @@ export function HomeScreen() {
   const prevShown = useRef(shown);
   const transitRef = useRef(new Map<string, number>());
   const moves = useRef<{ id: string; from: string }[]>([]);
+  // 받침을 잃고 선반에서 떨어져 서랍으로 간 책(끄는 동안의 미리보기 포함, 직접 서랍에 넣은 책은 빼고): 그 줄에서 보이던 자세에서
+  // 넘어지며 사라지는 동안(planner dropTrack) 그 줄 캔버스에 남겨 둔다. 다시 선반으로 돌아오면(미리보기가 바뀌면) 바로 거둔다
+  const dropRef = useRef(new Map<string, { shelfId: string; from: Book3; d: -1 | 1; until: number }>());
+  const [fallTick, setFallTick] = useState(0);
   const arrivals = useMemo(() => {
     const out: Record<string, Record<string, Book3>> = {};
     const before = prevShown.current;
     moves.current = [];
     if (before === shown) return out;
+    for (const id of [...dropRef.current.keys()]) if (shown.placements.some((p) => p.bookId === id)) dropRef.current.delete(id);
+    if (!reduceMotion)
+      for (const q of before.placements) {
+        if (shown.placements.some((p) => p.bookId === q.bookId) || !shown.drawer.includes(q.bookId)) continue;
+        if (!dragRef.current && !store.fellIds.includes(q.bookId)) continue;
+        const from = motions.find((e) => e.shelfId === q.shelfId);
+        const pose = from ? displayedPoses(from.m)[q.bookId] : undefined;
+        if (!pose) continue;
+        const d = (Math.sign(pose.roll) || Math.sign(q.tilt) || 1) as -1 | 1;
+        dropRef.current.set(q.bookId, { shelfId: q.shelfId, from: pose, d, until: Date.now() + POSE_MS * ANIM.slow + 300 });
+      }
     for (const p of shown.placements) {
       const q = before.placements.find((x) => x.bookId === p.bookId);
       if (!q || q.shelfId === p.shelfId) continue;
@@ -369,6 +384,23 @@ export function HomeScreen() {
     const id = setTimeout(() => setTransitTick((k) => k + 1), Math.max(50, next));
     return () => clearTimeout(id);
   }, [transitIds]);
+  // 떨어져 사라진 책을 줄 캔버스에서 내린다
+  const drops = useMemo(() => {
+    const now = Date.now();
+    const out: Record<string, Drops> = {};
+    for (const [id, dr] of dropRef.current) {
+      if (dr.until < now) dropRef.current.delete(id);
+      else (out[dr.shelfId] ??= {})[id] = { from: dr.from, d: dr.d };
+    }
+    return out;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [arrivals, fallTick]);
+  useEffect(() => {
+    if (!dropRef.current.size) return;
+    const next = Math.min(...[...dropRef.current.values()].map((d) => d.until)) - Date.now();
+    const id = setTimeout(() => setFallTick((k) => k + 1), Math.max(50, next + 20));
+    return () => clearTimeout(id);
+  }, [drops]);
   useLayoutEffect(() => {
     if (PERF_ENABLED && dragJs.current.commitStart) {
       dragJs.current.commit.push(performance.now() - dragJs.current.commitStart);
@@ -1289,7 +1321,10 @@ export function HomeScreen() {
         continue;
       }
       const r = setTilt(layout, books, editId, tiltToward(d));
-      out[d] = r.ok && placementOf(withLeans(r.layout, books), editId)?.tilt !== 0;
+      // 기울인 책이 실제로 기대야 한다. 기울인 탓에 이 책이나 다른 책이 넘어져 서랍으로 가는 기울기도 막는다
+      // (예: 낮게 누운 책 모서리에 기대면 미는 힘에 미끄러져 옆 책까지 무너진다)
+      const after = r.ok ? withLeans(r.layout, books) : null;
+      out[d] = !!after && (placementOf(after, editId)?.tilt ?? 0) !== 0 && after.drawer.length === layout.drawer.length;
     }
     return out;
   }, [editId, editPlacement, layout, books]);
@@ -1559,13 +1594,16 @@ export function HomeScreen() {
         const gs = Object.keys(holds)
           .filter((id) => holds[id].includes(sh.id) && !fs.some((f) => f.bookId === id) && holdRest[id])
           .map((id) => ({ id, rest: holdRest[id] }));
+        // 떨어져 사라지는 책도 사라질 때까지 이 줄 캔버스에
+        const dr = drops[sh.id];
+        if (dr) for (const [id, v] of Object.entries(dr)) if (!gs.some((g) => g.id === id) && !fs.some((f) => f.bookId === id)) gs.push({ id, rest: v.from });
         const ghosts = gs.length ? gs : undefined;
         const dragHere = dragShelf === sh.id || (!!drag && !!holds[drag.bookId]?.includes(sh.id));
         const glowHere = glowShelf === sh.id || (!!glowId && !!holds[glowId]?.includes(sh.id));
-        return [{ shelfId: sh.id, row, frames: fs, arrive: arrivals[sh.id], dragId: dragHere ? drag!.bookId : null, glowId: glowHere ? glowId : null, hint: hintFor(sh.id), ghosts }];
+        return [{ shelfId: sh.id, row, frames: fs, arrive: arrivals[sh.id], dragId: dragHere ? drag!.bookId : null, glowId: glowHere ? glowId : null, hint: hintFor(sh.id), ghosts, drops: dr }];
       }),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [shownShelves, rowOf, frames, arrivals, dragShelf, glowShelf, glowId, drag?.bookId, drag?.preview, holds, holdRest],
+    [shownShelves, rowOf, frames, arrivals, dragShelf, glowShelf, glowId, drag?.bookId, drag?.preview, holds, holdRest, drops],
   );
   const contentHeight = Math.max(vpH, (rows.at(-1) ? rows.at(-1)!.top + rows.at(-1)!.height : CONTENT_TOP) + (SHELF_CAST_EXTENT + 8) * m.scale + (editing ? panelH : tailPad));
 

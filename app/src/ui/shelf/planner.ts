@@ -14,7 +14,7 @@ import { fromPlaced, type Book3 } from '@/domain/book3';
 import { castsIn } from '@/domain/cast-shadow';
 import { SHELF_THICK } from '@/domain/geometry';
 import { PLANK_BOUNDS, type BookFrame } from '@/domain/shelf-scene';
-import { awayShift, awayTrack, bookAt, gravityPlan, holdTrack, offBetween, planTransition, retime, safeOffsets, shiftTrack, withOff, type Off, type Track } from '@/domain/transition';
+import { awayShift, awayTrack, bookAt, dropTrack, gravityPlan, holdTrack, offBetween, planTransition, retime, safeOffsets, shiftTrack, withOff, type Off, type Track } from '@/domain/transition';
 import { ANIM, TL, tl, tlOn, tlu } from '@/ui/perf';
 
 import { awayAt, easeOf, outsideRow, presentSV, type AwayEntry, type Aways, type Motion, type Tracks } from './scene';
@@ -449,7 +449,9 @@ export const lastPlan: PlanStats = { strategy: '', ms: 0, log: null };
 // 바뀌어(놓는 순간, 손가락이 계속 움직일 때) 다시 짜도 판 앞을 지나는 길을 그대로 쓰고, 이미 떠 있는 책은 다시 들어 올리지 않는다
 // (곧장 가면 옆 줄 책·판을 뚫고 지나가 가려지거나 튀고, 다시 들면 다시 짤 때마다 올라간다).
 // roofed: 위에 줄이 있다(윗선반 판 아랫면 = space). 도는 책이 판을 뚫지 않게 경로 검사에 넣는다.
-export function planInto(m: Motion, shelfId: string, next: Book3[], target: string, opts: { reduceMotion: boolean; arrive?: Record<string, Book3>; budgetMs?: number; space?: number; roofed?: boolean }) {
+// drops: 이 배치에서 받침을 잃고 선반에서 떨어져 서랍으로 간 책(넘어지는 쪽 d). 지금 보이는 자세에서 넘어지며 옅어져 사라진다(dropTrack).
+export type Drops = Record<string, { from: Book3; d: -1 | 1 }>;
+export function planInto(m: Motion, shelfId: string, next: Book3[], target: string, opts: { reduceMotion: boolean; arrive?: Record<string, Book3>; budgetMs?: number; space?: number; roofed?: boolean; drops?: Drops }) {
   // 다른 줄에서 들어오는 책은 이 줄 캔버스에 올라간 뒤에 움직인다
   const waits: Wait[] = next.filter((b) => opts.arrive?.[b.id]).map((b) => ({ id: b.id, shelfId }));
   if (opts.reduceMotion) {
@@ -478,11 +480,14 @@ export function planInto(m: Motion, shelfId: string, next: Book3[], target: stri
   // 계획 시간(budgetMs)은 경로 짜기와 넘어지는 경로 다시 검사가 함께 쓴다
   const deadline = t0 + (opts.budgetMs ?? 40);
   const plan = planTransition(prev, next, PLANK_BOUNDS, { budgetMs: opts.budgetMs, arrive, pitch, ceil, keep });
+  // 떨어져 서랍으로 가는 책(이 줄 배치에는 없다): 지금 보이는 자세에서 넘어지며 사라진다. 다른 책 경로 검사에는 넣지 않는다(곧 사라진다)
+  const drops: Track[] = [];
+  for (const [id, dr] of Object.entries(opts.drops ?? {})) if (!next.some((b) => b.id === id)) drops.push(dropTrack(shown[id] ?? dr.from, dr.d));
   lastPlan.strategy = plan.strategy;
   lastPlan.ms = Date.now() - t0;
   lastPlan.log?.push(lastPlan.ms);
   if (TL.on) tl(`plan ${shelfId} ${plan.strategy} ${lastPlan.ms}ms waits=${waits.length}${arrive !== opts.arrive ? ' arriving' : ''}${keep ? ` keep=${Object.keys(keep).join(',')}` : ''}${est}`);
-  const animate = plan.strategy !== 'still';
+  const animate = plan.strategy !== 'still' || drops.length > 0;
   const pull = plan.strategy === 'pull' || (!!arrive && next.some((b) => arrive![b.id]));
   const posing = /al|pull|fall/.test(plan.strategy);
   // 넘어지는 책이 차례로 넘어지면(도미노) 경로가 그만큼 길다(plan.len)
@@ -491,21 +496,21 @@ export function planInto(m: Motion, shelfId: string, next: Book3[], target: stri
   // planTransition이 이미 그렇게 짜서 검사했다(plan.fall). 그 밖의 경로는 남은 계획 시간으로 다시 검사한다(gravityPlan).
   const fall = !animate || away ? null : plan.fall ? plan : !pull ? gravityPlan(plan, PLANK_BOUNDS, { budgetMs: Math.max(0, deadline - Date.now()), ceil }) : null;
   if (fall && TL.on) tl(`plan ${shelfId} fall`);
-  queueApply(m, shelfId, Object.fromEntries((fall ?? plan).tracks.map((tr) => [tr.id, tr])), animate, dur, target, waits, opts.space, !!fall);
+  queueApply(m, shelfId, Object.fromEntries([...(fall ?? plan).tracks, ...drops].map((tr) => [tr.id, tr])), animate, Math.max(dur, drops.length ? POSE_MS * ANIM.slow : 0), target, waits, opts.space, !!fall);
 }
 
 const keyOf = (frames: BookFrame[]) => frames.map((f) => f.bookId + JSON.stringify(f.box)).join('|');
 
 // 줄 하나: 프레임(확정 또는 미리보기 배치의 3D 상자)이 바뀌었고 트랙이 향하는 배치와 다르면 경로를 짠다.
 // 트랙 적용은 HomeScreen이 모아서 한 번에(flushApply). 막대·손잡이 조작 중에는 확정 배치가 그대로라 여기서 끼어들지 않는다.
-export function useRowPlanner(m: Motion, shelfId: string, frames: BookFrame[], reduceMotion: boolean, arrive: Record<string, Book3> | undefined, budgetMs: number, space: number, roofed = false) {
+export function useRowPlanner(m: Motion, shelfId: string, frames: BookFrame[], reduceMotion: boolean, arrive: Record<string, Book3> | undefined, budgetMs: number, space: number, roofed = false, drops?: Drops) {
   const key = keyOf(frames);
   useLayoutEffect(() => {
     const mr = mirrorOf(m);
     // 처음: 줄을 만들 때 넣은 트랙 그대로(저장본을 불러와 처음 그릴 때 날아오지 않게)
     if (mr.target === null) mr.target = key;
     if (key === mr.target) return;
-    planInto(m, shelfId, frames.map((f) => fromPlaced(f.box)), key, { reduceMotion, arrive, budgetMs, space, roofed });
+    planInto(m, shelfId, frames.map((f) => fromPlaced(f.box)), key, { reduceMotion, arrive, budgetMs, space, roofed, drops });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [key, reduceMotion]);
 }

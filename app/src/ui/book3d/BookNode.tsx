@@ -166,13 +166,15 @@ export function BookNode({ book, dims, state, cam, px, shared, keyShadow, order,
     return p.detach();
   });
   const bounds = useDerivedValue(() => layerBounds(outline.value));
+  // 떨어져 사라지는 책(서랍으로 간 책)의 진하기
+  const opacity = useDerivedValue(() => state.value.alpha ?? 1);
   if (!art) return null;
   // 몸체 색 하나: 판 두 장·책등·판 끝·책등 띠가 모두 같은 책 색이다
   const tone = toneOf(book);
   const albedo = linearOf(tone);
   const sur: Surround = { env, atlas, id: book.id, boxes, self };
   return (
-    <Group zIndex={z} clip={clip}>
+    <Group zIndex={z} clip={clip} opacity={opacity}>
       {/* 경로 자르기(clip)는 안티에일리어싱 없이 계단이 된다. 책 둘레 사각형 크기 레이어에 그린 뒤 안티에일리어싱된 윤곽 경로로 남길 곳만 남긴다(dstIn) */}
       <Group clip={bounds}>
         <Group layer>

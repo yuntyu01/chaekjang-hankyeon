@@ -101,7 +101,8 @@ export function useTargetPoses(m: Motion, ids: string[]): Readonly<SharedValue<P
       let changed = Object.keys(old).length !== ids.length;
       for (const id of ids) {
         const tr = tracks[id];
-        let b: Book3 | null = tr ? (!tr.moving && tr.rest ? tr.rest : bookAt(tr, 1)) : null;
+        // 떨어져 사라지는 책(서랍으로 간 책)은 도착 자세가 없다
+        let b: Book3 | null = tr && !tr.fade ? (!tr.moving && tr.rest ? tr.rest : bookAt(tr, 1)) : null;
         const o = old[id] ?? null;
         if (b && o && b !== o && samePose(b, o)) b = o;
         if (b !== o) changed = true;
@@ -477,7 +478,8 @@ function planeShadows(key: string, poses: Poses, ids: string[], s: number, W: nu
       if (!c || c.w <= 0) continue;
       const pts = hull(c.pts.map(toImg));
       if (pts.length < 3) continue;
-      paint.setAlphaf(c.w);
+      // 떨어져 사라지는 책은 그림자도 함께 옅어진다
+      paint.setAlphaf(c.w * (b.alpha ?? 1));
       paint.setMaskFilter(Skia.MaskFilter.MakeBlur(BlurStyle.Normal, Math.max(0.01, c.sigma), true));
       canvas.drawPath(pathOf([pts]), paint);
     }
