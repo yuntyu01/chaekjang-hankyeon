@@ -399,3 +399,83 @@ describe('낮은 받침과 연쇄', () => {
     expectNoOverlap(computeShelf(after, all, 's').frames);
   });
 });
+
+describe('넘어진 책이 머무는 자리', () => {
+  const D = book('D', 160, 30);
+  const C2 = book('C', 120, 34);
+  const S = book('S', 50, 20);
+  const Z = book('Z', 130, 25);
+  const all: BookMap = { D, C: C2, S, Z };
+  const W = SHELF_USABLE_WIDTH;
+  const xsOf = (l: ShelfLayout) => bookXs(l, all);
+  const drop = (l: ShelfLayout, id: string) => ({ ...l, placements: l.placements.filter((p) => p.bookId !== id) });
+
+  it('낮은 책 모서리에서 미끄러진 책은 발을 반대쪽으로 미끄러뜨려 기대고, 옆 책은 그대로다(좌우 대칭)', () => {
+    // D가 C에 기대 있다가 C를 빼면 키 50인 S에 닿아 미끄러진다. 예전에는 S·Z를 60DU쯤 밀며 눕혔다(거울 배치에서는 밀지 않았다)
+    const right = withLeans(layoutOf(place('D', 0, 100, 7), place('C', 1, 160), place('S', 2, 230), place('Z', 3, 260)), all);
+    const left = withLeans(layoutOf(place('Z', 0, W - 285), place('S', 1, W - 250), place('C', 2, W - 194), place('D', 3, W - 130, -7)), all);
+    for (const [l, dir] of [[right, 1], [left, -1]] as const) {
+      const before = drop(l, 'C');
+      const after = withLeans(before, all);
+      const x0 = xsOf(before);
+      const x1 = xsOf(after);
+      for (const id of ['S', 'Z']) expect(x1.get(id)).toBeCloseTo(x0.get(id)!, 6);
+      const d = after.placements.find((p) => p.bookId === 'D')!;
+      expect(d.pose).toBe('spine');
+      expect(d.lean?.on).toBe('S');
+      expect(Math.sign(d.lean!.angle)).toBe(dir);
+      // 발은 넘어지는 반대쪽으로만 미끄러졌다
+      expect(((x1.get('D')! - x0.get('D')!) * dir)).toBeLessThan(0);
+      expect(withLeans(after, all)).toEqual(after);
+    }
+    const r = xsOf(withLeans(drop(right, 'C'), all)).get('D')!;
+    const m = xsOf(withLeans(drop(left, 'C'), all)).get('D')!;
+    expect(r).toBeCloseTo(W - m - 30, 1);
+  });
+
+  it('발 뒤에 붙어 선 책이 발을 막으면 미끄러지지 않고 그 자리에서 기댄다', () => {
+    // 위와 같지만 D 바로 왼쪽에 Z가 붙어 있다: D는 미끄러질 수 없어 S에 닿은 각 그대로 버틴다
+    const l = withLeans(layoutOf(place('Z', 0, 75), place('D', 1, 100, 7), place('C', 2, 160), place('S', 3, 230)), all);
+    const after = withLeans(drop(l, 'C'), all);
+    const d = after.placements.find((p) => p.bookId === 'D')!;
+    expect(d.pose).toBe('spine');
+    expect(d.lean?.on).toBe('S');
+    expect(xsOf(after).get('D')).toBeCloseTo(100, 6);
+    expect(xsOf(after).get('Z')).toBeCloseTo(75, 6);
+  });
+
+  it('무작위 줄에서 받침을 빼도 넘어지지 않은 책은 20DU 넘게 밀리지 않고, 다시 풀어도 그대로다', () => {
+    let seed = 12345;
+    const rnd = () => ((seed = (seed * 1103515245 + 12345) % 2147483648) / 2147483648);
+    let checked = 0;
+    for (let trial = 0; trial < 90; trial++) {
+      const bs: BookMap = {};
+      const ps: BookPlacement[] = [];
+      let x = 5 + rnd() * 40;
+      for (let i = 0; i < 5; i++) {
+        const id = `r${i}`;
+        const T = Math.round((8 + rnd() * 30) * 10) / 10;
+        bs[id] = book(id, Math.round(70 + rnd() * 120), T);
+        if (x + T > W) break;
+        ps.push(place(id, ps.length, Math.round(x * 100) / 100, rnd() < 0.45 ? (rnd() < 0.5 ? -7 : 7) : 0));
+        x += T + (rnd() < 0.4 ? 0 : rnd() * 45);
+      }
+      if (ps.length < 3) continue;
+      const l = withLeans(layoutOf(...ps), bs);
+      expect(withLeans(l, bs)).toEqual(l);
+      for (const v of l.placements) {
+        const before = { ...l, placements: l.placements.filter((p) => p.bookId !== v.bookId) };
+        const fell = new Set(computeShelf(before, bs, 's').frames.filter((f) => f.fell).map((f) => f.bookId));
+        if (!fell.size) continue;
+        const after = withLeans(before, bs);
+        checked++;
+        expect(checkSpace(after, bs, 's')).toBeNull();
+        expect(withLeans(after, bs)).toEqual(after);
+        const x0 = bookXs(before, bs);
+        const x1 = bookXs(after, bs);
+        for (const p of after.placements) if (!fell.has(p.bookId) && p.pose !== 'horizontal') expect(Math.abs(x1.get(p.bookId)! - x0.get(p.bookId)!)).toBeLessThanOrEqual(20.01);
+      }
+    }
+    expect(checked).toBeGreaterThan(5);
+  }, 60_000);
+});
