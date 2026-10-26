@@ -30,13 +30,15 @@ export const colors = {
   inkAction: '#F2D9A6', // 짙은 알림(토스트) 위 행동 글자(되돌리기)
 };
 
-// 글꼴: UI는 나눔스퀘어라운드 한 가족(한글·영문·숫자 모두 들어 있어 섞이지 않는다. 숫자 폭이 같아 시간 표시도 흔들리지 않는다).
+// 글꼴: UI는 Pretendard 한 가족(2026-10-26 시안과 같은 글꼴: 한글은 본고딕 뼈대, 영문·숫자는 Inter 모양. 한글 11,172자·영문·숫자가 모두 있어 섞이지 않는다).
+// 숫자는 폭이 달라 시간처럼 바뀌는 숫자에는 fontVariant tabular-nums(글꼴의 tnum)를 쓴다.
 // 굵기는 글꼴 파일로 고른다(fontWeight를 함께 주면 안드로이드가 가짜 굵게를 덧입힌다).
 // 갈피 문장·책 표지 같은 내용 글꼴은 명조(reading/serif)를 따로 쓴다.
 export const fonts = {
   ...shelfFonts,
-  ui: 'NanumSquareRoundR',
-  uiBold: 'NanumSquareRoundB',
+  ui: 'PretendardRegular',
+  uiMedium: 'PretendardMedium',
+  uiBold: 'PretendardSemiBold', // 시안의 굵은 글자는 Bold보다 한 단계 가벼운 SemiBold
   serif: 'ReadingSerif',
   serifMedium: 'ReadingSerifMedium',
   serifBold: 'ReadingSerifSemiBold',
@@ -44,20 +46,20 @@ export const fonts = {
 
 const text = (fontFamily: string, fontSize: number, lineHeight: number, color: string): TextStyle => ({ fontFamily, fontSize, lineHeight, color, includeFontPadding: false });
 
-// 글자 크기(논리 단위). 시안 측정: 제목 약 21, 목록 17, 입력칸 이름 16(굵게), 구역 이름·보조 설명 14.
+// 글자 크기(논리 단위). 시안의 글자 높이를 Pretendard 한글 높이(R 0.867em, SB 0.882em)로 나눈 값: 제목 22, 목록 17, 입력칸 이름 16(굵게), 보조 설명 15, 구역 이름 14.
 export const type = {
-  title: text(fonts.uiBold, 21, 28, colors.title), // 화면 제목(시안 실측: 설정 약 21.6, 갈피 수정 약 20)
+  title: text(fonts.uiBold, 22, 29, colors.title), // 화면 제목(시안 글자 높이 18.6~20.4dp)
   heading: text(fonts.uiBold, 19, 26, colors.ink), // 시트 제목·빈 화면 제목·내용 속 큰 묶음 제목
   section: text(fonts.ui, 14, 20, colors.inkSoft), // 구역 이름(독서 환경·내 기록)
   row: text(fonts.ui, 17, 24, colors.ink), // 목록·메뉴 한 줄
   rowStrong: text(fonts.uiBold, 17, 24, colors.ink), // 책 제목처럼 줄의 주인공
   body: text(fonts.ui, 16, 25, colors.ink), // 본문·안내 문단
-  sub: text(fonts.ui, 14, 20, colors.inkSoft), // 보조 설명·값
+  sub: text(fonts.ui, 15, 21, colors.inkSoft), // 보조 설명·값(시안 글자 높이 12.8dp)
   caption: text(fonts.ui, 13, 18, colors.inkSoft), // 날짜·작은 메타
   button: text(fonts.uiBold, 16, 22, colors.ink),
   input: { fontFamily: fonts.ui, fontSize: 16, color: colors.ink } as TextStyle, // 입력창(줄 높이는 플랫폼에 맡긴다)
   label: text(fonts.uiBold, 16, 22, colors.ink), // 입력칸 이름(갈피 수정 시안: 굵은 16, 본문색)
-  number: text(fonts.uiBold, 22, 28, colors.ink), // 요약 숫자(16권·2분)
+  number: { ...text(fonts.uiBold, 22, 28, colors.ink), fontVariant: ['tabular-nums'] } as TextStyle, // 요약 숫자(16권·2분)
 };
 
 // 간격: 화면 좌우 24, 서로 다른 정보 묶음 사이 32, 같은 묶음 안 12.

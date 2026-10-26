@@ -170,7 +170,7 @@ export default function AddBook() {
         }>
         {notice ? <Notice style={{ marginTop: space.item, marginBottom: space.group }}>{notice}</Notice> : null}
         <Row style={{ alignItems: 'flex-start', flexWrap: 'nowrap', marginTop: notice ? 0 : space.item }} gap={16}>
-          <RealCover uri={draft.coverUri} title={draft.title || '표지'} color="#B7AE9F" width={96} />
+          <RealCover uri={draft.coverUri} title={draft.title || '표지'} color={colors.input} width={96} />
           <View style={{ flex: 1, gap: 10 }}>
             <Muted>{draft.coverUri ? (draft.coverSource === 'photo' ? '내가 찍은 사진' : `${draft.sourceName ?? '도서 정보'} 표지`) : '표지가 없어요. 사진을 등록할 수 있어요.'}</Muted>
             <Btn
@@ -325,7 +325,7 @@ function FindStep({ initial, notice, onPick, onPhoto, onManual }: { initial?: st
           <View style={{ marginTop: space.tight }}>
             {items.map((c) => (
               <Pressable key={c.key} onPress={() => onPick(c)} style={({ pressed }) => [st.result, pressed && { opacity: 0.7 }]} accessibilityRole="button" accessibilityLabel={`${c.title}, ${c.authors.join(', ')}, 추가`}>
-                <View style={st.coverShadow}><RealCover uri={c.coverUrl} title={c.title} color="#B8ADA0" width={76} ratio={0.72} /></View>
+                <View style={st.coverShadow}><RealCover uri={c.coverUrl} title={c.title} color={colors.input} width={76} ratio={0.72} /></View>
                 <View style={{ flex: 1, gap: 6 }}>
                   <Text style={type.row} numberOfLines={2}>{c.title}</Text>
                   {c.authors.length ? <Text style={st.author} numberOfLines={1}>{c.authors.join(', ')}</Text> : null}

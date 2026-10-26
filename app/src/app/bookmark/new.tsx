@@ -14,7 +14,7 @@ import { deniedMessage, pickPhoto } from '@/services/photos';
 import { keepImage } from '@/store/files';
 import { libraryStore, useLibrary } from '@/store/library-store';
 import { Btn, Chip, Field, Muted, Row, Screen, SelectField } from '@/ui/kit';
-import { colors, fonts, icon, shape, space, type } from '@/ui/screenTheme';
+import { colors, icon, shape, space, type } from '@/ui/screenTheme';
 
 export default function NewBookmark() {
   const { book, text: initialText, page: initialPage, mode: initialMode } = useLocalSearchParams<{ book?: string; text?: string; page?: string; mode?: string }>();
@@ -89,7 +89,7 @@ export default function NewBookmark() {
           {msg ? <Muted style={{ marginTop: 8 }}>{msg}</Muted> : null}
         </View>
       ) : null}
-      <Field label={isPhoto ? '옮겨 적기 (선택, 검색에 쓰여요)' : '문장'} value={text} onChangeText={setText} placeholder={isPhoto ? '사진 속 문장을 적어 두면 찾기 쉬워요' : '마음에 남은 문장을 옮겨 적어 주세요'} multiline style={{ fontFamily: fonts.serif, fontSize: 16, lineHeight: 26, minHeight: isPhoto ? 120 : 190 }} />
+      <Field label={isPhoto ? '옮겨 적기 (선택, 검색에 쓰여요)' : '문장'} value={text} onChangeText={setText} placeholder={isPhoto ? '사진 속 문장을 적어 두면 찾기 쉬워요' : '마음에 남은 문장을 옮겨 적어 주세요'} multiline style={{ minHeight: isPhoto ? 120 : 190 }} />
       {/* 갈피 수정 시안과 같은 칸: 쪽수는 꽉 찬 칸에 '쪽', 메모는 두 줄 높이 */}
       <Field label="쪽수 (선택)" unit="쪽" value={page} onChangeText={setPage} keyboardType="number-pad" />
       <Field label="한 줄 메모 (선택)" value={memo} onChangeText={setMemo} placeholder="공유 이미지에는 넣지 않아요" multiline submitBehavior="blurAndSubmit" returnKeyType="done" style={{ minHeight: 80 }} />

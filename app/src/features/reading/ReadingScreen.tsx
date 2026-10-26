@@ -182,7 +182,7 @@ const st = StyleSheet.create({
   changeBook: type.caption,
   fold: { alignItems: 'center', gap: 2, minWidth: space.touch, minHeight: 48, justifyContent: 'center' },
   foldText: type.caption,
-  time: { fontFamily: fonts.ui, fontSize: 54, lineHeight: 66, color: colors.ink, letterSpacing: 0.5, includeFontPadding: false, marginTop: 6 },
+  time: { fontFamily: fonts.ui, fontSize: 54, lineHeight: 66, color: colors.ink, letterSpacing: 0.5, fontVariant: ['tabular-nums'], includeFontPadding: false, marginTop: 6 },
   sub: { ...type.caption, textAlign: 'center' },
   controls: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 22, marginTop: 16 },
   round: { width: 80, height: 80, borderRadius: 40, backgroundColor: colors.accent, alignItems: 'center', justifyContent: 'center', boxShadow: [{ offsetX: 0, offsetY: 5, blurRadius: 9, color: 'rgba(118,92,83,0.16)' }] },
@@ -195,5 +195,5 @@ const st = StyleSheet.create({
   icon: { width: space.touch, height: space.touch, alignItems: 'center', justifyContent: 'center' },
   error: { ...type.sub, color: colors.danger, marginTop: 12 },
   reopen: { position: 'absolute', alignSelf: 'center', minHeight: space.touch, borderRadius: 22, paddingHorizontal: 18, paddingVertical: 10, flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: colors.raised, ...shape.floatShadow },
-  reopenText: { ...type.row, fontSize: 15 },
+  reopenText: { ...type.row, fontSize: 15, fontVariant: ['tabular-nums'] },
 });

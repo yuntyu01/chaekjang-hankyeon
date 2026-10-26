@@ -254,7 +254,7 @@ function EditBookmark({ m, onDone }: { m: Bookmark; onDone: () => void }) {
           {msg ? <Muted style={{ marginTop: 8 }}>{msg}</Muted> : null}
         </View>
       ) : <View style={{ height: space.group + 2 }} />}
-      <Field label={isPhoto ? '옮겨 적기 (선택)' : '문장 (줄바꿈으로 문단을 나눠요)'} value={text} onChangeText={setText} multiline style={{ fontFamily: fonts.serif, fontSize: 16, lineHeight: 26, minHeight: isPhoto ? 120 : 190 }} />
+      <Field label={isPhoto ? '옮겨 적기 (선택)' : '문장 (줄바꿈으로 문단을 나눠요)'} value={text} onChangeText={setText} multiline style={{ minHeight: isPhoto ? 120 : 190 }} />
       <Field label="쪽수 (선택)" unit="쪽" value={page} onChangeText={setPage} keyboardType="number-pad" />
       <Field label="한 줄 메모 (선택, 공유 이미지에는 기본으로 빠져요)" value={memo} onChangeText={setMemo} multiline submitBehavior="blurAndSubmit" returnKeyType="done" style={{ minHeight: 80 }} />
     </Screen>

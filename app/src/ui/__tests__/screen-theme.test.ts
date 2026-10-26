@@ -79,7 +79,7 @@ describe('색: 읽을 수 있는 대비', () => {
   });
 });
 
-describe('글자·간격 범위(지시: 제목 22~24를 출발점으로 시안에 맞춤 → 20~24, 본문·메뉴 16~17, 보조 13~14, 좌우 24~28, 묶음 사이 28~36)', () => {
+describe('글자·간격 범위(지시: 제목 22~24를 출발점으로 시안에 맞춤 → 20~24, 본문·메뉴 16~17, 보조 13~15, 좌우 24~28, 묶음 사이 28~36)', () => {
   it('글자 크기', () => {
     expect(type.title.fontSize).toBeGreaterThanOrEqual(20);
     expect(type.title.fontSize).toBeLessThanOrEqual(24);
@@ -89,7 +89,7 @@ describe('글자·간격 범위(지시: 제목 22~24를 출발점으로 시안�
     }
     for (const t of [type.sub, type.section, type.caption]) {
       expect(t.fontSize).toBeGreaterThanOrEqual(13);
-      expect(t.fontSize).toBeLessThanOrEqual(14);
+      expect(t.fontSize).toBeLessThanOrEqual(15); // 시안 글자 높이에 맞춰 보조 설명 15(Pretendard)
     }
   });
   it('간격과 터치 크기', () => {
@@ -106,12 +106,14 @@ describe('글자·간격 범위(지시: 제목 22~24를 출발점으로 시안�
 });
 
 describe('글꼴 파일·등록', () => {
-  it('UI 글꼴 이름마다 assets 파일이 있고 루트 레이아웃 useFonts에 등록돼 있다', () => {
+  it('UI 글꼴(Pretendard) 이름마다 assets 파일이 있고 루트 레이아웃 useFonts에 등록돼 있다', () => {
     const layout = fs.readFileSync(path.join(SRC, 'app', '_layout.tsx'), 'utf8');
     const useFonts = layout.slice(layout.indexOf('useFonts({'));
-    for (const name of [fonts.ui, fonts.uiBold]) {
-      expect(fs.existsSync(path.join(SRC, '..', 'assets', 'fonts', `${name}.ttf`))).toBe(true);
-      expect(layout).toContain(`require('../../assets/fonts/${name}.ttf')`);
+    const files: Record<string, string> = { PretendardRegular: 'Pretendard-Regular.otf', PretendardMedium: 'Pretendard-Medium.otf', PretendardSemiBold: 'Pretendard-SemiBold.otf' };
+    for (const name of [fonts.ui, fonts.uiMedium, fonts.uiBold]) {
+      expect(files[name]).toBeDefined();
+      expect(fs.existsSync(path.join(SRC, '..', 'assets', 'fonts', files[name]))).toBe(true);
+      expect(layout).toContain(`const ${name} = require('../../assets/fonts/${files[name]}')`);
       expect(useFonts.slice(0, useFonts.indexOf('})'))).toContain(name);
     }
   });

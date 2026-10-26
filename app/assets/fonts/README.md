@@ -1,10 +1,12 @@
 # 앱에 넣은 글꼴
 
-- `NanumSquareRoundR.ttf`, `NanumSquareRoundB.ttf`, `NanumSquareRoundEB.ttf` — 나눔스퀘어라운드 Regular·Bold·ExtraBold (Copyright © 2017 NAVER Corporation, 디자인 산돌커뮤니케이션).
-  나눔 글꼴은 SIL Open Font License 1.1로 배포된다(https://hangeul.naver.com/fonts).
-  파일은 웹폰트 배포본(https://github.com/innks/NanumSquareRound)의 TTF 그대로다(한글 11,172자·영문·숫자·KS 약물, 숫자 폭은 모두 같다).
-  화면 UI 글꼴: R은 본문·목록·입력창, B는 제목·버튼(토큰은 `src/ui/screenTheme.ts`의 `fonts.ui`·`fonts.uiBold`·`type`). EB는 `theme.ts`의 `roundTitle`로 등록돼 있다(홈 머리글 ‘나의 책장’은 시안 글자 그림 `ReferenceUI`로 그린다).
-  R은 2026-10-26 디자인 통일 때 같은 배포본에서 더했다.
+- `Pretendard-{Regular,Medium,SemiBold}.otf` — Pretendard 1.3.9 (길형진, https://github.com/orioncactus/pretendard). SIL OFL 1.1: `Pretendard-OFL.txt`.
+  화면 UI 글꼴(2026-10-26 시안과 같은 글꼴): Regular 본문·목록·입력칸, Medium 예비, SemiBold 제목·버튼·입력칸 이름. 토큰은 `src/ui/screenTheme.ts`의 `fonts.ui`·`fonts.uiMedium`·`fonts.uiBold`·`type`.
+  한글 11,172자(본고딕 뼈대)·영문·숫자(Inter 모양). 숫자 폭이 서로 달라 바뀌는 시간 숫자에는 `fontVariant: ['tabular-nums']`(글꼴의 tnum)를 쓴다.
+  파일은 npm `pretendard@1.3.9`의 `dist/public/static` 그대로다.
+
+- `NanumSquareRoundB.ttf`, `NanumSquareRoundEB.ttf` — 나눔스퀘어라운드 Bold·ExtraBold (Copyright © 2017 NAVER Corporation, 디자인 산돌커뮤니케이션). SIL OFL 1.1(https://hangeul.naver.com/fonts).
+  웹폰트 배포본(https://github.com/innks/NanumSquareRound)의 TTF. 홈 머리글(연도·완료 단추, `theme.ts`의 `round`·`roundTitle`)에만 남아 있다(‘나의 책장’ 글자는 시안 글자 그림 `ReferenceUI`).
 
 - `NotoSerifKR-{Regular,Medium,SemiBold}.otf` — Noto Serif CJK KR 400·500·600. 갈피 문장(갈피 카드·갈피 작성 입력창) 같은 내용 글꼴(명조)로 쓴다. 화면 UI에는 쓰지 않는다.
   출처: https://github.com/notofonts/noto-cjk/tree/main/Serif/SubsetOTF/KR (2026-10-03 내려받음).

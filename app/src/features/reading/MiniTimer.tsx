@@ -150,7 +150,7 @@ const st = StyleSheet.create({
   action: { width: 52, height: MINI_TIMER_SIZE, alignItems: 'center', justifyContent: 'center' },
   divider: { width: shape.hairline * 2, height: 22, backgroundColor: colors.line },
   time: { height: MINI_TIMER_SIZE, alignItems: 'center', justifyContent: 'center' },
-  timeText: { fontFamily: fonts.uiBold, fontSize: 15, color: colors.ink, includeFontPadding: false },
+  timeText: { fontFamily: fonts.uiBold, fontSize: 15, color: colors.ink, fontVariant: ['tabular-nums'], includeFontPadding: false },
   pause: { flexDirection: 'row', gap: 5 },
   pauseBar: { width: 3.5, height: 16, borderRadius: 1.5, backgroundColor: colors.ink },
 });

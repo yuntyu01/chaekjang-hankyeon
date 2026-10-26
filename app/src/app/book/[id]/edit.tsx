@@ -7,6 +7,7 @@ import { pickPhoto, deniedMessage } from '@/services/photos';
 import { dropImage, keepImage } from '@/store/files';
 import { libraryStore, useLibrary } from '@/store/library-store';
 import { Btn, Empty, Field, Muted, RealCover, Row, Screen } from '@/ui/kit';
+import { colors } from '@/ui/screenTheme';
 
 const num = (v: string) => {
   const n = Number(v.replace(/[^\d.]/g, ''));
@@ -56,7 +57,7 @@ export default function EditBook() {
   return (
     <Screen title="책 정보 수정" footer={<Btn label="저장" onPress={save} disabled={!f.title.trim()} />}>
       <Row style={{ flexWrap: 'nowrap', alignItems: 'flex-start' }} gap={16}>
-        <RealCover uri={f.coverUri} title={f.title} color="#B7AE9F" width={90} />
+        <RealCover uri={f.coverUri} title={f.title} color={colors.input} width={90} />
         <View style={{ flex: 1, gap: 8 }}>
           <Btn
             label="표지 사진 바꾸기"

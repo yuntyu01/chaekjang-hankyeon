@@ -173,9 +173,9 @@ export function Btn({
         primary && pressed && { backgroundColor: colors.accentPressed, borderColor: colors.accentPressed },
         primary && disabled && { backgroundColor: colors.disabled, borderColor: colors.disabled },
         kind === 'ghost' && { borderColor: 'transparent', backgroundColor: 'transparent' },
-        kind === 'danger' && { borderColor: colors.line, backgroundColor: 'transparent' },
+        (kind === 'secondary' || kind === 'danger') && { backgroundColor: colors.input, borderColor: colors.input },
         !primary && disabled && { opacity: 0.45 },
-        !primary && pressed && { backgroundColor: colors.surface },
+        !primary && pressed && { backgroundColor: colors.line, borderColor: colors.line },
         style,
       ]}>
       {busy ? <ActivityIndicator color={ink} size="small" /> : iconNode}
@@ -292,7 +292,7 @@ export function SearchField({ value, onChangeText, busy, onSubmit, style, ...p }
 
 export function Chip({ label, on, onPress, color }: { label: string; on?: boolean; onPress?: () => void; color?: string }) {
   return (
-    <Pressable onPress={onPress} accessibilityRole="button" accessibilityState={{ selected: !!on }} hitSlop={{ top: 4, bottom: 4 }} style={({ pressed }) => [s.chip, on && s.chipOn, pressed && !on && { backgroundColor: colors.surface }]}>
+    <Pressable onPress={onPress} accessibilityRole="button" accessibilityState={{ selected: !!on }} hitSlop={{ top: 4, bottom: 4 }} style={({ pressed }) => [s.chip, on && s.chipOn, pressed && !on && { backgroundColor: colors.line, borderColor: colors.line }]}>
       {color ? <View style={[s.dot, { backgroundColor: color }]} /> : null}
       <Text style={[s.chipText, on && { color: colors.onAccent }, { maxWidth: 230 }]} numberOfLines={1}>
         {label}
@@ -352,6 +352,14 @@ export function Loading({ label }: { label?: string }) {
   );
 }
 
+// 밝은 색인지(대체 표지 글자색 고르기)
+function isLight(hex: string) {
+  const c = /^#([\da-f]{6})$/i.exec(hex)?.[1];
+  if (!c) return false;
+  const [r, g, b] = [0, 2, 4].map((i) => parseInt(c.slice(i, i + 2), 16));
+  return 0.299 * r + 0.587 * g + 0.114 * b > 180;
+}
+
 // 실제 표지(도서 이미지·사용자 사진). 없거나 못 읽으면 책 색 대체 표지(제목)
 export function RealCover({ uri, title, color, width, ratio = 0.68 }: { uri?: string; title: string; color: string; width: number; ratio?: number }) {
   const [ok, setOk] = useState(true);
@@ -360,7 +368,7 @@ export function RealCover({ uri, title, color, width, ratio = 0.68 }: { uri?: st
     return <Image source={{ uri }} style={{ width, height: h, borderRadius: 3, backgroundColor: colors.surface }} resizeMode="cover" onError={() => setOk(false)} accessibilityLabel={`${title} 표지`} />;
   return (
     <View style={{ width, height: h, borderRadius: 3, backgroundColor: color, padding: 8, justifyContent: 'center' }} accessibilityLabel={`${title} 대체 표지`}>
-      <Text style={{ fontFamily: fonts.serif, fontSize: Math.max(10, width / 8), color: colors.onAccent, textAlign: 'center' }} numberOfLines={4}>
+      <Text style={{ fontFamily: fonts.serif, fontSize: Math.max(10, width / 8), color: isLight(color) ? colors.inkSoft : colors.onAccent, textAlign: 'center' }} numberOfLines={4}>
         {title}
       </Text>
     </View>
@@ -571,7 +579,7 @@ export const s = StyleSheet.create({
   tabBar: { width: 32, height: 3, borderRadius: 2, backgroundColor: colors.accent, marginTop: 8 },
   searchInput: { ...type.input, flex: 1, paddingVertical: 12 },
   clear: { width: 22, height: 22, borderRadius: 11, backgroundColor: colors.inkFaint, alignItems: 'center', justifyContent: 'center' },
-  chip: { minHeight: 38, paddingVertical: 8, borderRadius: shape.pill, borderWidth: shape.border, borderColor: colors.border, paddingHorizontal: 15, flexDirection: 'row', alignItems: 'center', gap: 6 },
+  chip: { minHeight: 38, paddingVertical: 8, borderRadius: shape.pill, borderWidth: shape.border, borderColor: colors.input, backgroundColor: colors.input, paddingHorizontal: 15, flexDirection: 'row', alignItems: 'center', gap: 6 },
   chipOn: { backgroundColor: colors.accent, borderColor: colors.accent },
   chipText: { ...type.sub, color: colors.ink, fontSize: 15 },
   dot: { width: 10, height: 10, borderRadius: 5 },
