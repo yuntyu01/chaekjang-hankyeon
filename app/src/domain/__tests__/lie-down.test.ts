@@ -1,6 +1,6 @@
 // 받침을 잃고 바닥에 눕는 책: 발(기우는 쪽 바닥 모서리)을 축으로 넘어지는 쪽으로만 돌고, 깊이는 그대로, 오른쪽으로 넘어지면
 // 머리가 오른쪽(flip). 키 큰 책을 돌리는 경로는 윗선반 판을 뚫지 않는다(firstOverlap ceil).
-import { corners, fromPlaced, lowest, pivotLocal, toWorld, type Book3 } from '../book3';
+import { corners, fromPlaced, gap, lowest, pivotLocal, toWorld, type Book3 } from '../book3';
 import { SHELF_FRONT } from '../geometry';
 import { applySwapTarget, findSwapTarget, moveBook, normalize, placementOf, setPose, type BookMap } from '../layout-engine';
 import { bodiesOf, computeShelf, PLANK_BOUNDS, withLeans } from '../shelf-scene';
@@ -164,6 +164,44 @@ describe('크게 기댄 책과 쌓기', () => {
     const plan = planTransition(bodiesOf(base, all, 's'), bodiesOf(r.layout, all, 's'), PLANK_BOUNDS, NO_RUSH);
     const tr = plan.tracks.find((x) => x.id === 'F')!;
     for (let k = 0; k <= 20; k++) expect(bookAt(tr, k / 20).roll).toBeCloseTo(90, 6);
+  });
+});
+
+describe('넘어져 받침 모서리를 따라 미끄러지며 기대기', () => {
+  it('앞 책에 닿을 때까지 발은 제자리, 닿은 뒤에는 그 책에 닿은 채 발이 뒤로 미끄러져 목표 각에서 멈춘다', () => {
+    // D가 C에 기대 있다가 C를 빼면 키 50인 S의 모서리에 닿아 미끄러지며 발이 뒤로 밀려 크게 기댄다(lean.test '머무는 자리'와 같은 배치)
+    const all: BookMap = { D, C, S: book('S', 50, 20), Z: book('Z', 130, 25) };
+    const l = withLeans(layoutOf(place('D', 0, 100, 7), place('C', 1, 160), place('S', 2, 230), place('Z', 3, 260)), all);
+    const before = { ...l, placements: l.placements.filter((p) => p.bookId !== 'C') };
+    const after = withLeans(before, all);
+    expect(placementOf(after, 'D')!.lean?.on).toBe('S');
+    const prev = bodiesOf(before, all, 's');
+    const next = bodiesOf(after, all, 's');
+    const plan = planTransition(prev, next, PLANK_BOUNDS, NO_RUSH);
+    expect(plan.strategy).not.toBe('pull');
+    const tr = plan.tracks.find((t) => t.id === 'D')!;
+    const seg = tr.segs.find((x) => x.kind === 4)!;
+    expect(seg).toBeDefined();
+    const from = prev.find((b) => b.id === 'D')!;
+    // 머리가 먼저 Z 옆면에 닿아 그 면을 타고 내려오다 S 모서리에 얹힌다
+    const ahead = next.filter((b) => b.id === 'S' || b.id === 'Z');
+    const foot0 = toWorld(from, pivotLocal(from.dims, 1));
+    let touched = false;
+    for (let k = 0; k <= 200; k++) {
+      const b = bookAt(tr, k / 200);
+      const foot = toWorld(b, pivotLocal(b.dims, 1));
+      expect(lowest(b)).toBeCloseTo(0, 6);
+      const g = Math.min(...ahead.map((o) => gap(b, o)));
+      expect(g).toBeGreaterThan(-0.3); // 앞 책을 파고들지 않는다
+      if (Math.abs(b.roll) <= seg.lc! - 1e-6) expect(Math.abs(foot.x - foot0.x)).toBeLessThan(1e-6);
+      else {
+        touched = true;
+        expect(g).toBeLessThan(1); // 닿은 채 미끄러진다(표 사이는 곧은 선이라 조금 뜰 수 있다)
+        expect(foot.x).toBeLessThanOrEqual(foot0.x + 1e-6); // 발은 넘어지는 반대쪽으로만
+      }
+    }
+    expect(touched).toBe(true);
+    expect(bookAt(tr, 1).roll).toBeCloseTo(next.find((b) => b.id === 'D')!.roll, 6);
   });
 });
 

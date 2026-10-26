@@ -46,6 +46,11 @@ export type Seg = {
   tlim?: number;
   tfrom?: number;
   side?: number;
+  // kind 4: 넘어져 앞 책(받침·그 너머 책)에 닿은 뒤 머리·옆면이 그 책을 따라 미끄러지며 발이 넘어지는 반대쪽으로 밀린다.
+  // lr: 기울기(°, 크기) 표, lx: 그 기울기에서 발 x(어느 책도 파고들지 않는 가장 앞 자리, 뒤로만 간다). 표 첫 기울기(lc)까지 발은 w0 그대로
+  lc?: number;
+  lr?: number[];
+  lx?: number[];
 };
 // 이어 주기: 경로를 적용하는 순간 실제로 보이던 자세와 경로 출발점의 차이(위치 DU·각도 °). 진행 OFF_T까지 줄어 없어진다.
 // 경로는 JS가 JS 쪽 진행 어림으로 짠다. UI는 짜서 보내는 사이에도 움직이고(긴 프레임이면 더) 경로 출발 시각도 프레임에 따라 어긋나,
@@ -120,6 +125,22 @@ function segPose(tr: Track, t: number): Book3 {
     let back = -Infinity;
     for (const c of corners(b)) back = Math.max(back, c.z);
     if (back > SHELF_DEPTH) b.t.z -= back - SHELF_DEPTH;
+  }
+  if (s.kind === 4) {
+    const lr = s.lr ?? [];
+    const lx = s.lx ?? [];
+    const th = Math.abs(roll);
+    let fx = s.w0.x;
+    if (lr.length && th > lr[0]) {
+      fx = lx[lx.length - 1];
+      for (let i = 1; i < lr.length; i++)
+        if (th <= lr[i]) {
+          const k = lr[i] > lr[i - 1] ? (th - lr[i - 1]) / (lr[i] - lr[i - 1]) : 1;
+          fx = lx[i - 1] + (lx[i] - lx[i - 1]) * k;
+          break;
+        }
+    }
+    b.t.x += fx - w.x;
   }
   if (s.kind === 3) {
     // 넘어지는 책의 머리가 목표 자리 끝(옆 책·판 끝, lim)에 닿으면 그 뒤로는 머리가 그 선을 따라 내려오고 발이 반대쪽으로 미끄러진다.
@@ -370,7 +391,107 @@ function fallSegs(from: State, to: State, others: State[] = []): Seg[] | null {
   if (slide < -from.dims.H / 2 || slide > from.dims.H / 2) return null;
   return [seg];
 }
-const falls = (from: State, to: State) => fallSegs(from, to) !== null;
+
+// 넘어져 받침(대개 먼저 누운 책)에 크게 기대는 세운 책(shelf-scene fallRest): 발을 축으로 넘어지다 받침 모서리에 닿으면 그 모서리를 따라
+// 옆면이 미끄러지며 발이 넘어지는 반대쪽으로 밀려 목표 각에서 멈춘다(kind 4, 중력 e 1). 손으로 기울이는 것(메뉴: 20° 이하, 발 그대로)은
+// 여기 들지 않는다(leanSegs). others: 다른 책의 목표 자세(받침을 찾는다).
+const LEAN_FALL_MIN = 20; // °: 이보다 크게 기우는 것만 넘어짐으로 본다(메뉴 기울이기 한도 LEAN_MENU_MAX와 같다)
+function leanFallShape(from: State, to: State) {
+  if (!near(from.yaw, 0) || !near(to.yaw, 0) || lying(from) || lying(to)) return null;
+  if ((from.spin ?? 0) || (to.spin ?? 0) || (from.pitch ?? 0) || (to.pitch ?? 0)) return null;
+  const d = Math.sign(to.roll);
+  // 메뉴로 기울이는 각(20° 이하)은 손이 하는 움직임이다(틈을 맞추느라 책 자리도 함께 옮겨진다)
+  if (!d || from.roll * d < 0 || Math.abs(to.roll) <= Math.abs(from.roll) + 0.5 || Math.abs(to.roll) <= LEAN_FALL_MIN) return null;
+  const a = pivotLocal(from.dims, d);
+  const w0 = toWorld(from, a);
+  const w1 = toWorld(to, a);
+  if (Math.abs(w0.y - w1.y) > 0.5 || Math.abs(w0.z - w1.z) > 0.5) return null;
+  const slide = (w1.x - w0.x) * d;
+  if (slide > 0.05 || slide < -from.dims.H) return null;
+  return { d, a, w0, w1, slide };
+}
+// 같은 계획(같은 목표 배열)에서 후보마다 다시 재지 않는다
+const leanFallCache = new WeakMap<State[], Map<string, Seg[] | null>>();
+function leanFallSegs(from: State, to: State, others: State[]): Seg[] | null {
+  let memo = leanFallCache.get(others);
+  if (!memo) {
+    memo = new Map();
+    leanFallCache.set(others, memo);
+  }
+  const key = `${to.id}|${from.roll}|${from.t.x}|${from.t.z}`;
+  if (memo.has(key)) return memo.get(key)!;
+  const out = leanFallPath(from, to, others);
+  memo.set(key, out);
+  return out;
+}
+const LEAN_FALL_SAMPLES = 24;
+function leanFallPath(from: State, to: State, others: State[]): Seg[] | null {
+  const f = leanFallShape(from, to);
+  if (!f) return null;
+  const seg: Seg = { ...pivotSeg(from, to, 0, 1, f.a), e: 1 };
+  if (f.slide > -0.05) return [seg];
+  // 앞쪽 책들(목표 자세): 발보다 넘어지는 쪽, 넘어지며 닿을 수 있는 거리 안
+  const reach = Math.hypot(from.dims.T, from.dims.H) + 1;
+  const ahead = others.filter((o) => {
+    if (o.id === to.id) return false;
+    const r = xRange(o);
+    return ((r.lo + r.hi) / 2 - f.w0.x) * f.d > 0 && (f.d > 0 ? r.lo < f.w0.x + reach : r.hi > f.w0.x - reach);
+  });
+  const total = -f.slide;
+  const pose = (deg: number, s: number) => {
+    const b = reorientPivot(from, f.d * deg, from.yaw, f.a);
+    return { ...b, t: { ...b.t, x: b.t.x - f.d * s } };
+  };
+  const hits = (deg: number, s: number) => ahead.some((o) => gap(pose(deg, s), o) < -0.05);
+  // 기울기마다 어느 책도 파고들지 않는 가장 작은 미끄러짐(뒤로만 간다)
+  const r0 = Math.abs(from.roll);
+  const r1 = Math.abs(to.roll);
+  const lr: number[] = [];
+  const lx: number[] = [];
+  let s = 0;
+  for (let k = 1; k <= LEAN_FALL_SAMPLES; k++) {
+    const deg = r0 + ((r1 - r0) * k) / LEAN_FALL_SAMPLES;
+    if (k === LEAN_FALL_SAMPLES) s = total;
+    else if (hits(deg, s)) {
+      let lo = s;
+      let hi = total;
+      if (hits(deg, hi)) s = hi;
+      else {
+        for (let i = 0; i < 14; i++) {
+          const m = (lo + hi) / 2;
+          if (hits(deg, m)) lo = m;
+          else hi = m;
+        }
+        s = hi;
+      }
+    }
+    lr.push(deg);
+    lx.push(f.w0.x - f.d * s);
+  }
+  // 처음 닿는 기울기(lc): 발이 움직이기 시작하는 표 앞 칸을 이분으로 좁힌다
+  const first = lx.findIndex((x) => Math.abs(x - f.w0.x) > 1e-6);
+  if (first < 0) return [seg];
+  let lo = first ? lr[first - 1] : r0;
+  let hi = lr[first];
+  if (!hits(lo, 0)) {
+    for (let i = 0; i < 20; i++) {
+      const m = (lo + hi) / 2;
+      if (hits(m, 0)) hi = m;
+      else lo = m;
+    }
+  }
+  const lc = lo;
+  return [{ ...seg, kind: 4, side: f.d, lc, lr: [lc, ...lr.slice(first)], lx: [f.w0.x, ...lx.slice(first)] }];
+}
+const falls = (from: State, to: State) => fallSegs(from, to) !== null || leanFallShape(from, to) !== null;
+// 넘어지는 책의 경로(조각 하나: sequenceFalls는 출발 시각과 빠르기만 정한다). 넘어지는 책이 아니면 null.
+// 크게 기대는데 받침 모서리를 못 찾으면 발을 고르게 옮기며 넘어진다
+function fallingSegs(from: State, to: State, others: State[]): Seg[] | null {
+  const lie = fallSegs(from, to, others);
+  if (lie) return lie;
+  if (!leanFallShape(from, to)) return null;
+  return leanFallSegs(from, to, others) ?? [{ ...pivotSeg(from, to, 0, 1, pivotLocal(from.dims, Math.sign(to.roll))), e: 1 }];
+}
 
 type Candidate = { name: string; lean: 'sync' | 'moveFirst' | 'turnFirst'; turn: [number, number]; others: [number, number]; al: number; order: string; spread: number };
 
@@ -408,7 +529,7 @@ export function build(prev: State[], next: State[], c: Candidate): Track[] {
       // 수직축으로만 돌기(눕힌 책을 비스듬히): 가운데를 축으로, 자리 이동은 함께
       const ctr = { x: to.dims.T / 2, y: to.dims.H / 2, z: to.dims.W / 2 };
       segs = [pivotSeg(from, to, c.turn[0], c.turn[1], ctr)];
-    } else if (!sameRot(from, to)) segs = leanSegs(from, to, c.turn[0], c.turn[1], c.lean);
+    } else if (!sameRot(from, to)) segs = fallingSegs(from, to, next) ?? leanSegs(from, to, c.turn[0], c.turn[1], c.lean);
     else if (posers.length && c.spread > 0) {
       // 옆 책: 도는 동안 대각선만큼 더 비켜 줬다가 끝에 붙는다
       const side = (xRange(from).lo + xRange(from).hi) / 2 < center ? -1 : 1;
@@ -1449,7 +1570,7 @@ function pullPlan(
     if (tr) return tr;
     const from = before.get(to.id);
     if (!from || same(from, to)) return holdTrack(from ?? to);
-    if (falling.has(to.id)) return { id: to.id, dims: to.dims, segs: fallSegs(from, to, next)!, moving: true };
+    if (falling.has(to.id)) return { id: to.id, dims: to.dims, segs: fallingSegs(from, to, next)!, moving: true };
     // 제자리에서 밀리는 책: 빼낸 책이 모두 선반 앞에 있는 동안
     // All neighbours slide at the same rate. A lifted neighbour must not finish
     // its horizontal move early while the next book is still halfway across.

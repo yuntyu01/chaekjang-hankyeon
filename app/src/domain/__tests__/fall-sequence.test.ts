@@ -31,7 +31,8 @@ const moved = (tr: Track, from: Book3, t: number) => {
 const N = 2000;
 
 describe('도미노: 넘어지는 책이 똑바로 선 책을 차례로 넘어뜨린다', () => {
-  // [U2] [U1] [R] [F가 R에 기댐]. R을 빼면 F가 왼쪽으로 넘어지며 U1을 치고, U1이 U2를 친다(셋 다 바닥에 눕는다)
+  // [U2] [U1] [R] [F가 R에 기댐]. R을 빼면 F가 왼쪽으로 넘어지며 U1을 치고, U1이 U2를 친다. U2는 바닥에 눕고, U1은 누운 U2에,
+  // F는 U1에 크게 기대 멈춘다(받침 모서리에 닿은 뒤 발이 뒤로 미끄러지며: shelf-scene fallRest, transition kind 4)
   const books: BookMap = { U2: book('U2', 92, 19), U1: book('U1', 120, 24), R: book('R', 124, 37), F: book('F', 149, 19) };
   const before = withLeans(layoutOf(place('U2', 0, 136), place('U1', 1, 203), place('R', 2, 231), place('F', 3, 288, -7)), books);
   const after = withLeans({ ...before, placements: before.placements.filter((p) => p.bookId !== 'R') }, books);
@@ -58,9 +59,15 @@ describe('도미노: 넘어지는 책이 똑바로 선 책을 차례로 넘어�
     return c;
   };
 
-  it('준비: F는 R에 기대 있고, R을 빼면 셋 다 바닥에 눕는다', () => {
+  it('준비: F는 R에 기대 있고, R을 빼면 U2는 눕고 U1·F는 앞 책에 크게 기댄다', () => {
     expect(before.placements.find((p) => p.bookId === 'F')!.lean?.on).toBe('R');
-    for (const id of ['F', 'U1', 'U2']) expect(after.placements.find((p) => p.bookId === id)!.pose).toBe('horizontal');
+    expect(after.placements.find((p) => p.bookId === 'U2')!.pose).toBe('horizontal');
+    for (const [id, on] of [['U1', 'U2'], ['F', 'U1']]) {
+      const p = after.placements.find((q) => q.bookId === id)!;
+      expect(p.pose).toBe('spine');
+      expect(p.lean?.on).toBe(on);
+      expect(Math.abs(p.lean!.angle)).toBeGreaterThan(60);
+    }
     expect(Math.abs(fromOf('U1').roll)).toBeLessThan(1e-6);
     expect(Math.abs(fromOf('U2').roll)).toBeLessThan(1e-6);
   });
@@ -100,7 +107,10 @@ describe('도미노: 넘어지는 책이 똑바로 선 책을 차례로 넘어�
       const c = contactOf(id);
       expect(Number.isFinite(c)).toBe(true);
       const tr = trackOf(plan, id);
-      expect(moved(tr, fromOf(id), c)).toBeLessThan(0.5); // 닿을 때까지 거의 그대로(허용 0.5DU)
+      // 닿을 때까지 거의 그대로. 닿는 순간 출발하면 미는 책이 파고드는 경우에만 planTransition이 조금(최대 5눈금, 기준 시간 약 0.21) 먼저
+      // 천천히 출발시킨다(HEAD_START): U1이 받침 모서리를 따라 미끄러지며 기울어(kind 4) U2가 그만큼 먼저 비킨다
+      expect(startOf(id)).toBeGreaterThanOrEqual(c - 5 / 24 - 1e-9);
+      if (id === 'U1') expect(moved(tr, fromOf(id), c)).toBeLessThan(0.5);
       expect(moved(tr, fromOf(id), Math.min(1, c + 0.03))).toBeGreaterThan(1); // 닿자마자 넘어지기 시작한다
     }
   });
