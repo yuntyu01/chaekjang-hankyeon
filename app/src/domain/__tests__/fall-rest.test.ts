@@ -1,9 +1,9 @@
 // 받침을 잃고 넘어진 책이 머무는 곳(shelf-scene layFallen·fallRest): 판 끝에 걸쳐 눕기(overhang), 서로 쪽으로 넘어진 두 권의 A자 기대기,
 // 발이 미끄러지다 뒤 책에 기운 몸이 닿아 막힌 기대기(lean.slide), 서랍으로 떨어지는 책의 사라지는 경로(transition dropTrack).
 import { fromPlaced, gap, pivotLocal, toWorld } from '../book3';
-import { bookXs, checkSpace, fitToShelf, OVERHANG_MARGIN, placementOf, validate, withNormalizedX, type BookMap } from '../layout-engine';
-import { computeShelf, PLANK_BOUNDS, withLeans } from '../shelf-scene';
-import { bookAt, dropTrack } from '../transition';
+import { bookXs, checkSpace, fitToShelf, OVERHANG_MARGIN, placementOf, setTilt, validate, withNormalizedX, type BookMap } from '../layout-engine';
+import { bodiesOf, computeShelf, PLANK_BOUNDS, withLeans } from '../shelf-scene';
+import { bookAt, dropTrack, planTransition } from '../transition';
 import type { Book, BookPlacement, ShelfLayout } from '../types';
 
 const book = (id: string, height: number, thickness: number): Book => ({
@@ -154,6 +154,18 @@ describe('발이 미끄러지다 뒤 책에 막힌 기대기(lean.slide)', () =>
     expect(g).toBeLessThan(0.5);
     expect(g).toBeGreaterThan(-0.26);
     expect(withLeans(after, books).placements).toEqual(after.placements);
+  });
+
+  it('그 책을 다시 세우는 동안 들린 뒤 모서리가 뒤 책을 파고들지 않는다(발이 앞서 제자리로 가며 일어선다)', () => {
+    const l = withLeans(layoutOf(place('Z', 0, 75), place('D', 1, 100, 7), place('C', 2, 160), place('S', 3, 230)), books);
+    const leaning = withLeans(without(l, 'C'), books);
+    const r = setTilt(leaning, books, 'D', 0);
+    expect(r.ok).toBe(true);
+    const up = withLeans((r as { layout: ShelfLayout }).layout, books);
+    const plan = planTransition(bodiesOf(leaning, books, 's'), bodiesOf(up, books, 's'), PLANK_BOUNDS, { budgetMs: 60_000 });
+    const tz = plan.tracks.find((t) => t.id === 'Z')!;
+    const td = plan.tracks.find((t) => t.id === 'D')!;
+    for (let k = 0; k <= 60; k++) expect(gap(bookAt(td, k / 60), bookAt(tz, k / 60))).toBeGreaterThan(-0.3);
   });
 });
 

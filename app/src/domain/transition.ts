@@ -247,9 +247,46 @@ const lying = (b: State) => Math.abs(Math.abs(b.roll) - 90) < 1e-3;
 const posed = (a: State, b: State) => !near(a.yaw, b.yaw) || lying(a) !== lying(b);
 const shift = (b: State, dx: number): State => ({ ...b, t: { ...b.t, x: b.t.x + dx } });
 
+// 덜 기울며(세우며) 발이 기우는 쪽으로 옮겨 가는 책: 발이 미끄러져 기운 몸이 발 뒤 책에 닿아 막혀 있던 책(lean.slide)을 세울 때.
+// 발을 축으로 그 자리에서 일으키면 들린 뒤쪽 아래 모서리가 내려오며 발 뒤 책을 파고든다(서 있던 상자가 미끄러진 만큼 뒤 책과 겹친다).
+// back: 뒤쪽 아래 모서리가 뒤 책 쪽으로 가지 않을 만큼 발이 앞서 옮겨 가고(기울기 표 kind 4), 목표 자리를 넘지 않는다.
+// front: 기우는 쪽 끝(머리)이 처음보다 앞으로 나가지 않을 만큼만 발이 간다(거의 누운 책을 세울 때: 뒤 모서리를 붙잡으면 대각선만큼 머리가
+// 앞 책을 파고든다). 둘 중 어느 쪽이 막히지 않는지는 경로 검사가 고른다(후보마다 다르게). 해당하지 않으면 null
+function riseSeg(from: State, to: State, t0: number, t1: number, mode: 'back' | 'front' = 'back'): Seg | null {
+  const s = Math.sign(from.roll);
+  if (!s || !near(from.yaw, to.yaw) || !near(from.spin ?? 0, to.spin ?? 0) || !near(from.pitch ?? 0, to.pitch ?? 0)) return null;
+  if (to.roll * s < 0 || Math.abs(to.roll) >= Math.abs(from.roll) - 1e-6) return null;
+  const a = pivotLocal(from.dims, from.roll);
+  const seg = pivotSeg(from, to, t0, t1, a);
+  const D = (seg.w1.x - seg.w0.x) * s;
+  if (D <= 0.05) return null;
+  const r0 = Math.abs(from.roll);
+  const r1 = Math.abs(to.roll);
+  const T = from.dims.T;
+  const H = from.dims.H;
+  const rad = (d: number) => (d * Math.PI) / 180;
+  const lr: number[] = [-1];
+  const lx: number[] = [seg.w1.x];
+  const N = 24;
+  for (let k = 0; k <= N; k++) {
+    const th = r1 + ((r0 - r1) * k) / N;
+    const u = (r0 - th) / (r0 - r1);
+    const step = mode === 'back' ? Math.max(T * (Math.cos(rad(th)) - Math.cos(rad(r0))), D * u) : H * (Math.sin(rad(r0)) - Math.sin(rad(th)));
+    lr.push(th);
+    lx.push(seg.w0.x + s * Math.min(D, Math.max(0, step)));
+  }
+  return { ...seg, kind: 4, lc: -1, lr, lx };
+}
+
 // 기울기만 바뀌는 책(발을 축으로). 부호가 바뀌면 똑바로 선 자세를 거친다.
 function leanSegs(from: State, to: State, t0: number, t1: number, order: 'sync' | 'moveFirst' | 'turnFirst'): Seg[] {
   if (sameRot(from, to)) return moveSegs(from, to, t0, t1);
+  // 세우며 발이 기우는 쪽으로 가는 책: 발이 앞서 가며 일어선다(riseSeg). 먼저 옮기면 받침 쪽으로 밀려 들어가고, 먼저 돌면 뒤 책을 파고든다
+  {
+    const tm = order === 'sync' ? t0 : t0 + (t1 - t0) * 0.45;
+    const rise = order === 'moveFirst' ? riseSeg(from, to, tm, t1) : riseSeg(from, to, t0, order === 'sync' ? t1 : tm, order === 'sync' ? 'back' : 'front');
+    if (rise) return order === 'sync' ? [rise] : order === 'moveFirst' ? [pivotSeg(from, from, t0, tm, ZERO), rise] : [rise, pivotSeg(to, to, tm, t1, ZERO)];
+  }
   if (from.roll * to.roll < 0) {
     const mid = reorientPivot(from, 0, from.yaw, pivotLocal(from.dims, from.roll));
     const tm = (t0 + t1) / 2;
@@ -1471,6 +1508,9 @@ function leanSlideSegs(from: State, to: State, o0: number, o1: number): Seg[] {
     const pre: State = { ...from, t: { x: from.t.x + (wb.x - wa.x), y: from.t.y + (wb.y - wa.y), z: from.t.z + (wb.z - wa.z) } };
     return [pivotSeg(from, pre, o0, o1, ZERO), pivotSeg(pre, to, o1, 1, a)];
   }
+  // 세우며 발이 기우는 쪽으로 가는 책(발이 미끄러져 뒤 책에 막혀 있던 책)은 발이 앞서 가며 일어선다(riseSeg)
+  const rise = riseSeg(from, to, 0, o1);
+  if (rise) return [rise];
   const turned = reorientPivot(from, to.roll, to.yaw, a);
   return [pivotSeg(from, turned, 0, o0, a), pivotSeg(turned, to, o0, o1, ZERO)];
 }
