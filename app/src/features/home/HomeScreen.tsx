@@ -1333,7 +1333,11 @@ export function HomeScreen() {
     const fin = frontRelease(h.last, books, h.id, h.cur, h.qx);
     const err = fin ? commitPath({ ok: true, layout: fin }) : ko.fail['no-space'];
     settleShelf(h.shelfId, fin && !err ? fin : layout);
-    setEditMsg(err);
+    // 선반 앞 끝 밖으로 떨어진 책은 서랍으로 간다(받침을 잃은 세운 책과 같은 알림. 꾸미는 중이라 알림 대신 조작부에)
+    const before = new Set(h.last.drawer);
+    const fell = err ? 0 : placementStore.get().layout.drawer.filter((id) => !before.has(id)).length;
+    if (fell && !placementOf(placementStore.get().layout, h.id)) setEditId(null);
+    setEditMsg(err ?? (fell ? ko.fellToDrawer(fell) : null));
   };
   onHandleRef.current = onHandle;
   const frontInfo = useMemo(() => (editId ? frontStateOf(layout, books, editId) : null), [editId, layout, books]);

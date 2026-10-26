@@ -1001,35 +1001,50 @@ function spreadAround(base: ShelfLayout, placed: ShelfLayout, books: BookMap, sh
   return withItemXs(placed, shelfId, new Map(items.map((it, i) => [it.key, round2(xs[i])])));
 }
 
+// 이 자세로 놓을 때 저장하는 값: 반올림하고, 반올림한 각으로 머리가 벽을 뚫지 않게 바닥을 앞으로 맞춘다.
+// pos = 상자 왼쪽 끝(배치가 보는 자리), e = 축 기준 상자 범위. 넘어질 곳을 3D로 찾을 때도 이 값으로 상자를 만들어, 찾은 자세가 그대로 놓인다.
+function frontPose(book: Book, qx: number, st: FrontState) {
+  const s = { depth: round2(st.depth), pitch: round2(st.pitch), spin: round2(st.spin) };
+  const e = frontExt(book, s);
+  s.depth = Math.min(s.depth, Math.floor((SHELF_DEPTH - e.z1) * 100) / 100);
+  return { st: s, pos: round2(qx + e.x0), e };
+}
+type FrontPose = ReturnType<typeof frontPose>;
+
+function withFront(placements: BookPlacement[], bookId: string, f: FrontPose): BookPlacement[] {
+  return placements.map((q) =>
+    q.bookId === bookId ? { ...q, depth: f.st.depth, pitch: f.st.pitch || undefined, spin: f.st.spin || undefined, wallLean: undefined, pos: f.pos } : q,
+  );
+}
+
+// 이 줄 책들의 지금 자리(책 → 항목 왼쪽 끝)
+function rowXs(layout: ShelfLayout, books: BookMap, shelfId: string) {
+  const xs = new Map<string, number>();
+  for (const pos of itemPositions(shelfItems(layout, shelfId), layout, books)) for (const id of pos.item.bookIds) xs.set(id, pos.x);
+  return xs;
+}
+
+// 다른 책은 밀지 않고 놓는다: 옮긴 책은 pos, 나머지는 지금 자리 그대로여야 한다(배치가 하나라도 밀면 null).
+// order: 이 줄 항목 순서를 바꿔 놓아 볼 때(reorderFront)
+function settleFront(layout: ShelfLayout, books: BookMap, bookId: string, f: FrontPose, order?: ShelfItem[]): ShelfLayout | null {
+  const shelfId = placementOf(layout, bookId)!.shelfId;
+  const placements = withFront(order ? withOrders(layout, shelfId, order) : layout.placements, bookId, f);
+  const xa = rowXs(layout, books, shelfId);
+  const next = settle({ ...layout, placements }, books, new Map(xa).set(bookId, f.pos), shelfId);
+  if (checkSpace(next, books, shelfId)) return null;
+  for (const [id, x] of rowXs(next, books, shelfId)) if (Math.abs(x - (id === bookId ? f.pos : xa.get(id) ?? 0)) > 0.05) return null;
+  return next;
+}
+
 // 이 자세로 놓는다: 돌리기 축(qx)은 그대로, 다른 책은 밀지 않는다. 안 되면 null.
 // push: 넓어진 만큼 옆 책을 양옆으로 비킨다(좌우 돌리기만: 2026-10-10 사용자 '표지 상태 돌리기는 자유로워야',
 // 붙어 선 책 사이에서는 옆 책을 밀어야 돌 수 있다. 돌린 모서리는 16° 안팎에서 양옆으로 가장 많이 나온다). 넘어지는 책은 받침을 밀지 않고 거기서 멈춘다.
 export function applyFront(layout: ShelfLayout, books: BookMap, bookId: string, qx: number, st: FrontState, push = false): ShelfLayout | null {
-  const p = placementOf(layout, bookId)!;
-  // Rounded angles can move the head through the wall; clamp the saved pose.
-  const rounded = { depth: round2(st.depth), pitch: round2(st.pitch), spin: round2(st.spin) };
-  const e = frontExt(books[bookId], rounded);
-  rounded.depth = Math.min(rounded.depth, Math.floor((SHELF_DEPTH - e.z1) * 100) / 100);
-  const pos = round2(qx + e.x0);
-  const placements = layout.placements.map((q) =>
-    q.bookId === bookId ? { ...q, depth: rounded.depth, pitch: rounded.pitch || undefined, spin: rounded.spin || undefined, wallLean: undefined, pos } : q,
-  );
-  if (push) {
-    const spread = spreadAround(layout, { ...layout, placements }, books, p.shelfId, bookId, pos);
-    return spread && !checkSpace(spread, books, p.shelfId) ? spread : null;
-  }
-  const desired = bookXs(layout, books);
-  desired.set(bookId, pos);
-  const next = settle({ ...layout, placements }, books, desired, p.shelfId);
-  if (checkSpace(next, books, p.shelfId)) return null;
-  const xa = bookXs(layout, books);
-  const xb = bookXs(next, books);
-  for (const q of next.placements) {
-    if (q.shelfId !== p.shelfId) continue;
-    const want = q.bookId === bookId ? pos : xa.get(q.bookId) ?? 0;
-    if (Math.abs((xb.get(q.bookId) ?? 0) - want) > 0.05) return null;
-  }
-  return next;
+  const f = frontPose(books[bookId], qx, st);
+  if (!push) return settleFront(layout, books, bookId, f);
+  const shelfId = placementOf(layout, bookId)!.shelfId;
+  const spread = spreadAround(layout, { ...layout, placements: withFront(layout.placements, bookId, f) }, books, shelfId, bookId, f.pos);
+  return spread && !checkSpace(spread, books, shelfId) ? spread : null;
 }
 
 // from → to 사이에서 되는 곳까지(막히면 그 직전, 큰 점프 없이)
@@ -1051,25 +1066,30 @@ export function frontSpin(layout: ShelfLayout, books: BookMap, bookId: string, c
   return reach(layout, books, bookId, qx, (k) => spinStep(dims, cur, cur.spin + (want - cur.spin) * k, SHELF_DEPTH, MAX_FRONT_SPIN, -SHELF_FRONT), true);
 }
 
-// 바닥 축을 고정하고 from.pitch → target으로 넘어진다(1° 걸음, 막히면 그 사이를 이분). blocked: 가는 길에 막혀 멈췄는지.
-// 시작 자세부터 놓을 수 없으면 null
-function fallFront(layout: ShelfLayout, books: BookMap, bookId: string, qx: number, from: FrontState, target: number) {
-  let best = applyFront(layout, books, bookId, qx, from);
-  if (!best) return null;
-  const count = Math.ceil(Math.abs(target - from.pitch));
-  let previous = from.pitch;
-  for (let i = 1; i <= count; i++) {
-    const pitch = from.pitch + ((target - from.pitch) * i) / count;
-    const next = applyFront(layout, books, bookId, qx, { ...from, pitch });
-    if (!next) {
-      const contact = reach(layout, books, bookId, qx, (k) => ({ ...from, pitch: previous + (pitch - previous) * k }));
-      return { layout: contact?.layout ?? best, blocked: true };
-    }
-    best = next;
-    previous = pitch;
+// ---------- 손을 놓았을 때: 넘어질 곳은 3D 상자로 찾고, 멈춘 자세만 놓는다 ----------
+// 넘어지는 동안의 자세는 저장하지 않으므로 하나하나 배치(settle)로 놓아 볼 필요가 없다: 이 줄 다른 책들의 지금 상자에 회전한 상자가
+// 파고드는지(book3 gap)와 줄 좌우 끝·선반 앞 끝만 보고(frontHit), 멈춘 자세를 한 번 놓는다(placeFront).
+// 배치(packing)는 앞 항목부터 x로 훑어 겹칠 수 있는 자리를 모두 피하므로(minSeparation), 돌린 책이 뒤에 놓인 책 쪽으로 비껴 넘어지면
+// 실제 상자는 떨어져 있어도 옆 책을 밀어야 한다고 본다. 예전에는 걸음마다 applyFront로 놓아 보아(1°마다 settle) 느렸고, 그런 자세를
+// 막힌 것으로 보아 받침 없이 공중에서 멈췄다.
+
+const FALL_BISECT = 8; // 1° 걸음 사이를 이분하는 횟수(1/256°: 저장하는 젖힘 0.01°보다 잘게)
+
+type Box3 = { x0: number; x1: number; y0: number; y1: number; z0: number; z1: number };
+function box3(cs: { x: number; y: number; z: number }[]): Box3 {
+  const b = { x0: Infinity, x1: -Infinity, y0: Infinity, y1: -Infinity, z0: Infinity, z1: -Infinity };
+  for (const c of cs) {
+    b.x0 = Math.min(b.x0, c.x);
+    b.x1 = Math.max(b.x1, c.x);
+    b.y0 = Math.min(b.y0, c.y);
+    b.y1 = Math.max(b.y1, c.y);
+    b.z0 = Math.min(b.z0, c.z);
+    b.z1 = Math.max(b.z1, c.z);
   }
-  return { layout: best, blocked: false };
+  return b;
 }
+// 축 정렬 범위가 떨어져 있으면 두 상자도 떨어져 있다(gap > 0): gap을 계산하지 않고 넘긴다
+const apart = (a: Box3, b: Box3) => a.x0 > b.x1 || b.x0 > a.x1 || a.y0 > b.y1 || b.y0 > a.y1 || a.z0 > b.z1 || b.z0 > a.z1;
 
 // 이 선반의 다른 상자들(3D, 지금 자리)
 function shelfBodies(layout: ShelfLayout, books: BookMap, shelfId: string, except: string): Book3[] {
@@ -1079,61 +1099,252 @@ function shelfBodies(layout: ShelfLayout, books: BookMap, shelfId: string, excep
   return out;
 }
 
-// 넘어지다 막힌 자세에서 받침이 된 상자: 1° 더 넘기면 가장 깊이 파고드는 것(옆에 붙어 선 책은 거의 파고들지 않는다). 없으면(선반 끝 등) null
-function frontSupportOf(bookId: string, dims: Book3['dims'], qx: number, st: FrontState, bodies: Book3[]): Book3 | null {
-  const probe = frontBook3(bookId, dims, qx, st.depth, Math.min(90, st.pitch + 1), st.spin);
-  let best: Book3 | null = null;
-  let least = -0.02;
-  for (const o of bodies) {
-    const g = gap(probe, o);
-    if (g < least) {
+// 넘어지는 책 주변: 이 줄 다른 책들의 지금 상자(꼭짓점·축 정렬 범위)와 줄 좌우 끝. limit0: 손을 놓은 자세에서 맞닿아 있던 상자(startLimits)
+type Body = { b: Book3; cs: { x: number; y: number; z: number }[]; box: Box3 };
+type FrontWorld = {
+  book: Book;
+  bookId: string;
+  dims: { T: number; H: number; W: number };
+  qx: number;
+  row: { lo: number; hi: number };
+  bodies: Body[];
+  limit0: Map<Book3, number>;
+};
+function frontWorld(layout: ShelfLayout, books: BookMap, bookId: string, qx: number, cur: FrontState): FrontWorld {
+  const shelfId = placementOf(layout, bookId)!.shelfId;
+  const bodies = shelfBodies(layout, books, shelfId, bookId).map((b) => {
+    const cs = corners(b);
+    return { b, cs, box: box3(cs) };
+  });
+  const w = { book: books[bookId], bookId, dims: frontDims(books[bookId]), qx, row: bounds(shelfItems(layout, shelfId), layout), bodies, limit0: new Map() };
+  w.limit0 = startLimits(w, frontPose(w.book, qx, cur));
+  return w;
+}
+
+// 옆에 붙어 선 책: 이 책 폭 띠(돌리기 축 qx·바닥 가운데 깊이 depth + T/2 둘레로 되돌린 틀에서 |x| ≤ W/2, frontSupport2와 같은 틀)에
+// SIDE_TOUCH 이하로만 걸친 상자. 젖힘은 이 책을 그 틀의 x축 둘레로 돌릴 뿐이라 옆면은 제 평면에 머문다: 그런 책은 옆면을 스칠 뿐
+// 막지도 받치지도 않는다(배치가 TOUCH까지 붙여 두고, 젖힐 때마다 반올림되는 자리 pos로 상자가 x로 0.005까지 흔들린다).
+const SIDE_TOUCH = 2 * TOUCH;
+function beside(w: FrontWorld, qx: number, depth: number, spin: number, o: Body) {
+  const r = (spin * Math.PI) / 180;
+  const c = Math.cos(r);
+  const sn = Math.sin(r);
+  const qz = depth + w.dims.T / 2;
+  let lo = Infinity;
+  let hi = -Infinity;
+  for (const p of o.cs) {
+    const x = (p.x - qx) * c + (p.z - qz) * sn;
+    lo = Math.min(lo, x);
+    hi = Math.max(hi, x);
+  }
+  return Math.min(hi, w.dims.W / 2) - Math.max(lo, -w.dims.W / 2) <= SIDE_TOUCH;
+}
+
+// 막은 것: 책 상자 / 줄 좌우 끝(옆판, 'side') / 선반 앞 끝('front') / 없음
+type Hit = Book3 | 'side' | 'front' | null;
+
+// 넘어지는 동안 볼 상자: 놓을 자세 값(반올림한 깊이·각)이되 돌리기 축은 반올림 전 qx. 놓을 때 자리(pos)는 0.01로 반올림되어 각마다
+// 상자가 x로 0.005까지 흔들리는데, 그 흔들림으로 붙어 선 책에 걸리지 않게 한다(놓인 상자가 그만큼 더 파고들면 배치가 그만큼만
+// 되밀고, settleFront는 0.05까지를 제자리로 본다)
+function frontBox(w: FrontWorld, f: FrontPose) {
+  return frontBook3(w.bookId, w.dims, w.qx, f.st.depth, f.st.pitch, f.st.spin);
+}
+
+// 이 자세(frontPose 값)를 막는 것: 이 줄 책 상자에 TOUCH보다 깊이 파고들거나(배치와 같은 기준, 여럿이면 가장 깊은 것. 옆에 붙어
+// 선 책은 빼고), 줄 좌우 끝·선반 앞 끝을 넘는다(checkSpace와 같은 기준: 상자 폭과 바닥 모서리). limit: 상자별로 이보다 더 파고들어야
+// 막힌 것(넘어지기 시작할 때 이미 붙어 있던 책). front = false면 선반 앞 끝은 보지 않는다(앞으로 튀어나오게 눕혀 볼 때).
+function frontHit(w: FrontWorld, f: FrontPose, limit?: Map<Book3, number>, front = true): Hit {
+  const box = frontBox(w, f);
+  const cs = corners(box);
+  const bb = box3(cs);
+  let hit: Book3 | null = null;
+  let least = Infinity;
+  for (const o of w.bodies) {
+    if (apart(bb, o.box) || beside(w, w.qx, f.st.depth, f.st.spin, o)) continue;
+    const g = gap(box, o.b);
+    if (g < (limit?.get(o.b) ?? -TOUCH) && g < least) {
       least = g;
-      best = o;
+      hit = o.b;
     }
   }
-  return best;
+  if (hit) return hit;
+  // 줄 끝을 조금 넘는 상자는 배치가 안으로 밀어 넣고(resolveXs), 그 밀림이 settleFront가 제자리로 보는 0.05 안이면 놓인다
+  const { lo, hi } = w.row;
+  if (f.pos < lo - 0.05 || f.pos + f.e.x1 - f.e.x0 > hi + 0.05) return 'side';
+  for (const c of cs) {
+    if (c.y >= bb.y0 + 0.01) continue;
+    if (c.z > SHELF_DEPTH + 0.01) return 'side';
+    if (front && c.z < -SHELF_FRONT - 0.01) return 'front';
+  }
+  return null;
+}
+
+// 시작 자세에서 이미 맞닿아 있던 상자: 배치는 TOUCH까지 붙여 두고 frontBox는 놓인 상자와 x로 0.005까지 어긋나므로, 그보다
+// FALL_SLACK 넘게 더 파고들 때만 막는다
+const FALL_SLACK = 0.006;
+function startLimits(w: FrontWorld, f: FrontPose) {
+  const box = frontBox(w, f);
+  const bb = box3(corners(box));
+  const out = new Map<Book3, number>();
+  for (const o of w.bodies) {
+    if (apart(bb, o.box)) continue;
+    const g = gap(box, o.b);
+    if (g < -TOUCH + FALL_SLACK) out.set(o.b, Math.min(g, -TOUCH) - FALL_SLACK);
+  }
+  return out;
+}
+
+type Fall = { pose: FrontPose; hit: Hit; free0: boolean };
+
+// 바닥 축을 고정하고(머리가 벽에 닿으면 frontPose가 바닥을 앞으로 맞춘다: 벽을 타고 내려온다) from.pitch → target으로 넘어질 때
+// 처음 막히는 곳: 1° 걸음, 막히면 그 사이를 이분. pose = 막히기 직전 자세(놓을 값), hit = 막은 것(null이면 target까지 갔다),
+// free0 = 시작 자세가 비어 있었는지(아니면 pose는 시작 자세).
+function fall3(w: FrontWorld, from: FrontState, target: number): Fall {
+  const at = (pitch: number) => frontPose(w.book, w.qx, { ...from, pitch });
+  const start = at(from.pitch);
+  const limit = startLimits(w, start);
+  const first = frontHit(w, start, limit);
+  if (first) return { pose: start, hit: first, free0: false };
+  const count = Math.ceil(Math.abs(target - from.pitch));
+  let prev = from.pitch;
+  let last = start;
+  for (let i = 1; i <= count; i++) {
+    const pitch = from.pitch + ((target - from.pitch) * i) / count;
+    const f = at(pitch);
+    let hit = frontHit(w, f, limit);
+    if (!hit) {
+      prev = pitch;
+      last = f;
+      continue;
+    }
+    let lo = prev;
+    let hi = pitch;
+    for (let k = 0; k < FALL_BISECT; k++) {
+      const mid = (lo + hi) / 2;
+      const g = at(mid);
+      const h = frontHit(w, g, limit);
+      if (h) {
+        hi = mid;
+        hit = h;
+      } else {
+        lo = mid;
+        last = g;
+      }
+    }
+    return { pose: last, hit, free0: true };
+  }
+  return { pose: last, hit: null, free0: true };
+}
+
+// 볼록 다각형 넓이(받침 외곽이 폭 경계에 면으로만 닿아 선이 되었는지)
+function areaOf(poly: { x: number; y: number }[]) {
+  let a = 0;
+  for (let i = 0; i < poly.length; i++) {
+    const p = poly[i];
+    const q = poly[(i + 1) % poly.length];
+    a += p.x * q.y - q.x * p.y;
+  }
+  return Math.abs(a) / 2;
+}
+
+// 손을 놓은 책이 머무는 곳: 자세(놓을 값) / 선반에서 떨어져 서랍 / 처음 바닥 자리에서 다시 선다
+type FrontRest = { kind: 'pose'; st: FrontState } | { kind: 'drawer' } | { kind: 'stand' };
+const restPose = (f: FrontPose): FrontRest => ({ kind: 'pose', st: f.st });
+
+// 넘어져 멈춘 곳(fall3)에서: 막은 것이 없으면(벽에 기대거나 눕는다: releasedPitch) 거기, 받침에 기대 버티면 거기,
+// 받침을 밀지 않으면(tip) 다시 서고, 바닥 마찰이 못 버티면 'slip'(바닥이 앞으로 미끄러진다: slideRest).
+// 벽을 타고 내려오던 바닥이 선반 앞 끝에 닿으면 더 넘어진다(edgeRest). 젖힘 평면의 2D 평형으로 볼 수 없는 곳은 거기 둔다:
+// 줄 좌우 끝(옆판: 받치는 힘이 젖힘 평면 밖)과, 받침이 이 책 폭 경계에 면으로만 닿아 2D 외곽이 생기지 않는 경우(드묾).
+function restAt(w: FrontWorld, fell: Fall): FrontRest | 'slip' {
+  if (!fell.hit || fell.hit === 'side') return restPose(fell.pose);
+  if (fell.hit === 'front') return edgeRest(w, fell.pose.st.spin);
+  const s = fell.pose.st;
+  const hull = frontSupport2(w.dims, s, fell.pose.pos - fell.pose.e.x0, fell.hit); // 놓인 배치에서 다시 볼 때와 같은 축(frontStateOf)
+  if (hull.length < 3 || areaOf(hull) < 0.01) return restPose(fell.pose);
+  const v = frontLean(w.dims, s, hull);
+  if (v.ok) return restPose(fell.pose);
+  return v.reason === 'tip' ? { kind: 'stand' } : 'slip';
+}
+
+// 바닥이 선반 앞 끝까지 미끄러져도 버티지 못하면 더 넘어진다: 바닥을 앞 끝에 두고 눕힐 자리(뒤표지가 아래)가 비어 있으면 거기 눕는다.
+// 비어 있지 않으면(받침·벽에 걸린다) 받침에 걸치거나 판 앞으로 튀어나오게 누워야 하는데, 이 모델은 그런 자세를 놓을 수 없다
+// (겹침 없이, 판 안에만). 받침·벽을 피하도록 앞으로 밀어 눕힌 자리의 무게중심이 판 앞 끝 밖이면 선반에서 떨어져 서랍으로 가고
+// (받침을 잃은 세운 책과 같이: shelf-scene layFallen), 판 위면(걸쳐 버틸 자세) 처음 바닥 자리에서 다시 세운다.
+function edgeRest(w: FrontWorld, spin: number): FrontRest {
+  const at = (depth: number) => frontPose(w.book, w.qx, { depth, pitch: 90, spin });
+  const flat = at(Math.ceil((-SHELF_FRONT - frontExt(w.book, { pitch: 90, spin }).z0) * 100) / 100);
+  if (!frontHit(w, flat, w.limit0)) return restPose(flat);
+  let blocked = flat.st.depth;
+  let free: number | null = null;
+  for (let d = blocked - 1; d > flat.st.depth - w.dims.H - w.dims.T - 2; d -= 1) {
+    if (!frontHit(w, at(d), w.limit0, false)) {
+      free = d;
+      break;
+    }
+    blocked = d;
+  }
+  if (free === null) return { kind: 'stand' };
+  let ok: number = free;
+  for (let k = 0; k < 8; k++) {
+    const mid = (ok + blocked) / 2;
+    if (frontHit(w, at(mid), w.limit0, false)) blocked = mid;
+    else ok = mid;
+  }
+  const f = at(ok);
+  return f.st.depth + (f.e.z0 + f.e.z1) / 2 < -SHELF_FRONT ? { kind: 'drawer' } : { kind: 'stand' };
 }
 
 const SLIDE_STEP = 0.5; // 바닥이 미끄러질 때 멈출 자리를 찾는 걸음(DU)
 const SLIDE_COARSE = 2; // 굵은 걸음: 멈출 만한 곳을 지나치면 직전 자리부터 SLIDE_STEP으로 다시 본다
+const SLIDE_CHECKS = 24; // 3D로 넘어져 확인하는 횟수 한도(2D와 3D가 거듭 엇갈리는 드문 경우: 다시 세운다)
 
 // 받침에 닿은 각이 바닥 마찰로 버티지 못할 때(slip): 머리는 받침을 타고 내려가며 바닥(뒤쪽 아래 모서리)이 앞으로 미끄러진다.
 // 바닥 자리를 앞으로 옮기며, 그 자리에서 넘어져 처음 닿는 곳이 버티거나(statics) 아무것에도 닿지 않고 눕는(90°)·벽에 기대는
-// 첫 자리를 찾는다. 걸음마다의 판정은 젖힘 평면(2D, front-pose)으로 하고, 멈출 자리만 3D(applyFront)로 실제로 넘어져 확인한다.
-// 바닥 축이 선반 앞 끝을 넘거나 앞길이 막히면 null(호출하는 쪽이 처음 닿은 자리에 둔다).
-function frontSlide(layout: ShelfLayout, books: BookMap, bookId: string, qx: number, from: FrontState): ShelfLayout | null {
-  const dims = frontDims(books[bookId]);
-  const shelfId = placementOf(layout, bookId)!.shelfId;
+// 첫 자리를 찾는다. 걸음마다의 판정은 젖힘 평면(2D, front-pose)으로 하고, 멈출 자리만 3D 상자로 넘어져 확인한다(fall3).
+// 바닥 축이 선반 앞 끝에 닿도록 버티지 못하면 더 넘어진다(edgeRest). 앞길이 막히면(바닥 앞에 다른 책) 그 책이 받쳐 마지막으로 확인한
+// 자리에 둔다(2D 평형은 받침 하나만 본다: 앞의 책이 미는 힘은 넣지 않는 어림).
+function slideRest(w: FrontWorld, from: FrontPose): FrontRest {
+  const { dims, qx } = w;
+  const s = from.st;
   // 2D로 볼 상자: 이 책과 가로 범위가 겹치는 것(넘어지는 동안의 범위)
-  const a = xRange(frontBook3(bookId, dims, qx, from.depth, 0, from.spin));
-  const b = xRange(frontBook3(bookId, dims, qx, from.depth, 90, from.spin));
+  const a = xRange(frontBook3(w.bookId, dims, qx, s.depth, 0, s.spin));
+  const b = xRange(frontBook3(w.bookId, dims, qx, s.depth, 90, s.spin));
   const lo = Math.min(a.lo, b.lo) - 0.5;
   const hi = Math.max(a.hi, b.hi) + 0.5;
-  const bodies = shelfBodies(layout, books, shelfId, bookId);
-  const near = bodies.filter((o) => {
-    const r = xRange(o);
-    return r.hi > lo && r.lo < hi;
-  });
+  const near = w.bodies.filter((o) => o.box.x1 > lo && o.box.x0 < hi);
   // 바닥 축(돌린 모서리)의 가장 앞 z
-  const r = (from.spin * Math.PI) / 180;
+  const r = (s.spin * Math.PI) / 180;
   const footFront = (depth: number) => depth + (dims.T / 2) * (1 + Math.cos(r)) - (dims.W / 2) * Math.abs(Math.sin(r));
-  // 2D로 본 한 자리: 갈 수 없음(선반 앞 끝 너머·앞길이 막힘) / 넘어져 닿은 곳에서 또 미끄러짐 / 멈춤
-  const probe = (depth: number, pitch: number) => {
-    const s0 = { depth, pitch, spin: from.spin };
-    if (footFront(depth) < -SHELF_FRONT - 0.01) return { s0, kind: 'blocked' as const, target: pitch, pitch };
-    const hulls = near.map((o) => frontSupport2(dims, s0, qx, o));
+  // 이 자리의 2D 받침 외곽(옆에 붙어 선 책은 빼고)
+  const outlines = (s0: FrontState) => near.filter((o) => !beside(w, qx, s0.depth, s0.spin, o)).map((o) => ({ o, h: frontSupport2(dims, s0, qx, o.b) }));
+  const penOf = (s0: FrontState, o: Body) => {
+    const h = frontSupport2(dims, s0, qx, o.b);
+    return penetration2(frontLeaner2(dims, s0).poly, h);
+  };
+  // 2D로 본 한 자리(from = 지금 자리에서 바닥만 앞으로): 선반 앞 끝 너머 / 앞길이 막힘(지금보다 더 파고든다: 폭 경계에서 비스듬히 닿은
+  // 받침은 2D로 겹쳐 보인 채 함께 옮겨지므로 겹침이 늘 때만) / 넘어져 닿은 곳에서 또 미끄러짐 / 멈춤
+  const probe = (from: FrontState, depth: number, pitch: number) => {
+    const s0 = { depth, pitch, spin: s.spin };
+    if (footFront(depth) < -SHELF_FRONT - 0.01) return { s0, kind: 'edge' as const, target: pitch, pitch };
+    const out = outlines(s0);
+    const hulls = out.map((q) => q.h);
     const poly = frontLeaner2(dims, s0).poly;
-    if (hulls.some((h) => penetration2(poly, h) > 0.01)) return { s0, kind: 'blocked' as const, target: pitch, pitch };
+    const deeper = (q: (typeof out)[number]) => {
+      const p = penetration2(poly, q.h);
+      return p > 0.01 && p > penOf(from, q.o) + 0.01;
+    };
+    if (out.some(deeper)) return { s0, kind: 'blocked' as const, target: pitch, pitch };
     const target = releasedPitch(dims, s0, SHELF_DEPTH);
     const c = frontFall2(dims, s0, target, hulls);
     const slip = !!c && frontLean(dims, { ...s0, pitch: c.pitch }, hulls[c.index]).reason === 'slip';
     return { s0, kind: slip ? ('slip' as const) : ('stop' as const), target, pitch: c?.pitch ?? target };
   };
-  let st = from;
+  let st: FrontState = s;
+  let held = from; // 마지막으로 3D로 확인한(받침에 닿아 미끄러지는) 자세
   let step = SLIDE_COARSE;
-  let checks = 0; // 3D로 넘어져 본 횟수(2D와 3D가 거듭 엇갈리면 그만둔다)
+  let checks = 0;
   for (let guard = 0; guard < 2000; guard++) {
-    const q = probe(st.depth - step, st.pitch);
+    const q = probe(st, st.depth - step, st.pitch);
     if (q.kind === 'slip') {
       st = { ...q.s0, pitch: q.pitch };
       continue;
@@ -1142,39 +1353,83 @@ function frontSlide(layout: ShelfLayout, books: BookMap, bookId: string, qx: num
       step = SLIDE_STEP;
       continue;
     }
-    if (q.kind === 'blocked') return null;
+    if (q.kind === 'edge') return edgeRest(w, s.spin);
+    if (q.kind === 'blocked') return restPose(held);
     // 2D로는 여기서 멈춘다: 3D로 넘어져 확인
-    if (++checks > 6) return null;
-    const fell = fallFront(layout, books, bookId, qx, q.s0, q.target);
-    if (!fell) return null;
-    if (!fell.blocked) return fell.layout;
-    const s3 = frontStateOf(fell.layout, books, bookId)!.state;
-    const sup = frontSupportOf(bookId, dims, qx, s3, bodies);
-    const hull = sup ? frontSupport2(dims, s3, qx, sup) : [];
-    if (hull.length < 3 || frontLean(dims, s3, hull).reason !== 'slip') return fell.layout;
-    st = s3;
+    if (++checks > SLIDE_CHECKS) return { kind: 'stand' };
+    const fell = fall3(w, q.s0, q.target);
+    if (!fell.free0) return restPose(held);
+    const v = restAt(w, fell);
+    if (v !== 'slip') return v;
+    held = fell.pose;
+    st = fell.pose.st;
     step = SLIDE_COARSE;
+  }
+  return { kind: 'stand' };
+}
+
+// 넘어져 멈춘 자세를 놓는다(옆 책 자리는 그대로): 지금 항목 순서로 안 되면 순서를 바꿔 본다(reorderFront)
+function placeFront(layout: ShelfLayout, books: BookMap, bookId: string, qx: number, st: FrontState): ShelfLayout | null {
+  const f = frontPose(books[bookId], qx, st);
+  return settleFront(layout, books, bookId, f) ?? reorderFront(layout, books, bookId, f);
+}
+
+// 배치가 x로 훑어 옆 책을 미는 것은 항목 순서상 그 책이 반대쪽(뒤 항목인데 왼쪽, 앞 항목인데 오른쪽)에 있을 때다: 순서에서 이 책 자리만
+// 바꿔(가운데가 놓이는 순서, 가로 범위가 겹치는 항목의 앞·뒤. 가운데 순서에 가까운 것부터) 옆 책이 모두 제자리인 순서가 있으면 그것으로 놓는다.
+// 깊이가 떨어진 항목끼리는 순서가 배치에 영향을 주지 않는다(packedPositions).
+function reorderFront(layout: ShelfLayout, books: BookMap, bookId: string, f: FrontPose): ShelfLayout | null {
+  const shelfId = placementOf(layout, bookId)!.shelfId;
+  const pos = itemPositions(shelfItems(layout, shelfId), layout, books);
+  const m = pos.findIndex((q) => q.item.bookIds.includes(bookId));
+  const others = pos.filter((_, i) => i !== m);
+  const lo = f.pos;
+  const hi = f.pos + f.e.x1 - f.e.x0;
+  const mid = insertIndex(others, (lo + hi) / 2);
+  const cands = [mid];
+  others.forEach((q, j) => {
+    if (q.x < hi && q.x + q.width > lo) cands.push(j, j + 1);
+  });
+  const tried = new Set([m]);
+  for (const i of cands.sort((a, b) => Math.abs(a - mid) - Math.abs(b - mid))) {
+    if (tried.has(i)) continue;
+    tried.add(i);
+    const order = others.map((q) => q.item);
+    order.splice(i, 0, pos[m].item);
+    const r = settleFront(layout, books, bookId, f, order);
+    if (r) return r;
   }
   return null;
 }
 
+function releaseRest(w: FrontWorld, cur: FrontState, target: number): FrontRest {
+  const fell = fall3(w, cur, target);
+  if (target < cur.pitch) return restPose(fell.pose); // 다시 선다(앞에 닿으면 거기)
+  const v = restAt(w, fell);
+  return v === 'slip' ? slideRest(w, fell.pose) : v;
+}
+
 // 손을 놓으면 무게중심 방향으로 넘어지며 바닥 축을 고정한다(releasedPitch: 다시 서기·벽에 기대기·눕기). 가는 길에 책(받침)에 막히면
 // 거기 기대 버티는지 젖힘 평면의 힘 평형(statics.ts)으로 본다: 버티면 그 각, 받침을 밀지 않으면(tip) 다시 서고,
-// 바닥 마찰이 못 버티면(slip) 바닥이 앞으로 미끄러진 자리(frontSlide). 미끄러질 곳이 없으면(선반 앞 끝) 처음 닿은 자리에 둔다.
+// 바닥 마찰이 못 버티면(slip) 바닥이 앞으로 미끄러진 자리(slideRest). 바닥이 선반 앞 끝까지 가도 버티지 못하면 더 넘어져
+// 앞 끝에 눕거나 선반에서 떨어진다(edgeRest: 서랍). 공중이나 버티지 못하는 각에는 두지 않는다: 찾은 자세를 놓을 수 없으면
+// (항목 순서를 바꿔도 배치가 옆 책을 밀어야 한다고 보는 드문 경우: 눕힌 책 바로 뒤 순서는 그 책 끝을 비워 둔다 등) 처음 바닥 자리에서
+// 다시 세우고, 그것도 안 되면 null. 다시 설 때 돌린 책의 앞 모서리가 선반 앞 끝을 넘으면(젖힌 채 돌린 책) 넘지 않는 데(0°에 조금
+// 못 미쳐)에서 선다. 2D 평형의 어림(front-pose): 받침이 이 책 폭 경계에서 비스듬히 닿으면(돌린 모서리) 받치는 힘을 2D로 잘못 볼 수
+// 있다(tip이 나오면 다시 서다 그 받침에 막힌 데 머문다).
 export function frontRelease(layout: ShelfLayout, books: BookMap, bookId: string, cur: FrontState, qx: number): ShelfLayout | null {
   const dims = frontDims(books[bookId]);
   const target = releasedPitch(dims, cur, SHELF_DEPTH);
   if (Math.abs(target - cur.pitch) < 0.01) return applyFront(layout, books, bookId, qx, cur);
-  const fell = fallFront(layout, books, bookId, qx, cur, target);
-  if (!fell || !fell.blocked || target < cur.pitch) return fell?.layout ?? null;
-  const at = frontStateOf(fell.layout, books, bookId)!.state;
-  const sup = frontSupportOf(bookId, dims, qx, at, shelfBodies(fell.layout, books, placementOf(layout, bookId)!.shelfId, bookId));
-  const hull = sup ? frontSupport2(dims, at, qx, sup) : [];
-  if (hull.length < 3) return fell.layout; // 받침이 아닌 것(선반 끝, 이 책 폭 밖에서 비껴 닿은 옆 책)에 막혔다
-  const v = frontLean(dims, at, hull);
-  if (v.ok) return fell.layout;
-  if (v.reason === 'tip') return fallFront(layout, books, bookId, qx, cur, 0)?.layout ?? fell.layout;
-  return frontSlide(fell.layout, books, bookId, qx, at) ?? fell.layout;
+  const w = frontWorld(layout, books, bookId, qx, cur);
+  const rest = releaseRest(w, cur, target);
+  if (rest.kind === 'drawer') {
+    const r = moveToDrawer(layout, bookId, books);
+    if (r.ok) return r.layout;
+  } else if (rest.kind === 'pose') {
+    const placed = placeFront(layout, books, bookId, qx, rest.st);
+    if (placed) return placed;
+  }
+  return placeFront(layout, books, bookId, qx, fall3(w, cur, 0).pose.st);
 }
 
 // 앞뒤 막대(보조): 바닥 자리를 옮긴다. 서 있는 책은 그대로 서서 옮겨진다(벽 가까이 가도 저절로 기대지 않는다: 2026-10-10 사용자

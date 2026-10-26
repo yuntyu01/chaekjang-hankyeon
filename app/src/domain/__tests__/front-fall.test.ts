@@ -1,10 +1,10 @@
-import { corners, gap, lowest, toWorld } from '../book3';
+import { corners, frontBook3, gap, lowest, toWorld } from '../book3';
 import { frontFall2, frontLean, frontSupport2, releasedPitch, wallReach } from '../front-pose';
 import { frontDims, SHELF_DEPTH, SHELF_FRONT } from '../geometry';
-import { frontRelease, frontStateOf, frontTilt, normalize, placementOf, setDepth, setPose, validate, type BookMap } from '../layout-engine';
+import { applyFront, bookXs, boxOf, frontRelease, frontStateOf, frontTilt, normalize, placementOf, setDepth, setPose, validate, type BookMap } from '../layout-engine';
 import { SAMPLE_BOOKS } from '../onboarding-sample';
 import { bodiesOf, PLANK_BOUNDS } from '../shelf-scene';
-import { slipAngle } from '../statics';
+import { slipAngle, tipAngle } from '../statics';
 import { bookAt, planTransition } from '../transition';
 import type { ShelfLayout } from '../types';
 
@@ -203,10 +203,137 @@ describe('뒤에 놓인 책을 받침으로 만나면 거기 기대 버티는지
     }
   });
 
-  it('미끄러질 자리가 없으면(버티기 전에 바닥 축이 선반 앞 끝에 닿는다) 처음 닿은 자리에 둔다', () => {
+  // 예전에는 처음 닿은 자리(미끄러지는 각)에 그대로 두었다. 앞 끝에 눕히면 받침과 겹치고, 받침을 피해 앞으로 눕히면 판 밖으로
+  // 튀어나오지만 무게중심은 판 위라(이 모델로 놓을 수 없는 자세) 처음 바닥 자리에서 다시 세운다
+  it('바닥이 선반 앞 끝까지 미끄러져도 버티지 못하면 버티지 못하는 각에 두지 않는다: 무게중심이 판 위면 다시 선다', () => {
     const r = onSupport(0, 'horizontal', -45);
     expect(r.first.lean).toMatchObject({ ok: false, reason: 'slip' });
-    expect(r.rest.depth).toBe(-45);
-    expect(r.rest.pitch).toBeCloseTo(r.first.pitch, 1);
+    expect(r.rest).toEqual({ depth: -45, pitch: 0, spin: 0 });
+    expectAtRest(r);
+  });
+
+  it('받침을 피해 앞으로 눕힌 자리의 무게중심이 판 앞 끝 밖이면 선반에서 떨어져 서랍으로 간다(옆 책은 그대로)', () => {
+    const obstacle = { ...book, id: 'support', dims: { height: 75, thickness: 20, coverWidth: 30 } };
+    const all = { ...books, support: obstacle };
+    const before = layoutAt(-45);
+    before.placements.push({ bookId: 'support', shelfId: 's', order: 1, pos: 120, depth: -10, pose: 'horizontal', tilt: 0 });
+    expect(validate(before, all)).toEqual([]);
+    const f = frontStateOf(before, all, book.id)!;
+    // 처음 닿는 곳은 바닥 마찰로 버티지 못한다
+    const support = bodiesOf(before, all, 's').find(b => b.id === 'support')!;
+    const hull = frontSupport2(dims, f.state, f.qx, support);
+    const first = frontFall2(dims, f.state, 90, [hull])!;
+    expect(frontLean(dims, { ...f.state, pitch: first.pitch }, hull)).toMatchObject({ ok: false, reason: 'slip' });
+    const next = frontRelease(before, all, book.id, f.state, f.qx)!;
+    expect(validate(next, all)).toEqual([]);
+    expect(next.drawer).toEqual([book.id]);
+    expect(placementOf(next, book.id)).toBeUndefined();
+    expect(bookXs(next, all).get('support')).toBeCloseTo(bookXs(before, all).get('support')!, 2);
+    expect(boxOf(next, all, 'support')).toEqual(boxOf(before, all, 'support'));
+  });
+});
+
+describe('넘어질 곳은 실제 3D 상자로 찾는다(배치로 놓아 보지 않는다)', () => {
+  // 다시 분석에서 공중에 멈추던 예: 돌린 책(-20°)이 왼쪽 뒤에 선 책 쪽으로 비껴 넘어진다. 실제 상자는 12DU 넘게 떨어져 있는데
+  // 배치(앞 항목부터 x로 훑는 packing)는 그 자세면 뒤 책을 오른쪽으로 밀어야 한다고 보아, 예전에는 54.9°에서 받침 없이 멈췄다
+  it('배치가 옆 책을 민다고 보는 자세에서도 멈추지 않고 실제로 닿는 곳(여기서는 바닥)까지 넘어진다', () => {
+    const F = { ...SAMPLE_BOOKS[0], id: 'F', dims: { height: 92, thickness: 15, coverWidth: 112 } };
+    const S = { ...SAMPLE_BOOKS[0], id: 'S', dims: { height: 189, thickness: 57, coverWidth: 44 } };
+    const all: BookMap = { F, S };
+    const before: ShelfLayout = {
+      version: 2, shelves: [{ id: 's', order: 0 }], drawer: [],
+      placements: [
+        { bookId: 'F', shelfId: 's', order: 0, pos: 111.52, depth: -39.87, pitch: 17.82, spin: -20, pose: 'front', tilt: 0 },
+        { bookId: 'S', shelfId: 's', order: 1, pos: 84.73, depth: 64.51, pose: 'front', tilt: 0 },
+      ],
+    };
+    expect(validate(before, all)).toEqual([]);
+    const f = frontStateOf(before, all, 'F')!;
+    expect(applyFront(before, all, 'F', f.qx, { ...f.state, pitch: 60 })).toBeNull(); // 배치로는 놓을 수 없는 자세
+    const fallen = bodiesOf(before, all, 's');
+    expect(gap(frontBook3('F', frontDims(F), f.qx, f.state.depth, 60, -20), fallen.find(b => b.id === 'S')!)).toBeGreaterThan(5); // 실제로는 떨어져 있다
+    const next = frontRelease(before, all, 'F', f.state, f.qx)!;
+    expect(validate(next, all)).toEqual([]);
+    expect(frontStateOf(next, all, 'F')!.state).toEqual({ depth: -39.87, pitch: 90, spin: -20 });
+    expect(boxOf(next, all, 'S')).toEqual(boxOf(before, all, 'S'));
+    const bs = bodiesOf(next, all, 's');
+    expect(lowest(bs.find(b => b.id === 'F')!)).toBeCloseTo(0, 6);
+    expect(gap(bs.find(b => b.id === 'F')!, bs.find(b => b.id === 'S')!)).toBeGreaterThan(1);
+  });
+
+  // 여러 크기·자리·돌린 각으로 놓아 본다(다시 분석의 무작위 배치와 같은 방식, 고정 씨앗): 손을 놓은 결과는 늘 바른 배치이고,
+  // 옆 책을 밀지 않고 파고들지 않으며, 다시 섰거나·바닥에 누웠거나·벽에 기댔거나·서랍으로 갔거나, 닿은 책에 기대 버틴다(statics)
+  it('무작위 배치에서 손을 놓은 결과는 늘 버티는 자세다(공중·미끄러지는 각에 멈추지 않는다)', () => {
+    let s = 2024;
+    const rnd = () => {
+      s = (s + 0x6d2b79f5) >>> 0;
+      let t = s;
+      t = Math.imul(t ^ (t >>> 15), t | 1);
+      t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+      return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+    };
+    const r2 = (v: number) => Math.round(v * 100) / 100;
+    const mk = (id: string, height: number, thickness: number, coverWidth: number) => ({ ...SAMPLE_BOOKS[0], id, dims: { height, thickness, coverWidth } });
+    const spins = [0, 0, 8, -8, 20, -20, 35, -35];
+    const kinds = ['spine', 'horizontal', 'front'] as const;
+    const seen: Record<string, number> = {};
+    let released = 0;
+    for (let trial = 0; trial < 240; trial++) {
+      const F = mk('F', Math.round(80 + rnd() * 110), Math.round(8 + rnd() * 37), Math.round(60 + rnd() * 70));
+      const kind = kinds[Math.floor(rnd() * 3)];
+      const S = mk('S', Math.round(30 + rnd() * 160), Math.round(8 + rnd() * 50), Math.round(40 + rnd() * 100));
+      const all: BookMap = { F, S };
+      const d = frontDims(F);
+      const depth = -SHELF_FRONT + rnd() * 50;
+      const spin = spins[Math.floor(rnd() * spins.length)];
+      const tip = tipAngle(d.T, d.H);
+      const pitch = Math.min(25, tip + 2 + rnd() * 10);
+      if (pitch <= tip + 0.5) continue;
+      const sDepth = depth + d.T + 2 + rnd() * 90;
+      const pos = 100 + rnd() * 40;
+      const sPos = pos + (rnd() - 0.5) * 80;
+      const before: ShelfLayout = {
+        version: 2, shelves: [{ id: 's', order: 0 }], drawer: [],
+        placements: [
+          { bookId: 'F', shelfId: 's', order: 0, pos: r2(pos), depth: r2(depth), pitch: r2(pitch), spin: spin || undefined, pose: 'front', tilt: 0 },
+          { bookId: 'S', shelfId: 's', order: 1, pos: r2(Math.max(0, sPos)), depth: r2(sDepth), pose: kind, tilt: 0 },
+        ],
+      };
+      if (validate(before, all).length) continue;
+      const b0 = bodiesOf(before, all, 's');
+      if (gap(b0[0], b0[1]) < 0.05) continue;
+      const f = frontStateOf(before, all, 'F')!;
+      const next = frontRelease(before, all, 'F', f.state, f.qx);
+      released++;
+      expect(next).not.toBeNull();
+      expect(validate(next!, all)).toEqual([]);
+      expect(boxOf(next!, all, 'S')).toEqual(boxOf(before, all, 'S'));
+      if (next!.drawer.includes('F')) {
+        seen.drawer = (seen.drawer ?? 0) + 1;
+        continue;
+      }
+      const fs = frontStateOf(next!, all, 'F')!;
+      const bs = bodiesOf(next!, all, 's');
+      const fb = bs.find(b => b.id === 'F')!;
+      const sb = bs.find(b => b.id === 'S')!;
+      const g = gap(fb, sb);
+      expect(g).toBeGreaterThan(-0.02);
+      expect(lowest(fb)).toBeCloseTo(0, 6);
+      const kindOf = () => {
+        if (fs.state.pitch < 0.1) return 'standing';
+        if (fs.state.pitch >= 89.95) return 'flat';
+        if (wallReach(d, fs.state) >= SHELF_DEPTH - 0.5) return 'wall';
+        const hull = frontSupport2(d, fs.state, fs.qx, sb);
+        return g < 0.1 && frontLean(d, fs.state, hull).ok ? 'holds' : `NOT AT REST (trial ${trial}, pitch ${fs.state.pitch})`;
+      };
+      const k = kindOf();
+      seen[k] = (seen[k] ?? 0) + 1;
+      expect(k).toMatch(/^(standing|flat|wall|holds)$/);
+    }
+    expect(released).toBeGreaterThan(60);
+    // 여러 결과가 골고루 나온다(받침에 기대 버팀, 바닥에 눕기, 서랍)
+    expect(seen.holds).toBeGreaterThan(20);
+    expect(seen.flat).toBeGreaterThan(3);
+    expect(seen.drawer).toBeGreaterThan(3);
   });
 });
