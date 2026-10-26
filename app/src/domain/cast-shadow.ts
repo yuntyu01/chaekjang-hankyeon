@@ -203,6 +203,35 @@ function bandPart(cs: Vec3[], f: number[], lo: number, hi: number, box = true): 
 // 높이가 entryY만큼으로 내려가 있다(판 안쪽 점은 제 높이). 이 높이가 위 판 아랫면(줄 공간 높이 ceil)보다 위면 위 판이 막아
 // 이 줄의 벽·판 윗면·책에 닿지 않는다. 다른 줄로 옮겨 가는 책이 판 앞을 지나는 동안 그림자가 판에 가린 만큼만 남아 이어서 늘고 준다.
 export const CEIL_K = -BOOK_LIGHT.y / BOOK_LIGHT.z;
+// 빛줄기가 1DU 내려가는 동안 가로로 가는 거리(빛이 왼쪽에서 와서 오른쪽으로 간다)
+export const DROP_K = BOOK_LIGHT.x / -BOOK_LIGHT.y;
+
+// 벽 위 그림자(벽 평면 x-y의 볼록 다각형)를 판에 가려지지 않고 벽에 닿는 부분으로 나눈다: 판 윗면(y = 0) 위, 그리고 판 윗면 아래는
+// 판 끝 너머(판 양 끝 옆 벽)만. 오른쪽 끝 너머는 빛줄기가 y = 0을 지날 때 이미 판 끝 밖이어야 판 윗면에 막히지 않는다(빛이 오른쪽으로 가므로
+// 그만큼 비스듬한 경계). 왼쪽 끝 너머는 판 끝 왼쪽 벽(빛줄기가 판에 닿기 전).
+export function wallParts(poly: { x: number; y: number }[], x0: number, x1: number): { x: number; y: number }[][] {
+  "worklet";
+  const clip = (P: { x: number; y: number }[], f: (q: { x: number; y: number }) => number) => {
+    const out: { x: number; y: number }[] = [];
+    for (let i = 0; i < P.length; i++) {
+      const a = P[i];
+      const b = P[(i + 1) % P.length];
+      const fa = f(a);
+      const fb = f(b);
+      if (fa >= 0) out.push(a);
+      if ((fa >= 0) !== (fb >= 0)) {
+        const t = fa / (fa - fb);
+        out.push({ x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t });
+      }
+    }
+    return out;
+  };
+  const top = clip(poly, (q) => q.y);
+  const below = clip(poly, (q) => -q.y);
+  const right = below.length >= 3 ? clip(below, (q) => q.x - x1 - DROP_K * -q.y) : [];
+  const left = below.length >= 3 ? clip(below, (q) => x0 - q.x) : [];
+  return [top, right, left].filter((q) => q.length >= 3);
+}
 export function entryY(c: Vec3) {
   "worklet";
   return c.y + CEIL_K * Math.min(0, c.z + SHELF_FRONT);

@@ -10,9 +10,9 @@ import { useAnimatedReaction, useDerivedValue, useSharedValue, withDelay, withTi
 
 import { corners, fromPlaced, lowest, type Book3, type Vec3 } from '@/domain/book3';
 import { camAt, project, toPx, VIEW_PITCH_MAX, VIEW_PITCH_MIN, type Affine, type Cam } from '@/domain/camera';
-import { SHELF_DEPTH, SHELF_FRONT, SHELF_X0, SHELF_X1 } from '@/domain/geometry';
+import { SHELF_DEPTH, SHELF_FRONT, SHELF_THICK, SHELF_X0, SHELF_X1 } from '@/domain/geometry';
 import { shelfFaces } from '@/domain/shelf-geom';
-import { BOX_EDGES, bookCast, castsIn, underCeil, type BookCast } from '@/domain/cast-shadow';
+import { BOX_EDGES, bookCast, castsIn, underCeil, wallParts, type BookCast } from '@/domain/cast-shadow';
 import { bookAlbedo, boxOf, packBoxes, withCovers, type Box, type BoxBuf, type C3, type Env } from '@/domain/light-model';
 import { bookAt } from '@/domain/transition';
 import { hull } from '@/domain/shadow-shape';
@@ -459,7 +459,7 @@ const BAND_KS = physShadow.bands.map((_, k) => k);
 
 // 벽·판 윗면이 받는 창빛 그림자(이 줄 책들이 창빛 원반을 가리는 몫, 알파)를 평면 좌표 그림으로: 벽·판 셰이더가 빛 계산 안에서
 // 창빛 몫에 곱한다(SceneLight PlaneKey). 그림자는 평면 위 모양이라 시점과 상관없다: 책 자세가 바뀔 때만 다시 그린다.
-// 벽 그림 범위: 판 윗면이 벽에 닿는 선(y = 0, 그 아래 벽으로 가는 빛은 판 윗면을 지나야 해서 책이 가릴 수 없다) ~ y1, 가로는 화면에 보이는 벽.
+// 벽 그림 범위: 판 아랫면 높이(y = −SHELF_THICK) ~ y1, 가로는 화면에 보이는 벽. 판 윗면 아래 벽은 판 끝 너머(판 양 끝 옆)만 빛이 닿는다(wallParts).
 // 판 윗면 그림 범위: 판 전체(가로 판 길이, 앞 끝 ~ 벽). 판에 가린 부분(판 윗면 아래, 위 판 ceil이 막는 빛줄기)은 bookCast가 뺀다
 function planeShadows(key: string, poses: Poses, ids: string[], s: number, W: number, H: number, wall: boolean, toImg: (q: Vec3) => Point, ceil: number): SkImage {
   'worklet';
@@ -476,12 +476,13 @@ function planeShadows(key: string, poses: Poses, ids: string[], s: number, W: nu
     for (const k of BAND_KS) {
       const c = bookCast(b, s, k, wall, ceil);
       if (!c || c.w <= 0) continue;
-      const pts = hull(c.pts.map(toImg));
-      if (pts.length < 3) continue;
+      // 벽: 판에 가려지지 않는 부분만(판 윗면 위 + 판 끝 옆). 판 윗면: 그대로(판 밖은 그림 밖)
+      const polys = wall ? wallParts(hull(c.pts), SHELF_X0, SHELF_X1).map((q) => q.map((p) => toImg({ x: p.x, y: p.y, z: SHELF_DEPTH }))) : [hull(c.pts.map(toImg))];
+      if (!polys.some((q) => q.length >= 3)) continue;
       // 떨어져 사라지는 책은 그림자도 함께 옅어진다
       paint.setAlphaf(c.w * (b.alpha ?? 1));
       paint.setMaskFilter(Skia.MaskFilter.MakeBlur(BlurStyle.Normal, Math.max(0.01, c.sigma), true));
-      canvas.drawPath(pathOf([pts]), paint);
+      canvas.drawPath(pathOf(polys), paint);
     }
   }
   surf.flush();
@@ -492,7 +493,8 @@ function planeShadows(key: string, poses: Poses, ids: string[], s: number, W: nu
 export function useWallKey(shelfId: string, poses: Readonly<SharedValue<Poses>>, ids: string[], px: Affine, y1: number, ceil = Infinity): Readonly<SharedValue<PlaneKey>> {
   const s = px.s;
   const W = Math.ceil((WALL_X1 - WALL_X0) * s);
-  const H = Math.ceil(y1 * s);
+  // 판 아랫면 높이까지(판 끝 옆 벽)
+  const H = Math.ceil((y1 + SHELF_THICK) * s);
   const key = `wall-shadow:${shelfId}`;
   const on = SHOW.wall && RENDER.books;
   return useDerivedValue(() => ({

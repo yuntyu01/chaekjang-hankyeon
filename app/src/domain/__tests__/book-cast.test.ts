@@ -2,7 +2,7 @@
 // 책을 앞뒤로 조금씩 옮기는 동안 벽 그림자 진하기가 한 번에 튀지 않는다(흐림은 빼고 층 모양·진하기만 본다).
 import type { Book3, Vec3 } from '../book3';
 import { hull } from '../box';
-import { bookCast, travelOf } from '../cast-shadow';
+import { bookCast, DROP_K, travelOf, wallParts } from '../cast-shadow';
 import { SHELF_DEPTH } from '../geometry';
 import { light, physShadow } from '@/ui/lighting';
 
@@ -100,5 +100,28 @@ describe('얇은 가리개 몫은 빛에서 본 폭으로', () => {
     const last = bookCast(b, 1, physShadow.bands.length - 1, true)!;
     expect(last.w).toBeGreaterThan(0);
     expect(last.w).toBeLessThanOrEqual(1);
+  });
+});
+
+describe('벽 그림자 중 판에 가려지지 않는 부분(wallParts)', () => {
+  const X0 = 0;
+  const X1 = 360;
+  const area = (p: { x: number; y: number }[]) => Math.abs(p.reduce((s, a, i) => { const b = p[(i + 1) % p.length]; return s + a.x * b.y - b.x * a.y; }, 0)) / 2;
+  it('판 윗면 위는 그대로, 판 윗면 아래는 판 끝 너머만(오른쪽은 빛이 판 끝을 지난 뒤)', () => {
+    const sq = [{ x: 340, y: -16 }, { x: 380, y: -16 }, { x: 380, y: 20 }, { x: 340, y: 20 }];
+    const parts = wallParts(sq, X0, X1);
+    expect(parts.length).toBe(2);
+    const [top, right] = parts;
+    expect(Math.min(...top.map((q) => q.y))).toBeCloseTo(0, 9);
+    expect(area(top)).toBeCloseTo(40 * 20, 6);
+    for (const q of right) {
+      expect(q.y).toBeLessThanOrEqual(1e-9);
+      expect(q.x - X1 - DROP_K * -q.y).toBeGreaterThanOrEqual(-1e-9);
+    }
+    // 판 끝 바로 옆 벽 일부에 그림자가 닿는다(예전에는 판 윗면 아래를 모두 잘랐다)
+    expect(area(right)).toBeGreaterThan(50);
+  });
+  it('판 안쪽 아래(판 앞면 뒤)는 그리지 않는다', () => {
+    expect(wallParts([{ x: 100, y: -10 }, { x: 150, y: -10 }, { x: 150, y: -1 }, { x: 100, y: -1 }], X0, X1)).toEqual([]);
   });
 });
