@@ -286,13 +286,47 @@ export function penumbraSigma(w: number) {
   return w / Math.sqrt(2 * Math.PI);
 }
 
-// 광원 원반 중 가리개가 가리는 몫: 가리개의 짧은 두 변이 반그림자 폭 pen보다 좁으면 그 비율만큼만 가린다
-// (붙은 곳은 진하고 멀수록 빨리 옅어진다)
-export function thinOccluder(d: { T: number; H: number; W: number }, pen: number) {
+// 빛에서 본 가리개의 폭: 빛 방향에 수직인 두 축(가로 SEEN_U, 그에 수직 SEEN_V)으로 상자 꼭짓점을 잰 범위(좁은 쪽, 넓은 쪽).
+// 예전에는 상자의 짧은 두 변을 썼는데, 표지가 앞으로 보이는 책은 얇은 두께가 빛 방향(깊이)이라 빛에서는 넓게 보이는데도 얇은 것으로 쳐
+// 벽 그림자가 절반쯤(깊이 −53에서 0.47) 옅었다
+const SEEN_U = (() => {
+  const D = BOOK_LIGHT;
+  const u = { x: D.z, y: 0, z: -D.x };
+  const l = Math.hypot(u.x, u.z) || 1;
+  return { x: u.x / l, y: 0, z: u.z / l };
+})();
+const SEEN_V = (() => {
+  const D = BOOK_LIGHT;
+  const u = SEEN_U;
+  const v = { x: D.y * u.z - D.z * u.y, y: D.z * u.x - D.x * u.z, z: D.x * u.y - D.y * u.x };
+  const l = Math.hypot(v.x, v.y, v.z) || 1;
+  return { x: v.x / l, y: v.y / l, z: v.z / l };
+})();
+export function seenSize(cs: Vec3[]): [number, number] {
   "worklet";
-  const ds = [d.T, d.H, d.W].sort((p, q) => p - q);
+  let u0 = Infinity;
+  let u1 = -Infinity;
+  let v0 = Infinity;
+  let v1 = -Infinity;
+  for (const c of cs) {
+    const u = c.x * SEEN_U.x + c.y * SEEN_U.y + c.z * SEEN_U.z;
+    const v = c.x * SEEN_V.x + c.y * SEEN_V.y + c.z * SEEN_V.z;
+    u0 = Math.min(u0, u);
+    u1 = Math.max(u1, u);
+    v0 = Math.min(v0, v);
+    v1 = Math.max(v1, v);
+  }
+  const a = u1 - u0;
+  const b = v1 - v0;
+  return a < b ? [a, b] : [b, a];
+}
+
+// 광원 원반 중 가리개가 가리는 몫: 빛에서 본 가리개의 두 폭(seen, seenSize)이 반그림자 폭 pen보다 좁으면 그 비율만큼만 가린다
+// (붙은 곳은 진하고 멀수록 빨리 옅어진다)
+export function thinOccluder(seen: [number, number], pen: number) {
+  "worklet";
   const w = Math.max(1e-3, pen);
-  return Math.min(1, ds[0] / w) * Math.min(1, ds[1] / w);
+  return Math.min(1, seen[0] / w) * Math.min(1, seen[1] / w);
 }
 
 // k번째 구간의 책 그림자(벽 wall = true, 선반 윗면 false). s: 캔버스 배율.
@@ -304,7 +338,8 @@ export function bookCast(b: Book3, s: number, k: number, wall: boolean, ceil = I
   const lo = k === 0 ? 0 : B[k - 1];
   const hi = B[k];
   const D = BOOK_LIGHT;
-  let cs = corners(b);
+  const full = corners(b);
+  let cs = full;
   let box = true;
   let y0 = Infinity;
   let y1 = -Infinity;
@@ -335,5 +370,5 @@ export function bookCast(b: Book3, s: number, k: number, wall: boolean, ceil = I
   const pen = physShadow.spread * ((Math.max(lo, f0) + Math.min(hi, f1)) / 2);
   // 가리는 몫은 그 구간에서 가장 가까운 곳의 반그림자로(그림자 가운데의 진하기는 가장 가까운 부분이 정한다). 구간 가운데로 재면
   // 책이 구간 경계를 넘을 때 몫이 한 번에 바뀌어(반지름 16°면 0.5) 벽 그림자가 튀었다
-  return { pts, sigma: penumbraSigma(pen) * s, w: thinOccluder(b.dims, physShadow.spread * Math.max(lo, f0)) };
+  return { pts, sigma: penumbraSigma(pen) * s, w: thinOccluder(seenSize(full), physShadow.spread * Math.max(lo, f0)) };
 }

@@ -83,3 +83,22 @@ describe('책 → 벽·선반 윗면 그림자', () => {
     expect(prev).toBeCloseTo(1, 6);
   });
 });
+
+describe('얇은 가리개 몫은 빛에서 본 폭으로', () => {
+  // 표지가 앞으로 보이는 책(yaw 90): 두께가 빛 방향(깊이)이라 빛에서는 표지 폭 × 키로 넓게 보인다. 선반 앞쪽(벽에서 멀다)에 있어도
+  // 반그림자보다 넓어 벽 그림자는 끝까지 진하다(예전에는 상자의 짧은 두 변을 써 0.47까지 옅었다)
+  const front = (z: number): Book3 => ({ id: 'f', dims: { T: 35, H: 160, W: 112 }, roll: 0, yaw: 90, t: { x: 100, y: 0, z } });
+  it('표지 책은 앞쪽에서도 벽 그림자 몫이 1이다', () => {
+    for (const z of [-53, -20, 17]) {
+      const ws = physShadow.bands.map((_, k) => bookCast(front(z), 1, k, true)?.w).filter((w): w is number => w !== undefined);
+      expect(ws.length).toBeGreaterThan(0);
+      for (const w of ws) expect(w).toBeCloseTo(1, 6);
+    }
+  });
+  it('세운 책은 두께가 반그림자보다 좁은 먼 구간만 옅다(빛에서 본 두께)', () => {
+    const b = standing(-60);
+    const last = bookCast(b, 1, physShadow.bands.length - 1, true)!;
+    expect(last.w).toBeGreaterThan(0);
+    expect(last.w).toBeLessThanOrEqual(1);
+  });
+});

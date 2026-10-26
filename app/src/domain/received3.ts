@@ -5,7 +5,7 @@
 // 빛을 등진 면은 창빛이 없어 받지 않는다. 결과(가려지는 몫)는 면 좌표 그림으로 그려 책 빛 셰이더가 빛 계산 안에서 쓴다(ui/SceneLight bookKeyImage):
 // 그 면이 받는 창빛이 얼마나 줄어드는지(진하기)는 셰이더가 그 면의 빛 그대로 계산한다.
 import { corners, faceCorners, faceNormal, FACE_IDS, rot, type Book3, type FaceId, type Vec3 } from './book3';
-import { penumbraSigma, shadowOnPlane, thinOccluder, travelOf } from './cast-shadow';
+import { penumbraSigma, seenSize, shadowOnPlane, thinOccluder, travelOf } from './cast-shadow';
 import { SHELF_DEPTH, SHELF_FRONT } from './geometry';
 import { light, physShadow } from '@/ui/lighting';
 
@@ -44,7 +44,10 @@ export function receivedShadow3(b: Book3 | null, occBodies: Book3[], s: number, 
     LIGHT = { x: -dir.x / l, y: -dir.y / l, z: -dir.z / l };
   }
   const LN = { x: -LIGHT.x, y: -LIGHT.y, z: -LIGHT.z };
-  const occs = occBodies.map((ob) => ({ cs: corners(ob), dims: ob.dims }));
+  const occs = occBodies.map((ob) => {
+    const cs = corners(ob);
+    return { cs, dims: ob.dims, seen: seenSize(cs) };
+  });
   const cs = corners(b);
   const B = physShadow.bands;
   const faces: Face3[] = [];
@@ -95,7 +98,7 @@ export function receivedShadow3(b: Book3 | null, occBodies: Book3[], s: number, 
         const L = bands[k];
         L.polys.push(part.pts);
         L.sigma = Math.max(L.sigma, penumbraSigma(pen) * s);
-        L.w = Math.max(L.w, thinOccluder(occ.dims, physShadow.spread * Math.max(lo, part.dist)));
+        L.w = Math.max(L.w, thinOccluder(occ.seen, physShadow.spread * Math.max(lo, part.dist)));
         any = true;
       }
     }
