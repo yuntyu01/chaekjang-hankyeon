@@ -1,6 +1,9 @@
 // 가만히 있는 자세 판정(statics.ts): 닫힌 꼴 공식과 힘 평형 계산이 같은 답을 내는지, 경계에서 바뀌는지.
+import { fromPlaced } from '../book3';
 import type { Placed } from '../box';
+import { frontLean, frontSupport2 } from '../front-pose';
 import {
+  centerXY,
   contactOf,
   FLOOR_FRICTION,
   isBacked,
@@ -8,11 +11,17 @@ import {
   LEAN_MENU_MAX,
   leanHolds,
   leanStatics,
+  massOf,
   menuLeanAngle,
+  outlineXY,
+  pivotOf,
   slipAngle,
   supportTips,
   tipAngle,
   wallLeanRest,
+  type Contact,
+  type Force,
+  type Vec2,
 } from '../statics';
 
 const rad = (d: number) => (d * Math.PI) / 180;
@@ -99,5 +108,126 @@ describe('받침이 넘어가는지', () => {
     expect(isBacked(s, -1, [spine('A', 60, 40, 150)])).toBe(true);
     expect(isBacked(s, -1, [spine('A', 50, 40, 150)])).toBe(false);
     expect(isBacked(s, 1, [spine('A', 60, 40, 150)])).toBe(false);
+  });
+});
+
+// 2D 핵심(contact2·statics2)으로 나누기 전 계산을 그대로 옮겨 둔 것: 감싼 함수(contactOf·leanStatics)가 똑같은 답을 내는지 본다
+function legacyContactOf(leaner: Placed, support: Placed): Contact {
+  const closest = (q: Vec2, a: Vec2, b: Vec2) => {
+    const dx = b.x - a.x;
+    const dy = b.y - a.y;
+    const l2 = dx * dx + dy * dy || 1;
+    const t = Math.max(0, Math.min(1, ((q.x - a.x) * dx + (q.y - a.y) * dy) / l2));
+    const c = { x: a.x + t * dx, y: a.y + t * dy };
+    return { c, d: Math.hypot(q.x - c.x, q.y - c.y) };
+  };
+  const outward = (a: Vec2, b: Vec2): Vec2 => {
+    const l = Math.hypot(b.x - a.x, b.y - a.y) || 1;
+    return { x: (b.y - a.y) / l, y: -(b.x - a.x) / l };
+  };
+  const L = outlineXY({ ...leaner });
+  const S = outlineXY(support);
+  const P = pivotOf(leaner);
+  const dir = Math.sign(leaner.angle) || 1;
+  const [u, v] = [...L].sort((a, b) => b.y - a.y);
+  const top = dir * (u.x - v.x) >= 0 ? u : v;
+  let best: { d: number; at: Vec2; n: Vec2 } = { d: Infinity, at: top, n: { x: -dir, y: 0 } };
+  for (let i = 0; i < S.length; i++) {
+    const { d } = closest(top, S[i], S[(i + 1) % S.length]);
+    if (d < best.d) best = { d, at: top, n: outward(S[i], S[(i + 1) % S.length]) };
+  }
+  let inward = outward(P, top);
+  if (Math.sign(inward.x) !== dir) inward = { x: -inward.x, y: -inward.y };
+  inward = { x: -inward.x, y: -inward.y };
+  for (const q of S) {
+    const { c, d } = closest(q, P, top);
+    if (d < best.d - 1e-6) best = { d, at: c, n: inward };
+  }
+  return { at: best.at, n: best.n };
+}
+function legacyLeanStatics(leaner: Placed, contact: Contact, external: Force[] = [], mu = FLOOR_FRICTION) {
+  const cross = (a: Vec2, b: Vec2) => a.x * b.y - a.y * b.x;
+  const P = pivotOf(leaner);
+  const m = massOf(leaner);
+  const g = centerXY(leaner);
+  const r = (q: Vec2) => ({ x: q.x - P.x, y: q.y - P.y });
+  let tau = cross(r(g), { x: 0, y: -m });
+  for (const e of external) tau += cross(r(e.at), e.f);
+  const lever = cross(r(contact.at), contact.n);
+  const N = Math.abs(lever) < 1e-9 ? -1 : -tau / lever;
+  const fx = N * contact.n.x + external.reduce((s, e) => s + e.f.x, 0);
+  const fy = N * contact.n.y + external.reduce((s, e) => s + e.f.y, 0) - m;
+  const floor = { x: -fx, y: -fy };
+  const onSupport = { f: { x: -N * contact.n.x, y: -N * contact.n.y }, at: contact.at };
+  if (N <= 0) return { normal: N / m, onSupport, floor, ok: false, reason: 'tip' };
+  if (floor.y <= 0 || Math.abs(floor.x) > mu * floor.y + 1e-9) return { normal: N / m, onSupport, floor, ok: false, reason: 'slip' };
+  return { normal: N / m, onSupport, floor, ok: true };
+}
+
+describe('2D 핵심으로 나눈 뒤에도 세운 책 계산은 그대로', () => {
+  it('접촉·미는 힘·바닥 반력·판정이 예전 계산과 똑같다(받침 높낮이·양쪽·밖에서 오는 힘)', () => {
+    let n = 0;
+    for (const h of [40, 60, 120, 200])
+      for (const deg of [-40, -25, -15, -8, 8, 15, 25, 40])
+        for (const x of [45, 60, 90]) {
+          const leaner = spine('L', x, 30, 150, 100, deg);
+          const support = deg < 0 ? spine('S', 0, 40, h) : spine('S', x + 30 + 150 * Math.sin(rad(Math.abs(deg))) - 10, 40, h);
+          const c = contactOf(leaner, support);
+          expect(c).toEqual(legacyContactOf(leaner, support));
+          const push: Force[] = [{ f: { x: -0.2 * 30 * 150 * 100 * Math.sign(deg), y: -500 }, at: { x: x + 10, y: 120 } }];
+          for (const ext of [[], push]) {
+            const st = leanStatics(leaner, c, ext);
+            expect(st).toEqual(legacyLeanStatics(leaner, c, ext));
+            n += st.ok ? 1 : 0;
+          }
+        }
+    expect(n).toBeGreaterThan(10); // 버티는 경우와 아닌 경우가 섞여 있다
+  });
+});
+
+describe('표지 책이 뒤로 넘어져 받침에 기댈 때(젖힘 평면, front-pose)', () => {
+  const dims = { T: 20, H: 100, W: 75 };
+  // 이 책(돌리기 축 x = 0)의 폭 전체에 걸친 받침: 앞면 z = front, 키 h, 깊이 30
+  const wall = (front: number, h: number, x0 = -40, w = 80) => fromPlaced({ bookId: 'S', pose: 'spine', size: { w, h, d: 30 }, x: x0, y: 0, z: front, angle: 0 });
+
+  it('높은 받침 앞면에 윗모서리가 닿으면 벽과 같은 한계(넘어짐 atan(T/H), 미끄러짐 atan(2μ + T/H))', () => {
+    for (const deg of [tipAngle(20, 100) - 1, 15, 30, 40, slipAngle(20, 100) - 0.5, slipAngle(20, 100) + 0.5]) {
+      const s = { depth: -30, pitch: deg, spin: 0 };
+      const front = s.depth + dims.T + dims.H * Math.sin(rad(deg));
+      const v = frontLean(dims, s, frontSupport2(dims, s, 0, wall(front, 200)));
+      expect(v.contact.n.x).toBeCloseTo(-1, 6);
+      expect(v.normal).toBeCloseTo((Math.tan(rad(deg)) - 20 / 100) / 2, 6);
+      expect(v.ok).toBe(deg > tipAngle(20, 100) && deg <= slipAngle(20, 100));
+    }
+  });
+
+  it('받침 꼭짓점이 뒷면에 닿으면 미는 방향이 뒷면에 수직이고, 크기는 축 둘레 돌림힘 평형', () => {
+    const deg = 60;
+    const s = { depth: -30, pitch: deg, spin: 0 };
+    // 축(z -10)에서 뒷면을 따라 s = 40인 점에 받침 앞 위 모서리
+    const at = { z: -10 + 40 * Math.sin(rad(deg)), y: 40 * Math.cos(rad(deg)) };
+    const v = frontLean(dims, s, frontSupport2(dims, s, 0, wall(at.z, at.y)));
+    expect(v.contact.n.x).toBeCloseTo(-Math.cos(rad(deg)), 6);
+    expect(v.contact.n.y).toBeCloseTo(Math.sin(rad(deg)), 6);
+    expect(v.normal).toBeCloseTo((50 * Math.sin(rad(deg)) - 10 * Math.cos(rad(deg))) / 40, 6);
+    expect(v.reason).toBe('slip');
+  });
+
+  it('받침은 이 책 폭 안에 든 부분만 본다(돌린 틀에서 잘라 낸다)', () => {
+    const s = { depth: -30, pitch: 30, spin: 0 };
+    expect(frontSupport2(dims, s, 0, wall(20, 50, 40, 20))).toEqual([]); // x 40~60: 폭(±37.5) 밖
+    const part = frontSupport2(dims, s, 0, wall(20, 50, 30, 20));
+    const full = frontSupport2(dims, s, 0, wall(20, 50));
+    expect(part.length).toBe(full.length);
+    part.forEach((q, i) => {
+      expect(q.x).toBeCloseTo(full[i].x, 9);
+      expect(q.y).toBeCloseTo(full[i].y, 9);
+    });
+    // 30° 돌린 책: 되돌린 틀에서 받침 앞면(돌리기 축에서 Z = 40)이 기울어 보이고, 가장 가까운 점은 폭 경계 x' = 37.5에서 잘린 점
+    const c = Math.cos(rad(30));
+    const sn = Math.sin(rad(30));
+    const X = (37.5 - 40 * sn) / c; // x' = X·cos + Z·sin = 37.5
+    const spun = frontSupport2(dims, { ...s, spin: 30 }, 0, wall(20, 50));
+    expect(Math.min(...spun.map((q) => q.x))).toBeCloseTo(-20 + 40 * c - X * sn, 6);
   });
 });

@@ -1,9 +1,11 @@
 // 가만히 있는 자세 판정(정역학, 순수). 물리 엔진 없이 책을 고른 직육면체로 보고, 화면에 그리는 치수(DU)로 판정한다.
-// 세운 책 기대기·표지 책 벽 기대기·받침이 되는 책이 모두 같은 규칙을 쓴다.
+// 세운 책 기대기·표지 책 벽 기대기·표지 책이 뒤로 넘어져 책에 기대기·받침이 되는 책이 모두 같은 규칙을 쓴다.
+// 접촉·힘 평형의 핵심(contact2·statics2)은 평면 하나의 2D 값으로 푼다: 세운 책은 선반 x-y 평면, 표지 책은 젖힘 축에 수직인 z-y 평면(front-pose).
 //  - 넘어짐: 기운 책은 기우는 쪽 바닥 모서리 하나로 선다. 무게중심이 그 모서리 바깥(기우는 쪽)으로 넘어가야 받침에 기대고,
 //    안쪽이면 받침을 밀지 않고 다시 선다. 평평한 받침(옆 책 옆면·벽)에 윗모서리가 닿을 때 한계각 = atan(두께 / 키).
 //  - 미끄러짐: 받침이 미는 힘을 바닥 마찰이 버텨야 한다(바닥 마찰계수 FLOOR_FRICTION, 책·벽 사이 마찰은 0으로 본다: 보수적).
 //    평평한 받침이면 미는 힘 = 무게 × (tan θ − 두께/키) / 2 이고, 마찰이 버티는 한계각 = atan(2μ + 두께/키).
+//    낮은 받침의 꼭짓점이 옆면에 닿으면 미는 힘이 옆면에 수직(위로 받친다)이라, 머리 가까이 닿을수록 이 한계보다 더 기울어도 버틴다.
 //  - 받침: 기댄 책이 미는 힘에 받침이 되는 세운 책이 반대쪽 바닥 모서리로 넘어가는지(그 너머에 닿은 책이 있으면 줄 전체가 버틴다).
 // 정할 값(2026-10-26 사용자 결정): 바닥 마찰 0.4, 메뉴로 기울이는 한도 20°.
 import { corners, fromPlaced, gap } from './book3';
@@ -91,17 +93,40 @@ function outward(a: Vec2, b: Vec2): Vec2 {
   return { x: (b.y - a.y) / l, y: -(b.x - a.x) / l };
 }
 
+// 볼록 다각형 둘(반시계)이 파고든 깊이(분리축 가운데 가장 얕은 겹침, 음수면 그만큼 떨어져 있다)
+export function penetration2(A: Vec2[], B: Vec2[]) {
+  let depth = Infinity;
+  for (const P of [A, B])
+    for (let i = 0; i < P.length; i++) {
+      const n = outward(P[i], P[(i + 1) % P.length]);
+      let a0 = Infinity;
+      let a1 = -Infinity;
+      let b0 = Infinity;
+      let b1 = -Infinity;
+      for (const q of A) {
+        const t = q.x * n.x + q.y * n.y;
+        a0 = Math.min(a0, t);
+        a1 = Math.max(a1, t);
+      }
+      for (const q of B) {
+        const t = q.x * n.x + q.y * n.y;
+        b0 = Math.min(b0, t);
+        b1 = Math.max(b1, t);
+      }
+      depth = Math.min(depth, Math.min(a1, b1) - Math.max(a0, b0));
+    }
+  return depth;
+}
+
 export type Contact = { at: Vec2; n: Vec2 }; // n: 받침이 기댄 책을 미는 방향(단위)
 
-// 기댄 책(angle ≠ 0)과 받침 상자의 접촉: 기댄 책 윗모서리가 받침 면에 닿거나(받침이 높을 때), 받침 꼭짓점이 기댄 책 옆면에 닿는다(받침이 낮을 때).
-export function contactOf(leaner: Placed, support: Placed): Contact {
-  const L = outlineXY({ ...leaner }); // 회전한 직사각형(반시계)
-  const S = outlineXY(support);
-  const P = pivotOf(leaner);
-  const dir = Math.sign(leaner.angle) || 1;
-  // 기우는 쪽 윗모서리: 위쪽 꼭짓점 둘 중 기우는 쪽으로 더 나간 것
-  const [u, v] = [...L].sort((a, b) => b.y - a.y);
-  const top = dir * (u.x - v.x) >= 0 ? u : v;
+// 평면 하나에서 본 기댄 책(2D 핵심이 쓰는 값): 바닥 축, 기우는 쪽 윗모서리(축과 같은 옆면의 위 끝), 기우는 쪽(가로 부호), 무게중심, 무게.
+// 세운 책은 선반 x-y 평면, 표지 책은 젖힘 축에 수직인 z-y 평면(front-pose frontLeaner2)에서 같은 계산을 쓴다.
+export type Leaner2 = { pivot: Vec2; top: Vec2; dir: number; g: Vec2; m: number };
+
+// 기댄 책과 받침 다각형(볼록, 반시계)의 접촉(마찰 0): 기댄 책 윗모서리가 받침 면에 닿거나(받침이 높을 때), 받침 꼭짓점이 기댄 책 옆면에 닿는다(받침이 낮을 때).
+export function contact2(l: Pick<Leaner2, 'pivot' | 'top' | 'dir'>, S: Vec2[]): Contact {
+  const { pivot: P, top, dir } = l;
   // 후보 1: 윗모서리 → 받침 변
   let best: { d: number; at: Vec2; n: Vec2 } = { d: Infinity, at: top, n: { x: -dir, y: 0 } };
   for (let i = 0; i < S.length; i++) {
@@ -123,6 +148,19 @@ export function contactOf(leaner: Placed, support: Placed): Contact {
   return { at: best.at, n: best.n };
 }
 
+// 세운 책의 2D 값(선반 x-y 평면). 기우는 쪽 윗모서리: 위쪽 꼭짓점 둘 중 기우는 쪽으로 더 나간 것
+function spineLeaner2(p: Placed): Pick<Leaner2, 'pivot' | 'top' | 'dir'> {
+  const L = outlineXY({ ...p }); // 회전한 직사각형(반시계)
+  const dir = Math.sign(p.angle) || 1;
+  const [u, v] = [...L].sort((a, b) => b.y - a.y);
+  return { pivot: pivotOf(p), top: dir * (u.x - v.x) >= 0 ? u : v, dir };
+}
+
+// 기댄 세운 책(angle ≠ 0)과 받침 상자의 접촉(contact2를 x-y 평면에서)
+export function contactOf(leaner: Placed, support: Placed): Contact {
+  return contact2(spineLeaner2(leaner), outlineXY(support));
+}
+
 export type Force = { f: Vec2; at: Vec2 };
 export type LeanStatics = {
   // 받침이 미는 힘(무게 대비, 음수면 받침을 밀지 않는다 = 다시 선다)
@@ -135,11 +173,9 @@ export type LeanStatics = {
   reason?: 'tip' | 'slip';
 };
 
-// 기댄 세운 책 한 권의 힘 평형: 바닥 축(마찰) + 무게 + 받침 접촉(마찰 0) + 밖에서 오는 힘(이 책에 기댄 다른 책).
-export function leanStatics(leaner: Placed, contact: Contact, external: Force[] = [], mu = FLOOR_FRICTION): LeanStatics {
-  const P = pivotOf(leaner);
-  const m = massOf(leaner);
-  const g = centerXY(leaner);
+// 기댄 책 한 권의 힘 평형(2D): 바닥 축(마찰) + 무게 + 받침 접촉(마찰 0) + 밖에서 오는 힘(이 책에 기댄 다른 책).
+export function statics2(l: Pick<Leaner2, 'pivot' | 'g' | 'm'>, contact: Contact, external: Force[] = [], mu = FLOOR_FRICTION): LeanStatics {
+  const { pivot: P, g, m } = l;
   const r = (q: Vec2) => ({ x: q.x - P.x, y: q.y - P.y });
   // 축 둘레 돌림힘(반시계 +)
   let tau = cross(r(g), { x: 0, y: -m });
@@ -153,6 +189,11 @@ export function leanStatics(leaner: Placed, contact: Contact, external: Force[] 
   if (N <= 0) return { normal: N / m, onSupport, floor, ok: false, reason: 'tip' };
   if (floor.y <= 0 || Math.abs(floor.x) > mu * floor.y + 1e-9) return { normal: N / m, onSupport, floor, ok: false, reason: 'slip' };
   return { normal: N / m, onSupport, floor, ok: true };
+}
+
+// 기댄 세운 책 한 권의 힘 평형(statics2를 x-y 평면에서)
+export function leanStatics(leaner: Placed, contact: Contact, external: Force[] = [], mu = FLOOR_FRICTION): LeanStatics {
+  return statics2({ pivot: pivotOf(leaner), m: massOf(leaner), g: centerXY(leaner) }, contact, external, mu);
 }
 
 // 받침이 되는 똑바로 선 세운 책이 기댄 책들이 미는 힘에 밀리는 쪽 바닥 모서리를 축으로 넘어가는지(넘어가면 그 방향).

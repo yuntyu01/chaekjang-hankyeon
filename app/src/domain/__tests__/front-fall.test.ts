@@ -1,5 +1,5 @@
 import { corners, gap, lowest, toWorld } from '../book3';
-import { releasedPitch, wallReach } from '../front-pose';
+import { frontFall2, frontLean, frontSupport2, releasedPitch, wallReach } from '../front-pose';
 import { frontDims, SHELF_DEPTH, SHELF_FRONT } from '../geometry';
 import { frontRelease, frontStateOf, frontTilt, normalize, placementOf, setDepth, setPose, validate, type BookMap } from '../layout-engine';
 import { SAMPLE_BOOKS } from '../onboarding-sample';
@@ -120,18 +120,93 @@ it('바닥까지 넘어진 책은 뒤로 밀어도 저절로 일어서지 않는
   expect(Math.max(...corners(b).map(p => p.z))).toBeCloseTo(SHELF_DEPTH, 1);
 });
 
-it('뒤에 놓인 책을 받침으로 만나면 거기서 멈추고 관통하거나 옆 책을 밀지 않는다', () => {
+// 뒤에 받침 하나(키 75·두께 20·폭 30, 앞면 깊이 depth)를 두고, 앞면 깊이 at에서 20° 젖힌 책을 놓는다
+function onSupport(depth: number, pose: 'horizontal' | 'spine', at = -30) {
   const obstacle = { ...book, id: 'support', dims: { height: 75, thickness: 20, coverWidth: 30 } };
   const all = { ...books, support: obstacle };
-  const before = layoutAt(-30);
-  before.placements.push({ bookId: 'support', shelfId: 's', order: 1, pos: 120, depth: 25, pose: 'horizontal', tilt: 0 });
+  const before = layoutAt(at);
+  before.placements.push({ bookId: 'support', shelfId: 's', order: 1, pos: 120, depth, pose, tilt: 0 });
+  expect(validate(before, all)).toEqual([]);
   const next = release(before, all);
   const bs = bodiesOf(next, all, 's');
   const falling = bs.find(b => b.id === book.id)!;
   const support = bs.find(b => b.id === 'support')!;
-  expect(falling.pitch).toBeGreaterThan(20);
-  expect(falling.pitch).toBeLessThan(90);
+  // 받침과 맞닿되 파고들지 않고, 받침은 밀리지 않고, 바닥 축은 판 위
   expect(gap(falling, support)).toBeGreaterThanOrEqual(-0.011);
-  expect(gap(falling, support)).toBeLessThan(0.1);
   expect(support).toEqual(bodiesOf(before, all, 's').find(b => b.id === 'support'));
+  expect(lowest(falling)).toBeCloseTo(0, 6);
+  const f = frontStateOf(next, all, book.id)!;
+  // 처음 닿는 곳(바닥 축 고정, 젖힘 평면): 이 받침에서 처음 멈추던 자리
+  const start = frontStateOf(before, all, book.id)!.state;
+  const hull0 = frontSupport2(dims, start, f.qx, support);
+  const first = frontFall2(dims, start, 90, [hull0])!;
+  return { before, next, all, falling, support, rest: f.state, qx: f.qx, first: { pitch: first.pitch, lean: frontLean(dims, { ...start, pitch: first.pitch }, hull0) } };
+}
+
+// 멈춘 자세가 물리적으로 맞는지: 받침에 기대 버티거나(힘 평형), 받침에 닿지 않고 바닥에 누웠거나, 다시 섰다
+function expectAtRest(r: ReturnType<typeof onSupport>) {
+  if (r.rest.pitch === 0) return;
+  if (r.rest.pitch === 90 && gap(r.falling, r.support) > 0.01) return;
+  expect(gap(r.falling, r.support)).toBeLessThan(0.1);
+  expect(frontLean(dims, r.rest, frontSupport2(dims, r.rest, r.qx, r.support)).ok).toBe(true);
+}
+
+describe('뒤에 놓인 책을 받침으로 만나면 거기 기대 버티는지 본다(젖힘 평면의 힘 평형)', () => {
+  it('세워 둔 받침의 위 모서리가 머리 가까이 닿으면 그 각에서 멈춘다(바닥은 그대로)', () => {
+    const r = onSupport(50, 'spine');
+    expectAtRest(r);
+    expect(r.first.lean.ok).toBe(true);
+    // 받침 앞 위 모서리(z 50, y 75)가 축(z -10)에서 젖힌 뒷면에 닿는 각
+    expect(r.rest.pitch).toBeCloseTo((Math.atan2(60, 75) * 180) / Math.PI, 1);
+    expect(r.rest.pitch).toBeLessThan(slipAngle(dims.T, dims.H));
+    expect(r.rest.depth).toBe(-30);
+  });
+
+  it('낮은 받침 모서리라도 머리 가까이 닿으면 평평한 받침의 미끄러짐 한계보다 더 젖힌 채 버틴다(미는 힘이 위를 향한다)', () => {
+    const r = onSupport(80, 'horizontal');
+    expectAtRest(r);
+    expect(r.rest.pitch).toBeGreaterThan(slipAngle(dims.T, dims.H) + 20);
+    expect(r.rest.depth).toBe(-30);
+    expect(r.first.lean.contact.n.y).toBeGreaterThan(0.9);
+  });
+
+  // 예전에는 처음 닿은 자리(받침 앞면 25: 60.26°, 60: 74.06°)에 그대로 멈췄다. 그 자리는 바닥 마찰이 버티지 못한다.
+  it.each([25, 60])('낮은 받침 모서리가 축 가까이 닿아 미끄러지면 바닥이 앞으로 밀려 버티는 자리에서 멈춘다(받침 앞면 %d)', depth => {
+    const r = onSupport(depth, 'horizontal');
+    expect(r.first.pitch).toBeCloseTo((Math.atan2(depth + 10, 20) * 180) / Math.PI, 1);
+    expect(r.first.lean).toMatchObject({ ok: false, reason: 'slip' });
+    expectAtRest(r);
+    expect(r.rest.depth).toBeLessThan(-30);
+    expect(r.rest.pitch).toBeGreaterThan(r.first.pitch);
+    expect(r.rest.pitch).toBeLessThan(90);
+    // 반 걸음 덜 미끄러진 자리는 아직 버티지 못한다(처음 버티는 자리)
+    const back = { ...r.rest, depth: r.rest.depth + 0.5, pitch: 20 };
+    const hull = frontSupport2(dims, back, r.qx, r.support);
+    const c = frontFall2(dims, back, 90, [hull])!;
+    expect(frontLean(dims, { ...back, pitch: c.pitch }, hull).reason).toBe('slip');
+    // 넘어지며 미끄러지는 애니메이션: 대신하는 경로(pull) 없이, 받침을 뚫거나 들리지 않고, 바닥 축은 앞으로만
+    const plan = planTransition(bodiesOf(r.before, r.all, 's'), bodiesOf(r.next, r.all, 's'), PLANK_BOUNDS, { budgetMs: 60_000 });
+    expect(plan.strategy).not.toBe('pull');
+    const ti = plan.tracks.findIndex(t => t.id === book.id);
+    const si = plan.tracks.findIndex(t => t.id === 'support');
+    const pivot = { x: 0, y: 0, z: dims.W / 2 };
+    let foot = Infinity;
+    let pitch = 0;
+    for (let i = 0; i <= 100; i++) {
+      const b = bookAt(plan.tracks[ti], i / 100);
+      expect(gap(b, bookAt(plan.tracks[si], i / 100))).toBeGreaterThan(-0.25);
+      expect(lowest(b)).toBeCloseTo(0, 6);
+      expect(toWorld(b, pivot).z).toBeLessThanOrEqual(foot + 1e-6);
+      expect(b.pitch ?? 0).toBeGreaterThanOrEqual(pitch - 1e-6);
+      foot = toWorld(b, pivot).z;
+      pitch = b.pitch ?? 0;
+    }
+  });
+
+  it('미끄러질 자리가 없으면(버티기 전에 바닥 축이 선반 앞 끝에 닿는다) 처음 닿은 자리에 둔다', () => {
+    const r = onSupport(0, 'horizontal', -45);
+    expect(r.first.lean).toMatchObject({ ok: false, reason: 'slip' });
+    expect(r.rest.depth).toBe(-45);
+    expect(r.rest.pitch).toBeCloseTo(r.first.pitch, 1);
+  });
 });
