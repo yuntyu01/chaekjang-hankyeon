@@ -5,7 +5,9 @@ export const colors = {
   bg: '#FEFEFD',
   wall: '#FEFEFD',
   ink: '#1F2533',
-  selectGlow: '#E7B574', // 꾸미기에서 고른 책 둘레의 얇은 선·좁은 번짐(따뜻한 꿀색, 크림 벽에서도 읽히게)
+  // 2026-10-26 고른 책 둘레의 얇은 선: 흰색(예전 꿀색 #E7B574). 벽도 흰색이라 선 바깥 좁은 번짐은 옅은 먹색 그림자로 둬 선이 읽히게 한다
+  selectGlow: '#FFFFFF',
+  selectShade: 'rgba(31, 37, 51, 0.32)',
   dropRange: 'rgba(196, 128, 64, 0.85)', // 끄는 동안 선반 앞턱에 놓일 가로 범위
   inkSoft: '#6E6B66',
   inkFaint: '#9A958C',

@@ -324,7 +324,7 @@ function LipRange({ m, id, shelfId, cam, px, order, space }: { m: Motion; id: st
   );
 }
 
-// 고른 한 권(정보 상자·꾸미기): 보이는 윤곽 바깥으로 따뜻한 얇은 선과 좁은 번짐(책 면·글자는 덮지 않는다, 책은 들어 올리지 않는다).
+// 고른 한 권(정보 상자·꾸미기): 보이는 윤곽 바깥으로 흰 얇은 선과 좁은 그림자 번짐(책 면·글자는 덮지 않는다, 책은 들어 올리지 않는다).
 // 그 책 바로 뒤 순서로 그려 선의 안쪽 절반과 앞에 있는 책이 빛을 가리고, 바닥 면(받치는 면) 아래로는 새지 않게 바닥 면에서 자른다.
 function SelectGlow({ m, id, cam, px, order, space }: { m: Motion; id: string; cam: CamSV; px: Affine; order: Order; space: number }) {
   const z = useDerivedValue(() => zOf(order, id, -3));
@@ -346,10 +346,10 @@ export function GlowOf({ body, cam, px, z }: { body: Readonly<SharedValue<Book3 
   const clip = useDerivedValue(() => shape.value.clip);
   return (
     <Group zIndex={z} clip={clip}>
-      <Path path={path} color={colors.selectGlow} opacity={0.65}>
+      <Path path={path} color={colors.selectShade}>
         <BlurMask blur={3.2 * px.s} style="outer" />
       </Path>
-      <Path path={path} style="stroke" strokeWidth={3 * px.s} strokeJoin="round" color={colors.selectGlow} opacity={0.95} />
+      <Path path={path} style="stroke" strokeWidth={3 * px.s} strokeJoin="round" color={colors.selectGlow} />
     </Group>
   );
 }

@@ -5,7 +5,7 @@
 // 놓을 곳이 없으면 책은 제자리에 있고 안내만 뜬다(따로 떠 있는 끌기 그림 없음). 화면 가장자리에서 자동 스크롤.
 import { router, useFocusEffect, useLocalSearchParams, useNavigation } from 'expo-router';
 import * as Haptics from 'expo-haptics';
-import { BookMarked, ChartNoAxesColumn, Eraser, Paintbrush, Plus, Search, Settings, Undo2 } from '@/ui/icons';
+import { BookMarked, ChartNoAxesColumn, Eraser, Paintbrush, Plus, Search, Settings } from '@/ui/icons';
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { AppState, Modal, PixelRatio, Pressable, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
@@ -1415,6 +1415,14 @@ export function HomeScreen() {
   useEffect(() => {
     navigation_.setOptions({ tabBarStyle: editing ? { display: 'none' } : tabBarStyle(insets.bottom) });
   }, [editing, navigation_, insets.bottom]);
+  // 꾸미는 동안은 머리글(제목·연도·버튼)도 숨겨 책장을 넓게 쓴다(되돌리기·완료는 조작부 제목 줄).
+  // 꾹 눌러 끌며 꾸미기를 시작했으면 놓은 뒤에 숨긴다(끄는 도중 손가락 아래 책장이 밀리지 않게)
+  const [bare, setBare] = useState(false);
+  const dragging = !!drag;
+  useEffect(() => {
+    if (!editing) setBare(false);
+    else if (!dragging) setBare(true);
+  }, [editing, dragging]);
 
   const onA11y = useCallback(
     (bookId: string, action: string) => {
@@ -1537,58 +1545,39 @@ export function HomeScreen() {
       ) : null}
       {/* 시안 비율: 제목은 작고 둥근 고딕(잉크 약 86×21.5DU, 따뜻한 짙은 갈색), 연도 잉크 높이 약 11.9DU·제목 잉크 위 끝에서 약 30DU 아래,
           원형 버튼 32DU, 좌우 여백 23/18DU */}
-      <View style={[styles.header, { paddingLeft: 26 * m.scale + m.originX, paddingRight: 22 * m.scale + m.originX, paddingTop: 55 * m.scale, height: 104 * m.scale }]}>
-        <Pressable style={{ flex: 1 }} onPress={() => setShelfMenuOpen(true)} accessibilityRole="button" accessibilityLabel={ko.menu.title}>
-          <View style={{ height: 29*m.scale }} accessibilityRole="header" accessibilityLabel={ko.title}>
-            <View style={{ position:'absolute', left:-0.4*m.scale, top:3.065*m.scale }}>
-              <ReferenceUI name="heading" width={191*390/853*m.scale} height={51*390/853*m.scale}/>
+      {bare ? null : (
+        <View style={[styles.header, { paddingLeft: 26 * m.scale + m.originX, paddingRight: 22 * m.scale + m.originX, paddingTop: 55 * m.scale, height: 104 * m.scale }]}>
+          <Pressable style={{ flex: 1 }} onPress={() => setShelfMenuOpen(true)} accessibilityRole="button" accessibilityLabel={ko.menu.title}>
+            <View style={{ height: 29*m.scale }} accessibilityRole="header" accessibilityLabel={ko.title}>
+              <View style={{ position:'absolute', left:-0.4*m.scale, top:3.065*m.scale }}>
+                <ReferenceUI name="heading" width={191*390/853*m.scale} height={51*390/853*m.scale}/>
+              </View>
             </View>
-          </View>
-          <Pressable
-            onPress={() => setSelectedYear(years[(years.indexOf(year) + 1) % years.length])}
-            disabled={years.length < 2}
-            hitSlop={8}
-            accessibilityRole="button"
-            accessibilityLabel={ko.yearA11y(year, count)}
-            style={{ alignSelf: 'flex-start' }}>
-            <Text style={[styles.summary, { fontSize: 12.25 * m.scale, marginTop: 5.1 * m.scale }]}>
-              {ko.year(year)}
-              {years.length > 1 ? ' ▾' : ''}
-              {editing ? ` · ${ko.decorating}` : ''}
-            </Text>
+            <Pressable
+              onPress={() => setSelectedYear(years[(years.indexOf(year) + 1) % years.length])}
+              disabled={years.length < 2}
+              hitSlop={8}
+              accessibilityRole="button"
+              accessibilityLabel={ko.yearA11y(year, count)}
+              style={{ alignSelf: 'flex-start' }}>
+              <Text style={[styles.summary, { fontSize: 12.25 * m.scale, marginTop: 5.1 * m.scale }]}>
+                {ko.year(year)}
+                {years.length > 1 ? ' ▾' : ''}
+                {editing ? ` · ${ko.decorating}` : ''}
+              </Text>
+            </Pressable>
           </Pressable>
-        </Pressable>
-        <View style={[styles.actions, { gap: 8 * m.scale, marginTop: -18 * m.scale }]}>
-          {editing ? (
-            <>
-              <Pressable
-                onPress={() => {
-                  void undoMoves().then((done) => {
-                    if (done) setEditMsg(null);
-                  });
-                }}
-                disabled={!store.undo}
-                hitSlop={10}
-                accessibilityRole="button"
-                accessibilityLabel={ko.undo}
-                style={{ opacity: store.undo ? 1 : 0.35, padding: 6 }}>
-                <Undo2 size={23 * m.scale} color={colors.homeTitle} strokeWidth={1.5} />
-              </Pressable>
-              {/* 2026-10-26 꾸미기 시안: 테두리 없는 굵은 '완료' 글자 */}
-              <Pressable onPress={finishEditing} hitSlop={10} accessibilityRole="button" accessibilityLabel={ko.done} style={({ pressed }) => [styles.doneBtn, { marginLeft: 18 * m.scale }, pressed && { opacity: 0.55 }]}>
-                <Text style={[styles.doneText, { fontSize: 16.5 * m.scale }]}>{ko.done}</Text>
-              </Pressable>
-            </>
-          ) : (
-            <>
-              {/* 시안: 둥근 테두리 원 버튼(약 33DU)과 따뜻한 짙은 갈색의 굵은 더하기 */}
+          <View style={[styles.actions, { gap: 8 * m.scale, marginTop: -18 * m.scale }]}>
+            {/* 꾸미기를 끌며 시작한 동안(머리글을 아직 숨기기 전)에는 더하기를 숨긴다 */}
+            {editing ? null : (
+              // 시안: 둥근 테두리 원 버튼(약 33DU)과 따뜻한 짙은 갈색의 굵은 더하기
               <HeaderButton size={33.5 * m.scale} label={ko.add} onPress={() => router.push('/book/add')}>
                 <Plus size={18 * m.scale} color={colors.homeTitle} strokeWidth={1.9} />
               </HeaderButton>
-            </>
-          )}
+            )}
+          </View>
         </View>
-      </View>
+      )}
 
       <View
         ref={viewportRef}
@@ -1723,6 +1712,13 @@ export function HomeScreen() {
           lean={(Math.sign(editPlacement?.tilt ?? 0) as -1 | 0 | 1)}
           canLean={canLean}
           msg={editMsg}
+          canUndo={!!store.undo}
+          onUndo={() => {
+            void undoMoves().then((done) => {
+              if (done) setEditMsg(null);
+            });
+          }}
+          onDone={finishEditing}
           bottomInset={insets.bottom}
           reduceMotion={reduceMotion}
           onPose={editPose}
@@ -1826,8 +1822,6 @@ const styles = StyleSheet.create({
   actions: { flexDirection: 'row', alignItems: 'center', alignSelf: 'center' },
   circle: { borderWidth: 1, borderColor: colors.circle, alignItems: 'center', justifyContent: 'center' },
   circleOn: { backgroundColor: ui.accent, borderColor: ui.accent },
-  doneBtn: { minHeight: 40, justifyContent: 'center' },
-  doneText: { fontFamily: uiFonts.uiBold, color: colors.homeTitle },
   badge: {
     position: 'absolute',
     top: -2,

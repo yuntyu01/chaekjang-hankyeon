@@ -11,6 +11,7 @@ import Svg, { Rect } from 'react-native-svg';
 import { DU_PER_MM, MAX_FRONT_SPIN, MAX_SPIN, SHELF_DEPTH, SHELF_FRONT } from '@/domain/geometry';
 import type { Pose } from '@/domain/types';
 import { ko } from '@/i18n/ko';
+import { Undo2 } from '@/ui/icons';
 import { colors, fonts, icon, shape, space, type } from '@/ui/screenTheme';
 import { PERF_ENABLED } from '@/ui/perf';
 
@@ -32,6 +33,9 @@ type Props = {
   onSpin: (deg: number, done: boolean) => number; // 끄는 동안 미리보기, 놓으면 확정. 실제로 된 각도를 돌려준다
   onHeight?: (h: number) => void;
   angles?: string | null; // 표지 책: 지금 좌우·뒤로 각도
+  canUndo: boolean;
+  onUndo: () => void;
+  onDone: () => void;
 };
 
 // 돌리기: 연속 조절 막대(-max ~ +max, 눕힌 책 MAX_SPIN·표지 책 MAX_FRONT_SPIN). 가능한 각도는 부모가 되돌려 준 값(spin)으로 표시.
@@ -268,7 +272,7 @@ function Choice({ label, on, disabled, onPress, children }: { label: string; on:
   );
 }
 
-export function DecoratePanel({ title, pose, lean, canLean, msg, bottomInset, reduceMotion, onPose, onLean, spin, onSpin, depth, onDepth, onHeight, angles }: Props) {
+export function DecoratePanel({ title, pose, lean, canLean, msg, bottomInset, reduceMotion, onPose, onLean, spin, onSpin, depth, onDepth, onHeight, angles, canUndo, onUndo, onDone }: Props) {
   // 세부 조정(기대기 · 돌리기)은 접어 둔다. 펼친 채로 다른 책을 골라도 그대로
   const [more, setMore] = useState(false);
   const chevron = { size: icon.size, color: colors.inkSoft, strokeWidth: icon.stroke };
@@ -279,9 +283,25 @@ export function DecoratePanel({ title, pose, lean, canLean, msg, bottomInset, re
       onLayout={(e) => onHeight?.(e.nativeEvent.layout.height)}
       style={[styles.panel, { paddingBottom: bottomInset + 6 }]}>
       <View style={styles.handle} />
-      <Text style={[styles.title, !title && styles.titleEmpty]} numberOfLines={1}>
-        {title ?? ko.decoratePanel.pick}
-      </Text>
+      {/* 꾸미는 동안 홈 머리글을 숨기므로 되돌리기·완료는 제목 줄 오른쪽에 둔다 */}
+      <View style={styles.head}>
+        <Text style={[styles.title, !title && styles.titleEmpty]} numberOfLines={1}>
+          {title ?? ko.decoratePanel.pick}
+        </Text>
+        <Pressable
+          onPress={onUndo}
+          disabled={!canUndo}
+          hitSlop={10}
+          accessibilityRole="button"
+          accessibilityLabel={ko.undo}
+          accessibilityState={{ disabled: !canUndo }}
+          style={({ pressed }) => [styles.headBtn, { opacity: !canUndo ? 0.35 : pressed ? 0.55 : 1 }]}>
+          <Undo2 size={22} color={colors.ink} strokeWidth={1.5} />
+        </Pressable>
+        <Pressable onPress={onDone} hitSlop={10} accessibilityRole="button" accessibilityLabel={ko.done} style={({ pressed }) => [styles.headBtn, styles.done, pressed && { opacity: 0.55 }]}>
+          <Text style={styles.doneText}>{ko.done}</Text>
+        </Pressable>
+      </View>
       {msg ? <Text style={styles.msg}>{msg}</Text> : null}
       <View style={styles.poses} accessibilityRole="tablist">
         {(['spine', 'front', 'horizontal'] as Pose[]).map((p) => (
@@ -354,8 +374,12 @@ const styles = StyleSheet.create({
     borderColor: colors.border,
   },
   handle: { alignSelf: 'center', width: 38, height: 4.5, borderRadius: 3, marginTop: 10, backgroundColor: colors.line },
+  head: { flexDirection: 'row', alignItems: 'center', marginTop: 16 },
   // 시안: 고른 책 제목 약 23, 짙은 글자
-  title: { ...type.title, color: colors.ink, fontSize: 23, lineHeight: 30, marginTop: 16 },
+  title: { ...type.title, flex: 1, color: colors.ink, fontSize: 23, lineHeight: 30 },
+  headBtn: { minHeight: 40, minWidth: 40, alignItems: 'center', justifyContent: 'center' },
+  done: { marginLeft: 10 },
+  doneText: { fontFamily: fonts.uiBold, fontSize: 16.5, color: colors.ink },
   titleEmpty: { ...type.row, color: colors.inkSoft },
   msg: { ...type.caption, color: colors.danger, marginTop: 6 },
   poses: { flexDirection: 'row', marginTop: 18 },
