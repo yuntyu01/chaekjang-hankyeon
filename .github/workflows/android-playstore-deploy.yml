@@ -23,6 +23,11 @@ on:
         required: false
         default: true
         type: boolean
+      verify_play_identity_only:
+        description: "Verify only the non-secret CI service-account identity; do not build or upload"
+        required: false
+        default: false
+        type: boolean
   # main 에 앱 코드가 바뀌어 푸시되면 비공개 테스트(alpha) 트랙으로 자동으로 올린다.
   # v1.2.3 같은 태그를 밀어도 alpha 로 올린다(버전 이름 = 태그).
   push:
@@ -43,7 +48,26 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'push' && github.ref_type == 'branch' }}
 
 jobs:
+  verify-play-identity:
+    if: inputs.verify_play_identity_only == true
+    runs-on: ubuntu-latest
+    steps:
+      - name: Verify service-account identity without exposing credentials
+        env:
+          PLAY_SERVICE_ACCOUNT_JSON: ${{ secrets.PLAY_SERVICE_ACCOUNT_JSON }}
+        run: |
+          python3 - <<'PY'
+          import hashlib, json, os
+          credential = json.loads(os.environ['PLAY_SERVICE_ACCOUNT_JSON'])
+          email = credential.get('client_email', '').strip().lower()
+          if credential.get('type') != 'service_account' or not email.endswith('.iam.gserviceaccount.com'):
+              raise SystemExit('Invalid service-account credential structure')
+          print('Service-account email SHA256: ' + hashlib.sha256(email.encode()).hexdigest())
+          print('No credential content, token or private key was printed. No Play API request was made.')
+          PY
+
   deploy-android:
+    if: inputs.verify_play_identity_only != true
     name: Build AAB and upload to Play
     runs-on: ubuntu-latest
     defaults:
