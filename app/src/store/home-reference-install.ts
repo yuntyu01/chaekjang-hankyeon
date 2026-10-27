@@ -12,15 +12,31 @@ type Dependencies = {
   getItem(key: string): Promise<string | null>;
   setItem(key: string, value: string): Promise<void>;
   saveLibrary(lib: Library): Promise<void>;
+  hasSavedLayout?: boolean;
 };
+
+const hasRecords = (lib: Library) => Object.values(lib).some((records) => Object.keys(records).length > 0);
+const hasPlacedBooks = (layout: ShelfLayout) => layout.placements.length > 0 || layout.drawer.length > 0;
 
 // 완료 표시가 마지막이다. 저장 중 중단돼도 같은 계획으로 재시도하며 책을 중복 생성하지 않는다.
 export async function installReferenceHome(lib: Library, previous: ShelfLayout, deps: Dependencies): Promise<HomeReferenceProfile> {
   const raw = await deps.getItem(HOME_REFERENCE_KEY);
   const saved = raw ? JSON.parse(raw) as Install : null;
   if (saved?.complete) return saved.profile;
+  if (saved) {
+    // 이전 버전의 미완료 계획은 사용자의 서재를 재배치할 수 있다.
+    // 백업을 확인할 수 없거나 기존 기록이 있었다면 자동으로 이어 가지 않는다.
+    const backupRaw = await deps.getItem(HOME_REFERENCE_BACKUP_KEY);
+    if (!backupRaw) return {};
+    const backup = JSON.parse(backupRaw) as { lib: Library; layout: ShelfLayout };
+    if (hasRecords(backup.lib) || hasPlacedBooks(backup.layout)) return {};
+    // 설치 후 완료 표시를 쓰기 전에 앱이 꺼졌다면, 그 사이 사용자가 바꾼 배치는 건드리지 않는다.
+    if (deps.hasSavedLayout && JSON.stringify(previous) !== JSON.stringify(saved.layout)) return {};
+  }
   let plan = saved;
   if (!plan) {
+    // 시안은 새 서재에만 설치한다. 기존 서재나 저장된 배치는 사용자의 기록이다.
+    if (hasRecords(lib) || hasPlacedBooks(previous) || deps.hasSavedLayout) return {};
     const now = new Date().toISOString();
     if (!await deps.getItem(HOME_REFERENCE_BACKUP_KEY)) {
       const viewSettings = await deps.getItem(VIEW_SETTINGS_KEY);

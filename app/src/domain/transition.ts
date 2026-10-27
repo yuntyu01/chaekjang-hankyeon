@@ -915,6 +915,8 @@ export function firstOverlap(tracks: Track[], bounds?: { min: number; max: numbe
   const n = tracks.length;
   if (!tracks.some((t) => t.moving)) return null;
   const late = () => deadline < Infinity && Date.now() > deadline;
+  const timeout = () => ({ t: 0, a: tracks.find((t) => t.moving)!.id, b: 'timeout' });
+  if (late()) return timeout();
   const bodies = new Map<number, Book3[]>();
   const pts = new Map<number, Vec3[][]>();
   const at = (t: number) => {
@@ -943,6 +945,7 @@ export function firstOverlap(tracks: Track[], bounds?: { min: number; max: numbe
   };
   const roofed = ceil === undefined ? null : tracks.map((tr, i) => tr.moving && topUnderPlank(cornersAt(0)[i]) <= ceil + 0.3);
   for (let k = 0; k <= SAMPLES; k++) {
+    if (late()) return timeout();
     const t = k / SAMPLES;
     const bs = at(t);
     for (let i = 0; i < n; i++) {
@@ -973,9 +976,16 @@ export function firstOverlap(tracks: Track[], bounds?: { min: number; max: numbe
       const d = (a: number, b: number) => disp(i, a, b) + disp(j, a, b);
       let prev = g(0);
       for (let k = 1; k <= SAMPLES; k++) {
+        if (late()) return timeout();
         const t = k / SAMPLES;
         const gt = g(t);
-        const hit = firstBelow(g, d, -MARGIN, (k - 1) / SAMPLES, t, prev, gt, 6);
+        let hit: number | null;
+        try {
+          hit = firstBelow(g, d, -MARGIN, (k - 1) / SAMPLES, t, prev, gt, 6, late);
+        } catch (error) {
+          if (error === SEARCH_TIMEOUT) return timeout();
+          throw error;
+        }
         if (hit !== null) return { t: hit, a: tracks[i].id, b: tracks[j].id };
         prev = gt;
       }
@@ -985,13 +995,15 @@ export function firstOverlap(tracks: Track[], bounds?: { min: number; max: numbe
 
 // 구간 [a, b]에서 두 책 사이 틈이 처음 thr 밑으로 가는 때(없으면 null). ga, gb: 양 끝의 틈, moved(a, b): 그 사이 두 책이 움직인 거리의 합.
 // 양 끝의 틈에서 움직인 거리(의 반)를 빼도 thr 밑으로 갈 수 없으면 통과, 아니면 반씩 나눠 더 본다(적응형, depth번까지).
-function firstBelow(gapAt: (t: number) => number, moved: (a: number, b: number) => number, thr: number, a: number, b: number, ga: number, gb: number, depth: number): number | null {
+const SEARCH_TIMEOUT = Symbol('search-timeout');
+function firstBelow(gapAt: (t: number) => number, moved: (a: number, b: number) => number, thr: number, a: number, b: number, ga: number, gb: number, depth: number, expired?: () => boolean): number | null {
+  if (expired?.()) throw SEARCH_TIMEOUT;
   if (ga < thr) return a;
   if (gb < thr) return b;
   if (Math.min(ga, gb) - moved(a, b) / 2 >= thr || depth <= 0) return null;
   const m = (a + b) / 2;
   const gm = gapAt(m);
-  return firstBelow(gapAt, moved, thr, a, m, ga, gm, depth - 1) ?? firstBelow(gapAt, moved, thr, m, b, gm, gb, depth - 1);
+  return firstBelow(gapAt, moved, thr, a, m, ga, gm, depth - 1, expired) ?? firstBelow(gapAt, moved, thr, m, b, gm, gb, depth - 1, expired);
 }
 
 // ---------- 넘어지는 동작 ----------

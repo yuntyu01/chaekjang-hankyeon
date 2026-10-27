@@ -1,0 +1,31 @@
+const mockStorage = { getItem: jest.fn(async () => null), setItem: jest.fn(async () => {}) };
+const mockLibrary = { books: {}, editions: {}, bindings: {}, sessions: {}, rounds: {}, bookmarks: {} };
+const mockLibraryState = { lib: mockLibrary, error: null as string | null };
+const mockLoadLibrary = jest.fn(async () => {});
+const mockLoadPlacement = jest.fn(async () => {});
+const mockInstall = jest.fn(async () => ({}));
+jest.mock('expo-sqlite/kv-store', () => ({ __esModule: true, default: mockStorage }));
+jest.mock('@/domain/layout-engine', () => ({ migrate: (layout: unknown) => layout }));
+jest.mock('@/domain/home-reference', () => ({ referenceHomeBooks: () => ({}) }));
+jest.mock('../library-store', () => ({ libraryStore: { load: mockLoadLibrary, get: () => mockLibraryState, subscribe: jest.fn(), replaceAll: jest.fn() } }));
+jest.mock('../placement-store', () => ({ EMPTY_LAYOUT: { version: 2, shelves: [], placements: [], drawer: [] }, placementStore: { load: mockLoadPlacement, syncBooks: jest.fn() } }));
+jest.mock('../home-reference-install', () => ({ installReferenceHome: mockInstall }));
+jest.mock('../reading-store', () => ({ readingStore: { load: jest.fn(async () => {}) } }));
+jest.mock('../settings-store', () => ({ settingsStore: { load: jest.fn(async () => {}) } }));
+jest.mock('../view-store', () => ({ viewStore: { load: jest.fn(async () => {}) } }));
+jest.mock('@/services/sync', () => ({ initSync: jest.fn() }));
+jest.mock('@/ui/boot-trace', () => ({ bootMark: jest.fn() }));
+jest.mock('@/ui/perf', () => ({ PERF_ENABLED: false }));
+
+it('서재를 읽지 못하면 빈 배치를 열지 않고, 재시도할 수 있다', async () => {
+  jest.resetModules();
+  mockLibraryState.error = 'storage unavailable';
+  const { bootStores } = require('../boot') as typeof import('../boot');
+  await expect(bootStores()).rejects.toThrow('서재를 불러오지 못했어요');
+  expect(mockLoadPlacement).not.toHaveBeenCalled();
+  expect(mockInstall).not.toHaveBeenCalled();
+  mockLibraryState.error = null;
+  await expect(bootStores()).resolves.toBeUndefined();
+  expect(mockLoadLibrary).toHaveBeenCalledTimes(2);
+  expect(mockLoadPlacement).toHaveBeenCalledTimes(1);
+});

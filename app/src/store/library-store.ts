@@ -94,7 +94,7 @@ export const libraryStore = {
         migrated++;
       }
       if (migrated) await replaceLib(lib);
-      set({ lib, loaded: true });
+      set({ lib, loaded: true, error: null });
     } catch (e) {
       set({ loaded: true, error: String((e as Error)?.message ?? e) });
     }

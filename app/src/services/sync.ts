@@ -11,7 +11,7 @@ import { buildPush, fullDirty, mergeRemote, type Dirty, type PullBody, type Push
 import { ApiError, createApiClient } from '@/services/api-client';
 import { IMAGE_DIR } from '@/store/files';
 import { libraryStore } from '@/store/library-store';
-import { clearPushed, getDirty, isLayoutDirty, LAYOUT_AT_KEY, loadDirty, markAllDirty, onLocalChange, pendingCount } from '@/store/sync-dirty';
+import { clearPushed, getDirty, layoutSnapshot, LAYOUT_AT_KEY, loadDirty, markAllDirty, onLocalChange, pendingCount } from '@/store/sync-dirty';
 
 const BASE = process.env.EXPO_PUBLIC_API_URL?.replace(/\/+$/, '');
 const TOKEN_KEY = 'sync-token:v1';
@@ -93,16 +93,16 @@ async function currentLayout(): Promise<WireLayout | undefined> {
   return { layoutJson: raw, version: 2, updatedAt: at };
 }
 
-async function pushOnce(token: string, snapshot: Dirty, withLayout: boolean) {
+async function pushOnce(token: string, snapshot: Dirty, layoutRevision: number | null) {
   const { body, count } = buildPush(libraryStore.get().lib, snapshot, IMAGE_DIR);
-  const layout = withLayout ? await currentLayout() : undefined;
+  const layout = layoutRevision !== null ? await currentLayout() : undefined;
   if (!count && !layout) {
-    clearPushed(snapshot, withLayout);
+    clearPushed(snapshot, layoutRevision);
     return;
   }
   await uploadFiles(token, filesIn(body));
   await api('POST', '/sync/push', token, { ...body, layout });
-  clearPushed(snapshot, withLayout);
+  clearPushed(snapshot, layoutRevision);
 }
 
 let reloadLayout: (() => Promise<void> | void) | null = null;
@@ -147,7 +147,7 @@ export async function syncNow() {
     let token = await ensureToken();
     for (let attempt = 0; attempt < 2; attempt++) {
       try {
-        await pushOnce(token, { ...getDirty() }, isLayoutDirty());
+        await pushOnce(token, { ...getDirty() }, layoutSnapshot());
         await pullAll(token);
         break;
       } catch (e) {

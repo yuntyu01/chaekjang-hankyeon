@@ -58,7 +58,7 @@ import {
   type Result,
 } from '@/domain/layout-engine';
 import { corners, fromPlaced, type Book3 } from '@/domain/book3';
-import { computeShelf, fallDirOf, frameBBox, withLeans, type BookFrame } from '@/domain/shelf-scene';
+import { computeShelf, fallDirOf, frameBBox, withLeans } from '@/domain/shelf-scene';
 import { DROP_MS } from '@/domain/transition';
 import { tiltToward, type BookPlacement, type Pose, type ShelfLayout, type Tilt } from '@/domain/types';
 import { ko } from '@/i18n/ko';
@@ -74,7 +74,7 @@ import { CONTENT_TOP, computeRows, LAYOUT, rowAffine, rowAt, toContent, useShelf
 import { benchProjection, type BenchRow } from '@/ui/shelf/ShelfMotion';
 import { displayedPoses, flushApply, lastPlan, previewInto, PULL_MS, settleInto, WAIT_MAX, type Drops } from '@/ui/shelf/planner';
 import { fallSig, HOLD_MS, stepHold, type Hold } from '@/ui/shelf/preview-hold';
-import { liveSV, makeMotion, pickAt, plankFrontBand, rowPx, TRANSIT_ROW, warmSV, type Motion, type Pick, type SceneGeo, type SceneMotion } from '@/ui/shelf/scene';
+import { liveSV, pickAt, plankFrontBand, rowPx, TRANSIT_ROW, warmSV, type Pick, type SceneGeo } from '@/ui/shelf/scene';
 import { HANDLE_HIT, handlePoint, HeaderWall, SHELF_CAST_EXTENT, ShelfScene, type DropHint, type SceneRowProps } from '@/ui/shelf/ShelfScene';
 import { ANIM, frameStats, logChunks, MENU_FLAGS, PERF_DETAIL, PERF_ENABLED, PERF_LEVELS, PUSH_DEBUG, setLightOff, setPerfLevel, TL, tl, tlEv, tlOn, tlu, TRANSIT_DEBUG, setShelfMode, setShelfView, SHELF_MODES, SHELF_VIEWS, type PerfLevel, type ShelfMode } from '@/ui/perf';
 import type { FrontState } from '@/domain/front-pose';
@@ -89,6 +89,7 @@ import { miniTimerStore } from '@/store/mini-timer-store';
 import { tabBarStyle } from '@/ui/tabBar';
 
 import { DecoratePanel } from './DecoratePanel';
+import { useSceneMotions, useShelfScenes } from './useShelfSceneState';
 
 type MoveAction = 'prev' | 'next' | 'up' | 'down';
 
@@ -118,43 +119,6 @@ type Toast = { text: string; action?: 'undo' | 'retry' } | null;
 // 꾸미기 시점 끌기 영역(선반 앞면 띠)의 최소 높이·위아래 여유(px)
 const FRONT_HIT = 48;
 const FRONT_PAD = 10;
-
-// 선반별 프레임(3D 상자)을 캐시해서 바뀐 선반만 다시 그린다. 보기 각과 상관없다.
-function useShelfScenes(layout: ShelfLayout, books: Parameters<typeof computeShelf>[1]) {
-  const cache = useRef(new Map<string, { sig: string; books: typeof books; frames: BookFrame[] }>());
-  return useMemo(() => {
-    const out = new Map<string, BookFrame[]>();
-    for (const s of layout.shelves) {
-      const sig = JSON.stringify(layout.placements.filter((p) => p.shelfId === s.id));
-      const hit = cache.current.get(s.id);
-      if (hit && hit.sig === sig && hit.books === books) {
-        out.set(s.id, hit.frames);
-        continue;
-      }
-      const frames = computeShelf(layout, books, s.id).frames;
-      cache.current.set(s.id, { sig, books, frames });
-      out.set(s.id, frames);
-    }
-    return out;
-  }, [layout, books]);
-}
-
-// 선반마다 움직임 하나(UI 스레드 SharedValue). 선반이 그대로면 같은 객체라 제스처·그림이 다시 만들어지지 않는다.
-function useSceneMotions(ids: string[], frames: Map<string, BookFrame[]>): SceneMotion[] {
-  const map = useRef(new Map<string, Motion>()).current;
-  const key = ids.join('|');
-  return useMemo(() => {
-    return ids.map((id) => {
-      let m = map.get(id);
-      if (!m) {
-        m = makeMotion((frames.get(id) ?? []).map((f) => fromPlaced(f.box)));
-        map.set(id, m);
-      }
-      return { shelfId: id, m };
-    });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [key]);
-}
 
 // 서랍으로 떨어지는 책이 떨어지는 쪽: 표지 책은 선반 앞 끝 너머로(0). 세운 책은 실제로 넘어진 쪽(밀려 넘어진 받침은 서 있던 책이라
 // 보이던 자세로는 알 수 없다), 기록이 없으면 기울어 있던 쪽

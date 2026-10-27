@@ -11,6 +11,8 @@ export const LAYOUT_AT_KEY = 'shelf-layout-at';
 
 let dirty: Dirty = {};
 let layoutDirty = false;
+// 배치 업로드 중에 새 변경이 생겼는지 판별한다. 숫자는 실행 중에만 필요하다.
+let layoutRevision = 0;
 let loaded: Promise<void> | null = null;
 let trigger: (() => void) | null = null;
 let saveTimer: ReturnType<typeof setTimeout> | null = null;
@@ -51,24 +53,26 @@ export function noteChange(kind: LibKind, id: string, deleted: boolean, at: stri
 
 export function noteLayoutChange(at: string) {
   layoutDirty = true;
+  layoutRevision++;
   void Storage.setItem(LAYOUT_AT_KEY, at).catch(() => {});
   save();
   trigger?.();
 }
 
 export const getDirty = () => dirty;
-export const isLayoutDirty = () => layoutDirty;
+export const layoutSnapshot = () => layoutDirty ? layoutRevision : null;
 export const pendingCount = () => Object.keys(dirty).length + (layoutDirty ? 1 : 0);
 
 // 올린 것만 지운다(올리는 사이에 또 바뀐 항목은 at이 달라 남는다)
-export function clearPushed(pushed: Dirty, layoutPushed: boolean) {
+export function clearPushed(pushed: Dirty, layoutPushed: number | null) {
   for (const [k, v] of Object.entries(pushed)) if (dirty[k] && dirty[k].at === v.at && dirty[k].deleted === v.deleted) delete dirty[k];
-  if (layoutPushed) layoutDirty = false;
+  if (layoutPushed !== null && layoutPushed === layoutRevision) layoutDirty = false;
   save();
 }
 
 export function markAllDirty(all: Dirty) {
   dirty = { ...all, ...dirty };
   layoutDirty = true;
+  layoutRevision++;
   save();
 }

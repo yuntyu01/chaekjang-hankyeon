@@ -31,6 +31,8 @@ export function bootStores() {
   started ??= (async () => {
     bootMark('boot-start');
     await libraryStore.load();
+    // 빈 서재로 계속 진행하면 읽지 못한 기존 배치를 덮어쓸 수 있다.
+    if (libraryStore.get().error) throw new Error('서재를 불러오지 못했어요');
     bootMark('library-loaded', Object.keys(libraryStore.get().lib.books).length);
     if (!libraryStore.get().error) {
       try {
@@ -39,6 +41,7 @@ export function bootStores() {
           getItem: key => Storage.getItem(key),
           setItem: (key, value) => Storage.setItem(key, value),
           saveLibrary: library => libraryStore.replaceAll(library),
+          hasSavedLayout: saved !== null,
         });
       } catch (error) {
         // 백업/설치 실패는 다음 시작 때 재시도한다. 기존 서재는 계속 열 수 있다.
@@ -64,6 +67,9 @@ export function bootStores() {
     void readingStore.load().then(() => bootMark('reading-loaded'));
     await Promise.all([settingsStore.load(), viewStore.load()]);
     bootMark('settings-loaded');
-  })();
+  })().catch((error) => {
+    started = null;
+    throw error;
+  });
   return started;
 }

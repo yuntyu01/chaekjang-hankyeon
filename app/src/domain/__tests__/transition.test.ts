@@ -70,6 +70,49 @@ const roomy = () => {
 const thin: BookMap = { A: book('A', 180, 22), B: book('B', 170, 24, 110), C: book('C', 160, 60) };
 const thinBase = () => withLeans(layoutOf(place('A', 0, 0), place('B', 1, 23), place('C', 2, 366 - 60)), thin);
 
+describe('경로 검사 시간 제한', () => {
+  it('바닥과 선반 경계를 확인하는 도중 시간이 지나면 검사를 중단한다', () => {
+    const body = bodiesOf(thinBase(), thin, 's')[0];
+    const track = { ...holdTrack(body), moving: true };
+    // 첫 검사와 첫 표본은 통과, 다음 표본에서 시간이 지난다.
+    const clock = jest.spyOn(Date, 'now').mockReturnValueOnce(0).mockReturnValueOnce(0).mockReturnValue(2);
+    try {
+      expect(firstOverlap([track], PLANK_BOUNDS, 1)).toEqual({ t: 0, a: body.id, b: 'timeout' });
+    } finally {
+      clock.mockRestore();
+    }
+  });
+  it('책 사이의 촘촘한 충돌 검사 도중에도 시간 초과를 반환한다', () => {
+    const [a, b] = bodiesOf(thinBase(), thin, 's');
+    const tracks = [{ ...holdTrack(a), moving: true }, holdTrack(b)];
+    let calls = 0;
+    // 경계 검사 49회 뒤, 책 사이 첫 구간의 재귀 검사에 들어갈 때 제한 시간을 넘긴다.
+    const clock = jest.spyOn(Date, 'now').mockImplementation(() => ++calls < 53 ? 0 : 2);
+    try {
+      expect(firstOverlap(tracks, PLANK_BOUNDS, 1)).toEqual({ t: 0, a: a.id, b: 'timeout' });
+      expect(calls).toBe(53);
+    } finally {
+      clock.mockRestore();
+    }
+  });
+  it('시간 초과 시 대체 경로로 가고 예시 책과 겹치지 않는다', () => {
+    const base = roomy();
+    const change = setPose(base, all, 'b02', 'front');
+    if (!change.ok) throw new Error(change.reason);
+    const from = bodiesOf(base, all, 'shelf-1');
+    const to = bodiesOf(withLeans(change.layout, all), all, 'shelf-1');
+    const clock = jest.spyOn(Date, 'now').mockReturnValueOnce(0).mockReturnValue(1000);
+    let plan: ReturnType<typeof planTransition>;
+    try {
+      plan = planTransition(from, to, PLANK_BOUNDS, { budgetMs: 16 });
+    } finally {
+      clock.mockRestore();
+    }
+    expect(plan.strategy).toBe('pull');
+    expect(firstOverlap(plan.tracks, PLANK_BOUNDS)).toBeNull();
+  });
+});
+
 
 describe('3D 자세', () => {
   it('정지 자세의 상자 = 배치 상자, 보이는 면: 세움(책등·앞표지 옆·머리), 눕힘(책등·앞표지 위·꼬리 끝), 표지(앞표지·책배·머리)', () => {

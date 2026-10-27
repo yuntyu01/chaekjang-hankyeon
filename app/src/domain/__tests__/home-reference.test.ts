@@ -79,7 +79,7 @@ it('설치 전 백업하고, 완료 후 재실행에서 사용자가 바꾼 배�
   const saveLibrary = jest.fn(async (_lib: Library) => {});
   const setItem = jest.fn(async (k: string, value: string) => { mem[k] = value; });
   const deps = { getItem: async (k: string) => mem[k] ?? null, setItem, saveLibrary };
-  const original = existing();
+  const original = emptyLibrary();
   const profile = await installReferenceHome(original, empty, deps);
   expect(setItem.mock.calls[0][0]).toBe(HOME_REFERENCE_BACKUP_KEY);
   expect(JSON.parse(mem[HOME_REFERENCE_BACKUP_KEY]).lib).toEqual(original);
@@ -91,7 +91,7 @@ it('설치 전 백업하고, 완료 후 재실행에서 사용자가 바꾼 배�
 
 it('배치 저장 실패 후 같은 책 ID로 재시도하고 완료 표시는 마지막에 쓴다', async () => {
   const mem: Record<string, string> = {};
-  let savedLib = existing();
+  let savedLib = emptyLibrary();
   let fail = true;
   const deps = {
     getItem: async (k: string) => mem[k] ?? null,
@@ -113,10 +113,59 @@ it('배치 저장 실패 후 같은 책 ID로 재시도하고 완료 표시는 �
 
 it('백업 실패 시 서재/배치를 쓰지 않는다', async () => {
   const saveLibrary = jest.fn();
-  await expect(installReferenceHome(existing(), empty, {
+  await expect(installReferenceHome(emptyLibrary(), empty, {
     getItem: async () => null,
     setItem: async () => { throw new Error('backup failed'); },
     saveLibrary,
   })).rejects.toThrow('backup failed');
+  expect(saveLibrary).not.toHaveBeenCalled();
+});
+
+it('기존 서재와 배치는 시안으로 덮어쓰지 않는다', async () => {
+  const original = existing();
+  const prior: ShelfLayout = { version: 2, shelves: [{ id: 'my-shelf', order: 0 }], placements: [{ bookId: 'owned', shelfId: 'my-shelf', order: 0, pose: 'spine', tilt: 0, pos: 10 }], drawer: ['other'] };
+  const mem: Record<string, string> = { 'shelf-layout': JSON.stringify(prior) };
+  const setItem = jest.fn(async (key: string, value: string) => { mem[key] = value; });
+  const saveLibrary = jest.fn();
+  expect(await installReferenceHome(original, prior, { getItem: async key => mem[key] ?? null, setItem, saveLibrary, hasSavedLayout: true })).toEqual({});
+  expect(mem['shelf-layout']).toBe(JSON.stringify(prior));
+  expect(setItem).not.toHaveBeenCalled();
+  expect(saveLibrary).not.toHaveBeenCalled();
+});
+
+it('저장된 빈 책장도 사용자 배치로 보존한다', async () => {
+  const setItem = jest.fn();
+  const saveLibrary = jest.fn();
+  expect(await installReferenceHome(emptyLibrary(), empty, { getItem: async () => null, setItem, saveLibrary, hasSavedLayout: true })).toEqual({});
+  expect(setItem).not.toHaveBeenCalled();
+  expect(saveLibrary).not.toHaveBeenCalled();
+});
+
+it('기존 기록을 가진 이전 미완료 시안 계획은 다시 실행하지 않는다', async () => {
+  const original = existing();
+  const prior = buildReferenceHome(original, empty, time);
+  const mem: Record<string, string> = {
+    [HOME_REFERENCE_KEY]: JSON.stringify({ ...prior, complete: false }),
+    [HOME_REFERENCE_BACKUP_KEY]: JSON.stringify({ lib: original, layout: empty }),
+  };
+  const setItem = jest.fn();
+  const saveLibrary = jest.fn();
+  expect(await installReferenceHome(original, empty, { getItem: async key => mem[key] ?? null, setItem, saveLibrary })).toEqual({});
+  expect(setItem).not.toHaveBeenCalled();
+  expect(saveLibrary).not.toHaveBeenCalled();
+});
+
+it('미완료 설치 이후 사용자가 바꾼 배치는 보존한다', async () => {
+  const original = emptyLibrary();
+  const prior = buildReferenceHome(original, empty, time);
+  const changed = { ...prior.layout, drawer: [...prior.layout.drawer, 'later-book'] };
+  const mem: Record<string, string> = {
+    [HOME_REFERENCE_KEY]: JSON.stringify({ ...prior, complete: false }),
+    [HOME_REFERENCE_BACKUP_KEY]: JSON.stringify({ lib: original, layout: empty }),
+  };
+  const setItem = jest.fn();
+  const saveLibrary = jest.fn();
+  expect(await installReferenceHome(prior.lib, changed, { getItem: async key => mem[key] ?? null, setItem, saveLibrary, hasSavedLayout: true })).toEqual({});
+  expect(setItem).not.toHaveBeenCalled();
   expect(saveLibrary).not.toHaveBeenCalled();
 });
