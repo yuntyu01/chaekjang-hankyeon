@@ -63,7 +63,8 @@ jobs:
           if credential.get('type') != 'service_account' or not email.endswith('.iam.gserviceaccount.com'):
               raise SystemExit('Invalid service-account credential structure')
           print('Service-account email SHA256: ' + hashlib.sha256(email.encode()).hexdigest())
-          print('No credential content, token or private key was printed. No Play API request was made.')
+          print('Non-secret service-account identifier: ' + email)
+          print('No token, private key or credential JSON was printed. No Play API request was made.')
           PY
 
   deploy-android:
