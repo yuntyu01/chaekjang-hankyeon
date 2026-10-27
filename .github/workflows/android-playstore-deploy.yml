@@ -28,6 +28,11 @@ on:
         required: false
         default: false
         type: boolean
+      recover_existing_run:
+        description: "Upload the existing verified main-run AAB to alpha without rebuilding (run ID)"
+        required: false
+        default: ""
+        type: string
   # main 에 앱 코드가 바뀌어 푸시되면 비공개 테스트(alpha) 트랙으로 자동으로 올린다.
   # v1.2.3 같은 태그를 밀어도 alpha 로 올린다(버전 이름 = 태그).
   push:
@@ -68,7 +73,7 @@ jobs:
           PY
 
   deploy-android:
-    if: inputs.verify_play_identity_only != true
+    if: inputs.verify_play_identity_only != true && inputs.recover_existing_run == ''
     name: Build AAB and upload to Play
     runs-on: ubuntu-latest
     defaults:
@@ -246,3 +251,32 @@ jobs:
             echo "- track: \`${PLAY_TRACK}\`"
             echo "- Play 업로드: \`$([ "$DRY_RUN" = "true" ] && echo 건너뜀 || echo 실행)\`"
           } >> "$GITHUB_STEP_SUMMARY"
+
+  recover-existing-aab:
+    if: inputs.verify_play_identity_only != true && inputs.recover_existing_run != ''
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      actions: read
+    steps:
+      - name: Download immutable successful-build artifact from the verified main run
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SOURCE_RUN: ${{ inputs.recover_existing_run }}
+        run: |
+          set -euo pipefail
+          # This recovery is intentionally restricted to the reviewed failed upload.
+          test "$SOURCE_RUN" = '40422698144'
+          gh api repos/yuntyu01/chaekjang-hankyeon/actions/runs/40422698144 > run.json
+          test "$(jq -r .head_branch run.json)" = 'main'
+          test "$(jq -r .head_sha run.json)" = 'd9aedd599cabe2beea546bef098d6c83b24fe595'
+          gh run download 40422698144 -R yuntyu01/chaekjang-hankyeon -n chaekjang-956153-aab -D bundle
+          echo '378bc4fc7023e90ac1f667a2c172e93f81510ea1d779a080ba372c160cf2768d  bundle/app-release.aab' | sha256sum --check --strict
+      - name: Resume only the Covebook Alpha upload
+        uses: r0adkll/upload-google-play@v1
+        with:
+          serviceAccountJsonPlainText: ${{ secrets.PLAY_SERVICE_ACCOUNT_JSON }}
+          packageName: app.covebook
+          releaseFiles: bundle/app-release.aab
+          track: alpha
+          status: completed
