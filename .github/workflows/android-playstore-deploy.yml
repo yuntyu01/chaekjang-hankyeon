@@ -253,7 +253,7 @@ jobs:
           } >> "$GITHUB_STEP_SUMMARY"
 
   recover-existing-aab:
-    if: inputs.verify_play_identity_only != true && inputs.recover_existing_run != ''
+    if: inputs.verify_play_identity_only != true && inputs.recover_existing_run != '' && inputs.dry_run == false
     runs-on: ubuntu-latest
     permissions:
       contents: read
