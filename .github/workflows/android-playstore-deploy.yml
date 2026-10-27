@@ -24,7 +24,7 @@ on:
         default: true
         type: boolean
       verify_play_identity_only:
-        description: "Verify only the non-secret CI service-account identity; do not build or upload"
+        description: "Check CI identity and Play access only; do not build or upload"
         required: false
         default: false
         type: boolean
@@ -41,7 +41,12 @@ on:
       - "v*"
     paths:
       - "app/**"
+  pull_request:
+    paths:
       - ".github/workflows/android-playstore-deploy.yml"
+      - ".github/scripts/check_play_access.py"
+      - ".github/scripts/test_check_play_access.py"
+      - "docs/android-release.md"
 
 permissions:
   contents: read
@@ -49,31 +54,40 @@ permissions:
 # versionCode 가 겹치지 않게 한 번에 한 빌드만 돈다.
 # main 푸시가 연달아 오면 앞 빌드는 취소하고 마지막 것만 올린다(versionCode 가 분 단위 시각이라 겹치지 않는다).
 concurrency:
-  group: android-playstore
+  group: android-playstore-${{ github.event_name == 'pull_request' && github.ref || 'release' }}
   cancel-in-progress: ${{ github.event_name == 'push' && github.ref_type == 'branch' }}
 
 jobs:
+  pipeline-checks:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Test permission preflight and temporary-edit cleanup
+        run: python -m unittest discover -s .github/scripts -p 'test_check_play_access.py' -v
+
   verify-play-identity:
+    needs: pipeline-checks
     if: inputs.verify_play_identity_only == true
     runs-on: ubuntu-latest
     steps:
-      - name: Verify service-account identity without exposing credentials
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install Play preflight dependencies
+        run: python -m pip install --disable-pip-version-check --quiet 'google-auth>=2,<3' 'requests>=2,<3'
+      - name: Verify Covebook access without uploading or committing
         env:
           PLAY_SERVICE_ACCOUNT_JSON: ${{ secrets.PLAY_SERVICE_ACCOUNT_JSON }}
         run: |
-          python3 - <<'PY'
-          import hashlib, json, os
-          credential = json.loads(os.environ['PLAY_SERVICE_ACCOUNT_JSON'])
-          email = credential.get('client_email', '').strip().lower()
-          if credential.get('type') != 'service_account' or not email.endswith('.iam.gserviceaccount.com'):
-              raise SystemExit('Invalid service-account credential structure')
-          print('Service-account email SHA256: ' + hashlib.sha256(email.encode()).hexdigest())
-          print('Non-secret service-account identifier: ' + email)
-          print('No token, private key or credential JSON was printed. No Play API request was made.')
-          PY
+          python .github/scripts/check_play_access.py
 
   deploy-android:
-    if: inputs.verify_play_identity_only != true && inputs.recover_existing_run == ''
+    needs: pipeline-checks
+    if: github.event_name != 'pull_request' && inputs.verify_play_identity_only != true && inputs.recover_existing_run == ''
     name: Build AAB and upload to Play
     runs-on: ubuntu-latest
     defaults:
@@ -127,6 +141,21 @@ jobs:
             echo "::error::빠진 GitHub Secret: ${missing[*]} (docs/android-release.md 참고)"
             exit 1
           fi
+
+      - uses: actions/setup-python@v5
+        if: inputs.dry_run != true
+        with:
+          python-version: '3.12'
+      - name: Install Play preflight dependencies
+        if: inputs.dry_run != true
+        working-directory: .
+        run: python -m pip install --disable-pip-version-check --quiet 'google-auth>=2,<3' 'requests>=2,<3'
+      - name: Check Play permission before installing and building the app
+        if: inputs.dry_run != true
+        working-directory: .
+        env:
+          PLAY_SERVICE_ACCOUNT_JSON: ${{ secrets.PLAY_SERVICE_ACCOUNT_JSON }}
+        run: python .github/scripts/check_play_access.py
 
       - name: Install dependencies
         run: npm ci
@@ -253,12 +282,23 @@ jobs:
           } >> "$GITHUB_STEP_SUMMARY"
 
   recover-existing-aab:
+    needs: pipeline-checks
     if: inputs.verify_play_identity_only != true && inputs.recover_existing_run != '' && inputs.dry_run == false
     runs-on: ubuntu-latest
     permissions:
       contents: read
       actions: read
     steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install Play preflight dependencies
+        run: python -m pip install --disable-pip-version-check --quiet 'google-auth>=2,<3' 'requests>=2,<3'
+      - name: Check Covebook access before recovery upload
+        env:
+          PLAY_SERVICE_ACCOUNT_JSON: ${{ secrets.PLAY_SERVICE_ACCOUNT_JSON }}
+        run: python .github/scripts/check_play_access.py
       - name: Download immutable successful-build artifact from the verified main run
         env:
           GH_TOKEN: ${{ github.token }}
