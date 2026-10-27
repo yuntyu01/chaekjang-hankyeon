@@ -8,6 +8,7 @@ import * as WebBrowser from 'expo-web-browser';
 import { AppState } from 'react-native';
 
 import { buildPush, fullDirty, mergeRemote, type Dirty, type PullBody, type PushBody, type WireLayout } from '@/domain/sync';
+import { ApiError, createApiClient } from '@/services/api-client';
 import { IMAGE_DIR } from '@/store/files';
 import { libraryStore } from '@/store/library-store';
 import { clearPushed, getDirty, isLayoutDirty, LAYOUT_AT_KEY, loadDirty, markAllDirty, onLocalChange, pendingCount } from '@/store/sync-dirty';
@@ -37,28 +38,7 @@ function setAccount(a: AccountInfo) {
   setStatus({});
 }
 
-class ApiError extends Error {
-  constructor(public status: number, public code: string, message: string) {
-    super(message);
-  }
-}
-
-async function api<T>(method: string, path: string, token: string | null, body?: unknown): Promise<T> {
-  const res = await fetch(`${BASE}${path}`, { method, headers: { ...(token ? { Authorization: `Bearer ${token}` } : {}), ...(body ? { 'Content-Type': 'application/json' } : {}) }, body: body ? JSON.stringify(body) : undefined });
-  if (!res.ok) {
-    let code = 'http';
-    let msg = `서버 응답 ${res.status}`;
-    try {
-      const j = (await res.json()) as { error?: { code?: string; message?: string } };
-      code = j.error?.code ?? code;
-      msg = j.error?.message ?? msg;
-    } catch {
-      // 본문 없음
-    }
-    throw new ApiError(res.status, code, msg);
-  }
-  return (res.status === 204 ? undefined : await res.json()) as T;
-}
+const api = createApiClient(BASE);
 
 async function ensureToken(): Promise<string> {
   const saved = await Storage.getItem(TOKEN_KEY);

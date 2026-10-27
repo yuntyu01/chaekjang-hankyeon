@@ -8,6 +8,8 @@
 
 ## 실행
 
+Go 서버 마이그레이션은 [`server-go/README.md`](server-go/README.md)를 참고한다. 기존 Spring 서버는 아래 명령으로 실행한다.
+
 ```bash
 cd app && npm install
 npx expo start --port 8095     # Expo Go(SDK 57)
