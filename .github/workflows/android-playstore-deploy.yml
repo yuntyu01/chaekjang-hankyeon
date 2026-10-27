@@ -13,7 +13,6 @@ on:
           - alpha
           - internal
           - beta
-          - production
       version_name:
         description: "versionName override (예: 1.2.3). 비우면 app.json 값을 쓴다"
         required: false
@@ -23,6 +22,16 @@ on:
         required: false
         default: true
         type: boolean
+      verify_play_identity_only:
+        description: "Check CI identity and Play access only; do not build or upload"
+        required: false
+        default: false
+        type: boolean
+      recover_existing_run:
+        description: "Upload the existing verified main-run AAB to alpha without rebuilding (run ID)"
+        required: false
+        default: ""
+        type: string
   # main 에 앱 코드가 바뀌어 푸시되면 비공개 테스트(alpha) 트랙으로 자동으로 올린다.
   # v1.2.3 같은 태그를 밀어도 alpha 로 올린다(버전 이름 = 태그).
   push:
@@ -31,7 +40,12 @@ on:
       - "v*"
     paths:
       - "app/**"
+  pull_request:
+    paths:
       - ".github/workflows/android-playstore-deploy.yml"
+      - ".github/scripts/check_play_access.py"
+      - ".github/scripts/test_check_play_access.py"
+      - "docs/android-release.md"
 
 permissions:
   contents: read
@@ -39,11 +53,40 @@ permissions:
 # versionCode 가 겹치지 않게 한 번에 한 빌드만 돈다.
 # main 푸시가 연달아 오면 앞 빌드는 취소하고 마지막 것만 올린다(versionCode 가 분 단위 시각이라 겹치지 않는다).
 concurrency:
-  group: android-playstore
+  group: android-playstore-${{ github.event_name == 'pull_request' && github.ref || 'release' }}
   cancel-in-progress: ${{ github.event_name == 'push' && github.ref_type == 'branch' }}
 
 jobs:
+  pipeline-checks:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Test permission preflight and temporary-edit cleanup
+        run: python -m unittest discover -s .github/scripts -p 'test_check_play_access.py' -v
+
+  verify-play-identity:
+    needs: pipeline-checks
+    if: inputs.verify_play_identity_only == true
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install Play preflight dependencies
+        run: python -m pip install --disable-pip-version-check --quiet 'google-auth>=2,<3' 'requests>=2,<3'
+      - name: Verify Covebook access without uploading or committing
+        env:
+          PLAY_SERVICE_ACCOUNT_JSON: ${{ secrets.PLAY_SERVICE_ACCOUNT_JSON }}
+        run: |
+          python .github/scripts/check_play_access.py
+
   deploy-android:
+    needs: pipeline-checks
+    if: github.event_name != 'pull_request' && inputs.verify_play_identity_only != true && inputs.recover_existing_run == ''
     name: Build AAB and upload to Play
     runs-on: ubuntu-latest
     defaults:
@@ -97,6 +140,22 @@ jobs:
             echo "::error::빠진 GitHub Secret: ${missing[*]} (docs/android-release.md 참고)"
             exit 1
           fi
+
+      - uses: actions/setup-python@v5
+        if: inputs.dry_run != true
+        with:
+          python-version: '3.12'
+      - name: Install Play preflight dependencies
+        if: inputs.dry_run != true
+        working-directory: .
+        run: python -m pip install --disable-pip-version-check --quiet 'google-auth>=2,<3' 'requests>=2,<3'
+      - name: Check Play permission before installing and building the app
+        if: inputs.dry_run != true
+        working-directory: .
+        env:
+          PLAY_SERVICE_ACCOUNT_JSON: ${{ secrets.PLAY_SERVICE_ACCOUNT_JSON }}
+          REQUESTED_PLAY_TRACK: ${{ inputs.track || 'alpha' }}
+        run: python .github/scripts/check_play_access.py
 
       - name: Install dependencies
         run: npm ci
@@ -221,3 +280,43 @@ jobs:
             echo "- track: \`${PLAY_TRACK}\`"
             echo "- Play 업로드: \`$([ "$DRY_RUN" = "true" ] && echo 건너뜀 || echo 실행)\`"
           } >> "$GITHUB_STEP_SUMMARY"
+
+  recover-existing-aab:
+    needs: pipeline-checks
+    if: inputs.verify_play_identity_only != true && inputs.recover_existing_run != '' && inputs.dry_run == false
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      actions: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install Play preflight dependencies
+        run: python -m pip install --disable-pip-version-check --quiet 'google-auth>=2,<3' 'requests>=2,<3'
+      - name: Check Covebook access before recovery upload
+        env:
+          PLAY_SERVICE_ACCOUNT_JSON: ${{ secrets.PLAY_SERVICE_ACCOUNT_JSON }}
+        run: python .github/scripts/check_play_access.py
+      - name: Download immutable successful-build artifact from the verified main run
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SOURCE_RUN: ${{ inputs.recover_existing_run }}
+        run: |
+          set -euo pipefail
+          # This recovery is intentionally restricted to the reviewed failed upload.
+          test "$SOURCE_RUN" = '40422698144'
+          gh api repos/yuntyu01/chaekjang-hankyeon/actions/runs/40422698144 > run.json
+          test "$(jq -r .head_branch run.json)" = 'main'
+          test "$(jq -r .head_sha run.json)" = 'd9aedd599cabe2beea546bef098d6c83b24fe595'
+          gh run download 40422698144 -R yuntyu01/chaekjang-hankyeon -n chaekjang-956153-aab -D bundle
+          echo '378bc4fc7023e90ac1f667a2c172e93f81510ea1d779a080ba372c160cf2768d  bundle/app-release.aab' | sha256sum --check --strict
+      - name: Resume only the Covebook Alpha upload
+        uses: r0adkll/upload-google-play@v1
+        with:
+          serviceAccountJsonPlainText: ${{ secrets.PLAY_SERVICE_ACCOUNT_JSON }}
+          packageName: app.covebook
+          releaseFiles: bundle/app-release.aab
+          track: alpha
+          status: completed
