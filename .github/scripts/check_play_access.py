@@ -77,6 +77,8 @@ def check_access(session):
 
 def main():
     try:
+        if os.environ.get("REQUESTED_PLAY_TRACK", "alpha") not in ("alpha", "beta", "internal"):
+            raise AccessCheckError("This CI service account supports testing tracks only; production publishing is not configured")
         from google.oauth2 import service_account
         from google.auth.transport.requests import AuthorizedSession
         credentials = service_account.Credentials.from_service_account_info(

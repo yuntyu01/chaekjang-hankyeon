@@ -42,7 +42,7 @@ base64 -w 0 chaekjang-upload.jks > chaekjang-upload.jks.base64
 ## 2. 배포하는 법
 
 - **드라이런(기본값)**: Actions > "CD: Android AAB" > Run workflow. `dry_run`이 켜져 있으면 AAB만 만들어 아티팩트로 남긴다. 첫 업로드용 AAB를 이렇게 받는다.
-- **손으로 올리기**: `dry_run`을 끄고 트랙(`internal`, `alpha`, `beta`, `production`)을 고른다.
+- **손으로 올리기**: `dry_run`을 끄고 테스트 트랙(`internal`, `alpha`, `beta`)을 고른다. 이 전용 계정은 프로덕션 출시 권한이 없으며 CI에서도 정식 출시는 제공하지 않는다.
 - **main 푸시**: `app/` 이 바뀐 커밋이 main 에 푸시되면 비공개 테스트(`alpha`) 트랙에 자동으로 올라간다(버전 이름은 app.json 값). 연달아 푸시하면 마지막 것만 올린다. `PLAY_SERVICE_ACCOUNT_JSON` 이 없으면 첫 단계에서 실패한다.
 - **태그 푸시**: `git tag v1.0.0 && git push origin v1.0.0` → 버전 이름 `1.0.0`으로 `alpha` 트랙에 올라간다.
 - **권한만 점검**: Run workflow에서 `verify_play_identity_only`를 켠다. 현재 이름은 기존 입력과의 호환을 위한 것이며 실제로는 계정 식별자와 Play 접근까지 확인한다. 앱 빌드·업로드는 하지 않는다.

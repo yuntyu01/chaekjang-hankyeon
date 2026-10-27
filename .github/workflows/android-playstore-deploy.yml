@@ -13,7 +13,6 @@ on:
           - alpha
           - internal
           - beta
-          - production
       version_name:
         description: "versionName override (예: 1.2.3). 비우면 app.json 값을 쓴다"
         required: false
@@ -155,6 +154,7 @@ jobs:
         working-directory: .
         env:
           PLAY_SERVICE_ACCOUNT_JSON: ${{ secrets.PLAY_SERVICE_ACCOUNT_JSON }}
+          REQUESTED_PLAY_TRACK: ${{ inputs.track || 'alpha' }}
         run: python .github/scripts/check_play_access.py
 
       - name: Install dependencies
