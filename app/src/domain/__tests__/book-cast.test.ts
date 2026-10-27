@@ -2,8 +2,9 @@
 // 책을 앞뒤로 조금씩 옮기는 동안 벽 그림자 진하기가 한 번에 튀지 않는다(흐림은 빼고 층 모양·진하기만 본다).
 import type { Book3, Vec3 } from '../book3';
 import { hull } from '../box';
-import { bookCast, DROP_K, travelOf, wallParts } from '../cast-shadow';
-import { SHELF_DEPTH } from '../geometry';
+import { bookCast, DROP_K, entryY, frontCast, travelOf, wallParts } from '../cast-shadow';
+import { corners } from '../book3';
+import { SHELF_DEPTH, SHELF_FRONT, SHELF_THICK } from '../geometry';
 import { light, physShadow } from '@/ui/lighting';
 
 const D = travelOf(light.dir);
@@ -123,5 +124,31 @@ describe('벽 그림자 중 판에 가려지지 않는 부분(wallParts)', () =>
   });
   it('판 안쪽 아래(판 앞면 뒤)는 그리지 않는다', () => {
     expect(wallParts([{ x: 100, y: -10 }, { x: 150, y: -10 }, { x: 150, y: -1 }, { x: 100, y: -1 }], X0, X1)).toEqual([]);
+  });
+});
+
+describe('판 앞면 그림자(frontCast)', () => {
+  it('판 앞 끝 뒤에 있는 책은 판 앞면에 드리우지 않는다', () => {
+    for (let k = 0; k < physShadow.bands.length; k++) expect(frontCast(standing(-SHELF_FRONT + 1), 1, k)).toBeNull();
+  });
+  it('선반 앞으로 빼낸 책은 판 앞면(판 두께 안)에 드리운다', () => {
+    // 앞으로 빼고 든 책: 앞 아래 모서리의 빛줄기가 판 앞면 가운데 높이로
+    const b0: Book3 = { id: 'a', dims: { T: 22, H: 143, W }, roll: 0, yaw: 0, t: { x: 100, y: 0, z: -SHELF_FRONT - W - 4 } };
+    const lift = -SHELF_THICK / 2 - Math.min(...corners(b0).map(entryY));
+    const b = { ...b0, t: { ...b0.t, y: lift } };
+    const casts = physShadow.bands.map((_, k) => frontCast(b, 1, k)).filter((c) => c !== null);
+    expect(casts.length).toBeGreaterThan(0);
+    let lo = Infinity;
+    let hi = -Infinity;
+    for (const c of casts) {
+      for (const q of c!.pts) {
+        expect(q.z).toBeCloseTo(-SHELF_FRONT, 9);
+        lo = Math.min(lo, q.y);
+        hi = Math.max(hi, q.y);
+      }
+      expect(c!.w).toBeGreaterThan(0);
+    }
+    expect(lo).toBeLessThan(0);
+    expect(hi).toBeGreaterThan(-SHELF_THICK);
   });
 });

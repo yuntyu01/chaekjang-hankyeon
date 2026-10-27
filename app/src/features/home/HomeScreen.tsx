@@ -58,7 +58,7 @@ import {
   type Result,
 } from '@/domain/layout-engine';
 import { corners, fromPlaced, type Book3 } from '@/domain/book3';
-import { computeShelf, frameBBox, withLeans, type BookFrame } from '@/domain/shelf-scene';
+import { computeShelf, fallDirOf, frameBBox, withLeans, type BookFrame } from '@/domain/shelf-scene';
 import { tiltToward, type Pose, type ShelfLayout, type Tilt } from '@/domain/types';
 import { ko } from '@/i18n/ko';
 import { settingsStore, useSettings } from '@/store/settings-store';
@@ -336,7 +336,8 @@ export function HomeScreen() {
         const from = motions.find((e) => e.shelfId === q.shelfId);
         const pose = from ? displayedPoses(from.m)[q.bookId] : undefined;
         if (!pose) continue;
-        const d = (Math.sign(pose.roll) || Math.sign(q.tilt) || 1) as -1 | 1;
+        // 실제로 넘어진 쪽(밀려 넘어진 받침은 서 있던 책이라 보이던 자세로는 알 수 없다). 기록이 없으면 기울어 있던 쪽
+        const d = fallDirOf(q.bookId) ?? ((Math.sign(pose.roll) || Math.sign(q.tilt) || 1) as -1 | 1);
         dropRef.current.set(q.bookId, { shelfId: q.shelfId, from: pose, d, until: Date.now() + POSE_MS * ANIM.slow + 300 });
       }
     for (const p of shown.placements) {

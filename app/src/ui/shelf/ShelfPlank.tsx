@@ -157,10 +157,10 @@ export function plankOutlinePath(c: Camera, px: Affine) {
   return pathOf(plankShape(c, px).outline);
 }
 
-// 판(윗면·앞면). env: 이 판 위 줄의 둘레, atlas: 그 줄의 구운 하늘 가림(TOP_KEY·FRONT_KEY 자리), keyShadow: 그 줄 책이 판 윗면에서 창빛을 가리는 몫
+// 판(윗면·앞면). env: 이 판 위 줄의 둘레, atlas: 그 줄의 구운 하늘 가림(TOP_KEY·FRONT_KEY 자리), keyShadow·frontShadow: 그 줄 책이 판 윗면·앞면에서 창빛을 가리는 몫
 export const TOP_KEY = 'plank:top';
 export const FRONT_KEY = 'plank:front';
-export function ShelfBoard({ px, cam, zIndex, env, atlas, keyShadow }: { px: Affine; cam: RO<Camera>; zIndex: Readonly<SharedValue<number>> | number; env: Env; atlas?: RO<Atlas>; keyShadow?: RO<PlaneKey> }) {
+export function ShelfBoard({ px, cam, zIndex, env, atlas, keyShadow, frontShadow }: { px: Affine; cam: RO<Camera>; zIndex: Readonly<SharedValue<number>> | number; env: Env; atlas?: RO<Atlas>; keyShadow?: RO<PlaneKey>; frontShadow?: RO<PlaneKey> }) {
   const s = px.s;
   // 판마다 나무 무늬 자리를 다르게(판 높이로)
   const seed = useMemo(() => seedOf(`plank:${env.floor.toFixed(2)}`), [env.floor]);
@@ -188,7 +188,7 @@ export function ShelfBoard({ px, cam, zIndex, env, atlas, keyShadow }: { px: Aff
         {on ? <BakedPlane path={topP} cam={cam} px={px} plane={TOP} env={env} atlas={atlas} akey={TOP_KEY} matrix={topL} albedo={DESIGN.plank} eref={EREF.plank} sref={SREF.plank} mat="wood" seed={seed} keyShadow={keyShadow} /> : null}
       </Face>
       <Face poly={frontP}>
-        {on ? <BakedPlane path={frontP} cam={cam} px={px} plane={FRONT} env={env} atlas={atlas} akey={FRONT_KEY} matrix={frontL} albedo={DESIGN.plank} eref={EREF.plank} sref={SREF.plank} mat="wood" seed={seed} /> : null}
+        {on ? <BakedPlane path={frontP} cam={cam} px={px} plane={FRONT} env={env} atlas={atlas} akey={FRONT_KEY} matrix={frontL} albedo={DESIGN.plank} eref={EREF.plank} sref={SREF.plank} mat="wood" seed={seed} keyShadow={frontShadow} /> : null}
       </Face>
     </Group>
   );

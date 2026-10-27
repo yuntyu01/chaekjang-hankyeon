@@ -357,12 +357,18 @@ function bounds(_items: ShelfItem[], _layout: ShelfLayout) {
 
 // 판 끝 밖으로 걸쳐 누운 책은 무게중심이 판 끝(SHELF_X0·SHELF_X1)에서 이만큼(DU, 약 6mm) 안에 있어야 머문다(그 밖이면 판에서 떨어진다)
 export const OVERHANG_MARGIN = 5;
+// 판 끝에 걸친 책이 화면 가장자리에서 떨어져 있을 거리(DU). 선반이 화면 폭과 같아 판 끝 너머는 화면에 보이는 데까지만 걸친다
+export const EDGE_PAD = 1;
 
-// 한 항목(폭 width)의 좌우 경계: 보통은 사용 폭, 판 끝에 걸쳐 누운 책(overhang)은 무게중심이 판 위인 데까지
+// 한 항목(폭 width)의 좌우 경계: 보통은 사용 폭, 판 끝에 걸쳐 누운 책(overhang)은 무게중심이 판 위이고 책이 화면에 보이는 데까지
+// (옆 책에 밀려도 그 너머로는 나가지 않는다)
 function itemBounds(item: ShelfItem, layout: ShelfLayout, width: number) {
   const b = bounds([item], layout);
   if (item.stacked || !placementOf(layout, item.bookIds[0])?.overhang) return b;
-  return { lo: Math.min(b.lo, SHELF_X0 + OVERHANG_MARGIN - width / 2), hi: Math.max(b.hi, SHELF_X1 - OVERHANG_MARGIN + width / 2) };
+  return {
+    lo: Math.min(b.lo, Math.max(SHELF_X0 + OVERHANG_MARGIN - width / 2, b.lo - SHELF.sideMargin + EDGE_PAD)),
+    hi: Math.max(b.hi, Math.min(SHELF_X1 - OVERHANG_MARGIN + width / 2, b.hi + SHELF.sideMargin - EDGE_PAD)),
+  };
 }
 
 // 오른쪽 끝(점유 끝)
@@ -662,7 +668,6 @@ export function pushOneSide(
     side[i] = { collide: c, left: l };
     side[i + 1] = { collide: c, left: l };
   }
-  const { lo, hi } = bounds(baseItems, base);
   const leansOn = (l: ShelfLayout, a: ShelfItem, b: ShelfItem) => !a.stacked && b.bookIds.includes(placementOf(l, a.bookIds[0])?.lean?.on ?? '');
   // dir: 'left' 옮긴 항목 왼쪽 것만 왼쪽으로 연쇄, 'right' 오른쪽 것만 오른쪽으로, 'split' 양쪽을 각자 바깥으로(index가 나누는 자리)
   const tryAt = (index: number, dir: 'left' | 'right' | 'split'): ShelfLayout | null => {
@@ -696,8 +701,9 @@ export function pushOneSide(
         for (let i = n - 1; i > m + 1; i--) if (link[i - 1]) xs[i - 1] = Math.max(xs[i - 1], xs[i] - (base0[i] - base0[i - 1]));
       }
     }
-    // 모든 쌍이 부딪히지 않아야(한쪽만 밀었으니 반대쪽에 부딪힘이 남으면 이 후보는 안 된다) + 선반 안
+    // 모든 쌍이 부딪히지 않아야(한쪽만 밀었으니 반대쪽에 부딪힘이 남으면 이 후보는 안 된다) + 선반 안(판 끝에 걸친 책은 그 경계)
     for (let i = 0; i < n; i++) {
+      const { lo, hi } = itemBounds(items[i], next, packed[i].width);
       if (xs[i] < lo - 0.01 || xs[i] + packed[i].width > hi + 0.01) return null;
       for (let j = 0; j < i; j++) if (packed[i].sep[j] > -Infinity && xs[i] < xs[j] + packed[i].sep[j] - 0.01) return null;
     }
@@ -1006,8 +1012,8 @@ function spreadAround(base: ShelfLayout, placed: ShelfLayout, books: BookMap, sh
     }
     for (let i = n - 1; i > m + 1; i--) if (link[i - 1]) xs[i - 1] = Math.max(xs[i - 1], xs[i] - (base0[i] - base0[i - 1]));
   }
-  const { lo, hi } = bounds(items, placed);
   for (let i = 0; i < n; i++) {
+    const { lo, hi } = itemBounds(items[i], placed, packed[i].width);
     if (xs[i] < lo - 0.01 || xs[i] + packed[i].width > hi + 0.01) return null;
     for (let j = 0; j < i; j++) if (packed[i].sep[j] > -Infinity && xs[i] < xs[j] + packed[i].sep[j] - 0.01) return null;
   }

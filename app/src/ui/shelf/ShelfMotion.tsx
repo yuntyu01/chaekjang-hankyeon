@@ -12,7 +12,7 @@ import { corners, fromPlaced, lowest, type Book3, type Vec3 } from '@/domain/boo
 import { camAt, project, toPx, VIEW_PITCH_MAX, VIEW_PITCH_MIN, type Affine, type Cam } from '@/domain/camera';
 import { SHELF_DEPTH, SHELF_FRONT, SHELF_THICK, SHELF_X0, SHELF_X1 } from '@/domain/geometry';
 import { shelfFaces } from '@/domain/shelf-geom';
-import { BOX_EDGES, bookCast, castsIn, underCeil, wallParts, type BookCast } from '@/domain/cast-shadow';
+import { aheadOfPlank, BOX_EDGES, bookCast, castsIn, frontCast, underCeil, wallParts, type BookCast } from '@/domain/cast-shadow';
 import { bookAlbedo, boxOf, packBoxes, withCovers, type Box, type BoxBuf, type C3, type Env } from '@/domain/light-model';
 import { bookAt } from '@/domain/transition';
 import { hull } from '@/domain/shadow-shape';
@@ -29,7 +29,7 @@ import { physShadow } from '@/ui/lighting';
 import { SHOW } from '@/ui/shelf/shadow-debug';
 import { WALL_X0, WALL_X1 } from '@/ui/shelf/ShelfPlank';
 import { RENDER, TL, tl, tlOn, tlu } from '@/ui/perf';
-import { bookKeyImage, keepLatest, NO_ATLAS, NO_IMAGE, type Atlas, type BookKey, type PlaneKey } from '@/ui/SceneLight';
+import { bookKeyImage, keepLatest, NO_ATLAS, NO_IMAGE, NO_PLANE_KEY, type Atlas, type BookKey, type PlaneKey } from '@/ui/SceneLight';
 
 import { scheduleOnUI } from 'react-native-worklets';
 
@@ -126,7 +126,8 @@ export function useFadingAtlas(poses: Readonly<SharedValue<Poses>>, boxes: Reado
   const prev = useSharedValue<Atlas | null>(null);
   const fade = useSharedValue(1);
   const wake = useSharedValue(0);
-  const last = useSharedValue({ at: -1e9, ps: null as Poses | null, bx: null as BoxBuf | null, waiting: false });
+  // armed: 걸어 둔 깨우기가 끝나면 될 wake 값(걸어 둔 것이 없으면 null)
+  const last = useSharedValue({ at: -1e9, ps: null as Poses | null, bx: null as BoxBuf | null, armed: null as number | null });
   useAnimatedReaction(
     () => ({ ps: poses.value, bx: boxes.value, w: wake.value }),
     (cur) => {
@@ -134,13 +135,16 @@ export function useFadingAtlas(poses: Readonly<SharedValue<Poses>>, boxes: Reado
       if (cur.ps === l.ps && cur.bx === l.bx) return;
       const now = globalThis.performance ? globalThis.performance.now() : Date.now();
       if (now - l.at < BAKE_GAP_MS) {
-        if (!l.waiting) {
-          last.value = { ...l, waiting: true };
-          wake.value = withDelay(Math.max(1, BAKE_GAP_MS - (now - l.at)), withTiming(wake.value + 1, { duration: 0 }));
+        // 깨우기를 걸어 둔 채 기다리는 중이면 그대로. 깨었는데 아직 간격 안이면(깨우기 시계와 이 시계가 조금 달라 일찍 깬다) 다시 건다:
+        // 다시 걸지 않으면 다음 자세가 바뀔 때까지 굽기가 멈춰 지난 자세의 어둠이 남았다
+        if (l.armed === null || cur.w >= l.armed) {
+          const to = wake.value + 1;
+          last.value = { ...l, armed: to };
+          wake.value = withDelay(Math.max(1, BAKE_GAP_MS - (now - l.at)), withTiming(to, { duration: 0 }));
         }
         return;
       }
-      last.value = { at: now, ps: cur.ps, bx: cur.bx, waiting: false };
+      last.value = { at: now, ps: cur.ps, bx: cur.bx, armed: null };
       const old = baked.value;
       const next = build(cur.ps, cur.bx);
       baked.value = next;
@@ -460,8 +464,9 @@ const BAND_KS = physShadow.bands.map((_, k) => k);
 // 벽·판 윗면이 받는 창빛 그림자(이 줄 책들이 창빛 원반을 가리는 몫, 알파)를 평면 좌표 그림으로: 벽·판 셰이더가 빛 계산 안에서
 // 창빛 몫에 곱한다(SceneLight PlaneKey). 그림자는 평면 위 모양이라 시점과 상관없다: 책 자세가 바뀔 때만 다시 그린다.
 // 벽 그림 범위: 판 아랫면 높이(y = −SHELF_THICK) ~ y1, 가로는 화면에 보이는 벽. 판 윗면 아래 벽은 판 끝 너머(판 양 끝 옆)만 빛이 닿는다(wallParts).
-// 판 윗면 그림 범위: 판 전체(가로 판 길이, 앞 끝 ~ 벽). 판에 가린 부분(판 윗면 아래, 위 판 ceil이 막는 빛줄기)은 bookCast가 뺀다
-function planeShadows(key: string, poses: Poses, ids: string[], s: number, W: number, H: number, wall: boolean, toImg: (q: Vec3) => Point, ceil: number): SkImage {
+// 판 윗면 그림 범위: 판 전체(가로 판 길이, 앞 끝 ~ 벽). 판에 가린 부분(판 윗면 아래, 위 판 ceil이 막는 빛줄기)은 bookCast가 뺀다.
+// 판 앞면 그림 범위: 판 길이 × 판 두께. 판 앞 끝보다 앞에 나온 부분만(frontCast)
+function planeShadows(key: string, poses: Poses, ids: string[], s: number, W: number, H: number, plane: 'wall' | 'top' | 'front', toImg: (q: Vec3) => Point, ceil: number): SkImage {
   'worklet';
   // UI 스레드에서만(파생 값은 마운트 직후 UI에서 다시 돈다)
   if (!(globalThis as { _WORKLET?: boolean })._WORKLET) return NO_IMAGE;
@@ -474,10 +479,10 @@ function planeShadows(key: string, poses: Poses, ids: string[], s: number, W: nu
     const b = poses[id];
     if (!b) continue;
     for (const k of BAND_KS) {
-      const c = bookCast(b, s, k, wall, ceil);
+      const c = plane === 'front' ? frontCast(b, s, k) : bookCast(b, s, k, plane === 'wall', ceil);
       if (!c || c.w <= 0) continue;
-      // 벽: 판에 가려지지 않는 부분만(판 윗면 위 + 판 끝 옆). 판 윗면: 그대로(판 밖은 그림 밖)
-      const polys = wall ? wallParts(hull(c.pts), SHELF_X0, SHELF_X1).map((q) => q.map((p) => toImg({ x: p.x, y: p.y, z: SHELF_DEPTH }))) : [hull(c.pts.map(toImg))];
+      // 벽: 판에 가려지지 않는 부분만(판 윗면 위 + 판 끝 옆). 판 윗면·앞면: 그대로(판 밖은 그림 밖)
+      const polys = plane === 'wall' ? wallParts(hull(c.pts), SHELF_X0, SHELF_X1).map((q) => q.map((p) => toImg({ x: p.x, y: p.y, z: SHELF_DEPTH }))) : [hull(c.pts.map(toImg))];
       if (!polys.some((q) => q.length >= 3)) continue;
       // 떨어져 사라지는 책은 그림자도 함께 옅어진다
       paint.setAlphaf(c.w * (b.alpha ?? 1));
@@ -498,7 +503,7 @@ export function useWallKey(shelfId: string, poses: Readonly<SharedValue<Poses>>,
   const key = `wall-shadow:${shelfId}`;
   const on = SHOW.wall && RENDER.books;
   return useDerivedValue(() => ({
-    image: on ? planeShadows(key, poses.value, ids, s, W, H, true, (q) => ({ x: (q.x - WALL_X0) * s, y: (y1 - q.y) * s }), ceil) : NO_IMAGE,
+    image: on ? planeShadows(key, poses.value, ids, s, W, H, 'wall', (q) => ({ x: (q.x - WALL_X0) * s, y: (y1 - q.y) * s }), ceil) : NO_IMAGE,
     kU: [s, 0, 0],
     kV: [0, -s, 0],
     kO: [-WALL_X0 * s, y1 * s],
@@ -511,11 +516,29 @@ export function useFloorKey(shelfId: string, poses: Readonly<SharedValue<Poses>>
   const key = `floor-shadow:${shelfId}`;
   const on = SHOW.shelfCast && RENDER.books;
   return useDerivedValue(() => ({
-    image: on ? planeShadows(key, poses.value, ids, s, W, H, false, (q) => ({ x: (q.x - SHELF_X0) * s, y: (q.z + SHELF_FRONT) * s }), ceil) : NO_IMAGE,
+    image: on ? planeShadows(key, poses.value, ids, s, W, H, 'top', (q) => ({ x: (q.x - SHELF_X0) * s, y: (q.z + SHELF_FRONT) * s }), ceil) : NO_IMAGE,
     kU: [s, 0, 0],
     kV: [0, 0, s],
     kO: [-SHELF_X0 * s, SHELF_FRONT * s],
   }));
+}
+// 판 앞면: 이 줄 책을 선반 앞으로 빼낸 동안만(앞에 나온 책이 없으면 그리지 않는다)
+export function useFrontKey(shelfId: string, poses: Readonly<SharedValue<Poses>>, ids: string[], px: Affine): Readonly<SharedValue<PlaneKey>> {
+  const s = px.s;
+  const W = Math.ceil((SHELF_X1 - SHELF_X0) * s);
+  const H = Math.ceil(SHELF_THICK * s);
+  const key = `front-shadow:${shelfId}`;
+  const on = SHOW.shelfCast && RENDER.books;
+  return useDerivedValue(() => {
+    const ps = poses.value;
+    if (!on || !ids.some((id) => ps[id] && aheadOfPlank(ps[id]))) return NO_PLANE_KEY;
+    return {
+      image: planeShadows(key, ps, ids, s, W, H, 'front', (q) => ({ x: (q.x - SHELF_X0) * s, y: -q.y * s }), Infinity),
+      kU: [s, 0, 0],
+      kV: [0, -s, 0],
+      kO: [-SHELF_X0 * s, 0],
+    };
+  });
 }
 
 // ---------- 책 면이 받는 창빛 그림자: 다른 책 ----------

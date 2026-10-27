@@ -4,7 +4,7 @@ import { boxSize, collide, CONTACT, frontPoly, hull, type Placed } from './box';
 import { corners, fromPlaced, type Book3 } from './book3';
 import { project, type Cam, type Point } from './camera';
 import { SHELF, SHELF_USABLE_WIDTH, SHELF_X0, SHELF_X1 } from './geometry';
-import { bookXs, checkSpace, itemBoxes, itemPositions, moveToDrawer, normalize, OVERHANG_MARGIN, placementOf, setTilt, settle, shelfItems, type BookMap } from './layout-engine';
+import { bookXs, checkSpace, EDGE_PAD, itemBoxes, itemPositions, moveToDrawer, normalize, OVERHANG_MARGIN, placementOf, setTilt, settle, shelfItems, type BookMap } from './layout-engine';
 import { firstContact, leanContact, type LeanContact } from './lean';
 import { centerXY, contactOf, fallenSpan, isBacked, LEAN_MENU_MAX, leanStatics, supportTips, tipAngle, type Force } from './statics';
 import { tiltToward, type Book, type Pose, type ShelfLayout, type Tilt } from './types';
@@ -310,7 +310,6 @@ function restOf(f: BookFrame, others: Placed[], stored?: { angle: number; on: st
 const SLIDE_STEP = 1; // DU: 발을 미끄러뜨리며 머물 자리를 찾는 걸음
 const MAX_FALL_SHOVE = 20; // DU: 머물 자리를 못 찾아 눕힐 때 옆 책을 밀 수 있는 거리
 const NO_SHOVE = 0.5; // DU: 판 끝 밖으로 넘어진 책이 안쪽으로 미끄러질 때 옆 책을 민 것으로 보지 않는 거리
-const EDGE_PAD = 1; // DU: 판 끝에 걸친 책이 화면 가장자리에서 떨어져 있을 거리
 
 type FallRest = { kind: 'lean'; x: number; angle: number; on: string; slide?: number } | { kind: 'lie'; x: number; d: -1 | 1 } | { kind: 'stand'; x: number } | { kind: 'drawer' } | null;
 
@@ -468,7 +467,7 @@ function layFallen(layout: ShelfLayout, books: BookMap, fallen: BookFrame[], sim
     const others = computeShelf(without, books, p.shelfId).frames.map((o) => o.box);
     const rest = simple ? null : fallRest({ ...f.box, angle: 0 }, d, others);
     if (rest?.kind === 'drawer') {
-      next = detachToDrawer(next, books, f.bookId);
+      next = detachToDrawer(next, books, f.bookId, d);
       continue;
     }
     if (rest?.kind === 'stand') {
@@ -527,7 +526,7 @@ function layFallen(layout: ShelfLayout, books: BookMap, fallen: BookFrame[], sim
       }
       const b = tryAt(vis);
       if (!ok(b)) {
-        next = detachToDrawer(next, books, f.bookId);
+        next = detachToDrawer(next, books, f.bookId, d);
         continue;
       }
       // 밀지 않는 데까지 안쪽으로(빈자리만큼)
@@ -550,14 +549,23 @@ function layFallen(layout: ShelfLayout, books: BookMap, fallen: BookFrame[], sim
     const x = Math.max(lo, Math.min(hi - h, lie));
     const r = tryAt(x);
     const fits = r.space && r.moved > -1 && r.moved < h && r.shoved <= MAX_FALL_SHOVE;
-    next = fits ? r.laid : detachToDrawer(next, books, f.bookId);
+    next = fits ? r.laid : detachToDrawer(next, books, f.bookId, d);
   }
   return next;
 }
 
-function detachToDrawer(layout: ShelfLayout, books: BookMap, bookId: string): ShelfLayout {
+// 받침을 잃고 선반에서 떨어져 서랍으로 간 책이 넘어진 쪽(마지막으로 떨어진 계산). 서랍은 배치 밖이라 배치에 남지 않는데,
+// 홈이 떨어지는 모습을 그릴 때 실제로 넘어진 쪽으로 눕히려고 둔다(밀려 넘어진 받침은 저장된 기울기가 0이라 배치로는 알 수 없다)
+const fellDir = new Map<string, -1 | 1>();
+export function fallDirOf(bookId: string): -1 | 1 | undefined {
+  return fellDir.get(bookId);
+}
+
+function detachToDrawer(layout: ShelfLayout, books: BookMap, bookId: string, d: -1 | 1): ShelfLayout {
   const r = moveToDrawer(layout, bookId, books);
-  return r.ok ? r.layout : layout;
+  if (!r.ok) return layout;
+  fellDir.set(bookId, d);
+  return r.layout;
 }
 
 // 불러올 때: 예전 규칙(고정 7°·8° 틈)으로 저장된 기대기 중 버티지 못하는 각(넘어짐 한계 이하)에 걸려 있던 책은

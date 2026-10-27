@@ -37,7 +37,7 @@ import { colors as ui, type } from '@/ui/screenTheme';
 import { rowAffine, type RowGeom, type ShelfMetrics } from './metrics';
 import { useRowPlanner, type Drops } from './planner';
 import { bodyOf, camWithDy, eyeDyAt, frontOccluders, liveSV, locate, lowered, outsideDist, presentSV, sceneOrder, TRANSIT_ROW, transitLead, transitVisible, warmSV, type Motion, type SceneGeo, type SceneMotion } from './scene';
-import { GlowOf, makeStruct, occludersOf, RowBooks, structKeyOf, useFadingAtlas, useFloorKey, useRowBoxes, useShadePoses, useTargetPoses, useWallKey, Z_WALL, type CamSV, type Ghost, type RowStruct } from './ShelfMotion';
+import { GlowOf, makeStruct, occludersOf, RowBooks, structKeyOf, useFadingAtlas, useFloorKey, useFrontKey, useRowBoxes, useShadePoses, useTargetPoses, useWallKey, Z_WALL, type CamSV, type Ghost, type RowStruct } from './ShelfMotion';
 import { FRONT_AREA, FRONT_KEY, plankOutlinePath, rowEnv, SHELF_CAST_EXTENT, ShelfBoard, ShelfWall, TOP_AREA, TOP_KEY, UNDER_ENV, wallArea } from './ShelfPlank';
 
 // 줄 아틀라스에서 벽 띠의 자리
@@ -183,6 +183,7 @@ const RowLayers = memo(function RowLayers({ r, st, mo, order, px, upx, books, ca
   // 이 줄 책이 벽·판 윗면에서 창빛을 가리는 몫(벽·판 셰이더가 빛 계산 안에서 쓴다)
   const wallKey = useWallKey(r.shelfId, poses, st.ids, px, top ? wallY1 : space + SHELF_THICK, ceil);
   const floorKey = useFloorKey(r.shelfId, poses, st.ids, px, ceil);
+  const frontKey = useFrontKey(r.shelfId, poses, st.ids, px);
   return (
     <>
       {/* 이 줄 벽: 판 아랫면 높이(판 양 끝 너머로 보인다)부터 위 판 두께 가운데까지(그 위는 위 줄 캔버스), 맨 윗줄은 캔버스 위 끝까지.
@@ -190,7 +191,7 @@ const RowLayers = memo(function RowLayers({ r, st, mo, order, px, upx, books, ca
           아래 줄 벽이 이 판 두께 가운데까지 올라와 두 캔버스가 판 두께 절반 겹친다(줄마다 카메라가 달라 조금 어긋나도 틈이 없다) */}
       {SHOW.shelf ? <ShelfWall cam={cam} px={px} y0={-SHELF_THICK} y1={wallY1} top={top ? wallY1 : space + SHELF_THICK / 2} bottom={-SHELF_THICK} env={env} atlas={atlas} akey={WALL_KEY} zIndex={Z_WALL} keyShadow={wallKey} /> : null}
       {SHOW.shelf && last ? <ShelfWall cam={cam} px={px} y0={-SHELF_THICK - SHELF_CAST_EXTENT} y1={-SHELF_THICK} env={UNDER_ENV} atlas={atlas} akey={UNDER_KEY} zIndex={Z_WALL} /> : null}
-      {SHOW.shelfBoard ? <ShelfBoard px={px} cam={cam} zIndex={plankZ} env={env} atlas={atlas} keyShadow={floorKey} /> : null}
+      {SHOW.shelfBoard ? <ShelfBoard px={px} cam={cam} zIndex={plankZ} env={env} atlas={atlas} keyShadow={floorKey} frontShadow={frontKey} /> : null}
       {RENDER.books ? <RowBooks m={mo} shelfId={r.shelfId} st={st} books={books} glowId={r.glowId} dragId={r.dragId} cam={cam} px={px} space={space} ceil={ceil} shared={shared} order={order} poses={poses} env={envSV} atlas={atlas} boxes={boxes} debug={debug} /> : null}
     </>
   );

@@ -401,3 +401,48 @@ export function bookCast(b: Book3, s: number, k: number, wall: boolean, ceil = I
   // 책이 구간 경계를 넘을 때 몫이 한 번에 바뀌어(반지름 16°면 0.5) 벽 그림자가 튀었다
   return { pts, sigma: penumbraSigma(pen) * s, w: thinOccluder(seenSize(full), physShadow.spread * Math.max(lo, f0)) };
 }
+
+// k번째 구간의 책 그림자: 판 앞면(z = −SHELF_FRONT, 판 윗면 y = 0 ~ 아랫면 −SHELF_THICK). 빛이 벽 쪽(+z)으로 가므로 판 앞 끝보다 앞인
+// 부분(선반 앞으로 빼낸 책, 다른 줄로 옮겨 가는 책)만 드리운다. 판 윗면 위로 지나는 빛줄기는 앞면 그림 밖이라 저절로 빠진다(판 윗면 몫은 bookCast)
+export function frontCast(b: Book3, s: number, k: number): BookCast {
+  "worklet";
+  const B = physShadow.bands;
+  const lo = k === 0 ? 0 : B[k - 1];
+  const hi = B[k];
+  const D = BOOK_LIGHT;
+  const full = corners(b);
+  let cs = full;
+  let box = true;
+  let z0 = Infinity;
+  let z1 = -Infinity;
+  for (const c of cs) {
+    z0 = Math.min(z0, c.z);
+    z1 = Math.max(z1, c.z);
+  }
+  if (z0 >= -SHELF_FRONT - 0.05) return null;
+  if (z1 > -SHELF_FRONT) {
+    cs = clipPts(cs, (c) => c.z, -SHELF_FRONT, true);
+    box = false;
+  }
+  if (cs.length < 3) return null;
+  const f = cs.map((c) => Math.max(0, (-SHELF_FRONT - c.z) / D.z));
+  let f0 = Infinity;
+  let f1 = -Infinity;
+  for (const v of f) {
+    f0 = Math.min(f0, v);
+    f1 = Math.max(f1, v);
+  }
+  if (f1 <= lo || f0 > hi) return null;
+  const part = bandPart(cs, f, lo, hi, box);
+  if (part.length < 3) return null;
+  const pts: Vec3[] = part.map((c) => onWall(c, D, -SHELF_FRONT));
+  const pen = physShadow.spread * ((Math.max(lo, f0) + Math.min(hi, f1)) / 2);
+  return { pts, sigma: penumbraSigma(pen) * s, w: thinOccluder(seenSize(full), physShadow.spread * Math.max(lo, f0)) };
+}
+
+// 판 앞 끝보다 앞에 나와 있는가(판 앞면에 그림자를 드리울 수 있다)
+export function aheadOfPlank(b: Book3) {
+  "worklet";
+  for (const c of corners(b)) if (c.z < -SHELF_FRONT - 0.05) return true;
+  return false;
+}

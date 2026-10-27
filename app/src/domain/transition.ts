@@ -58,8 +58,8 @@ export type Seg = {
 export type Off = { x: number; y: number; z: number; roll: number; yaw: number; spin: number; pitch: number };
 export const OFF_T = 0.4;
 // rest: 움직이지 않는 트랙의 자세(늘 같은 객체). bookAt이 그대로 돌려줘서, 이 책을 읽는 화면 계산이 매 프레임 다시 돌지 않는다.
-// fade: 진행 [f0, f1] 동안 그리는 진하기가 1 → 0(서랍으로 떨어지며 사라지는 책, dropTrack)
-export type Track = { id: string; dims: Book3['dims']; segs: Seg[]; moving: boolean; rest?: Book3; off?: Off; fade?: [number, number] };
+// fade: 진행 [f0, f1] 동안 그리는 진하기가 a0(없으면 1) → 0(서랍으로 떨어지며 사라지는 책, dropTrack). drop: 그 책이 넘어지는 쪽
+export type Track = { id: string; dims: Book3['dims']; segs: Seg[]; moving: boolean; rest?: Book3; off?: Off; fade?: [number, number, number?]; drop?: -1 | 1 };
 // fall: 넘어지는 조각이 있어 줄 시계를 고르게 돌린다(gravityPlan, 또는 planTransition이 넘어지는 책의 차례까지 정해 검사한 경로).
 // len: 경로 길이(기준 시간의 몇 배, 없으면 1). 넘어지는 책이 차례로 넘어지면(도미노) 늦게 출발한 책도 같은 시간 동안 넘어지도록 길어진다.
 export type Plan = { tracks: Track[]; strategy: string; fall?: boolean; len?: number };
@@ -165,7 +165,7 @@ export function bookAt(tr: Track, t: number): Book3 {
   if (!tr.moving && tr.rest) return tr.rest;
   const b = segPose(tr, t);
   const f = tr.fade;
-  if (f) b.alpha = 1 - clamp01((t - f[0]) / Math.max(1e-6, f[1] - f[0]));
+  if (f) b.alpha = (f[2] ?? 1) * (1 - clamp01((t - f[0]) / Math.max(1e-6, f[1] - f[0])));
   const o = tr.off;
   if (!o || t >= OFF_T) return b;
   // 처음에는 속도를 바꾸지 않고(경로 속도 그대로) 가운데서 줄어든다
@@ -586,20 +586,47 @@ export function build(prev: State[], next: State[], c: Candidate): Track[] {
 
 // 받침을 잃고 선반에서 떨어져 서랍으로 가는 책: 지금 자세에서 넘어지는 쪽(d) 발을 축으로 점점 빨라지며 눕고(진행 0 ~ 0.6),
 // 그 사이부터 끝까지 옅어져 사라진다. 이미 누운 책은 옅어지기만 한다(서랍은 배치 밖이라 갈 곳을 그리지 않는다).
-// others: 옆 책들(앞뒤 자세). 넘어지다 옆 책에 닿으면 그 각에서 멈춰 옅어진다(옆 책을 뚫고 눕지 않는다)
-export function dropTrack(b: State, d: -1 | 1, others: State[] = []): Track {
-  if (lying(b)) return { id: b.id, dims: b.dims, segs: hold(b), moving: true, fade: [0, 1] };
-  const a = pivotLocal(b.dims, d);
-  const hits = (q: State) => others.some((o) => o.id !== b.id && gap(q, o) < -0.3);
-  let to = 90;
-  for (let th = Math.max(0, b.roll * d) + 2; th <= 90; th += 2) {
-    if (hits(reorientPivot(b, d * th, b.yaw, a))) {
-      to = th - 2;
-      break;
+// others: 옆 책들. 경로(Track)면 같은 진행의 자세와, 자세(State)면 그 자리와 견준다. 넘어지다 옆 책에 닿으면 그 각에서 멈추고,
+// 옆 책 경로가 이 책 자리를 지나가면 그 전에 다 사라진다(옆 책이 보이는 책을 뚫고 지나가지 않게).
+// a0: 지금 보이는 진하기(넘어지던 도중 다시 짤 때). 1보다 작으면 바로 그 진하기에서 처음과 같은 빠르기로 옅어진다(다시 진해지지 않게)
+const DROP_FALL = 0.6; // 눕는 진행
+const DROP_FADE: [number, number] = [0.35, 1]; // 옅어지는 진행(서 있던 책. 누운 책은 처음부터 끝까지)
+export function dropTrack(b: State, d: -1 | 1, others: (State | Track)[] = [], a0 = 1): Track {
+  const at = (o: State | Track, t: number): State => ('segs' in o ? bookAt(o, t) : o);
+  // 처음부터 조금 겹쳐 있던 책은 그보다 더 파고들 때만 닿은 것으로 본다(처음 겹침 때문에 바로 멈추거나 사라지지 않게)
+  const base = others.map((o) => (o.id === b.id ? Infinity : gap(b, at(o, 0))));
+  const hits = (q: State, t: number) => others.some((o, i) => o.id !== b.id && gap(q, at(o, t)) < Math.min(-0.3, base[i] - 0.3));
+  // 옅어지는 진행: 처음이면 서 있던 책은 DROP_FADE, 누운 책은 처음부터 끝까지. 도중이면 지금부터 남은 진하기만큼(서 있던 책의 빠르기로)
+  let fade: [number, number, number?] = a0 < 1 ? [0, Math.max(0.05, (DROP_FADE[1] - DROP_FADE[0]) * a0), a0] : lying(b) ? [0, 1] : DROP_FADE;
+  let segs: Seg[];
+  if (lying(b)) segs = hold(b);
+  else {
+    const a = pivotLocal(b.dims, d);
+    // 눕는 조각은 처음 각 r0에서 90°까지 점점 빨라진다(e: 1, 각 = r0 + (90 − r0)·(t / DROP_FALL)³). 닿으면 그 시각·각에서 멈춘다
+    const r0 = b.roll * d;
+    const when = (th: number) => DROP_FALL * Math.cbrt(Math.max(0, th - r0) / Math.max(1e-6, 90 - r0));
+    let to = 90;
+    for (let th = Math.max(0, r0) + 2; th <= 90; th += 2) {
+      if (hits(reorientPivot(b, d * th, b.yaw, a), when(th))) {
+        to = th - 2;
+        break;
+      }
     }
+    to = Math.max(r0, to);
+    const down = reorientPivot(b, d * to, b.yaw, a);
+    const stop = Math.max(1e-3, when(to));
+    segs = [{ ...pivotSeg(b, down, 0, stop, a), e: 1 }, pivotSeg(down, down, stop, 1, ZERO)];
   }
-  const down = reorientPivot(b, d * Math.max(b.roll * d, to), b.yaw, a);
-  return { id: b.id, dims: b.dims, segs: [{ ...pivotSeg(b, down, 0, 0.6, a), e: 1 }, pivotSeg(down, down, 0.6, 1, ZERO)], moving: true, fade: [0.35, 1] };
+  const tr: Track = { id: b.id, dims: b.dims, segs, moving: true, fade, drop: d };
+  // 옆 책 경로가 이 책을 지나가는 첫 진행: 그때는 다 사라져 있어야 한다
+  for (let k = 0; k <= 32; k++) {
+    const t = k / 32;
+    if (t >= fade[1]) break;
+    if (!hits(bookAt(tr, t), t)) continue;
+    fade = [Math.min(fade[0], t / 2), Math.max(1e-3, t), fade[2]];
+    break;
+  }
+  return { ...tr, fade };
 }
 
 // 그 자리에 멈춰 있는 트랙(자세 객체를 그대로 돌려준다)

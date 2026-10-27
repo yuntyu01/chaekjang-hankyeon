@@ -480,14 +480,24 @@ export function planInto(m: Motion, shelfId: string, next: Book3[], target: stri
   // 계획 시간(budgetMs)은 경로 짜기와 넘어지는 경로 다시 검사가 함께 쓴다
   const deadline = t0 + (opts.budgetMs ?? 40);
   const plan = planTransition(prev, next, PLANK_BOUNDS, { budgetMs: opts.budgetMs, arrive, pitch, ceil, keep });
-  // 떨어져 서랍으로 가는 책(이 줄 배치에는 없다): 지금 보이는 자세에서 넘어지며 사라진다. 다른 책 경로 검사에는 넣지 않는다(곧 사라진다)
-  const drops: Track[] = [];
-  for (const [id, dr] of Object.entries(opts.drops ?? {})) if (!next.some((b) => b.id === id)) drops.push(dropTrack(shown[id] ?? dr.from, dr.d, [...next, ...prev]));
+  // 떨어져 서랍으로 가는 책(이 줄 배치에는 없다): 지금 보이는 자세에서 넘어지며 사라진다. 다른 책 경로 검사에는 넣지 않는다(곧 사라진다).
+  // 아직 다 사라지지 않은 책(지금 경로가 옅어지는 중)은 다시 짜도 보이던 자세·진하기에서 이어 간다. 다 사라진 책(경로가 이미 빠진 책 포함)은
+  // 다시 그리지 않는다: 이 줄에 지금 보이는(옅어지지 않은) 책만 새로 떨어진다
+  const fading = new Map<string, { from: Book3; d: -1 | 1; a0: number }>();
+  for (const [id, tr] of Object.entries(mr0.tracks)) {
+    const q = shown[id];
+    if (tr.fade && tr.drop && q && (q.alpha ?? 1) > 0.01 && !next.some((b) => b.id === id)) fading.set(id, { from: q, d: tr.drop, a0: q.alpha ?? 1 });
+  }
+  for (const [id, dr] of Object.entries(opts.drops ?? {})) {
+    const q = shown[id];
+    if (!q || fading.has(id) || next.some((b) => b.id === id) || mr0.tracks[id]?.fade) continue;
+    fading.set(id, { from: q, d: dr.d, a0: 1 });
+  }
   lastPlan.strategy = plan.strategy;
   lastPlan.ms = Date.now() - t0;
   lastPlan.log?.push(lastPlan.ms);
   if (TL.on) tl(`plan ${shelfId} ${plan.strategy} ${lastPlan.ms}ms waits=${waits.length}${arrive !== opts.arrive ? ' arriving' : ''}${keep ? ` keep=${Object.keys(keep).join(',')}` : ''}${est}`);
-  const animate = plan.strategy !== 'still' || drops.length > 0;
+  const animate = plan.strategy !== 'still' || fading.size > 0;
   const pull = plan.strategy === 'pull' || (!!arrive && next.some((b) => arrive![b.id]));
   const posing = /al|pull|fall/.test(plan.strategy);
   // 넘어지는 책이 차례로 넘어지면(도미노) 경로가 그만큼 길다(plan.len)
@@ -496,7 +506,10 @@ export function planInto(m: Motion, shelfId: string, next: Book3[], target: stri
   // planTransition이 이미 그렇게 짜서 검사했다(plan.fall). 그 밖의 경로는 남은 계획 시간으로 다시 검사한다(gravityPlan).
   const fall = !animate || away ? null : plan.fall ? plan : !pull ? gravityPlan(plan, PLANK_BOUNDS, { budgetMs: Math.max(0, deadline - Date.now()), ceil }) : null;
   if (fall && TL.on) tl(`plan ${shelfId} fall`);
-  queueApply(m, shelfId, Object.fromEntries([...(fall ?? plan).tracks, ...drops].map((tr) => [tr.id, tr])), animate, Math.max(dur, drops.length ? POSE_MS * ANIM.slow : 0), target, waits, opts.space, !!fall);
+  // 떨어지는 책은 옆 책들의 경로(같은 진행의 자세)와 견준다: 그때 비켜 있는 책은 막지 않고, 지나가는 책이 오기 전에 사라진다
+  const tracks = (fall ?? plan).tracks;
+  const drops = [...fading].map(([, f]) => dropTrack(f.from, f.d, tracks, f.a0));
+  queueApply(m, shelfId, Object.fromEntries([...tracks, ...drops].map((tr) => [tr.id, tr])), animate, Math.max(dur, drops.length ? POSE_MS * ANIM.slow : 0), target, waits, opts.space, !!fall);
 }
 
 const keyOf = (frames: BookFrame[]) => frames.map((f) => f.bookId + JSON.stringify(f.box)).join('|');
