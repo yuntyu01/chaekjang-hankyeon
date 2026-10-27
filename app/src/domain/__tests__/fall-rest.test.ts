@@ -1,6 +1,6 @@
 // 받침을 잃고 넘어진 책이 머무는 곳(shelf-scene layFallen·fallRest): 판 끝에 걸쳐 눕기(overhang), 서로 쪽으로 넘어진 두 권의 A자 기대기,
 // 발이 미끄러지다 뒤 책에 기운 몸이 닿아 막힌 기대기(lean.slide), 서랍으로 떨어지는 책의 사라지는 경로(transition dropTrack).
-import { fromPlaced, gap, pivotLocal, toWorld } from '../book3';
+import { corners, fromPlaced, gap, lowest, pivotLocal, toWorld } from '../book3';
 import {
   applySwapTarget,
   bookXs,
@@ -20,8 +20,8 @@ import {
   type BookMap,
 } from '../layout-engine';
 import { bodiesOf, computeShelf, fallDirOf, PLANK_BOUNDS, withLeans } from '../shelf-scene';
-import { bookAt, dropTrack, planTransition } from '../transition';
-import { SHELF } from '../geometry';
+import { bookAt, DROP_MS, dropFallMs, dropTrack, planTransition, retime, retimeDrop } from '../transition';
+import { SHELF, SHELF_FRONT } from '../geometry';
 import type { Book, BookPlacement, ShelfLayout } from '../types';
 
 const book = (id: string, height: number, thickness: number): Book => ({
@@ -242,33 +242,91 @@ describe('서랍으로 떨어지는 책의 경로(dropTrack)', () => {
     expect(end.alpha).toBe(0);
   });
 
-  const b = { id: 'x', dims: { T: 30, H: 160, W: 110 }, roll: 12, yaw: 0, t: { x: 100, y: 0, z: 5 } };
-  it('넘어지던 도중 다시 짜면 보이던 진하기에서 처음과 같은 빠르기로 이어 옅어진다(다시 진해지지 않는다)', () => {
-    const mid = bookAt(dropTrack(b, 1), 0.6);
-    expect(mid.alpha).toBeGreaterThan(0.2);
-    expect(mid.alpha).toBeLessThan(0.8);
-    const again = dropTrack(mid, 1, [], mid.alpha);
-    let a = mid.alpha!;
-    expect(bookAt(again, 0).alpha).toBeCloseTo(a, 9);
-    for (let k = 1; k <= 20; k++) {
-      const q = bookAt(again, k / 20).alpha!;
-      expect(q).toBeLessThanOrEqual(a + 1e-12);
-      a = q;
+  it('옆 책이 나중에 비켜 가면 막혀 있던 각에서 따라 넘어져 끝까지 눕는다', () => {
+    const b = { id: 'x', dims: { T: 30, H: 160, W: 110 }, roll: 5, yaw: 0, t: { x: 100, y: 0, z: 5 } };
+    const n = { id: 'n', dims: { T: 30, H: 150, W: 110 }, roll: 0, yaw: 0, t: { x: 190, y: 0, z: 5 } };
+    // 진행 0.5까지 제자리, 그 뒤 0.8까지 비켜 간다
+    const away = retime(planTransition([n], [{ ...n, t: { ...n.t, x: 330 } }], PLANK_BOUNDS, { budgetMs: 60_000 }).tracks[0], -5 / 3, 0.3);
+    const tr = dropTrack(b, 1, [away]);
+    const stuck = bookAt(tr, 0.45).roll;
+    expect(stuck).toBeLessThan(40);
+    expect(bookAt(tr, 0.5).roll).toBeCloseTo(stuck, 6);
+    expect(bookAt(tr, 1).roll).toBeCloseTo(90, 6);
+    let r = b.roll;
+    for (let k = 0; k <= 240; k++) {
+      const q = bookAt(tr, k / 240);
+      expect(q.roll).toBeGreaterThanOrEqual(r - 1e-9);
+      r = q.roll;
+      expect(gap(q, bookAt(away, k / 240))).toBeGreaterThan(-0.31);
     }
-    expect(bookAt(again, 0.65 * mid.alpha! + 1e-6).alpha).toBe(0);
   });
 
+  it('눕는 시간은 발을 축으로 쓰러지는 막대의 끝 빠르기에 맞는다(키 190mm 책 약 0.38초)', () => {
+    const H = 145; // DU(약 190mm)
+    expect(dropFallMs(H, 0)).toBeGreaterThan(360);
+    expect(dropFallMs(H, 0)).toBeLessThan(400);
+    // 끝 각속도(°/ms) = √(3g/H)
+    const tr = dropTrack({ id: 'x', dims: { T: 30, H, W: 110 }, roll: 0, yaw: 0, t: { x: 100, y: H / 2, z: 5 } }, 1);
+    const F = tr.segs[0].t1;
+    const dt = 1e-4;
+    const w = ((bookAt(tr, F).roll - bookAt(tr, F - dt).roll) / (dt * DROP_MS)) * ((Math.PI / 180) * 1000);
+    expect(w).toBeGreaterThan(12.4 * 0.97);
+    expect(w).toBeLessThan(12.4 * 1.03);
+  });
+
+  const b = { id: 'x', dims: { T: 30, H: 160, W: 110 }, roll: 12, yaw: 0, t: { x: 100, y: 0, z: 5 } };
+  it('넘어지던 도중 다시 짜면 지금 자세·빠르기·진하기에서 그대로 이어 간다(다시 진해지거나 처음부터 출발하지 않는다)', () => {
+    const tr = dropTrack(b, 1);
+    for (const tc of [0.2, 0.5]) {
+      const again = retimeDrop(tr, tc, 1);
+      const mid = bookAt(tr, tc);
+      expect(bookAt(again, 0).roll).toBeCloseTo(mid.roll, 9);
+      expect(bookAt(again, 0).alpha ?? 1).toBeCloseTo(mid.alpha ?? 1, 9);
+      for (let k = 1; k <= 20; k++) {
+        const u = (k / 20) * (1 - tc);
+        expect(bookAt(again, u).roll).toBeCloseTo(bookAt(tr, tc + u).roll, 6);
+        expect(bookAt(again, u).alpha!).toBeCloseTo(bookAt(tr, tc + u).alpha!, 6);
+      }
+      expect(bookAt(again, 1 - tc).alpha).toBe(0);
+    }
+    // 새 줄 시계가 두 배 길면 남은 경로는 진행의 절반에 지나간다(실제 시간으로는 같다)
+    const long = retimeDrop(tr, 0.3, 0.5);
+    expect(bookAt(long, 0.05).roll).toBeCloseTo(bookAt(tr, 0.4).roll, 6);
+  });
+
+  it('표지 책(선반 앞 끝에서 떨어짐): 판 앞 끝 너머로 미끄러진 뒤 떨어지고, 판을 뚫지 않는다', () => {
+    const fb = book('f', 150, 20);
+    const l = layoutOf({ bookId: 'f', shelfId: 's', order: 0, pose: 'front', tilt: 0, pos: 100, pitch: 25 } as BookPlacement);
+    const q0 = bodiesOf(l, { f: fb }, 's')[0];
+    const tr = dropTrack(q0, 0);
+    expect(bookAt(tr, 0).alpha).toBe(1);
+    expect(bookAt(tr, 1).alpha).toBe(0);
+    expect(lowest(bookAt(tr, 1))).toBeLessThan(-q0.dims.H / 2);
+    for (let k = 0; k <= 120; k++) {
+      const q = bookAt(tr, k / 120);
+      for (const c of corners(q)) if (c.y < -0.3) expect(c.z).toBeLessThan(-SHELF_FRONT + 0.3);
+      expect(q.pitch ?? 0).toBeCloseTo(q0.pitch ?? 0, 9);
+    }
+  });
+
+  // b는 오른쪽으로 12° 기대 있다: 오른쪽으로는 그 발을 축으로 바로 눕고, 왼쪽으로는 먼저 오른발로 일어선 뒤 왼발을 축으로 눕는다
   for (const d of [-1, 1] as const) {
-    it(`${d > 0 ? '오른쪽' : '왼쪽'}: 발을 축으로 눕고 옅어져 사라진다`, () => {
+    it(`${d > 0 ? '오른쪽' : '왼쪽(반대쪽으로 기대 있던 책은 먼저 일어선다)'}: 발을 축으로 눕고 옅어져 사라진다`, () => {
       const tr = dropTrack(b, d);
       expect(bookAt(tr, 0).alpha).toBe(1);
       expect(bookAt(tr, 1).alpha).toBe(0);
       expect(bookAt(tr, 1).roll).toBeCloseTo(d * 90, 6);
-      const foot = toWorld(bookAt(tr, 0), pivotLocal(b.dims, d));
-      for (let k = 0; k <= 12; k++) {
-        const q = bookAt(tr, (0.6 * k) / 12);
-        const f = toWorld(q, pivotLocal(q.dims, d));
-        expect(Math.hypot(f.x - foot.x, f.y - foot.y, f.z - foot.z)).toBeLessThan(1e-6);
+      const rightFoot = toWorld(bookAt(tr, 0), pivotLocal(b.dims, 1));
+      let down: ReturnType<typeof toWorld> | null = null;
+      let r = b.roll * d;
+      for (let k = 0; k <= 240; k++) {
+        const q = bookAt(tr, k / 240);
+        expect(q.roll * d).toBeGreaterThanOrEqual(r - 1e-9);
+        r = q.roll * d;
+        // 오른쪽에 기운 동안은 오른발, 왼쪽으로 넘어가는 동안은 왼발이 그 자리
+        const f = toWorld(q, pivotLocal(q.dims, q.roll > 1e-9 ? 1 : -1));
+        const ref = q.roll > 1e-9 ? rightFoot : (down ??= f);
+        expect(Math.hypot(f.x - ref.x, f.y - ref.y, f.z - ref.z)).toBeLessThan(1e-6);
       }
       let a = 1;
       for (let k = 0; k <= 20; k++) {

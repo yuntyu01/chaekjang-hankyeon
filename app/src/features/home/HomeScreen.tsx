@@ -59,7 +59,8 @@ import {
 } from '@/domain/layout-engine';
 import { corners, fromPlaced, type Book3 } from '@/domain/book3';
 import { computeShelf, fallDirOf, frameBBox, withLeans, type BookFrame } from '@/domain/shelf-scene';
-import { tiltToward, type Pose, type ShelfLayout, type Tilt } from '@/domain/types';
+import { DROP_MS } from '@/domain/transition';
+import { tiltToward, type BookPlacement, type Pose, type ShelfLayout, type Tilt } from '@/domain/types';
 import { ko } from '@/i18n/ko';
 import { settingsStore, useSettings } from '@/store/settings-store';
 import { uiBus } from '@/store/ui-bus';
@@ -71,7 +72,7 @@ import { useBookShared } from '@/ui/book3d/art';
 import { ReferenceUI } from '@/ui/ReferenceUI';
 import { CONTENT_TOP, computeRows, LAYOUT, rowAffine, rowAt, toContent, useShelfMetrics, type RowGeom } from '@/ui/shelf/metrics';
 import { benchProjection, type BenchRow } from '@/ui/shelf/ShelfMotion';
-import { displayedPoses, flushApply, lastPlan, POSE_MS, previewInto, PULL_MS, settleInto, WAIT_MAX, type Drops } from '@/ui/shelf/planner';
+import { displayedPoses, flushApply, lastPlan, previewInto, PULL_MS, settleInto, WAIT_MAX, type Drops } from '@/ui/shelf/planner';
 import { fallSig, HOLD_MS, stepHold, type Hold } from '@/ui/shelf/preview-hold';
 import { liveSV, makeMotion, pickAt, plankFrontBand, rowPx, TRANSIT_ROW, warmSV, type Motion, type Pick, type SceneGeo, type SceneMotion } from '@/ui/shelf/scene';
 import { HANDLE_HIT, handlePoint, HeaderWall, SHELF_CAST_EXTENT, ShelfScene, type DropHint, type SceneRowProps } from '@/ui/shelf/ShelfScene';
@@ -153,6 +154,13 @@ function useSceneMotions(ids: string[], frames: Map<string, BookFrame[]>): Scene
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [key]);
+}
+
+// 서랍으로 떨어지는 책이 떨어지는 쪽: 표지 책은 선반 앞 끝 너머로(0). 세운 책은 실제로 넘어진 쪽(밀려 넘어진 받침은 서 있던 책이라
+// 보이던 자세로는 알 수 없다), 기록이 없으면 기울어 있던 쪽
+function dropDir(q: BookPlacement, pose: Book3): -1 | 0 | 1 {
+  if (q.pose === 'front') return 0;
+  return fallDirOf(q.bookId) ?? ((Math.sign(pose.roll) || Math.sign(q.tilt) || 1) as -1 | 1);
 }
 
 function HeaderButton({ size, on, label, onPress, children }: { size: number; on?: boolean; label: string; onPress: () => void; children: React.ReactNode }) {
@@ -321,7 +329,7 @@ export function HomeScreen() {
   const moves = useRef<{ id: string; from: string }[]>([]);
   // 받침을 잃고 선반에서 떨어져 서랍으로 간 책(끄는 동안의 미리보기 포함, 직접 서랍에 넣은 책은 빼고): 그 줄에서 보이던 자세에서
   // 넘어지며 사라지는 동안(planner dropTrack) 그 줄 캔버스에 남겨 둔다. 다시 선반으로 돌아오면(미리보기가 바뀌면) 바로 거둔다
-  const dropRef = useRef(new Map<string, { shelfId: string; from: Book3; d: -1 | 1; until: number }>());
+  const dropRef = useRef(new Map<string, { shelfId: string; from: Book3; d: -1 | 0 | 1; until: number }>());
   const [fallTick, setFallTick] = useState(0);
   const arrivals = useMemo(() => {
     const out: Record<string, Record<string, Book3>> = {};
@@ -336,9 +344,8 @@ export function HomeScreen() {
         const from = motions.find((e) => e.shelfId === q.shelfId);
         const pose = from ? displayedPoses(from.m)[q.bookId] : undefined;
         if (!pose) continue;
-        // 실제로 넘어진 쪽(밀려 넘어진 받침은 서 있던 책이라 보이던 자세로는 알 수 없다). 기록이 없으면 기울어 있던 쪽
-        const d = fallDirOf(q.bookId) ?? ((Math.sign(pose.roll) || Math.sign(q.tilt) || 1) as -1 | 1);
-        dropRef.current.set(q.bookId, { shelfId: q.shelfId, from: pose, d, until: Date.now() + POSE_MS * ANIM.slow + 300 });
+        // 줄 시계는 DROP_MS보다 길 수 있다(차례로 넘어지는 경로·앞으로 빼는 경로와 함께): 넉넉히
+        dropRef.current.set(q.bookId, { shelfId: q.shelfId, from: pose, d: dropDir(q, pose), until: Date.now() + DROP_MS * ANIM.slow * 1.5 + 300 });
       }
     for (const p of shown.placements) {
       const q = before.placements.find((x) => x.bookId === p.bookId);
@@ -1305,9 +1312,18 @@ export function HomeScreen() {
     if (mo) previewInto(mo, shelfId, shelfFrames(l, shelfId), reduceMotion || !settled, follow);
   };
   // 조작을 마칠 때: 확정한 배치(실패면 조작 전 배치)로 맞춘다. 미리보기 자세가 남지 않게.
+  // 그 조작으로 이 줄에서 서랍으로 간 책(받침을 잃거나 선반 앞 끝에서 떨어짐)은 보이던 자세에서 떨어지며 사라진다(줄 경로가 여기서 정해진다)
   const settleShelf = (shelfId: string, l: ShelfLayout) => {
     const mo = motionOf(shelfId);
-    if (mo) settleInto(mo, shelfId, shelfFrames(l, shelfId), reduceMotion || !settled);
+    if (!mo) return;
+    const lw = withLeans(l, books, shelfId);
+    const poses = displayedPoses(mo);
+    const drops: Drops = {};
+    for (const q of layout.placements) {
+      const pose = poses[q.bookId];
+      if (q.shelfId === shelfId && pose && lw.drawer.includes(q.bookId)) drops[q.bookId] = { from: pose, d: dropDir(q, pose) };
+    }
+    settleInto(mo, shelfId, computeShelf(lw, books, shelfId).frames, reduceMotion || !settled, drops);
   };
 
   // 꾸미기 조작부: 자세와 기대기(방향만 고르고 각도는 옆 책과의 틈으로)

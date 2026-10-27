@@ -14,7 +14,7 @@ import { fromPlaced, type Book3 } from '@/domain/book3';
 import { castsIn } from '@/domain/cast-shadow';
 import { SHELF_THICK } from '@/domain/geometry';
 import { PLANK_BOUNDS, type BookFrame } from '@/domain/shelf-scene';
-import { awayShift, awayTrack, bookAt, dropTrack, gravityPlan, holdTrack, offBetween, planTransition, retime, safeOffsets, shiftTrack, withOff, type Off, type Track } from '@/domain/transition';
+import { awayShift, awayTrack, bookAt, DROP_MS, dropTrack, fadeBeforePass, gravityPlan, holdTrack, offBetween, planTransition, retime, retimeDrop, safeOffsets, shiftTrack, withOff, type Off, type Track } from '@/domain/transition';
 import { ANIM, TL, tl, tlOn, tlu } from '@/ui/perf';
 
 import { awayAt, easeOf, outsideRow, presentSV, type AwayEntry, type Aways, type Motion, type Tracks } from './scene';
@@ -449,8 +449,9 @@ export const lastPlan: PlanStats = { strategy: '', ms: 0, log: null };
 // 바뀌어(놓는 순간, 손가락이 계속 움직일 때) 다시 짜도 판 앞을 지나는 길을 그대로 쓰고, 이미 떠 있는 책은 다시 들어 올리지 않는다
 // (곧장 가면 옆 줄 책·판을 뚫고 지나가 가려지거나 튀고, 다시 들면 다시 짤 때마다 올라간다).
 // roofed: 위에 줄이 있다(윗선반 판 아랫면 = space). 도는 책이 판을 뚫지 않게 경로 검사에 넣는다.
-// drops: 이 배치에서 받침을 잃고 선반에서 떨어져 서랍으로 간 책(넘어지는 쪽 d). 지금 보이는 자세에서 넘어지며 옅어져 사라진다(dropTrack).
-export type Drops = Record<string, { from: Book3; d: -1 | 1 }>;
+// drops: 이 배치에서 받침을 잃고 선반에서 떨어져 서랍으로 간 책(떨어지는 쪽 d: ±1 옆으로 넘어짐, 0 표지 책이 선반 앞 끝 너머로).
+// 지금 보이는 자세에서 떨어지며 옅어져 사라진다(dropTrack).
+export type Drops = Record<string, { from: Book3; d: -1 | 0 | 1 }>;
 export function planInto(m: Motion, shelfId: string, next: Book3[], target: string, opts: { reduceMotion: boolean; arrive?: Record<string, Book3>; budgetMs?: number; space?: number; roofed?: boolean; drops?: Drops }) {
   // 다른 줄에서 들어오는 책은 이 줄 캔버스에 올라간 뒤에 움직인다
   const waits: Wait[] = next.filter((b) => opts.arrive?.[b.id]).map((b) => ({ id: b.id, shelfId }));
@@ -480,36 +481,51 @@ export function planInto(m: Motion, shelfId: string, next: Book3[], target: stri
   // 계획 시간(budgetMs)은 경로 짜기와 넘어지는 경로 다시 검사가 함께 쓴다
   const deadline = t0 + (opts.budgetMs ?? 40);
   const plan = planTransition(prev, next, PLANK_BOUNDS, { budgetMs: opts.budgetMs, arrive, pitch, ceil, keep });
-  // 떨어져 서랍으로 가는 책(이 줄 배치에는 없다): 지금 보이는 자세에서 넘어지며 사라진다. 다른 책 경로 검사에는 넣지 않는다(곧 사라진다).
-  // 아직 다 사라지지 않은 책(지금 경로가 옅어지는 중)은 다시 짜도 보이던 자세·진하기에서 이어 간다. 다 사라진 책(경로가 이미 빠진 책 포함)은
-  // 다시 그리지 않는다: 이 줄에 지금 보이는(옅어지지 않은) 책만 새로 떨어진다
-  const fading = new Map<string, { from: Book3; d: -1 | 1; a0: number }>();
-  for (const [id, tr] of Object.entries(mr0.tracks)) {
-    const q = shown[id];
-    if (tr.fade && tr.drop && q && (q.alpha ?? 1) > 0.01 && !next.some((b) => b.id === id)) fading.set(id, { from: q, d: tr.drop, a0: q.alpha ?? 1 });
-  }
-  for (const [id, dr] of Object.entries(opts.drops ?? {})) {
-    const q = shown[id];
-    if (!q || fading.has(id) || next.some((b) => b.id === id) || mr0.tracks[id]?.fade) continue;
-    fading.set(id, { from: q, d: dr.d, a0: 1 });
-  }
+  // 떨어져 서랍으로 가는 책(이 줄 배치에는 없다): 지금 보이는 자세에서 떨어지며 사라진다. 다른 책 경로 검사에는 넣지 않는다(곧 사라진다).
+  // 이미 떨어지는 중인 책(going)은 다시 짜도 지금 경로를 이어 간다(넘어지던 빠르기·진하기 그대로). 다 사라진 책(경로가 이미 빠진 책 포함)은
+  // 다시 그리지 않는다: 이 줄에 지금 보이는(떨어지는 경로가 없는) 책만 새로 떨어진다(fresh)
+  const going = fadingIds(m, next);
+  const fresh = Object.entries(opts.drops ?? {}).filter(([id]) => shown[id] && !next.some((b) => b.id === id) && mr0.tracks[id]?.drop === undefined);
+  const dropping = going.length + fresh.length > 0;
   lastPlan.strategy = plan.strategy;
   lastPlan.ms = Date.now() - t0;
   lastPlan.log?.push(lastPlan.ms);
   if (TL.on) tl(`plan ${shelfId} ${plan.strategy} ${lastPlan.ms}ms waits=${waits.length}${arrive !== opts.arrive ? ' arriving' : ''}${keep ? ` keep=${Object.keys(keep).join(',')}` : ''}${est}`);
-  const animate = plan.strategy !== 'still' || fading.size > 0;
+  const animate = plan.strategy !== 'still' || dropping;
   const pull = plan.strategy === 'pull' || (!!arrive && next.some((b) => arrive![b.id]));
   const posing = /al|pull|fall/.test(plan.strategy);
   // 넘어지는 책이 차례로 넘어지면(도미노) 경로가 그만큼 길다(plan.len)
   const dur = (pull ? PULL_MS : posing ? POSE_MS : MOTION_MS) * (plan.len ?? 1) * ANIM.slow;
   // 넘어지는 책(받침을 잃음, 놓은 각이 넘어짐 한계 아래)은 점점 빨라지다 닿는 순간 멈춘다. 받침을 잃고 눕는 책이 있는 경로는
   // planTransition이 이미 그렇게 짜서 검사했다(plan.fall). 그 밖의 경로는 남은 계획 시간으로 다시 검사한다(gravityPlan).
-  const fall = !animate || away ? null : plan.fall ? plan : !pull ? gravityPlan(plan, PLANK_BOUNDS, { budgetMs: Math.max(0, deadline - Date.now()), ceil }) : null;
+  // 서랍으로 떨어지는 책이 있으면 넘어지는 조각이 없어도 고른 시계로 돌린다: 감속 시계면 그 책이 천천히 서 있다가 한두 프레임에 눕는다
+  const fall = !animate || away ? null : plan.fall ? plan : !pull ? gravityPlan(plan, PLANK_BOUNDS, { budgetMs: Math.max(0, deadline - Date.now()), ceil, always: dropping }) : null;
   if (fall && TL.on) tl(`plan ${shelfId} fall`);
+  // 떨어지는 책은 DROP_MS 동안 넘어지고 옅어진다. 고른 시계면 줄 시계를 그만큼 늘리고 다른 책 경로는 앞부분에 둔다(실제 빠르기 그대로)
+  const rowDur = !dropping ? dur : Math.max(dur, (fall ? DROP_MS : POSE_MS) * ANIM.slow);
+  const tracks = fall && rowDur > dur ? squeezed(fall.tracks, dur / rowDur) : (fall ?? plan).tracks;
   // 떨어지는 책은 옆 책들의 경로(같은 진행의 자세)와 견준다: 그때 비켜 있는 책은 막지 않고, 지나가는 책이 오기 전에 사라진다
-  const tracks = (fall ?? plan).tracks;
-  const drops = [...fading].map(([, f]) => dropTrack(f.from, f.d, tracks, f.a0));
-  queueApply(m, shelfId, Object.fromEntries([...tracks, ...drops].map((tr) => [tr.id, tr])), animate, Math.max(dur, drops.length ? POSE_MS * ANIM.slow : 0), target, waits, opts.space, !!fall);
+  const drops = [...continued(m, going, rowDur).map((tr) => fadeBeforePass(tr, tracks)), ...fresh.map(([id, dr]) => dropTrack(shown[id], dr.d, tracks, rowDur / ANIM.slow))];
+  queueApply(m, shelfId, Object.fromEntries([...tracks, ...drops].map((tr) => [tr.id, tr])), animate, rowDur, target, waits, opts.space, !!fall);
+}
+
+// 경로를 줄 시계 앞부분 [0, k]로 줄인다(줄 시계가 1/k배 길어져도 실제 빠르기 그대로)
+const squeezed = (tracks: Track[], k: number) => tracks.map((tr) => (tr.moving ? { ...tr, segs: tr.segs.map((s) => ({ ...s, t0: s.t0 * k, t1: s.t1 * k })) } : tr));
+
+// 떨어지며 옅어지는 중인 책(next에 없고 아직 보인다)
+function fadingIds(m: Motion, next: Book3[]): string[] {
+  const mr = mirrorOf(m);
+  const tc = progress(mr);
+  return Object.keys(mr.tracks).filter((id) => {
+    const tr = mr.tracks[id];
+    return !!tr.fade && tr.drop !== undefined && !next.some((b) => b.id === id) && (bookAt(tr, tc).alpha ?? 1) > 0.01;
+  });
+}
+// 그 책들의 남은 경로를 새 줄 시계(길이 dur)로 이어 간다(지금 자세·빠르기·진하기 그대로)
+function continued(m: Motion, ids: string[], dur: number): Track[] {
+  const mr = mirrorOf(m);
+  const tc = progress(mr);
+  return ids.map((id) => retimeDrop(mr.tracks[id], tc, mr.dur / dur));
 }
 
 const keyOf = (frames: BookFrame[]) => frames.map((f) => f.bookId + JSON.stringify(f.box)).join('|');
@@ -542,14 +558,20 @@ export function previewInto(m: Motion, shelfId: string, frames: BookFrame[], red
       return !!a && (Math.abs((a.pitch ?? 0) - (b.pitch ?? 0)) > 2 || Math.abs(a.roll - b.roll) > 2 || Math.abs(a.yaw - b.yaw) > 2);
     });
   if (jump && !reduceMotion) planInto(m, shelfId, next, key, { reduceMotion, budgetMs: 24 });
-  else queueApply(m, shelfId, Object.fromEntries(next.map((b) => [b.id, holdTrack(b)])), false, 0, key);
+  else {
+    // 떨어지며 옅어지는 중인 책은 그대로 이어 간다(바로 그 자세로 맞추는 미리보기에서도 사라지는 모습이 끊기지 않게)
+    const dur = DROP_MS * ANIM.slow;
+    const drops = reduceMotion ? [] : continued(m, fadingIds(m, next), dur);
+    queueApply(m, shelfId, Object.fromEntries([...next.map((b) => [b.id, holdTrack(b)] as const), ...drops.map((tr) => [tr.id, tr] as const)]), drops.length > 0, drops.length ? dur : 0, key, [], undefined, drops.length > 0);
+  }
   flushApply();
 }
 
 // 조작이 끝났을 때: 확정된(또는 되돌린) 배치로 경로를 짜서 맞춘다(미리보기 자세가 남지 않게). 이미 그 배치면 그대로.
-export function settleInto(m: Motion, shelfId: string, frames: BookFrame[], reduceMotion: boolean) {
+// drops: 그 조작으로 이 줄에서 서랍으로 떨어진 책(줄 경로는 여기서 정해지고 홈이 다시 짜지 않으므로 여기서 함께 떨어뜨린다)
+export function settleInto(m: Motion, shelfId: string, frames: BookFrame[], reduceMotion: boolean, drops?: Drops) {
   const key = keyOf(frames);
   if (mirrorOf(m).target === key) return;
-  planInto(m, shelfId, frames.map((f) => fromPlaced(f.box)), key, { reduceMotion, budgetMs: 60 });
+  planInto(m, shelfId, frames.map((f) => fromPlaced(f.box)), key, { reduceMotion, budgetMs: 60, drops });
   flushApply();
 }

@@ -21,8 +21,8 @@ jest.mock('react-native-worklets', () => ({
 
 import type { Book3 } from '@/domain/book3';
 import type { BookMap } from '@/domain/layout-engine';
-import { bodiesOf, PLANK_BOUNDS, withLeans } from '@/domain/shelf-scene';
-import { bookAt, firstOverlap, type Track } from '@/domain/transition';
+import { bodiesOf, computeShelf, PLANK_BOUNDS, withLeans } from '@/domain/shelf-scene';
+import { bookAt, DROP_MS, firstOverlap, type Track } from '@/domain/transition';
 import type { Book, BookPlacement, ShelfLayout } from '@/domain/types';
 
 type Planner = typeof import('@/ui/shelf/planner');
@@ -126,5 +126,89 @@ describe('넘어지는 도중 다시 짜기(planner)', () => {
     expect(bookAt(d3, 0).roll).toBeCloseTo(p0.roll, 4);
     expect(bookAt(d3, 1).t.x).toBeCloseTo(next3.find((b) => b.id === 'D')!.t.x, 4);
     expect(firstOverlap(Object.values(mr.tracks), PLANK_BOUNDS)).toBeNull();
+  });
+});
+
+// 서랍으로 떨어지는 책(E): 이 줄 배치에서 빠지고 지금 보이는 자세에서 넘어지며 사라진다
+describe('서랍으로 떨어지는 책(planner)', () => {
+  const noE = withLeans({ ...before, placements: before.placements.filter((p) => p.bookId !== 'E') }, books);
+  const bodies = bodiesOf(before, books, 's');
+  const rest = bodiesOf(noE, books, 's');
+  const fromE = bodies.find((b) => b.id === 'E')!;
+  const drops = { E: { from: fromE, d: 1 as const } };
+  const roll = (tr: Track, t: number) => bookAt(tr, t).roll;
+  function dropping() {
+    const m = sc.makeMotion(bodies);
+    pl.planInto(m, 's', rest, 'k1', { ...opts, drops });
+    pl.flushApply();
+    const mr = pl.mirrorOf(m);
+    return { m, e1: mr.tracks.E, dur1: mr.dur, mr };
+  }
+
+  it('떨어지는 책만 움직여도 줄 시계를 고르게 돌리고(DROP_MS), 실제 빠르기로 눕는다', () => {
+    const { mr, e1, dur1 } = dropping();
+    expect(mr.ease).toBe('lin');
+    expect(dur1).toBe(DROP_MS);
+    expect(e1.fade).toBeDefined();
+    expect(Math.abs(roll(e1, 1))).toBeCloseTo(90, 6);
+    // 30°에서 눕기까지 실제 시간: 감속 시계였을 때(약 25ms)가 아니라 0.1초 안팎
+    const at = (deg: number) => {
+      for (let k = 0; k <= 2000; k++) if (Math.abs(roll(e1, k / 2000)) >= deg) return (k / 2000) * dur1;
+      return Infinity;
+    };
+    expect(at(89.9) - at(30)).toBeGreaterThan(80);
+  });
+
+  for (const frac of [0.15, 0.4]) {
+    it(`떨어지는 도중(진행 ${frac}) 다시 짜도 그 책은 지금 자세·빠르기·진하기에서 이어 간다`, () => {
+      const { m, e1, dur1 } = dropping();
+      jest.advanceTimersByTime(dur1 * frac);
+      m.t.value = frac;
+      const p0 = bookAt(e1, frac);
+      const v0 = msSpeed(e1, frac, dur1);
+      const moved = rest.map((b) => (b.id === 'C' ? { ...b, t: { ...b.t, x: b.t.x - 6 } } : b));
+      pl.planInto(m, 's', moved, 'k2', { ...opts, drops });
+      pl.flushApply();
+      const mr = pl.mirrorOf(m);
+      const e2 = mr.tracks.E;
+      expect(mr.ease).toBe('lin');
+      expect(bookAt(e2, 0).roll).toBeCloseTo(p0.roll, 4);
+      expect(bookAt(e2, 0).alpha ?? 1).toBeCloseTo(p0.alpha ?? 1, 4);
+      const v1 = msSpeed(e2, 1e-5, mr.dur);
+      if (Math.abs(v0) > 1e-3) expect(Math.abs(v1 - v0)).toBeLessThan(Math.abs(v0) * 0.02);
+      expect(Math.abs(roll(e2, 1))).toBeCloseTo(90, 6);
+    });
+  }
+
+  it('다 사라진 책은 다시 짜도 다시 그리지 않는다', () => {
+    const { m, dur1 } = dropping();
+    jest.advanceTimersByTime(dur1 + 10);
+    m.t.value = 1;
+    pl.planInto(m, 's', rest.map((b) => (b.id === 'C' ? { ...b, t: { ...b.t, x: b.t.x - 6 } } : b)), 'k2', { ...opts, drops });
+    pl.flushApply();
+    expect(pl.mirrorOf(m).tracks.E).toBeUndefined();
+  });
+
+  it('조작을 마치며 맞출 때(settleInto) 넘긴 책도 떨어지며 사라진다', () => {
+    const m = sc.makeMotion(bodies);
+    pl.settleInto(m, 's', computeShelf(noE, books, 's').frames, false, drops);
+    const mr = pl.mirrorOf(m);
+    expect(mr.tracks.E?.fade).toBeDefined();
+    expect(mr.dur).toBe(DROP_MS);
+    expect(bookAt(mr.tracks.E, 0).roll).toBeCloseTo(fromE.roll, 6);
+  });
+
+  it('손가락을 바로 따르는 미리보기(previewInto)도 떨어지는 책을 끊지 않고 이어 간다', () => {
+    const { m, e1, dur1 } = dropping();
+    jest.advanceTimersByTime(dur1 * 0.3);
+    m.t.value = 0.3;
+    const p0 = bookAt(e1, 0.3);
+    pl.previewInto(m, 's', computeShelf(noE, books, 's').frames, false, true);
+    const mr = pl.mirrorOf(m);
+    const e2 = mr.tracks.E;
+    expect(e2?.fade).toBeDefined();
+    expect(mr.ease).toBe('lin');
+    expect(bookAt(e2, 0).roll).toBeCloseTo(p0.roll, 4);
+    expect(bookAt(e2, 1).alpha).toBe(0);
   });
 });
