@@ -57,17 +57,18 @@ export function bootStores() {
       const demo = await Storage.getItem(DEMO_BOOT_KEY);
       if (demo === '1' || demo === 'mockup') placementStore.setDemo(true, demo === 'mockup' ? 'mockup' : 'sample');
     }
+    // 독서 복구가 끝나기 전 새 타이머를 시작하면 불러온 값이 새 기록을 덮을 수 있다.
+    await Promise.all([readingStore.load().then(() => bootMark('reading-loaded')), settingsStore.load(), viewStore.load()]);
     libraryStore.subscribe(() => {
       const next = libraryStore.get().lib;
       if (next === lib) return;
       lib = next;
+      // 복원은 배치까지 함께 기록했고 곧 그 배치를 읽는다. 이전 배치로 덮어쓰지 않는다.
+      if (libraryStore.isReplacingWithLayout()) return;
       placementStore.syncBooks(shelfBooks(next));
     });
     // 서버 동기화(서버 주소가 있을 때만): 서재·배치가 모두 불러와진 뒤 연결한다
     initSync({ reloadLayout: () => placementStore.load(shelfBooks(libraryStore.get().lib)) });
-    // 첫 화면에 필요한 것(설정·시점)만 기다리고, 진행 중 독서 복구는 뒤에서 읽는다(복구 창은 읽힌 뒤 뜬다)
-    void readingStore.load().then(() => bootMark('reading-loaded'));
-    await Promise.all([settingsStore.load(), viewStore.load()]);
     bootMark('settings-loaded');
   })().catch((error) => {
     started = null;

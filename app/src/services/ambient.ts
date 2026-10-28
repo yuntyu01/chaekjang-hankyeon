@@ -2,6 +2,7 @@
 // 지금 음원은 교체용 임시 합성음(assets/sounds). 실제 재생 여부는 플레이어 상태(playing)로만 표시한다.
 import { createAudioPlayer, setAudioModeAsync, type AudioPlayer } from 'expo-audio';
 import { useSyncExternalStore } from 'react';
+import { Platform } from 'react-native';
 
 import { settingsStore, type SceneId } from '@/store/settings-store';
 
@@ -41,15 +42,17 @@ export const ambient = {
   async play(scene: SceneId) {
     try {
       if (!modeSet) {
-        await setAudioModeAsync({ playsInSilentMode: true, shouldPlayInBackground: true, interruptionMode: 'mixWithOthers' });
+        await setAudioModeAsync({ playsInSilentMode: true, shouldPlayInBackground: true, interruptionMode: Platform.OS === 'android' ? 'doNotMix' : 'mixWithOthers' });
         modeSet = true;
       }
       if (state.scene !== scene || !player) {
+        player?.setActiveForLockScreen(false);
         sub?.remove();
         player?.remove();
         const src = SCENES.find((x) => x.id === scene)!.source;
         player = createAudioPlayer(src);
         player.loop = true;
+        if (Platform.OS === 'android') player.setActiveForLockScreen(true, { title: SCENES.find(x => x.id === scene)?.sound ?? '환경음', artist: '책장 한켠' });
         sub = player.addListener('playbackStatusUpdate', (st) => {
           if (st.playing !== state.playing) set({ playing: st.playing });
         });
@@ -67,6 +70,7 @@ export const ambient = {
   },
   stop() {
     player?.pause();
+    player?.setActiveForLockScreen(false);
     sub?.remove();
     player?.remove();
     sub = null;

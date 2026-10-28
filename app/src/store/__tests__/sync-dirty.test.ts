@@ -25,6 +25,30 @@ it('배치 업로드 중 새로 저장한 배치는 대기 목록에 남는다',
   expect((await local.readLayout())).toMatchObject({ json: '{"position":2}', dirty: true });
 });
 
+it('동기화 스냅샷은 대기 중인 항목만 읽고 삭제 표시도 보존한다', async () => {
+  const at = '2026-10-01T00:00:00Z';
+  await local.applyLocalChanges([
+    { kind: 'books', id: 'synced', at, deleted: false, item: { id: 'synced', updatedAt: at } },
+    { kind: 'books', id: 'changed', at, deleted: false, item: { id: 'changed', updatedAt: at } },
+  ]);
+  const first = await local.captureSyncSnapshot();
+  await local.acknowledgePending(first.dirty, null);
+  await local.applyLocalChanges([
+    { kind: 'books', id: 'changed', at, deleted: false, item: { id: 'changed', updatedAt: at } },
+    { kind: 'books', id: 'deleted', at, deleted: true },
+  ]);
+  const pending = await local.captureSyncSnapshot(true);
+  expect(Object.keys(pending.lib.books)).toEqual(['changed']);
+  expect(Object.keys(pending.dirty).sort()).toEqual(['books:changed', 'books:deleted']);
+  expect(Object.keys((await local.captureSyncSnapshot()).lib.books).sort()).toEqual(['changed', 'synced']);
+});
+
+it('손상된 서재 항목은 건너뛰지 않고 읽기 실패로 알려 기존 배치를 보호한다', async () => {
+  await local.db();
+  await mockDb.runAsync('INSERT INTO books(id,data,updated_at) VALUES(?,?,?)', 'broken', '{bad json', '2026-01-01T00:00:00Z');
+  await expect(local.loadLib()).rejects.toThrow();
+});
+
 it('올린 뒤 바뀌지 않은 배치는 대기 표시를 지운다', async () => {
   await local.saveLayout('{}', '2026-10-01T00:00:00.000Z');
   const snapshot = await local.captureSyncSnapshot();
@@ -50,6 +74,18 @@ it('저장 도중 대기 목록 쓰기가 실패하면 데이터도 롤백된다
   const snapshot = await local.captureSyncSnapshot();
   expect(snapshot.lib.books).toEqual({});
   expect(snapshot.dirty).toEqual({});
+});
+
+it('백업 복원 시 배치 저장이 실패하면 서재와 대기 목록도 함께 롤백된다', async () => {
+  const at = '2026-10-01T00:00:00Z';
+  await local.applyLocalChanges([{ kind: 'books', id: 'before', at, deleted: false, item: { id: 'before', updatedAt: at } }]);
+  await local.saveLayout('{"before":true}', at);
+  const before = await local.captureSyncSnapshot();
+  await mockDb.execAsync("CREATE TRIGGER reject_layout BEFORE UPDATE ON sync_meta WHEN NEW.layout = '{\"after\":true}' BEGIN SELECT RAISE(ABORT, 'layout failed'); END");
+  const next = { ...before.lib, books: { after: { id: 'after', updatedAt: at } } };
+  await expect(local.replaceLib(next as never, true, { json: '{"after":true}', at })).rejects.toThrow('layout failed');
+  const after = await local.captureSyncSnapshot();
+  expect(after).toEqual(before);
 });
 
 it('이전 배치와 대기 변경을 한 번만 가져오고 재시작 후 다시 살리지 않는다', async () => {

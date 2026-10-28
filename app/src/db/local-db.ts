@@ -94,24 +94,12 @@ export async function loadLibrary(): Promise<{ catalog: CatalogBook; user: UserB
 // ---------- 내 서재 ----------
 
 export async function loadLib(): Promise<Library> {
-  const d = await db();
-  const lib = emptyLibrary();
-  for (const k of LIB_KINDS) {
-    const rows = await d.getAllAsync<{ id: string; data: string }>(`SELECT id, data FROM ${k}`);
-    const into = lib[k] as Record<string, unknown>;
-    for (const r of rows) {
-      try {
-        into[r.id] = JSON.parse(r.data);
-      } catch {
-        // 깨진 한 줄은 건너뛴다(나머지 기록은 연다)
-      }
-    }
-  }
-  return lib;
+  // 손상된 항목을 조용히 건너뛰면 빈 서재로 보인 뒤 배치나 백업이 덮어써질 수 있다.
+  return readLibrary(await db(), true);
 }
 
 // 백업 복원: 서재 표를 통째로 바꾼다(한 트랜잭션)
-export function replaceLib(lib: Library, markDirty = false) {
+export function replaceLib(lib: Library, markDirty = false, layout?: { json: string | null; at: string }) {
   return serialize(async () => {
     await transaction(async (tx) => {
       const revision = markDirty ? await nextRevision(tx) : 0;
@@ -127,6 +115,9 @@ export function replaceLib(lib: Library, markDirty = false) {
           await tx.runAsync(`INSERT INTO ${k} (id, data, updated_at) VALUES (?, ?, ?)`, item.id, JSON.stringify(item), updated);
           if (markDirty) await putPending(tx, { kind: k, id: item.id, deleted: false, at: updated }, revision);
         }
+      }
+      if (layout) {
+        await tx.runAsync('UPDATE sync_meta SET layout=?,layout_at=?,layout_dirty=?,layout_revision=? WHERE id=1', layout.json, layout.at, markDirty ? 1 : 0, revision);
       }
     });
     if (markDirty) changed();
@@ -276,8 +267,26 @@ export function saveLayout(json: string | null, at: string, local = true) {
     return applied;
   });
 }
-export function captureSyncSnapshot() {
-  return serialize(() => transaction(async tx => ({ lib: await readLibrary(tx, true), dirty: await readPending(tx), layout: layoutOf(await meta(tx)) })));
+export function captureSyncSnapshot(onlyPending = false) {
+  return serialize(() => transaction(async tx => {
+    const dirty = await readPending(tx);
+    let lib: Library;
+    if (onlyPending) {
+      lib = emptyLibrary();
+      // 동기화에는 대기 중인 실데이터만 필요하다. 삭제 표시는 값 없이 그대로 보낸다.
+      for (const kind of LIB_KINDS) {
+        const prefix = `${kind}:`;
+        const ids = Object.entries(dirty).filter(([key, item]) => key.startsWith(prefix) && !item.deleted).map(([key]) => key.slice(prefix.length));
+        for (let offset = 0; offset < ids.length; offset += 400) {
+          const part = ids.slice(offset, offset + 400);
+          const rows = await tx.getAllAsync<{ id: string; data: string }>(`SELECT id,data FROM ${kind} WHERE id IN (${part.map(() => '?').join(',')})`, ...part);
+          const target = lib[kind] as Record<string, unknown>;
+          for (const row of rows) target[row.id] = JSON.parse(row.data);
+        }
+      }
+    } else lib = await readLibrary(tx, true);
+    return { lib, dirty, layout: layoutOf(await meta(tx)) };
+  }));
 }
 export function readPendingState() {
   return serialize(() => transaction(async tx => ({ dirty: await readPending(tx), layout: layoutOf(await meta(tx)) })));

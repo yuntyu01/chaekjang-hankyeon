@@ -18,9 +18,5 @@ export async function keepImage(srcUri: string, prefix: string): Promise<string>
   return dest;
 }
 
-export async function dropImage(uri?: string) {
-  if (!uri || !uri.startsWith(IMAGE_DIR)) return;
-  await FS.deleteAsync(uri, { idempotent: true }).catch(() => {});
-}
-
+// 예전 사진은 진행 중인 동기화나 복구에 쓰일 수 있어 여기서 바로 지우지 않는다.
 export const isLocalImage = (uri?: string) => !!uri && uri.startsWith(IMAGE_DIR);

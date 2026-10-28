@@ -14,7 +14,7 @@ import { BookmarkCard, PAGE_BG, type BookmarkCardData } from '@/features/bookmar
 import { bookmarksOf, toShelfBook, type Bookmark, type Library } from '@/domain/library';
 import { PhotoPlate } from '@/features/bookmark/PhotoPlate';
 import { deniedMessage, pickPhoto } from '@/services/photos';
-import { dropImage, keepImage } from '@/store/files';
+import { keepImage } from '@/store/files';
 import { libraryStore, useLibrary } from '@/store/library-store';
 import { ChevronLeft, MoreHorizontal, PenLine, Share } from '@/ui/icons';
 import { Btn, Chip, Empty, Field, ListGroup, ListItem, Muted, Row, Screen, Sheet } from '@/ui/kit';
@@ -188,7 +188,6 @@ export default function BookmarkDetail() {
                   text: '삭제',
                   style: 'destructive',
                   onPress: () => {
-                    void dropImage(cur.photoUri);
                     libraryStore.deleteBookmark(cur.id);
                     if (list.length <= 1) router.back();
                     else setIndex(Math.max(0, index - 1));
@@ -234,7 +233,6 @@ function EditBookmark({ m, onDone }: { m: Bookmark; onDone: () => void }) {
             let photoUri = photo.uri;
             if (photo.changed) {
               photoUri = photo.uri ? await keepImage(photo.uri, 'page') : undefined;
-              if (m.photoUri && m.photoUri !== photoUri) void dropImage(m.photoUri);
             }
             libraryStore.updateBookmark(m.id, { text: text.trim(), page: Number.isFinite(n) && n > 0 ? Math.round(n) : undefined, memo: memo.trim() || undefined, photoUri, photoRatio: photoUri ? photo.ratio : undefined });
             onDone();

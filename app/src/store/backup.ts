@@ -9,14 +9,14 @@ import * as FS from 'expo-file-system/legacy';
 import * as Sharing from 'expo-sharing';
 import Storage from 'expo-sqlite/kv-store';
 
-import { LIB_KINDS, readLayout, saveLayout } from '@/db/local-db';
+import { LIB_KINDS, captureSyncSnapshot } from '@/db/local-db';
 import type { Library } from '@/domain/library';
 
 import { shelfBooks } from './boot';
 import { IMAGE_DIR } from './files';
 import { VIEW_SETTINGS_KEY } from './view-settings-key';
 import { libraryStore } from './library-store';
-import { placementStore } from './placement-store';
+import { EMPTY_LAYOUT, placementStore } from './placement-store';
 import { settingsStore, type Settings } from './settings-store';
 import { viewStore } from './view-store';
 
@@ -34,8 +34,8 @@ export type Backup = {
   images: Record<string, string>;
 };
 
+const hasKey = (value: object, key: PropertyKey) => Object.prototype.hasOwnProperty.call(value, key);
 const toRef = (uri?: string) => (uri && uri.startsWith(IMAGE_DIR) ? `img:${uri.slice(IMAGE_DIR.length)}` : uri);
-const fromRef = (uri?: string) => (uri && uri.startsWith('img:') ? `${IMAGE_DIR}${uri.slice(4)}` : uri);
 
 function mapImages(lib: Library, f: (u?: string) => string | undefined): Library {
   const out: Library = JSON.parse(JSON.stringify(lib));
@@ -46,6 +46,11 @@ function mapImages(lib: Library, f: (u?: string) => string | undefined): Library
     b.spineArtUri = f(b.spineArtUri);
   }
   return out;
+}
+
+// 초기 백업에는 후에 추가된 기록 종류가 없을 수 있다.
+function normalizeLibrary(lib: Partial<Library>): Library {
+  return { editions: lib.editions ?? {}, books: lib.books ?? {}, rounds: lib.rounds ?? {}, sessions: lib.sessions ?? {}, bookmarks: lib.bookmarks ?? {}, bindings: lib.bindings ?? {} };
 }
 
 export const countsOf = (d: Pick<Backup, 'library' | 'images'>) => ({
@@ -59,18 +64,23 @@ export const countsOf = (d: Pick<Backup, 'library' | 'images'>) => ({
 
 // 지금 상태를 백업 객체로
 export async function snapshot(): Promise<Backup> {
-  const lib = libraryStore.get().lib;
+  await libraryStore.flushPending();
+  const saved = await captureSyncSnapshot();
+  const lib = saved.lib;
   const images: Record<string, string> = {};
-  const info = await FS.getInfoAsync(IMAGE_DIR);
-  if (info.exists) {
-    for (const name of await FS.readDirectoryAsync(IMAGE_DIR)) images[name] = await FS.readAsStringAsync(`${IMAGE_DIR}${name}`, { encoding: FS.EncodingType.Base64 });
-  }
+  const refs = new Set<string>();
+  const exported = mapImages(lib, uri => {
+    const ref = toRef(uri);
+    if (ref?.startsWith('img:')) refs.add(ref.slice(4));
+    return ref;
+  });
+  for (const name of refs) images[name] = await FS.readAsStringAsync(`${IMAGE_DIR}${name}`, { encoding: FS.EncodingType.Base64 });
   return {
     app: 'chaekjang',
     format: 1,
     exportedAt: new Date().toISOString(),
-    library: mapImages(lib, toRef),
-    layout: (await readLayout()).json,
+    library: exported,
+    layout: saved.layout.json,
     view: await Storage.getItem(VIEW_KEY),
     settings: settingsStore.raw(),
     images,
@@ -113,18 +123,43 @@ export async function exportToFolder(pickAgain = false): Promise<{ ok: true; nam
 export function validateBackup(x: unknown): string | null {
   const d = x as Partial<Backup>;
   if (!d || d.app !== 'chaekjang' || d.format !== 1) return '책장 한켠 백업 파일이 아니에요.';
-  if (!d.library || typeof d.library !== 'object') return '서재 기록이 없어요.';
+  if (!d.library || typeof d.library !== 'object' || Array.isArray(d.library)) return '서재 기록이 없어요.';
+  if (typeof d.exportedAt !== 'string' || !Number.isFinite(Date.parse(d.exportedAt))) return '백업 날짜가 올바르지 않아요.';
+  if (d.layout !== null && typeof d.layout !== 'string') return '책장 배치가 올바르지 않아요.';
+  if (d.images !== undefined && (!d.images || typeof d.images !== 'object' || Array.isArray(d.images))) return '사진 목록이 깨져 있어요.';
   for (const k of LIB_KINDS) {
     const t = (d.library as Record<string, unknown>)[k];
-    if (t === undefined) continue;
-    if (!t || typeof t !== 'object') return `기록(${k})이 깨져 있어요.`;
+    if (t === undefined && k !== 'books' && k !== 'editions') continue;
+    if (!t || typeof t !== 'object' || Array.isArray(t)) return `기록(${k})이 깨져 있어요.`;
     for (const [key, item] of Object.entries(t as Record<string, { id?: unknown }>)) {
       if (!item || typeof item.id !== 'string' || item.id !== key) return `기록(${k}) 중 id가 맞지 않는 항목이 있어요.`;
     }
   }
+  const lib = normalizeLibrary(d.library as Partial<Library>);
+  for (const e of Object.values(lib.editions)) if (typeof e.title !== 'string' || !Array.isArray(e.authors) || e.authors.some(a => typeof a !== 'string')) return '도서 정보가 올바르지 않아요.';
+  for (const b of Object.values(lib.books)) if (typeof b.editionId !== 'string' || !hasKey(lib.editions, b.editionId) || !['want', 'reading', 'read', 'paused'].includes(b.status)) return '책과 도서 정보의 연결이 올바르지 않아요.';
+  for (const r of Object.values(lib.rounds)) if (!hasKey(lib.books, r.myBookId) || !Number.isInteger(r.index) || r.index < 1) return '독서 회차가 올바르지 않아요.';
+  for (const b of Object.values(lib.bindings)) if (!hasKey(lib.books, b.myBookId) || typeof b.spineColor !== 'string' || typeof b.motif !== 'string') return '장정 정보가 올바르지 않아요.';
+  for (const m of Object.values(lib.bookmarks)) if (!hasKey(lib.books, m.myBookId) || typeof m.text !== 'string') return '갈피 정보가 올바르지 않아요.';
+  for (const s of Object.values(lib.sessions)) if ((s.myBookId && !hasKey(lib.books, s.myBookId)) || (s.roundId && !hasKey(lib.rounds, s.roundId)) || !Number.isFinite(s.durationMs) || s.durationMs < 0) return '독서 시간 기록이 올바르지 않아요.';
   for (const [name, b64] of Object.entries(d.images ?? {})) {
-    if (!/^[\w.-]+$/.test(name) || typeof b64 !== 'string') return '사진 목록이 깨져 있어요.';
+    if (!/^[\w.-]{1,80}$/.test(name) || name === '.' || name === '..' || typeof b64 !== 'string') return '사진 목록이 깨져 있어요.';
   }
+  if (d.layout) {
+    try {
+      const layout = JSON.parse(d.layout) as { version?: number; shelves?: unknown; placements?: unknown; drawer?: unknown };
+      if (![1, 2].includes(layout?.version ?? 0) || !Array.isArray(layout.shelves) || !Array.isArray(layout.placements) || (layout.version === 2 && !Array.isArray(layout.drawer))) return '책장 배치가 올바르지 않아요.';
+    } catch { return '책장 배치가 올바르지 않아요.'; }
+  }
+  try {
+    let missing = false;
+    mapImages(lib, uri => {
+      if (uri !== undefined && typeof uri !== 'string') { missing = true; return uri; }
+      if (uri?.startsWith('img:') && !hasKey(d.images ?? {}, uri.slice(4))) missing = true;
+      return uri;
+    });
+    if (missing) return '사진 파일을 찾지 못했어요.';
+  } catch { return '서재 기록이 올바르지 않아요.'; }
   return null;
 }
 
@@ -141,14 +176,28 @@ export async function readBackupFile(): Promise<{ ok: true; data: Backup; counts
   }
 }
 
-async function apply(data: Backup) {
+async function apply(data: Backup, options: { reuseFiles?: boolean; onLibrarySaved?: () => void } = {}) {
   const info = await FS.getInfoAsync(IMAGE_DIR);
   if (!info.exists) await FS.makeDirectoryAsync(IMAGE_DIR, { intermediates: true });
-  for (const [name, b64] of Object.entries(data.images ?? {})) await FS.writeAsStringAsync(`${IMAGE_DIR}${name}`, b64, { encoding: FS.EncodingType.Base64 });
-  const src = data.library as Partial<Library>;
-  const lib = mapImages({ editions: src.editions ?? {}, books: src.books ?? {}, rounds: src.rounds ?? {}, sessions: src.sessions ?? {}, bookmarks: src.bookmarks ?? {}, bindings: src.bindings ?? {} }, fromRef);
-  await libraryStore.replaceAll(lib);
-  await saveLayout(data.layout, new Date().toISOString());
+  // 기존 파일을 덮어쓰지 않는다. 중간에 앱이 종료돼도 현재 서재 사진이 남는다.
+  const renamed = new Map<string, string>();
+  const prefix = `restore_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 10)}`;
+  const refs = new Set<string>();
+  mapImages(normalizeLibrary(data.library), uri => { if (uri?.startsWith('img:')) refs.add(uri.slice(4)); return uri; });
+  let index = 0;
+  for (const name of refs) {
+    if (options.reuseFiles) { renamed.set(name, name); continue; }
+    const ext = name.match(/\.(png|webp|jpe?g)$/i)?.[1]?.toLowerCase() ?? 'jpg';
+    const fresh = `${prefix}_${index++}.${ext}`;
+    await FS.writeAsStringAsync(`${IMAGE_DIR}${fresh}`, data.images[name], { encoding: FS.EncodingType.Base64 });
+    renamed.set(name, fresh);
+  }
+  const at = new Date().toISOString();
+  const lib = mapImages(normalizeLibrary(data.library), uri => uri?.startsWith('img:') ? `${IMAGE_DIR}${renamed.get(uri.slice(4))}` : uri);
+  // 복원은 지금의 사용자 변경이다. 백업 당시 시각을 그대로 쓰면 서버가 최신 값으로 거절한다.
+  for (const kind of LIB_KINDS) for (const item of Object.values(lib[kind])) item.updatedAt = at;
+  await libraryStore.replaceAll(lib, { json: data.layout ?? JSON.stringify(EMPTY_LAYOUT), at });
+  options.onLibrarySaved?.();
   if (data.view) await Storage.setItem(VIEW_KEY, data.view);
   settingsStore.set(data.settings ?? {});
   await placementStore.load(shelfBooks(lib));
@@ -161,18 +210,21 @@ export async function restoreBackup(data: Backup, failAt?: 'library' | 'after-li
   const bad = validateBackup(data);
   if (bad) throw new Error(bad);
   const before = await snapshot();
+  let changed = false;
+  const onLibrarySaved = () => { changed = true; };
   try {
     if (failAt === 'library') {
-      await apply({ ...data, library: { ...data.library, books: { ...data.library.books, broken: { id: null } as never } } });
+      await apply({ ...data, library: { ...data.library, books: { ...data.library.books, broken: { id: null } as never } } }, { onLibrarySaved });
     } else {
-      await apply(data);
+      await apply(data, { onLibrarySaved });
       if (failAt === 'after-library') throw new Error('시험용 실패(서재를 바꾼 뒤)');
     }
   } catch (e) {
-    await apply(before);
-    throw new Error(`복원하지 못해 이전 상태로 되돌렸어요. (${String((e as Error)?.message ?? e)})`);
+    if (changed) {
+      try { await apply(before, { reuseFiles: true }); }
+      catch (rollback) { throw new Error(`복원과 이전 상태 복구에 실패했어요. (${String((rollback as Error)?.message ?? rollback)})`); }
+    }
+    throw new Error(`복원하지 못했어요. 이전 기록은 유지했어요. (${String((e as Error)?.message ?? e)})`);
   }
-  // 성공: 이전 사진 중 백업에 없는 것은 지운다
-  const keep = new Set(Object.keys(data.images ?? {}));
-  for (const name of await FS.readDirectoryAsync(IMAGE_DIR)) if (!keep.has(name)) await FS.deleteAsync(`${IMAGE_DIR}${name}`, { idempotent: true });
+  // 이전 사진은 진행 중인 동기화나 실패 복구에 필요할 수 있으므로 여기서 지우지 않는다.
 }

@@ -8,13 +8,14 @@ import { hm } from '@/features/book/labels';
 import { BookPicker } from '@/features/bookmark/BookPicker';
 import { formatDuration } from '@/domain/library';
 import { ambient } from '@/services/ambient';
-import { libraryStore, useLibrary } from '@/store/library-store';
+import { saveFinishedReading } from '@/store/finish-reading';
+import { useLibrary } from '@/store/library-store';
 import { readingStore, useReading } from '@/store/reading-store';
 import { Btn, Empty, Field, Row, Screen, SelectField } from '@/ui/kit';
 import { colors, fonts, shape, space, type } from '@/ui/screenTheme';
 
 export default function Finish() {
-  const { pending } = useReading();
+  const { pending, error: readingError } = useReading();
   const { lib } = useLibrary();
   const [picking, setPicking] = useState(false);
   const [pages, setPages] = useState('');
@@ -41,16 +42,19 @@ export default function Finish() {
     );
   const b = pending.myBookId ? lib.books[pending.myBookId] : undefined;
   const e = b && lib.editions[b.editionId];
-  const save = () => {
+  const save = async () => {
     if (saving) return;
     setSaving(true);
-    const n = Number(pages);
-    libraryStore.addSession({ id: pending.id, myBookId: pending.myBookId, startedAt: pending.startedAt, endedAt: pending.endedAt, durationMs: pending.durationMs, pagesRead: Number.isFinite(n) && n > 0 ? Math.round(n) : undefined, memo: memo.trim() || undefined });
-    // 읽기 전이던 책을 읽었다면 읽는 중으로(완독은 사용자가 정한다)
-    if (b && b.status === 'want') libraryStore.setStatus(b.id, 'reading');
-    ambient.stop();
-    readingStore.clearPending();
-    setSaved({ bookId: pending.myBookId });
+    try {
+      const n = Number(pages);
+      await saveFinishedReading(pending, { pagesRead: Number.isFinite(n) && n > 0 ? Math.round(n) : undefined, memo: memo.trim() || undefined });
+      ambient.stop();
+      setSaved({ bookId: pending.myBookId });
+    } catch (error) {
+      Alert.alert('저장하지 못했어요', `독서 기록을 유지하고 있어요. 다시 시도해 주세요.\n${String((error as Error)?.message ?? error)}`);
+    } finally {
+      setSaving(false);
+    }
   };
   const discard = () =>
     Alert.alert('이번 독서 기록을 버릴까요?', `${formatDuration(pending.durationMs)}이 저장되지 않아요.`, [
@@ -58,15 +62,20 @@ export default function Finish() {
       {
         text: '버리기',
         style: 'destructive',
-        onPress: () => {
-          ambient.stop();
-          readingStore.clearPending();
-          router.dismissTo('/read');
+        onPress: async () => {
+          try {
+            await readingStore.clearPending();
+            ambient.stop();
+            router.dismissTo('/read');
+          } catch {
+            Alert.alert('버리지 못했어요', '독서 기록을 저장소에서 지우지 못했어요. 다시 시도해 주세요.');
+          }
         },
       },
     ]);
   return (
-    <Screen title="독서 끝" back={false} footer={<Btn label="기록 저장" onPress={save} disabled={pending.durationMs < 1000} />}>
+    <Screen title="독서 끝" back={false} footer={<Btn label="기록 저장" onPress={save} busy={saving} disabled={saving || pending.durationMs < 1000} />}>
+      {readingError ? <Text accessibilityRole="alert" style={type.sub}>독서 기록을 기기에 저장하지 못했어요. 저장을 다시 시도해 주세요.</Text> : null}
       <View style={{ alignItems: 'center', paddingVertical: space.section, marginTop: space.tight, marginBottom: space.group, borderBottomWidth: shape.hairline, borderBottomColor: colors.line }} accessible accessibilityLabel={`실제 독서 시간 ${formatDuration(pending.durationMs)}`}>
         <Text style={type.sub}>실제 독서 시간</Text>
         <Text style={st.time}>{formatDuration(pending.durationMs)}</Text>

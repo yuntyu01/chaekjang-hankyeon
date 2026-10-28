@@ -89,6 +89,8 @@ jobs:
     if: github.event_name != 'pull_request' && inputs.verify_play_identity_only != true && inputs.recover_existing_run == ''
     name: Build AAB and upload to Play
     runs-on: ubuntu-latest
+    env:
+      EXPO_PUBLIC_API_URL: ${{ vars.EXPO_PUBLIC_API_URL || 'https://covebook.kodeploy.com' }}
     defaults:
       run:
         working-directory: ./app

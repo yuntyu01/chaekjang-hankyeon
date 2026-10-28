@@ -36,8 +36,10 @@ base64 -w 0 chaekjang-upload.jks > chaekjang-upload.jks.base64
 | Secret | `KEY_PASSWORD` | 키 비밀번호 |
 | Secret | `PLAY_SERVICE_ACCOUNT_JSON` | 서비스 계정 JSON 전체 (드라이런이면 불필요) |
 | Variable | `ANDROID_VERSION_CODE_OFFSET` | 선택. 이미 올린 빌드가 있을 때 versionCode 바닥을 올리는 정수 |
+| Variable | `EXPO_PUBLIC_API_URL` | 선택. 서버 주소를 바꿀 때만 설정한다. 기본값은 `https://covebook.kodeploy.com` |
 
 비밀값이 빠지면 첫 단계에서 바로 실패하고 빠진 이름을 알려 준다. 업로드를 요청한 실행은 앱 의존성 설치·AAB 빌드 전에 실제 서비스 계정과 Play 앱 접근 권한도 확인한다. 검사용 임시 edit를 만들고 Alpha 트랙을 조회한 뒤 폐기하며 출시를 업로드하거나 commit하지 않는다. 키 JSON·비밀키·인증 토큰은 출력하지 않는다.
+앱은 빌드 시 `EXPO_PUBLIC_API_URL`을 포함하므로 공개 가능한 HTTPS 주소만 넣는다. 앱 배포와 별도로 운영 서버에도 호환되는 동기화 코드를 배포해야 한다. 동기화 응답의 `syncEpoch`가 2 이상이 아니면 앱은 기록을 기기에 보관하고 서버 업데이트를 안내한다.
 
 ## 2. 배포하는 법
 

@@ -73,8 +73,8 @@ describe('끝내기·저장이 겹치지 않는다', () => {
     expect(again.get().pending?.id).toBe(a!.id);
     expect(again.get().pendingRestored).toBe(true);
     expect(again.get().active).toBeNull();
-    again.clearPending();
+    await again.clearPending();
     await new Promise((r) => setTimeout(r, 0));
-    expect(mem['finished-reading:v1']).toBeUndefined();
+    expect(JSON.parse(mem['reading-state:v2']).pending).toBeNull();
   });
 });

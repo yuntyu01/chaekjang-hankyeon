@@ -4,7 +4,7 @@ import { useState } from 'react';
 import { View } from 'react-native';
 
 import { pickPhoto, deniedMessage } from '@/services/photos';
-import { dropImage, keepImage } from '@/store/files';
+import { keepImage } from '@/store/files';
 import { libraryStore, useLibrary } from '@/store/library-store';
 import { Btn, Empty, Field, Muted, RealCover, Row, Screen } from '@/ui/kit';
 import { colors } from '@/ui/screenTheme';
@@ -37,7 +37,6 @@ export default function EditBook() {
     let coverUri = f.coverUri;
     if (coverUri !== e.coverUri && f.coverSource === 'photo' && coverUri) {
       coverUri = await keepImage(coverUri, 'cover');
-      if (e.coverSource === 'photo') void dropImage(e.coverUri);
     }
     const w = num(f.width);
     const h = num(f.height);

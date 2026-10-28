@@ -31,7 +31,7 @@ export function ReadingScreen({ initialBookId, soundOnly = false, inTab = false 
       return () => setFocused(false);
     }, []),
   );
-  const { active } = useReading();
+  const { active, error: readingError } = useReading();
   const { lib } = useLibrary();
   const settings = useSettings();
   const audio = useAmbient();
@@ -112,6 +112,7 @@ export function ReadingScreen({ initialBookId, soundOnly = false, inTab = false 
             {!soundOnly ? <Pressable onPress={() => setControls('goal')} accessibilityRole="button" accessibilityLabel={`목표 시간 설정, ${settings.goalMin ? settings.goalMin + '분' : '자유롭게 시간 재기'}`} style={{ alignItems: 'center', marginTop: 0 }}>
               {active && !running ? <Text style={st.sub}>일시정지</Text> : null}
               <Text style={st.time} accessibilityLabel={`읽은 시간 ${clock(ms)}`}>{clock(ms)}</Text>
+              {readingError ? <Text accessibilityRole="alert" style={st.sub}>독서 시간을 기기에 저장하지 못했어요. 저장 공간을 확인해 주세요.</Text> : null}
               {goalMs ? <Text style={st.goal}>{ms >= goalMs ? `목표 ${settings.goalMin}분을 채웠어요` : `목표 ${settings.goalMin}분`}</Text> : null}
             </Pressable> : null}
             <View style={st.controls}>

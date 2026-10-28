@@ -35,7 +35,7 @@ let account: AccountInfo = { kakao: false, nickname: '' };
 export const accountInfo = { get: () => account };
 function setAccount(a: AccountInfo) {
   account = a;
-  void Storage.setItem(ACCOUNT_KEY, JSON.stringify(a));
+  void Storage.setItem(ACCOUNT_KEY, JSON.stringify(a)).catch(() => {});
   setStatus({});
 }
 
@@ -89,6 +89,12 @@ async function downloadFiles(token: string, ids: string[]) {
 
 const filesIn = (b: PushBody) => [...new Set([...(b.bookmarks ?? []).map((x) => x.photoFileId), ...(b.editions ?? []).map((x) => x.coverFileId), ...(b.bindings ?? []).flatMap((x) => [x.coverArtFileId, x.spineArtFileId])].filter((x): x is string => !!x))];
 
+async function pushBatch(token: string, body: PushBody) {
+  const result = await api<{ skipped?: string[] }>('POST', '/sync/push', token, body);
+  // 서버의 최신 값이 이긴 항목은 이전 커서 밖에 있을 수 있다. 확인 표시 전에 처음부터 다시 읽는다.
+  if (result?.skipped?.length) await Storage.setItem(REV_KEY, '0');
+}
+
 async function pushOnce(token: string, snapshot: SyncSnapshot) {
   const { body, count } = buildPush(snapshot.lib, snapshot.dirty, IMAGE_DIR);
   if (count !== Object.keys(snapshot.dirty).length) throw new Error('올릴 서재 기록을 찾지 못했어요');
@@ -110,16 +116,16 @@ async function pushOnce(token: string, snapshot: SyncSnapshot) {
         const batch: PushBody = { [kind]: chunk };
         const sent = Object.fromEntries(chunk.map(item => [`${kind}:${item.id}`, snapshot.dirty[`${kind}:${item.id}`]]));
         await uploadFiles(token, filesIn(batch));
-        await api('POST', '/sync/push', token, batch);
+        await pushBatch(token, batch);
         await clearPushed(sent, null);
       }
     }
-    if (layout) await api('POST', '/sync/push', token, { layout });
+    if (layout) await pushBatch(token, { layout });
     await clearPushed({}, layoutRevision);
     return;
   }
   await uploadFiles(token, filesIn(body));
-  await api('POST', '/sync/push', token, { ...body, layout });
+  await pushBatch(token, { ...body, layout });
   await clearPushed(snapshot.dirty, layoutRevision);
 }
 
@@ -167,25 +173,43 @@ async function applyLayout(remote: WireLayout) {
 }
 
 let running = false;
+let runningDone: Promise<void> | null = null;
+let linking = false;
 let accountChecked = false; // 앱을 켠 뒤 첫 동기화 때 한 번만 서버의 계정 정보를 읽는다
 let again = false;
 let timer: ReturnType<typeof setTimeout> | null = null;
+let verifiedToken: string | null = null;
+
+async function requireSafeServer(token: string) {
+  if (verifiedToken === token) return;
+  const response = await api<{ syncEpoch?: number }>('GET', '/sync/pull?since=0&limit=1', token);
+  // 낮은 revision이 나중에 커밋되면 변경을 놓칠 수 있는 구 서버에는 쓰지 않는다.
+  if ((response.syncEpoch ?? 0) < 2) throw new Error('서버 동기화 업데이트가 필요해요. 기록은 기기에 보관하고 있어요.');
+  verifiedToken = token;
+}
 
 export async function syncNow() {
   if (!BASE) return;
+  if (linking) {
+    again = true;
+    return;
+  }
   if (running) {
     again = true;
     return;
   }
   running = true;
+  let finishRunning!: () => void;
+  runningDone = new Promise<void>(resolve => { finishRunning = resolve; });
   setStatus({ state: 'syncing', error: undefined });
   try {
     await loadDirty();
     let token = await ensureToken();
     for (let attempt = 0; attempt < 2; attempt++) {
       try {
+        await requireSafeServer(token);
         await libraryStore.flushPending();
-        const snapshot = await captureSyncSnapshot();
+        const snapshot = await captureSyncSnapshot(true);
         await pushOnce(token, snapshot);
         await pullAll(token);
         break;
@@ -212,6 +236,8 @@ export async function syncNow() {
     schedule(60_000); // 연결이 안 되면 1분 뒤 다시
   } finally {
     running = false;
+    runningDone = null;
+    finishRunning();
     if (again) {
       again = false;
       schedule(1000);
@@ -226,7 +252,12 @@ export type KakaoResult = { ok: true; nickname: string; switched: boolean } | { 
 
 export async function linkKakao(): Promise<KakaoResult> {
   if (!BASE) return { ok: false, message: '이 빌드에는 서버 주소가 없어요' };
+  if (linking) return { ok: false, message: '카카오 로그인 처리 중이에요' };
+  linking = true;
+  let syncAfterLink = false;
   try {
+    // 기존 계정의 pull 커서가 새 계정에 기록되지 않도록 동기화와 계정 변경을 겹치지 않는다.
+    await runningDone;
     await loadDirty();
     const token = await ensureToken();
     const returnUrl = Linking.createURL('auth/kakao'); // 릴리스: chaekjang://auth/kakao, Expo Go: exp://…
@@ -245,16 +276,23 @@ export async function linkKakao(): Promise<KakaoResult> {
     }
     await Storage.setItem(TOKEN_KEY, c.token);
     setAccount({ kakao: true, nickname: c.nickname });
-    void syncNow();
+    syncAfterLink = true;
     return { ok: true, nickname: c.nickname, switched: c.switched };
   } catch (e) {
     return { ok: false, message: String((e as Error)?.message ?? e) };
+  } finally {
+    linking = false;
+    if (syncAfterLink || again) {
+      again = false;
+      schedule(500);
+    }
   }
 }
 
 async function refreshAccount(token: string) {
   try {
     const me = await api<{ kakao: boolean; nickname: string }>('GET', '/me', token);
+    if (await Storage.getItem(TOKEN_KEY) !== token) return;
     if (me.kakao !== account.kakao || me.nickname !== account.nickname) setAccount({ kakao: me.kakao, nickname: me.nickname });
   } catch {
     // 표시용이라 실패해도 동기화는 계속한다

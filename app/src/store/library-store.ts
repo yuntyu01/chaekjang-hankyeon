@@ -26,6 +26,7 @@ import {
 type State = { lib: Library; loaded: boolean; error: string | null };
 
 let state: State = { lib: emptyLibrary(), loaded: false, error: null };
+let replacingWithLayout = false;
 const listeners = new Set<() => void>();
 
 function set(patch: Partial<State>) {
@@ -79,6 +80,7 @@ export type NewBookInput = {
 
 export const libraryStore = {
   get: () => state,
+  isReplacingWithLayout: () => replacingWithLayout,
   flushPending,
   hasPending: () => pending.length > 0,
   subscribe(l: () => void) {
@@ -248,10 +250,12 @@ export const libraryStore = {
   },
 
   // 백업 복원
-  async replaceAll(lib: Library) {
+  async replaceAll(lib: Library, layout?: { json: string | null; at: string }) {
     await flushPending();
-    await replaceLib(lib, true);
-    set({ lib, error: null });
+    await replaceLib(lib, true, layout);
+    replacingWithLayout = !!layout;
+    try { set({ lib, error: null }); }
+    finally { replacingWithLayout = false; }
   },
 };
 

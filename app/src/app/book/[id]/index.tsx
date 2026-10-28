@@ -11,7 +11,6 @@ import { bookmarksOf, bookReadMs, completions, formatDuration, READ_STATUSES, ro
 import { useLibrary, libraryStore } from '@/store/library-store';
 import { placementStore, usePlacementStore } from '@/store/placement-store';
 import { uiBus } from '@/store/ui-bus';
-import { dropImage } from '@/store/files';
 import { Btn, Chip, Empty, Field, H2, ListGroup, ListItem, Muted, Row, Screen, Sheet, Stars, s as kit } from '@/ui/kit';
 import { colors, fonts, icon, shape, space, type } from '@/ui/screenTheme';
 import { LibraryCover } from '@/ui/BookVisual';
@@ -54,8 +53,6 @@ export default function BookDetailScreen() {
           text: '삭제',
           style: 'destructive',
           onPress: () => {
-            if (e.coverSource === 'photo') void dropImage(e.coverUri);
-            for (const m of marks) void dropImage(m.photoUri);
             libraryStore.deleteBook(id);
             router.dismissTo('/');
           },

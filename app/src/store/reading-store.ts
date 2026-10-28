@@ -35,6 +35,7 @@ export type FinishDraft = { id: string; myBookId?: string; startedAt: string; en
 
 const KEY = 'active-reading:v1';
 const PENDING_KEY = 'finished-reading:v1';
+const STATE_KEY = 'reading-state:v2';
 const BEAT_MS = 5000;
 
 // ---------- 순수 규칙(테스트 대상) ----------
@@ -65,8 +66,8 @@ export function finishActive(a: Active, now: number, endAt?: number): FinishDraf
 
 // ---------- 상태 ----------
 
-type State = { active: Active | null; interrupted: Interrupted | null; pending: FinishDraft | null; pendingRestored: boolean; loaded: boolean };
-let state: State = { active: null, interrupted: null, pending: null, pendingRestored: false, loaded: false };
+type State = { active: Active | null; interrupted: Interrupted | null; pending: FinishDraft | null; pendingRestored: boolean; loaded: boolean; error: string | null };
+let state: State = { active: null, interrupted: null, pending: null, pendingRestored: false, loaded: false, error: null };
 const listeners = new Set<() => void>();
 let beat: ReturnType<typeof setInterval> | null = null;
 
@@ -75,13 +76,18 @@ function set(patch: Partial<State>) {
   listeners.forEach((l) => l());
 }
 
-function save() {
-  const a = state.active;
-  void (a ? Storage.setItem(KEY, JSON.stringify(a)) : Storage.removeItem(KEY)).catch(() => {});
+// 한 키에 함께 기록한다. 종료 시 진행 기록 삭제와 초안 생성 사이에 빈 상태가 생기지 않는다.
+let writeTail: Promise<void> = Promise.resolve();
+function persist(active: Active | null, pending: FinishDraft | null) {
+  const value = JSON.stringify({ version: 2, active, pending });
+  const write = writeTail.then(() => Storage.setItem(STATE_KEY, value));
+  writeTail = write.catch(() => {});
+  return write;
 }
-function savePending() {
-  const p = state.pending;
-  void (p ? Storage.setItem(PENDING_KEY, JSON.stringify(p)) : Storage.removeItem(PENDING_KEY)).catch(() => {});
+function save() {
+  void persist(state.active, state.pending).then(() => {
+    if (state.error) set({ error: null });
+  }).catch(error => set({ error: String((error as Error)?.message ?? error) }));
 }
 
 function tick() {
@@ -111,16 +117,24 @@ export const readingStore = {
   },
 
   async load() {
-    try {
-      const raw = await Storage.getItem(KEY);
-      const r = recoverOnLoad(raw ? (JSON.parse(raw) as Active) : null, Date.now());
-      const rawP = await Storage.getItem(PENDING_KEY);
-      const pending = rawP ? (JSON.parse(rawP) as FinishDraft) : null;
-      set({ active: r.active, interrupted: r.interrupted, pending, pendingRestored: !!pending, loaded: true });
-      if (r.interrupted) save();
-    } catch {
-      set({ loaded: true });
+    const raw = await Storage.getItem(STATE_KEY);
+    let active: Active | null;
+    let pending: FinishDraft | null;
+    if (raw !== null) {
+      const saved = JSON.parse(raw) as { version?: number; active?: Active | null; pending?: FinishDraft | null };
+      if (saved?.version !== 2 || saved.active === undefined || saved.pending === undefined) throw new Error('독서 기록을 읽지 못했어요');
+      active = saved.active;
+      pending = saved.pending;
+    } else {
+      const [oldActive, oldPending] = await Promise.all([Storage.getItem(KEY), Storage.getItem(PENDING_KEY)]);
+      active = oldActive ? JSON.parse(oldActive) as Active : null;
+      pending = oldPending ? JSON.parse(oldPending) as FinishDraft : null;
+      if (active && pending && active.id === pending.id) active = null;
     }
+    const r = recoverOnLoad(active, Date.now());
+    // 이전 키는 지우지 않는다. 새 저장이 실패하면 다음 시작에서 다시 가져올 수 있다.
+    await persist(r.active, pending);
+    set({ active: r.active, interrupted: r.interrupted, pending, pendingRestored: !!pending, loaded: true, error: null });
   },
 
   start(myBookId?: string) {
@@ -163,17 +177,22 @@ export const readingStore = {
     const pending = finishActive(a, Date.now(), endAt);
     set({ active: null, interrupted: null, pending, pendingRestored: false });
     save();
-    savePending();
     return pending;
   },
   setPendingBook(myBookId?: string) {
     if (!state.pending) return;
     set({ pending: { ...state.pending, myBookId } });
-    savePending();
+    save();
   },
-  clearPending() {
-    set({ pending: null, pendingRestored: false });
-    savePending();
+  async clearPending() {
+    const pending = state.pending;
+    try {
+      await persist(state.active, null);
+      if (state.pending === pending) set({ pending: null, pendingRestored: false, error: null });
+    } catch (error) {
+      set({ error: String((error as Error)?.message ?? error) });
+      throw error;
+    }
   },
   ackPendingRestored() {
     set({ pendingRestored: false });
