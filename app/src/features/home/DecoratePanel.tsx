@@ -2,7 +2,7 @@
 // 앞뒤 위치 막대(왼쪽 뒤로 · 오른쪽 앞으로), 접어 둔 '세부 조정'(기대기 왼쪽·바로·오른쪽 / 돌리기와 표지 책 각도).
 // 기대기는 방향만 고르고 각도는 옆 책과의 틈으로 계산한다. 기댈 책이 없는 방향은 처음부터 누를 수 없게 표시한다.
 import { ChevronDown, ChevronUp } from 'lucide-react-native';
-import { useRef, useState } from 'react';
+import { useLayoutEffect, useRef, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { Gesture, GestureDetector, State } from 'react-native-gesture-handler';
 import Animated, { FadeInDown, FadeOutDown } from 'react-native-reanimated';
@@ -14,10 +14,12 @@ import { ko } from '@/i18n/ko';
 import { Undo2 } from '@/ui/icons';
 import { colors, fonts, icon, shape, space, type } from '@/ui/screenTheme';
 import { PERF_ENABLED } from '@/ui/perf';
+import { createPreviewFrame } from './preview-frame';
 
 export type LeanDir = -1 | 0 | 1;
 
 type Props = {
+  bookId: string | null;
   title: string | null; // 고른 책이 없으면 안내만
   pose: Pose | null;
   lean: LeanDir;
@@ -42,13 +44,19 @@ type Props = {
 // 손잡이(동그라미)를 잡으면 지금 각도에서 끈 거리만큼만 바뀐다(잡는 순간 튀지 않는다).
 // 손잡이 밖 빈 트랙을 누르면 그 자리 값으로 옮긴 뒤 이어서 끈 만큼 바뀐다. 0 근처에서는 살짝 붙는다.
 const THUMB_HIT = 22; // 손잡이 둘레로 잡았다고 보는 거리(dp, 손잡이 지름 22)
+function usePreviewFrame() {
+  const ref = useRef<ReturnType<typeof createPreviewFrame> | null>(null);
+  if (!ref.current) ref.current = createPreviewFrame();
+  const preview = ref.current;
+  useLayoutEffect(() => () => preview.cancel(), [preview]);
+  return preview;
+}
 function SpinSlider({ value, onChange, max }: { value: number; onChange: (deg: number, done: boolean) => number; max: number }) {
   const MAX = max;
   const [w, setW] = useState(1);
   const [live, setLive] = useState<number | null>(null); // 끄는 동안 실제로 된 각도
   const last = useRef<number | null>(null);
-  const pending = useRef<number | null>(null);
-  const frame = useRef(0);
+  const preview = usePreviewFrame();
   const grab = useRef<{ x0: number; v0: number } | null>(null); // 잡은 x와 그때 각도
   const shownRef = useRef(value);
   const snap = (d: number) => {
@@ -68,22 +76,17 @@ function SpinSlider({ value, onChange, max }: { value: number; onChange: (deg: n
   // 계산은 한 프레임에 한 번, 마지막 각도만(밀린 중간 값은 버린다)
   const send = (deg: number, done: boolean) => {
     if (done) {
-      cancelAnimationFrame(frame.current);
-      frame.current = 0;
+      preview.cancel();
       last.current = null;
       grab.current = null;
       onChange(deg, true);
       setLive(null);
       return;
     }
-    pending.current = deg;
-    if (frame.current) return;
-    frame.current = requestAnimationFrame(() => {
-      frame.current = 0;
-      const d = pending.current;
-      if (d === null || d === last.current) return;
-      last.current = d;
-      setLive(onChange(d, false));
+    preview.schedule(() => {
+      if (deg === last.current) return;
+      last.current = deg;
+      setLive(onChange(deg, false));
     });
   };
   const pan = Gesture.Pan()
@@ -148,29 +151,23 @@ function DepthSlider({ lo, hi, value, onChange }: { lo: number; hi: number; valu
   const [w, setW] = useState(1);
   const [live, setLive] = useState<number | null>(null);
   const start = useRef(value);
-  const pending = useRef<number | null>(null);
   const last = useRef<number | null>(null);
-  const frame = useRef(0);
+  const preview = usePreviewFrame();
   const full = SHELF_FRONT + SHELF_DEPTH; // 막대 한 폭이 선반 깊이 전체
   // 오른쪽으로 끌면 앞으로(z가 작아진다)
   const toZ = (dx: number) => Math.round(Math.max(lo, Math.min(hi, start.current - (dx / w) * full)) * 2) / 2;
   const send = (z: number, done: boolean) => {
     if (done) {
-      cancelAnimationFrame(frame.current);
-      frame.current = 0;
+      preview.cancel();
       last.current = null;
       onChange(z, true);
       setLive(null);
       return;
     }
-    pending.current = z;
-    if (frame.current) return;
-    frame.current = requestAnimationFrame(() => {
-      frame.current = 0;
-      const v = pending.current;
-      if (v === null || v === last.current) return;
-      last.current = v;
-      setLive(onChange(v, false));
+    preview.schedule(() => {
+      if (z === last.current) return;
+      last.current = z;
+      setLive(onChange(z, false));
     });
   };
   const pan = Gesture.Pan()
@@ -183,7 +180,7 @@ function DepthSlider({ lo, hi, value, onChange }: { lo: number; hi: number; valu
     .onEnd((e) => send(toZ(e.translationX), true))
     // 취소되면 조작 전 깊이로(미리보기 자세가 남지 않게)
     .onFinalize((_e, success) => {
-      if (!success && last.current !== null) send(start.current, true);
+      if (!success && (last.current !== null || preview.pending)) send(start.current, true);
     });
   const shown = live ?? value;
   const pos = (1 - (shown + SHELF_FRONT) / full) * w;
@@ -197,9 +194,9 @@ function DepthSlider({ lo, hi, value, onChange }: { lo: number; hi: number; valu
           onLayout={(e) => setW(e.nativeEvent.layout.width)}
           accessibilityRole="adjustable"
           accessibilityLabel={ko.decoratePanel.depth}
-          accessibilityValue={{ min: mmOf(lo), max: mmOf(hi), now: mmOf(value) }}
+          accessibilityValue={{ min: mmOf(lo), max: mmOf(hi), now: mmOf(value), text: `선반 앞 끝에서 ${mmOf(value)}밀리미터` }}
           accessibilityActions={[{ name: 'increment' }, { name: 'decrement' }]}
-          onAccessibilityAction={(e) => onChange(Math.max(lo, Math.min(hi, value + (e.nativeEvent.actionName === 'increment' ? -10 : 10) * DU_PER_MM)), true)}>
+          onAccessibilityAction={(e) => onChange(Math.max(lo, Math.min(hi, value + (e.nativeEvent.actionName === 'increment' ? 10 : -10) * DU_PER_MM)), true)}>
           <View style={styles.track} />
           <View style={[styles.fill, { width: Math.max(0, pos) }]} />
           <View style={[styles.thumb, { left: pos - THUMB / 2, opacity: w > 1 ? 1 : 0 /* 폭을 재기 전에는 0 위치에 잠깐 보이지 않게 */ }]} />
@@ -272,7 +269,7 @@ function Choice({ label, on, disabled, onPress, children }: { label: string; on:
   );
 }
 
-export function DecoratePanel({ title, pose, lean, canLean, msg, bottomInset, reduceMotion, onPose, onLean, spin, onSpin, depth, onDepth, onHeight, angles, canUndo, onUndo, onDone }: Props) {
+export function DecoratePanel({ bookId, title, pose, lean, canLean, msg, bottomInset, reduceMotion, onPose, onLean, spin, onSpin, depth, onDepth, onHeight, angles, canUndo, onUndo, onDone }: Props) {
   // 세부 조정(기대기 · 돌리기)은 접어 둔다. 펼친 채로 다른 책을 골라도 그대로
   const [more, setMore] = useState(false);
   const chevron = { size: icon.size, color: colors.inkSoft, strokeWidth: icon.stroke };
@@ -313,7 +310,7 @@ export function DecoratePanel({ title, pose, lean, canLean, msg, bottomInset, re
           <Text style={styles.label}>{ko.decoratePanel.depthTitle}</Text>
           <View style={styles.sliderRow}>
             <Text style={styles.end}>{ko.decoratePanel.back}</Text>
-            <DepthSlider lo={depth.lo} hi={depth.hi} value={depth.z} onChange={onDepth} />
+            <DepthSlider key={bookId} lo={depth.lo} hi={depth.hi} value={depth.z} onChange={onDepth} />
             <Text style={styles.end}>{ko.decoratePanel.forward}</Text>
           </View>
         </View>
@@ -333,7 +330,7 @@ export function DecoratePanel({ title, pose, lean, canLean, msg, bottomInset, re
             <>
               <View style={styles.row}>
                 <Text style={styles.rowLabel}>{ko.decoratePanel.spin}</Text>
-                <SpinSlider value={spin} onChange={onSpin} max={pose === 'front' ? MAX_FRONT_SPIN : MAX_SPIN} />
+                <SpinSlider key={`${bookId}:${pose}`} value={spin} onChange={onSpin} max={pose === 'front' ? MAX_FRONT_SPIN : MAX_SPIN} />
               </View>
               {angles ? <Text style={styles.caption}>{angles}</Text> : null}
             </>

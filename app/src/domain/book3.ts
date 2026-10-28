@@ -276,6 +276,41 @@ export function gap(a: Book3, b: Book3) {
   return best;
 }
 
+// B를 x축으로 s만큼 옮길 때 두 상자가 tolerance보다 깊이 겹치는 s의 열린 구간.
+// 각 분리축의 |(B.c-A.c)·n + s*n.x| < ra+rb-tolerance를 교차하면 된다.
+// 위치를 조금씩 훑는 방법과 달리 비스듬한 책의 모서리가 짧게 스치는 충돌도 놓치지 않는다.
+export function collisionRangeX(a: Book3, b: Book3, tolerance = 0): { lo: number; hi: number } | null {
+  const A = obb(a);
+  const B = obb(b);
+  const axes: Vec3[] = [...A.ax, ...B.ax];
+  for (const an of A.ax) for (const bn of B.ax) {
+    const n = cross(an, bn);
+    const length = Math.hypot(n.x, n.y, n.z);
+    if (length > 1e-6) axes.push({ x: n.x / length, y: n.y / length, z: n.z / length });
+  }
+  const d = sub3(B.c, A.c);
+  let lo = -Infinity;
+  let hi = Infinity;
+  for (const n of axes) {
+    const ra = A.h[0] * Math.abs(dot(A.ax[0], n)) + A.h[1] * Math.abs(dot(A.ax[1], n)) + A.h[2] * Math.abs(dot(A.ax[2], n));
+    const rb = B.h[0] * Math.abs(dot(B.ax[0], n)) + B.h[1] * Math.abs(dot(B.ax[1], n)) + B.h[2] * Math.abs(dot(B.ax[2], n));
+    const radius = ra + rb - tolerance;
+    const center = dot(d, n);
+    if (radius <= 0) return null;
+    if (Math.abs(n.x) < 1e-12) {
+      // 90° 회전의 cos 잔차로 맞닿은 면을 충돌 구간으로 만들지 않는다.
+      if (Math.abs(center) >= radius - 1e-9) return null;
+      continue;
+    }
+    const s0 = (-radius - center) / n.x;
+    const s1 = (radius - center) / n.x;
+    lo = Math.max(lo, Math.min(s0, s1));
+    hi = Math.min(hi, Math.max(s0, s1));
+    if (lo >= hi) return null;
+  }
+  return { lo, hi };
+}
+
 // 깊이 키(예전 그리는 순서, 지금은 순환일 때만 쓴다):  뒤(깊이 큰) → 앞, 아래 → 위, 왼쪽 → 오른쪽
 export function depthKey(b: Book3) {
   'worklet';

@@ -29,6 +29,7 @@ import type { Shared } from '@/ui/book3d/art';
 import { BookNode } from '@/ui/book3d/BookNode';
 import { LIGHT_ON, RENDER, TL, tl, TRANSIT_DEBUG } from '@/ui/perf';
 import { areaItem, bakeAtlas, bookItems, bookKeyImage, NO_ATLAS, NO_BOOK_KEY, type BakeItem } from '@/ui/SceneLight';
+import { useRetainedImageKey } from '@/ui/useRetainedImageKey';
 import type { BoxBuf } from '@/domain/light-model';
 import { SHOW } from '@/ui/shelf/shadow-debug';
 import { colors } from '@/ui/theme';
@@ -163,7 +164,7 @@ const RowLayers = memo(function RowLayers({ r, st, mo, order, px, upx, books, ca
   const wallOn = SHOW.shelf && LIGHT_ON.wall;
   const boardOn = SHOW.shelfBoard && SHOW.shelfShade && LIGHT_ON.plank;
   const booksOn = RENDER.books && LIGHT_ON.face;
-  const bakeKey = `atlas:${r.shelfId}`;
+  const bakeKey = useRetainedImageKey(`atlas:${r.shelfId}`);
   const atlas = useFadingAtlas(target, boxes, (ps: Record<string, Book3 | null>, bx: BoxBuf) => {
     'worklet';
     // 아직 자세가 없다(마운트 직후)
@@ -279,6 +280,7 @@ function nearRow(motions: SceneMotion[], g: SceneGeo, id: string) {
 // 책이 가장 가까이 있는 줄의 책으로. 넘겨받는 순간(원래 줄 안, 같은 자세)과 도착 줄에 들어가는 순간 줄 그림과 같은 그림자라,
 // 캔버스가 바뀌어도 책 면 명암이 이어진다. 결과는 맨 윗줄 좌표로 옮긴다(면 좌표 그림은 책 자세에 붙어 있어 그대로 쓴다)
 function useTransitKey(id: string, motions: SceneMotion[], geo: Readonly<SharedValue<SceneGeo>>, px0: Affine, vis: Readonly<SharedValue<boolean>>, on: boolean) {
+  const imageKey = useRetainedImageKey(`book-key:transit:${id}`);
   // 보이는 동안 매 프레임 같은 계산(이 책·가리개 자세가 바뀔 때만 다시 돈다). 반응(reaction)으로 두면 계산이 그리기보다 한 프레임 늦어
   // 이동 캔버스가 처음 보이는 프레임에 받는 그림자가 비었다(책 면이 한 프레임 밝아짐).
   // motions·geo는 이 계산이 직접 붙잡아 지켜본다(다른 함수를 거쳐서만 읽으면 처음 한 번만 계산된다).
@@ -288,7 +290,7 @@ function useTransitKey(id: string, motions: SceneMotion[], geo: Readonly<SharedV
     const n = nearRow(motions, g, id);
     return n ? shiftRecv(receivedShadow3(n.b, n.occ, px0.s), -n.row.dy) : null;
   });
-  return useDerivedValue(() => (on ? bookKeyImage(`book-key:transit:${id}`, r3.value, px0.s) : NO_BOOK_KEY));
+  return useDerivedValue(() => (on ? bookKeyImage(imageKey, r3.value, px0.s) : NO_BOOK_KEY));
 }
 
 function TransitBook({ id, book, dims, frozen, motions, geo, cam, px0, shared, glow, dbg, ribbons, transit }: { id: string; book: Book; dims: Book3['dims']; frozen: Book3; motions: SceneMotion[]; geo: Readonly<SharedValue<SceneGeo>>; cam: CamSV; px0: Affine; shared: Shared; glow: boolean; dbg: boolean; ribbons: Record<string, RibbonDesign>; transit: Record<string, true> }) {
@@ -519,6 +521,7 @@ export function HeaderWall({ rows, motions, books, m, width, height, cam }: { ro
 }
 // 맨 윗줄 벽과 같은 입력(같은 책 상자·둘레)
 function HeaderWallRow({ row, mo, books, m, width, height, cam }: { row: SceneRowProps; mo: Motion; books: Record<string, Book>; m: ShelfMetrics; width: number; height: number; cam: CamSV }) {
+  const bakeKey = useRetainedImageKey('atlas:header');
   const space = row.row.space;
   const ids = useMemo(() => row.frames.map((f) => f.bookId), [row.frames]);
   const target = useTargetPoses(mo, ids);
@@ -539,7 +542,7 @@ function HeaderWallRow({ row, mo, books, m, width, height, cam }: { row: SceneRo
   const atlas = useFadingAtlas(target, boxes, (ps: Record<string, Book3 | null>, bx: BoxBuf) => {
     'worklet';
     if (ids.length && !ids.some((id) => ps[id])) return NO_ATLAS;
-    return bakeAtlas([areaItem(WALL_KEY, area, env, bx)], 'atlas:header');
+    return bakeAtlas([areaItem(WALL_KEY, area, env, bx)], bakeKey);
   });
   return (
     <Canvas style={{ position: 'absolute', left: 0, top: 0, width, height }} pointerEvents="none">

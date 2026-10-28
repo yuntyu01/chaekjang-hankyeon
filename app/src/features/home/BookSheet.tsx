@@ -3,7 +3,7 @@
 // 선반은 그대로 보이게 바탕을 어둡게 덮지 않는다. 바깥(선반)을 누르거나 뒤로 가기로 닫는다. 배치 조작은 꾹 눌러 꾸미기에서.
 import { BookOpen, Bookmark, Play } from 'lucide-react-native';
 import { useEffect, useState } from 'react';
-import { Image, Modal, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Image, Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import Animated, { SlideInDown, SlideOutDown } from 'react-native-reanimated';
 
 import type { Book } from '@/domain/types';
@@ -48,48 +48,51 @@ export function BookSheet({ book, status, bottomInset, reduceMotion, onClose, on
         exiting={reduceMotion ? undefined : SlideOutDown.duration(160)}
         onLayout={(e) => setSheetH(e.nativeEvent.layout.height)}
         style={[styles.sheet, { paddingBottom: bottomInset + 14 }]}
-        accessibilityViewIsModal>
+        accessibilityViewIsModal
+        onAccessibilityEscape={onClose}>
         <View style={styles.handle} />
-        <View style={styles.head}>
-          <View style={styles.cover}>
-            {photo ? (
-              <Image source={{ uri: photo }} style={StyleSheet.absoluteFill} resizeMode="cover" onError={() => setPhotoOk(false)} />
-            ) : (
-              <View style={styles.coverEmpty}>
-                <Text style={styles.coverEmptyText}>{ko.info.noPhoto}</Text>
-              </View>
-            )}
-          </View>
-          <View style={styles.info}>
-            <Text style={styles.title} numberOfLines={2}>
-              {book.title}
-            </Text>
-            {book.author ? (
-              <Text style={styles.author} numberOfLines={1}>
-                {book.author}
+        <ScrollView style={styles.content} bounces={false} showsVerticalScrollIndicator={false}>
+          <View style={styles.head}>
+            <View style={styles.cover}>
+              {photo ? (
+                <Image source={{ uri: photo }} style={StyleSheet.absoluteFill} resizeMode="cover" onError={() => setPhotoOk(false)} />
+              ) : (
+                <View style={styles.coverEmpty}>
+                  <Text style={styles.coverEmptyText}>{ko.info.noPhoto}</Text>
+                </View>
+              )}
+            </View>
+            <View style={styles.info}>
+              <Text style={styles.title} numberOfLines={2} accessibilityRole="header">
+                {book.title}
               </Text>
-            ) : null}
-            {meta ? (
-              <Text style={styles.meta} numberOfLines={1}>
-                {meta}
-              </Text>
-            ) : null}
+              {book.author ? (
+                <Text style={styles.author} numberOfLines={1}>
+                  {book.author}
+                </Text>
+              ) : null}
+              {meta ? (
+                <Text style={styles.meta} numberOfLines={1}>
+                  {meta}
+                </Text>
+              ) : null}
+            </View>
           </View>
-        </View>
-        <Pressable onPress={onRead} accessibilityRole="button" style={({ pressed }) => [styles.read, pressed && { backgroundColor: colors.accentPressed }]}>
-          <Play size={17} color={colors.onAccent} fill={colors.onAccent} strokeWidth={1.5} />
-          <Text style={styles.readText}>{ko.info.read}</Text>
-        </Pressable>
-        <View style={styles.links}>
-          <Pressable onPress={onDetail} accessibilityRole="button" style={({ pressed }) => [styles.link, pressed && { opacity: 0.55 }]}>
-            <BookOpen size={icon.large} color={colors.inkSoft} strokeWidth={icon.stroke} />
-            <Text style={styles.linkText}>{ko.info.detail}</Text>
+          <Pressable onPress={onRead} accessibilityRole="button" style={({ pressed }) => [styles.read, pressed && { backgroundColor: colors.accentPressed }]}>
+            <Play size={17} color={colors.onAccent} fill={colors.onAccent} strokeWidth={1.5} />
+            <Text style={styles.readText}>{ko.info.read}</Text>
           </Pressable>
-          <Pressable onPress={onBookmark} accessibilityRole="button" style={({ pressed }) => [styles.link, pressed && { opacity: 0.55 }]}>
-            <Bookmark size={icon.large} color={colors.inkSoft} strokeWidth={icon.stroke} />
-            <Text style={styles.linkText}>{ko.info.bookmark}</Text>
-          </Pressable>
-        </View>
+          <View style={styles.links}>
+            <Pressable onPress={onDetail} accessibilityRole="button" style={({ pressed }) => [styles.link, pressed && { opacity: 0.55 }]}>
+              <BookOpen size={icon.large} color={colors.inkSoft} strokeWidth={icon.stroke} />
+              <Text style={styles.linkText}>{ko.info.detail}</Text>
+            </Pressable>
+            <Pressable onPress={onBookmark} accessibilityRole="button" style={({ pressed }) => [styles.link, pressed && { opacity: 0.55 }]}>
+              <Bookmark size={icon.large} color={colors.inkSoft} strokeWidth={icon.stroke} />
+              <Text style={styles.linkText}>{ko.info.bookmark}</Text>
+            </Pressable>
+          </View>
+        </ScrollView>
       </Animated.View>
     </Modal>
   );
@@ -101,6 +104,7 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     bottom: 0,
+    maxHeight: '90%',
     backgroundColor: colors.raised,
     borderTopLeftRadius: shape.sheet,
     borderTopRightRadius: shape.sheet,
@@ -111,6 +115,7 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: -2 },
     elevation: 12,
   },
+  content: { flexGrow: 0, flexShrink: 1 },
   handle: { alignSelf: 'center', width: 38, height: 4.5, borderRadius: 3, marginTop: 10, backgroundColor: colors.line },
   head: { flexDirection: 'row', alignItems: 'center', gap: 18, marginTop: 22 },
   cover: {
@@ -128,7 +133,8 @@ const styles = StyleSheet.create({
   meta: { ...type.caption, fontSize: 14, lineHeight: 20, color: colors.inkSoft, marginTop: 10 },
   read: {
     marginTop: 14,
-    height: 48,
+    minHeight: 48,
+    paddingVertical: 10,
     borderRadius: shape.button,
     backgroundColor: colors.accent,
     flexDirection: 'row',

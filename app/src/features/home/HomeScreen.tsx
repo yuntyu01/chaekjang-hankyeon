@@ -1769,6 +1769,7 @@ export function HomeScreen() {
       {/* 끄는 동안은 조작부를 내려 둔다(아래 줄과 끄는 책을 덮지 않게). 놓으면 그 책으로 다시 뜬다 */}
       {editing && !drag ? (
         <DecoratePanel
+          bookId={editId}
           title={editId ? books[editId]?.title ?? null : null}
           pose={editDisplayPose}
           lean={(Math.sign(editPlacement?.tilt ?? 0) as -1 | 0 | 1)}

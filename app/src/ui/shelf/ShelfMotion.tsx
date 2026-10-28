@@ -30,6 +30,7 @@ import { SHOW } from '@/ui/shelf/shadow-debug';
 import { WALL_X0, WALL_X1 } from '@/ui/shelf/ShelfPlank';
 import { RENDER, TL, tl, tlOn, tlu } from '@/ui/perf';
 import { bookKeyImage, keepLatest, NO_ATLAS, NO_IMAGE, NO_PLANE_KEY, type Atlas, type BookKey, type PlaneKey } from '@/ui/SceneLight';
+import { useRetainedImageKey } from '@/ui/useRetainedImageKey';
 
 import { scheduleOnUI } from 'react-native-worklets';
 
@@ -500,7 +501,7 @@ export function useWallKey(shelfId: string, poses: Readonly<SharedValue<Poses>>,
   const W = Math.ceil((WALL_X1 - WALL_X0) * s);
   // 판 아랫면 높이까지(판 끝 옆 벽)
   const H = Math.ceil((y1 + SHELF_THICK) * s);
-  const key = `wall-shadow:${shelfId}`;
+  const key = useRetainedImageKey(`wall-shadow:${shelfId}`);
   const on = SHOW.wall && RENDER.books;
   return useDerivedValue(() => ({
     image: on ? planeShadows(key, poses.value, ids, s, W, H, 'wall', (q) => ({ x: (q.x - WALL_X0) * s, y: (y1 - q.y) * s }), ceil) : NO_IMAGE,
@@ -513,7 +514,7 @@ export function useFloorKey(shelfId: string, poses: Readonly<SharedValue<Poses>>
   const s = px.s;
   const W = Math.ceil((SHELF_X1 - SHELF_X0) * s);
   const H = Math.ceil((SHELF_DEPTH + SHELF_FRONT) * s);
-  const key = `floor-shadow:${shelfId}`;
+  const key = useRetainedImageKey(`floor-shadow:${shelfId}`);
   const on = SHOW.shelfCast && RENDER.books;
   return useDerivedValue(() => ({
     image: on ? planeShadows(key, poses.value, ids, s, W, H, 'top', (q) => ({ x: (q.x - SHELF_X0) * s, y: (q.z + SHELF_FRONT) * s }), ceil) : NO_IMAGE,
@@ -527,7 +528,7 @@ export function useFrontKey(shelfId: string, poses: Readonly<SharedValue<Poses>>
   const s = px.s;
   const W = Math.ceil((SHELF_X1 - SHELF_X0) * s);
   const H = Math.ceil(SHELF_THICK * s);
-  const key = `front-shadow:${shelfId}`;
+  const key = useRetainedImageKey(`front-shadow:${shelfId}`);
   const on = SHOW.shelfCast && RENDER.books;
   return useDerivedValue(() => {
     const ps = poses.value;
@@ -594,6 +595,7 @@ export function occluderBodies(m: Motion, id: string, ids: string[]): { b: Book3
 // 이 책 자세와 가리개 후보(드리울 수 있는 범위의 이웃)가 하나라도 바뀔 때만 다시 계산한다(멈춘 책은 같은 객체라 비교가 싸다).
 // 파생 값으로 계산해 그리는 쪽과 같은 프레임에 나온다(반응으로 따로 두면 이동 캔버스에서 넘겨받는 프레임에 그림자가 비어 책 면이 한 프레임 밝아졌다)
 export function useBookKey(vis: Readonly<SharedValue<Book3 | null>>, recv: { ids: string[]; poses: Readonly<SharedValue<Poses>>; ceil?: number } | undefined, id: string, key: string, px: Affine): Readonly<SharedValue<BookKey>> {
+  const imageKey = useRetainedImageKey(key);
   const poses = recv?.poses;
   const ids = recv?.ids ?? [];
   const ceil = recv?.ceil ?? Infinity;
@@ -608,7 +610,7 @@ export function useBookKey(vis: Readonly<SharedValue<Book3 | null>>, recv: { ids
     memo.value = { key: [b, ...occ], r };
     return r;
   });
-  return useDerivedValue(() => bookKeyImage(key, r3.value, px.s));
+  return useDerivedValue(() => bookKeyImage(imageKey, r3.value, px.s));
 }
 
 // ---------- 측정용: 투영 계산만 따로 잰다(그리기·React 없이) ----------

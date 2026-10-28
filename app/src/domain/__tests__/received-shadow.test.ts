@@ -7,7 +7,7 @@ import { applySwapTarget, bookXs, findSwapTarget, moveBook, placementOf, setDept
 import { SAMPLE_BOOKS, SAMPLE_LAYOUT } from '../test-fixtures/interaction-books';
 import { bodiesOf } from '../shelf-scene';
 import type { ShelfLayout } from '../types';
-import { receivedShadow3, type Face3 } from '../received3';
+import { receivedShadow3, shiftRecv, type Face3 } from '../received3';
 import { physShadow } from '@/ui/lighting';
 
 const books: BookMap = Object.fromEntries(SAMPLE_BOOKS.map((b) => [b.id, b]));
@@ -184,9 +184,38 @@ describe('받는 그림자: 가리개 모델 하나(벽·선반과 같은 빛 �
     return n * h * h;
   };
 
+  it('구간 그림자는 기울기 추정을 생략해도 같은 투영과 거리 범위를 얻는다', () => {
+    const cs = corners(near1);
+    const p0 = corners(recv)[faceCorners('spine')[0]];
+    const n = faceNormal('spine');
+    const full = shadowOnPlane(cs, p0, n, L);
+    const fast = shadowOnPlane(cs, p0, n, L, Infinity, 0, false);
+    expect(fast.pts.length).toBeGreaterThan(2);
+    expect(fast.pts).toEqual(full.pts);
+    expect(fast.dist).toBe(full.dist);
+    expect(fast.tFar).toBe(full.tFar);
+    expect(fast.near).toBeNull();
+    expect(fast.far).toBeNull();
+  });
+
+  it('선반 줄 사이 좌표를 바꿔도 모든 그림자의 투명도와 흐림을 보존한다', () => {
+    const before = receivedShadow3(recv, [near1, { ...near2, alpha: 0.2 }], 3, TEST_DIR)!;
+    const shifted = shiftRecv(before, -200)!;
+    for (let i = 0; i < before.faces.length; i++) {
+      const original = before.faces[i].bands.flat();
+      const moved = shifted.faces[i].bands.flat();
+      expect(moved.length).toBe(original.length);
+      original.forEach((layer, j) => {
+        expect(moved[j].w).toBe(layer.w);
+        expect(moved[j].sigma).toBe(layer.sigma);
+        expect(moved[j].poly).toEqual(layer.poly.map((p) => ({ ...p, y: p.y - 200 })));
+      });
+    }
+  });
+
   it('가리개 수에 제한이 없다: 가까운 책 둘이 한 면에 모두 남는다', () => {
     const r = receivedShadow3(recv, [near1, near2], 3, TEST_DIR);
-    const both = r!.faces.filter((fa) => fa.bands.reduce((n, l) => n + l.polys.length, 0) >= 2);
+    const both = r!.faces.filter((fa) => fa.bands.reduce((n, band) => n + band.length, 0) >= 2);
     expect(both.length).toBeGreaterThan(0);
   });
 
@@ -201,7 +230,7 @@ describe('받는 그림자: 가리개 모델 하나(벽·선반과 같은 빛 �
       const r = receivedShadow3(recv, [o], 3, TEST_DIR);
       const spine = faceOf(r, 'spine');
       const d = -(z + 100) / -LIGHT_Z; // 가리개 뒷면 → 받는 면 평면까지 빛 길이
-      series.push({ d, areas: L.map((_, k) => (spine ? spine.bands[k].polys.reduce((acc, poly) => acc + area(spine, poly), 0) : 0)), union: spine ? unionArea(spine, spine.bands.flatMap((b) => b.polys)) : 0 });
+      series.push({ d, areas: L.map((_, k) => (spine ? spine.bands[k].reduce((acc, layer) => acc + area(spine, layer.poly), 0) : 0)), union: spine ? unionArea(spine, spine.bands.flat().map((layer) => layer.poly)) : 0 });
     }
     // 가까운 구간까지 차례로 나타나고, 구간 끝보다 멀면 없다
     expect(Math.max(...series.map((q) => q.areas[0]))).toBeGreaterThan(0);
@@ -217,10 +246,45 @@ describe('받는 그림자: 가리개 모델 하나(벽·선반과 같은 빛 �
   it('서랍으로 떨어지며 옅어지는 가리개(alpha)는 드리우는 그림자 몫도 그만큼 옅다', () => {
     const full = receivedShadow3(recv, [near1], 3, TEST_DIR);
     const half = receivedShadow3(recv, [{ ...near1, alpha: 0.4 }], 3, TEST_DIR);
-    const fw = faceOf(full, 'spine')!.bands.map((l) => l.w);
-    const hw = faceOf(half, 'spine')!.bands.map((l) => l.w);
+    const fw = faceOf(full, 'spine')!.bands.flat().map((l) => l.w);
+    const hw = faceOf(half, 'spine')!.bands.flat().map((l) => l.w);
     expect(fw.some((w) => w > 0)).toBe(true);
     fw.forEach((w, k) => expect(hw[k]).toBeCloseTo(w * 0.4, 9));
+  });
+
+  it('그림자 외곽은 순서가 있는 볼록 다각형이라 그릴 때 경로가 교차하지 않는다', () => {
+    const r = receivedShadow3(recv, [near1, near2], 3, TEST_DIR)!;
+    let checked = 0;
+    for (const face of r.faces) for (const layer of face.bands.flat()) {
+      const [o, a, , b] = face.fc;
+      const u = { x: a.x - o.x, y: a.y - o.y, z: a.z - o.z };
+      const v = { x: b.x - o.x, y: b.y - o.y, z: b.z - o.z };
+      const poly = layer.poly.map((q) => ({
+        x: (q.x - o.x) * u.x + (q.y - o.y) * u.y + (q.z - o.z) * u.z,
+        y: (q.x - o.x) * v.x + (q.y - o.y) * v.y + (q.z - o.z) * v.z,
+      }));
+      for (let i = 0; i < poly.length; i++) {
+        const a = poly[i], b = poly[(i + 1) % poly.length], c = poly[(i + 2) % poly.length];
+        expect((b.x - a.x) * (c.y - b.y) - (b.y - a.y) * (c.x - b.x)).toBeGreaterThan(0);
+      }
+      checked++;
+    }
+    expect(checked).toBeGreaterThan(0);
+  });
+
+  it('같은 구간의 다른 책 때문에 옅어지는 책의 그림자가 진해지지 않는다', () => {
+    const opaque = faceOf(receivedShadow3(recv, [near1], 3, TEST_DIR), 'spine')!;
+    const fadingBook = { ...near1, id: 'fading', t: { ...near1.t, y: 10 }, alpha: 0.2 };
+    const fading = faceOf(receivedShadow3(recv, [fadingBook], 3, TEST_DIR), 'spine')!;
+    const together = faceOf(receivedShadow3(recv, [near1, fadingBook], 3, TEST_DIR), 'spine')!;
+    let sharedBands = 0;
+    for (let k = 0; k < together.bands.length; k++) {
+      expect(together.bands[k]).toEqual([...opaque.bands[k], ...fading.bands[k]]);
+      if (opaque.bands[k].length && fading.bands[k].length) sharedBands++;
+    }
+    expect(sharedBands).toBeGreaterThan(0);
+    const hidden = receivedShadow3(recv, [{ ...near1, alpha: 0 }], 3, TEST_DIR)!;
+    expect(hidden.faces).toEqual([]);
   });
 
   it('창빛을 향한 면만 받는다(진하기는 셰이더가 그 면의 빛으로): 빛을 등진 옆면은 받지 않는다', () => {

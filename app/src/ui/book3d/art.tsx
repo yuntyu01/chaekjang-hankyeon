@@ -21,6 +21,8 @@ import { ReferenceCover } from './ReferenceCover';
 import { ReferenceBinding } from './ReferenceBinding';
 import { bookTone, referenceBinding } from '@/domain/binding-material';
 import { ORIGINAL_ART, ReferenceGlyph, ReferenceMotif, ReferencePrint, drawOriginalGlyph, hasOriginalGlyph, hasReferenceMotif, referencePrint } from './ReferencePrint';
+import { createArtCache } from './art-cache';
+import { bookArtKey } from './art-key';
 
 const REGULAR = require('@expo-google-fonts/gowun-batang/400Regular/GowunBatang_400Regular.ttf');
 
@@ -281,10 +283,7 @@ async function record(el: ReactNode, w: number, h: number) {
   return drawAsPicture(<Group>{el}</Group>, Skia.XYWHRect(-w, -h, w * 3, h * 3));
 }
 
-// 그림 기록 키에 넣는 디자인 판(조판·몸체 규칙을 바꾸면 올린다: 빠른 새로고침에서도 예전 규칙으로 기록한 그림을 다시 쓰지 않게)
-const DESIGN_REV = 'material-shader-1';
-const cache = new Map<string, Promise<BookArt>>();
-const done = new Map<string, BookArt>(); // 이미 기록된 것(다시 그릴 때 한 프레임도 비지 않게)
+const artCache = createArtCache<BookArt>(96);
 let queue: Promise<unknown> = Promise.resolve();
 // 측정: 기록 대기 중인 책 수와 누적 기록 시간
 let pendingArt = 0;
@@ -413,42 +412,43 @@ export function useBookArt(book: Book, s: number, dims: { T: number; H: number; 
   const customCoverImg = useImage(book.art.plainCover || vector || cover.sourceRect || cover.artworkId ? null : cover.image);
   const coverImg = book.art.plainCover || vector ? null : cover.sourceRect ? shared.original : cover.artworkId ? shared.artworks[cover.artworkId] ?? null : customCoverImg;
   // 서버가 만든 표지·책등 그림(주소). 못 읽으면 코드로 그리는 장정으로 돌아간다.
-  const [badCover, setBadCover] = useState(false);
-  const [badSpine, setBadSpine] = useState(false);
-  const madeCoverUri = badCover ? null : book.coverArtUri ?? null;
-  const madeSpineUri = badSpine ? null : book.spineArtUri ?? null;
-  const madeCover = useImage(madeCoverUri, () => setBadCover(true));
-  const madeSpine = useImage(madeSpineUri, () => setBadSpine(true));
+  const [badCover, setBadCover] = useState<string | null>(null);
+  const [badSpine, setBadSpine] = useState<string | null>(null);
+  const madeCoverUri = badCover === book.coverArtUri ? null : book.coverArtUri ?? null;
+  const madeSpineUri = badSpine === book.spineArtUri ? null : book.spineArtUri ?? null;
+  const madeCover = useImage(madeCoverUri, () => setBadCover(book.coverArtUri ?? null));
+  const madeSpine = useImage(madeSpineUri, () => setBadSpine(book.spineArtUri ?? null));
   const ready = shared.regular && shared.original && (!needMotif || motif) && (!needCover || coverImg) && (!madeCoverUri || madeCover) && (!madeSpineUri || madeSpine);
   // 장정(책 색·모티프)·저자가 바뀌면 다시 기록한다(같은 책 id라도)
-  const key = `${DESIGN_REV}|${book.id}|${s.toFixed(4)}|${dims.T.toFixed(3)}|${dims.H.toFixed(3)}|${dims.W.toFixed(3)}|${book.title}|${book.quotes ?? 0}|${faceOf(book)}|${book.art.motif}|${book.art.ribbonVisible ?? 'auto'}|${book.art.ribbon ?? ''}|${book.art.accentColor ?? ''}|${book.art.titleTop ?? ''}|${book.art.motifScale ?? ''}|${book.art.motifBottom ?? ''}|${book.art.plainCover ?? false}|${vector}|${inkOf(book)}|${cover.image}|${cover.titleTop}|${JSON.stringify(cover.sourceRect)}|${madeCoverUri ?? ''}|${madeSpineUri ?? ''}`;
-  const [art, setArt] = useState<{ key: string; art: BookArt } | null>(() => (done.has(key) ? { key, art: done.get(key)! } : null));
+  const key = bookArtKey(book, s, dims, cover, madeCoverUri, madeSpineUri);
+  const [art, setArt] = useState<{ key: string; art: BookArt } | null>(() => {
+    const hit = artCache.peek(key);
+    return hit ? { key, art: hit } : null;
+  });
   useEffect(() => {
     if (!ready) return;
-    let p = cache.get(key);
-    if (!p) {
+    const p = artCache.load(key, () => {
       // 한 권씩 차례로 기록한다(한꺼번에 하면 앱이 멈춘다)
       pendingArt++;
-      p = queue.then(async () => {
+      const task = queue.then(async () => {
         const t0 = Date.now();
         const a = await buildArt(book, s, dims, shared, motif, coverImg, { cover: madeCoverUri ? madeCover : null, spine: madeSpineUri ? madeSpine : null });
         artMs += Date.now() - t0;
         builtArt++;
-        pendingArt--;
         if (builtArt === 1) bootMark('art-first', `${Date.now() - t0}ms`);
-        if (pendingArt === 0) bootMark(`art-idle-${builtArt}`, `books=${builtArt} build=${artMs}ms`);
         return a;
+      }).finally(() => {
+        pendingArt--;
+        if (pendingArt === 0) bootMark(`art-idle-${builtArt}`, `books=${builtArt} build=${artMs}ms`);
       });
-      queue = p.catch(() => undefined).then(() => new Promise((r) => setTimeout(r, 0)));
-      cache.set(key, p);
-    }
+      queue = task.catch(() => undefined).then(() => new Promise((r) => setTimeout(r, 0)));
+      return task;
+    });
     let alive = true;
     p.then((a) => {
-      done.set(key, a);
       if (alive) setArt({ key, art: a });
     }).catch((e) => {
       console.warn('book art failed', book.id, String(e?.message ?? e));
-      cache.delete(key);
     });
     return () => {
       alive = false;
@@ -457,5 +457,5 @@ export function useBookArt(book: Book, s: number, dims: { T: number; H: number; 
   }, [key, ready]);
   if (art && art.key === key) return art.art;
   // 장정을 바꾸는 동안(새 그림을 기록하는 사이)에는 직전 그림을 그대로 보여 준다(빈 표지가 잠깐 보이지 않게)
-  return done.get(key) ?? art?.art ?? null;
+  return artCache.peek(key) ?? art?.art ?? null;
 }

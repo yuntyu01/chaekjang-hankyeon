@@ -23,7 +23,7 @@ import {
   singleFootprint,
   HOME_SHELF_COUNT,
 } from './geometry';
-import { corners, frontBook3, fromPlaced, gap, lowest, xRange, type Book3 } from './book3';
+import { collisionRangeX, corners, frontBook3, fromPlaced, gap, lowest, xRange, type Book3 } from './book3';
 import { boxSize, type Placed } from './box';
 import { frontFall2, frontLean, frontLeaner2, frontSupport2, pitchForWall, releasedPitch, spinStep, tiltStep, type FrontState } from './front-pose';
 import { leanContact } from './lean';
@@ -163,7 +163,7 @@ export function itemBottomCorners(item: ShelfItem, layout: ShelfLayout, books: B
 const TOUCH = 0.01; // 이만큼 파고드는 것까지는 닿은 것으로 본다
 const sepCache = new Map<string, number>();
 function boxKeyOf(list: Placed[]) {
-  return list.map((p) => [p.pose, p.size.w, p.size.h, p.size.d, round2(p.x), round2(p.y), round2(p.z), p.angle, p.spin ?? 0, p.pitch ?? 0].join(',')).join(';');
+  return list.map((p) => [p.pose, p.size.w, p.size.h, p.size.d, p.x, p.y, p.z, p.angle, p.spin ?? 0, p.pitch ?? 0].join(',')).join(';');
 }
 function minSeparation(a: Placed[], b: Placed[]): number {
   const key = `${boxKeyOf(a)}|${boxKeyOf(b)}`;
@@ -171,46 +171,11 @@ function minSeparation(a: Placed[], b: Placed[]): number {
   if (hit !== undefined) return hit;
   const A = a.map(fromPlaced);
   const B = b.map(fromPlaced);
-  const xs = (list: Book3[]) => {
-    let lo = Infinity;
-    let hi = -Infinity;
-    for (const q of list) for (const c of corners(q)) {
-      lo = Math.min(lo, c.x);
-      hi = Math.max(hi, c.x);
-    }
-    return { lo, hi };
-  };
-  const ax = xs(A);
-  const bx = xs(B);
-  const hits = (s: number) => {
-    for (const q of B) {
-      const moved = { ...q, t: { x: q.t.x + s, y: q.t.y, z: q.t.z } };
-      for (const r of A) if (gap(r, moved) < -TOUCH) return true;
-    }
-    return false;
-  };
-  // 겹칠 수 있는 s는 x 범위가 겹치는 구간 안뿐: 그 안을 훑어 가장 오른쪽 충돌을 찾고, 그 오른쪽 경계를 이분 탐색
-  const sMin = ax.lo - bx.hi;
-  const sMax = ax.hi - bx.lo;
-  let found = NaN;
-  const N = 32;
-  for (let k = N; k >= 0; k--) {
-    const v = sMin + ((sMax - sMin) * k) / N;
-    if (hits(v)) {
-      found = v;
-      break;
-    }
-  }
   let out = -Infinity;
-  if (!Number.isNaN(found)) {
-    let lo = found;
-    let hi = sMax;
-    for (let i = 0; i < 22; i++) {
-      const mid = (lo + hi) / 2;
-      if (hits(mid)) lo = mid;
-      else hi = mid;
-    }
-    out = hi;
+  // 모든 상자 쌍의 충돌 구간 오른쪽 끝을 넘으면 더미 전체가 겹치지 않는다.
+  for (const left of A) for (const right of B) {
+    const range = collisionRangeX(left, right, TOUCH);
+    if (range) out = Math.max(out, range.hi);
   }
   if (sepCache.size > 5000) sepCache.clear();
   sepCache.set(key, out);

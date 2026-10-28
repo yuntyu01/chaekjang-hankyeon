@@ -22,6 +22,8 @@ import type { MaterialName } from '@/ui/lighting';
 import { faceVisible } from '@/ui/book3d/face-geometry';
 
 import { PERF_ENABLED } from './perf';
+import { keepLatest } from './retained-images';
+export { keepLatest } from './retained-images';
 import { bakeSource, bookSource, gridSource, litSource, planeFrame, tabSource, type Plane } from './scene-light-sksl';
 
 export type { Plane } from './scene-light-sksl';
@@ -106,18 +108,6 @@ const ATLAS_W = 512;
 const BAKE_SURFACE = Platform.OS === 'ios' ? { colorSpace: 'display-p3' as const } : undefined;
 // 측정 번들: 굽기마다 칸 수·걸린 시간(GPU가 끝날 때까지 1화소 읽어 기다린다)
 const BAKE_STAT = PERF_ENABLED;
-
-// UI 스레드에서 만든 그림은 자바스크립트 GC가 돌 때까지 GPU 메모리를 잡고 있다(GC는 그 크기를 모른다).
-// 같은 자리(key)의 새 그림이 나오면 두 세대 전 그림을 놓아준다(그 사이 캔버스가 새 그림으로 다시 그렸다)
-export function keepLatest<T extends SkImage | null>(key: string, img: T): T {
-  'worklet';
-  const g = globalThis as unknown as { __kept?: Record<string, SkImage[]> };
-  const kept = g.__kept ?? (g.__kept = {});
-  const list = kept[key] ?? (kept[key] = []);
-  if (img && list[list.length - 1] !== img) list.push(img);
-  while (list.length > 3) list.shift()!.dispose();
-  return img;
-}
 
 // 셰이더 자식 자리를 채우는 그림(구운 값이 없을 때. 그때 셰이더는 그림을 읽지 않는다)
 const EMPTY = Skia.Image.MakeImage(
@@ -347,11 +337,11 @@ export function bookKeyImage(key: string, r: Recv3, s: number): BookKey {
     };
     canvas.save();
     canvas.clipRect(Skia.XYWHRect(c.x - 1, 0, c.w, c.h), 1, true);
-    for (const layer of fc.bands) {
-      if (!layer.polys.length || layer.w <= 0) continue;
+    for (const band of fc.bands) for (const layer of band) {
+      if (layer.poly.length < 3 || layer.w <= 0) continue;
       const pb = Skia.PathBuilder.Make();
-      for (const poly of layer.polys) {
-        if (poly.length < 3) continue;
+      {
+        const poly = layer.poly;
         const p0 = toPx(poly[0]);
         pb.moveTo(p0.x, p0.y);
         for (let k = 1; k < poly.length; k++) {

@@ -8,6 +8,7 @@ import { corners, faceCorners, faceNormal, FACE_IDS, rot, type Book3, type FaceI
 import { penumbraSigma, seenSize, shadowOnPlane, thinOccluder, travelOf } from './cast-shadow';
 import { SHELF_DEPTH, SHELF_FRONT } from './geometry';
 import { light, physShadow } from '@/ui/lighting';
+import { hull } from './shadow-shape';
 
 const LIGHT0 = travelOf(light.dir);
 // 이 책에 그림자를 드리울 수 있는 이웃의 가로 범위: 한 줄 안에서 가장 긴 빛 길이(판 앞 끝 → 벽)만큼 빛이 옆으로 비켜 가는 거리.
@@ -18,10 +19,11 @@ export const REACH_R = LIGHT0.x < 0 ? DRIFT : 0;
 // 그림자를 받는 보이는 면은 많아야 둘(빛 쪽과 카메라 쪽을 함께 향하는 앞·윗면)
 export const RECV_SLOTS = 2;
 
-// polys: 구간에 드는 그림자 다각형, sigma: 흐림 시그마(캔버스 px), w: 광원 원반 중 가려지는 몫(얇은 가리개)
-export type Layer3 = { polys: Vec3[][]; sigma: number; w: number };
+// 한 가리개의 그림자: 순서가 있는 볼록 다각형, 흐림 시그마(px), 광원 원반 중 가려지는 몫.
+// 같은 거리 구간이어도 가리개별 흐림·투명도를 유지한다.
+export type Layer3 = { poly: Vec3[]; sigma: number; w: number };
 // bands: 빛 길이 구간마다(physShadow.bands와 같은 수)
-export type Face3 = { f: FaceId; fc: Vec3[]; bands: Layer3[] };
+export type Face3 = { f: FaceId; fc: Vec3[]; bands: Layer3[][] };
 export type Recv3 = { b: Book3; faces: Face3[] } | null;
 
 // 받는 그림자 전체를 세로로 dy만큼 옮긴 것(다른 줄 좌표로 그릴 때: 줄 사이는 세로 거리만 다르다)
@@ -29,8 +31,8 @@ export function shiftRecv(r: Recv3, dy: number): Recv3 {
   'worklet';
   if (!r || !dy) return r;
   const sh = (q: Vec3) => ({ x: q.x, y: q.y + dy, z: q.z });
-  const layer = (l: Layer3) => ({ ...l, polys: l.polys.map((poly) => poly.map(sh)) });
-  return { b: { ...r.b, t: sh(r.b.t) }, faces: r.faces.map((f) => ({ ...f, fc: f.fc.map(sh), bands: f.bands.map(layer) })) };
+  const layer = (l: Layer3) => ({ ...l, poly: l.poly.map(sh) });
+  return { b: { ...r.b, t: sh(r.b.t) }, faces: r.faces.map((f) => ({ ...f, fc: f.fc.map(sh), bands: f.bands.map((band) => band.map(layer)) })) };
 }
 
 // 받는 그림자 3D 단계(카메라와 무관). 책이 움직일 때만 다시 계산한다(시점을 끄는 동안에는 다시 그릴 것이 없다).
@@ -44,7 +46,7 @@ export function receivedShadow3(b: Book3 | null, occBodies: Book3[], s: number, 
     LIGHT = { x: -dir.x / l, y: -dir.y / l, z: -dir.z / l };
   }
   const LN = { x: -LIGHT.x, y: -LIGHT.y, z: -LIGHT.z };
-  const occs = occBodies.map((ob) => {
+  const occs = occBodies.filter((ob) => (ob.alpha ?? 1) > 0).map((ob) => {
     const cs = corners(ob);
     return { cs, dims: ob.dims, seen: seenSize(cs), alpha: ob.alpha ?? 1 };
   });
@@ -82,24 +84,27 @@ export function receivedShadow3(b: Book3 | null, occBodies: Book3[], s: number, 
       }
       return u1 > 0 && u0 < 1 && v1 > 0 && v0 < 1;
     };
-    const bands: Layer3[] = B.map(() => ({ polys: [], sigma: 0, w: 0 }));
+    const bands: Layer3[][] = B.map(() => []);
     let any = false;
     for (const occ of occs) {
-      const all = shadowOnPlane(occ.cs, fc[0], n, LIGHT);
+      const all = shadowOnPlane(occ.cs, fc[0], n, LIGHT, Infinity, 0, false);
       if (all.pts.length < 3 || !touches(all.pts)) continue;
       for (let k = 0; k < B.length; k++) {
         const lo = k === 0 ? 0 : B[k - 1];
         const hi = B[k];
         if (all.dist >= hi || all.tFar <= lo) continue;
-        const part = shadowOnPlane(occ.cs, fc[0], n, LIGHT, hi, lo);
+        const part = shadowOnPlane(occ.cs, fc[0], n, LIGHT, hi, lo, false);
         if (part.pts.length < 3) continue;
-        // 구간 가운데 거리의 반그림자(벽·선반 윗면 그림자와 같은 식, cast-shadow bookCast). 한 구간에 가리개가 여럿이면 넓은 쪽·진한 쪽
+        // 투영한 상자 꼭짓점은 경계 순서가 아니다. 면 좌표에서 볼록 외곽을 만들어야
+        // 그리는 경로가 교차하지 않고, 내부 꼭짓점도 저장하지 않는다.
+        const poly = hull(part.pts.map((point) => {
+          const dx = point.x - fc[0].x, dy = point.y - fc[0].y, dz = point.z - fc[0].z;
+          return { x: (dx * e1.x + dy * e1.y + dz * e1.z) / l1, y: (dx * e2.x + dy * e2.y + dz * e2.z) / l2, point };
+        })).map((q) => q.point);
+        if (poly.length < 3) continue;
         const pen = physShadow.spread * ((part.dist + part.tFar) / 2);
-        const L = bands[k];
-        L.polys.push(part.pts);
-        L.sigma = Math.max(L.sigma, penumbraSigma(pen) * s);
-        // 서랍으로 떨어지며 옅어지는 책(alpha)은 드리우는 그림자도 함께 옅다
-        L.w = Math.max(L.w, thinOccluder(occ.seen, physShadow.spread * Math.max(lo, part.dist)) * occ.alpha);
+        bands[k].push({ poly, sigma: penumbraSigma(pen) * s,
+          w: thinOccluder(occ.seen, physShadow.spread * Math.max(lo, part.dist)) * occ.alpha });
         any = true;
       }
     }

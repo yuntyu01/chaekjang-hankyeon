@@ -54,6 +54,7 @@ export function shadowOnPlane(
   LIGHT: Vec3,
   tMax = Infinity,
   tMin = 0,
+  gradient = true,
 ): {
   pts: Vec3[];
   dist: number;
@@ -86,7 +87,7 @@ export function shadowOnPlane(
     if (t < dist) dist = t;
     if (t > tFar) tFar = t;
     out.push(q);
-    ts.push(t);
+    if (gradient) ts.push(t);
   };
   for (let i = 0; i < 8; i++) if (h[i] > lo && h[i] <= hi) put(occ[i], h[i]);
   for (const [i, j] of BOX_EDGES) {
@@ -105,6 +106,8 @@ export function shadowOnPlane(
   }
   if (out.length < 3)
     return { pts: [], dist: 0, near: null, far: null, tFar: 0 };
+  // 구간별 그림자 렌더링은 거리만 쓰므로 기울기 추정·공분산 계산을 생략한다.
+  if (!gradient) return { pts: out, dist, near: null, far: null, tFar };
   // 가까운·먼 가장자리의 가운데(빛 길이 차이가 작은 점들 평균)
   const tol = Math.max(0.3, (tFar - dist) * 0.02);
   const mid = (pick: (t: number) => boolean) => {
