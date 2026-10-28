@@ -5,6 +5,7 @@
 ## 실행
 
 Go 1.27 이상과 PostgreSQL이 필요하다. `DATABASE_URL`과 기타 환경변수는 `.env.example`을 참고한다.
+KoDeploy에서 제공하는 `postgresql+psycopg2://` 접두사는 서버 시작 시 `postgresql://`로 변환한다. 접속 정보와 SSL 설정은 그대로 유지한다.
 
 ```sh
 cd server

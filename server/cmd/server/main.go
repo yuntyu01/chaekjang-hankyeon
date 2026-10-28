@@ -2,14 +2,23 @@ package main
 
 import (
 	"context"
-	"github.com/jackc/pgx/v5/pgxpool"
-	"github.com/yuntyu01/chaekjang-hankyeon/server/internal/server"
 	"log"
 	"net/http"
 	"os"
 	"strings"
 	"time"
+
+	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/yuntyu01/chaekjang-hankyeon/server/internal/server"
 )
+
+func normalizeDatabaseURL(url string) string {
+	url = strings.TrimPrefix(url, "jdbc:")
+	if strings.HasPrefix(url, "postgresql+psycopg2://") {
+		return "postgresql://" + strings.TrimPrefix(url, "postgresql+psycopg2://")
+	}
+	return url
+}
 
 func main() {
 	ctx := context.Background()
@@ -17,10 +26,11 @@ func main() {
 	if url == "" {
 		log.Fatal("DATABASE_URL is required")
 	}
-	url = strings.TrimPrefix(url, "jdbc:")
+	url = normalizeDatabaseURL(url)
 	db, err := pgxpool.New(ctx, url)
 	if err != nil {
-		log.Fatal(err)
+		// pgx parse errors may contain the original URL, including its password.
+		log.Fatal("DATABASE_URL is invalid; check its format")
 	}
 	defer db.Close()
 	if err = db.Ping(ctx); err != nil {
