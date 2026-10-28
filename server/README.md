@@ -1,17 +1,17 @@
-# Go 서버 (마이그레이션 검증용)
+# Go 서버
 
-기존 Spring 서버의 HTTP API와 PostgreSQL 스키마를 유지하는 Go 구현이다. 기존 `server/`는 비교와 롤백을 위해 남겨 둔다. 기존 운영 서버를 자동으로 교체하거나 배포하지 않는다.
+기존 Spring 서버의 HTTP API와 PostgreSQL 스키마를 유지하는 Go 서버다. KoDeploy의 기존 빌드 경로 `server/`와 Dockerfile을 사용하며, 기본 포트는 8080이고 `PORT` 환경변수로 변경할 수 있다. 이전 Spring 서버는 비교와 롤백용으로 `server-java/`에 보관한다. KoDeploy는 수동 재배포해야 한다.
 
 ## 실행
 
-Go 1.27 이상과 PostgreSQL이 필요하다. `DATABASE_URL`과 기타 환경변수는 `../server/.env.example`을 참고한다.
+Go 1.27 이상과 PostgreSQL이 필요하다. `DATABASE_URL`과 기타 환경변수는 `.env.example`을 참고한다.
 
 ```sh
-cd server-go
+cd server
 DATABASE_URL='postgres://user:pass@localhost:5432/chaekjang?sslmode=disable' go run ./cmd/server
 ```
 
-Docker 이미지: `docker build -t chaekjang-go server-go`. 운영에서는 사진을 영구 보존할 수 있도록 S3 호환 저장소의 `S3_BUCKET`, `S3_ENDPOINT`, `S3_REGION`, `S3_ACCESS_KEY`, `S3_SECRET_KEY`를 설정한다. 로컬 파일 저장은 `FILE_DIR`을 사용한다.
+Docker 이미지: `docker build -t chaekjang-go server`. 운영에서는 사진을 영구 보존할 수 있도록 S3 호환 저장소의 `S3_BUCKET`, `S3_ENDPOINT`, `S3_REGION`, `S3_ACCESS_KEY`, `S3_SECRET_KEY`를 설정한다. 로컬 파일 저장은 `FILE_DIR`을 사용한다. 헬스 체크는 `GET /healthz`다.
 
 ## 데이터베이스
 

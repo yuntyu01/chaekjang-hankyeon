@@ -3,7 +3,7 @@ package main
 import (
 	"context"
 	"github.com/jackc/pgx/v5/pgxpool"
-	"github.com/yuntyu01/chaekjang-hankyeon/server-go/internal/server"
+	"github.com/yuntyu01/chaekjang-hankyeon/server/internal/server"
 	"log"
 	"net/http"
 	"os"

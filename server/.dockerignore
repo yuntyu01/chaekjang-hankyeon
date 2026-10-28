@@ -1,4 +1,5 @@
-build/
-.gradle/
+.git
+data
 .env
 .env.*
+!.env.example

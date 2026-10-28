@@ -19,7 +19,7 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
-	"github.com/yuntyu01/chaekjang-hankyeon/server-go/internal/llm"
+	"github.com/yuntyu01/chaekjang-hankyeon/server/internal/llm"
 )
 
 type Server struct {

@@ -8,7 +8,7 @@
 
 ## 실행
 
-Go 서버 마이그레이션은 [`server-go/README.md`](server-go/README.md)를 참고한다. 기존 Spring 서버는 아래 명령으로 실행한다.
+배포 대상은 [`server/README.md`](server/README.md)의 Go 서버다. 기존 Spring 서버는 `server-java/`에 보관한다. KoDeploy에는 수동 재배포가 필요하다.
 앱 저장소 테스트는 내장 SQLite를 쓰므로 Node.js 22.13 이상이 필요하다.
 
 ```bash
@@ -16,9 +16,9 @@ cd app && npm install
 npx expo start --port 8095     # Expo Go(SDK 57)
 npm test && npm run typecheck
 
-cd server && ./gradlew test       # Java 17+, Spring Boot (내장 Postgres로 통합 시험)
-cd server && ./gradlew devServer  # 내장 Postgres와 함께 개발용 서버(포트 8080). 앱: EXPO_PUBLIC_API_URL=http://127.0.0.1:8080 (에뮬레이터는 adb reverse tcp:8080 tcp:8080)
-PORT=8080 ./gradlew bootRun   # DATABASE_URL(Postgres)이 필요하다. 카카오 키가 없으면 가짜 도서로 뜬다(server/.env.example 참고)
+cd server
+go test ./...                     # PostgreSQL 통합 시험은 별도 테스트 DB가 필요하다
+DATABASE_URL='postgres://user:pass@localhost:5432/chaekjang?sslmode=disable' go run ./cmd/server # 기본 포트 8080
 ```
 
 자산 스크립트: `python3 app/scripts/measure-shelf.py`(선반 측정·배경 이음새 검사), `python3 app/scripts/extract-reference-assets.py`(시안에서 임시 예시 자산 추출).
@@ -32,11 +32,11 @@ PORT=8080 ./gradlew bootRun   # DATABASE_URL(Postgres)이 필요하다. 카카�
 | `app/src/db/local-db.ts` | 기기 SQLite 서재, 책장 배치와 동기화 대기 목록 |
 | `app/src/ui/` | 종이 배경, 책 렌더러, 선반 줄(선반 PNG)·그림자·드래그 오버레이 |
 | `app/src/features/home/` | 홈, 상세·배치 메뉴, 책 서랍 |
-| `server/src/main/java/.../books` | ISBN 공유 캐시(TTL 갱신, ISBN당 외부 조회·색 추출 1회), 카카오 검색 프록시 |
-| `server/src/main/java/.../llm` | Gemini·GPT 키 여러 개 순서대로, 한도·토큰·서버 오류 시 다음 키 |
-| `server/src/main/resources/db/migration` | Flyway 마이그레이션(`V1__init.sql`) |
+| `server/internal/server/` | 계정, 동기화, 파일, 도서 API와 DB 마이그레이션 |
+| `server/internal/llm/` | Gemini·GPT 키 관리 게이트웨이 |
+| `server-java/` | 이전 Spring 서버 (비교·롤백용) |
 
-## 상태 (2026-09-27)
+## 과거 상태 기록 (2026-09-27)
 
 **동작 구현(Android 에뮬레이터 Expo Go에서 확인):** 선반 PNG·종이 배경 적용, 세운·기울인·누운(쌓기)·표지 책, 갈피(문장 있는 책), 길게 눌러 같은 칸 자리 바꾸기·다른 선반 끼우기·자동 스크롤, 정보 상자(자세·기울기·자리·서랍), 책 서랍, 되돌리기, 헤더 독서 연도, 앱 재시작 후 복원. 홈은 3개 선반으로 고정하며 초과 선반의 도서는 서랍으로 보존한다.
 
@@ -49,7 +49,7 @@ PORT=8080 ./gradlew bootRun   # DATABASE_URL(Postgres)이 필요하다. 카카�
 **확인하지 않은 것:** iOS, 실제 기기, TalkBack/VoiceOver, 동작 줄이기 설정, 200권 성능(가상화 없음), 저장 실패 경로.
 
 
-## 백엔드·동기화 (2026-10-05)
+## 과거 백엔드·동기화 기록 (2026-10-05)
 
 - **구조:** 앱은 로컬 우선(오프라인 동작)이고, `EXPO_PUBLIC_API_URL`이 있는 빌드에서만 서버와 동기화한다(`app/src/services/sync.ts`, 순수 규칙은 `domain/sync.ts`).
 - **스키마(Flyway V2):** 판본(`editions`+`edition_authors`)·내 책·장정·회차·세션·갈피·파일을 앱 모델 그대로 정규화. 사용자 표는 `(user_id, id)` 복합 키 + 같은 사용자 안 복합 외래키. 공유 카탈로그 `books`는 저자를 `book_authors`로 분리.

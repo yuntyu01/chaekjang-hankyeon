@@ -1,4 +1,4 @@
-module github.com/yuntyu01/chaekjang-hankyeon/server-go
+module github.com/yuntyu01/chaekjang-hankyeon/server
 
 go 1.27.3
 

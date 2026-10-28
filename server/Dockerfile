@@ -1,12 +1,12 @@
-FROM eclipse-temurin:17-jdk AS build
+FROM golang:1.27.3 AS build
 WORKDIR /src
-COPY gradle gradle
-COPY gradlew build.gradle settings.gradle ./
-COPY src src
-RUN ./gradlew --no-daemon -x test bootJar && cp build/libs/server-*.jar /app.jar
+COPY go.mod go.sum ./
+RUN --mount=type=secret,id=proxy_ca \
+    if [ -f /run/secrets/proxy_ca ]; then cp /run/secrets/proxy_ca /usr/local/share/ca-certificates/build-proxy.crt && update-ca-certificates; fi && go mod download
+COPY . .
+RUN CGO_ENABLED=0 go build -trimpath -o /out/server ./cmd/server
 
-FROM eclipse-temurin:17-jre
-COPY --from=build /app.jar /app.jar
-USER 1000
+FROM gcr.io/distroless/static-debian12:nonroot
+COPY --from=build /out/server /server
 EXPOSE 8080
-ENTRYPOINT ["java", "-jar", "/app.jar"]
+ENTRYPOINT ["/server"]
