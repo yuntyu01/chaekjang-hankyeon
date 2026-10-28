@@ -1,11 +1,11 @@
 // 백업 및 복원(설정 → 내 기록): 저장 위치 안내, 백업 파일 저장·공유·복원, 서버 동기화 상태·카카오 연결.
 // 2026-10-26 디자인 통일 때 설정 화면에서 그대로 옮겼다(기능·문구·확인창은 같다).
 import { useState, useSyncExternalStore } from 'react';
-import { Alert, Text, View } from 'react-native';
+import { Alert, Image, Pressable, Text, View } from 'react-native';
 
 import { exportShare, exportToFolder, readBackupFile, restoreBackup } from '@/store/backup';
 import { PERF_ENABLED } from '@/ui/perf';
-import { accountInfo, linkKakao, syncNow, syncStatus } from '@/services/sync';
+import { accountInfo, deleteCloudAccount, linkGoogle, linkKakao, loginProviders, resumeCloudSync, syncNow, syncStatus } from '@/services/sync';
 import { Btn, Chip, H2, ListGroup, ListItem, Muted, Row, Screen } from '@/ui/kit';
 import { space, type } from '@/ui/screenTheme';
 
@@ -15,7 +15,7 @@ export default function BackupScreen() {
   return (
     <Screen title="백업 및 복원">
       <Text style={[type.body, { marginTop: space.item }]}>
-        {syncStatus.available ? '기록은 이 기기에 저장되고, 이 기기 전용 계정(또는 연결한 카카오 계정)으로 서버에 동기화돼요.' : '모든 기록은 이 기기에만 저장돼요. 계정·클라우드 동기화는 아직 없어요.'}
+        {syncStatus.available ? '기록은 이 기기에 저장되고, 기기 전용 계정이나 연결한 계정으로 서버에 동기화돼요.' : '모든 기록은 이 기기에만 저장돼요. 계정·클라우드 동기화는 아직 없어요.'}
       </Text>
 
       <H2>백업 파일</H2>
@@ -114,22 +114,37 @@ function localTime(iso: string) {
 function SyncSection() {
   const st = useSyncExternalStore(syncStatus.subscribe, syncStatus.get);
   const acct = accountInfo.get();
+  const providers = loginProviders.get();
   const [loggingIn, setLoggingIn] = useState(false);
-  const label = !syncStatus.available ? '이 기기에만 저장돼요' : st.state === 'syncing' ? '동기화하는 중…' : st.state === 'error' ? '동기화하지 못했어요' : st.lastAt ? `마지막 동기화 ${localTime(st.lastAt)}` : '아직 동기화 전이에요';
-  const login = async () => {
+  const label = !syncStatus.available ? '이 기기에만 저장돼요' : st.paused ? '서버 동기화를 중지했어요' : st.state === 'syncing' ? '동기화하는 중…' : st.state === 'error' ? '동기화하지 못했어요' : st.lastAt ? `마지막 동기화 ${localTime(st.lastAt)}` : '아직 동기화 전이에요';
+  const login = async (provider: 'google' | 'kakao') => {
     setLoggingIn(true);
-    const r = await linkKakao();
-    setLoggingIn(false);
-    if (r.ok) Alert.alert('카카오 계정을 연결했어요', r.switched ? '이미 연결된 계정의 기록과 이 기기의 기록을 합쳤어요.' : '이 기기의 기록이 카카오 계정에 이어졌어요.');
-    else if (!r.cancelled) Alert.alert('로그인하지 못했어요', r.message);
+    try {
+      const r = await (provider === 'google' ? linkGoogle() : linkKakao());
+      if (r.ok) Alert.alert('계정을 연결했어요', r.switched ? '연결된 계정으로 바꿨어요. 기기의 기록은 동기화가 끝나면 합쳐져요.' : '이 기기의 기록을 계정에 연결했어요.');
+      else if (!r.cancelled) Alert.alert('로그인하지 못했어요', r.message);
+    } finally { setLoggingIn(false); }
   };
+  const removeAccount = () => Alert.alert('서버 계정을 삭제할까요?', '연결된 로그인과 서버의 독서 기록·사진 삭제를 요청해요. 이 기기의 책과 사진은 남고 동기화는 중지돼요. 다른 기기의 오래된 앱이 기록을 다시 올리지 않도록 먼저 최신 버전으로 업데이트해 주세요.', [
+    { text: '취소', style: 'cancel' },
+    { text: '서버 계정 삭제', style: 'destructive', onPress: () => {
+      setLoggingIn(true);
+      void deleteCloudAccount().then(() => Alert.alert('삭제 요청을 접수했어요', '서버 접근을 차단하고 기록과 사진 삭제를 처리해요. 이 기기의 기록은 남아요.'))
+        .catch((e: unknown) => Alert.alert('삭제 완료를 확인하지 못했어요', `${String((e as Error)?.message ?? e)}\n동기화 상태를 확인하고 삭제를 다시 요청해 주세요.`))
+        .finally(() => setLoggingIn(false));
+    } },
+  ]);
+  const resume = () => Alert.alert('새 계정으로 동기화할까요?', '새 서버 계정을 만들고 이 기기에 남은 기록과 사진을 다시 올려요.', [
+    { text: '취소', style: 'cancel' },
+    { text: '동기화 시작', onPress: () => { setLoggingIn(true); void resumeCloudSync().catch((e: unknown) => Alert.alert('다시 시작하지 못했어요', String((e as Error)?.message ?? e))).finally(() => setLoggingIn(false)); } },
+  ]);
   return (
     <>
       <H2>동기화</H2>
       <ListGroup>
         <ListItem
           label={label}
-          sub={syncStatus.available ? `${st.pending ? `올리지 못한 변경 ${st.pending}개` : '모든 변경이 서버에 있어요'}${st.error ? `\n${st.error}` : ''}` : '서버 주소가 없는 빌드예요. 기록은 이 기기에만 있고, 백업 파일로 옮길 수 있어요.'}
+          sub={syncStatus.available ? `${st.pending ? `올리지 못한 변경 ${st.pending}개` : st.lastAt && !st.paused && st.state !== 'error' ? '대기 중인 변경이 없어요' : '기기에 기록을 보관하고 있어요'}${st.error ? `\n${st.error}` : ''}` : '서버 주소가 없는 빌드예요. 기록은 이 기기에만 있고, 백업 파일로 옮길 수 있어요.'}
         />
         {syncStatus.available ? (
           <ListItem
@@ -137,11 +152,16 @@ function SyncSection() {
             sub={acct.kakao ? '다른 기기에서 같은 카카오 계정으로 로그인하면 이 기록을 이어 볼 수 있어요.' : '연결하면 기기를 바꾸거나 앱을 지웠다 깔아도 기록을 이어 볼 수 있어요. 연결하지 않아도 앱은 그대로 써요.'}
           />
         ) : null}
+        {syncStatus.available && acct.google ? <ListItem label="Google 계정 연결됨" sub="같은 Google 계정으로 다른 기기에서 기록을 이어 볼 수 있어요." /> : null}
+        {syncStatus.available && !acct.google && !providers.google ? <ListItem label="Google 로그인 준비 중" sub="서버 연결과 Google 로그인 설정이 완료되면 이용할 수 있어요." /> : null}
       </ListGroup>
       {syncStatus.available ? (
         <View style={{ gap: 10, marginTop: space.item }}>
-          <Btn label="지금 동기화" kind="secondary" disabled={st.state === 'syncing'} onPress={() => void syncNow()} />
-          {acct.kakao ? null : <Btn label={loggingIn ? '카카오 로그인 중…' : '카카오로 계속하기'} kind="secondary" disabled={loggingIn} onPress={() => void login()} />}
+          {!st.paused ? <Btn label="지금 동기화" kind="secondary" disabled={st.state === 'syncing' || loggingIn} onPress={() => void syncNow()} /> : null}
+          {!st.paused && !acct.kakao && providers.kakao ? <Btn label="카카오로 계속하기" kind="secondary" disabled={loggingIn} onPress={() => void login('kakao')} /> : null}
+          {!st.paused && !acct.google && providers.google ? <Pressable accessibilityRole="button" accessibilityLabel="Google로 계속하기" disabled={loggingIn} onPress={() => void login('google')}><Image source={require('../../assets/google-signin-light.png')} resizeMode="contain" style={{ width: 240, height: 44, alignSelf: 'center' }} /></Pressable> : null}
+          {st.paused && !st.deletionPending ? <Btn label="새 계정으로 동기화" kind="secondary" disabled={loggingIn} onPress={resume} /> : null}
+          {(st.deletionPending || (providers.accountDeletion && !st.paused)) ? <Btn label={st.deletionPending ? '계정 삭제 다시 요청' : '서버 계정 삭제'} kind="ghost" disabled={loggingIn} onPress={removeAccount} /> : null}
         </View>
       ) : null}
     </>

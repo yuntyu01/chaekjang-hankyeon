@@ -15,6 +15,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/coreos/go-oidc/v3/oidc"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -22,12 +23,19 @@ import (
 )
 
 type Server struct {
-	DB          *pgxpool.Pool
-	HTTP        *http.Client
-	LLM         *llm.Gateway
-	ConfigError error
-	searchMu    sync.Mutex
-	searchCache map[string]searchEntry
+	DB                *pgxpool.Pool
+	HTTP              *http.Client
+	LLM               *llm.Gateway
+	ConfigError       error
+	searchMu          sync.Mutex
+	searchCache       map[string]searchEntry
+	googleOnce        sync.Once
+	googleVerifier    *oidc.IDTokenVerifier
+	deletionMu        sync.RWMutex
+	deletionRequestMu sync.Mutex
+	deletionWorkMu    sync.Mutex
+	deletions         map[string]deletionEntry
+	deletionWake      chan struct{}
 }
 type apiError struct {
 	status        int
@@ -98,8 +106,19 @@ func (s *Server) auth(ctx context.Context, header string) (int64, error) {
 		return 0, unauthorized
 	}
 	var user int64
-	err := s.DB.QueryRow(ctx, "UPDATE api_tokens SET last_used_at=now() WHERE token_hash=$1 RETURNING user_id", hash(token)).Scan(&user)
+	var created time.Time
+	err := s.DB.QueryRow(ctx, "SELECT u.id,u.created_at FROM api_tokens t JOIN users u ON u.id=t.user_id WHERE t.token_hash=$1", hash(token)).Scan(&user, &created)
 	if errors.Is(err, pgx.ErrNoRows) {
+		return 0, unauthorized
+	}
+	if err != nil {
+		return 0, err
+	}
+	if s.deletionBlocked(user, created) {
+		return 0, unauthorized
+	}
+	tag, err := s.DB.Exec(ctx, "UPDATE api_tokens SET last_used_at=now() WHERE token_hash=$1", hash(token))
+	if err == nil && tag.RowsAffected() == 0 {
 		return 0, unauthorized
 	}
 	return user, err
@@ -142,20 +161,27 @@ func (s *Server) me(w http.ResponseWriter, r *http.Request) error {
 	if err != nil {
 		return err
 	}
-	var kakao bool
+	var kakao, google bool
 	var nick string
-	err = s.DB.QueryRow(r.Context(), "SELECT EXISTS (SELECT 1 FROM auth_identities WHERE provider='kakao' AND user_id=$1), COALESCE(nickname,'') FROM users WHERE id=$1", user).Scan(&kakao, &nick)
+	err = s.DB.QueryRow(r.Context(), "SELECT EXISTS (SELECT 1 FROM auth_identities WHERE provider='kakao' AND user_id=$1), EXISTS (SELECT 1 FROM auth_identities WHERE provider='google' AND user_id=$1), COALESCE(nickname,'') FROM users WHERE id=$1", user).Scan(&kakao, &google, &nick)
 	if err != nil {
 		return err
 	}
-	writeJSON(w, 200, map[string]any{"userId": user, "kakao": kakao, "nickname": nick})
+	writeJSON(w, 200, map[string]any{"userId": user, "kakao": kakao, "google": google, "nickname": nick})
 	return nil
 }
 func (s *Server) Handler() http.Handler {
 	m := http.NewServeMux()
 	m.HandleFunc("GET /healthz", wrap(s.health))
 	m.HandleFunc("POST /auth/device", wrap(s.device))
+	m.HandleFunc("GET /auth/providers", wrap(s.providers))
+	m.HandleFunc("POST /auth/google/start", wrap(s.googleStart))
+	m.HandleFunc("GET /auth/google/callback", wrap(s.googleCallback))
+	m.HandleFunc("POST /auth/google/claim", wrap(s.googleClaim))
 	m.HandleFunc("GET /me", wrap(s.me))
+	m.HandleFunc("DELETE /me", wrap(s.deleteAccount))
+	m.HandleFunc("GET /auth/kakao/unlink", wrap(s.kakaoUnlink))
+	m.HandleFunc("POST /auth/kakao/unlink", wrap(s.kakaoUnlink))
 	m.HandleFunc("POST /sync/push", wrap(s.push))
 	m.HandleFunc("GET /sync/pull", wrap(s.pull))
 	m.HandleFunc("PUT /files/{id}", wrap(s.putFile))
@@ -177,5 +203,5 @@ func (s *Server) health(w http.ResponseWriter, r *http.Request) error {
 }
 func New(db *pgxpool.Pool) *Server {
 	gateway, err := llm.New(os.Getenv("LLM_KEYS"), os.Getenv("GEMINI_MODEL"), os.Getenv("OPENAI_MODEL"), nil)
-	return &Server{DB: db, HTTP: &http.Client{Timeout: 8 * time.Second}, LLM: gateway, ConfigError: err, searchCache: make(map[string]searchEntry)}
+	return &Server{DB: db, HTTP: &http.Client{Timeout: 8 * time.Second}, LLM: gateway, ConfigError: err, searchCache: make(map[string]searchEntry), deletions: make(map[string]deletionEntry), deletionWake: make(chan struct{}, 1)}
 }

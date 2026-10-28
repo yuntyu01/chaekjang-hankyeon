@@ -2,6 +2,7 @@ package server
 
 import (
 	"bytes"
+	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"github.com/aws/aws-sdk-go-v2/aws"
@@ -19,12 +20,12 @@ import (
 
 var fileID = regexp.MustCompile(`^[A-Za-z0-9_.-]{1,80}$`)
 
-func (s *Server) objectClient(r *http.Request) (*s3.Client, error) {
+func (s *Server) objectClient(ctx context.Context) (*s3.Client, error) {
 	region := os.Getenv("S3_REGION")
 	if region == "" {
 		region = "auto"
 	}
-	cfg, err := config.LoadDefaultConfig(r.Context(), config.WithRegion(region), config.WithCredentialsProvider(credentials.NewStaticCredentialsProvider(os.Getenv("S3_ACCESS_KEY"), os.Getenv("S3_SECRET_KEY"), "")))
+	cfg, err := config.LoadDefaultConfig(ctx, config.WithRegion(region), config.WithCredentialsProvider(credentials.NewStaticCredentialsProvider(os.Getenv("S3_ACCESS_KEY"), os.Getenv("S3_SECRET_KEY"), "")))
 	if err != nil {
 		return nil, err
 	}
@@ -62,12 +63,22 @@ func (s *Server) putFile(w http.ResponseWriter, r *http.Request) error {
 	if len(data) > 10*1024*1024 {
 		return apiError{413, "too_large", "파일이 너무 커요(최대 10MB)"}
 	}
+	// 파일 기록과 계정 삭제가 같은 사용자 행을 잠근다. 삭제가 업로드 중인 사진을 놓치지 않는다.
+	tx, err := s.DB.Begin(r.Context())
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback(r.Context())
+	var locked int64
+	if err = tx.QueryRow(r.Context(), "SELECT id FROM users WHERE id=$1 FOR KEY SHARE", user).Scan(&locked); err != nil {
+		return unauthorized
+	}
 	key := fmtKey(user, id)
 	sum := sha256.Sum256(data)
 	sha := hex.EncodeToString(sum[:])
 	bucket := os.Getenv("S3_BUCKET")
 	if bucket != "" {
-		client, e := s.objectClient(r)
+		client, e := s.objectClient(r.Context())
 		if e != nil {
 			return e
 		}
@@ -95,8 +106,11 @@ func (s *Server) putFile(w http.ResponseWriter, r *http.Request) error {
 	if err != nil {
 		return err
 	}
-	_, err = s.DB.Exec(r.Context(), `INSERT INTO files(user_id,id,content_type,size_bytes,sha256,storage_key) VALUES($1,$2,$3,$4,$5,$6) ON CONFLICT(user_id,id) DO UPDATE SET content_type=EXCLUDED.content_type,size_bytes=EXCLUDED.size_bytes,sha256=EXCLUDED.sha256,storage_key=EXCLUDED.storage_key`, user, id, typ, len(data), sha, key)
+	_, err = tx.Exec(r.Context(), `INSERT INTO files(user_id,id,content_type,size_bytes,sha256,storage_key) VALUES($1,$2,$3,$4,$5,$6) ON CONFLICT(user_id,id) DO UPDATE SET content_type=EXCLUDED.content_type,size_bytes=EXCLUDED.size_bytes,sha256=EXCLUDED.sha256,storage_key=EXCLUDED.storage_key`, user, id, typ, len(data), sha, key)
 	if err != nil {
+		return err
+	}
+	if err = tx.Commit(r.Context()); err != nil {
 		return err
 	}
 	w.WriteHeader(204)
@@ -114,7 +128,7 @@ func (s *Server) getFile(w http.ResponseWriter, r *http.Request) error {
 	}
 	var body io.ReadCloser
 	if bucket := os.Getenv("S3_BUCKET"); bucket != "" {
-		client, e := s.objectClient(r)
+		client, e := s.objectClient(r.Context())
 		if e != nil {
 			return e
 		}

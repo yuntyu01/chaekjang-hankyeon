@@ -243,3 +243,44 @@ it('동기화 중 계정을 바꿀 때 이전 계정의 커서 기록을 기다�
     jest.clearAllTimers(); jest.useRealTimers();
   }
 });
+
+it('계정 삭제는 진행 중 동기화가 끝난 뒤 요청하고 이후 재업로드를 중지한다', async () => {
+  jest.resetModules();
+  mockDb = createSQLiteTestDatabase();
+  jest.useFakeTimers();
+  mockApi.mockReset();
+  for (const key of Object.keys(mockStorage)) delete mockStorage[key];
+  process.env.EXPO_PUBLIC_API_URL = 'https://example.test';
+  mockStorage['sync-token:v1'] = 'old-token';
+  mockStorage['sync-epoch:v1'] = '2';
+  let release!: () => void;
+  let entered!: () => void;
+  const gate = new Promise<void>(resolve => { release = resolve; });
+  const started = new Promise<void>(resolve => { entered = resolve; });
+  mockApi.mockImplementation(async (method: string, path: string) => {
+    if (path === '/sync/pull?since=0&limit=1') return { syncEpoch: 2 };
+    if (path.startsWith('/sync/pull')) { entered(); await gate; return { rev: 10, more: false, layout: null }; }
+    if (method === 'DELETE' && path === '/me') return undefined;
+    if (method === 'GET' && path === '/me') return { kakao: false, nickname: '' };
+    throw new Error(path);
+  });
+  try {
+    const sync = require('../sync') as typeof import('../sync');
+    const ongoing = sync.syncNow();
+    await started;
+    const deleting = sync.deleteCloudAccount();
+    while (mockStorage['sync-paused:v1'] !== 'delete-pending') await Promise.resolve();
+    expect(mockApi.mock.calls.some(args => args[0] === 'DELETE')).toBe(false);
+    release();
+    await ongoing;
+    await deleting;
+    expect(mockStorage['sync-paused:v1']).toBe('1');
+    expect(mockStorage['sync-token:v1']).toBeUndefined();
+    mockApi.mockClear();
+    await sync.syncNow();
+    expect(mockApi).not.toHaveBeenCalled();
+  } finally {
+    delete process.env.EXPO_PUBLIC_API_URL;
+    jest.clearAllTimers(); jest.useRealTimers();
+  }
+});

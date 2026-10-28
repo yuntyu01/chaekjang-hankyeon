@@ -37,6 +37,11 @@ func main() {
 	if app.ConfigError != nil {
 		log.Fatal(app.ConfigError)
 	}
+	// 복원된 DB에 과거 삭제 요청을 다시 적용한 뒤에만 요청을 받는다.
+	if err = app.InitializeDeletion(ctx); err != nil {
+		log.Fatal("account deletion journal initialization failed")
+	}
+	app.StartDeletionWorker(ctx)
 	srv := &http.Server{Addr: ":" + port, Handler: app.Handler(), ReadHeaderTimeout: 10 * time.Second}
 	log.Printf("listening on :%s", port)
 	log.Fatal(srv.ListenAndServe())

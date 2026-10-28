@@ -31,7 +31,7 @@ export function createApiClient(base: string | undefined) {
         }
         throw new ApiError(res.status, code, message);
       }
-      return (res.status === 204 ? undefined : await res.json()) as T;
+      return (res.status === 204 || res.status === 202 ? undefined : await res.json()) as T;
     } catch (error) {
       if (controller.signal.aborted) throw new Error('서버 응답 시간이 초과됐어요. 다시 시도해 주세요.');
       throw error;

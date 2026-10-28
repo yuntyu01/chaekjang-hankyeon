@@ -39,18 +39,22 @@ public class KakaoLoginService {
     private final KakaoOAuth oauth;
     private final String restKey;
     private final String redirectUri;
+    private final KakaoConnectionManager connections;
 
-    public KakaoLoginService(DataSource ds, AccountService accounts, KakaoOAuth oauth, KakaoConfig.Settings cfg) {
+    public KakaoLoginService(DataSource ds, AccountService accounts, KakaoOAuth oauth, KakaoConfig.Settings cfg,KakaoConnectionManager connections) {
         this.jdbc = new JdbcTemplate(ds);
         this.accounts = accounts;
         this.oauth = oauth;
         this.restKey = cfg.restKey();
         this.redirectUri = cfg.publicBaseUrl() + "/auth/kakao/callback";
+        this.connections=connections;
     }
 
     /** 인가 주소를 만든다. returnUrl은 로그인이 끝난 뒤 브라우저가 돌아갈 앱 주소(허용된 스킴만). */
+    public boolean enabled() { return !restKey.isEmpty()&&connections.ready(); }
+
     public String start(long userId, String returnUrl) {
-        if (restKey.isEmpty()) throw NOT_CONFIGURED;
+        if (!enabled()) throw NOT_CONFIGURED;
         if (!validReturn(returnUrl)) throw ApiException.BAD_REQUEST;
         jdbc.update("DELETE FROM kakao_logins WHERE created_at < now() - interval '15 minutes'");
         String state = random();
@@ -63,7 +67,7 @@ public class KakaoLoginService {
     public String callback(String code, String state, String error) {
         if (state == null || state.isEmpty() || state.length() > 200) throw EXPIRED;
         String stateHash = AccountService.sha256(state);
-        List<Object[]> rows = jdbc.query("SELECT user_id, return_url FROM kakao_logins WHERE state_hash = ? AND ticket_hash IS NULL AND created_at > now() - interval '10 minutes'",
+        List<Object[]> rows = jdbc.query("UPDATE kakao_logins SET exchange_started=true WHERE state_hash = ? AND exchange_started=false AND ticket_hash IS NULL AND created_at > now() - interval '10 minutes' RETURNING user_id, return_url",
                 (rs, i) -> new Object[] {rs.getLong(1), rs.getString(2)}, stateHash);
         if (rows.isEmpty()) throw EXPIRED;
         long userId = (Long) rows.get(0)[0];
@@ -77,11 +81,12 @@ public class KakaoLoginService {
         try {
             who = oauth.exchange(code, redirectUri);
         } catch (IOException e) {
-            log.warn("kakao login exchange failed: {}", e.getMessage());
+            log.warn("kakao_login_exchange_failed");
             jdbc.update("DELETE FROM kakao_logins WHERE state_hash = ?", stateHash);
             return withParam(returnUrl, "error", "failed");
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
+            jdbc.update("DELETE FROM kakao_logins WHERE state_hash = ?", stateHash);
             return withParam(returnUrl, "error", "failed");
         }
 
@@ -101,20 +106,18 @@ public class KakaoLoginService {
                 Long.class, AccountService.sha256(ticket), userId);
         if (r.isEmpty()) throw EXPIRED;
         long result = r.get(0);
+        accounts.recordSwitch(userId,result);
         String token = accounts.issueToken(result);
         List<String> nick = jdbc.queryForList("SELECT nickname FROM users WHERE id = ? AND nickname IS NOT NULL", String.class, result);
         return Map.of("userId", result, "token", token, "switched", result != userId, "nickname", nick.isEmpty() ? "" : nick.get(0));
     }
 
     private static boolean validReturn(String url) {
-        if (url == null || url.length() > 300) return false;
-        try {
-            URI u = URI.create(url);
-            return u.getScheme() != null && RETURN_SCHEMES.contains(u.getScheme().toLowerCase()) && u.getFragment() == null;
-        } catch (IllegalArgumentException e) {
-            return false;
-        }
+        return "chaekjang://auth/kakao".equals(url);
     }
+
+    @org.springframework.scheduling.annotation.Scheduled(fixedDelay=3600000)
+    public void cleanup() { jdbc.update("DELETE FROM kakao_logins WHERE created_at<now()-interval '10 minutes'"); }
 
     private static String withParam(String url, String key, String value) {
         return url + (url.contains("?") ? "&" : "?") + key + "=" + enc(value);

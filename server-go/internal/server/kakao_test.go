@@ -35,6 +35,8 @@ func TestKakaoLogin(t *testing.T) {
 		t.Fatal(e)
 	}
 	t.Setenv("KAKAO_REST_KEY", "test")
+	t.Setenv("KAKAO_ADMIN_KEY", "admin-test")
+	t.Setenv("KAKAO_APP_ID", "1234")
 	t.Setenv("PUBLIC_BASE_URL", "https://api.example.test")
 	subject := fmt.Sprintf("%d", time.Now().UnixNano())
 	s := New(db)
@@ -73,7 +75,7 @@ func TestKakaoLogin(t *testing.T) {
 	}
 	first, second := account(), account()
 	login := func(token string) string {
-		w := req("POST", "/auth/kakao/start", token, map[string]string{"returnUrl": "chaekjang://auth/kakao"})
+		w := req("POST", "/auth/kakao/start", token, map[string]string{"returnUrl": "chaekjang://auth/kakao", "accountLifecycle": "1"})
 		if w.Code != 200 {
 			t.Fatalf("start %d %s", w.Code, w.Body)
 		}
@@ -112,7 +114,7 @@ func TestKakaoLogin(t *testing.T) {
 	if w.Code != 200 || parse(w)["switched"] != true {
 		t.Fatalf("switched claim %d %s", w.Code, w.Body)
 	}
-	if w = req("POST", "/auth/kakao/start", first, map[string]string{"returnUrl": "https://attacker.example"}); w.Code != 400 {
+	if w = req("POST", "/auth/kakao/start", first, map[string]string{"returnUrl": "https://attacker.example", "accountLifecycle": "1"}); w.Code != 400 {
 		t.Fatalf("invalid return %d", w.Code)
 	}
 }

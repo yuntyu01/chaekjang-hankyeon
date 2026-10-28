@@ -17,18 +17,16 @@ func callbackURL() string {
 	return strings.TrimRight(os.Getenv("PUBLIC_BASE_URL"), "/") + "/auth/kakao/callback"
 }
 func validReturn(raw string) bool {
-	if len(raw) > 300 {
-		return false
+	return raw == "chaekjang://auth/kakao"
+}
+func kakaoLoginKey() string {
+	if key := os.Getenv("KAKAO_LOGIN_REST_KEY"); key != "" {
+		return key
 	}
-	u, e := url.Parse(raw)
-	if e != nil || u.Fragment != "" {
-		return false
-	}
-	switch strings.ToLower(u.Scheme) {
-	case "chaekjang", "exp", "exps":
-		return true
-	}
-	return false
+	return os.Getenv("KAKAO_REST_KEY")
+}
+func kakaoEnabled() bool {
+	return kakaoLoginKey() != "" && os.Getenv("KAKAO_ADMIN_KEY") != "" && os.Getenv("KAKAO_APP_ID") != "" && os.Getenv("PUBLIC_BASE_URL") != ""
 }
 func redirectParam(raw, key, val string) string {
 	sep := "?"
@@ -42,15 +40,19 @@ func (s *Server) kakaoStart(w http.ResponseWriter, r *http.Request) error {
 	if e != nil {
 		return e
 	}
-	key := os.Getenv("KAKAO_REST_KEY")
-	if key == "" {
+	key := kakaoLoginKey()
+	if !kakaoEnabled() {
 		return apiError{503, "not_configured", "카카오 로그인이 아직 준비되지 않았어요"}
 	}
 	var body struct {
 		ReturnURL string `json:"returnUrl"`
+		Lifecycle string `json:"accountLifecycle"`
 	}
 	if e = decode(r, &body); e != nil {
 		return e
+	}
+	if body.Lifecycle != "1" {
+		return lifecycleError()
 	}
 	if !validReturn(body.ReturnURL) {
 		return bad
@@ -71,7 +73,7 @@ func (s *Server) kakaoStart(w http.ResponseWriter, r *http.Request) error {
 	return nil
 }
 func (s *Server) exchange(code string) (string, string, error) {
-	form := url.Values{"grant_type": {"authorization_code"}, "client_id": {os.Getenv("KAKAO_REST_KEY")}, "redirect_uri": {callbackURL()}, "code": {code}}
+	form := url.Values{"grant_type": {"authorization_code"}, "client_id": {kakaoLoginKey()}, "redirect_uri": {callbackURL()}, "code": {code}}
 	if v := os.Getenv("KAKAO_CLIENT_SECRET"); v != "" {
 		form.Set("client_secret", v)
 	}
@@ -130,13 +132,15 @@ func (s *Server) kakaoCallback(w http.ResponseWriter, r *http.Request) error {
 	ctx := r.Context()
 	var user int64
 	var ret string
-	e := s.DB.QueryRow(ctx, "SELECT user_id,return_url FROM kakao_logins WHERE state_hash=$1 AND ticket_hash IS NULL AND created_at>now()-interval '10 minutes'", hash(state)).Scan(&user, &ret)
+	e := s.DB.QueryRow(ctx, "UPDATE kakao_logins SET exchange_started=true WHERE state_hash=$1 AND exchange_started=false AND ticket_hash IS NULL AND created_at>now()-interval '10 minutes' RETURNING user_id,return_url", hash(state)).Scan(&user, &ret)
 	if errors.Is(e, pgx.ErrNoRows) {
 		return expired
 	}
 	if e != nil {
 		return e
 	}
+	w.Header().Set("Cache-Control", "no-store")
+	w.Header().Set("Referrer-Policy", "no-referrer")
 	code := r.URL.Query().Get("code")
 	if r.URL.Query().Get("error") != "" || code == "" {
 		_, e = s.DB.Exec(ctx, "DELETE FROM kakao_logins WHERE state_hash=$1", hash(state))
@@ -215,6 +219,9 @@ func (s *Server) kakaoClaim(w http.ResponseWriter, r *http.Request) error {
 		return expired
 	}
 	if e != nil {
+		return e
+	}
+	if e = recordSwitch(ctx, tx, user, result); e != nil {
 		return e
 	}
 	token, e := issueToken(ctx, tx, result)

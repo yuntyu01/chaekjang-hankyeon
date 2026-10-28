@@ -21,9 +21,11 @@ describe('api client', () => {
   it('handles an empty response and a non-JSON error', async () => {
     const fetchMock = jest.spyOn(globalThis, 'fetch');
     fetchMock.mockResolvedValueOnce({ ok: true, status: 204 } as Response);
+    fetchMock.mockResolvedValueOnce({ ok: true, status: 202 } as Response);
     fetchMock.mockResolvedValueOnce({ ok: false, status: 503, json: async () => { throw new Error('not JSON'); } } as unknown as Response);
     const api = createApiClient('https://example.test');
     await expect(api('PUT', '/file', null)).resolves.toBeUndefined();
+    await expect(api('DELETE', '/me', 'token')).resolves.toBeUndefined();
     await expect(api('GET', '/file', null)).rejects.toMatchObject({ status: 503, code: 'http', message: '서버 응답 503' });
   });
 

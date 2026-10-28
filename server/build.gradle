@@ -28,6 +28,8 @@ dependencies {
 	implementation 'org.springframework.boot:spring-boot-starter-data-jpa'
 	// 연결 풀은 DATABASE_URL(postgres://...)을 풀어 직접 구성한다(DatabaseConfig).
 	implementation 'com.zaxxer:HikariCP'
+	// Only the JWT verifier, not a web security starter: existing device-token APIs keep their authentication flow.
+	implementation 'org.springframework.security:spring-security-oauth2-jose'
 	implementation 'org.flywaydb:flyway-core'
 	implementation 'org.flywaydb:flyway-database-postgresql'
 	runtimeOnly 'org.postgresql:postgresql'

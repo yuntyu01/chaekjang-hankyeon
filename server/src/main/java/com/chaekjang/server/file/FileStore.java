@@ -6,6 +6,9 @@ import java.net.URI;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
+import java.util.ArrayList;
+import java.util.List;
+import java.time.Duration;
 
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
@@ -73,6 +76,38 @@ public class FileStore {
             }
         }
         return Files.newInputStream(resolve(key));
+    }
+
+    public void delete(String key) throws IOException {
+        if (s3 != null) {
+            try { s3.deleteObject(b -> b.bucket(bucket).key(key).overrideConfiguration(c -> c.apiCallTimeout(Duration.ofSeconds(5)))); }
+            catch (SdkException e) { throw new IOException("object_delete_failed"); }
+        } else { Files.deleteIfExists(resolve(key)); }
+    }
+
+    public void putJournal(String key,byte[] bytes)throws IOException {
+        if(!key.startsWith("_account-deletions/"))throw new IllegalArgumentException("invalid_journal_key");
+        if(s3==null){put(key,bytes);return;}
+        try {s3.putObject(b->b.bucket(bucket).key(key).overrideConfiguration(c->c.apiCallTimeout(Duration.ofMillis(1800))
+                .apiCallAttemptTimeout(Duration.ofMillis(1500))),RequestBody.fromBytes(bytes));}
+        catch(SdkException e){throw new IOException("erasure_journal_write_failed");}
+    }
+
+    public List<String> list(String prefix) throws IOException {
+        List<String> result = new ArrayList<>();
+        if (s3 != null) {
+            try {
+                for (var page : s3.listObjectsV2Paginator(b -> b.bucket(bucket).prefix(prefix))) {
+                    for (var object : page.contents()) result.add(object.key());
+                }
+            } catch (SdkException e) { throw new IOException("object_list_failed"); }
+        } else {
+            Path dir = resolve(prefix);
+            if (Files.exists(dir)) try (var paths = Files.walk(dir)) {
+                paths.filter(Files::isRegularFile).forEach(p -> result.add(root.relativize(p).toString().replace('\\','/')));
+            }
+        }
+        return result;
     }
 
     private Path resolve(String key) {

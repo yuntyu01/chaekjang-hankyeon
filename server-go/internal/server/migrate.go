@@ -27,11 +27,18 @@ func Migrate(ctx context.Context, db *pgxpool.Pool) error {
 	}
 	if flyway {
 		var n int
-		if err = tx.QueryRow(ctx, "SELECT count(DISTINCT version) FROM flyway_schema_history WHERE success AND version IN ('1','2','3','4','5')").Scan(&n); err != nil {
+		if err = tx.QueryRow(ctx, "SELECT count(DISTINCT version) FROM flyway_schema_history WHERE success AND version IN ('1','2','3','4','5','6','7')").Scan(&n); err != nil {
 			return err
 		}
-		if n != 5 {
+		if n != 7 {
 			return fmt.Errorf("Flyway schema is incomplete; apply Java migrations before starting Go server")
+		}
+		var unsafe bool
+		if err = tx.QueryRow(ctx, "SELECT EXISTS(SELECT 1 FROM flyway_schema_history WHERE NOT success OR (version ~ '^[0-9]+$' AND version::numeric > 7))").Scan(&unsafe); err != nil {
+			return err
+		}
+		if unsafe {
+			return fmt.Errorf("Flyway history contains failed or newer migrations; review before starting Go server")
 		}
 		return tx.Commit(ctx)
 	}
@@ -44,6 +51,13 @@ func Migrate(ctx context.Context, db *pgxpool.Pool) error {
 	entries, err := migrations.ReadDir("migrations")
 	if err != nil {
 		return err
+	}
+	var newer bool
+	if err = tx.QueryRow(ctx, "SELECT EXISTS(SELECT 1 FROM go_schema_history WHERE version>$1)", len(entries)).Scan(&newer); err != nil {
+		return err
+	}
+	if newer {
+		return fmt.Errorf("Go schema has newer migrations; review before starting this server")
 	}
 	for i, entry := range entries {
 		version := i + 1
