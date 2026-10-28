@@ -1,4 +1,4 @@
-// Package llm implements the server-side provider fallback used by the Java server.
+// Package llm implements server-side provider fallback.
 package llm
 
 import (

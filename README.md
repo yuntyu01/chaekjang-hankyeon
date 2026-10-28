@@ -8,7 +8,7 @@
 
 ## 실행
 
-배포 대상은 [`server/README.md`](server/README.md)의 Go 서버다. 기존 Spring 서버는 `server-java/`에 보관한다. KoDeploy에는 수동 재배포가 필요하다.
+배포 대상은 [`server/README.md`](server/README.md)의 Go 서버다. KoDeploy에는 수동 재배포가 필요하다.
 앱 저장소 테스트는 내장 SQLite를 쓰므로 Node.js 22.13 이상이 필요하다.
 
 ```bash
@@ -34,7 +34,6 @@ DATABASE_URL='postgres://user:pass@localhost:5432/chaekjang?sslmode=disable' go 
 | `app/src/features/home/` | 홈, 상세·배치 메뉴, 책 서랍 |
 | `server/internal/server/` | 계정, 동기화, 파일, 도서 API와 DB 마이그레이션 |
 | `server/internal/llm/` | Gemini·GPT 키 관리 게이트웨이 |
-| `server-java/` | 이전 Spring 서버 (비교·롤백용) |
 
 ## 과거 상태 기록 (2026-09-27)
 
@@ -42,7 +41,7 @@ DATABASE_URL='postgres://user:pass@localhost:5432/chaekjang?sslmode=disable' go 
 
 **시각 품질:** 예시 18권은 목표 이미지의 개별 책 윤곽을 SVG로 표시하고 실제 윤곽에 맞춰 밀착 배치한다. 3개 선반을 균등 간격으로 중앙 정렬하고, 책·선반의 접촉/확산 그림자를 Skia로 표시한다. 하단은 라벨 없이 채워진 아이콘만 두고 투명하게 겹쳐 그림자가 이어지게 한다. 실제 생성 이미지와 사진 등록 흐름은 아직 연결되지 않았다. 변경 근거·검증·제약은 `docs/HOME_VISUAL_REVIEW.md` 참고.
 
-**서버·외부 연동:** 카카오·Gemini·GPT는 코드와 가짜 서버 테스트만 있고 **실제 키로 호출하지 않았다**(키 없음). 알라딘 Open API는 2026-10-30 종료 공지(신규 키 발급 9/4 종료)라 쓰지 않는다 → 고해상도 표지·쪽수 대체 출처 결정 필요. 저장소는 JPA(Flyway로 스키마 생성, 시작 때 검증)이고, 시험은 내장 Postgres로 `./gradlew test`에서 돈다. 배포용 실제 DB에서는 실행해 보지 못했다. KoDeploy 배포 전(Dockerfile만).
+**당시 서버·외부 연동:** 카카오·Gemini·GPT는 코드와 가짜 서버 테스트만 있었고 실제 키로 호출하지 않았다. 알라딘 Open API 종료에 따라 고해상도 표지·쪽수 대체 출처 결정이 필요했다. 현재 서버 구성과 검증 방법은 `server/README.md`를 참고한다.
 
 **미구현:** 등록·재장정 흐름(사진 → 식별 확인 → 재장정 → 배치, SPEC Phase 1·3), 로그인·동기화.
 

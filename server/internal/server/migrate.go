@@ -7,7 +7,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
-// The SQL is copied from the Java server. Existing Flyway-managed databases are never replayed.
+// Existing Flyway-managed migrations are never replayed.
 //
 //go:embed migrations/*.sql
 var migrations embed.FS
@@ -31,7 +31,7 @@ func Migrate(ctx context.Context, db *pgxpool.Pool) error {
 			return err
 		}
 		if n != 7 {
-			return fmt.Errorf("Flyway schema is incomplete; apply Java migrations before starting Go server")
+			return fmt.Errorf("Flyway schema is incomplete; apply migrations with Flyway before starting the server")
 		}
 		var unsafe bool
 		if err = tx.QueryRow(ctx, "SELECT EXISTS(SELECT 1 FROM flyway_schema_history WHERE NOT success OR (version ~ '^[0-9]+$' AND version::numeric > 7))").Scan(&unsafe); err != nil {

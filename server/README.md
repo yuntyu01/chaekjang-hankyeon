@@ -1,6 +1,6 @@
 # Go 서버
 
-기존 Spring 서버의 HTTP API와 PostgreSQL 스키마를 유지하는 Go 서버다. KoDeploy의 기존 빌드 경로 `server/`와 Dockerfile을 사용하며, 기본 포트는 8080이고 `PORT` 환경변수로 변경할 수 있다. 이전 Spring 서버는 비교와 롤백용으로 `server-java/`에 보관한다. KoDeploy는 수동 재배포해야 한다.
+기존 HTTP API와 PostgreSQL 스키마를 유지하는 Go 서버다. KoDeploy의 기존 빌드 경로 `server/`와 Dockerfile을 사용하며, 기본 포트는 8080이고 `PORT` 환경변수로 변경할 수 있다. KoDeploy는 수동 재배포해야 한다.
 
 ## 실행
 
@@ -15,8 +15,8 @@ Docker 이미지: `docker build -t chaekjang-go server`. 운영에서는 사진�
 
 ## 데이터베이스
 
-- 기존 Flyway 데이터베이스는 V1~V7의 성공 이력이 있어야 실행되며, Go 서버는 해당 마이그레이션을 다시 실행하지 않는다. 운영 DB가 V5라면 Java Flyway로 V6·V7을 먼저 적용해야 한다.
-- 새 데이터베이스에는 V1~V7 SQL을 트랜잭션으로 적용하고 `go_schema_history`에 기록한다. 기존 Flyway의 이력 테이블을 위조하지 않는다. Go가 처음 만든 데이터베이스는 그대로 Java 서버로 전환할 수 없다. 전환이 필요한 경우 별도 Flyway 이력 이관과 검증이 필요하다.
+- 기존 Flyway 데이터베이스는 V1~V7의 성공 이력이 있어야 실행되며, Go 서버는 해당 마이그레이션을 다시 실행하지 않는다. V5인 DB는 `internal/server/migrations`의 V6·V7을 Flyway 도구로 먼저 적용해야 한다.
+- 새 데이터베이스에는 V1~V7 SQL을 트랜잭션으로 적용하고 `go_schema_history`에 기록한다. 기존 Flyway의 이력 테이블을 위조하지 않는다.
 - 알 수 없는 이력을 가진 기존 스키마에는 적용하지 않는다. 실제 데이터 전환 전에 백업과 별도 환경에서의 검증이 필요하다.
 
 ## 검증과 남은 작업
