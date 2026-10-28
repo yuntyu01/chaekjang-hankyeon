@@ -62,6 +62,15 @@ describe('받은 변경 병합', () => {
     local.bookmarks.bm1 = { ...local.bookmarks.bm1, updatedAt: T3 };
     expect(mergeRemote(local, emptyPull({ bookmarks: [{ id: 'bm1', deleted: true, updatedAt: T2 }] }), DIR).lib.bookmarks.bm1).toBeDefined();
   });
+  it('아직 올리지 않은 삭제보다 오래된 서버 값은 되살리지 않는다', () => {
+    const pending = { [dirtyKey('bookmarks', 'bm1')]: { deleted: true, at: T3 } };
+    const remote = emptyPull({ bookmarks: [remoteBookmark(T2)] });
+    const merged = mergeRemote(emptyLibrary(), remote, DIR, pending);
+    expect(merged.lib.bookmarks.bm1).toBeUndefined();
+    expect(merged.writes).toHaveLength(0);
+    const newer = mergeRemote(emptyLibrary(), emptyPull({ bookmarks: [remoteBookmark(T3)] }), DIR, { [dirtyKey('bookmarks', 'bm1')]: { deleted: true, at: T2 } });
+    expect(newer.lib.bookmarks.bm1.text).toBe('서버');
+  });
   it('다른 기기에서 만든 사진 갈피·표지: 받아 와야 할 파일과 로컬 주소', () => {
     const m = mergeRemote(emptyLibrary(), emptyPull({
       editions: [{ id: 'e9', title: '새 책', authors: ['저자'], widthMm: 120, heightMm: 190, coverFileId: 'cover_z.jpg', coverSource: 'photo', source: 'photo', updatedAt: T2, createdAt: T2, deleted: false }],

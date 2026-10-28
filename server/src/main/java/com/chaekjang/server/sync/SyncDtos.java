@@ -55,7 +55,7 @@ public final class SyncDtos {
     }
 
     /** 받기: rev 이후 바뀐 것. more=true면 같은 방식으로 한 번 더 받는다(rev를 다음 since로). */
-    public record Pull(long rev, boolean more, List<Edition> editions, List<MyBook> books, List<Binding> bindings, List<Round> rounds,
+    public record Pull(long rev, boolean more, int syncEpoch, List<Edition> editions, List<MyBook> books, List<Binding> bindings, List<Round> rounds,
             List<Session> sessions, List<Bookmark> bookmarks, Layout layout) {
     }
 }

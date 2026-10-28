@@ -20,6 +20,7 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.core.RowMapper;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.annotation.Isolation;
 
 import com.chaekjang.server.common.ApiException;
 import com.chaekjang.server.sync.SyncDtos.Art;
@@ -55,6 +56,8 @@ public class SyncService {
 
     @Transactional
     public PushResult push(long user, Push p) {
+        // Go 서버도 같은 사용자 행을 잠근다. rev 발급 순서와 커밋 순서가 어긋나지 않게 한다.
+        jdbc.queryForObject("SELECT id FROM users WHERE id = ? FOR UPDATE", Long.class, user);
         List<String> skipped = new ArrayList<>();
         int applied = 0;
         try {
@@ -226,7 +229,7 @@ public class SyncService {
         }
     }
 
-    @Transactional(readOnly = true)
+    @Transactional(readOnly = true, isolation = Isolation.REPEATABLE_READ)
     public Pull pull(long user, long since, int limit) {
         Fetched<Edition> editions = fetch("editions", user, since, limit, (rs, i) -> {
             boolean del = rs.getObject("deleted_at") != null;
@@ -286,7 +289,7 @@ public class SyncService {
             Long lr = jdbc.queryForObject("SELECT rev FROM shelf_layouts WHERE user_id = ?", Long.class, user);
             if (lr != null) max[0] = Math.max(max[0], lr);
         }
-        return new Pull(max[0], more, withAuthors(user, ed), bk, bd, rd, ss, bm, layout);
+        return new Pull(max[0], more, 2, withAuthors(user, ed), bk, bd, rd, ss, bm, layout);
     }
 
     private static <T> List<T> take(Fetched<T> f, long cut, long[] max) {

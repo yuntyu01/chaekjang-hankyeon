@@ -84,7 +84,7 @@ import { colors as ui, fonts as uiFonts, icon, shape, space, type } from '@/ui/s
 
 import { BookSheet } from './BookSheet';
 import { STATUS_LABEL } from '@/features/book/labels';
-import { useLibrary } from '@/store/library-store';
+import { libraryStore, useLibrary } from '@/store/library-store';
 import { miniTimerStore } from '@/store/mini-timer-store';
 import { tabBarStyle } from '@/ui/tabBar';
 
@@ -114,7 +114,7 @@ type Drag = {
   hold: Hold; // 보이는 미리보기의 넘어짐과 그것을 받아들인 손가락 위치(넘어짐이 손가락 따라 깜빡이지 않게, preview-hold)
 };
 
-type Toast = { text: string; action?: 'undo' | 'retry' } | null;
+type Toast = { text: string; action?: 'undo' | 'retry' | 'retry-library' | 'retry-load' } | null;
 
 // 꾸미기 시점 끌기 영역(선반 앞면 띠)의 최소 높이·위아래 여유(px)
 const FRONT_HIT = 48;
@@ -145,7 +145,7 @@ export function HomeScreen() {
   const insets = useSafeAreaInsets();
   const store = usePlacementStore();
   const { books, layout } = store;
-  const { lib } = useLibrary();
+  const { lib, error: libraryError } = useLibrary();
   const m = useShelfMetrics();
   const bookShared = useBookShared(); // 책 그림 공용 자원(글꼴·종이 결). 캔버스 안에는 컨텍스트가 닿지 않아 여기서 읽어 넘긴다
   const { width: winW } = useWindowDimensions();
@@ -391,13 +391,17 @@ export function HomeScreen() {
     setToast(t);
   }, []);
   useEffect(() => {
-    if (!toast || toast.action === 'retry') return;
+    if (!toast || toast.action === 'retry' || toast.action === 'retry-library' || toast.action === 'retry-load') return;
     const id = setTimeout(() => setToast(null), 3600);
     return () => clearTimeout(id);
   }, [toast]);
   useEffect(() => {
     if (store.save === 'error') setToast({ text: ko.saveError, action: 'retry' });
+    if (store.save === 'read-error') setToast({ text: '책장을 불러오지 못했어요', action: 'retry-load' });
   }, [store.save]);
+  useEffect(() => {
+    if (libraryError) setToast({ text: '기록을 저장하지 못했어요', action: 'retry-library' });
+  }, [libraryError]);
   // 받침을 잃고 선반에서 떨어져 서랍에 들어간 책(끌기·메뉴·꾸미기 어느 확정이든): 꾸미는 중이면 조작부에, 아니면 알림(되돌리기)으로.
   // 확정한 손길의 알림·조작부 문구를 덮도록 그린 뒤에 띄운다
   useEffect(() => {
@@ -1746,6 +1750,10 @@ export function HomeScreen() {
                     void undoMoves().then((done) => {
                       if (done) setToast({ text: ko.undone });
                     });
+                  } else if (toast.action === 'retry-library') {
+                    void libraryStore.flushPending().then(() => setToast(null)).catch(() => {});
+                  } else if (toast.action === 'retry-load') {
+                    void placementStore.retryLoad().then(() => { if (placementStore.get().save !== 'read-error') setToast(null); });
                   } else {
                     placementStore.retrySave();
                     setToast(null);

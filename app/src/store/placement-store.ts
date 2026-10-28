@@ -1,8 +1,7 @@
 // 확정된 배치 상태 + 기기 로컬 저장 + 되돌리기 1회.
 // 드래그 중 임시 위치는 여기 들어오지 않는다. 확정(commit)될 때만 저장한다.
 import { useSyncExternalStore } from 'react';
-import Storage from 'expo-sqlite/kv-store';
-import { noteLayoutChange } from './sync-dirty';
+import { readLayout, saveLayout } from '@/db/local-db';
 
 import { addBook as placeNewBook, addShelf, applySwapTarget, bookXs, ensureShelves, findSwapTarget, fitToShelf, migrate, moveToDrawer, normalize, placeFromDrawer, pruneEmptyShelves, setDepth, validate, withNormalizedX, type BookMap } from '@/domain/layout-engine';
 import { ensureLeanGaps, withLeans } from '@/domain/shelf-scene';
@@ -11,10 +10,7 @@ import { MOCKUP_BOOKS, MOCKUP_LAYOUT } from '@/domain/mockup-sample';
 import { SAMPLE_BOOKS, SAMPLE_LAYOUT } from '@/domain/onboarding-sample';
 import type { ShelfLayout, ShelfLayoutV1 } from '@/domain/types';
 
-const KEY = 'shelf-layout';
-const LEGACY_KEY = 'shelf-layout:v1'; // v1(서랍 없음) 저장본
-
-export type SaveStatus = 'idle' | 'saving' | 'error';
+export type SaveStatus = 'idle' | 'saving' | 'error' | 'read-error';
 
 type State = {
   books: BookMap;
@@ -71,11 +67,10 @@ export function restore(saved: ShelfLayout | ShelfLayoutV1, bookMap: BookMap) {
 }
 
 async function persist(layout: ShelfLayout) {
-  if (state.demo) return;
+  if (state.demo || state.save === 'read-error') return;
   set({ save: 'saving' });
   try {
-    await Storage.setItem(KEY, JSON.stringify(withNormalizedX(layout, state.books)));
-    noteLayoutChange(new Date().toISOString());
+    await saveLayout(JSON.stringify(withNormalizedX(layout, state.books)), new Date().toISOString());
     // 저장 도중 다른 변경이 있었으면 그쪽이 다시 저장한다.
     if (state.layout === layout) set({ save: 'idle' });
   } catch {
@@ -94,25 +89,29 @@ export const placementStore = {
   async load(books: BookMap) {
     state = { ...state, books };
     try {
-      const raw = (await Storage.getItem(KEY)) ?? (await Storage.getItem(LEGACY_KEY));
+      const raw = (await readLayout()).json;
       if (raw) {
         const saved = JSON.parse(raw) as ShelfLayout | ShelfLayoutV1;
         if (saved.version === 1 || saved.version === 2) {
           // 예전 예시 책(b01~b18)만 있던 저장본은 내 책이 아니므로 배치에서 빠진다(repair가 모르는 책을 버린다)
           const r = restore(saved, books);
-          set({ layout: r.layout, loaded: true, notice: r.moved.length ? r.moved.length : null });
+          set({ layout: r.layout, loaded: true, save: 'idle', notice: r.moved.length ? r.moved.length : null });
           if (r.changed) void persist(r.layout);
           return;
         }
+        throw new Error('알 수 없는 책장 저장 형식이에요');
       }
     } catch {
-      // 읽기 실패 시 빈 책장으로 시작하되 저장은 덮어쓰지 않는다(다음 확정 때 저장).
+      // 읽지 못한 저장본을 빈 배치로 대체하지 않는다.
+      set({ loaded: true, save: 'read-error' });
+      return;
     }
-    set({ layout: repair(EMPTY_LAYOUT, books), loaded: true });
+    set({ layout: repair(EMPTY_LAYOUT, books), loaded: true, save: 'idle' });
   },
 
   // 서재가 바뀌면(추가·삭제·장정·갈피 수) 책 모양을 다시 만들고, 사라진 책은 배치에서 뺀다(새 책은 addToShelf로)
   syncBooks(books: BookMap) {
+    if (state.save === 'read-error') { set({ books }); return; }
     if (state.demo) {
       userSnapshot = userSnapshot && { ...userSnapshot, books };
       return;
@@ -192,6 +191,7 @@ export const placementStore = {
   // 검증된 레이아웃만 받는다. 무결성이 깨졌으면 거절한다.
   // sent: 사용자가 직접 서랍에 넣은 책(떨어진 책 알림에서 뺀다)
   commit(next: ShelfLayout, sent: string[] = []) {
+    if (state.save === 'read-error') return false;
     // 서재에는 있는데 배치(선반·서랍) 어디에도 없는 책(추가하고 자리를 고르지 않은 책)은 서랍에 넣는다.
     // 그러지 않으면 '모든 책이 한 곳에' 검사에 걸려 이후 모든 확정이 실패한다.
     const placed = new Set([...next.placements.map((p) => p.bookId), ...next.drawer]);
@@ -211,6 +211,7 @@ export const placementStore = {
   },
 
   undo() {
+    if (state.save === 'read-error') return false;
     if (!state.undo) return false;
     const prev = state.undo;
     set({ layout: prev, undo: null });
@@ -285,8 +286,9 @@ export const placementStore = {
   },
 
   retrySave() {
-    void persist(state.layout);
+    if (state.save !== 'read-error') void persist(state.layout);
   },
+  async retryLoad() { await placementStore.load(state.books); },
 };
 
 export function usePlacementStore() {

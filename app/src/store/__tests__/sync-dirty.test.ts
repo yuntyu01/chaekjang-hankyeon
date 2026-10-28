@@ -1,59 +1,113 @@
-const storage: Record<string, string> = {};
-jest.mock('expo-sqlite/kv-store', () => ({
-  __esModule: true,
-  default: {
-    getItem: jest.fn(async (key: string) => storage[key] ?? null),
-    setItem: jest.fn(async (key: string, value: string) => { storage[key] = value; }),
-  },
-}));
+import { createSQLiteTestDatabase } from '@/test-utils/sqlite';
 
-type DirtyStore = typeof import('../sync-dirty');
-let dirty: DirtyStore;
+const mockStorage: Record<string, string> = {};
+let mockDb = createSQLiteTestDatabase();
+jest.mock('expo-sqlite', () => ({ openDatabaseAsync: jest.fn(async () => mockDb) }));
+jest.mock('expo-sqlite/kv-store', () => ({ __esModule: true, default: {
+  getItem: jest.fn(async (key: string) => mockStorage[key] ?? null),
+  setItem: jest.fn(async (key: string, value: string) => { mockStorage[key] = value; }),
+} }));
+
+type LocalDB = typeof import('@/db/local-db');
+let local: LocalDB;
 beforeEach(() => {
-  jest.useFakeTimers();
   jest.resetModules();
-  for (const key of Object.keys(storage)) delete storage[key];
-  dirty = require('../sync-dirty') as DirtyStore;
-});
-afterEach(() => {
-  jest.clearAllTimers();
-  jest.useRealTimers();
+  for (const key of Object.keys(mockStorage)) delete mockStorage[key];
+  mockDb = createSQLiteTestDatabase();
+  local = require('@/db/local-db') as LocalDB;
 });
 
-it('업로드가 진행되는 동안 바뀐 배치를 대기 목록에 남긴다', async () => {
-  dirty.noteLayoutChange('2026-10-01T00:00:00.000Z');
-  const uploaded = dirty.layoutSnapshot();
-  dirty.noteLayoutChange('2026-10-02T00:00:00.000Z');
-  dirty.clearPushed({}, uploaded);
-  expect(dirty.layoutSnapshot()).not.toBeNull();
-  jest.runAllTimers();
-  await Promise.resolve();
-  expect(storage['sync-layout-dirty:v1']).toBe('1');
+it('배치 업로드 중 새로 저장한 배치는 대기 목록에 남는다', async () => {
+  await local.saveLayout('{"position":1}', '2026-10-01T00:00:00.000Z');
+  const snapshot = await local.captureSyncSnapshot();
+  await local.saveLayout('{"position":2}', '2026-10-02T00:00:00.000Z');
+  await local.acknowledgePending(snapshot.dirty, snapshot.layout.revision);
+  expect((await local.readLayout())).toMatchObject({ json: '{"position":2}', dirty: true });
 });
 
 it('올린 뒤 바뀌지 않은 배치는 대기 표시를 지운다', async () => {
-  dirty.noteLayoutChange('2026-10-01T00:00:00.000Z');
-  const uploaded = dirty.layoutSnapshot();
-  dirty.clearPushed({}, uploaded);
-  expect(dirty.layoutSnapshot()).toBeNull();
-  jest.runAllTimers();
-  await Promise.resolve();
-  expect(storage['sync-layout-dirty:v1']).toBe('0');
+  await local.saveLayout('{}', '2026-10-01T00:00:00.000Z');
+  const snapshot = await local.captureSyncSnapshot();
+  await local.acknowledgePending(snapshot.dirty, snapshot.layout.revision);
+  expect((await local.readLayout()).dirty).toBe(false);
 });
 
-it('서재 전체를 다시 올리도록 표시하면 진행 중인 이전 배치 완료로 지워지지 않는다', () => {
-  dirty.noteLayoutChange('2026-10-01T00:00:00.000Z');
-  const uploaded = dirty.layoutSnapshot();
-  dirty.markAllDirty({});
-  dirty.clearPushed({}, uploaded);
-  expect(dirty.layoutSnapshot()).not.toBeNull();
+it('같은 시각에 고친 항목도 이전 업로드 완료로 지워지지 않는다', async () => {
+  const at = '2026-10-01T00:00:00.000Z';
+  await local.applyLocalChanges([{ kind: 'books', id: 'b', at, deleted: false, item: { id: 'b', updatedAt: at } }]);
+  const before = await local.captureSyncSnapshot();
+  await local.applyLocalChanges([{ kind: 'books', id: 'b', at, deleted: false, item: { id: 'b', updatedAt: at, note: 'new' } as never }]);
+  await local.acknowledgePending(before.dirty, null);
+  const after = await local.captureSyncSnapshot();
+  expect(after.dirty['books:b']).toBeDefined();
+  expect(after.lib.books.b).toMatchObject({ note: 'new' });
 });
 
-it('재시작 후 저장된 대기 배치도 올리고 지울 수 있다', async () => {
-  storage['sync-layout-dirty:v1'] = '1';
-  await dirty.loadDirty();
-  const uploaded = dirty.layoutSnapshot();
-  expect(uploaded).not.toBeNull();
-  dirty.clearPushed({}, uploaded);
-  expect(dirty.layoutSnapshot()).toBeNull();
+it('저장 도중 대기 목록 쓰기가 실패하면 데이터도 롤백된다', async () => {
+  await local.readPendingState();
+  await mockDb.execAsync("CREATE TRIGGER reject_outbox BEFORE INSERT ON sync_outbox BEGIN SELECT RAISE(ABORT, 'outbox failed'); END");
+  await expect(local.applyLocalChanges([{ kind: 'books', id: 'b', at: '2026-10-01T00:00:00Z', deleted: false, item: { id: 'b' } }])).rejects.toThrow('outbox failed');
+  const snapshot = await local.captureSyncSnapshot();
+  expect(snapshot.lib.books).toEqual({});
+  expect(snapshot.dirty).toEqual({});
+});
+
+it('이전 배치와 대기 변경을 한 번만 가져오고 재시작 후 다시 살리지 않는다', async () => {
+  mockStorage['shelf-layout'] = '{"version":2,"shelves":[],"placements":[],"drawer":[]}';
+  mockStorage['shelf-layout-at'] = '2026-10-01T00:00:00.000Z';
+  mockStorage['sync-layout-dirty:v1'] = '1';
+  mockStorage['sync-dirty:v1'] = JSON.stringify({ 'books:deleted': { deleted: true, at: '2026-10-01T00:00:00Z' } });
+  const before = await local.captureSyncSnapshot();
+  expect(before.layout.json).toBe(mockStorage['shelf-layout']);
+  expect(before.layout.dirty).toBe(true);
+  expect(before.dirty['books:deleted'].deleted).toBe(true);
+  await local.acknowledgePending(before.dirty, before.layout.revision);
+  jest.resetModules();
+  local = require('@/db/local-db') as LocalDB;
+  const after = await local.captureSyncSnapshot();
+  expect(after.layout.json).toBe(mockStorage['shelf-layout']);
+  expect(after.layout.dirty).toBe(false);
+  expect(after.dirty).toEqual({});
+});
+
+it('전체 다시 올리기 중 기존 삭제 표시는 보존한다', async () => {
+  const at = '2026-10-01T00:00:00Z';
+  await local.applyLocalChanges([{ kind: 'books', id: 'b', deleted: true, at }]);
+  await local.queueAllChanges({ 'books:b': { deleted: false, at } });
+  expect((await local.captureSyncSnapshot()).dirty['books:b'].deleted).toBe(true);
+});
+
+it('실제 v2 SQLite 서재를 유지하면서 기존 대기 목록과 배치를 옮긴다', async () => {
+  await mockDb.execAsync(`
+    CREATE TABLE catalog_books(isbn13 TEXT PRIMARY KEY, data TEXT NOT NULL, updated_at TEXT NOT NULL);
+    CREATE TABLE user_books(isbn13 TEXT PRIMARY KEY, data TEXT NOT NULL, updated_at TEXT NOT NULL);
+    CREATE TABLE editions(id TEXT PRIMARY KEY, data TEXT NOT NULL, updated_at TEXT NOT NULL);
+    CREATE TABLE books(id TEXT PRIMARY KEY, data TEXT NOT NULL, updated_at TEXT NOT NULL);
+    CREATE TABLE bindings(id TEXT PRIMARY KEY, data TEXT NOT NULL, updated_at TEXT NOT NULL);
+    CREATE TABLE rounds(id TEXT PRIMARY KEY, data TEXT NOT NULL, updated_at TEXT NOT NULL);
+    CREATE TABLE sessions(id TEXT PRIMARY KEY, data TEXT NOT NULL, updated_at TEXT NOT NULL);
+    CREATE TABLE bookmarks(id TEXT PRIMARY KEY, data TEXT NOT NULL, updated_at TEXT NOT NULL);
+    PRAGMA user_version=2;
+  `);
+  const book = { id: 'old-book', editionId: 'e', status: 'reading', createdAt: '2026-10-01T00:00:00Z', updatedAt: '2026-10-01T00:00:00Z' };
+  await mockDb.runAsync('INSERT INTO books(id,data,updated_at) VALUES(?,?,?)', book.id, JSON.stringify(book), book.updatedAt);
+  mockStorage['shelf-layout'] = '{"version":2,"shelves":[],"placements":[],"drawer":["old-book"]}';
+  mockStorage['sync-dirty:v1'] = JSON.stringify({ 'books:old-book': { deleted: false, at: book.updatedAt } });
+  mockStorage['sync-layout-dirty:v1'] = '1';
+  const snapshot = await local.captureSyncSnapshot();
+  expect(snapshot.lib.books['old-book']).toEqual(book);
+  expect(snapshot.dirty['books:old-book']).toMatchObject({ deleted: false, at: book.updatedAt });
+  expect(snapshot.layout.json).toBe(mockStorage['shelf-layout']);
+  expect(snapshot.layout.dirty).toBe(true);
+});
+
+it('이전 대기 목록 옮기기에 실패하면 완료 표시를 남기지 않고 재시도한다', async () => {
+  mockStorage['sync-dirty:v1'] = JSON.stringify({ 'books:gone': { deleted: true, at: '2026-10-01T00:00:00Z' } });
+  await local.db();
+  await mockDb.execAsync("CREATE TRIGGER fail_migration BEFORE INSERT ON sync_outbox BEGIN SELECT RAISE(ABORT, 'migration failed'); END");
+  await expect(local.readPendingState()).rejects.toThrow('migration failed');
+  const row = await mockDb.getFirstAsync('SELECT migrated FROM sync_meta WHERE id=1') as { migrated: number };
+  expect(row.migrated).toBe(0);
+  await mockDb.execAsync('DROP TRIGGER fail_migration');
+  expect((await local.readPendingState()).dirty['books:gone']).toMatchObject({ deleted: true });
 });

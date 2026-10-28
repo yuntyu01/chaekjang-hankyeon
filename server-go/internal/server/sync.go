@@ -114,6 +114,12 @@ func (s *Server) push(w http.ResponseWriter, r *http.Request) error {
 		return err
 	}
 	defer tx.Rollback(ctx)
+	// 같은 사용자에 대한 모든 동기화 쓰기를 커밋까지 직렬화한다.
+	// 시퀀스는 커밋 전에 발급되므로 이 잠금이 없으면 늦게 커밋한 낮은 rev를 놓칠 수 있다.
+	var lockedUser int64
+	if err = tx.QueryRow(ctx, "SELECT id FROM users WHERE id=$1 FOR UPDATE", user).Scan(&lockedUser); err != nil {
+		return err
+	}
 	applied := 0
 	skipped := []string{}
 	for _, k := range kinds {
@@ -304,7 +310,7 @@ func (s *Server) pull(w http.ResponseWriter, r *http.Request) error {
 		data[k.name] = list
 	}
 	max := since
-	out := map[string]any{"more": more}
+	out := map[string]any{"more": more, "syncEpoch": 2}
 	for _, k := range kinds {
 		items := []map[string]any{}
 		for _, v := range data[k.name] {
@@ -332,30 +338,44 @@ func (s *Server) pull(w http.ResponseWriter, r *http.Request) error {
 					item[f.json] = row[f.col]
 				}
 				if k.name == "editions" {
-					names := []string{}
-					rs, e := tx.Query(ctx, "SELECT name FROM edition_authors WHERE user_id=$1 AND edition_id=$2 ORDER BY position", user, row["id"])
-					if e != nil {
-						return e
-					}
-					for rs.Next() {
-						var name string
-						if e = rs.Scan(&name); e != nil {
-							rs.Close()
-							return e
-						}
-						names = append(names, name)
-					}
-					e = rs.Err()
-					rs.Close()
-					if e != nil {
-						return e
-					}
-					item["authors"] = names
+					item["authors"] = []string{}
 				}
 			}
 			items = append(items, item)
 		}
 		out[k.name] = items
+	}
+	// 판본마다 왕복하지 않고 현재 페이지의 저자만 한 번에 읽는다.
+	editions := out["editions"].([]map[string]any)
+	byID := make(map[string]map[string]any, len(editions))
+	ids := make([]string, 0, len(editions))
+	for _, item := range editions {
+		if item["deleted"] == true {
+			continue
+		}
+		id := item["id"].(string)
+		ids = append(ids, id)
+		byID[id] = item
+	}
+	if len(ids) > 0 {
+		rows, e := tx.Query(ctx, "SELECT edition_id,name FROM edition_authors WHERE user_id=$1 AND edition_id=ANY($2::text[]) ORDER BY edition_id,position", user, ids)
+		if e != nil {
+			return e
+		}
+		for rows.Next() {
+			var id, name string
+			if e = rows.Scan(&id, &name); e != nil {
+				rows.Close()
+				return e
+			}
+			item := byID[id]
+			item["authors"] = append(item["authors"].([]string), name)
+		}
+		e = rows.Err()
+		rows.Close()
+		if e != nil {
+			return e
+		}
 	}
 	var layout string
 	var version int

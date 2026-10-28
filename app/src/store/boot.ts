@@ -1,6 +1,7 @@
 // 앱 시작 때 한 번: 서재 → 책장 배치 → 설정·시점·진행 중 독서 순으로 불러온다.
 // 서재가 바뀔 때마다 책장에 그릴 책 모양을 다시 만든다(배치는 배치 저장소가 따로 저장).
 import Storage from 'expo-sqlite/kv-store';
+import { readLayout, saveLayout } from '@/db/local-db';
 
 import { migrate, type BookMap } from '@/domain/layout-engine';
 import type { Library } from '@/domain/library';
@@ -34,12 +35,13 @@ export function bootStores() {
     // 빈 서재로 계속 진행하면 읽지 못한 기존 배치를 덮어쓸 수 있다.
     if (libraryStore.get().error) throw new Error('서재를 불러오지 못했어요');
     bootMark('library-loaded', Object.keys(libraryStore.get().lib.books).length);
+    // 배치를 읽지 못하면 빈 책장으로 시작하지 않는다(기존 저장본 보호).
+    const saved = (await readLayout()).json;
     if (!libraryStore.get().error) {
       try {
-        const saved = (await Storage.getItem('shelf-layout')) ?? (await Storage.getItem('shelf-layout:v1'));
         homeProfile = await installReferenceHome(libraryStore.get().lib, saved ? migrate(JSON.parse(saved)) : EMPTY_LAYOUT, {
-          getItem: key => Storage.getItem(key),
-          setItem: (key, value) => Storage.setItem(key, value),
+          getItem: async key => key === 'shelf-layout' ? (await readLayout()).json : Storage.getItem(key),
+          setItem: async (key, value) => { if (key === 'shelf-layout') await saveLayout(value, new Date().toISOString()); else await Storage.setItem(key, value); },
           saveLibrary: library => libraryStore.replaceAll(library),
           hasSavedLayout: saved !== null,
         });

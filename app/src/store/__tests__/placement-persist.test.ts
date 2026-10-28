@@ -1,3 +1,7 @@
+import { createSQLiteTestDatabase } from '@/test-utils/sqlite';
+const mockDb = createSQLiteTestDatabase();
+jest.mock('expo-sqlite', () => ({ openDatabaseAsync: jest.fn(async () => mockDb) }));
+
 // 저장하고 다시 실행하면 같은 배치: 확정(commit)이 저장소에 쓴 것을 앱을 새로 켤 때처럼 다시 불러오면(load)
 // 선반·순서·가로 자리·깊이·자세(기대기·표지 책 젖힘·좌우 돌림)·쌓기가 그대로다.
 // 예시 세 줄 배치에서 다른 줄로 옮기기, 앞뒤(벽 쪽)·뒤로 젖히기, 표지 책 좌우 돌리기, 누운 더미 옮기기, 기대기를 확정한 뒤 확인한다.

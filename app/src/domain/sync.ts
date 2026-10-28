@@ -36,7 +36,7 @@ export type PushBody = {
   editions?: WireEdition[]; books?: WireBook[]; bindings?: WireBinding[]; rounds?: WireRound[]; sessions?: WireSession[]; bookmarks?: WireBookmark[]; layout?: WireLayout;
 };
 export type PullBody = {
-  rev: number; more: boolean; editions: WireEdition[]; books: WireBook[]; bindings: WireBinding[]; rounds: WireRound[]; sessions: WireSession[]; bookmarks: WireBookmark[];
+  rev: number; more: boolean; syncEpoch?: number; editions: WireEdition[]; books: WireBook[]; bindings: WireBinding[]; rounds: WireRound[]; sessions: WireSession[]; bookmarks: WireBookmark[];
   layout?: WireLayout | null;
 };
 
@@ -143,7 +143,7 @@ export const bookmarkFromWire = (w: WireBookmark, imageDir: string): Bookmark =>
 export type Merge = { lib: Library; writes: { kind: LibKind; item: { id: string; updatedAt: string } }[]; erases: { kind: LibKind; id: string }[]; files: string[] };
 
 // 받은 변경을 서재에 합친다. 더 새로운 쪽이 이긴다. 받아 와야 할 사진 파일 id도 돌려준다.
-export function mergeRemote(lib: Library, pull: PullBody, imageDir: string): Merge {
+export function mergeRemote(lib: Library, pull: PullBody, imageDir: string, dirty: Dirty = {}): Merge {
   const next: Library = { editions: { ...lib.editions }, books: { ...lib.books }, rounds: { ...lib.rounds }, sessions: { ...lib.sessions }, bookmarks: { ...lib.bookmarks }, bindings: { ...lib.bindings } };
   const writes: Merge['writes'] = [];
   const erases: Merge['erases'] = [];
@@ -151,6 +151,9 @@ export function mergeRemote(lib: Library, pull: PullBody, imageDir: string): Mer
   const apply = <T extends { id: string; updatedAt: string }>(kind: LibKind, wires: (Wire & Record<string, unknown>)[], convert: (w: never) => T) => {
     const table = next[kind] as unknown as Record<string, T>;
     for (const w of wires) {
+      const pending = dirty[dirtyKey(kind, w.id)];
+      // 로컬에서 삭제했지만 아직 올리지 않은 기록을 오래된 서버 값으로 되살리지 않는다.
+      if (pending?.deleted && ms(pending.at) >= ms(w.updatedAt)) continue;
       const local = table[w.id];
       if (w.deleted) {
         if (local && ms(local.updatedAt) <= ms(w.updatedAt)) {

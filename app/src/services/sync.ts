@@ -7,17 +7,18 @@ import Storage from 'expo-sqlite/kv-store';
 import * as WebBrowser from 'expo-web-browser';
 import { AppState } from 'react-native';
 
-import { buildPush, fullDirty, mergeRemote, type Dirty, type PullBody, type PushBody, type WireLayout } from '@/domain/sync';
+import { buildPush, fullDirty, mergeRemote, type PullBody, type PushBody, type WireLayout } from '@/domain/sync';
+import { captureSyncSnapshot, readPendingState, saveLayout, type SyncSnapshot } from '@/db/local-db';
 import { ApiError, createApiClient } from '@/services/api-client';
 import { IMAGE_DIR } from '@/store/files';
 import { libraryStore } from '@/store/library-store';
-import { clearPushed, getDirty, layoutSnapshot, LAYOUT_AT_KEY, loadDirty, markAllDirty, onLocalChange, pendingCount } from '@/store/sync-dirty';
+import { clearPushed, loadDirty, markAllDirty, onLocalChange, pendingCount } from '@/store/sync-dirty';
 
 const BASE = process.env.EXPO_PUBLIC_API_URL?.replace(/\/+$/, '');
 const TOKEN_KEY = 'sync-token:v1';
 const REV_KEY = 'sync-rev:v1';
+const EPOCH_KEY = 'sync-epoch:v1';
 const FILES_KEY = 'sync-files:v1'; // 이미 올린 파일 id
-const LAYOUT_KV = 'shelf-layout';
 const ACCOUNT_KEY = 'account:v1'; // 카카오 연결 여부·닉네임(화면 표시용 사본)
 
 export type SyncStatus = { state: 'off' | 'idle' | 'syncing' | 'error'; lastAt?: string; error?: string; pending: number };
@@ -44,10 +45,12 @@ async function ensureToken(): Promise<string> {
   const saved = await Storage.getItem(TOKEN_KEY);
   if (saved) return saved;
   const created = await api<{ token: string }>('POST', '/auth/device', null);
-  await Storage.setItem(TOKEN_KEY, created.token);
+  // 토큰을 마지막에 기록한다. 중간에 앱이 꺼져도 다음 시작 때 전체 올리기를 다시 준비한다.
+  await libraryStore.flushPending();
+  await markAllDirty(fullDirty(libraryStore.get().lib));
   await Storage.setItem(REV_KEY, '0');
   await Storage.setItem(FILES_KEY, '[]');
-  markAllDirty(fullDirty(libraryStore.get().lib)); // 새 계정이니 가진 것을 모두 올린다
+  await Storage.setItem(TOKEN_KEY, created.token);
   return created.token;
 }
 
@@ -86,34 +89,72 @@ async function downloadFiles(token: string, ids: string[]) {
 
 const filesIn = (b: PushBody) => [...new Set([...(b.bookmarks ?? []).map((x) => x.photoFileId), ...(b.editions ?? []).map((x) => x.coverFileId), ...(b.bindings ?? []).flatMap((x) => [x.coverArtFileId, x.spineArtFileId])].filter((x): x is string => !!x))];
 
-async function currentLayout(): Promise<WireLayout | undefined> {
-  const raw = await Storage.getItem(LAYOUT_KV);
-  if (!raw) return undefined;
-  const at = (await Storage.getItem(LAYOUT_AT_KEY)) ?? new Date().toISOString();
-  return { layoutJson: raw, version: 2, updatedAt: at };
-}
-
-async function pushOnce(token: string, snapshot: Dirty, layoutRevision: number | null) {
-  const { body, count } = buildPush(libraryStore.get().lib, snapshot, IMAGE_DIR);
-  const layout = layoutRevision !== null ? await currentLayout() : undefined;
+async function pushOnce(token: string, snapshot: SyncSnapshot) {
+  const { body, count } = buildPush(snapshot.lib, snapshot.dirty, IMAGE_DIR);
+  if (count !== Object.keys(snapshot.dirty).length) throw new Error('올릴 서재 기록을 찾지 못했어요');
+  const saved = snapshot.layout;
+  const layout = saved.dirty && saved.json ? { layoutJson: saved.json, version: 2, updatedAt: saved.at ?? new Date().toISOString() } : undefined;
+  const layoutRevision = saved.dirty ? saved.revision : null;
   if (!count && !layout) {
-    clearPushed(snapshot, layoutRevision);
+    await clearPushed(snapshot.dirty, layoutRevision);
+    return;
+  }
+  // 서버는 종류별 한 요청에 1,000개까지만 받는다. 큰 서재는 참조 순서대로 나눠 보내고
+  // 성공한 묶음만 확인해, 중간에 끊겨도 나머지를 다시 보낼 수 있게 한다.
+  const kinds = ['editions', 'books', 'bindings', 'rounds', 'sessions', 'bookmarks'] as const;
+  if (kinds.some(kind => (body[kind]?.length ?? 0) > 1000)) {
+    for (const kind of kinds) {
+      const items = body[kind] ?? [];
+      for (let offset = 0; offset < items.length; offset += 1000) {
+        const chunk = items.slice(offset, offset + 1000);
+        const batch: PushBody = { [kind]: chunk };
+        const sent = Object.fromEntries(chunk.map(item => [`${kind}:${item.id}`, snapshot.dirty[`${kind}:${item.id}`]]));
+        await uploadFiles(token, filesIn(batch));
+        await api('POST', '/sync/push', token, batch);
+        await clearPushed(sent, null);
+      }
+    }
+    if (layout) await api('POST', '/sync/push', token, { layout });
+    await clearPushed({}, layoutRevision);
     return;
   }
   await uploadFiles(token, filesIn(body));
   await api('POST', '/sync/push', token, { ...body, layout });
-  clearPushed(snapshot, layoutRevision);
+  await clearPushed(snapshot.dirty, layoutRevision);
 }
 
 let reloadLayout: (() => Promise<void> | void) | null = null;
 
 async function pullAll(token: string) {
   let since = Number((await Storage.getItem(REV_KEY)) ?? '0') || 0;
+  let epoch = Number((await Storage.getItem(EPOCH_KEY)) ?? '0') || 0;
   for (let guard = 0; guard < 200; guard++) {
     const p = await api<PullBody>('GET', `/sync/pull?since=${since}&limit=500`, token);
-    const m = mergeRemote(libraryStore.get().lib, p, IMAGE_DIR);
-    await downloadFiles(token, m.files); // 사진을 먼저 받아 두고 서재에 반영한다(화면이 빈 사진을 보지 않게)
-    if (m.writes.length || m.erases.length) libraryStore.applyRemote(m);
+    // 새 서버에서 예전 커서가 놓쳤을 수 있는 기록을 한 번 처음부터 다시 받는다.
+    if ((p.syncEpoch ?? 0) >= 2 && epoch < 2) {
+      await Storage.setItem(REV_KEY, '0');
+      await Storage.setItem(EPOCH_KEY, '2');
+      epoch = 2;
+      if (since !== 0) { since = 0; continue; }
+    }
+    const downloaded = new Set<string>();
+    let applied = false;
+    for (let retry = 0; retry < 20; retry++) {
+      await libraryStore.flushPending();
+      const pending = await readPendingState();
+      if (libraryStore.hasPending()) continue;
+      const m = mergeRemote(libraryStore.get().lib, p, IMAGE_DIR, pending.dirty);
+      const files = m.files.filter(id => !downloaded.has(id));
+      if (files.length) {
+        await downloadFiles(token, files); // 사진을 먼저 받아 두고 서재에 반영한다.
+        files.forEach(id => downloaded.add(id));
+        continue; // 받는 동안 바뀐 로컬 기록을 다시 비교한다.
+      }
+      if (m.writes.length || m.erases.length) await libraryStore.applyRemote(m);
+      applied = true;
+      break;
+    }
+    if (!applied) throw new Error('변경을 받아오지 못했어요. 다시 시도해 주세요');
     if (p.layout) await applyLayout(p.layout);
     since = p.rev;
     await Storage.setItem(REV_KEY, String(since));
@@ -122,11 +163,7 @@ async function pullAll(token: string) {
 }
 
 async function applyLayout(remote: WireLayout) {
-  const localAt = (await Storage.getItem(LAYOUT_AT_KEY)) ?? '';
-  if (Date.parse(remote.updatedAt) <= (Date.parse(localAt) || 0)) return; // 이 기기 배치가 더 새롭다
-  await Storage.setItem(LAYOUT_KV, remote.layoutJson);
-  await Storage.setItem(LAYOUT_AT_KEY, remote.updatedAt);
-  await reloadLayout?.();
+  if (await saveLayout(remote.layoutJson, remote.updatedAt, false)) await reloadLayout?.();
 }
 
 let running = false;
@@ -147,7 +184,9 @@ export async function syncNow() {
     let token = await ensureToken();
     for (let attempt = 0; attempt < 2; attempt++) {
       try {
-        await pushOnce(token, { ...getDirty() }, layoutSnapshot());
+        await libraryStore.flushPending();
+        const snapshot = await captureSyncSnapshot();
+        await pushOnce(token, snapshot);
         await pullAll(token);
         break;
       } catch (e) {
@@ -157,7 +196,7 @@ export async function syncNow() {
           continue;
         }
         if (e instanceof ApiError && e.code === 'missing_reference' && attempt === 0) {
-          markAllDirty(fullDirty(libraryStore.get().lib)); // 부모가 서버에 없다 → 전부 올려 참조를 채운다
+          await markAllDirty(fullDirty(libraryStore.get().lib)); // 부모가 서버에 없다 → 전부 올려 참조를 채운다
           continue;
         }
         throw e;
@@ -198,12 +237,13 @@ export async function linkKakao(): Promise<KakaoResult> {
     if (q.error) return { ok: false, cancelled: q.error === 'denied', message: q.error === 'denied' ? '카카오 로그인을 취소했어요' : '카카오 로그인을 마치지 못했어요. 잠시 뒤 다시 시도해 주세요' };
     if (typeof q.ticket !== 'string') return { ok: false, message: '로그인 응답을 읽지 못했어요' };
     const c = await api<{ token: string; switched: boolean; nickname: string }>('POST', '/auth/kakao/claim', token, { ticket: q.ticket });
-    await Storage.setItem(TOKEN_KEY, c.token);
     if (c.switched) {
       await Storage.setItem(REV_KEY, '0');
       await Storage.setItem(FILES_KEY, '[]');
-      markAllDirty(fullDirty(libraryStore.get().lib));
+      await libraryStore.flushPending();
+      await markAllDirty(fullDirty(libraryStore.get().lib));
     }
+    await Storage.setItem(TOKEN_KEY, c.token);
     setAccount({ kakao: true, nickname: c.nickname });
     void syncNow();
     return { ok: true, nickname: c.nickname, switched: c.switched };
@@ -234,7 +274,10 @@ function schedule(ms: number) {
 export function initSync(hooks: { reloadLayout: () => Promise<void> | void }) {
   reloadLayout = hooks.reloadLayout;
   if (!BASE) return;
-  void loadDirty().then(() => setStatus({}));
+  void loadDirty().then(() => setStatus({})).catch((error) => {
+    setStatus({ state: 'error', error: String((error as Error)?.message ?? error) });
+    schedule(60_000);
+  });
   void Storage.getItem(ACCOUNT_KEY).then((raw) => {
     try {
       if (raw) account = JSON.parse(raw) as AccountInfo;

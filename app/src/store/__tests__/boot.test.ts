@@ -5,6 +5,7 @@ const mockLoadLibrary = jest.fn(async () => {});
 const mockLoadPlacement = jest.fn(async () => {});
 const mockInstall = jest.fn(async () => ({}));
 jest.mock('expo-sqlite/kv-store', () => ({ __esModule: true, default: mockStorage }));
+jest.mock('@/db/local-db', () => ({ readLayout: jest.fn(async () => ({ json: null })), saveLayout: jest.fn(async () => true) }));
 jest.mock('@/domain/layout-engine', () => ({ migrate: (layout: unknown) => layout }));
 jest.mock('@/domain/home-reference', () => ({ referenceHomeBooks: () => ({}) }));
 jest.mock('../library-store', () => ({ libraryStore: { load: mockLoadLibrary, get: () => mockLibraryState, subscribe: jest.fn(), replaceAll: jest.fn() } }));

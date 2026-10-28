@@ -9,6 +9,7 @@
 ## 실행
 
 Go 서버 마이그레이션은 [`server-go/README.md`](server-go/README.md)를 참고한다. 기존 Spring 서버는 아래 명령으로 실행한다.
+앱 저장소 테스트는 내장 SQLite를 쓰므로 Node.js 22.13 이상이 필요하다.
 
 ```bash
 cd app && npm install
@@ -28,7 +29,7 @@ PORT=8080 ./gradlew bootRun   # DATABASE_URL(Postgres)이 필요하다. 카카�
 |---|---|
 | `app/src/domain/` | 타입, 배치 엔진(이동·쌓기·형태·서랍·검증), 회전 형상, 제목 조판, 카탈로그 매핑·등급 규칙, 모티프 슬롯 30개, 선반 측정값 |
 | `app/src/store/placement-store.ts` | 확정 배치, 로컬 저장(v2: 선반+서랍, 정규화 x 기록), 되돌리기, 저장 실패 표시 |
-| `app/src/db/local-db.ts` | 기기 SQLite 캐시(catalog_books, user_books) |
+| `app/src/db/local-db.ts` | 기기 SQLite 서재, 책장 배치와 동기화 대기 목록 |
 | `app/src/ui/` | 종이 배경, 책 렌더러, 선반 줄(선반 PNG)·그림자·드래그 오버레이 |
 | `app/src/features/home/` | 홈, 상세·배치 메뉴, 책 서랍 |
 | `server/src/main/java/.../books` | ISBN 공유 캐시(TTL 갱신, ISBN당 외부 조회·색 추출 1회), 카카오 검색 프록시 |

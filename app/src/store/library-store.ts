@@ -2,9 +2,8 @@
 // 모든 변경은 여기 행동(action)으로만 한다. 책장 배치는 placement-store가 따로 저장한다(배치를 바꿔도 기록은 그대로).
 import { useSyncExternalStore } from 'react';
 
-import { noteChange } from './sync-dirty';
 import type { Merge } from '@/domain/sync';
-import { deleteLib, loadLib, loadLibrary, putLib, replaceLib, type LibKind } from '@/db/local-db';
+import { applyLocalChanges, applyRemoteChanges, loadLib, loadLibrary, replaceLib, type LibKind, type LocalChange } from '@/db/local-db';
 import {
   applyStatus,
   bookmarksOf,
@@ -36,27 +35,40 @@ function set(patch: Partial<State>) {
 
 const now = () => new Date().toISOString();
 
-// 메모리 먼저 바꾸고 표에 기록(실패하면 알림만: 다음 변경 때 다시 쓴다)
-let applyingRemote = false; // 서버에서 받은 변경을 적용하는 중에는 '올릴 변경'으로 세지 않는다
-function write(kind: LibKind, item: { id: string; updatedAt?: string }) {
-  if (!applyingRemote) noteChange(kind, item.id, false, item.updatedAt ?? new Date().toISOString());
-  putLib(kind, item).catch((e) => set({ error: String(e?.message ?? e) }));
-}
-function erase(kind: LibKind, id: string) {
-  if (!applyingRemote) noteChange(kind, id, true, new Date().toISOString());
-  deleteLib(kind, id).catch((e) => set({ error: String(e?.message ?? e) }));
+// 실패한 저장은 메모리에 남겨 재시도한다. 다음 변경이 이전 실패를 건너뛰지 않는다.
+const pending: LocalChange[][] = [];
+let persisting: Promise<void> | null = null;
+function flushPending(): Promise<void> {
+  if (persisting) return persisting;
+  const work = (async () => {
+    while (pending.length) {
+      await applyLocalChanges(pending[0]);
+      pending.shift();
+    }
+    if (state.error) set({ error: null });
+  })();
+  persisting = work.catch((error) => {
+    set({ error: String((error as Error)?.message ?? error) });
+    throw error;
+  }).finally(() => { persisting = null; });
+  return persisting;
 }
 
-// 두 서재를 비교해 바뀐 항목만 기록(행동이 여러 표를 건드려도 한 번에)
+// 화면은 즉시 갱신하고, 한 행동의 변경과 동기화 대기 기록은 같은 트랜잭션에 저장한다.
 function commit(next: Library) {
   const prev = state.lib;
-  set({ lib: next });
+  const changes: LocalChange[] = [];
+  const at = now();
   for (const k of Object.keys(next) as LibKind[]) {
     const a = prev[k] as Record<string, unknown>;
     const b = next[k] as Record<string, { id: string; updatedAt?: string }>;
-    for (const id of Object.keys(b)) if (a[id] !== b[id]) write(k, b[id]);
-    for (const id of Object.keys(a)) if (!(id in b)) erase(k, id);
+    for (const id of Object.keys(b)) if (a[id] !== b[id]) changes.push({ kind: k, id, item: b[id], deleted: false, at: b[id].updatedAt ?? at });
+    for (const id of Object.keys(a)) if (!(id in b)) changes.push({ kind: k, id, deleted: true, at });
   }
+  if (changes.length) pending.push(changes);
+  const saving = changes.length ? flushPending() : null;
+  set({ lib: next });
+  if (saving) void saving.catch(() => {});
 }
 
 export type NewBookInput = {
@@ -67,6 +79,8 @@ export type NewBookInput = {
 
 export const libraryStore = {
   get: () => state,
+  flushPending,
+  hasPending: () => pending.length > 0,
   subscribe(l: () => void) {
     listeners.add(l);
     return () => listeners.delete(l);
@@ -93,7 +107,7 @@ export const libraryStore = {
         }
         migrated++;
       }
-      if (migrated) await replaceLib(lib);
+      if (migrated) await replaceLib(lib, true);
       set({ lib, loaded: true, error: null });
     } catch (e) {
       set({ loaded: true, error: String((e as Error)?.message ?? e) });
@@ -211,22 +225,33 @@ export const libraryStore = {
     commit({ ...state.lib, sessions: next });
   },
 
-  // 서버에서 받은 변경 적용(올릴 변경으로 세지 않는다)
-  applyRemote(m: Merge) {
-    applyingRemote = true;
-    try {
-      for (const w of m.writes) write(w.kind, w.item);
-      for (const e of m.erases) erase(e.kind, e.id);
-    } finally {
-      applyingRemote = false;
+  // 서버에서 받은 변경은 올릴 변경으로 세지 않고, 기록 완료 후 커서를 옮긴다.
+  async applyRemote(m: Merge) {
+    const before = state.lib;
+    const changes: LocalChange[] = [
+      ...m.writes.map(w => ({ kind: w.kind, id: w.item.id, item: w.item, deleted: false, at: w.item.updatedAt })),
+      ...m.erases.map(e => ({ kind: e.kind, id: e.id, deleted: true, at: new Date().toISOString() })),
+    ];
+    await applyRemoteChanges(changes);
+    // 저장하는 동안 사용자가 다시 수정한 항목은 그 값이 이긴다.
+    const next: Library = { ...state.lib };
+    for (const c of changes) {
+      const original = before[c.kind] as Record<string, unknown>;
+      const current = state.lib[c.kind] as Record<string, unknown>;
+      if (current[c.id] !== original[c.id]) continue;
+      const table = { ...(next[c.kind] as Record<string, unknown>) };
+      if (c.deleted) delete table[c.id];
+      else table[c.id] = c.item;
+      (next[c.kind] as Record<string, unknown>) = table;
     }
-    set({ lib: m.lib });
+    set({ lib: next });
   },
 
   // 백업 복원
   async replaceAll(lib: Library) {
-    await replaceLib(lib);
-    set({ lib });
+    await flushPending();
+    await replaceLib(lib, true);
+    set({ lib, error: null });
   },
 };
 

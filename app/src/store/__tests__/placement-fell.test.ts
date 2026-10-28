@@ -1,3 +1,7 @@
+import { createSQLiteTestDatabase } from '@/test-utils/sqlite';
+const mockDb = createSQLiteTestDatabase();
+jest.mock('expo-sqlite', () => ({ openDatabaseAsync: jest.fn(async () => mockDb) }));
+
 // 받침을 잃고 선반에서 떨어져 서랍에 들어간 책 수(store.fell): 화면이 알림으로 알린다.
 // 끌기 미리보기처럼 이미 기대기를 푼 배치가 들어와도 확정된 배치와 견주어 세고, 사용자가 직접 서랍에 넣은 책은 세지 않는다.
 const mem: Record<string, string> = {};
