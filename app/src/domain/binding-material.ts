@@ -1,6 +1,6 @@
 // 장정 재질 색(순수): 받은 장정 띠(reference-bindings)에서 넓은 재질 색만 뽑는다. 띠 양 끝의 빛(시안 그림의 밝고 어두운 가장자리)은 버린다:
 // 빛은 그릴 때 빛 모델이 계산한다.
-import profiles from '@/ui/art/reference-bindings.generated.json';
+import profiles from '@/scene-config/reference-bindings.generated.json';
 
 import { jacketColor } from './book-design';
 import type { Book } from './types';

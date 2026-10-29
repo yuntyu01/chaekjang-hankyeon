@@ -5,7 +5,7 @@ import { hull } from '../box';
 import { bookCast, DROP_K, entryY, frontCast, travelOf, wallParts } from '../cast-shadow';
 import { corners } from '../book3';
 import { SHELF_DEPTH, SHELF_FRONT, SHELF_THICK } from '../geometry';
-import { light, physShadow } from '@/ui/lighting';
+import { light, physShadow } from '@/scene-config/lighting';
 
 const D = travelOf(light.dir);
 const W = 97.6; // 128mm 판형 책의 깊이(DU)

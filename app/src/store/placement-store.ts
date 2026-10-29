@@ -3,8 +3,9 @@
 import { useSyncExternalStore } from 'react';
 import { readLayout, saveLayout } from '@/db/local-db';
 
-import { addBook as placeNewBook, addShelf, applySwapTarget, bookXs, ensureShelves, findSwapTarget, fitToShelf, migrate, moveToDrawer, normalize, placeFromDrawer, pruneEmptyShelves, setDepth, validate, withNormalizedX, type BookMap } from '@/domain/layout-engine';
-import { ensureLeanGaps, withLeans } from '@/domain/shelf-scene';
+import { addBook as placeNewBook, addShelf, applySwapTarget, bookXs, findSwapTarget, fitToShelf, moveToDrawer, placeFromDrawer, pruneEmptyShelves, setDepth, validate, withNormalizedX } from '@/domain/layout-engine';
+import { ensureShelves, migrate, normalize, type BookMap } from '@/domain/layout-schema';
+import { ensureLeanGaps, resolveLeans, withLeans, type FallDirections, type LeanResolution } from '@/domain/shelf-scene';
 import { SHELF_DEPTH, SHELF_FRONT } from '@/domain/geometry';
 import { MOCKUP_BOOKS, MOCKUP_LAYOUT } from '@/domain/mockup-sample';
 import { SAMPLE_BOOKS, SAMPLE_LAYOUT } from '@/domain/onboarding-sample';
@@ -21,13 +22,15 @@ type State = {
   notice: number | null; // 복원하면서 선반에 들어가지 않아 서랍으로 옮긴 책 수(한 번 알리고 지운다)
   fell: number | null; // 마지막 확정에서 받침을 잃고 선반에서 떨어져 서랍에 들어간 책 수(domain/statics, 한 번 알리고 지운다)
   fellIds: string[]; // 그 책들(홈이 떨어지는 모습을 그린다. 다음 확정까지 남는다)
+  fallDirections: FallDirections; // 이번 확정으로 서랍에 떨어진 책의 방향. 미리보기 결과를 명시적으로 받아 보관한다.
   demo: boolean; // 측정 번들 전용 예시 책장(메모리에만, 저장하지 않는다. 사용자 데이터와 섞지 않는다)
 };
 
 // 첫 실행: 빈 선반 세 칸
 export const EMPTY_LAYOUT: ShelfLayout = ensureShelves({ version: 2, shelves: [], placements: [], drawer: [] });
 
-let state: State = { books: {}, layout: EMPTY_LAYOUT, undo: null, save: 'idle', loaded: false, notice: null, fell: null, fellIds: [], demo: false };
+const noFalls = () => ({ fell: null, fellIds: [] as string[], fallDirections: {} as FallDirections });
+let state: State = { books: {}, layout: EMPTY_LAYOUT, undo: null, save: 'idle', loaded: false, notice: null, ...noFalls(), demo: false };
 let userSnapshot: { books: BookMap; layout: ShelfLayout } | null = null;
 export type DemoKind = 'sample' | 'mockup';
 let demoKind: DemoKind = 'sample';
@@ -87,7 +90,7 @@ export const placementStore = {
 
   // 저장된 배치를 읽는다. 책 목록은 서재(library-store)가 syncBooks로 넘긴다(먼저 불러온 뒤 호출).
   async load(books: BookMap) {
-    state = { ...state, books };
+    state = { ...state, books, undo: null, ...noFalls() };
     try {
       const raw = (await readLayout()).json;
       if (raw) {
@@ -111,7 +114,7 @@ export const placementStore = {
 
   // 서재가 바뀌면(추가·삭제·장정·갈피 수) 책 모양을 다시 만들고, 사라진 책은 배치에서 뺀다(새 책은 addToShelf로)
   syncBooks(books: BookMap) {
-    if (state.save === 'read-error') { set({ books }); return; }
+    if (state.save === 'read-error') { set({ books, ...noFalls() }); return; }
     if (state.demo) {
       userSnapshot = userSnapshot && { ...userSnapshot, books };
       return;
@@ -125,13 +128,13 @@ export const placementStore = {
       return !!a && !!b && (a.widthMm !== b.widthMm || a.heightMm !== b.heightMm || a.pages !== b.pages);
     });
     if (!gone.length && !resized) {
-      set({ books });
+      set({ books, ...noFalls() });
       return;
     }
     if (!gone.length) {
       const fit = fitToShelf(state.layout, books);
       const layout = withLeans(fit.layout, books);
-      set({ books, layout, undo: null, notice: fit.moved.length ? fit.moved.length : state.notice });
+      set({ books, layout, undo: null, notice: fit.moved.length ? fit.moved.length : state.notice, ...noFalls() });
       if (fit.changed) void persist(layout);
       return;
     }
@@ -139,7 +142,7 @@ export const placementStore = {
       normalize({ ...state.layout, placements: state.layout.placements.filter((p) => known.has(p.bookId)), drawer: state.layout.drawer.filter((id) => known.has(id)) }),
       books,
     );
-    set({ books, layout, undo: null });
+    set({ books, layout, undo: null, ...noFalls() });
     void persist(layout);
   },
 
@@ -180,18 +183,21 @@ export const placementStore = {
       demoKind = kind;
       const [list, layout] = kind === 'mockup' ? [MOCKUP_BOOKS, MOCKUP_LAYOUT] : [SAMPLE_BOOKS, SAMPLE_LAYOUT];
       const books = Object.fromEntries(list.map((b) => [b.id, b]));
-      set({ demo: true, books, layout: withLeans(layout, books), undo: null });
+      set({ demo: true, books, layout: withLeans(layout, books), undo: null, ...noFalls() });
     } else {
       const snap = userSnapshot ?? { books: {}, layout: EMPTY_LAYOUT };
       userSnapshot = null;
-      set({ demo: false, books: snap.books, layout: snap.layout, undo: null });
+      set({ demo: false, books: snap.books, layout: snap.layout, undo: null, ...noFalls() });
     }
   },
 
   // 검증된 레이아웃만 받는다. 무결성이 깨졌으면 거절한다.
+  // 미리보기를 이미 계산했다면 LeanResolution 전체를 넘겨 그 계산의 낙하 방향을 함께 확정한다.
   // sent: 사용자가 직접 서랍에 넣은 책(떨어진 책 알림에서 뺀다)
-  commit(next: ShelfLayout, sent: string[] = []) {
+  commit(input: ShelfLayout | LeanResolution, sent: string[] = []) {
     if (state.save === 'read-error') return false;
+    let next = 'layout' in input ? input.layout : input;
+    const previewFalls = 'layout' in input ? input.falls : {};
     // 서재에는 있는데 배치(선반·서랍) 어디에도 없는 책(추가하고 자리를 고르지 않은 책)은 서랍에 넣는다.
     // 그러지 않으면 '모든 책이 한 곳에' 검사에 걸려 이후 모든 확정이 실패한다.
     const placed = new Set([...next.placements.map((p) => p.bookId), ...next.drawer]);
@@ -201,11 +207,14 @@ export const placementStore = {
     // (선반 끝 밖으로 떨어지면) 서랍에 넣는다.
     // 떨어진 책은 확정된 배치와 견준다(끌기 미리보기처럼 이미 기대기를 푼 배치가 들어와도 센다)
     const inDrawer = new Set([...state.layout.drawer, ...sent, ...missing]);
-    next = withLeans(ensureShelves(next), state.books);
+    const resolution = resolveLeans(ensureShelves(next), state.books);
+    next = resolution.layout;
     const errors = validate(next, state.books, Object.keys(state.books));
     if (errors.length) return false;
     const fellIds = next.drawer.filter((id) => !inDrawer.has(id));
-    set({ undo: state.layout, layout: next, fell: fellIds.length || null, fellIds });
+    const directions = { ...previewFalls, ...resolution.falls };
+    const fallDirections: FallDirections = Object.fromEntries(fellIds.filter(id => directions[id] === -1 || directions[id] === 1).map(id => [id, directions[id]]));
+    set({ undo: state.layout, layout: next, fell: fellIds.length || null, fellIds, fallDirections });
     void persist(next);
     return true;
   },
@@ -214,7 +223,7 @@ export const placementStore = {
     if (state.save === 'read-error') return false;
     if (!state.undo) return false;
     const prev = state.undo;
-    set({ layout: prev, undo: null });
+    set({ layout: prev, undo: null, ...noFalls() });
     void persist(prev);
     return true;
   },
@@ -222,7 +231,7 @@ export const placementStore = {
   // 개발용: 예시 18권 배치로 되돌린다(비교 캡처용). 되돌리기 한 번으로 복구할 수 있다.
   resetSample() {
     const next = withLeans(SAMPLE_LAYOUT, state.books);
-    set({ undo: state.layout, layout: next });
+    set({ undo: state.layout, layout: next, ...noFalls() });
     void persist(next);
   },
 
@@ -238,7 +247,7 @@ export const placementStore = {
       }),
       state.books,
     );
-    set({ undo: state.layout, layout: next });
+    set({ undo: state.layout, layout: next, ...noFalls() });
     void persist(next);
   },
 
@@ -266,7 +275,7 @@ export const placementStore = {
     const x16 = bookXs(l, state.books).get('b16')!;
     l = step(applySwapTarget(l, state.books, 'b14', findSwapTarget(l, state.books, 'b14', x16 + 24)));
     const next = withLeans(l, state.books);
-    set({ undo: state.layout, layout: next });
+    set({ undo: state.layout, layout: next, ...noFalls() });
     void persist(next);
   },
 
@@ -281,7 +290,7 @@ export const placementStore = {
       }),
       state.books,
     );
-    set({ undo: state.layout, layout: next });
+    set({ undo: state.layout, layout: next, ...noFalls() });
     void persist(next);
   },
 

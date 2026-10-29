@@ -5,7 +5,7 @@ import { computeShelf, frontOutline } from '../shelf-scene';
 import { corners, fromPlaced } from '../book3';
 import { onWall, travelOf } from '../cast-shadow';
 import type { Pose, ShelfLayout, Tilt } from '../types';
-import { light } from '@/ui/lighting';
+import { light } from '@/scene-config/lighting';
 
 const fresh = toShelfBook({
   isbn13: '9780000000001', title: '새로 추가한 책', authors: ['저자'],

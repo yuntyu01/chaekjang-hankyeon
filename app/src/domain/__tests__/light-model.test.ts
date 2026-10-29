@@ -3,8 +3,8 @@
 import type { Book3, Vec3 } from '../book3';
 import { ALBEDO, diskBlocked, gridKeyFree, ggxKey, KEY_C, lum, RAD, ROUGH, skyIrradiance, SREF, bookAlbedo, bookEref, boxOf, tone, toneInv, toneTarget, TONE, darkening, DESIGN, EREF, envBRDF, faceAlbedo, lightWithLoss, FAR, irradiance, L_ELEV, L_UNIT, linearOf, plankKeyBlocked, polyVF, sceneLight, skyLossAt, skyRadiance, solveGrid, traceRadiance, withCovers, type Box, type C3, type Env, type Grid } from '../light-model';
 import { SHELF_DEPTH, SHELF_FRONT, SHELF_THICK, SHELF_X0, SHELF_X1 } from '../geometry';
-import palette from '@/ui/art/reference-bindings.generated.json';
-import { ALBEDO_MAX, light } from '@/ui/lighting';
+import palette from '@/scene-config/reference-bindings.generated.json';
+import { ALBEDO_MAX, light } from '@/scene-config/lighting';
 import { camAt, VIEW_PITCH_MIN } from '../camera';
 import { grainPeak, MAT_UNIFORMS } from '../surface-pattern';
 

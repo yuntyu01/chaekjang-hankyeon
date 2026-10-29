@@ -8,7 +8,7 @@ import { SAMPLE_BOOKS, SAMPLE_LAYOUT } from '../test-fixtures/interaction-books'
 import { bodiesOf } from '../shelf-scene';
 import type { ShelfLayout } from '../types';
 import { receivedShadow3, shiftRecv, type Face3 } from '../received3';
-import { physShadow } from '@/ui/lighting';
+import { physShadow } from '@/scene-config/lighting';
 
 const books: BookMap = Object.fromEntries(SAMPLE_BOOKS.map((b) => [b.id, b]));
 // 기하 검사용 비스듬한 빛(왼쪽 위 앞, 예전 앱 광원). 앱 광원은 거의 정면이라 그림자가 책 뒤로 숨는다

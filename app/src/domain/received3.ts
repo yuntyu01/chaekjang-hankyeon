@@ -7,7 +7,7 @@
 import { corners, faceCorners, faceNormal, FACE_IDS, rot, type Book3, type FaceId, type Vec3 } from './book3';
 import { penumbraSigma, seenSize, shadowOnPlane, thinOccluder, travelOf } from './cast-shadow';
 import { SHELF_DEPTH, SHELF_FRONT } from './geometry';
-import { light, physShadow } from '@/ui/lighting';
+import { light, physShadow } from '@/scene-config/lighting';
 import { hull } from './shadow-shape';
 
 const LIGHT0 = travelOf(light.dir);

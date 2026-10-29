@@ -1,7 +1,7 @@
 // 재질 무늬(domain/surface-pattern): 결은 평균 1(재질 색 그대로)이고 화소가 커져도 평균이 지켜지는지, 미세 높이의 기울기 RMS가 재질 값인지,
 // 화소보다 작은 높이 몫이 거칠기로 옮겨 가는지(Toksvig), 결을 곱해도 반사율이 1을 넘지 않는지
-import palette from '@/ui/art/reference-bindings.generated.json';
-import { materials } from '@/ui/lighting';
+import palette from '@/scene-config/reference-bindings.generated.json';
+import { materials } from '@/scene-config/lighting';
 
 import { bookAlbedo, ROUGH } from '../light-model';
 import { GRAIN_KIND, grainPeak, MAT_UNIFORMS, matSample, VN_GRAD_RMS } from '../surface-pattern';

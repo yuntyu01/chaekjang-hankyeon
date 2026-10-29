@@ -1,4 +1,4 @@
-// 빛 모델(순수, UI 스레드 워클릿에서도 쓴다). 화면의 모든 밝기·그림자·어둠·반사광을 장면 입력(ui/lighting)과 3D 형태에서 계산하는 원칙 하나.
+// 빛 모델(순수, UI 스레드 워클릿에서도 쓴다). 화면의 모든 밝기·그림자·어둠·반사광을 장면 입력(scene-config/lighting)과 3D 형태에서 계산하는 원칙 하나.
 // 같은 식을 화소마다 계산하는 셰이더는 ui/SceneLight(이 파일과 식·이름을 맞춘다).
 //
 // 1) 면이 받는 빛 E(n) = 하늘 ambient + skyTilt·n + 창빛 diffuse·max(0, n·L)(램버트). 하늘·창빛은 흰빛이고, 밝기는 선형 RGB 채널마다
@@ -14,8 +14,8 @@
 //    면 위에서 바뀌는 밝기는 그 면이 보이는 방향들의 코사인 가중 평균 방향이 닿는 점(대표 점)에서 읽는다. 다중 반사 경로 추적과 비교해 검증한다.
 // 4) 반사광: 유전체의 프레넬 반사를 거칠기까지 넣어(환경 반사 근사 EnvBRDF, GGX 창빛 하이라이트). 확산 몫은 반사된 만큼 줄어든다.
 // 워클릿은 만들어질 때 쓰는 함수를 붙잡으므로, 쓰이는 함수를 먼저 정의한다.
-import palette from '@/ui/art/reference-bindings.generated.json';
-import { ALBEDO_MAX, camera, F0, light, materials, surfaces, type SurfaceMaterial } from '@/ui/lighting';
+import palette from '@/scene-config/reference-bindings.generated.json';
+import { ALBEDO_MAX, camera, F0, light, materials, surfaces, type SurfaceMaterial } from '@/scene-config/lighting';
 
 import { corners, type Book3 } from './book3';
 import { rigOf } from './book-parts';
@@ -961,7 +961,7 @@ export function plankKeyBlocked(p: Vec3, env: Env | null) {
   return Math.min(1, k);
 }
 
-// ---------- 재질 표면(ui/lighting materials) ----------
+// ---------- 재질 표면(scene-config/lighting materials) ----------
 // 멀리서 본(미세 높이가 모두 화소보다 작은) 거칠기: α² = r⁴ + 2·slope²(Toksvig). seen: 법선 무늬로 그리는 몫(1이면 거칠기에 넣지 않는다)
 export function roughOf(m: SurfaceMaterial, seen = 0) {
   const a = m.roughness * m.roughness;

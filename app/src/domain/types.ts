@@ -43,7 +43,7 @@ export type BookArt = {
   material?: BindingMaterial;
 };
 
-// 장정 재질: 무광 종이 · 천 · 코팅지(모두 유전체, 표면 거칠기와 결·미세 높이만 다르다: ui/lighting materials)
+// 장정 재질: 무광 종이 · 천 · 코팅지(모두 유전체, 표면 거칠기와 결·미세 높이만 다르다: scene-config/lighting materials)
 export type BindingMaterial = 'paper' | 'cloth' | 'coated';
 export const BINDING_MATERIALS: BindingMaterial[] = ['paper', 'cloth', 'coated'];
 

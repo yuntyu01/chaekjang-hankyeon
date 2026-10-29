@@ -19,9 +19,9 @@ import {
   withNormalizedX,
   type BookMap,
 } from '../layout-engine';
-import { bodiesOf, computeShelf, fallDirOf, PLANK_BOUNDS, withLeans } from '../shelf-scene';
+import { bodiesOf, computeShelf, PLANK_BOUNDS, resolveLeans, withLeans } from '../shelf-scene';
 import { bookAt, DROP_MS, dropFallMs, dropTrack, planTransition, retime, retimeDrop } from '../transition';
-import { SHELF, SHELF_FRONT } from '../geometry';
+import { bookThickness, SHELF, SHELF_FRONT, SHELF_USABLE_WIDTH } from '../geometry';
 import type { Book, BookPlacement, ShelfLayout } from '../types';
 
 const book = (id: string, height: number, thickness: number): Book => ({
@@ -204,9 +204,23 @@ describe('서랍으로 떨어지는 책의 경로(dropTrack)', () => {
     const l = withLeans(layoutOf(place('b1', 0, 37.49), place('b3', 1, 101.11), place('b4', 2, 185.51, -7), place('b2', 3, 306.01)), books);
     const r = setTilt(l, books, 'b3', -7);
     expect(r.ok).toBe(true);
-    const after = withLeans((r as { layout: ShelfLayout }).layout, books);
-    expect(after.drawer).toEqual(['b1']);
-    expect(fallDirOf('b1')).toBe(-1);
+    const input = (r as { layout: ShelfLayout }).layout;
+    const before = JSON.stringify(input);
+    const after = resolveLeans(input, books);
+    expect(after.layout.drawer).toEqual(['b1']);
+    expect(after.falls).toEqual({ b1: -1 });
+    // 같은 ID를 가진 독립적인 미리보기를 반대 방향으로 풀어도 첫 결과를 바꾸지 않는다.
+    const mirrored: ShelfLayout = { ...input, placements: input.placements.map(p => ({
+      ...p, order: input.placements.length - 1 - p.order,
+      pos: SHELF_USABLE_WIDTH - p.pos! - bookThickness(books[p.bookId]),
+      tilt: -p.tilt as BookPlacement['tilt'],
+      lean: p.lean ? { ...p.lean, angle: -p.lean.angle } : undefined,
+    })) };
+    const right = resolveLeans(mirrored, books);
+    expect(right.falls).toEqual({ b1: 1 });
+    expect(after.falls).toEqual({ b1: -1 });
+    expect(resolveLeans(after.layout, books).falls).toEqual({});
+    expect(JSON.stringify(input)).toBe(before);
   });
 
   it('비켜 가는 옆 책은 막지 않는다(같은 진행의 자세와 견준다)', () => {

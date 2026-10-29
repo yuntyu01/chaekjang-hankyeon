@@ -1,7 +1,7 @@
 // 실제 그림자(순수, 워클릿): 광원 방향으로 3D 점을 받는 면(평면)에 떨어뜨린다. 화면으로는 책과 같은 project()로 옮긴다.
 // 받는 면: 벽(z = SHELF_DEPTH, 책 기준선 뒤 160mm = 앞 끝에서 230mm), 선반 윗면(y = 0).
 // 광원은 면 밝기(램버트)와 같은 방향이다(domain/light-model). 면광원이라 가리는 물체에서 멀수록 번진다.
-import { light, physShadow } from "@/ui/lighting";
+import { light, physShadow } from "@/scene-config/lighting";
 
 import { add, corners, rot, type Book3, type Vec3 } from "./book3";
 import { SHELF_DEPTH, SHELF_FRONT } from "./geometry";

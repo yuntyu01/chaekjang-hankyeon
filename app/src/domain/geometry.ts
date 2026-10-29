@@ -104,8 +104,7 @@ export const WALL_GAP = mm(15);
 export const SPINE_WALL_GAP = mm(3);
 // 쌓을 때 위 책을 살짝 어긋나게 둔다(아래에서 위 순서).
 export const STACK_OFFSETS = [0, 8, 3];
-export const MAX_STACK = 3;
-export const HOME_SHELF_COUNT = 3;
+export { MAX_STACK, HOME_SHELF_COUNT } from './layout-rules';
 
 // tilt 값은 부호만 쓴다(기대는 방향: -1 왼쪽, +1 오른쪽). 실제 각도는 빈틈과 옆 책 3D 상자로 계산하고, 버티는지는 statics.ts가 정한다.
 

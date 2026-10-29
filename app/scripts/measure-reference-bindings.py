@@ -47,6 +47,6 @@ poses=np.asarray(Image.open(root/'assets/reference/book-poses-original.png').con
 colors=['#'+''.join(f'{v:02X}' for v in np.median(poses[481:513,x,:],axis=0).round().astype(int)) for x in range(725,810)]
 profile={'colors':colors,'positions':[round(i/(len(colors)-1),6) for i in range(len(colors))],'horizontal':False}
 for alias in ['#475B7A','#4B6080','#1D426B','#1E4260']:out[alias]=profile
-target=root/'src/ui/art/reference-bindings.generated.json'
+target=root/'src/scene-config/reference-bindings.generated.json'
 target.write_text(json.dumps(out,separators=(',',':')),encoding='utf-8')
 print('Original binding materials:',len(bindings)+1,'recognized colors:',len(out),'bytes:',target.stat().st_size)

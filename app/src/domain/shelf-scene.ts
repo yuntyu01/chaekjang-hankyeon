@@ -428,7 +428,7 @@ function aFrame(a: Placed, b: Placed, others: Placed[]): number | null {
 }
 
 // simple: 머물 자리를 찾지 않고 넘어진 쪽에 눕힌다(withLeans가 같은 상태를 되풀이할 때 끊는 데만)
-function layFallen(layout: ShelfLayout, books: BookMap, fallen: BookFrame[], simple = false): ShelfLayout {
+function layFallen(layout: ShelfLayout, books: BookMap, fallen: BookFrame[], falls: Record<string, -1 | 1>, simple = false): ShelfLayout {
   let next = layout;
   // 서로 쪽으로 넘어지는 이웃 두 권은 먼저 A자로 만나는지 본다(둘 다 같은 줄, 사이에 다른 책이 없다). 만나면 서로에게 기댄 것으로 두고 한 권씩 풀지 않는다
   const paired = new Set<string>();
@@ -467,7 +467,7 @@ function layFallen(layout: ShelfLayout, books: BookMap, fallen: BookFrame[], sim
     const others = computeShelf(without, books, p.shelfId).frames.map((o) => o.box);
     const rest = simple ? null : fallRest({ ...f.box, angle: 0 }, d, others);
     if (rest?.kind === 'drawer') {
-      next = detachToDrawer(next, books, f.bookId, d);
+      next = detachToDrawer(next, books, f.bookId, d, falls);
       continue;
     }
     if (rest?.kind === 'stand') {
@@ -526,7 +526,7 @@ function layFallen(layout: ShelfLayout, books: BookMap, fallen: BookFrame[], sim
       }
       const b = tryAt(vis);
       if (!ok(b)) {
-        next = detachToDrawer(next, books, f.bookId, d);
+        next = detachToDrawer(next, books, f.bookId, d, falls);
         continue;
       }
       // 밀지 않는 데까지 안쪽으로(빈자리만큼)
@@ -549,22 +549,19 @@ function layFallen(layout: ShelfLayout, books: BookMap, fallen: BookFrame[], sim
     const x = Math.max(lo, Math.min(hi - h, lie));
     const r = tryAt(x);
     const fits = r.space && r.moved > -1 && r.moved < h && r.shoved <= MAX_FALL_SHOVE;
-    next = fits ? r.laid : detachToDrawer(next, books, f.bookId, d);
+    next = fits ? r.laid : detachToDrawer(next, books, f.bookId, d, falls);
   }
   return next;
 }
 
-// 받침을 잃고 선반에서 떨어져 서랍으로 간 책이 넘어진 쪽(마지막으로 떨어진 계산). 서랍은 배치 밖이라 배치에 남지 않는데,
-// 홈이 떨어지는 모습을 그릴 때 실제로 넘어진 쪽으로 눕히려고 둔다(밀려 넘어진 받침은 저장된 기울기가 0이라 배치로는 알 수 없다)
-const fellDir = new Map<string, -1 | 1>();
-export function fallDirOf(bookId: string): -1 | 1 | undefined {
-  return fellDir.get(bookId);
-}
+// 서랍으로 떨어진 방향은 해당 계산 결과와 함께 전달한다. 다른 미리보기·책장 계산과 공유하지 않는다.
+export type FallDirections = Readonly<Record<string, -1 | 1>>;
+export type LeanResolution = { layout: ShelfLayout; falls: FallDirections };
 
-function detachToDrawer(layout: ShelfLayout, books: BookMap, bookId: string, d: -1 | 1): ShelfLayout {
+function detachToDrawer(layout: ShelfLayout, books: BookMap, bookId: string, d: -1 | 1, falls: Record<string, -1 | 1>): ShelfLayout {
   const r = moveToDrawer(layout, bookId, books);
   if (!r.ok) return layout;
-  fellDir.set(bookId, d);
+  falls[bookId] = d;
   return r.layout;
 }
 
@@ -591,7 +588,8 @@ export function ensureLeanGaps(layout: ShelfLayout, books: BookMap): { layout: S
 // 확정할 때 기대기 결과를 저장한다. 기댈 수 없던 책은 놓은 자리에서 바로 서고(tilt 0), 받침을 잃고 바닥까지 넘어진 책은 눕히며,
 // 미는 힘에 넘어간 받침 책은 기운 책으로 저장한다. 눕힌 책이 생기면 그 줄을 다시 푼다(눕힌 책이 다른 책의 받침이 될 수 있다).
 // only: 그 선반의 기대기만 다시 푼다(나머지 선반은 그대로 둔다)
-export function withLeans(layout: ShelfLayout, books: BookMap, only?: string): ShelfLayout {
+export function resolveLeans(layout: ShelfLayout, books: BookMap, only?: string): LeanResolution {
+  const falls: Record<string, -1 | 1> = Object.create(null);
   let cur = layout;
   const tried = new Set<string>();
   for (let pass = 0; pass < 16; pass++) {
@@ -612,16 +610,21 @@ export function withLeans(layout: ShelfLayout, books: BookMap, only?: string): S
     const fallen = [...result.values()].filter((f) => f.fell);
     if (!fallen.length) {
       // 저장한 결과를 다시 풀어도 같아야 끝난다(받침이 넘어가 기댄 책이 다른 길로 풀린 것은 저장된 각으로 다시 풀면 바뀔 수 있다)
-      if (JSON.stringify(next.placements) === JSON.stringify(cur.placements)) return next;
+      if (JSON.stringify(next.placements) === JSON.stringify(cur.placements)) return { layout: next, falls };
       cur = next;
       continue;
     }
     // 넘어진 책을 머물 자리에 두었는데 다시 풀면 또 같은 책이 넘어져 같은 배치로 돌아오면(되풀이) 넘어진 쪽에 눕혀 끊는다
     const key = JSON.stringify(next.placements);
-    cur = layFallen(next, books, fallen, tried.has(key));
+    cur = layFallen(next, books, fallen, falls, tried.has(key));
     tried.add(key);
   }
-  return cur;
+  return { layout: cur, falls };
+}
+
+// 배치만 필요한 호출의 호환 함수. 떨어지는 연출에는 resolveLeans의 falls도 함께 전달한다.
+export function withLeans(layout: ShelfLayout, books: BookMap, only?: string): ShelfLayout {
+  return resolveLeans(layout, books, only).layout;
 }
 
 export function pointInPoly(pt: Point, poly: Point[]) {

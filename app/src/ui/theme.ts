@@ -1,9 +1,11 @@
+import { sceneColors } from '@/scene-config/palette';
+
 // 디자인 토큰. 색은 책이 주인공이라 화면 자체는 아이보리·크림·먹색만 쓴다.
 // 색은 레퍼런스 사진(docs/design/)에서 채취했다.
 export const colors = {
   // 2026-10-26 화면 배경(screenTheme bg #FEFEFD)과 맞춤. 예전 값 #FCF8F1(시안의 따뜻한 아이보리 벽). 빛 보정은 이 색을 빈 줄 벽 가운데 목표로 다시 만든다
-  bg: '#FEFEFD',
-  wall: '#FEFEFD',
+  bg: sceneColors.background,
+  wall: sceneColors.wall,
   ink: '#1F2533',
   // 2026-10-26 고른 책 둘레의 얇은 선: 흰색(예전 꿀색 #E7B574). 벽도 흰색이라 선 바깥 좁은 번짐은 옅은 먹색 그림자로 둬 선이 읽히게 한다
   selectGlow: '#FFFFFF',

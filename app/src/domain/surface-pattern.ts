@@ -1,7 +1,7 @@
-// 재질 무늬(ui/lighting materials의 결·미세 높이)를 셰이더 입력으로 묶고, 셰이더(scene-light-sksl materialCode)와 같은 식을 JS로도 둔다
+// 재질 무늬(scene-config/lighting materials의 결·미세 높이)를 셰이더 입력으로 묶고, 셰이더(scene-light-sksl materialCode)와 같은 식을 JS로도 둔다
 // (테스트·통계: 결의 평균이 1인지, 미세 높이의 기울기 RMS가 재질 값인지, 화소보다 작은 무늬가 평균으로 줄어드는지).
 // 면 좌표 (u, v)는 DU, 화소가 덮는 면 길이 fu·fv도 DU.
-import { materials, type SurfaceMaterial } from '@/ui/lighting';
+import { materials, type SurfaceMaterial } from '@/scene-config/lighting';
 
 import { mm } from './geometry';
 

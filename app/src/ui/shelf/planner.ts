@@ -122,6 +122,15 @@ const awayRows = new Map<string, AwayRow[]>();
 // 돌지 않은 경로를 따라 앞서가 적용 순간 책이 튀지 않게)
 const openKeys = new Set<number>();
 
+// These applications can no longer run, so they will never reach applied().
+// Retire only their registry references; newer tracks and mirrors stay intact.
+function superseded(keys: number[]) {
+  for (const key of keys) {
+    byKey.delete(key);
+    openKeys.delete(key);
+  }
+}
+
 export function queueApply(m: Motion, shelfId: string, rec: Tracks, animate: boolean, dur: number, target: string | null, waits: Wait[] = [], space?: number, fall = false) {
   const mr = mirrorOf(m);
   const out = animate && moving(mr);
@@ -136,6 +145,7 @@ export function queueApply(m: Motion, shelfId: string, rec: Tracks, animate: boo
   mr.ease = fall && animate ? 'lin' : out ? 'out' : 'inOut';
   mr.target = target;
   mr.key = key;
+  superseded(batch.filter((a) => a.shelfId === shelfId).map((a) => a.key));
   byKey.set(key, m);
   batch = batch.filter((a) => a.shelfId !== shelfId);
   batch.push({ m, shelfId, rec, animate, dur, out, fall: fall && animate, key, space, left });
@@ -338,9 +348,13 @@ function applyNow(list: Apply[], late = false, ups: AwayUpd[] = []) {
   }
   const run = () => {
     const keys: number[] = [];
+    const replaced: number[] = [];
     for (let i = 0; i < list.length; i++) {
       const a = list[i];
-      if (a.m.tracks.value !== recs[i]) continue;
+      if (a.m.tracks.value !== recs[i]) {
+        replaced.push(a.key);
+        continue;
+      }
       keys.push(a.key);
       const ease = a.fall ? Easing.linear : a.out ? Easing.out(Easing.cubic) : Easing.inOut(Easing.cubic);
       if (a.animate) a.m.t.value = withTiming(1, { duration: a.dur, easing: ease });
@@ -365,6 +379,7 @@ function applyNow(list: Apply[], late = false, ups: AwayUpd[] = []) {
     const g = globalThis as unknown as { __frameTimestamp?: number; _getAnimationTimestamp?: () => number };
     const nowA = g._getAnimationTimestamp ? g._getAnimationTimestamp() : 0;
     const startA = g.__frameTimestamp || nowA;
+    if (replaced.length) scheduleOnRN(superseded, replaced);
     scheduleOnRN(applied, keys, Date.now() - Math.max(0, nowA - startA));
   };
   if (!late) run();
@@ -415,7 +430,12 @@ export function flushApply() {
     // 미뤄 둔 것이 있으면 합친다(같은 줄은 새것이 이긴다). 기다림은 새 배치의 것(가장 최근 배치의 도착).
     // 새 기다림을 건 묶음이면 기다린 시각·번호도 새로(앞 묶음의 타이머가 이 묶음을 미리 적용하지 않게)
     const merged: Apply[] = [];
-    if (p) for (const a of p.list) if (!list.some((b) => b.shelfId === a.shelfId)) merged.push(a);
+    const replaced: number[] = [];
+    if (p) for (const a of p.list) {
+      if (!list.some((b) => b.shelfId === a.shelfId)) merged.push(a);
+      else replaced.push(a.key);
+    }
+    if (replaced.length) scheduleOnRN(superseded, replaced);
     for (const a of list) merged.push(a);
     const fresh = waits.length > 0;
     pendingSV.value = {
@@ -439,9 +459,9 @@ export function flushApply() {
 }
 
 // ---------- 계획 ----------
-export type PlanStats = { strategy: string; ms: number; log: number[] | null };
+export type PlanStats = { strategy: string; ms: number; log: number[] | null; readonly pendingApplications: number };
 // 측정 번들: log가 배열이면 계획마다 걸린 시간(ms)을 쌓는다
-export const lastPlan: PlanStats = { strategy: '', ms: 0, log: null };
+export const lastPlan: PlanStats = { strategy: '', ms: 0, log: null, get pendingApplications() { return byKey.size; } };
 
 // 목표 자세(next)로 가는 경로를 짜서 줄에 넣는다. arrive: 다른 줄에서 들어오는 책의 지금 자세(이 줄 좌표).
 // budgetMs: 경로 검사에 쓸 시간(넘기면 앞으로 빼서 옮기는 경로). 끌기처럼 자주 바뀌면 짧게.

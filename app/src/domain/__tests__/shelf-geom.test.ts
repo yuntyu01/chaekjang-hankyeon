@@ -4,7 +4,7 @@ import { project } from '../box';
 import { camCenteredAt, VIEW_PITCH_MIN, type Cam } from '../camera';
 import { CAMERA, SHELF, SHELF_DEPTH, SHELF_DEPTH_MM, SHELF_FRONT, SHELF_FRONT_MM, SHELF_THICK, SHELF_TOTAL_DEPTH_MM, SHELF_USABLE_WIDTH, SHELF_X0, SHELF_X1 } from '../geometry';
 import { shadowOnPlane, travelOf } from '../cast-shadow';
-import { light } from '@/ui/lighting';
+import { light } from '@/scene-config/lighting';
 import { normalize, setSpin, type BookMap } from '../layout-engine';
 import { SAMPLE_BOOKS, SAMPLE_LAYOUT } from '../onboarding-sample';
 import { computeShelf } from '../shelf-scene';
