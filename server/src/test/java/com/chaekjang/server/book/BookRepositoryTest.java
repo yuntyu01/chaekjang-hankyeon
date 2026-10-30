@@ -25,15 +25,15 @@ class BookRepositoryTest extends PostgresIntegrationTest {
     @Test
     void saveUpdateAndFind() {
         var b = new Book(BookServiceTest.ISBN, "데미안", List.of("헤르만 헤세", "공동 저자"), "", "2000-12-20", 0, "", "", "", "",
-                "#2F5A45", "medium", "thick", "leaf", "test", Instant.parse("2026-09-27T00:00:00Z"));
+                "#2F5A45", "test", Instant.parse("2026-09-27T00:00:00Z"));
         repo.save(b);
         repo.save(new Book(b.isbn13(), "데미안(개정)", b.authors(), "", b.publishedAt(), 0, "", "", "", "", b.themeColor(),
-                b.heightClass(), b.thicknessClass(), "moon", "test", Instant.parse("2026-09-28T00:00:00Z")));
+                "test", Instant.parse("2026-09-28T00:00:00Z")));
 
         Book got = repo.findById(BookServiceTest.ISBN).orElseThrow();
         assertThat(got.title()).isEqualTo("데미안(개정)");
         assertThat(got.authors()).containsExactly("헤르만 헤세", "공동 저자");
-        assertThat(got.defaultMotifId()).isEqualTo("leaf"); // 처음 저장한 모티프를 유지한다
+        assertThat(got.defaultMotifId()).isEqualTo(BookClasses.defaultMotifFor(BookServiceTest.ISBN)); // ISBN으로 계산(갱신해도 같다)
         assertThat(got.publishedAt()).isEqualTo("2000-12-20");
         assertThat(got.updatedAt()).isEqualTo(Instant.parse("2026-09-28T00:00:00Z"));
         assertThat(repo.findById("9788996991342")).isEmpty();
@@ -41,8 +41,8 @@ class BookRepositoryTest extends PostgresIntegrationTest {
 
     @Test
     void emptyOptionalsComeBackEmpty() {
-        repo.save(new Book(BookServiceTest.ISBN, "데미안", List.of(), "", "형식 아님", 0, "", "", "", "", "#2F5A45", "medium",
-                "medium", "leaf", "test", Instant.now()));
+        repo.save(new Book(BookServiceTest.ISBN, "데미안", List.of(), "", "형식 아님", 0, "", "", "", "", "#2F5A45", "test",
+                Instant.now()));
         Book got = repo.findById(BookServiceTest.ISBN).orElseThrow();
         assertThat(got.authors()).isEmpty();
         assertThat(got.publisher()).isEmpty();

@@ -6,7 +6,7 @@
 // - 윤곽: 투영 껍질을 판 모서리 반지름(EDGE_R)으로 둥글린 모양. 레이어에 그린 뒤 그 모양으로 잘라 가장자리를 매끈하게 한다(dstIn).
 // - 밝기: 빛 모델 하나(domain/light-model, ui/SceneLight). 책끼리 앞뒤는 매 프레임 가림 순서로(zIndex).
 import { Group, Path, Picture, Rect, Skia, type SkRect } from '@shopify/react-native-skia';
-import { useMemo } from 'react';
+import { useLayoutEffect, useMemo } from 'react';
 import { useDerivedValue, type SharedValue } from 'react-native-reanimated';
 
 import { corners, depthKey, faceCorners, facing, rot, toWorld, type Book3, type Cam } from '@/domain/book3';
@@ -18,7 +18,7 @@ import { RIBBON_Z } from '@/domain/ribbon-design';
 import { titleOpacity } from '@/domain/title-layout';
 import type { Book } from '@/domain/types';
 import { bookFacePath } from '@/ui/book/BookBody';
-import { LIGHT_ON, RENDER } from '@/ui/perf';
+import { LIGHT_ON, RENDER, TL, tl } from '@/ui/perf';
 import { BookLight, seedOf, TabLight, type BookKey, type TabFrame } from '@/ui/SceneLight';
 import { SHOW } from '@/ui/shelf/shadow-debug';
 
@@ -168,6 +168,11 @@ export function BookNode({ book, dims, state, cam: sceneCam, px, shared, keyShad
     return p.detach();
   });
   const bounds = useDerivedValue(() => layerBounds(outline.value));
+  // 측정 번들 시간표: 그림이 온 책이 그려지는 때(렌더 → 캔버스 반영)
+  if (TL.on && art) tl(`book-render ${book.id}`);
+  useLayoutEffect(() => {
+    if (TL.on && art) tl(`book-commit ${book.id}`);
+  }, [art, book.id]);
   if (!art) return null;
   // 몸체 색 하나: 판 두 장·책등·판 끝·책등 띠가 모두 같은 책 색이다
   const tone = toneOf(book);
@@ -197,7 +202,7 @@ export function BookNode({ book, dims, state, cam: sceneCam, px, shared, keyShad
             </>
           )}
           {/* 빛: 책 윤곽 안을 화소마다 광선으로(보이는 면·속지 구멍을 셰이더가 찾는다). 받는 창빛 그림자도 그 빛 계산 안에서 */}
-          {SHOW.body && LIGHT_ON.face ? <BookLight dims={dims} state={state} cam={cam} px={px} outline={outline} albedo={albedo} material={book.art.material} env={env} atlas={atlas} id={book.id} keyShadow={keyShadow} /> : null}
+          {SHOW.body && LIGHT_ON.face ? <BookLight dims={dims} state={state} cam={cam} px={px} outline={outline} albedo={albedo} material={book.art.material} env={env} atlas={atlas} id={book.id} keyShadow={keyShadow} picture={!!book.cover?.artworkId && !book.art.vectorCover} /> : null}
           <Path path={outline} color="black" blendMode="dstIn" />
         </Group>
       </Group>

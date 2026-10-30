@@ -2,7 +2,7 @@ import { router, useLocalSearchParams } from 'expo-router';
 import { useEffect, useMemo, useState } from 'react';
 import { Alert, FlatList, Pressable, StyleSheet, Text, TextInput, useWindowDimensions, View } from 'react-native';
 import { ymd } from '@/features/book/labels';
-import { toShelfBook } from '@/domain/library';
+import { memoShelfBook } from '@/domain/library';
 import { BookmarkCard } from '@/features/bookmark/BookmarkCard';
 import { BookmarkEmpty } from '@/features/bookmark/BookmarkEmpty';
 import { useLibrary } from '@/store/library-store';
@@ -45,7 +45,7 @@ export default function BookmarksTab() {
     <FlatList data={list} keyExtractor={(m) => m.id} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled" initialNumToRender={4} windowSize={5} style={{ marginHorizontal: -ui.pad }} contentContainerStyle={{ paddingHorizontal: ui.pad, paddingBottom: navigation.height + 40 + (active ? MINI_TIMER_SPACE : 0) }}
       // 갈피는 있지만 검색·분류 결과만 없을 때: 조작부는 그대로 두고 안내만
       ListEmptyComponent={<Empty title={tab === 'photo' && !q ? '사진 갈피가 없어요' : tab === 'saved' && !q ? '아껴둔 갈피가 없어요' : '맞는 갈피가 없어요'} body={tab === 'photo' && !q ? '페이지를 찍어 그대로 붙여 두세요.' : tab === 'saved' && !q ? '갈피 오른쪽 아래의 표시를 눌러 모아 보세요.' : q.trim() ? '다른 낱말로 찾아보세요.' : undefined} />}
-      renderItem={({ item: m }) => { const b = lib.books[m.myBookId]; const e = lib.editions[b.editionId]; if (!e) return null; return <BookmarkCard compact showMemo={false} width={width - ui.pad * 2} seed={m.id} onOpen={() => router.push(`/bookmark/${m.id}`)} saved={savedIds.includes(m.id)} onToggleSaved={() => toggleSaved(m.id)} data={{ text: m.text, title: e.title, author: e.authors.join(', '), page: m.page, date: ymd(m.createdAt), color: (b.bindingId && lib.bindings[b.bindingId]?.spineColor) || '#A3B8C5', book: toShelfBook(lib, b.id) ?? undefined, photoUri: m.photoUri, photoRatio: m.photoRatio }} />; }} />
+      renderItem={({ item: m }) => { const b = lib.books[m.myBookId]; const e = lib.editions[b.editionId]; if (!e) return null; return <BookmarkCard compact showMemo={false} width={width - ui.pad * 2} seed={m.id} onOpen={() => router.push(`/bookmark/${m.id}`)} saved={savedIds.includes(m.id)} onToggleSaved={() => toggleSaved(m.id)} data={{ text: m.text, title: e.title, author: e.authors.join(', '), page: m.page, date: ymd(m.createdAt), color: (b.bindingId && lib.bindings[b.bindingId]?.spineColor) || '#A3B8C5', book: memoShelfBook(lib, b.id) ?? undefined, photoUri: m.photoUri, photoRatio: m.photoRatio }} />; }} />
   </Screen>;
 }
 const st = StyleSheet.create({

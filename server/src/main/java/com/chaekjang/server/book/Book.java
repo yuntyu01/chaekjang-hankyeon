@@ -18,6 +18,7 @@ import jakarta.persistence.Table;
 /**
  * books 테이블 한 줄(전 사용자 공유, ISBN 기준 캐시).
  * 비어 있는 선택 값은 DB에 NULL로 두고, 읽을 때는 빈 문자열·0으로 돌려준다.
+ * 키·두께 분류와 기본 모티프는 다른 열에서 계산되므로 저장하지 않는다.
  */
 @Entity
 @Table(name = "books")
@@ -48,16 +49,6 @@ public class Book {
     private String themeColor;
 
     @Column(nullable = false)
-    private String heightClass;
-
-    @Column(nullable = false)
-    private String thicknessClass;
-
-    // 처음 저장한 값을 유지한다(갱신해도 책의 모티프가 바뀌지 않게).
-    @Column(nullable = false, updatable = false)
-    private String defaultMotifId;
-
-    @Column(nullable = false)
     private String source;
 
     @Column(nullable = false)
@@ -68,8 +59,7 @@ public class Book {
 
     /** publishedAt은 YYYY-MM-DD, 형식이 다르거나 비어 있으면 날짜 없음. */
     public Book(String isbn13, String title, List<String> authors, String publisher, String publishedAt, int pageCount,
-            String format, String coverUrl, String coverThumbUrl, String description, String themeColor,
-            String heightClass, String thicknessClass, String defaultMotifId, String source, Instant updatedAt) {
+            String format, String coverUrl, String coverThumbUrl, String description, String themeColor, String source, Instant updatedAt) {
         this.isbn13 = isbn13;
         this.title = title;
         this.authors = new java.util.ArrayList<>(authors);
@@ -81,9 +71,6 @@ public class Book {
         this.coverThumbUrl = nullIfEmpty(coverThumbUrl);
         this.description = nullIfEmpty(description);
         this.themeColor = themeColor;
-        this.heightClass = heightClass;
-        this.thicknessClass = thicknessClass;
-        this.defaultMotifId = defaultMotifId;
         this.source = source;
         this.updatedAt = updatedAt;
     }
@@ -106,7 +93,7 @@ public class Book {
 
     public Book withUpdatedAt(Instant t) {
         return new Book(isbn13, title, authors, publisher, publishedAt(), pageCount(), format, coverUrl, coverThumbUrl,
-                description, themeColor, heightClass, thicknessClass, defaultMotifId, source, t);
+                description, themeColor, source, t);
     }
 
     public String isbn13() {
@@ -153,16 +140,17 @@ public class Book {
         return themeColor;
     }
 
+    // 아래 셋은 저장하지 않고 판형·쪽수·ISBN으로 계산한다(V6). ISBN 해시라 같은 책의 모티프는 늘 같다.
     public String heightClass() {
-        return heightClass;
+        return BookClasses.heightFromFormat(format);
     }
 
     public String thicknessClass() {
-        return thicknessClass;
+        return BookClasses.thicknessFromPages(pageCount());
     }
 
     public String defaultMotifId() {
-        return defaultMotifId;
+        return BookClasses.defaultMotifFor(isbn13);
     }
 
     public String source() {

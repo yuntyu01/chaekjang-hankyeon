@@ -188,6 +188,65 @@ class SyncApiTest extends PostgresIntegrationTest {
         assertThat(seen).hasSize(10);
     }
 
+    static String layout(String at, String placements, String drawer) {
+        return """
+                {"layout":{"version":2,"updatedAt":"%s","shelves":[{"id":"s1","order":0},{"id":"s2","order":1}],"placements":[%s],"drawer":[%s]}}""".formatted(at, placements, drawer);
+    }
+
+    @Test
+    void 배치는_표로_저장되고_같은_모양으로_돌아온다() throws Exception {
+        String t = newToken();
+        StringBuilder eds = new StringBuilder();
+        StringBuilder bks = new StringBuilder();
+        for (int i = 1; i <= 4; i++) {
+            eds.append(i > 1 ? "," : "").append(edition("ed" + i, "책" + i, T1));
+            bks.append(i > 1 ? "," : "").append(book("bk" + i, "ed" + i, "want", T1));
+        }
+        push(t, "{\"editions\":[" + eds + "],\"books\":[" + bks + "]}");
+        String places = """
+                {"bookId":"bk2","shelfId":"s2","order":0,"pose":"front","tilt":0,"pos":10.5,"depth":40.25,"spin":-12,"pitch":8.5},
+                {"bookId":"bk1","shelfId":"s1","order":0,"pose":"spine","tilt":7,"pos":3,"lean":{"angle":6.25,"on":"bk3"},"x":0.12},
+                {"bookId":"bk3","shelfId":"s1","order":1,"pose":"horizontal","tilt":0,"stackId":"st","stackOrder":0},
+                {"bookId":"bk1","shelfId":"s2","order":5,"pose":"spine","tilt":0},
+                {"bookId":"bk9","shelfId":"없는선반","order":0,"pose":"spine","tilt":0}""";
+        String res = push(t, layout(T2, places, "\"bk4\",\"bk3\""));
+        assertThat((Integer) JsonPath.read(res, "$.applied")).isEqualTo(1);
+        String p = pull(t, 0, 500);
+        // 선반 순서 → 자리 순서, 같은 책은 먼저 나온 자리, 없는 선반 자리는 버림, 서랍에서 이미 놓인 책은 뺌
+        assertThat((List<String>) JsonPath.read(p, "$.layout.placements[*].bookId")).containsExactly("bk1", "bk3", "bk2");
+        assertThat((List<String>) JsonPath.read(p, "$.layout.drawer")).containsExactly("bk4");
+        assertThat(((Number) JsonPath.read(p, "$.layout.placements[0].lean.angle")).doubleValue()).isEqualTo(6.25);
+        assertThat((String) JsonPath.read(p, "$.layout.placements[0].lean.on")).isEqualTo("bk3");
+        assertThat((Integer) JsonPath.read(p, "$.layout.placements[0].tilt")).isEqualTo(7);
+        assertThat((String) JsonPath.read(p, "$.layout.placements[1].stackId")).isEqualTo("st");
+        assertThat(((Number) JsonPath.read(p, "$.layout.placements[2].pitch")).doubleValue()).isEqualTo(8.5);
+        assertThat(((Number) JsonPath.read(p, "$.layout.placements[2].spin")).doubleValue()).isEqualTo(-12.0);
+        assertThat(p).doesNotContain("\"x\":"); // 계산값은 저장하지 않는다
+        // 예전 앱을 위한 같은 내용의 JSON
+        String json = JsonPath.read(p, "$.layout.layoutJson");
+        assertThat((List<String>) JsonPath.read(json, "$.placements[*].bookId")).containsExactly("bk1", "bk3", "bk2");
+        assertThat((Integer) JsonPath.read(json, "$.version")).isEqualTo(2);
+        // 더 오래된 배치는 건너뛴다
+        String old = push(t, layout(T1, "", "\"bk1\""));
+        assertThat((List<String>) JsonPath.read(old, "$.skipped")).containsExactly("layout");
+        // 서버에 없는 책을 가리키면 409(앱은 서재를 전부 올리고 다시 시도)
+        mvc.perform(post("/sync/push").header("Authorization", bearer(t)).contentType(MediaType.APPLICATION_JSON).content(layout(T3, "", "\"bkX\"")))
+                .andExpect(status().isConflict());
+    }
+
+    @Test
+    void 예전_앱의_배치_JSON도_표로_풀어_저장한다() throws Exception {
+        String t = newToken();
+        push(t, full(T2));
+        String json = "{\\\"version\\\":2,\\\"shelves\\\":[{\\\"id\\\":\\\"s1\\\",\\\"order\\\":0}],\\\"placements\\\":[{\\\"bookId\\\":\\\"bk1\\\",\\\"shelfId\\\":\\\"s1\\\",\\\"order\\\":0,\\\"pose\\\":\\\"front\\\",\\\"tilt\\\":0,\\\"wallLean\\\":true,\\\"x\\\":0.5}],\\\"drawer\\\":[]}";
+        String res = push(t, "{\"layout\":{\"layoutJson\":\"" + json + "\",\"version\":2,\"updatedAt\":\"" + T3 + "\"}}");
+        assertThat((Integer) JsonPath.read(res, "$.applied")).isEqualTo(1);
+        String p = pull(t, 0, 500);
+        assertThat((String) JsonPath.read(p, "$.layout.placements[0].pose")).isEqualTo("front");
+        assertThat((Boolean) JsonPath.read(p, "$.layout.placements[0].wallLean")).isTrue();
+        assertThat((List<?>) JsonPath.read(p, "$.layout.drawer")).isEmpty();
+    }
+
     @Test
     void 사진_파일_올리기와_받기_사진_갈피_참조() throws Exception {
         String a = newToken();

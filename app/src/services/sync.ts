@@ -7,7 +7,8 @@ import Storage from 'expo-sqlite/kv-store';
 import * as WebBrowser from 'expo-web-browser';
 import { AppState } from 'react-native';
 
-import { buildPush, fullDirty, mergeRemote, type Dirty, type PullBody, type PushBody, type WireLayout } from '@/domain/sync';
+import { loadLayout, saveLayout } from '@/db/local-db';
+import { buildPush, fullDirty, layoutFromWire, layoutToWire, mergeRemote, splitPush, type Dirty, type PullBody, type PushBody, type WireLayout } from '@/domain/sync';
 import { IMAGE_DIR } from '@/store/files';
 import { libraryStore } from '@/store/library-store';
 import { clearPushed, getDirty, isLayoutDirty, LAYOUT_AT_KEY, loadDirty, markAllDirty, onLocalChange, pendingCount } from '@/store/sync-dirty';
@@ -16,7 +17,6 @@ const BASE = process.env.EXPO_PUBLIC_API_URL?.replace(/\/+$/, '');
 const TOKEN_KEY = 'sync-token:v1';
 const REV_KEY = 'sync-rev:v1';
 const FILES_KEY = 'sync-files:v1'; // 이미 올린 파일 id
-const LAYOUT_KV = 'shelf-layout';
 const ACCOUNT_KEY = 'account:v1'; // 카카오 연결 여부·닉네임(화면 표시용 사본)
 
 export type SyncStatus = { state: 'off' | 'idle' | 'syncing' | 'error'; lastAt?: string; error?: string; pending: number };
@@ -107,10 +107,10 @@ async function downloadFiles(token: string, ids: string[]) {
 const filesIn = (b: PushBody) => [...new Set([...(b.bookmarks ?? []).map((x) => x.photoFileId), ...(b.editions ?? []).map((x) => x.coverFileId), ...(b.bindings ?? []).flatMap((x) => [x.coverArtFileId, x.spineArtFileId])].filter((x): x is string => !!x))];
 
 async function currentLayout(): Promise<WireLayout | undefined> {
-  const raw = await Storage.getItem(LAYOUT_KV);
-  if (!raw) return undefined;
+  const layout = await loadLayout();
+  if (!layout) return undefined;
   const at = (await Storage.getItem(LAYOUT_AT_KEY)) ?? new Date().toISOString();
-  return { layoutJson: raw, version: 2, updatedAt: at };
+  return layoutToWire(layout, at);
 }
 
 async function pushOnce(token: string, snapshot: Dirty, withLayout: boolean) {
@@ -121,7 +121,8 @@ async function pushOnce(token: string, snapshot: Dirty, withLayout: boolean) {
     return;
   }
   await uploadFiles(token, filesIn(body));
-  await api('POST', '/sync/push', token, { ...body, layout });
+  // 서버가 한 요청에 받는 수를 넘으면 참조 순서대로 나눠 올린다(처음 연결해 서재 전체를 올릴 때)
+  for (const part of splitPush({ ...body, layout })) await api('POST', '/sync/push', token, part);
   clearPushed(snapshot, withLayout);
 }
 
@@ -144,7 +145,9 @@ async function pullAll(token: string) {
 async function applyLayout(remote: WireLayout) {
   const localAt = (await Storage.getItem(LAYOUT_AT_KEY)) ?? '';
   if (Date.parse(remote.updatedAt) <= (Date.parse(localAt) || 0)) return; // 이 기기 배치가 더 새롭다
-  await Storage.setItem(LAYOUT_KV, remote.layoutJson);
+  const layout = layoutFromWire(remote);
+  if (!layout) return;
+  await saveLayout(layout, true);
   await Storage.setItem(LAYOUT_AT_KEY, remote.updatedAt);
   await reloadLayout?.();
 }

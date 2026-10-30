@@ -49,6 +49,7 @@ PORT=8080 ./gradlew bootRun   # DATABASE_URL(Postgres)이 필요하다. 카카�
 ## 백엔드·동기화 (2026-10-05)
 
 - **구조:** 앱은 로컬 우선(오프라인 동작)이고, `EXPO_PUBLIC_API_URL`이 있는 빌드에서만 서버와 동기화한다(`app/src/services/sync.ts`, 순수 규칙은 `domain/sync.ts`).
+- **배포:** 서버는 KoDeploy `https://covebook.kodeploy.com`(푸시로 자동 배포되지 않음, KoDeploy에서 다시 배포). 릴리스 빌드(`NODE_ENV=production`, CI 포함)는 `app/.env.production`의 이 주소로 동기화한다. 사진 파일은 `S3_BUCKET` 등 S3_* 값이 있으면 R2에, 없으면 `FILE_DIR` 디스크에 저장.
 - **스키마(Flyway V2):** 판본(`editions`+`edition_authors`)·내 책·장정·회차·세션·갈피·파일을 앱 모델 그대로 정규화. 사용자 표는 `(user_id, id)` 복합 키 + 같은 사용자 안 복합 외래키. 공유 카탈로그 `books`는 저자를 `book_authors`로 분리.
 - **API:** `POST /auth/device`(기기 계정·토큰), `GET /me`, `POST /sync/push`, `GET /sync/pull?since=`, `PUT|GET /files/{id}`(사진), 기존 `/books/search`·`/books/{isbn13}`.
 - **충돌·삭제:** `updatedAt`이 더 새로운 쪽이 이김, 삭제는 `deleted_at` 표시로 전달. 한 번 올리기는 한 트랜잭션.

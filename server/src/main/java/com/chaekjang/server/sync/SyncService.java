@@ -58,12 +58,14 @@ public class SyncService {
         List<String> skipped = new ArrayList<>();
         int applied = 0;
         try {
-            applied += each("editions", user, p.editions(), Edition::id, Edition::deleted, Edition::updatedAt, skipped, this::upsertEdition);
-            applied += each("books", user, p.books(), MyBook::id, MyBook::deleted, MyBook::updatedAt, skipped, this::upsertMyBook);
-            applied += each("bindings", user, p.bindings(), Binding::id, Binding::deleted, Binding::updatedAt, skipped, this::upsertBinding);
-            applied += each("rounds", user, p.rounds(), Round::id, Round::deleted, Round::updatedAt, skipped, this::upsertRound);
-            applied += each("sessions", user, p.sessions(), Session::id, Session::deleted, Session::updatedAt, skipped, this::upsertSession);
-            applied += each("bookmarks", user, p.bookmarks(), Bookmark::id, Bookmark::deleted, Bookmark::updatedAt, skipped, this::upsertBookmark);
+            List<Edition> editions = new ArrayList<>();
+            applied += each("editions", user, p.editions(), Edition::id, Edition::deleted, Edition::updatedAt, skipped, EDITION_UPSERT, this::editionArgs, editions);
+            writeAuthors(user, editions);
+            applied += each("books", user, p.books(), MyBook::id, MyBook::deleted, MyBook::updatedAt, skipped, BOOK_UPSERT, this::bookArgs, null);
+            applied += each("bindings", user, p.bindings(), Binding::id, Binding::deleted, Binding::updatedAt, skipped, BINDING_UPSERT, this::bindingArgs, null);
+            applied += each("rounds", user, p.rounds(), Round::id, Round::deleted, Round::updatedAt, skipped, ROUND_UPSERT, this::roundArgs, null);
+            applied += each("sessions", user, p.sessions(), Session::id, Session::deleted, Session::updatedAt, skipped, SESSION_UPSERT, this::sessionArgs, null);
+            applied += each("bookmarks", user, p.bookmarks(), Bookmark::id, Bookmark::deleted, Bookmark::updatedAt, skipped, BOOKMARK_UPSERT, this::bookmarkArgs, null);
             if (p.layout() != null) {
                 if (upsertLayout(user, p.layout())) applied++;
                 else skipped.add("layout");
@@ -78,23 +80,47 @@ public class SyncService {
         return new PushResult(rev == null ? 0 : rev, applied, skipped);
     }
 
-    private interface Upsert<T> {
-        boolean apply(long user, T item, OffsetDateTime updatedAt);
+    /** 한 항목을 upsert 문의 인자로 바꾼다(값이 규칙에 맞지 않으면 400). */
+    private interface Args<T> {
+        Object[] of(long user, T item, OffsetDateTime updatedAt);
     }
 
+    // 한 종류를 묶어서 쓴다: 값 검사를 먼저 다 하고, upsert와 삭제 표시를 각각 한 번의 배치로 보낸다(항목마다 왕복하지 않게).
+    // 반영된 upsert 항목은 applied에 담는다(판본 저자 표를 그 항목만 다시 쓰려고).
     private <T> int each(String kind, long user, List<T> items, Function<T, String> id, Function<T, Boolean> deleted, Function<T, String> updatedAt,
-            List<String> skipped, Upsert<T> upsert) {
-        if (items == null) return 0;
+            List<String> skipped, String upsertSql, Args<T> args, List<T> applied) {
+        if (items == null || items.isEmpty()) return 0;
         if (items.size() > MAX_ITEMS) throw ApiException.BAD_REQUEST;
-        int n = 0;
+        List<T> ups = new ArrayList<>();
+        List<Object[]> upArgs = new ArrayList<>();
+        List<String> dels = new ArrayList<>();
+        List<Object[]> delArgs = new ArrayList<>();
         for (T item : items) {
             String key = id.apply(item);
             if (key == null || key.isBlank() || key.length() > 80) throw ApiException.BAD_REQUEST;
             OffsetDateTime at = ts(updatedAt.apply(item));
             if (at == null) throw ApiException.BAD_REQUEST;
-            boolean ok = Boolean.TRUE.equals(deleted.apply(item)) ? tombstone(kind, user, key, at) : upsert.apply(user, item, at);
-            if (ok) n++;
-            else skipped.add(kind + ":" + key);
+            if (Boolean.TRUE.equals(deleted.apply(item))) {
+                dels.add(key);
+                delArgs.add(new Object[] {at, at, user, key, at});
+            } else {
+                ups.add(item);
+                upArgs.add(args.of(user, item, at));
+            }
+        }
+        int n = 0;
+        int[] r = upArgs.isEmpty() ? new int[0] : jdbc.batchUpdate(upsertSql, upArgs);
+        for (int i = 0; i < r.length; i++) {
+            if (r[i] > 0) {
+                n++;
+                if (applied != null) applied.add(ups.get(i));
+            } else skipped.add(kind + ":" + id.apply(ups.get(i)));
+        }
+        r = delArgs.isEmpty() ? new int[0]
+                : jdbc.batchUpdate("UPDATE " + TABLE.get(kind) + " SET deleted_at = ?, updated_at = ?, rev = " + REV + " WHERE user_id = ? AND id = ? AND updated_at <= ?", delArgs);
+        for (int i = 0; i < r.length; i++) {
+            if (r[i] > 0) n++;
+            else skipped.add(kind + ":" + dels.get(i));
         }
         return n;
     }
@@ -102,117 +128,143 @@ public class SyncService {
     private static final Map<String, String> TABLE = Map.of("editions", "editions", "books", "my_books", "bindings", "bindings", "rounds", "rounds",
             "sessions", "sessions", "bookmarks", "bookmarks");
 
-    private boolean tombstone(String kind, long user, String id, OffsetDateTime at) {
-        return jdbc.update("UPDATE " + TABLE.get(kind) + " SET deleted_at = ?, updated_at = ?, rev = " + REV + " WHERE user_id = ? AND id = ? AND updated_at <= ?",
-                at, at, user, id, at) > 0;
-    }
+    private static final String EDITION_UPSERT = """
+            INSERT INTO editions (user_id, id, isbn13, title, publisher, published_at, page_count, width_mm, height_mm, category, series_title, cover_url,
+                cover_file_id, cover_source, source, source_name, art_base_color, art_ink_color, art_accent_color, art_motif_id, art_layout, art_version,
+                art_generated_at, created_at, updated_at, deleted_at, rev)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, %s)
+            ON CONFLICT (user_id, id) DO UPDATE SET isbn13 = EXCLUDED.isbn13, title = EXCLUDED.title, publisher = EXCLUDED.publisher,
+                published_at = EXCLUDED.published_at, page_count = EXCLUDED.page_count, width_mm = EXCLUDED.width_mm, height_mm = EXCLUDED.height_mm,
+                category = EXCLUDED.category, series_title = EXCLUDED.series_title, cover_url = EXCLUDED.cover_url, cover_file_id = EXCLUDED.cover_file_id,
+                cover_source = EXCLUDED.cover_source, source = EXCLUDED.source, source_name = EXCLUDED.source_name, art_base_color = EXCLUDED.art_base_color,
+                art_ink_color = EXCLUDED.art_ink_color, art_accent_color = EXCLUDED.art_accent_color, art_motif_id = EXCLUDED.art_motif_id,
+                art_layout = EXCLUDED.art_layout, art_version = EXCLUDED.art_version, art_generated_at = EXCLUDED.art_generated_at,
+                updated_at = EXCLUDED.updated_at, deleted_at = NULL, rev = EXCLUDED.rev
+            WHERE editions.updated_at <= EXCLUDED.updated_at
+            """.formatted(REV);
 
-    private boolean upsertEdition(long user, Edition e, OffsetDateTime at) {
+    private Object[] editionArgs(long user, Edition e, OffsetDateTime at) {
         if (e.title() == null || e.title().isBlank() || e.source() == null) throw ApiException.BAD_REQUEST;
         Art a = e.art();
-        boolean ok = jdbc.update("""
-                INSERT INTO editions (user_id, id, isbn13, title, publisher, published_at, page_count, width_mm, height_mm, category, series_title, cover_url,
-                    cover_file_id, cover_source, source, source_name, art_base_color, art_ink_color, art_accent_color, art_motif_id, art_layout, art_version,
-                    art_generated_at, created_at, updated_at, deleted_at, rev)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, %s)
-                ON CONFLICT (user_id, id) DO UPDATE SET isbn13 = EXCLUDED.isbn13, title = EXCLUDED.title, publisher = EXCLUDED.publisher,
-                    published_at = EXCLUDED.published_at, page_count = EXCLUDED.page_count, width_mm = EXCLUDED.width_mm, height_mm = EXCLUDED.height_mm,
-                    category = EXCLUDED.category, series_title = EXCLUDED.series_title, cover_url = EXCLUDED.cover_url, cover_file_id = EXCLUDED.cover_file_id,
-                    cover_source = EXCLUDED.cover_source, source = EXCLUDED.source, source_name = EXCLUDED.source_name, art_base_color = EXCLUDED.art_base_color,
-                    art_ink_color = EXCLUDED.art_ink_color, art_accent_color = EXCLUDED.art_accent_color, art_motif_id = EXCLUDED.art_motif_id,
-                    art_layout = EXCLUDED.art_layout, art_version = EXCLUDED.art_version, art_generated_at = EXCLUDED.art_generated_at,
-                    updated_at = EXCLUDED.updated_at, deleted_at = NULL, rev = EXCLUDED.rev
-                WHERE editions.updated_at <= EXCLUDED.updated_at
-                """.formatted(REV), user, e.id(), blank(e.isbn13()), e.title(), blank(e.publisher()), blank(e.publishedAt()), e.pageCount(), e.widthMm(), e.heightMm(),
+        return new Object[] {user, e.id(), blank(e.isbn13()), e.title(), blank(e.publisher()), blank(e.publishedAt()), e.pageCount(), e.widthMm(), e.heightMm(),
                 blank(e.category()), blank(e.seriesTitle()), blank(e.coverUrl()), blank(e.coverFileId()), blank(e.coverSource()), e.source(), blank(e.sourceName()),
                 a == null ? null : a.baseColor(), a == null ? null : a.inkColor(), a == null ? null : a.accentColor(), a == null ? null : a.motifId(),
-                a == null ? null : a.layoutVariant(), a == null ? null : a.version(), a == null ? null : ts(a.generatedAt()), ts(orNow(e.createdAt(), e.updatedAt())), at) > 0;
-        if (ok) {
-            jdbc.update("DELETE FROM edition_authors WHERE user_id = ? AND edition_id = ?", user, e.id());
+                a == null ? null : a.layoutVariant(), a == null ? null : a.version(), a == null ? null : ts(a.generatedAt()), ts(orNow(e.createdAt(), e.updatedAt())), at};
+    }
+
+    // 반영된 판본의 저자만 지우고 다시 넣는다(두 번의 배치)
+    private void writeAuthors(long user, List<Edition> editions) {
+        if (editions.isEmpty()) return;
+        List<Object[]> del = new ArrayList<>();
+        List<Object[]> ins = new ArrayList<>();
+        for (Edition e : editions) {
+            del.add(new Object[] {user, e.id()});
             List<String> names = e.authors() == null ? List.of() : e.authors();
             for (int i = 0; i < names.size(); i++) {
                 if (names.get(i) == null || names.get(i).isBlank()) continue;
-                jdbc.update("INSERT INTO edition_authors (user_id, edition_id, position, name) VALUES (?, ?, ?, ?)", user, e.id(), i, names.get(i));
+                ins.add(new Object[] {user, e.id(), i, names.get(i)});
             }
         }
-        return ok;
+        jdbc.batchUpdate("DELETE FROM edition_authors WHERE user_id = ? AND edition_id = ?", del);
+        if (!ins.isEmpty()) jdbc.batchUpdate("INSERT INTO edition_authors (user_id, edition_id, position, name) VALUES (?, ?, ?, ?)", ins);
     }
 
-    private boolean upsertMyBook(long user, MyBook b, OffsetDateTime at) {
+    private static final String BOOK_UPSERT = """
+            INSERT INTO my_books (user_id, id, edition_id, status, rating, note, current_page, binding_id, created_at, updated_at, deleted_at, rev)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, %s)
+            ON CONFLICT (user_id, id) DO UPDATE SET edition_id = EXCLUDED.edition_id, status = EXCLUDED.status, rating = EXCLUDED.rating, note = EXCLUDED.note,
+                current_page = EXCLUDED.current_page, binding_id = EXCLUDED.binding_id, updated_at = EXCLUDED.updated_at, deleted_at = NULL, rev = EXCLUDED.rev
+            WHERE my_books.updated_at <= EXCLUDED.updated_at
+            """.formatted(REV);
+
+    private Object[] bookArgs(long user, MyBook b, OffsetDateTime at) {
         if (b.editionId() == null || b.status() == null) throw ApiException.BAD_REQUEST;
-        return jdbc.update("""
-                INSERT INTO my_books (user_id, id, edition_id, status, rating, note, current_page, binding_id, created_at, updated_at, deleted_at, rev)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, %s)
-                ON CONFLICT (user_id, id) DO UPDATE SET edition_id = EXCLUDED.edition_id, status = EXCLUDED.status, rating = EXCLUDED.rating, note = EXCLUDED.note,
-                    current_page = EXCLUDED.current_page, binding_id = EXCLUDED.binding_id, updated_at = EXCLUDED.updated_at, deleted_at = NULL, rev = EXCLUDED.rev
-                WHERE my_books.updated_at <= EXCLUDED.updated_at
-                """.formatted(REV), user, b.id(), b.editionId(), b.status(), b.rating(), blank(b.note()), b.currentPage(), blank(b.bindingId()),
-                ts(orNow(b.createdAt(), b.updatedAt())), at) > 0;
+        return new Object[] {user, b.id(), b.editionId(), b.status(), b.rating(), blank(b.note()), b.currentPage(), blank(b.bindingId()),
+                ts(orNow(b.createdAt(), b.updatedAt())), at};
     }
 
-    private boolean upsertBinding(long user, Binding b, OffsetDateTime at) {
+    private static final String BINDING_UPSERT = """
+            INSERT INTO bindings (user_id, id, my_book_id, spine_color, ink_color, accent_color, motif, layout, material, cover_art_id, source, status, seed, cover_art_file_id,
+                spine_art_file_id, created_at, updated_at, deleted_at, rev)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, %s)
+            ON CONFLICT (user_id, id) DO UPDATE SET my_book_id = EXCLUDED.my_book_id, spine_color = EXCLUDED.spine_color, ink_color = EXCLUDED.ink_color,
+                accent_color = EXCLUDED.accent_color, motif = EXCLUDED.motif, layout = EXCLUDED.layout, material = EXCLUDED.material, cover_art_id = EXCLUDED.cover_art_id, source = EXCLUDED.source, status = EXCLUDED.status,
+                seed = EXCLUDED.seed, cover_art_file_id = EXCLUDED.cover_art_file_id, spine_art_file_id = EXCLUDED.spine_art_file_id,
+                updated_at = EXCLUDED.updated_at, deleted_at = NULL, rev = EXCLUDED.rev
+            WHERE bindings.updated_at <= EXCLUDED.updated_at
+            """.formatted(REV);
+
+    private Object[] bindingArgs(long user, Binding b, OffsetDateTime at) {
         if (b.myBookId() == null || b.spineColor() == null || b.motif() == null || b.source() == null || b.status() == null) throw ApiException.BAD_REQUEST;
-        return jdbc.update("""
-                INSERT INTO bindings (user_id, id, my_book_id, spine_color, ink_color, accent_color, motif, layout, material, cover_art_id, source, status, seed, cover_art_file_id,
-                    spine_art_file_id, created_at, updated_at, deleted_at, rev)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, %s)
-                ON CONFLICT (user_id, id) DO UPDATE SET my_book_id = EXCLUDED.my_book_id, spine_color = EXCLUDED.spine_color, ink_color = EXCLUDED.ink_color,
-                    accent_color = EXCLUDED.accent_color, motif = EXCLUDED.motif, layout = EXCLUDED.layout, material = EXCLUDED.material, cover_art_id = EXCLUDED.cover_art_id, source = EXCLUDED.source, status = EXCLUDED.status,
-                    seed = EXCLUDED.seed, cover_art_file_id = EXCLUDED.cover_art_file_id, spine_art_file_id = EXCLUDED.spine_art_file_id,
-                    updated_at = EXCLUDED.updated_at, deleted_at = NULL, rev = EXCLUDED.rev
-                WHERE bindings.updated_at <= EXCLUDED.updated_at
-                """.formatted(REV), user, b.id(), b.myBookId(), b.spineColor(), blank(b.inkColor()), blank(b.accentColor()), b.motif(), blank(b.layout()), blank(b.material()), blank(b.coverArtId()), b.source(),
-                b.status(), b.seed() == null ? 0 : b.seed(), blank(b.coverArtFileId()), blank(b.spineArtFileId()), ts(orNow(b.createdAt(), b.updatedAt())), at) > 0;
+        return new Object[] {user, b.id(), b.myBookId(), b.spineColor(), blank(b.inkColor()), blank(b.accentColor()), b.motif(), blank(b.layout()), blank(b.material()),
+                blank(b.coverArtId()), b.source(), b.status(), b.seed() == null ? 0 : b.seed(), blank(b.coverArtFileId()), blank(b.spineArtFileId()),
+                ts(orNow(b.createdAt(), b.updatedAt())), at};
     }
 
-    private boolean upsertRound(long user, Round r, OffsetDateTime at) {
+    private static final String ROUND_UPSERT = """
+            INSERT INTO rounds (user_id, id, my_book_id, idx, started_on, finished_on, paused, created_at, updated_at, deleted_at, rev)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, %s)
+            ON CONFLICT (user_id, id) DO UPDATE SET my_book_id = EXCLUDED.my_book_id, idx = EXCLUDED.idx, started_on = EXCLUDED.started_on,
+                finished_on = EXCLUDED.finished_on, paused = EXCLUDED.paused, updated_at = EXCLUDED.updated_at, deleted_at = NULL, rev = EXCLUDED.rev
+            WHERE rounds.updated_at <= EXCLUDED.updated_at
+            """.formatted(REV);
+
+    private Object[] roundArgs(long user, Round r, OffsetDateTime at) {
         if (r.myBookId() == null || r.index() == null) throw ApiException.BAD_REQUEST;
-        return jdbc.update("""
-                INSERT INTO rounds (user_id, id, my_book_id, idx, started_on, finished_on, paused, created_at, updated_at, deleted_at, rev)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, %s)
-                ON CONFLICT (user_id, id) DO UPDATE SET my_book_id = EXCLUDED.my_book_id, idx = EXCLUDED.idx, started_on = EXCLUDED.started_on,
-                    finished_on = EXCLUDED.finished_on, paused = EXCLUDED.paused, updated_at = EXCLUDED.updated_at, deleted_at = NULL, rev = EXCLUDED.rev
-                WHERE rounds.updated_at <= EXCLUDED.updated_at
-                """.formatted(REV), user, r.id(), r.myBookId(), r.index(), day(r.startedAt()), day(r.finishedAt()), Boolean.TRUE.equals(r.paused()),
-                ts(orNow(r.createdAt(), r.updatedAt())), at) > 0;
+        return new Object[] {user, r.id(), r.myBookId(), r.index(), day(r.startedAt()), day(r.finishedAt()), Boolean.TRUE.equals(r.paused()),
+                ts(orNow(r.createdAt(), r.updatedAt())), at};
     }
 
-    private boolean upsertSession(long user, Session s, OffsetDateTime at) {
+    private static final String SESSION_UPSERT = """
+            INSERT INTO sessions (user_id, id, my_book_id, round_id, started_at, ended_at, duration_ms, pages_read, memo, created_at, updated_at, deleted_at, rev)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, %s)
+            ON CONFLICT (user_id, id) DO UPDATE SET my_book_id = EXCLUDED.my_book_id, round_id = EXCLUDED.round_id, started_at = EXCLUDED.started_at,
+                ended_at = EXCLUDED.ended_at, duration_ms = EXCLUDED.duration_ms, pages_read = EXCLUDED.pages_read, memo = EXCLUDED.memo,
+                updated_at = EXCLUDED.updated_at, deleted_at = NULL, rev = EXCLUDED.rev
+            WHERE sessions.updated_at <= EXCLUDED.updated_at
+            """.formatted(REV);
+
+    private Object[] sessionArgs(long user, Session s, OffsetDateTime at) {
         OffsetDateTime start = ts(s.startedAt());
         OffsetDateTime end = ts(s.endedAt());
         if (start == null || end == null || s.durationMs() == null) throw ApiException.BAD_REQUEST;
-        return jdbc.update("""
-                INSERT INTO sessions (user_id, id, my_book_id, round_id, started_at, ended_at, duration_ms, pages_read, memo, created_at, updated_at, deleted_at, rev)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, %s)
-                ON CONFLICT (user_id, id) DO UPDATE SET my_book_id = EXCLUDED.my_book_id, round_id = EXCLUDED.round_id, started_at = EXCLUDED.started_at,
-                    ended_at = EXCLUDED.ended_at, duration_ms = EXCLUDED.duration_ms, pages_read = EXCLUDED.pages_read, memo = EXCLUDED.memo,
-                    updated_at = EXCLUDED.updated_at, deleted_at = NULL, rev = EXCLUDED.rev
-                WHERE sessions.updated_at <= EXCLUDED.updated_at
-                """.formatted(REV), user, s.id(), blank(s.myBookId()), blank(s.roundId()), start, end, s.durationMs(), s.pagesRead(), blank(s.memo()),
-                ts(orNow(s.createdAt(), s.updatedAt())), at) > 0;
+        return new Object[] {user, s.id(), blank(s.myBookId()), blank(s.roundId()), start, end, s.durationMs(), s.pagesRead(), blank(s.memo()),
+                ts(orNow(s.createdAt(), s.updatedAt())), at};
     }
 
-    private boolean upsertBookmark(long user, Bookmark m, OffsetDateTime at) {
+    private static final String BOOKMARK_UPSERT = """
+            INSERT INTO bookmarks (user_id, id, my_book_id, body, page, memo, photo_file_id, photo_ratio, created_at, updated_at, deleted_at, rev)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, %s)
+            ON CONFLICT (user_id, id) DO UPDATE SET my_book_id = EXCLUDED.my_book_id, body = EXCLUDED.body, page = EXCLUDED.page, memo = EXCLUDED.memo,
+                photo_file_id = EXCLUDED.photo_file_id, photo_ratio = EXCLUDED.photo_ratio, updated_at = EXCLUDED.updated_at, deleted_at = NULL, rev = EXCLUDED.rev
+            WHERE bookmarks.updated_at <= EXCLUDED.updated_at
+            """.formatted(REV);
+
+    private Object[] bookmarkArgs(long user, Bookmark m, OffsetDateTime at) {
         if (m.myBookId() == null) throw ApiException.BAD_REQUEST;
-        return jdbc.update("""
-                INSERT INTO bookmarks (user_id, id, my_book_id, body, page, memo, photo_file_id, photo_ratio, created_at, updated_at, deleted_at, rev)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, %s)
-                ON CONFLICT (user_id, id) DO UPDATE SET my_book_id = EXCLUDED.my_book_id, body = EXCLUDED.body, page = EXCLUDED.page, memo = EXCLUDED.memo,
-                    photo_file_id = EXCLUDED.photo_file_id, photo_ratio = EXCLUDED.photo_ratio, updated_at = EXCLUDED.updated_at, deleted_at = NULL, rev = EXCLUDED.rev
-                WHERE bookmarks.updated_at <= EXCLUDED.updated_at
-                """.formatted(REV), user, m.id(), m.myBookId(), m.text() == null ? "" : m.text(), m.page(), blank(m.memo()), blank(m.photoFileId()),
-                m.photoRatio() == null ? null : m.photoRatio().floatValue(), ts(orNow(m.createdAt(), m.updatedAt())), at) > 0;
+        return new Object[] {user, m.id(), m.myBookId(), m.text() == null ? "" : m.text(), m.page(), blank(m.memo()), blank(m.photoFileId()),
+                m.photoRatio() == null ? null : m.photoRatio().floatValue(), ts(orNow(m.createdAt(), m.updatedAt())), at};
     }
 
+    // 배치는 한 벌 단위: 앱 시각이 더 새로우면 그 사용자의 선반·책 자리를 통째로 바꾼다.
     private boolean upsertLayout(long user, Layout l) {
         OffsetDateTime at = ts(l.updatedAt());
-        if (l.layoutJson() == null || l.version() == null || at == null) throw ApiException.BAD_REQUEST;
-        return jdbc.update("""
-                INSERT INTO shelf_layouts (user_id, layout, version, client_updated_at, updated_at, rev) VALUES (?, ?::jsonb, ?, ?, now(), %s)
-                ON CONFLICT (user_id) DO UPDATE SET layout = EXCLUDED.layout, version = EXCLUDED.version, client_updated_at = EXCLUDED.client_updated_at,
-                    updated_at = now(), rev = EXCLUDED.rev
+        if (at == null) throw ApiException.BAD_REQUEST;
+        LayoutRows rows = LayoutRows.from(l);
+        boolean ok = jdbc.update("""
+                INSERT INTO shelf_layouts (user_id, version, client_updated_at, updated_at, rev) VALUES (?, ?, ?, now(), %s)
+                ON CONFLICT (user_id) DO UPDATE SET version = EXCLUDED.version, client_updated_at = EXCLUDED.client_updated_at, updated_at = now(), rev = EXCLUDED.rev
                 WHERE shelf_layouts.client_updated_at <= EXCLUDED.client_updated_at
-                """.formatted(REV), user, l.layoutJson(), l.version(), at) > 0;
+                """.formatted(REV), user, l.version() == null ? 2 : l.version(), at) > 0;
+        if (!ok) return false;
+        jdbc.update("DELETE FROM shelf_placements WHERE user_id = ?", user);
+        jdbc.update("DELETE FROM shelves WHERE user_id = ?", user);
+        jdbc.batchUpdate("INSERT INTO shelves (user_id, id, position) VALUES (?, ?, ?)", rows.shelves(user));
+        jdbc.batchUpdate("""
+                INSERT INTO shelf_placements (user_id, book_id, shelf_id, position, pose, tilt, stack_id, stack_order, pos, lean_angle, lean_on, depth, spin, pitch,
+                    stack_dx, stack_dz, wall_lean) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """, rows.placements(user));
+        return true;
     }
 
     // ---------- 받기 ----------
@@ -279,12 +331,11 @@ public class SyncService {
         List<Session> ss = take(sessions, cut, max);
         List<Bookmark> bm = take(bookmarks, cut, max);
         Layout layout = null;
-        List<Layout> ls = jdbc.query("SELECT layout::text, version, client_updated_at, rev FROM shelf_layouts WHERE user_id = ? AND rev > ? AND rev <= ?",
-                (rs, i) -> new Layout(rs.getString(1), rs.getInt(2), rs.getObject(3, OffsetDateTime.class).toInstant().toString()), user, since, cut);
-        if (!ls.isEmpty()) {
-            layout = ls.get(0);
-            Long lr = jdbc.queryForObject("SELECT rev FROM shelf_layouts WHERE user_id = ?", Long.class, user);
-            if (lr != null) max[0] = Math.max(max[0], lr);
+        List<Object[]> meta = jdbc.query("SELECT version, client_updated_at, rev FROM shelf_layouts WHERE user_id = ? AND rev > ? AND rev <= ?",
+                (rs, i) -> new Object[] {rs.getInt(1), rs.getObject(2, OffsetDateTime.class).toInstant().toString(), rs.getLong(3)}, user, since, cut);
+        if (!meta.isEmpty()) {
+            layout = readLayout(user, (Integer) meta.get(0)[0], (String) meta.get(0)[1]);
+            max[0] = Math.max(max[0], (Long) meta.get(0)[2]);
         }
         return new Pull(max[0], more, withAuthors(user, ed), bk, bd, rd, ss, bm, layout);
     }
@@ -304,6 +355,33 @@ public class SyncService {
                 (rs, i) -> new Row<>(rs.getLong("rev"), mapper.mapRow(rs, i)), user, since, limit + 1);
         boolean truncated = rows.size() > limit;
         return new Fetched<>(truncated ? rows.subList(0, limit) : rows, truncated);
+    }
+
+    // 선반 순서 → 선반 안 순서 → 쌓기 순서로 모은다(앱 normalize와 같은 순서). 서랍은 서랍 순서.
+    private Layout readLayout(long user, int version, String updatedAt) {
+        List<SyncDtos.Shelf> shelves = jdbc.query("SELECT id, position FROM shelves WHERE user_id = ? ORDER BY position, id",
+                (rs, i) -> new SyncDtos.Shelf(rs.getString(1), rs.getInt(2)), user);
+        List<SyncDtos.Placement> placements = new ArrayList<>();
+        List<String> drawer = new ArrayList<>();
+        jdbc.query("""
+                SELECT p.* FROM shelf_placements p LEFT JOIN shelves s ON s.user_id = p.user_id AND s.id = p.shelf_id
+                WHERE p.user_id = ? ORDER BY p.shelf_id IS NULL, s.position, p.shelf_id, p.position, p.stack_order NULLS FIRST, p.book_id
+                """, (ResultSet rs) -> {
+            if (rs.getString("shelf_id") == null) {
+                drawer.add(rs.getString("book_id"));
+                return;
+            }
+            Double leanAngle = dbl(rs, "lean_angle");
+            placements.add(new SyncDtos.Placement(rs.getString("book_id"), rs.getString("shelf_id"), rs.getInt("position"), rs.getString("pose"), rs.getInt("tilt"),
+                    rs.getString("stack_id"), (Integer) rs.getObject("stack_order"), dbl(rs, "pos"), leanAngle == null ? null : new SyncDtos.Lean(leanAngle, rs.getString("lean_on")),
+                    dbl(rs, "depth"), dbl(rs, "spin"), dbl(rs, "stack_dx"), dbl(rs, "stack_dz"), rs.getBoolean("wall_lean") ? Boolean.TRUE : null, dbl(rs, "pitch")));
+        }, user);
+        return LayoutRows.withJson(new Layout(null, version, updatedAt, shelves, placements, drawer));
+    }
+
+    private static Double dbl(ResultSet rs, String col) throws SQLException {
+        double v = rs.getDouble(col);
+        return rs.wasNull() ? null : v;
     }
 
     private List<Edition> withAuthors(long user, List<Edition> editions) {

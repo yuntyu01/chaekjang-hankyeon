@@ -67,7 +67,8 @@ import { DEMO_BOOT_KEY } from '@/store/boot';
 import Storage from 'expo-sqlite/kv-store';
 import { bootMark, watchResponsive } from '@/ui/boot-trace';
 import { placementStore, usePlacementStore } from '@/store/placement-store';
-import { useBookShared } from '@/ui/book3d/art';
+import { useShelfShared } from '@/ui/book3d/art';
+import { useHomeSnapshot } from '@/ui/home-snapshot';
 import { ReferenceUI } from '@/ui/ReferenceUI';
 import { CONTENT_TOP, computeRows, LAYOUT, rowAffine, rowAt, toContent, useShelfMetrics, type RowGeom } from '@/ui/shelf/metrics';
 import { benchProjection, type BenchRow } from '@/ui/shelf/ShelfMotion';
@@ -83,6 +84,7 @@ import { miniTimerStore } from '@/store/mini-timer-store';
 import { tabBarStyle } from '@/ui/tabBar';
 
 import { DecoratePanel } from './DecoratePanel';
+import { TabBarVeil } from './TabBarVeil';
 
 type MoveAction = 'prev' | 'next' | 'up' | 'down';
 
@@ -168,7 +170,7 @@ export function HomeScreen() {
   const store = usePlacementStore();
   const { books, layout } = store;
   const m = useShelfMetrics();
-  const bookShared = useBookShared(); // 책 그림 공용 자원(글꼴·종이 결). 캔버스 안에는 컨텍스트가 닿지 않아 여기서 읽어 넘긴다
+  const bookShared = useShelfShared(); // 책 그림 공용 자원(글꼴·종이 결). 캔버스 안에는 컨텍스트가 닿지 않아 여기서 읽어 넘긴다(바뀔 때만 줄을 다시 기록)
   const { width: winW } = useWindowDimensions();
   const sysReduceMotion = useReducedMotion();
   const appSettings = useSettings();
@@ -270,9 +272,20 @@ export function HomeScreen() {
   const [settled, setSettled] = useState(false);
   useEffect(() => {
     if (!store.loaded) return;
-    const id = setTimeout(() => setSettled(true), 400);
+    const id = setTimeout(() => {
+      if (TL.on) tl('settled');
+      setSettled(true);
+    }, 400);
     return () => clearTimeout(id);
   }, [store.loaded]);
+  // 다음 실행의 시작 화면에 띄울 홈 사진: 다른 화면·상자·끌기 없이 맨 위에 가만히 있을 때 찍는다
+  const [focused, setFocused] = useState(true);
+  useFocusEffect(useCallback(() => {
+    setFocused(true);
+    return () => setFocused(false);
+  }, []));
+  const atRest = focused && settled && !drag && !popId && !detailId && !editing && !drawerOpen && !shelfMenuOpen && !toast && !selectedId;
+  useHomeSnapshot(atRest, [layout, books, bookShared, appSettings, view, winW, selectedYear], () => scrollY.value < 1);
 
   // 측정 번들: 끌기 한 번 동안 JS 쪽 시간(미리보기 계산, 미리보기 → 커밋, JS 프레임 간격)
   const dragJs = useRef({ preview: [] as number[], commit: [] as number[], js: [] as number[], commitStart: 0, raf: 0, last: 0 });
@@ -1614,6 +1627,14 @@ export function HomeScreen() {
           </GestureDetector>
         </Animated.ScrollView>
         </GestureDetector>
+        <TabBarVeil
+          scrollY={scrollY}
+          contentBottom={rows.at(-1) ? rows.at(-1)!.top + rows.at(-1)!.height : 0}
+          barTop={vpH - navigation.height - insets.bottom}
+          height={navigation.height + insets.bottom}
+          hidden={editing}
+          instant={reduceMotion}
+        />
 
         {popId && popAnchor && books[popId] && placementOf(layout, popId) ? (
           <BookPopover

@@ -1300,6 +1300,12 @@ export function toneDodge(a: number, r: number, spec = 0, sref = 0) {
   if (target <= base || target <= 0) return 0;
   return 1 - Math.pow(base / target, 1 / GAMMA);
 }
+// 반사광 더하기 겹(그림 표지 책, 감마 공간): 곱하기·닷지는 반사광 없이(spec 0) 확산 몫만 칠하고 반사광은 이 값을 더한다.
+// 책 색 a 자리에서는 두 겹(반사광 포함)과 같은 화면 색이고, 그림의 어두운 자리에도 같은 반사광이 얹힌다
+export function toneSpec(a: number, r: number, spec = 0, sref = 0) {
+  'worklet';
+  return Math.max(0, Math.pow(toneTarget(a, r, spec, sref), 1 / GAMMA) - Math.pow(toneTarget(a, r, 0, sref), 1 / GAMMA));
+}
 // 진하기 d(선형, 빛이 d만큼 빠짐)를 검정 덮기 불투명도로: 화면 색 × (1 − d)^(1/γ)
 export function shadowAlpha(d: number) {
   'worklet';

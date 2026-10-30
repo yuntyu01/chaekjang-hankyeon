@@ -11,7 +11,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { ymd } from '@/features/book/labels';
 import { BookmarkCard, PAGE_BG, type BookmarkCardData } from '@/features/bookmark/BookmarkCard';
-import { bookmarksOf, toShelfBook, type Bookmark, type Library } from '@/domain/library';
+import { bookmarksOf, memoShelfBook, type Bookmark, type Library } from '@/domain/library';
 import { PhotoPlate } from '@/features/bookmark/PhotoPlate';
 import { deniedMessage, pickPhoto } from '@/services/photos';
 import { dropImage, keepImage } from '@/store/files';
@@ -34,7 +34,7 @@ export function cardData(lib: Library, m: Bookmark): BookmarkCardData | null {
     memo: m.memo,
     color: (b.bindingId && lib.bindings[b.bindingId]?.spineColor) || '#8A8378',
     coverUri: e.coverUri,
-    book: toShelfBook(lib, b.id) ?? undefined,
+    book: memoShelfBook(lib, b.id) ?? undefined,
     photoUri: m.photoUri,
     photoRatio: m.photoRatio,
   };

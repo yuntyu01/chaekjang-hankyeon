@@ -1,0 +1,16 @@
+// 앱 창 사진(Android 전용): 다음 실행의 시작 화면에 띄울 홈 사진을 찍는다
+plugins {
+  id 'com.android.library'
+  id 'expo-module-gradle-plugin'
+}
+
+group = 'app.covebook.screencapture'
+version = '0.1.0'
+
+android {
+  namespace "app.covebook.screencapture"
+  defaultConfig {
+    versionCode 1
+    versionName '0.1.0'
+  }
+}

@@ -6,6 +6,8 @@ web-build/
 .env
 .env.*
 !.env.example
+# 운영 서버 주소(공개 값)
+!app/.env.production
 
 # prebuild 산출물
 app/android/

@@ -29,3 +29,6 @@ export { default as X } from 'lucide-react-native/icons/x';
 export { default as Share } from 'lucide-react-native/icons/share';
 export { default as FileText } from 'lucide-react-native/icons/file-text';
 export { default as AudioLines } from 'lucide-react-native/icons/audio-lines';
+export { default as UserRound } from 'lucide-react-native/icons/user-round';
+export { default as RefreshCw } from 'lucide-react-native/icons/refresh-cw';
+export { default as Folder } from 'lucide-react-native/icons/folder';

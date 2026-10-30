@@ -78,13 +78,14 @@ it('설치 전 백업하고, 완료 후 재실행에서 사용자가 바꾼 배�
   const mem: Record<string, string> = {};
   const saveLibrary = jest.fn(async (_lib: Library) => {});
   const setItem = jest.fn(async (k: string, value: string) => { mem[k] = value; });
-  const deps = { getItem: async (k: string) => mem[k] ?? null, setItem, saveLibrary };
+  const saveLayout = jest.fn(async (l: ShelfLayout) => { mem['shelf-layout'] = JSON.stringify(l); });
+  const deps = { getItem: async (k: string) => mem[k] ?? null, setItem, saveLibrary, saveLayout };
   const original = existing();
-  const profile = await installReferenceHome(original, empty, deps);
+  const profile = await installReferenceHome(original, async () => empty, deps);
   expect(setItem.mock.calls[0][0]).toBe(HOME_REFERENCE_BACKUP_KEY);
   expect(JSON.parse(mem[HOME_REFERENCE_BACKUP_KEY]).lib).toEqual(original);
   mem['shelf-layout'] = 'user-moved-layout';
-  expect(await installReferenceHome(original, empty, deps)).toEqual(profile);
+  expect(await installReferenceHome(original, async () => empty, deps)).toEqual(profile);
   expect(mem['shelf-layout']).toBe('user-moved-layout');
   expect(saveLibrary).toHaveBeenCalledTimes(1);
 });
@@ -96,16 +97,19 @@ it('배치 저장 실패 후 같은 책 ID로 재시도하고 완료 표시는 �
   const deps = {
     getItem: async (k: string) => mem[k] ?? null,
     setItem: async (k: string, value: string) => {
-      if (k === 'shelf-layout' && fail) throw new Error('disk unavailable');
       mem[k] = value;
     },
     saveLibrary: async (lib: Library) => { savedLib = lib; },
+    saveLayout: async (l: ShelfLayout) => {
+      if (fail) throw new Error('disk unavailable');
+      mem['shelf-layout'] = JSON.stringify(l);
+    },
   };
-  await expect(installReferenceHome(savedLib, empty, deps)).rejects.toThrow('disk unavailable');
+  await expect(installReferenceHome(savedLib, async () => empty, deps)).rejects.toThrow('disk unavailable');
   expect(JSON.parse(mem[HOME_REFERENCE_KEY]).complete).toBe(false);
   const ids = Object.keys(savedLib.books);
   fail = false;
-  await installReferenceHome(savedLib, empty, deps);
+  await installReferenceHome(savedLib, async () => empty, deps);
   expect(Object.keys(savedLib.books)).toEqual(ids);
   expect(JSON.parse(mem[HOME_REFERENCE_KEY]).complete).toBe(true);
   expect(JSON.parse(mem['shelf-layout']).placements).toHaveLength(18);
@@ -113,10 +117,11 @@ it('배치 저장 실패 후 같은 책 ID로 재시도하고 완료 표시는 �
 
 it('백업 실패 시 서재/배치를 쓰지 않는다', async () => {
   const saveLibrary = jest.fn();
-  await expect(installReferenceHome(existing(), empty, {
+  await expect(installReferenceHome(existing(), async () => empty, {
     getItem: async () => null,
     setItem: async () => { throw new Error('backup failed'); },
     saveLibrary,
+    saveLayout: jest.fn(),
   })).rejects.toThrow('backup failed');
   expect(saveLibrary).not.toHaveBeenCalled();
 });

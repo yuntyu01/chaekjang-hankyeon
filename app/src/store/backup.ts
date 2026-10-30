@@ -9,7 +9,9 @@ import * as FS from 'expo-file-system/legacy';
 import * as Sharing from 'expo-sharing';
 import Storage from 'expo-sqlite/kv-store';
 
-import { LIB_KINDS } from '@/db/local-db';
+import { LIB_KINDS, loadLayout, saveLayout } from '@/db/local-db';
+import { migrate } from '@/domain/layout-engine';
+import type { ShelfLayout, ShelfLayoutV1 } from '@/domain/types';
 import type { Library } from '@/domain/library';
 
 import { shelfBooks } from './boot';
@@ -22,9 +24,13 @@ import { placementStore } from './placement-store';
 import { settingsStore, type Settings } from './settings-store';
 import { viewStore } from './view-store';
 
-const LAYOUT_KEY = 'shelf-layout';
 const VIEW_KEY = VIEW_SETTINGS_KEY;
 const DIR_KEY = 'backup-dir:v1'; // 사용자가 고른 저장 폴더(SAF 주소)
+const LAST_KEY = 'backup-last:v1'; // 마지막으로 폴더에 저장한 시각(공유는 실제로 보냈는지 알 수 없어 적지 않는다)
+
+export async function lastBackupAt(): Promise<string | null> {
+  return Storage.getItem(LAST_KEY).catch(() => null);
+}
 
 export type Backup = {
   app: 'chaekjang';
@@ -73,7 +79,7 @@ export async function snapshot(): Promise<Backup> {
     format: 1,
     exportedAt: new Date().toISOString(),
     library: mapImages(lib, toRef),
-    layout: await Storage.getItem(LAYOUT_KEY),
+    layout: await loadLayout().then((l) => (l ? JSON.stringify(l) : null)), // 백업 파일에는 예전처럼 배치 JSON 한 덩어리
     view: await Storage.getItem(VIEW_KEY),
     settings: settingsStore.raw(),
     images,
@@ -105,6 +111,7 @@ export async function exportToFolder(pickAgain = false): Promise<{ ok: true; nam
     const data = await snapshot();
     const uri = await SAF.createFileAsync(dir, fileName(data).replace(/\.json$/, ''), 'application/json');
     await SAF.writeAsStringAsync(uri, JSON.stringify(data));
+    await Storage.setItem(LAST_KEY, data.exportedAt).catch(() => {});
     return { ok: true, name: fileName(data), counts: countsOf(data) };
   } catch (e) {
     await Storage.removeItem(DIR_KEY); // 폴더 권한이 사라졌을 수 있다: 다음에는 다시 고르게
@@ -156,8 +163,8 @@ async function apply(data: Backup) {
   const at = new Date().toISOString();
   for (const kind of LIB_KINDS) for (const id of Object.keys(before[kind])) if (!(id in lib[kind])) noteChange(kind, id, true, at);
   markAllDirty(fullDirty(lib));
-  if (data.layout) await Storage.setItem(LAYOUT_KEY, data.layout);
-  else await Storage.removeItem(LAYOUT_KEY);
+  const layout = data.layout ? migrate(JSON.parse(data.layout) as ShelfLayout | ShelfLayoutV1) : null;
+  await saveLayout(layout ?? { version: 2, shelves: [], placements: [], drawer: [] }, true); // 비우면 다음 불러오기가 빈 책장으로 시작
   noteLayoutChange(new Date().toISOString());
   if (data.view) await Storage.setItem(VIEW_KEY, data.view);
   settingsStore.set(data.settings ?? {});

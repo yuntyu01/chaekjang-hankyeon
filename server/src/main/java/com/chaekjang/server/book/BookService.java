@@ -171,9 +171,7 @@ public class BookService {
         if (color == null || color.isEmpty()) color = BookClasses.fallbackColor(isbn13);
 
         return new Book(isbn13, it.title(), it.authors() == null ? List.of() : it.authors(), it.publisher(),
-                it.publishedAt(), d.pageCount(), d.format(), cover, it.thumbnailUrl(), desc, color,
-                BookClasses.heightFromFormat(d.format()), BookClasses.thicknessFromPages(d.pageCount()),
-                prev != null ? prev.defaultMotifId() : BookClasses.defaultMotifFor(isbn13), searcher.source(),
+                it.publishedAt(), d.pageCount(), d.format(), cover, it.thumbnailUrl(), desc, color, searcher.source(),
                 clock.instant());
     }
 

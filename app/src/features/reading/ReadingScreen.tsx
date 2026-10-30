@@ -3,7 +3,7 @@
 // 소리만 듣기(sound=1)는 타이머 없이 소리만: 독서 시간으로 기록하지 않는다.
 import { router, useFocusEffect } from 'expo-router';
 import { BookOpen, AudioLines, ChevronDown, ChevronUp, ChevronLeft, ImageIcon, Play, Volume1, Volume2, VolumeX } from '@/ui/icons';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useState, type ReactNode } from 'react';
 import { AccessibilityInfo, AppState, Modal, Pressable, ScrollView, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -58,7 +58,7 @@ export function ReadingScreen({ initialBookId, soundOnly = false, inTab = false 
   }, []);
   const reduce = settings.reduceMotion === 'on' || (settings.reduceMotion === 'system' && sysReduce);
   const running = !!active?.runningSince;
-  const ms = useElapsed(focused && appActive && running);
+  const ticking = focused && appActive && running;
   const scene = settings.scene;
   const goalMs = settings.goalMin ? settings.goalMin * 60000 : null;
 
@@ -117,8 +117,10 @@ export function ReadingScreen({ initialBookId, soundOnly = false, inTab = false 
             </View>
             {!soundOnly ? <Pressable onPress={() => setControls('goal')} accessibilityRole="button" accessibilityLabel={`목표 시간 설정, ${settings.goalMin ? settings.goalMin + '분' : '자유롭게 시간 재기'}`} style={{ alignItems: 'center', marginTop: 0 }}>
               {active && !running ? <Text style={st.sub}>일시정지</Text> : null}
-              <Text style={st.time} accessibilityLabel={`읽은 시간 ${clock(ms)}`}>{clock(ms)}</Text>
-              {goalMs ? <Text style={st.goal}>{ms >= goalMs ? `목표 ${settings.goalMin}분을 채웠어요` : `목표 ${settings.goalMin}분`}</Text> : null}
+              <Elapsed running={ticking}>{(ms) => <>
+                <Text style={st.time} accessibilityLabel={`읽은 시간 ${clock(ms)}`}>{clock(ms)}</Text>
+                {goalMs ? <Text style={st.goal}>{ms >= goalMs ? `목표 ${settings.goalMin}분을 채웠어요` : `목표 ${settings.goalMin}분`}</Text> : null}
+              </>}</Elapsed>
             </Pressable> : null}
             <View style={st.controls}>
               <Pressable onPress={() => setControls('sound')} style={st.sideButton} accessibilityRole="button" accessibilityLabel="소리 설정"><AudioLines size={32} color={colors.ink} strokeWidth={1.8} /></Pressable>
@@ -140,7 +142,7 @@ export function ReadingScreen({ initialBookId, soundOnly = false, inTab = false 
           </ScrollView>
         </View>
       {!open ? (
-        <Pressable onPress={() => setOpen(true)} style={[st.reopen, { bottom: insets.bottom + 18 }]} accessibilityRole="button" accessibilityLabel="조작부 열기"><ChevronUp size={18} color={colors.ink} /><Text style={st.reopenText}>{soundOnly ? '조작부 열기' : clock(ms)}</Text></Pressable>
+        <Pressable onPress={() => setOpen(true)} style={[st.reopen, { bottom: insets.bottom + 18 }]} accessibilityRole="button" accessibilityLabel="조작부 열기"><ChevronUp size={18} color={colors.ink} /><Text style={st.reopenText}>{soundOnly ? '조작부 열기' : <Elapsed running={ticking}>{clock}</Elapsed>}</Text></Pressable>
       ) : null}
       {paperModeAvailable ? <PaperModeSheet visible={paperOpen} onClose={() => setPaperOpen(false)} /> : null}
       <BookPicker lib={lib} visible={bookPicker} allowNone onClose={() => setBookPicker(false)} onPick={(id) => { setDraftBookId(id); if (active) readingStore.setBook(id); setBookPicker(false); }} />
@@ -166,6 +168,12 @@ export function ReadingScreen({ initialBookId, soundOnly = false, inTab = false 
       </Modal>
     </View>
   );
+}
+
+// 1초마다 바뀌는 시간 글자만 다시 그린다(장면·조작부·책 고르기 창까지 화면 전체를 매초 다시 그리지 않게)
+function Elapsed({ running, children }: { running: boolean; children: (ms: number) => ReactNode }) {
+  const ms = useElapsed(running);
+  return <>{children(ms)}</>;
 }
 
 const st = StyleSheet.create({

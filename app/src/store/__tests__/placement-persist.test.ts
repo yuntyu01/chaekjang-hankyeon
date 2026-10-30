@@ -14,6 +14,10 @@ jest.mock('expo-sqlite/kv-store', () => ({
     },
   },
 }));
+// 배치는 기기 DB 표(선반·책 자리)에 저장된다: 진짜 SQLite(메모리)로 왕복
+jest.mock('expo-sqlite', () => require('@/test-utils/expo-sqlite-mock').expoSqlite());
+// 조작마다 선반 전체를 다시 계산해 무겁다: 전체 시험을 병렬로 돌릴 때 기본 5초를 넘긴 적이 있다
+jest.setTimeout(30000);
 
 import { bookXs, depthRange, detach, findDropTarget, frontRelease, frontSpin, frontStateOf, frontTilt, itemWidth, moveBook, placementOf, setDepth, setTilt, shelfItems, type BookMap, type Result } from '@/domain/layout-engine';
 import { SAMPLE_BOOKS, SAMPLE_LAYOUT } from '@/domain/test-fixtures/interaction-books';

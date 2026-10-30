@@ -5,8 +5,9 @@
 import { LIB_KINDS, type LibKind } from '@/db/local-db';
 import { isCoverArtworkId } from './cover-artworks';
 import type { Binding, Bookmark, Edition, Library, MyBook, Round, Session } from './library';
-import type { LayoutVariant } from './rebinding';
-import { BINDING_MATERIALS, type BindingMaterial } from './types';
+import { migrate } from './layout-engine';
+import { heightClassOf, thicknessClassOf, type LayoutVariant } from './rebinding';
+import { BINDING_MATERIALS, type BindingMaterial, type BookPlacement, type ShelfLayout, type ShelfLayoutV1 } from './types';
 
 export type Dirty = Record<string, { deleted: boolean; at: string }>; // 키: "kind:id"
 export const dirtyKey = (kind: LibKind, id: string) => `${kind}:${id}`;
@@ -30,7 +31,52 @@ export type WireSession = Wire & {
   myBookId?: string | null; roundId?: string | null; startedAt?: string; endedAt?: string; durationMs?: number; pagesRead?: number | null; memo?: string | null; createdAt?: string;
 };
 export type WireBookmark = Wire & { myBookId?: string; text?: string; page?: number | null; memo?: string | null; photoFileId?: string | null; photoRatio?: number | null; createdAt?: string };
-export type WireLayout = { layoutJson: string; version: number; updatedAt: string };
+// 책장 배치 한 벌. 서버는 표(선반·책 자리)로 저장한다. layoutJson은 예전 서버·앱과 주고받던 같은 내용의 JSON(둘 다 보내고, 받을 때는 표 모양을 먼저 쓴다)
+export type WireLayout = {
+  layoutJson?: string | null; version: number; updatedAt: string;
+  shelves?: ShelfLayout['shelves'] | null; placements?: ShelfLayout['placements'] | null; drawer?: string[] | null;
+};
+
+export function layoutToWire(layout: ShelfLayout, updatedAt: string): WireLayout {
+  return { version: 2, updatedAt, shelves: layout.shelves, placements: layout.placements, drawer: layout.drawer, layoutJson: JSON.stringify(layout) };
+}
+
+// 받은 배치 → 앱 배치(표 모양이 있으면 그것, 없으면 예전 JSON). 쓸 수 없으면 null
+export function layoutFromWire(w: WireLayout): ShelfLayout | null {
+  if (w.shelves) {
+    const placements = (w.placements ?? []).map((p) => Object.fromEntries(Object.entries(p).filter(([, v]) => v !== null)) as unknown as BookPlacement);
+    return { version: 2, shelves: w.shelves, placements, drawer: w.drawer ?? [] };
+  }
+  if (!w.layoutJson) return null;
+  try {
+    const saved = JSON.parse(w.layoutJson) as ShelfLayout | ShelfLayoutV1;
+    return saved.version === 1 || saved.version === 2 ? migrate(saved) : null;
+  } catch {
+    return null;
+  }
+}
+
+// 서버는 한 요청에 종류마다 MAX_PER_KIND개까지 받는다. 참조 순서(판본 → 내 책 → 장정 → 회차 → 세션 → 갈피)대로 채워 나누므로
+// 자식은 늘 부모와 같은 요청이나 그 뒤 요청에 들어간다(앞 요청이 먼저 확정된다). 배치는 마지막 요청에 붙인다.
+export const MAX_PER_KIND = 1000;
+const PUSH_ORDER = ['editions', 'books', 'bindings', 'rounds', 'sessions', 'bookmarks'] as const;
+export function splitPush(body: PushBody, max = MAX_PER_KIND): PushBody[] {
+  const out: PushBody[] = [];
+  let cur: PushBody = {};
+  for (const kind of PUSH_ORDER) {
+    const items = (body[kind] ?? []) as Wire[];
+    for (let i = 0; i < items.length; i += max) {
+      if (cur[kind]) {
+        out.push(cur);
+        cur = {};
+      }
+      (cur as Record<string, Wire[]>)[kind] = items.slice(i, i + max);
+    }
+  }
+  if (body.layout) cur.layout = body.layout;
+  if (Object.keys(cur).length || !out.length) out.push(cur);
+  return out;
+}
 
 export type PushBody = {
   editions?: WireEdition[]; books?: WireBook[]; bindings?: WireBinding[]; rounds?: WireRound[]; sessions?: WireSession[]; bookmarks?: WireBookmark[]; layout?: WireLayout;
@@ -118,7 +164,7 @@ export const editionFromWire = (w: WireEdition, imageDir: string): Edition => ({
   coverUri: w.coverFileId ? `${imageDir}${w.coverFileId}` : nz(w.coverUrl), coverSource: (nz(w.coverSource) as Edition['coverSource']) ?? undefined,
   source: (w.source as Edition['source']) ?? 'manual', sourceName: nz(w.sourceName),
   art: w.art?.baseColor
-    ? { baseColor: w.art.baseColor, inkColor: w.art.inkColor ?? '#2F3944', accentColor: w.art.accentColor ?? w.art.baseColor, motifId: (w.art.motifId ?? 'leaf') as never, layoutVariant: (w.art.layoutVariant ?? 'spine_a') as LayoutVariant, heightClass: 'medium', thicknessClass: 'medium', generatedAt: w.art.generatedAt ?? '', version: w.art.version ?? 1 }
+    ? { baseColor: w.art.baseColor, inkColor: w.art.inkColor ?? '#2F3944', accentColor: w.art.accentColor ?? w.art.baseColor, motifId: (w.art.motifId ?? 'leaf') as never, layoutVariant: (w.art.layoutVariant ?? 'spine_a') as LayoutVariant, heightClass: heightClassOf(w.heightMm ?? 188), thicknessClass: thicknessClassOf(w.pageCount ?? 250), generatedAt: w.art.generatedAt ?? '', version: w.art.version ?? 1 }
     : undefined,
   createdAt: w.createdAt ?? w.updatedAt, updatedAt: w.updatedAt,
 });

@@ -150,10 +150,28 @@ export function defaultBinding(myBookId: string, title: string, seed: number, no
 
 // ---------- 읽기 상태와 회차 ----------
 
+// 책별 묶음 색인: 표(lib.rounds·lib.bookmarks 객체)마다 한 번만 만든다. 서재 저장소는 바뀐 표만 새 객체로 바꾸므로
+// 그 표가 그대로면 색인도 그대로 쓴다(책마다 전체를 훑고 정렬하던 것을 한 번으로). 돌려줄 때는 복사본(부르는 쪽이 고쳐도 색인은 안전).
+function groupBy<T extends { myBookId?: string }>(cache: WeakMap<object, Map<string, T[]>>, table: Record<string, T>, order: (a: T, b: T) => number) {
+  let m = cache.get(table);
+  if (!m) {
+    m = new Map();
+    for (const x of Object.values(table)) {
+      if (!x.myBookId) continue;
+      const list = m.get(x.myBookId);
+      if (list) list.push(x);
+      else m.set(x.myBookId, [x]);
+    }
+    for (const list of m.values()) list.sort(order);
+    cache.set(table, m);
+  }
+  return m;
+}
+const roundIndex = new WeakMap<object, Map<string, Round[]>>();
+const bookmarkIndex = new WeakMap<object, Map<string, Bookmark[]>>();
+
 export function roundsOf(lib: Library, myBookId: string) {
-  return Object.values(lib.rounds)
-    .filter((r) => r.myBookId === myBookId)
-    .sort((a, b) => a.index - b.index);
+  return (groupBy(roundIndex, lib.rounds, (a, b) => a.index - b.index).get(myBookId) ?? []).slice();
 }
 
 export const currentRound = (lib: Library, myBookId: string) => roundsOf(lib, myBookId).at(-1);
@@ -201,7 +219,13 @@ export const monthPeriod = (y: number, m: number): Period => {
 export const yearPeriod = (y: number): Period => ({ from: `${y}-01-01`, to: `${y}-12-31` });
 const inPeriod = (day: string | undefined, p: Period) => !!day && day >= p.from && day <= p.to;
 // 세션 날짜는 기기 현지 날짜로(시작 시각 기준)
-export const sessionDay = (s: Session) => today(new Date(s.startedAt));
+// 세션 날짜(기기 시간대). 세션 객체는 바뀌면 새 객체가 되므로 객체마다 한 번만 계산한다(통계가 기간마다 모든 세션을 다시 훑는다)
+const dayOf = new WeakMap<Session, string>();
+export const sessionDay = (s: Session) => {
+  let d = dayOf.get(s);
+  if (d === undefined) dayOf.set(s, (d = today(new Date(s.startedAt))));
+  return d;
+};
 
 export function periodStats(lib: Library, p: Period) {
   const finished = Object.values(lib.rounds).filter((r) => inPeriod(r.finishedAt, p) && lib.books[r.myBookId]);
@@ -225,9 +249,7 @@ export function periodStats(lib: Library, p: Period) {
 
 export const bookReadMs = (lib: Library, myBookId: string) => Object.values(lib.sessions).reduce((a, s) => a + (s.myBookId === myBookId ? s.durationMs : 0), 0);
 export const bookmarksOf = (lib: Library, myBookId: string) =>
-  Object.values(lib.bookmarks)
-    .filter((b) => b.myBookId === myBookId)
-    .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+  (groupBy(bookmarkIndex, lib.bookmarks, (a, b) => b.createdAt.localeCompare(a.createdAt)).get(myBookId) ?? []).slice();
 export const completions = (lib: Library, myBookId: string) => roundsOf(lib, myBookId).filter((r) => r.finishedAt).length;
 
 // 완독 연도(책장 연도 표기): 완독한 책에만. 가장 최근 완독 회차의 연도
@@ -284,6 +306,19 @@ export function toShelfBook(lib: Library, myBookId: string): Book | null {
     finishedAt: b.status === 'read' ? r?.finishedAt : undefined,
     quotes: marks,
   };
+}
+
+// 화면 목록용: 그 책의 입력(내 책·판본·장정·현재 회차·갈피 수)이 그대로면 지난번 Book 객체를 그대로 돌려준다
+// (책 그림 캔버스가 객체가 같으면 다시 기록하지 않으므로, 검색어 입력·표시 바꾸기마다 표지를 다시 그리지 않게)
+const shelfBookMemo = new Map<string, { deps: unknown[]; book: Book | null }>();
+export function memoShelfBook(lib: Library, myBookId: string): Book | null {
+  const b = lib.books[myBookId];
+  const deps = [b, b && lib.editions[b.editionId], b?.bindingId ? lib.bindings[b.bindingId] : undefined, currentRound(lib, myBookId), bookmarksOf(lib, myBookId).length];
+  const hit = shelfBookMemo.get(myBookId);
+  if (hit && hit.deps.every((d, i) => d === deps[i])) return hit.book;
+  const book = toShelfBook(lib, myBookId);
+  shelfBookMemo.set(myBookId, { deps, book });
+  return book;
 }
 
 export { formatMm };

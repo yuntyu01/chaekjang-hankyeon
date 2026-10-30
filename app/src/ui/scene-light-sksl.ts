@@ -917,9 +917,13 @@ function materialCode() {
 `;
 }
 
-function shadeCode(mode: 0 | 1 | 2) {
+// mode 0 곱하기, 1 닷지, 2 한 번에, 3 반사광(더하기 겹: 감마 공간 반사광 몫).
+// split: 곱하기·닷지가 확산 몫만 칠한다(반사광은 mode 3 더하기 겹이 따로). 닷지는 밑 색에 비례해 올리므로 어두운 그림 위에서는
+// 반사광이 거의 안 보인다. 반사광은 밑 색과 상관없이 더해지는 빛이라 그림 표지는 따로 더한다(단색 면은 split이어도 같은 색)
+function shadeCode(mode: 0 | 1 | 2 | 3, split = false) {
   return `
   const float DODGE = ${mode}.0;
+  const float SPLIT = ${split ? 1 : 0}.0;
   float plankKey(float3 p) { return keyOn < 0.5 ? 0.0 : plankKeyOf(p); }
   // 카메라: 노출과 필름형 톤 곡선(light-model tone·toneInv)
   const float EXPO = ${f(EXPOSURE)};
@@ -1005,6 +1009,8 @@ function shadeCode(mode: 0 | 1 | 2) {
     float3 st = sa + spec * EXPO;
     float3 t0 = float3(toneF(sa.x), toneF(sa.y), toneF(sa.z));
     float3 target = float3(toneF(st.x), toneF(st.y), toneF(st.z));
+    if (DODGE > 2.5) return half4(half3(max(float3(0.0), pow(target, float3(IG)) - pow(t0, float3(IG)))), 1.0);
+    if (SPLIT > 0.5) target = t0;
     float3 base = min(am, max(t0, 0.25 * target));
     float3 m = pow(min(float3(1.0), base / am), float3(IG));
     if (DODGE < 0.5) return half4(half3(m), 1.0);
@@ -1083,7 +1089,8 @@ ${shadeCode(mode)}
 // 면의 법선(둥근 모서리·책등 곡면·제본 홈), 종이 단면 면은 속지가 들어간 구멍 안으로 이어 닿는 곳(속지 면 또는 판 안쪽 벽).
 // 하늘 가림은 그 면의 구운 칸(rect, 줄 아틀라스 그림 px, 면 평면 좌표로 읽는다), 없으면 둘레만 그 자리에서.
 // 면 좌표(book-parts lightPanel과 같은 틀): 가로 u, 세로 v(DU), 면 번호 0 책등 1 표지 2 뒤표지 3 머리 4 꼬리 5 책배
-export function bookSource(dodge: boolean) {
+// dodge: false 곱하기, true 닷지, 'spec' 반사광 더하기 겹. split: 곱하기·닷지에서 반사광을 빼고 더하기 겹으로(그림 표지 책, shadeCode)
+export function bookSource(dodge: boolean | 'spec', split = false) {
   return `
   uniform shader tex;       // 줄 아틀라스(그림 px 그대로 읽는다)
   uniform shader keyTex;    // 이 책 면이 받는 창빛 그림자(다른 책이 창빛 원반을 가리는 몫, 알파): 면마다 칸(kRect)
@@ -1115,7 +1122,7 @@ ${header()}
 ${polyCode()}
 ${envCode(false)}
 ${materialCode()}
-${shadeCode(dodge ? 1 : 0)}
+${shadeCode(dodge === 'spec' ? 3 : dodge ? 1 : 0, split)}
   const float CURVE = ${f(SPINE_CURVE)};
   const float3 EREF_PAPER = ${c3(EREF.paper)};
   const float4 GRV = float4(${f(GROOVE.at)}, ${f(GROOVE.width)}, ${f(GROOVE.slope)}, 0.0);

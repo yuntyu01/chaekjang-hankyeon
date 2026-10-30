@@ -58,9 +58,13 @@ public class AccountService {
         if (header == null || !header.startsWith("Bearer ")) throw UNAUTHORIZED;
         String token = header.substring(7).trim();
         if (token.isEmpty() || token.length() > 200) throw UNAUTHORIZED;
-        List<Long> ids = jdbc.queryForList("UPDATE api_tokens SET last_used_at = now() WHERE token_hash = ? RETURNING user_id", Long.class, sha256(token));
-        if (ids.isEmpty()) throw UNAUTHORIZED;
-        return ids.get(0);
+        // 요청마다 쓰지 않게 마지막 사용 시각은 한 시간에 한 번만 고친다(읽기는 기본키 조회 한 번)
+        String hash = sha256(token);
+        List<Object[]> rows = jdbc.query("SELECT user_id, last_used_at < now() - interval '1 hour' FROM api_tokens WHERE token_hash = ?",
+                (rs, i) -> new Object[] {rs.getLong(1), rs.getBoolean(2)}, hash);
+        if (rows.isEmpty()) throw UNAUTHORIZED;
+        if ((Boolean) rows.get(0)[1]) jdbc.update("UPDATE api_tokens SET last_used_at = now() WHERE token_hash = ?", hash);
+        return (Long) rows.get(0)[0];
     }
 
     static String sha256(String s) {

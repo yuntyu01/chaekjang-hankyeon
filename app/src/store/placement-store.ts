@@ -1,17 +1,18 @@
-// 확정된 배치 상태 + 기기 로컬 저장 + 되돌리기 1회.
+// 확정된 배치 상태 + 기기 로컬 저장(선반·책 자리 표, 바뀐 줄만) + 되돌리기 1회.
 // 드래그 중 임시 위치는 여기 들어오지 않는다. 확정(commit)될 때만 저장한다.
 import { useSyncExternalStore } from 'react';
 import Storage from 'expo-sqlite/kv-store';
 import { noteLayoutChange } from './sync-dirty';
+import { loadLayout, saveLayout } from '@/db/local-db';
 
-import { addBook as placeNewBook, addShelf, applySwapTarget, bookXs, ensureShelves, findSwapTarget, fitToShelf, migrate, moveToDrawer, normalize, placeFromDrawer, pruneEmptyShelves, setDepth, validate, withNormalizedX, type BookMap } from '@/domain/layout-engine';
+import { addBook as placeNewBook, addShelf, applySwapTarget, bookXs, ensureShelves, findSwapTarget, fitToShelf, migrate, moveToDrawer, normalize, placeFromDrawer, pruneEmptyShelves, setDepth, validate, type BookMap } from '@/domain/layout-engine';
 import { withLeans } from '@/domain/shelf-scene';
 import { SHELF_DEPTH, SHELF_FRONT } from '@/domain/geometry';
 import { MOCKUP_BOOKS, MOCKUP_LAYOUT } from '@/domain/mockup-sample';
 import { SAMPLE_BOOKS, SAMPLE_LAYOUT } from '@/domain/onboarding-sample';
 import type { ShelfLayout, ShelfLayoutV1 } from '@/domain/types';
 
-const KEY = 'shelf-layout';
+const KEY = 'shelf-layout'; // 예전: 배치 전체를 kv에 JSON으로(지금은 표로 옮기고 지운다)
 const LEGACY_KEY = 'shelf-layout:v1'; // v1(서랍 없음) 저장본
 
 export type SaveStatus = 'idle' | 'saving' | 'error';
@@ -66,15 +67,30 @@ export function restore(saved: ShelfLayout | ShelfLayoutV1, bookMap: BookMap) {
   return { layout: withLeans(fit.layout, bookMap), moved: fit.moved, changed: fit.changed };
 }
 
+// 저장된 배치: 표에 있으면 그것, 없으면 예전 kv 저장본을 표로 옮기고 kv에서 지운다(한 번)
+export async function readSavedLayout(): Promise<ShelfLayout | null> {
+  const fromDb = await loadLayout();
+  if (fromDb) return fromDb;
+  const raw = (await Storage.getItem(KEY)) ?? (await Storage.getItem(LEGACY_KEY));
+  if (!raw) return null;
+  const saved = JSON.parse(raw) as ShelfLayout | ShelfLayoutV1;
+  if (saved.version !== 1 && saved.version !== 2) return null;
+  const layout = migrate(saved);
+  await saveLayout(layout, true);
+  await Storage.removeItem(KEY);
+  await Storage.removeItem(LEGACY_KEY);
+  return layout;
+}
+
+// 저장 중 표시는 따로 알리지 않는다(확정마다 홈 전체가 두 번 더 그려졌다). 실패했을 때와 다시 성공했을 때만 알린다.
 async function persist(layout: ShelfLayout) {
   if (state.demo) return;
-  set({ save: 'saving' });
   try {
-    await Storage.setItem(KEY, JSON.stringify(withNormalizedX(layout, state.books)));
+    await saveLayout(layout);
     noteLayoutChange(new Date().toISOString());
-    // 저장 도중 다른 변경이 있었으면 그쪽이 다시 저장한다.
-    if (state.layout === layout) set({ save: 'idle' });
+    if (state.save !== 'idle') set({ save: 'idle' });
   } catch {
+    // 저장 도중 다른 변경이 있었으면 그쪽이 다시 저장한다.
     if (state.layout === layout) set({ save: 'error' });
   }
 }
@@ -87,19 +103,17 @@ export const placementStore = {
   },
 
   // 저장된 배치를 읽는다. 책 목록은 서재(library-store)가 syncBooks로 넘긴다(먼저 불러온 뒤 호출).
-  async load(books: BookMap) {
+  // saved: 부르는 쪽이 이미 읽은 저장본(시작할 때 두 번 읽지 않게). 없으면 여기서 읽는다.
+  async load(books: BookMap, saved?: ShelfLayout | null) {
     state = { ...state, books };
     try {
-      const raw = (await Storage.getItem(KEY)) ?? (await Storage.getItem(LEGACY_KEY));
-      if (raw) {
-        const saved = JSON.parse(raw) as ShelfLayout | ShelfLayoutV1;
-        if (saved.version === 1 || saved.version === 2) {
-          // 예전 예시 책(b01~b18)만 있던 저장본은 내 책이 아니므로 배치에서 빠진다(repair가 모르는 책을 버린다)
-          const r = restore(saved, books);
-          set({ layout: r.layout, loaded: true, notice: r.moved.length ? r.moved.length : null });
-          if (r.changed) void persist(r.layout);
-          return;
-        }
+      if (saved === undefined) saved = await readSavedLayout();
+      if (saved) {
+        // 예전 예시 책(b01~b18)만 있던 저장본은 내 책이 아니므로 배치에서 빠진다(repair가 모르는 책을 버린다)
+        const r = restore(saved, books);
+        set({ layout: r.layout, loaded: true, notice: r.moved.length ? r.moved.length : null });
+        if (r.changed) void persist(r.layout);
+        return;
       }
     } catch {
       // 읽기 실패 시 빈 책장으로 시작하되 저장은 덮어쓰지 않는다(다음 확정 때 저장).
@@ -113,7 +127,10 @@ export const placementStore = {
       userSnapshot = userSnapshot && { ...userSnapshot, books };
       return;
     }
-    const known = new Set(Object.keys(books));
+    // 책 객체가 모두 그대로면(서재 저장소가 같은 책은 같은 객체로 넘긴다) 알릴 것이 없다
+    const ids = Object.keys(books);
+    if (ids.length === Object.keys(state.books).length && ids.every((id) => state.books[id] === books[id])) return;
+    const known = new Set(ids);
     const gone = [...state.layout.placements.map((p) => p.bookId), ...state.layout.drawer].filter((id) => !known.has(id));
     // 크기(판형·쪽수)가 바뀐 책이 선반에 있으면 그 선반만 다시 맞춘다(안 들어가면 끝 책을 서랍으로, 알림)
     const resized = state.layout.placements.some((p) => {

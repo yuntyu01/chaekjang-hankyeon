@@ -1,24 +1,33 @@
 // 책 상세: 실제 표지·기본 정보 / 이 책 읽기·갈피 남기기·읽기 상태 / 내 기록(회차·별점·감상·누적 시간·갈피·현재 쪽수).
 // 날짜·쪽수·별점은 모두 선택 입력. 완독 여부는 사용자가 정한다(타이머로 자동 판정하지 않는다).
 import { router, useLocalSearchParams } from 'expo-router';
-import { MoreHorizontal, ChevronDown } from '@/ui/icons';
+import { BookOpen, ChevronDown, ChevronRight, MoreHorizontal } from '@/ui/icons';
 import { useState } from 'react';
 import { Alert, Modal, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { STATUS_LABEL, ymd } from '@/features/book/labels';
 import { placementOf } from '@/domain/layout-engine';
-import { bookmarksOf, bookReadMs, completions, formatDuration, READ_STATUSES, roundsOf } from '@/domain/library';
+import { bookmarksOf, bookReadMs, completions, formatDuration, memoShelfBook, READ_STATUSES, roundsOf } from '@/domain/library';
 import { useLibrary, libraryStore } from '@/store/library-store';
 import { placementStore, usePlacementStore } from '@/store/placement-store';
 import { uiBus } from '@/store/ui-bus';
 import { dropImage } from '@/store/files';
-import { Btn, Card, Chip, Empty, H2, ListItem, Muted, RealCover, Row, Screen, Stars, ui } from '@/ui/kit';
+import { Btn, Card, Empty, H2, ListItem, Muted, Row, Screen, Stars, Tabs, ui } from '@/ui/kit';
 import { colors, fonts } from '@/ui/screenTheme';
-import { LibraryCover } from '@/ui/BookVisual';
+import { noRibbon, RotatableBook } from '@/ui/book3d/StandaloneBook';
+import type { Book } from '@/domain/types';
 
 const STAR = '#A8865F';
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
+
+// 별점·상태를 누를 때마다 돌려 보기 책을 다시 계산·기록하지 않게: 책 객체가 같으면 같은 결과
+const ribbonless = new WeakMap<Book, Book>();
+function unribboned(b: Book) {
+  let x = ribbonless.get(b);
+  if (!x) ribbonless.set(b, (x = noRibbon(b)));
+  return x;
+}
 
 export default function BookDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -36,7 +45,6 @@ export default function BookDetailScreen() {
         <Empty title="책을 찾을 수 없어요" body="삭제되었거나 예시 책장 책이에요." action="책장으로" onAction={() => router.dismissTo('/')} />
       </Screen>
     );
-  const bd = b.bindingId ? lib.bindings[b.bindingId] : undefined;
   const rounds = roundsOf(lib, id);
   const marks = bookmarksOf(lib, id);
   const readMs = bookReadMs(lib, id);
@@ -44,7 +52,8 @@ export default function BookDetailScreen() {
   const onShelf = !!placementOf(place.layout, id);
   const inDrawer = place.layout.drawer.includes(id);
   const done = completions(lib, id);
-  const color = bd?.spineColor ?? '#8A8378';
+  const shelfBook = place.books[id] ?? memoShelfBook(lib, id);
+  const shownBook = shelfBook ? unribboned(shelfBook) : null;
 
   const confirmDelete = () => {
     Alert.alert(
@@ -69,48 +78,74 @@ export default function BookDetailScreen() {
   return (
     <Screen
       title="책 정보"
+      footer={<Btn label={b.status === 'want' ? '읽기 시작' : '이어서 읽기'} icon={<BookOpen size={24} color="#FFFFFF" strokeWidth={1.5} />} onPress={() => router.push({ pathname: '/read', params: { book: id } })} />}
       right={
         <Pressable onPress={() => setMenu(true)} hitSlop={10} accessibilityRole="button" accessibilityLabel="더 보기">
           <MoreHorizontal size={24} color={colors.ink} strokeWidth={1.6} />
         </Pressable>
       }>
       <View style={st.hero}>
-        <LibraryCover lib={lib} id={id} width={194} />
+        {shownBook ? <RotatableBook book={shownBook} frontWidth={142} initialSpin={22} shadow label={`${e.title} 표지, 좌우로 끌어 돌려 볼 수 있어요`} /> : null}
         <Text style={st.title}>{e.title}</Text>
-        {e.authors.length ? <Text style={st.author}>{e.authors.join(', ')}</Text> : null}
+        <Text style={st.author}>{e.authors.length ? e.authors.join(', ') : onShelf ? '나의 책장' : inDrawer ? '서랍' : ''}</Text>
       </View>
-      <View style={st.progressSection}>
-        <Pressable onPress={() => setPageEdit(!pageEdit)} accessibilityRole="button" accessibilityLabel="읽은 쪽수 기록">
-          <Text style={st.page}>{b.currentPage ?? 0}<Text style={st.pageTotal}>  /  {e.pageCount ? `${e.pageCount}쪽` : '전체 쪽수 미입력'}</Text></Text>
-        </Pressable>
-        {pageEdit ? <TextInput accessibilityLabel="읽은 쪽수" autoFocus defaultValue={b.currentPage ? String(b.currentPage) : ''} placeholder="읽은 쪽수" placeholderTextColor={colors.inkFaint} keyboardType="number-pad" returnKeyType="done" onEndEditing={(ev) => { const n = Number(ev.nativeEvent.text); libraryStore.updateBook(id, { currentPage: Number.isFinite(n) && n > 0 ? Math.round(n) : undefined }); setPageEdit(false); }} style={[st.input, st.pageInput]} /> : null}
-        <View style={st.stars}><Stars value={b.rating} onChange={(v) => libraryStore.updateBook(id, { rating: v })} size={22} color={STAR} /></View>
-        {b.note ? <Text style={st.note}>{b.note}</Text> : null}
-      </View>
+      <Tabs items={READ_STATUSES.map((s) => ({ id: s, label: STATUS_LABEL[s] }))} value={b.status} onChange={(s) => libraryStore.setStatus(id, s)} stretch style={{ marginTop: 16 }} />
+      {b.status === 'read' ? <Btn label="다시 읽기 시작(새 회차)" kind="ghost" onPress={() => libraryStore.reread(id)} style={{ alignSelf: 'center', minHeight: 40, paddingVertical: 6 }} /> : null}
       <View style={st.stats}>
-        <Pressable onPress={() => router.push({ pathname: '/stats', params: { book: id } })} accessibilityRole="button" style={st.statCell}>
-          <Text style={st.statLabel}>독서 기록</Text><Text style={st.statValue}>{sessions}회</Text>
+        <Pressable onPress={() => router.push({ pathname: '/stats', params: { book: id } })} accessibilityRole="button" accessibilityLabel={`읽은 시간 ${formatDuration(readMs)}, 독서 기록 ${sessions}회`} style={st.statCell}>
+          <Text style={st.statLabel}>읽은 시간</Text>
+          <Text style={st.statValue}>{formatDuration(readMs)}</Text>
         </Pressable>
-        <View style={st.statDivider} />
-        <Pressable onPress={() => router.push({ pathname: '/bookmarks', params: { book: id } })} accessibilityRole="button" style={st.statCell}>
-          <Text style={st.statLabel}>갈피</Text><Text style={st.statValue}>{marks.length}개</Text>
+        <Pressable onPress={() => router.push({ pathname: '/bookmarks', params: { book: id } })} accessibilityRole="button" accessibilityLabel={`남긴 갈피 ${marks.length}개`} style={st.statCell}>
+          <Text style={st.statLabel}>남긴 갈피</Text>
+          <Text style={st.statValue}>{marks.length}개</Text>
         </Pressable>
       </View>
-      <Btn label="이어서 읽기" onPress={() => router.push({ pathname: '/read', params: { book: id } })} style={st.continueButton} />
+
+      <Row style={st.h} gap={0}>
+        <Text style={st.hText}>나의 감상</Text>
+        <Stars value={b.rating} onChange={(v) => libraryStore.updateBook(id, { rating: v })} size={23} color={STAR} />
+      </Row>
+      <TextInput
+        defaultValue={b.note}
+        placeholder="이 책은 나에게…"
+        placeholderTextColor={colors.inkFaint}
+        onEndEditing={(ev) => libraryStore.updateBook(id, { note: ev.nativeEvent.text.trim() || undefined })}
+        style={st.note}
+        multiline
+        maxLength={140}
+        accessibilityLabel="나의 감상"
+      />
+
+      <Row style={st.h} gap={0}>
+        <Text style={st.hText}>남긴 갈피</Text>
+        {marks.length ? (
+          <Pressable onPress={() => router.push({ pathname: '/bookmarks', params: { book: id } })} hitSlop={10} accessibilityRole="button" style={st.moreLink}>
+            <Text style={st.moreText}>모두 보기</Text>
+            <ChevronRight size={18} color={colors.inkSoft} strokeWidth={1.6} />
+          </Pressable>
+        ) : null}
+      </Row>
+      {marks.length ? (
+        <Pressable onPress={() => router.push(`/bookmark/${marks[0].id}`)} accessibilityRole="button">
+          <Text style={st.quote} numberOfLines={4}>“{marks[0].text || '사진 갈피'}”</Text>
+          <Muted style={{ marginTop: 6, marginLeft: 14, fontSize: 14 }}>{marks[0].page ? `p. ${marks[0].page}` : ymd(marks[0].createdAt)}</Muted>
+        </Pressable>
+      ) : (
+        <Muted>아직 남긴 갈피가 없어요.</Muted>
+      )}
       <Pressable onPress={() => router.push({ pathname: '/bookmark/new', params: { book: id } })} accessibilityRole="button" style={st.bookmarkButton}><Text style={st.bookmarkLabel}>갈피 남기기</Text></Pressable>
-      <Pressable onPress={() => setRecords(!records)} accessibilityRole="button" accessibilityState={{ expanded: records }} style={st.recordsToggle}><Text style={st.meta}>내 기록 · 책 정보</Text><ChevronDown size={16} color={colors.inkSoft} /></Pressable>
+
+      <Pressable onPress={() => setRecords(!records)} accessibilityRole="button" accessibilityState={{ expanded: records }} style={st.recordsToggle}><Text style={st.meta}>읽은 쪽수 · 회차 · 판본 정보</Text><ChevronDown size={16} color={colors.inkSoft} /></Pressable>
       {records ? <View>
+      <Pressable onPress={() => setPageEdit(!pageEdit)} accessibilityRole="button" accessibilityLabel="읽은 쪽수 기록" style={{ alignItems: 'center', marginBottom: 10 }}>
+        <Text style={st.page}>{b.currentPage ?? 0}<Text style={st.pageTotal}>  /  {e.pageCount ? `${e.pageCount}쪽` : '전체 쪽수 미입력'}</Text></Text>
+      </Pressable>
+      {pageEdit ? <TextInput accessibilityLabel="읽은 쪽수" autoFocus defaultValue={b.currentPage ? String(b.currentPage) : ''} placeholder="읽은 쪽수" placeholderTextColor={colors.inkFaint} keyboardType="number-pad" returnKeyType="done" onEndEditing={(ev) => { const n = Number(ev.nativeEvent.text); libraryStore.updateBook(id, { currentPage: Number.isFinite(n) && n > 0 ? Math.round(n) : undefined }); setPageEdit(false); }} style={[st.input, st.pageInput]} /> : null}
       <Muted>{[e.publisher, e.publishedAt?.slice(0, 4)].filter(Boolean).join(' · ')}</Muted>
       <Muted>ISBN {e.isbn13 ?? '미입력'} · {e.pageCount ? `${e.pageCount}쪽` : '쪽수 미입력'}</Muted>
       <Muted>판형 {e.size ? `${e.size.widthMm}×${e.size.heightMm}mm` : '확인 전 · 책장에는 기본 크기로 표시'}</Muted>
       <Muted>{e.source === 'search' ? `도서 정보: ${e.sourceName ?? '검색'}` : e.source === 'photo' ? '사진으로 추가' : '직접 입력'}</Muted>
-      <H2>읽기 상태</H2>
-      <Row>
-        {READ_STATUSES.map((s) => (
-          <Chip key={s} label={STATUS_LABEL[s]} on={b.status === s} onPress={() => libraryStore.setStatus(id, s)} />
-        ))}
-      </Row>
-      {b.status === 'read' ? <Btn label="다시 읽기 시작(새 회차)" kind="ghost" onPress={() => libraryStore.reread(id)} style={{ marginTop: 6, alignSelf: 'flex-start' }} /> : null}
 
       <H2>내 기록</H2>
       <Card>
@@ -139,37 +174,6 @@ export default function BookDetailScreen() {
       ) : (
         <Muted style={{ marginTop: 10 }}>읽기 시작하면 회차가 생겨요. 날짜는 나중에 고칠 수 있어요.</Muted>
       )}
-
-      <H2>별점 (선택)</H2>
-      <Stars value={b.rating} onChange={(v) => libraryStore.updateBook(id, { rating: v })} />
-
-      <H2>한 줄 감상 (선택)</H2>
-      <TextInput
-        defaultValue={b.note}
-        placeholder="이 책은 나에게…"
-        placeholderTextColor={colors.inkFaint}
-        onEndEditing={(ev) => libraryStore.updateBook(id, { note: ev.nativeEvent.text.trim() || undefined })}
-        style={st.input}
-        maxLength={140}
-      />
-
-      <H2>남긴 갈피 {marks.length ? `· ${marks.length}` : ''}</H2>
-      {marks.length ? (
-        <View style={{ gap: 10 }}>
-          {marks.slice(0, 5).map((m) => (
-            <Card key={m.id} stripe={color} onPress={() => router.push(`/bookmark/${m.id}`)}>
-              <Text style={st.quote} numberOfLines={4}>
-                {m.text}
-              </Text>
-              <Muted style={{ marginTop: 6 }}>{[m.page ? `${m.page}쪽` : null, ymd(m.createdAt)].filter(Boolean).join(' · ')}</Muted>
-            </Card>
-          ))}
-          {marks.length > 5 ? <Btn label={`갈피 ${marks.length}개 모두 보기`} kind="ghost" onPress={() => router.push({ pathname: '/bookmarks', params: { book: id } })} /> : null}
-        </View>
-      ) : (
-        <Empty title="아직 남긴 갈피가 없어요" action="첫 갈피 남기기" onAction={() => router.push({ pathname: '/bookmark/new', params: { book: id } })} />
-      )}
-
       </View> : null}
 
       <Modal visible={menu} transparent animationType="fade" onRequestClose={() => setMenu(false)}>
@@ -223,29 +227,29 @@ function RoundCard({ idx, startedAt, finishedAt, paused, onSave }: { idx: number
 }
 
 const st = StyleSheet.create({
-  hero: { alignItems: 'center', paddingTop: 84 },
-  title: { fontFamily: fonts.round, fontSize: 26, lineHeight: 38, color: colors.ink, textAlign: 'center', marginTop: 20, includeFontPadding: false },
-  author: { fontSize: 17, lineHeight: 26, color: colors.inkSoft, marginTop: 4, includeFontPadding: false },
+  hero: { alignItems: 'center', paddingTop: 0 },
+  title: { fontWeight: '700', fontSize: 26, lineHeight: 36, color: colors.title, textAlign: 'center', marginTop: 4, includeFontPadding: false },
+  author: { fontSize: 15.5, lineHeight: 22, color: colors.inkSoft, marginTop: 2, includeFontPadding: false },
   meta: { fontSize: 15, color: colors.inkSoft },
-  progressSection: { marginTop: 47, alignItems: 'center' },
-  page: { fontSize: 38, lineHeight: 48, fontWeight: '400', color: colors.ink, includeFontPadding: false },
-  pageTotal: { fontSize: 22, fontWeight: '400', color: colors.inkSoft },
-  pageInput: { alignSelf: 'stretch', textAlign: 'center' },
-  stars: { marginTop: 8 },
-  note: { fontSize: 14, lineHeight: 22, color: colors.inkSoft, marginTop: 8, textAlign: 'center' },
-  stats: { flexDirection: 'row', alignItems: 'center', marginTop: 48 },
-  statCell: { flex: 1, flexDirection: 'row', alignItems: 'baseline', justifyContent: 'center', gap: 10, minHeight: 44 },
-  recordsToggle: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, minHeight: 44, marginTop: 14 },
-  statLabel: { fontFamily: fonts.round, fontSize: 18, color: colors.ink, includeFontPadding: false },
-  statValue: { fontSize: 15, color: colors.inkSoft, includeFontPadding: false },
-  statDivider: { width: StyleSheet.hairlineWidth * 2, height: 34, backgroundColor: '#D9CCC4' },
-  continueButton: { marginTop: 17, minHeight: 58, borderRadius: 14, borderTopColor: '#A18579', borderBottomColor: '#765A54', boxShadow: [{ offsetX: 0, offsetY: 1, blurRadius: 1, color: 'rgba(83,61,49,0.05)' }] },
-  bookmarkButton: { alignItems: 'center', justifyContent: 'center', minHeight: 54, marginTop: 5 },
-  bookmarkLabel: { fontSize: 13.5, color: '#80665B', textDecorationLine: 'underline' },
+  page: { fontSize: 34, lineHeight: 44, fontWeight: '400', color: colors.ink, includeFontPadding: false },
+  pageTotal: { fontSize: 20, fontWeight: '400', color: colors.inkSoft },
+  pageInput: { alignSelf: 'stretch', textAlign: 'center', marginBottom: 10 },
+  stats: { flexDirection: 'row', marginTop: 22 },
+  statCell: { flex: 1, alignItems: 'center', gap: 6, minHeight: 44 },
+  statLabel: { fontSize: 14.5, color: colors.inkSoft },
+  statValue: { fontWeight: '700', fontSize: 25, color: colors.title, includeFontPadding: false },
+  h: { justifyContent: 'space-between', flexWrap: 'nowrap', marginTop: 28, marginBottom: 12 },
+  hText: { fontWeight: '700', fontSize: 19, color: colors.title },
+  note: { minHeight: 84, borderRadius: 14, backgroundColor: '#F3EEE8', paddingHorizontal: 18, paddingTop: 16, paddingBottom: 16, fontSize: 16, lineHeight: 27, color: colors.ink, textAlignVertical: 'top' },
+  moreLink: { flexDirection: 'row', alignItems: 'center', gap: 2, minHeight: 32 },
+  moreText: { fontSize: 15, color: colors.inkSoft },
+  recordsToggle: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, minHeight: 44, marginTop: 18 },
+  bookmarkButton: { alignSelf: 'flex-start', justifyContent: 'center', minHeight: 44, marginTop: 4 },
+  bookmarkLabel: { fontSize: 14, color: '#80665B', textDecorationLine: 'underline' },
   k: { fontSize: 14, color: colors.inkSoft },
   v: { fontSize: 15, color: colors.ink, fontVariant: ['tabular-nums'] },
   input: { minHeight: 44, borderRadius: 10, borderWidth: 1, borderColor: '#E3D9C9', backgroundColor: ui.card, paddingHorizontal: 12, fontSize: 15, color: colors.ink, marginTop: 4 },
-  quote: { fontFamily: fonts.serif, fontSize: 15, lineHeight: 26, color: colors.ink },
+  quote: { fontFamily: fonts.serif, fontSize: 17, lineHeight: 28, color: colors.ink },
   backdrop: { flex: 1, backgroundColor: 'rgba(20,18,15,0.3)' },
   sheet: { backgroundColor: colors.bg, borderTopLeftRadius: 20, borderTopRightRadius: 20, paddingHorizontal: 22, paddingTop: 8 },
 });

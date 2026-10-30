@@ -1,5 +1,5 @@
 import { emptyLibrary, type Library } from '../library';
-import { buildPush, dirtyKey, fileIdOf, fullDirty, mergeRemote, type PullBody } from '../sync';
+import { buildPush, dirtyKey, fileIdOf, fullDirty, layoutFromWire, layoutToWire, mergeRemote, splitPush, type PullBody } from '../sync';
 
 const DIR = 'file:///docs/images/';
 const T1 = '2026-10-05T01:00:00.000Z';
@@ -97,5 +97,24 @@ describe('받은 변경 병합', () => {
     expect(back.editions.ed1.art).toMatchObject({ baseColor: '#6B7F92', motifId: 'moon', layoutVariant: 'spine_b' });
     expect(back.bindings.bd1).toMatchObject({ source: 'custom', motif: 'moon', layout: 'spine_b', material: 'cloth', coverArtId: 'moon-lake' });
     expect(back.bookmarks.bm1).toMatchObject({ text: '', photoUri: `${DIR}page_x1.jpg`, photoRatio: 1.32 });
+  });
+});
+
+describe('나눠 올리기·배치 전송', () => {
+  const w = (n: number, p: string) => Array.from({ length: n }, (_, i) => ({ id: `${p}${i}`, updatedAt: 'T' }));
+  it('종류마다 한도를 넘지 않고, 자식은 부모와 같거나 뒤 요청에 들어간다', () => {
+    const parts = splitPush({ editions: w(3, 'e'), books: w(3, 'b'), sessions: w(5, 's'), layout: { version: 2, updatedAt: 'T' } }, 2);
+    expect(parts.map((p) => Object.fromEntries(Object.entries(p).map(([k, v]) => [k, Array.isArray(v) ? v.length : 'x'])))).toEqual([
+      { editions: 2 }, { editions: 1, books: 2 }, { books: 1, sessions: 2 }, { sessions: 2 }, { sessions: 1, layout: 'x' },
+    ]);
+    expect(splitPush({}, 2)).toEqual([{}]);
+  });
+  it('배치는 표 모양과 예전 JSON을 함께 보내고, 받을 때는 표 모양을 먼저 쓴다', () => {
+    const layout = { version: 2 as const, shelves: [{ id: 's1', order: 0 }], placements: [{ bookId: 'b1', shelfId: 's1', order: 0, pose: 'spine' as const, tilt: 0 as const, pos: 3 }], drawer: ['b2'] };
+    const wire = layoutToWire(layout, '2026-10-17T00:00:00Z');
+    expect(JSON.parse(wire.layoutJson!)).toEqual(layout);
+    expect(layoutFromWire({ ...wire, layoutJson: null, placements: [{ ...layout.placements[0], stackId: null } as never] })).toEqual(layout);
+    expect(layoutFromWire({ version: 2, updatedAt: 'T', layoutJson: JSON.stringify(layout) })?.drawer).toEqual(['b2']);
+    expect(layoutFromWire({ version: 2, updatedAt: 'T', layoutJson: '{깨짐' })).toBeNull();
   });
 });

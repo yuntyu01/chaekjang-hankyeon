@@ -1,10 +1,10 @@
-// 내 서재 저장소: 메모리 상태 + SQLite 표(종류별)에 바로 기록. 화면은 useLibrary()로 읽는다.
+// 내 서재 저장소: 메모리 상태 + SQLite 표(종류별, 정규화)에 바로 기록. 같은 순간의 기록은 한 트랜잭션으로 묶인다(db/local-db 쓰기 대기열). 화면은 useLibrary()로 읽는다.
 // 모든 변경은 여기 행동(action)으로만 한다. 책장 배치는 placement-store가 따로 저장한다(배치를 바꿔도 기록은 그대로).
 import { useSyncExternalStore } from 'react';
 
 import { noteChange } from './sync-dirty';
 import type { Merge } from '@/domain/sync';
-import { deleteLib, loadLib, loadLibrary, putLib, replaceLib, type LibKind } from '@/db/local-db';
+import { deleteLib, dropLegacy, loadLib, loadLibrary, putLib, replaceLib, type LibKind } from '@/db/local-db';
 import {
   applyStatus,
   bookmarksOf,
@@ -75,11 +75,13 @@ export const libraryStore = {
   async load() {
     try {
       let lib = await loadLib();
-      // 이전 구조(user_books + catalog_books)에 내 책이 있으면 한 번 옮긴다(같은 ISBN 판본이 이미 있으면 건너뜀)
-      const legacy = await loadLibrary().catch(() => []);
+      // 이전 구조(user_books + catalog_books)에 내 책이 있으면 한 번 옮기고 그 표를 지운다(같은 ISBN 판본이 이미 있으면 건너뜀)
+      const legacy = await loadLibrary().catch(() => null);
+      const isbns = new Set(Object.values(lib.editions).map((e) => e.isbn13));
       let migrated = 0;
-      for (const { catalog: c, user: u } of legacy) {
-        if (Object.values(lib.editions).some((e) => e.isbn13 === c.isbn13)) continue;
+      for (const { catalog: c, user: u } of legacy ?? []) {
+        if (isbns.has(c.isbn13)) continue;
+        isbns.add(c.isbn13);
         const t = u.createdAt || now();
         const e: Edition = { id: newId('ed'), isbn13: c.isbn13, title: c.title, authors: c.authors, publisher: c.publisher, publishedAt: c.publishedAt, pageCount: c.pageCount, coverUri: c.coverUrl, coverSource: c.coverUrl ? 'api' : undefined, source: 'search', createdAt: t, updatedAt: t };
         const b: MyBook = { id: newId('bk'), editionId: e.id, status: u.status === 'read' ? 'read' : u.status === 'reading' ? 'reading' : 'want', note: u.note, createdAt: t, updatedAt: t };
@@ -94,6 +96,7 @@ export const libraryStore = {
         migrated++;
       }
       if (migrated) await replaceLib(lib);
+      if (legacy) void dropLegacy().catch(() => {});
       set({ lib, loaded: true });
     } catch (e) {
       set({ loaded: true, error: String((e as Error)?.message ?? e) });

@@ -79,7 +79,10 @@ export function BookPopover({ book, anchor, reduceMotion, onClose, onDetail, onR
               <Image source={{ uri: photo }} style={StyleSheet.absoluteFill} resizeMode="cover" onError={() => setPhotoOk(false)} />
             ) : (
               <View style={styles.photoEmpty}>
-                <Text style={styles.photoEmptyText}>{ko.info.noPhoto}</Text>
+                {/* 칸 크기가 선반 칸을 따라 작아지므로 글자 확대·작은 화면에서는 칸 안에 들어오게 줄인다(잘리지 않게) */}
+                <Text style={styles.photoEmptyText} numberOfLines={3} adjustsFontSizeToFit minimumFontScale={0.5}>
+                  {ko.info.noPhoto}
+                </Text>
               </View>
             )}
           </View>

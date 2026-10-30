@@ -3,9 +3,9 @@
 // 사진으로 가져오기: 페이지 촬영/선택 → (OCR 연결되면) 문장 선택 → 수정·확인 → 저장. 페이지 전체를 자동으로 저장하지 않는다.
 // OCR이 연결되지 않은 지금은 사진을 보면서 옮겨 적는다(사진은 선택해서 함께 보관).
 import { router, useLocalSearchParams } from 'expo-router';
-import { Camera, ImageIcon } from '@/ui/icons';
+import { Camera, ChevronRight, ImageIcon } from '@/ui/icons';
 import { useState } from 'react';
-import { Image, Pressable, Text, View } from 'react-native';
+import { Alert, Image, Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { BookPicker } from '@/features/bookmark/BookPicker';
 import { PhotoPlate } from '@/features/bookmark/PhotoPlate';
@@ -13,7 +13,9 @@ import { ocr } from '@/services/connectors';
 import { deniedMessage, pickPhoto } from '@/services/photos';
 import { keepImage } from '@/store/files';
 import { libraryStore, useLibrary } from '@/store/library-store';
-import { Btn, Card, Chip, Field, Muted, Row, Screen } from '@/ui/kit';
+import { BookVisual, LibraryCover } from '@/ui/BookVisual';
+import { usePlacementStore } from '@/store/placement-store';
+import { Btn, Chip, Field, Muted, Row, Screen, Tabs } from '@/ui/kit';
 import { colors, fonts } from '@/ui/screenTheme';
 
 export default function NewBookmark() {
@@ -22,6 +24,7 @@ export default function NewBookmark() {
   const [ratio, setRatio] = useState<number | undefined>();
   const isPhoto = mode === 'photo';
   const { lib } = useLibrary();
+  const place = usePlacementStore();
   const [bookId, setBookId] = useState<string | undefined>(book && lib.books[book] ? book : undefined);
   const [picking, setPicking] = useState(false);
   const [text, setText] = useState(initialText ?? '');
@@ -60,21 +63,25 @@ export default function NewBookmark() {
     router.replace(`/bookmark/${id}`);
   };
 
+  const pickSource = () => Alert.alert('사진으로 문장 가져오기', '페이지 사진을 보면서 옮겨 적을 수 있어요.', [{ text: '페이지 찍기', onPress: () => void fromPhoto('camera') }, { text: '사진 고르기', onPress: () => void fromPhoto('library') }, { text: '취소', style: 'cancel' }]);
   return (
     <Screen title={isPhoto ? '사진 갈피 남기기' : '갈피 남기기'} footer={<Btn label="갈피 저장" onPress={save} busy={saving} disabled={!canSave} />}>
-      <Row gap={8} style={{ marginBottom: 14 }}>
-        {([['text', '문장'], ['photo', '사진']] as const).map(([k, label]) => <Chip key={k} label={label} on={mode === k} onPress={() => setMode(k)} />)}
-      </Row>
-      <Muted>연결할 책</Muted>
-      <Pressable onPress={() => setPicking(true)} accessibilityRole="button" style={{ marginTop: 6, marginBottom: 16 }}>
-        <Card>
-          <Text style={{ fontFamily: fonts.serif, fontSize: 16, color: e ? colors.ink : colors.inkSoft }}>{e ? e.title : '책을 골라 주세요'}</Text>
-          {e?.authors.length ? <Muted style={{ marginTop: 2 }}>{e.authors.join(', ')}</Muted> : null}
-        </Card>
+      <Pressable onPress={() => setPicking(true)} accessibilityRole="button" accessibilityLabel={e ? `연결할 책 ${e.title}, 바꾸기` : '연결할 책 고르기'} style={st.book}>
+        {bookId && lib.books[bookId] ? (
+          <View pointerEvents="none" style={st.cover}>{place.books[bookId] ? <BookVisual book={place.books[bookId]} width={76} /> : <LibraryCover lib={lib} id={bookId} width={76} />}</View>
+        ) : (
+          <View style={[st.cover, st.noCover]}><Text style={st.noCoverText}>책</Text></View>
+        )}
+        <View style={{ flex: 1 }}>
+          <Text style={[st.bookTitle, !e && { color: colors.inkSoft }]} numberOfLines={2}>{e ? e.title : '책을 골라 주세요'}</Text>
+          {e?.authors.length ? <Muted style={{ marginTop: 4 }}>{e.authors.join(', ')}</Muted> : null}
+        </View>
+        <ChevronRight size={26} color={colors.ink} strokeWidth={1.5} />
       </Pressable>
+      <Tabs items={[{ id: 'text', label: '직접 쓰기' }, { id: 'photo', label: '사진에서 가져오기' }]} value={mode} onChange={setMode} style={{ marginTop: 22, marginBottom: 22 }} />
 
       {isPhoto ? (
-        <View style={{ marginBottom: 14 }}>
+        <View style={{ marginBottom: 18 }}>
           {photo ? (
             <View style={{ alignItems: 'center' }}>
               <PhotoPlate uri={photo} ratio={ratio} width={320} seed="new" />
@@ -84,7 +91,7 @@ export default function NewBookmark() {
               </Row>
             </View>
           ) : (
-            <View style={{ borderWidth: 1, borderStyle: 'dashed', borderColor: '#CFC6B6', borderRadius: 10, paddingVertical: 28, paddingHorizontal: 16, alignItems: 'center', gap: 12, backgroundColor: '#FBF6EE' }}>
+            <View style={st.drop}>
               <Muted style={{ textAlign: 'center', lineHeight: 20 }}>마음에 남은 페이지를 찍어 그대로 붙여 두세요.{'\n'}찍은 뒤 문장 부분만 잘라 낼 수 있어요.</Muted>
               <Row style={{ flexWrap: 'nowrap', width: '100%' }}>
                 <Btn label="페이지 찍기" icon={<Camera size={16} color="#FFF" strokeWidth={1.6} />} onPress={() => fromPhoto('camera')} style={{ flex: 1 }} />
@@ -95,23 +102,16 @@ export default function NewBookmark() {
           {msg ? <Muted style={{ marginTop: 8, lineHeight: 19 }}>{msg}</Muted> : null}
         </View>
       ) : null}
-      <Field label={isPhoto ? '옮겨 적기 (선택, 검색에 쓰여요)' : '문장'} value={text} onChangeText={setText} placeholder={isPhoto ? '사진 속 문장을 적어 두면 찾기 쉬워요' : '마음에 남은 문장을 옮겨 적어 주세요'} multiline style={{ fontFamily: fonts.serif, fontSize: 16, lineHeight: 28, minHeight: isPhoto ? 90 : 140 }} />
-      <Row style={{ flexWrap: 'nowrap' }} gap={10}>
-        <View style={{ width: 110 }}>
-          <Field label="쪽수 (선택)" value={page} onChangeText={setPage} keyboardType="number-pad" />
-        </View>
-        <View style={{ flex: 1 }}>
-          <Field label="한 줄 메모 (선택)" value={memo} onChangeText={setMemo} placeholder="공유 이미지에는 넣지 않아요" />
-        </View>
-      </Row>
+      <Field label="쪽수" value={page} onChangeText={setPage} keyboardType="number-pad" suffix="쪽" />
+      <Field label={isPhoto ? '옮겨 적기 · 선택' : '남길 문장'} value={text} onChangeText={setText} placeholder={isPhoto ? '사진 속 문장을 적어 두면 찾기 쉬워요' : '마음에 남은 문장을 옮겨 적어 주세요'} multiline style={{ fontSize: 16, lineHeight: 27, minHeight: isPhoto ? 100 : 140 }} />
+      <Field label="나의 생각 · 선택" value={memo} onChangeText={setMemo} placeholder="이 문장이 마음에 남은 이유" multiline hint="공유 이미지에는 넣지 않아요." style={{ minHeight: 100, lineHeight: 24 }} />
 
       {isPhoto ? null : <>
-      <Muted style={{ marginTop: 8 }}>사진으로 가져오기</Muted>
-      <Row style={{ marginTop: 8, flexWrap: 'nowrap' }}>
-        <Btn label="페이지 찍기" kind="secondary" icon={<Camera size={16} color={colors.ink} strokeWidth={1.6} />} onPress={() => fromPhoto('camera')} style={{ flex: 1 }} />
-        <Btn label="사진 고르기" kind="secondary" icon={<ImageIcon size={16} color={colors.ink} strokeWidth={1.6} />} onPress={() => fromPhoto('library')} style={{ flex: 1 }} />
-      </Row>
-      {msg ? <Muted style={{ marginTop: 8, lineHeight: 19 }}>{msg}</Muted> : null}
+      <Pressable onPress={pickSource} accessibilityRole="button" style={st.photoLink}>
+        <Camera size={22} color={colors.ink} strokeWidth={1.5} />
+        <Text style={st.photoLinkText}>사진으로 문장 가져오기</Text>
+      </Pressable>
+      {msg ? <Muted style={{ marginTop: 4, lineHeight: 19 }}>{msg}</Muted> : null}
       {lines?.length ? (
         <View style={{ marginTop: 10, gap: 6 }}>
           <Muted>인식한 줄을 눌러 문장에 넣어요(그대로 저장되지 않아요)</Muted>
@@ -142,3 +142,14 @@ export default function NewBookmark() {
     </Screen>
   );
 }
+
+const st = StyleSheet.create({
+  book: { flexDirection: 'row', alignItems: 'center', gap: 22, paddingTop: 10, paddingBottom: 20, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.rule },
+  cover: { width: 84, minHeight: 110, alignItems: 'center', justifyContent: 'center' },
+  noCover: { height: 116, borderRadius: 4, backgroundColor: '#F1EAE2', borderWidth: 1, borderColor: colors.rule, borderStyle: 'dashed' },
+  noCoverText: { fontSize: 14, color: colors.inkFaint },
+  bookTitle: { fontWeight: '700', fontSize: 19, color: colors.title },
+  drop: { borderWidth: 1, borderStyle: 'dashed', borderColor: '#CFC6B6', borderRadius: 12, paddingVertical: 28, paddingHorizontal: 16, alignItems: 'center', gap: 12, backgroundColor: '#FBF6EE' },
+  photoLink: { flexDirection: 'row', alignItems: 'center', gap: 10, minHeight: 48, alignSelf: 'flex-start' },
+  photoLinkText: { fontSize: 14.5, color: colors.ink },
+});

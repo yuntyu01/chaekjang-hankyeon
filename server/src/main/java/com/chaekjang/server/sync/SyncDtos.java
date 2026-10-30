@@ -2,6 +2,9 @@ package com.chaekjang.server.sync;
 
 import java.util.List;
 
+import com.fasterxml.jackson.annotation.JsonInclude;
+import com.fasterxml.jackson.annotation.JsonInclude.Include;
+
 /**
  * 앱 ↔ 서버 동기화 형식. 앱의 서재 모델(Edition/MyBook/Binding/Round/Session/Bookmark)과 같은 모양이다.
  * 시각은 ISO-8601 문자열, 날짜(회차)는 YYYY-MM-DD. deleted=true면 삭제 표시(나머지 값은 무시).
@@ -41,8 +44,23 @@ public final class SyncDtos {
             String createdAt, String updatedAt, Boolean deleted) {
     }
 
-    /** 책장 배치: 화면 구조 JSON을 문자열 그대로 보관한다. */
-    public record Layout(String layoutJson, Integer version, String updatedAt) {
+    /**
+     * 책장 배치 한 벌(선반 + 책 자리 + 서랍). 서버는 표(shelves·shelf_placements)로 나눠 저장한다.
+     * layoutJson: 예전 앱이 보내던 같은 내용의 JSON 문자열. 올릴 때 shelves가 없으면 이것을 풀어 쓰고, 받을 때도 함께 내려 준다.
+     */
+    public record Layout(String layoutJson, Integer version, String updatedAt, List<Shelf> shelves, List<Placement> placements, List<String> drawer) {
+    }
+
+    public record Shelf(String id, Integer order) {
+    }
+
+    public record Lean(Double angle, String on) {
+    }
+
+    /** 앱 BookPlacement와 같은 이름(선반에 놓인 책 하나). 비어 있는 선택 값은 JSON에서 뺀다. */
+    @JsonInclude(Include.NON_NULL)
+    public record Placement(String bookId, String shelfId, Integer order, String pose, Integer tilt, String stackId, Integer stackOrder, Double pos, Lean lean,
+            Double depth, Double spin, Double stackDx, Double stackDz, Boolean wallLean, Double pitch) {
     }
 
     /** 올리기: 종류별 변경분. 빠진 종류는 비어 있는 것으로 본다. */
