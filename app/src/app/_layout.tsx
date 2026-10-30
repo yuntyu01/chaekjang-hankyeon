@@ -77,7 +77,7 @@ export default function RootLayout() {
             <RecoveryDialog />
           </BookArtProvider> : null}
         </View>
-        {loadingVisible ? <LoadingScreen ready={ready && artReady} onFinished={finishLoading} /> : null}
+        {loadingVisible ? <LoadingScreen ready={ready && artReady} step={!ready ? 1 : !artReady ? 2 : 3} onFinished={finishLoading} /> : null}
       </SafeAreaProvider>
     </GestureHandlerRootView>
   );

@@ -16,7 +16,7 @@
       "package": "app.covebook",
       "adaptiveIcon": {
         "foregroundImage": "./assets/icon/adaptive-foreground.png",
-        "backgroundColor": "#FEFCF5"
+        "backgroundColor": "#FEFDFA"
       },
       "predictiveBackGestureEnabled": false
     },
@@ -46,7 +46,8 @@
           "microphonePermission": false
         }
       ],
-      "expo-web-browser"
+      "expo-web-browser",
+      "expo-video"
     ],
     "experiments": {
       "typedRoutes": false

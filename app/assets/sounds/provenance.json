@@ -1,0 +1,17 @@
+{
+  "rain.wav": {
+    "source": "https://freesound.org/s/475465/",
+    "file": "475465__o_ciz__rain-on-a-window_3.wav",
+    "author": "o_ciz",
+    "edit": "모노 22050Hz 16비트, 소리 크기가 가장 고른 90초 구간, 끝 2초를 처음과 섞어 반복 이음매 제거, 정점 -1dB",
+    "license": "CC0"
+  },
+  "fire.wav": {
+    "source": "https://freesound.org/s/263864/",
+    "file": "263864__ceich93__fire_crackling.wav",
+    "author": "ceich93",
+    "edit": "모노 22050Hz 16비트, 58초, 끝 2초를 처음과 섞어 반복 이음매 제거, 빗소리와 크기를 맞추려 +10dB 올리고 튀는 소리는 부드럽게 눌러 정점 -1dB 아래",
+    "license": "CC0"
+  },
+  "license": "둘 다 Freesound CC0(2026-10-30 페이지에서 확인). 작성자 표기 의무 없음"
+}

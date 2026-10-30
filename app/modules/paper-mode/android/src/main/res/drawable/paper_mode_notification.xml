@@ -1,27 +1,30 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- 책장 한켠 로고(책 세 권과 선반, assets/icon/adaptive-foreground.png를 따라 그렸다)의 알림용 단색 실루엣 -->
+<!-- 책장 한켠 로고(갈피 꽂힌 책 한 권과 선반, assets/icon/icon.png를 따라 그렸다. 좌표는 원본 1254px 그림 기준)의 알림용 단색 실루엣 -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     android:width="24dp"
     android:height="24dp"
-    android:viewportWidth="560"
-    android:viewportHeight="560">
-    <group android:translateX="-244" android:translateY="-232">
-        <path
-            android:pathData="M295,384 L295,700 Q295,742 337,742 L746,742"
-            android:strokeColor="#FFFFFFFF"
-            android:strokeWidth="48"
-            android:strokeLineCap="round"
-            android:strokeLineJoin="round" />
+    android:viewportWidth="1080"
+    android:viewportHeight="1080">
+    <group android:translateX="-88" android:translateY="-70">
+        <!-- 선반 -->
         <path
             android:fillColor="#FFFFFFFF"
-            android:pathData="M362,310 L404,310 Q428,310 428,334 L428,680 Q428,704 404,704 L362,704 Q338,704 338,680 L338,334 Q338,310 362,310 Z" />
+            android:pathData="M195,912 L1060,912 Q1090,912 1090,942 L1090,985 Q1090,1015 1060,1015 L195,1015 Q165,1015 165,985 L165,942 Q165,912 195,912 Z" />
+        <!-- 책등 -->
         <path
             android:fillColor="#FFFFFFFF"
-            android:pathData="M469,259 L528,259 Q552,259 552,283 L552,680 Q552,704 528,704 L469,704 Q445,704 445,680 L445,283 Q445,259 469,259 Z" />
-        <group android:pivotX="637" android:pivotY="508" android:rotation="-7.5">
-            <path
-                android:fillColor="#FFFFFFFF"
-                android:pathData="M611,317 L663,317 Q687,317 687,341 L687,675 Q687,699 663,699 L611,699 Q587,699 587,675 L587,341 Q587,317 611,317 Z" />
-        </group>
+            android:pathData="M381,280 L382,280 Q398,280 398,296 L398,879 Q398,895 382,895 L381,895 Q365,895 365,879 L365,296 Q365,280 381,280 Z" />
+        <!-- 표지 -->
+        <path
+            android:fillColor="#FFFFFFFF"
+            android:pathData="M436,280 L874,280 Q890,280 890,296 L890,879 Q890,895 874,895 L436,895 Q420,895 420,879 L420,296 Q420,280 436,280 Z" />
+        <!-- 갈피 -->
+        <path
+            android:fillColor="#FFFFFFFF"
+            android:pathData="M713,205 L752,205 Q760,205 760,213 L760,282 Q760,290 752,290 L713,290 Q705,290 705,282 L705,213 Q705,205 713,205 Z" />
+        <!-- 갈피 -->
+        <path
+            android:fillColor="#FFFFFFFF"
+            android:pathData="M786,232 L824,232 Q832,232 832,240 L832,282 Q832,290 824,290 L786,290 Q778,290 778,282 L778,240 Q778,232 786,232 Z" />
     </group>
 </vector>

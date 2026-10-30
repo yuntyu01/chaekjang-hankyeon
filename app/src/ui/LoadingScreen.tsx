@@ -1,23 +1,28 @@
 import * as SplashScreen from 'expo-splash-screen';
 import { StatusBar } from 'expo-status-bar';
 import { useEffect, useRef, useState } from 'react';
-import { AccessibilityInfo, Animated, Image, type ImageSourcePropType, StyleSheet } from 'react-native';
+import { AccessibilityInfo, Animated, Image, type ImageSourcePropType, StyleSheet, View } from 'react-native';
 
 import { settingsStore } from '@/store/settings-store';
 import { bootMark } from '@/ui/boot-trace';
 import { loadHomeSnapshot } from '@/ui/home-snapshot';
 
 const quietStart = require('../../assets/loading/quiet-start.png');
+// 시작 화면 그림(853×1844, 가운데 맞춤)에서 점 세 개 자리. 그림에서는 점을 지웠고 준비 단계(step)만큼 채워 그린다
+const ART = { w: 853, h: 1844 };
+const DOTS = { cx: 426, cy: 1286, gap: 37.5, d: 16 };
 
 // 지난 실행에서 찍어 둔 홈 사진이 있으면 그것을, 없으면 시작 화면 그림을 띄운다(사진 정보를 읽는 동안은 기기 시작 화면이 남아 있다).
 // 사진이면 실제 책장이 다 그려진 뒤 겹쳐 바꾼다
-export function LoadingScreen({ ready, onFinished }: { ready: boolean; onFinished: () => void }) {
+// step: 1 서재 불러오는 중 · 2 책 그림 그리는 중 · 3 다 됨(시작 화면 그림의 점으로만 보인다)
+export function LoadingScreen({ ready, step, onFinished }: { ready: boolean; step: 1 | 2 | 3; onFinished: () => void }) {
   const [source, setSource] = useState<{ image: ImageSourcePropType; shot: boolean } | null>(null);
   useEffect(() => {
     void loadHomeSnapshot().then((uri) => setSource(uri ? { image: { uri }, shot: true } : { image: quietStart, shot: false }));
   }, []);
   const [imageReady, setImageReady] = useState(false);
-  const [laidOut, setLaidOut] = useState(false);
+  const [size, setSize] = useState<{ w: number; h: number } | null>(null);
+  const laidOut = !!size;
   const opacity = useRef(new Animated.Value(1)).current;
   const shot = !!source?.shot;
 
@@ -45,10 +50,11 @@ export function LoadingScreen({ ready, onFinished }: { ready: boolean; onFinishe
   return (
     <Animated.View
       style={[styles.screen, { opacity }]}
-      onLayout={() => setLaidOut(true)}
+      onLayout={(e) => setSize({ w: e.nativeEvent.layout.width, h: e.nativeEvent.layout.height })}
       accessible
       accessibilityRole="progressbar"
       accessibilityLabel="책장 한켠, 책장을 준비하고 있어요"
+      accessibilityValue={{ min: 0, max: 3, now: step }}
     >
       <StatusBar style="dark" />
       {source ? (
@@ -63,8 +69,24 @@ export function LoadingScreen({ ready, onFinished }: { ready: boolean; onFinishe
           onLoadEnd={() => setImageReady(true)}
         />
       ) : null}
+      {source && !source.shot && imageReady && size ? <Dots step={step} w={size.w} h={size.h} /> : null}
     </Animated.View>
   );
+}
+
+function Dots({ step, w, h }: { step: number; w: number; h: number }) {
+  const k = Math.min(w / ART.w, h / ART.h);
+  const x0 = (w - ART.w * k) / 2;
+  const y0 = (h - ART.h * k) / 2;
+  const d = DOTS.d * k;
+  return <>
+    {[0, 1, 2].map((i) => (
+      <View
+        key={i}
+        style={{ position: 'absolute', left: x0 + (DOTS.cx + (i - 1) * DOTS.gap) * k - d / 2, top: y0 + DOTS.cy * k - d / 2, width: d, height: d, borderRadius: d / 2, backgroundColor: i < step ? '#7C6253' : '#DBCDC1' }}
+      />
+    ))}
+  </>;
 }
 
 const styles = StyleSheet.create({
