@@ -3,16 +3,19 @@
 import { useSyncExternalStore } from 'react';
 
 import type { Merge } from '@/domain/sync';
+import { withoutBooks } from '@/domain/home-reference';
 import { applyLocalChanges, applyRemoteChanges, loadLib, loadLibrary, replaceLib, type LibKind, type LocalChange } from '@/db/local-db';
 import {
+  addSessionTo,
   applyStatus,
   bookmarksOf,
-  currentRound,
   defaultBinding,
   rebindInput,
   emptyLibrary,
   newId,
+  rereadRound,
   roundsOf,
+  updateSessionIn,
   type Binding,
   type Bookmark,
   type Edition,
@@ -20,7 +23,8 @@ import {
   type MyBook,
   type ReadStatus,
   type Round,
-  type Session,
+  type SessionInput,
+  type SessionPatch,
 } from '@/domain/library';
 
 type State = { lib: Library; loaded: boolean; error: string | null };
@@ -142,18 +146,16 @@ export const libraryStore = {
     commit({ ...state.lib, books: { ...state.lib.books, [id]: { ...b, ...patch, updatedAt: now() } } });
   },
 
+  // 같은 상태를 다시 고르면 바꾸지 않는다. 날짜는 기기 현지 날짜(domain/library applyStatus)
   setStatus(id: string, status: ReadStatus) {
-    commit(applyStatus(state.lib, id, status, now()));
+    const next = applyStatus(state.lib, id, status, now());
+    if (next !== state.lib) commit(next);
   },
 
-  // 다시 읽기: 지난 회차는 그대로 두고 새 회차를 연다
+  // 다시 읽기: 지난 회차는 그대로 두고 새 회차를 연다(진도는 0쪽부터)
   reread(id: string) {
-    const b = state.lib.books[id];
-    if (!b) return;
-    const last = currentRound(state.lib, id);
-    const t = now();
-    const r: Round = { id: newId('rd'), myBookId: id, index: (last?.index ?? 0) + 1, startedAt: t.slice(0, 10), createdAt: t, updatedAt: t };
-    commit({ ...state.lib, rounds: { ...state.lib.rounds, [r.id]: r }, books: { ...state.lib.books, [id]: { ...b, status: 'reading', updatedAt: t } } });
+    const next = rereadRound(state.lib, id, now());
+    if (next !== state.lib) commit(next);
   },
 
   updateRound(roundId: string, patch: Partial<Pick<Round, 'startedAt' | 'finishedAt'>>) {
@@ -169,6 +171,13 @@ export const libraryStore = {
     const old = b.bindingId ? state.lib.bindings[b.bindingId] : undefined;
     const bd: Binding = old ? { ...old, ...patch, updatedAt: t } : { id: newId('bd'), myBookId, status: 'ready', createdAt: t, updatedAt: t, ...patch };
     commit({ ...state.lib, bindings: { ...state.lib.bindings, [bd.id]: bd }, books: { ...state.lib.books, [myBookId]: { ...b, bindingId: bd.id, updatedAt: t } } });
+  },
+
+  // 손대지 않은 예시 책을 서재에서 뺀다(domain/home-reference checkSampleBooks가 고른 것만). 동기화에는 삭제로 올라가
+  // 서버에 올라간 예시도 지워진다. 책장 배치는 그대로라 표시 전용 예시로 남는다
+  removeSampleBooks(ids: string[]) {
+    const next = withoutBooks(state.lib, ids.filter((id) => !!state.lib.books[id]));
+    if (next !== state.lib) commit(next);
   },
 
   // 삭제 범위: 내 책·판본·장정·회차·갈피는 지운다. 독서 시간 기록은 '책 없음'으로 남겨 통계에 유지한다.
@@ -203,24 +212,16 @@ export const libraryStore = {
     commit({ ...state.lib, bookmarks: next });
   },
 
-  // id를 주면(타이머 id) 같은 기록을 두 번 저장해도 하나로 남는다
-  addSession(input: Pick<Session, 'myBookId' | 'startedAt' | 'endedAt' | 'durationMs' | 'pagesRead' | 'memo'> & { id?: string }) {
-    const t = now();
-    const round = input.myBookId ? currentRound(state.lib, input.myBookId) : undefined;
-    const prev = input.id ? state.lib.sessions[input.id] : undefined;
-    const s: Session = { roundId: round?.id, createdAt: prev?.createdAt ?? t, updatedAt: t, ...input, id: input.id ?? newId('ss') };
-    let lib: Library = { ...state.lib, sessions: { ...state.lib.sessions, [s.id]: s } };
-    // 쪽수를 적었으면 현재 쪽수를 앞으로만 옮긴다(선택 입력)
-    const b = input.myBookId ? lib.books[input.myBookId] : undefined;
-    if (b && input.pagesRead) lib = { ...lib, books: { ...lib.books, [b.id]: { ...b, currentPage: Math.max(b.currentPage ?? 0, input.pagesRead), updatedAt: t } } };
-    commit(lib);
-    return s.id;
+  // id를 주면(타이머 id) 같은 기록을 두 번 저장해도 하나로 남는다. 책이 있으면 회차를 먼저 확보해 연결한다(domain addSessionTo)
+  addSession(input: SessionInput) {
+    const r = addSessionTo(state.lib, input, now());
+    commit(r.lib);
+    return r.id;
   },
-  updateSession(id: string, patch: Partial<Pick<Session, 'myBookId' | 'startedAt' | 'endedAt' | 'durationMs' | 'pagesRead' | 'memo'>>) {
-    const s = state.lib.sessions[id];
-    if (!s) return;
-    const roundId = patch.myBookId !== undefined && patch.myBookId !== s.myBookId ? (patch.myBookId ? currentRound(state.lib, patch.myBookId)?.id : undefined) : s.roundId;
-    commit({ ...state.lib, sessions: { ...state.lib.sessions, [id]: { ...s, ...patch, roundId, updatedAt: now() } } });
+  // 준 필드만 바꾼다. myBookId 키를 undefined로 주면 연결 해제(회차도 함께 비운다)
+  updateSession(id: string, patch: SessionPatch) {
+    const next = updateSessionIn(state.lib, id, patch, now());
+    if (next !== state.lib) commit(next);
   },
   deleteSession(id: string) {
     const next = { ...state.lib.sessions };

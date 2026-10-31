@@ -44,6 +44,20 @@ export default function BookDetailScreen() {
   const color = bd?.spineColor ?? '#8A8378';
   const pub = [e.publisher, e.publishedAt?.slice(0, 4)].filter(Boolean).join(' · ');
 
+  // 같은 상태는 그대로. 완독한 책을 '읽는 중'·'보류'로 바꾸면 새 회차(다시 읽기)라 먼저 묻는다(재독은 책 재등록이 아니다)
+  const lastRound = rounds.at(-1);
+  const chooseStatus = (s: (typeof READ_STATUSES)[number]) => {
+    if (s === b.status) return;
+    if ((s === 'reading' || s === 'paused') && lastRound?.finishedAt) {
+      Alert.alert('다시 읽기를 시작할까요?', `${lastRound.index + 1}회차가 생기고 진도는 0쪽부터예요. 지난 회차의 완독일·독서 기록·갈피는 그대로 남아요.`, [
+        { text: '취소', style: 'cancel' },
+        { text: '다시 읽기', onPress: () => { libraryStore.reread(id); if (s === 'paused') libraryStore.setStatus(id, 'paused'); } },
+      ]);
+      return;
+    }
+    libraryStore.setStatus(id, s);
+  };
+
   const confirmDelete = () => {
     Alert.alert(
       '책을 삭제할까요?',
@@ -112,7 +126,7 @@ export default function BookDetailScreen() {
           <H2>읽기 상태</H2>
           <Row>
             {READ_STATUSES.map((s) => (
-              <Chip key={s} label={STATUS_LABEL[s]} on={b.status === s} onPress={() => libraryStore.setStatus(id, s)} />
+              <Chip key={s} label={STATUS_LABEL[s]} on={b.status === s} onPress={() => chooseStatus(s)} />
             ))}
           </Row>
           {b.status === 'read' ? <Btn label="다시 읽기 시작(새 회차)" kind="ghost" size="s" onPress={() => libraryStore.reread(id)} style={{ marginTop: space.s, alignSelf: 'flex-start', paddingHorizontal: 0 }} /> : null}

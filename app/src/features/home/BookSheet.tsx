@@ -15,6 +15,7 @@ import { Btn, TextActions } from '@/ui/kit';
 type Props = {
   book: Book;
   status?: string; // 읽기 상태(읽기 전·읽는 중·완독·보류). 내 서재 기록이 없으면 비움
+  sample?: boolean; // 표시 전용 예시 책(서재에 없음): 읽기·갈피 대신 '내 서재에 추가'(onDetail이 책 추가로 보낸다)
   bottomInset: number;
   reduceMotion: boolean;
   onClose: () => void;
@@ -27,7 +28,7 @@ type Props = {
 // 시안(폭 393dp 기준) 실측: 표지 폭 약 80, 손잡이 → 표지 약 32, 표지 → 버튼 약 30, 버튼 높이 약 44, 버튼 → 보조 행동 글자 약 24
 const COVER_W = 80;
 
-export function BookSheet({ book, status, bottomInset, reduceMotion, onClose, onDetail, onRead, onBookmark, onTop }: Props) {
+export function BookSheet({ book, status, sample, bottomInset, reduceMotion, onClose, onDetail, onRead, onBookmark, onTop }: Props) {
   // 사진을 못 읽으면 이 시트에서만 장정으로 바꿔 보인다(저장된 표지 정보는 지우거나 바꾸지 않는다)
   const [photoOk, setPhotoOk] = useState(true);
   useEffect(() => setPhotoOk(true), [book.id]);
@@ -73,17 +74,19 @@ export function BookSheet({ book, status, bottomInset, reduceMotion, onClose, on
               <Text style={styles.title} accessibilityRole="header">
                 {book.title}
               </Text>
-              {status ? <Text style={styles.status}>{status}</Text> : null}
+              {sample ? <Text style={styles.status}>{ko.info.sampleNote}</Text> : status ? <Text style={styles.status}>{status}</Text> : null}
             </View>
           </View>
-          <Btn label={ko.info.detailButton} onPress={onDetail} style={styles.primary} />
-          <TextActions
-            style={styles.actions}
-            actions={[
-              { label: ko.info.startReading, onPress: onRead },
-              { label: ko.info.bookmark, onPress: onBookmark },
-            ]}
-          />
+          <Btn label={sample ? ko.info.sampleAdd : ko.info.detailButton} onPress={onDetail} style={styles.primary} />
+          {sample ? null : (
+            <TextActions
+              style={styles.actions}
+              actions={[
+                { label: ko.info.startReading, onPress: onRead },
+                { label: ko.info.bookmark, onPress: onBookmark },
+              ]}
+            />
+          )}
         </ScrollView>
       </Animated.View>
     </Modal>

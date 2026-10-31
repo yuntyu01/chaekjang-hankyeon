@@ -5,7 +5,7 @@ import { readLayout, saveLayout } from '@/db/local-db';
 
 import { migrate, type BookMap } from '@/domain/layout-engine';
 import type { Library } from '@/domain/library';
-import { referenceHomeBooks, type HomeReferenceProfile } from '@/domain/home-reference';
+import { checkSampleBooks, referenceHomeBooks, type HomeReferenceProfile } from '@/domain/home-reference';
 
 import { libraryStore } from './library-store';
 import { EMPTY_LAYOUT, placementStore } from './placement-store';
@@ -20,6 +20,8 @@ import { PERF_ENABLED } from '@/ui/perf';
 // 측정 번들: 예시 18권 책장으로 시작(저장하지 않는 메모리 전용). ?demoboot=1 로 켜고 0으로 끈다.
 // ?demoboot=mockup 은 같은 자리·치수에 시안 책장의 제목·색·표지 그림을 입힌 비교 책장
 export const DEMO_BOOT_KEY = 'perf-demo-boot';
+// 예시 책 분리 결과(뺀 것·보존한 것과 이유). 보고·점검용
+export const SAMPLE_REPORT_KEY = 'sample-books:report';
 let homeProfile: HomeReferenceProfile = {};
 
 // 서재가 바뀌면 책 모양을 다시 만들되, 내용이 같은 책은 이전 객체를 그대로 쓴다
@@ -65,6 +67,20 @@ export function bootStores() {
         // 백업/설치 실패는 다음 시작 때 재시도한다. 기존 서재는 계속 열 수 있다.
         console.warn('홈 시안 구성 저장 실패', error);
       }
+    }
+    // 예시 책 분리(2026-11): 손대지 않은 예시만 서재에서 빼고(표시 전용으로 남음), 사용자 흔적이 있는 예시는 실제 책으로 보존·기록
+    try {
+      const checks = checkSampleBooks(libraryStore.get().lib);
+      const pure = checks.filter((c) => c.pure).map((c) => c.id);
+      if (pure.length) {
+        libraryStore.removeSampleBooks(pure);
+        await libraryStore.flushPending();
+      }
+      const kept = checks.filter((c) => !c.pure);
+      if (pure.length || kept.length) await Storage.setItem(SAMPLE_REPORT_KEY, JSON.stringify({ at: new Date().toISOString(), removed: pure, kept }));
+      if (kept.length) console.warn('예시 책 중 사용자 기록이 있어 보존', JSON.stringify(kept));
+    } catch (error) {
+      console.warn('예시 책 분리 실패(다음 시작 때 다시)', error);
     }
     let lib = libraryStore.get().lib;
     await placementStore.load(shelfBooks(lib));

@@ -45,6 +45,8 @@ export const ko = {
   tools: { left: '왼쪽으로', right: '오른쪽으로', cover: '표지로', spine: '책등으로' },
   info: {
     detailButton: '책 정보 보기',
+    sampleNote: '예시 책이에요 · 내 서재에는 없어요', // 표시 전용 예시(서재 기록 없음)
+    sampleAdd: '이 책을 내 서재에 추가',
     startReading: '읽기 시작',
     bookmark: '갈피 남기기',
     customCover: '꾸민 표지', // 실제 표지 사진 대신 이 책의 장정을 보일 때 표지 아래

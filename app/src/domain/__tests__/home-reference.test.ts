@@ -1,5 +1,5 @@
-import { buildReferenceHome, referenceHomeBooks } from '../home-reference';
-import { emptyLibrary, toShelfBook, type Library } from '../library';
+import { buildReferenceHome, checkSampleBooks, referenceHomeBooks, withoutBooks } from '../home-reference';
+import { defaultBinding, emptyLibrary, toShelfBook, type Library } from '../library';
 import { validate } from '../layout-engine';
 import { withLeans } from '../shelf-scene';
 import { hasRibbon } from '../ribbon-design';
@@ -36,26 +36,24 @@ it('기존 책·문장·독서 기록을 보존하면서 18권을 실제 ID로 �
   expect(validate(withLeans(result.layout, books), books, Object.keys(books))).toEqual([]);
 });
 
-it('예시의 서지·완독 기록을 만들어내지 않고, 홈 장식만 적용한다', () => {
-  const { lib, profile } = buildReferenceHome(existing(), empty, time);
+it('예시는 서재에 저장하지 않고(표시 전용) 홈 장식만 적용한다', () => {
+  const original = existing();
+  const { lib, profile } = buildReferenceHome(original, empty, time);
+  // 같은 제목의 내 책(모순)만 연결되고, 나머지 17권은 서재 레코드를 만들지 않는다
+  expect(Object.keys(lib.books).sort()).toEqual(Object.keys(original.books).sort());
+  expect(Object.keys(lib.editions)).toHaveLength(Object.keys(original.editions).length);
+  expect(Object.keys(lib.bindings)).toHaveLength(0);
+  expect(Object.keys(lib.rounds)).toHaveLength(0);
   const books = referenceHomeBooks(lib, profile);
   expect(books.owned.quotes).toBe(1);
   expect(hasRibbon(books.owned)).toBe(false);
   expect(hasRibbon(books[profile.b03.bookId])).toBe(true);
   expect(books[profile.b03.bookId].quotes).toBe(0);
   expect(toShelfBook(lib, 'owned')!.art.ribbonVisible).toBeUndefined();
-  const added = lib.books[profile.b04.bookId];
-  expect(added.status).toBe('want');
-  expect(lib.editions[added.editionId]).toMatchObject({ authors: [], sourceName: '시안 예시' });
-  expect(lib.editions[added.editionId].pageCount).toBeUndefined();
-  expect(lib.editions[added.editionId].size).toBeUndefined();
-  expect(Object.keys(lib.rounds)).toHaveLength(0);
-  // 시안 재질: 홈 책 모양과 새로 만든 장정 모두
+  // 시안 재질은 표시 전용 책 모양에만
   expect(books[profile.b04.bookId].art.material).toBe('coated');
   expect(books[profile.b02.bookId].art.material).toBe('cloth');
   expect(books[profile.b03.bookId].art.material).toBeUndefined();
-  expect(lib.bindings[lib.books[profile.b02.bookId].bindingId!].material).toBe('cloth');
-  expect(lib.bindings[lib.books[profile.b03.bookId].bindingId!].material).toBeUndefined();
   expect(books.owned.art.material).toBeUndefined();
 });
 
@@ -66,12 +64,17 @@ it('같은 서재로 다시 구성해도 중복 책을 만들지 않는다', () 
 });
 
 it('사용자가 장정을 바꾸면 홈에서도 그 선택을 사용한다', () => {
-  const { lib, profile } = buildReferenceHome(existing(), empty, time);
-  const id = profile.b03.bookId;
+  const original = existing();
+  const bd0 = defaultBinding('owned', '모순', 0, time);
+  original.bindings[bd0.id] = bd0;
+  original.books.owned = { ...original.books.owned, bindingId: bd0.id };
+  const { lib, profile } = buildReferenceHome(original, empty, time);
+  const id = profile.b01.bookId;
+  expect(id).toBe('owned');
   const bd = lib.bindings[lib.books[id].bindingId!];
   lib.bindings[bd.id] = { ...bd, spineColor: '#123456', updatedAt: '2026-10-05' };
   expect(referenceHomeBooks(lib, profile)[id].themeColor).toBe('#123456');
-  expect(referenceHomeBooks(lib, profile)[id].dims).toEqual(MOCKUP_BOOKS.find(b => b.id === 'b03')!.dims);
+  expect(referenceHomeBooks(lib, profile)[id].dims).toEqual(MOCKUP_BOOKS.find(b => b.id === 'b01')!.dims);
 });
 
 it('설치 전 백업하고, 완료 후 재실행에서 사용자가 바꾼 배치를 덮어쓰지 않는다', async () => {
@@ -86,7 +89,8 @@ it('설치 전 백업하고, 완료 후 재실행에서 사용자가 바꾼 배�
   mem['shelf-layout'] = 'user-moved-layout';
   expect(await installReferenceHome(original, empty, deps)).toEqual(profile);
   expect(mem['shelf-layout']).toBe('user-moved-layout');
-  expect(saveLibrary).toHaveBeenCalledTimes(1);
+  // 새 서재에 예시를 저장하지 않는다(2026-11): 서재 쓰기 없음
+  expect(saveLibrary).not.toHaveBeenCalled();
 });
 
 it('배치 저장 실패 후 같은 책 ID로 재시도하고 완료 표시는 마지막에 쓴다', async () => {
@@ -169,3 +173,49 @@ it('미완료 설치 이후 사용자가 바꾼 배치는 보존한다', async (
   expect(setItem).not.toHaveBeenCalled();
   expect(saveLibrary).not.toHaveBeenCalled();
 });
+
+describe('예시 책 분리(2026-11 이전 설치본)', () => {
+  // 예전 설치가 만든 모양: home-reference-bNN 책 + '시안 예시' 판본 + 장정, 만든 시각 = 수정 시각
+  function oldInstall() {
+    const lib = emptyLibrary();
+    for (const n of ['b01', 'b02', 'b03']) {
+      const id = `home-reference-${n}`;
+      const ed = `home-reference-ed-${n}`;
+      const bd = defaultBinding(id, n, 0, time);
+      bd.id = `home-reference-bd-${n}`;
+      lib.editions[ed] = { id: ed, title: n, authors: [], source: 'manual', sourceName: '시안 예시', createdAt: time, updatedAt: time };
+      lib.books[id] = { id, editionId: ed, bindingId: bd.id, status: 'want', createdAt: time, updatedAt: time };
+      lib.bindings[bd.id] = bd;
+    }
+    return lib;
+  }
+  it('손대지 않은 예시만 고르고, 기록·갈피·수정이 있으면 이유와 함께 보존', () => {
+    const lib = oldInstall();
+    lib.bookmarks.m = { id: 'm', myBookId: 'home-reference-b02', text: '남긴 문장', createdAt: time, updatedAt: time };
+    lib.books['home-reference-b03'] = { ...lib.books['home-reference-b03'], rating: 4, updatedAt: '2026-10-20' };
+    const checks = checkSampleBooks(lib);
+    expect(checks.find(c => c.id === 'home-reference-b01')).toMatchObject({ pure: true });
+    expect(checks.find(c => c.id === 'home-reference-b02')!.reasons).toContain('갈피가 있음');
+    expect(checks.find(c => c.id === 'home-reference-b03')!.reasons).toEqual(expect.arrayContaining(['책 기록을 고친 적 있음', '별점·감상·쪽수가 있음']));
+  });
+  it('제목이 같아도 예시 ID·출처가 아니면 건드리지 않는다', () => {
+    const lib = existing();
+    lib.books.owned = { ...lib.books.owned, status: 'want' };
+    expect(checkSampleBooks(lib)).toEqual([]);
+    const fake = oldInstall();
+    fake.editions['home-reference-ed-b01'] = { ...fake.editions['home-reference-ed-b01'], sourceName: undefined };
+    expect(checkSampleBooks(fake).map(c => c.id)).not.toContain('home-reference-b01');
+  });
+  it('뺀 예시는 책·판본·장정이 서재에서 사라지고, 책장에는 표시 전용으로 남는다', () => {
+    const lib = oldInstall();
+    const profile = { b01: { bookId: 'home-reference-b01' }, b02: { bookId: 'home-reference-b02' }, b03: { bookId: 'home-reference-b03' } };
+    const next = withoutBooks(lib, ['home-reference-b01']);
+    expect(next.books['home-reference-b01']).toBeUndefined();
+    expect(next.editions['home-reference-ed-b01']).toBeUndefined();
+    expect(next.bindings['home-reference-bd-b01']).toBeUndefined();
+    expect(next.books['home-reference-b02']).toBeDefined();
+    const books = referenceHomeBooks(next, profile);
+    expect(books['home-reference-b01'].title).toBe(MOCKUP_BOOKS.find(b => b.id === 'b01')!.title);
+  });
+});
+

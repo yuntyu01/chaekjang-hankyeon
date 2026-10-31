@@ -1230,6 +1230,7 @@ export function HomeScreen() {
           <BookSheet
             book={books[popId]}
             status={lib.books[popId] ? STATUS_LABEL[lib.books[popId].status] : undefined}
+            sample={!lib.books[popId]}
             bottomInset={insets.bottom}
             reduceMotion={reduceMotion}
             onTop={revealAboveSheet}
@@ -1239,9 +1240,11 @@ export function HomeScreen() {
             }}
             onDetail={() => {
               const id = popId;
+              const title = books[popId]?.title;
               closeBook();
-
-              router.push(`/book/${id}`);
+              // 표시 전용 예시는 서재에 없다: 같은 제목으로 책 찾기(실제 판본 정보로 등록, 중복 확인 흐름 그대로)
+              if (!lib.books[id]) router.push({ pathname: '/book/add', params: { q: title ?? '' } });
+              else router.push(`/book/${id}`);
             }}
             onRead={() => {
               const id = popId;

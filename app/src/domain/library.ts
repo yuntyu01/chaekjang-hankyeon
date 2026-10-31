@@ -176,34 +176,103 @@ export function roundsOf(lib: Library, myBookId: string) {
 
 export const currentRound = (lib: Library, myBookId: string) => roundsOf(lib, myBookId).at(-1);
 
-// 상태 변경 규칙(사용자가 정한다. 타이머 시간으로 자동 완독 판정하지 않는다):
-// - 읽는 중으로: 열린 회차가 없거나 마지막 회차가 완독이면 새 회차(시작일 오늘). 보류였으면 그 회차를 이어 간다.
-// - 완독으로: 열린 회차를 닫는다(완독일 오늘). 회차가 없으면 새로 만들고 바로 닫는다.
-// - 보류로: 열린 회차를 보류 표시(없으면 새 회차).
-// - 읽기 전으로: 기록은 지우지 않는다(열린 회차에 시작일이 없고 완독도 아니면 그 빈 회차만 치운다).
-export function applyStatus(lib: Library, myBookId: string, status: ReadStatus, now: string, day = now.slice(0, 10)): Library {
+// 상태 변경 규칙(사용자가 정한다. 타이머 시간으로 자동 완독 판정하지 않는다). day는 기기 현지 날짜(YYYY-MM-DD).
+// - 같은 상태를 다시 고르면 아무것도 바꾸지 않는다(완독을 다시 눌러도 회차가 늘지 않는다).
+// - 읽는 중으로: 열린 회차(완독일 없음)가 있으면 이어 간다(보류였으면 보류 해제). 회차가 없으면 1회차.
+//   마지막 회차가 완독이면 새 회차 = 다시 읽기(화면은 확인을 받은 뒤에만 이 길로 보낸다, rereadRound와 같은 결과).
+// - 완독으로: 열린 회차를 닫는다(완독일 오늘). 회차가 없으면 만들고 바로 닫는다. 이미 완독한 회차만 있으면 상태만 바꾼다.
+// - 보류로: 열린 회차를 보류로. 회차가 없으면 보류 상태로 연다. 마지막이 완독이면 다시 읽기 회차를 보류로 연다.
+// - 읽기 전으로: 시작일·완독일 없는 빈 열린 회차만 지운다(완독 기록은 그대로).
+export function applyStatus(lib: Library, myBookId: string, status: ReadStatus, now: string, day = today(new Date(now))): Library {
   const book = lib.books[myBookId];
   if (!book) return lib;
+  if (book.status === status) return lib;
   const rounds = { ...lib.rounds };
   const last = currentRound(lib, myBookId);
   const open = last && !last.finishedAt ? last : undefined;
   const make = (): Round => ({ id: newId('rd'), myBookId, index: (last?.index ?? 0) + 1, startedAt: day, createdAt: now, updatedAt: now });
-  if (status === 'reading') {
-    if (open) rounds[open.id] = { ...open, paused: false, startedAt: open.startedAt ?? day, updatedAt: now };
+  let page = book.currentPage;
+  if (status === 'reading' || status === 'paused') {
+    const paused = status === 'paused';
+    if (open) rounds[open.id] = { ...open, paused, startedAt: open.startedAt ?? day, updatedAt: now };
     else {
       const r = make();
-      rounds[r.id] = r;
+      rounds[r.id] = paused ? { ...r, paused: true } : r;
+      // 다시 읽기(완독한 회차 다음 회차): 진도는 0쪽부터. 지난 회차의 기록·갈피·완독일은 그대로
+      if (last) page = undefined;
     }
   } else if (status === 'read') {
-    const r = open ?? make();
-    rounds[r.id] = { ...r, paused: false, finishedAt: day, updatedAt: now };
-  } else if (status === 'paused') {
-    const r = open ?? make();
-    rounds[r.id] = { ...r, paused: true, updatedAt: now };
+    if (open) rounds[open.id] = { ...open, paused: false, finishedAt: day, updatedAt: now };
+    else if (!last) {
+      const r = make();
+      rounds[r.id] = { ...r, finishedAt: day };
+    }
   } else if (open && !open.startedAt && !open.finishedAt) {
     delete rounds[open.id];
   }
-  return { ...lib, rounds, books: { ...lib.books, [myBookId]: { ...book, status, updatedAt: now } } };
+  return { ...lib, rounds, books: { ...lib.books, [myBookId]: { ...book, status, currentPage: page, updatedAt: now } } };
+}
+
+// 다시 읽기(명시적): 지난 회차는 그대로 두고 새 회차를 연다. 새 회차 진도는 0쪽부터(현재 쪽수를 비운다).
+// 열린 회차가 있으면(아직 완독 전) 새 회차를 만들지 않는다.
+export function rereadRound(lib: Library, myBookId: string, now: string, day = today(new Date(now))): Library {
+  const book = lib.books[myBookId];
+  if (!book) return lib;
+  const last = currentRound(lib, myBookId);
+  if (last && !last.finishedAt) return lib;
+  const r: Round = { id: newId('rd'), myBookId, index: (last?.index ?? 0) + 1, startedAt: day, createdAt: now, updatedAt: now };
+  return { ...lib, rounds: { ...lib.rounds, [r.id]: r }, books: { ...lib.books, [myBookId]: { ...book, status: 'reading', currentPage: undefined, updatedAt: now } } };
+}
+
+// 세션이 들어갈 회차: 열린 회차, 없으면(처음 읽음) 1회차를 열고 '읽기 전'이면 '읽는 중'으로, 마지막이 완독이면 그 회차(완독 뒤 다시 펼쳐 본 기록).
+// 새 회차(다시 읽기)는 사용자가 정할 때만 만든다
+export function sessionRound(lib: Library, myBookId: string, day: string, now: string): { lib: Library; roundId?: string } {
+  const book = lib.books[myBookId];
+  if (!book) return { lib };
+  const last = currentRound(lib, myBookId);
+  if (last) return { lib, roundId: last.id };
+  const r: Round = { id: newId('rd'), myBookId, index: 1, startedAt: day, createdAt: now, updatedAt: now };
+  const status: ReadStatus = book.status === 'want' ? 'reading' : book.status;
+  return { lib: { ...lib, rounds: { ...lib.rounds, [r.id]: book.status === 'paused' ? { ...r, paused: true } : r }, books: { ...lib.books, [myBookId]: { ...book, status, updatedAt: now } } }, roundId: r.id };
+}
+
+export type SessionInput = Pick<Session, 'myBookId' | 'startedAt' | 'endedAt' | 'durationMs' | 'pagesRead' | 'memo'> & { id?: string };
+// 독서 기록 저장: 같은 id(타이머 id)로 다시 저장해도 하나로 남는다. 책이 있으면 회차를 먼저 확보해 연결하고,
+// 적은 쪽수는 현재 쪽수를 앞으로만 옮긴다(선택 입력). 책 없이 시간만도 저장한다
+export function addSessionTo(lib: Library, input: SessionInput, now: string, newIdFn = () => newId('ss')): { lib: Library; id: string } {
+  const prev = input.id ? lib.sessions[input.id] : undefined;
+  let next = lib;
+  let roundId: string | undefined;
+  if (input.myBookId && lib.books[input.myBookId]) {
+    const r = sessionRound(lib, input.myBookId, today(new Date(input.startedAt)), now);
+    next = r.lib;
+    roundId = r.roundId;
+  }
+  const id = input.id ?? newIdFn();
+  const s: Session = { createdAt: prev?.createdAt ?? now, updatedAt: now, ...input, myBookId: input.myBookId && lib.books[input.myBookId] ? input.myBookId : undefined, roundId, id };
+  next = { ...next, sessions: { ...next.sessions, [id]: s } };
+  const b = s.myBookId ? next.books[s.myBookId] : undefined;
+  if (b && input.pagesRead) next = { ...next, books: { ...next.books, [b.id]: { ...b, currentPage: Math.max(b.currentPage ?? 0, input.pagesRead), updatedAt: now } } };
+  return { lib: next, id };
+}
+
+export type SessionPatch = Partial<Pick<Session, 'myBookId' | 'startedAt' | 'endedAt' | 'durationMs' | 'pagesRead' | 'memo'>>;
+// 독서 기록 수정: 준 필드만 바꾼다. myBookId 키가 있으면 연결을 바꾸거나(값) 끊는다(undefined) — 키가 없으면 그대로.
+// 연결이 바뀌면 회차도 새 책의 회차로(없으면 비움, 지난 기록 수정으로 회차를 새로 만들지 않는다). 다른 책의 회차는 남기지 않는다
+export function updateSessionIn(lib: Library, id: string, patch: SessionPatch, now: string): Library {
+  const s = lib.sessions[id];
+  if (!s) return lib;
+  const keys = Object.keys(patch) as (keyof SessionPatch)[];
+  const changed = keys.filter((k) => patch[k] !== s[k]);
+  if (!changed.length) return lib;
+  const next: Session = { ...s, updatedAt: now };
+  for (const k of changed) (next as Record<string, unknown>)[k] = patch[k];
+  if (changed.includes('myBookId')) {
+    const b = next.myBookId && lib.books[next.myBookId] ? next.myBookId : undefined;
+    next.myBookId = b;
+    next.roundId = b ? currentRound(lib, b)?.id : undefined;
+  } else if (next.roundId && lib.rounds[next.roundId]?.myBookId !== next.myBookId) next.roundId = undefined;
+  return { ...lib, sessions: { ...lib.sessions, [id]: next } };
 }
 
 // ---------- 통계(실제 저장 데이터로만) ----------
@@ -227,24 +296,35 @@ export const sessionDay = (s: Session) => {
   return d;
 };
 
-export function periodStats(lib: Library, p: Period) {
-  const finished = Object.values(lib.rounds).filter((r) => inPeriod(r.finishedAt, p) && lib.books[r.myBookId]);
+// 갈피 날짜도 세션과 같은 기기 현지 날짜(만든 시각 기준). createdAt(ISO, UTC)의 앞 10자리를 쓰면 한국 시간 0~9시 갈피가 전날로 셌다
+const markDayOf = new WeakMap<Bookmark, string>();
+export const bookmarkDay = (m: Bookmark) => {
+  let d = markDayOf.get(m);
+  if (d === undefined) markDayOf.set(m, (d = today(new Date(m.createdAt))));
+  return d;
+};
+
+// bookId를 주면 그 책만(요약·세션·갈피·완독 모두 같은 거름). 책 없는 독서 시간은 전체 통계에만 들어간다.
+// 완독 권수(같은 책 여러 번 완독도 1권) · 완독 회차 수 · 재독(2회차 이상 완독) 횟수를 따로 센다
+export function periodStats(lib: Library, p: Period, bookId?: string) {
+  const mine = (id: string | undefined) => !!id && !!lib.books[id] && (!bookId || id === bookId);
+  const finished = Object.values(lib.rounds).filter((r) => inPeriod(r.finishedAt, p) && mine(r.myBookId));
   const completedBooks = [...new Set(finished.map((r) => r.myBookId))];
   const rereads = finished.filter((r) => r.index > 1).length;
   const sessions = Object.values(lib.sessions)
-    .filter((s) => inPeriod(sessionDay(s), p))
+    .filter((s) => inPeriod(sessionDay(s), p) && (!bookId || s.myBookId === bookId))
     .sort((a, b) => b.startedAt.localeCompare(a.startedAt));
   const readMs = sessions.reduce((a, s) => a + s.durationMs, 0);
-  const bookmarks = Object.values(lib.bookmarks).filter((b) => inPeriod(b.createdAt.slice(0, 10), p) && lib.books[b.myBookId]);
+  const bookmarks = Object.values(lib.bookmarks).filter((b) => inPeriod(bookmarkDay(b), p) && mine(b.myBookId));
   // 기간에 읽은 책: 완독했거나, 세션이 있거나, 회차가 기간에 걸친 책
   const touched = new Set<string>(completedBooks);
-  for (const s of sessions) if (s.myBookId && lib.books[s.myBookId]) touched.add(s.myBookId);
+  for (const s of sessions) if (mine(s.myBookId)) touched.add(s.myBookId!);
   for (const r of Object.values(lib.rounds)) {
-    if (!lib.books[r.myBookId] || !r.startedAt) continue;
+    if (!mine(r.myBookId) || !r.startedAt) continue;
     const end = r.finishedAt ?? '9999-12-31';
     if (r.startedAt <= p.to && end >= p.from) touched.add(r.myBookId);
   }
-  return { completedBooks, completedCount: completedBooks.length, rereads, readMs, sessions, bookmarkCount: bookmarks.length, booksRead: [...touched] };
+  return { completedBooks, completedCount: completedBooks.length, completedRounds: finished.length, rereads, readMs, sessions, bookmarkCount: bookmarks.length, booksRead: [...touched] };
 }
 
 export const bookReadMs = (lib: Library, myBookId: string) => Object.values(lib.sessions).reduce((a, s) => a + (s.myBookId === myBookId ? s.durationMs : 0), 0);
@@ -256,6 +336,15 @@ export const completions = (lib: Library, myBookId: string) => roundsOf(lib, myB
 export function finishedYear(lib: Library, myBookId: string): number | null {
   const f = roundsOf(lib, myBookId).filter((r) => r.finishedAt);
   return f.length ? Number(f[f.length - 1].finishedAt!.slice(0, 4)) : null;
+}
+
+// 초까지(기록 수정·짧은 기록): 20초, 1분 20초, 1시간 2분 3초
+export function formatDurationPrecise(ms: number) {
+  const t = Math.max(0, Math.round(ms / 1000));
+  const h = Math.floor(t / 3600);
+  const m = Math.floor((t % 3600) / 60);
+  const sec = t % 60;
+  return [h ? `${h}시간` : '', m ? `${m}분` : '', sec || (!h && !m) ? `${sec}초` : ''].filter(Boolean).join(' ');
 }
 
 export function formatDuration(ms: number) {

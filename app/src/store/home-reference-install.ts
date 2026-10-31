@@ -53,7 +53,8 @@ export async function installReferenceHome(lib: Library, previous: ShelfLayout, 
   };
   const assigned = new Set([...plan.layout.placements.map(p => p.bookId), ...plan.layout.drawer]);
   const layout = { ...plan.layout, drawer: [...plan.layout.drawer, ...Object.keys(merged.books).filter(id => !assigned.has(id))] };
-  await deps.saveLibrary(merged);
+  // 예시는 서재에 저장하지 않는다(2026-11). 이전 버전이 남긴 미완료 계획에 책이 들어 있을 때만 합쳐 저장한다
+  if (Object.keys(merged.books).length !== Object.keys(lib.books).length) await deps.saveLibrary(merged);
   await deps.setItem('shelf-layout', JSON.stringify(layout));
   // 책·선반·그림자·터치에 동일한 시점: 시안 구도(기본 보기, 눈높이 ≈ 책 머리)
   await deps.setItem(VIEW_SETTINGS_KEY, JSON.stringify({ pitch: VIEW_PITCH_MIN }));

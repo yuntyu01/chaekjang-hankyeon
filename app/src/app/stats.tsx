@@ -1,5 +1,6 @@
 // 내 기록: 월/연도 선택 → 완독한 책 수·기록된 독서 시간·남긴 갈피 수, 기간에 읽은 책, 날짜별 독서 기록.
 // 모두 실제 저장 데이터로 계산한다. 완독·재독 기준은 domain/library periodStats와 같다(책 상세도 같은 기준).
+// 책을 고르면(책 상세에서 들어오거나 '이 책만') 요약·읽은 책·날짜별 기록 모두 그 책만. 책 없는 독서 시간은 전체에서만 센다.
 import { router, useLocalSearchParams } from 'expo-router';
 import { ChevronLeft, ChevronRight } from '@/ui/icons';
 import { useMemo, useState } from 'react';
@@ -7,7 +8,7 @@ import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { BookRow } from '@/features/book/BookRow';
 import { hm } from '@/features/book/labels';
-import { formatDuration, monthPeriod, periodStats, sessionDay, yearPeriod } from '@/domain/library';
+import { formatDuration, formatDurationPrecise, monthPeriod, periodStats, sessionDay, yearPeriod } from '@/domain/library';
 import { useLibrary } from '@/store/library-store';
 import { usePlacementStore } from '@/store/placement-store';
 import { Chip, Empty, H2, IconButton, ListGroup, Muted, Row, Screen } from '@/ui/kit';
@@ -23,8 +24,8 @@ export default function Stats() {
   const [m, setM] = useState(now.getMonth() + 1);
   const [book, setBook] = useState<string | undefined>(params.book);
   const period = mode === 'month' ? monthPeriod(y, m) : yearPeriod(y);
-  const st0 = useMemo(() => periodStats(lib, period), [lib, period.from, period.to]); // eslint-disable-line react-hooks/exhaustive-deps
-  const sessions = book ? st0.sessions.filter((s) => s.myBookId === book) : st0.sessions;
+  const st0 = useMemo(() => periodStats(lib, period, book && lib.books[book] ? book : undefined), [lib, period.from, period.to, book]); // eslint-disable-line react-hooks/exhaustive-deps
+  const sessions = st0.sessions;
   const byDay = useMemo(() => {
     const out: { day: string; items: typeof sessions }[] = [];
     for (const s of sessions) {
@@ -54,6 +55,7 @@ export default function Stats() {
       <Row style={{ marginTop: space.item }}>
         <Chip label="월" on={mode === 'month'} onPress={() => setMode('month')} />
         <Chip label="연도" on={mode === 'year'} onPress={() => setMode('year')} />
+        {book ? <Chip label={`${title(book) ?? '책'}만 · 전체 보기`} on onPress={() => setBook(undefined)} /> : null}
       </Row>
       <Row style={{ marginTop: space.group, justifyContent: 'space-between', flexWrap: 'nowrap' }}>
         <IconButton label={mode === 'month' ? '이전 달' : '이전 해'} onPress={() => shift(-1)}>
@@ -67,7 +69,7 @@ export default function Stats() {
 
       <View style={st.summary}>
         {[
-          { k: '완독', v: `${st0.completedCount}권`, sub: st0.rereads ? `재독 ${st0.rereads}회 포함` : undefined },
+          { k: '완독', v: `${st0.completedCount}권`, sub: st0.completedRounds > st0.completedCount || st0.rereads ? `완독 ${st0.completedRounds}회 · 재독 ${st0.rereads}회` : undefined },
           { k: '독서 시간', v: formatDuration(st0.readMs), sub: `${st0.sessions.length}회` },
           { k: '남긴 갈피', v: `${st0.bookmarkCount}개` },
         ].map((c, i) => (
@@ -78,7 +80,9 @@ export default function Stats() {
           </View>
         ))}
       </View>
-      <Text style={[type.caption, { marginTop: space.item }]}>완독: 이 기간에 완독일이 있는 책 수(같은 책을 다시 완독해도 1권, 재독은 따로 표시). 독서 시간: 저장한 독서 기록의 실제 시간(일시정지 제외).</Text>
+      <Text style={[type.caption, { marginTop: space.item }]}>
+        완독: 이 기간에 완독일이 있는 책 수(같은 책을 다시 완독해도 1권, 회차·재독은 따로 표시). 독서 시간: 저장한 독서 기록의 실제 시간(일시정지 제외){book ? '' : ', 책 없이 잰 시간 포함'}.
+      </Text>
 
       <H2>이 기간에 읽은 책</H2>
       {st0.booksRead.length ? (
@@ -90,11 +94,6 @@ export default function Stats() {
       )}
 
       <H2>날짜별 독서 기록</H2>
-      {book ? (
-        <Row style={{ marginBottom: space.item }}>
-          <Chip label={`${title(book) ?? '책'}만 보기 · 해제`} on onPress={() => setBook(undefined)} />
-        </Row>
-      ) : null}
       {!Object.keys(lib.sessions).length ? (
         <Empty title="아직 독서 기록이 없어요" body="읽기 탭에서 타이머를 시작해 보세요." action="읽기 시작" onAction={() => router.push('/read')} />
       ) : !byDay.length ? (
@@ -112,7 +111,7 @@ export default function Stats() {
                         <Text style={[type.row, { flex: 1 }]} numberOfLines={1}>
                           {title(s.myBookId) ?? '책 없음'}
                         </Text>
-                        <Text style={type.row}>{formatDuration(s.durationMs)}</Text>
+                        <Text style={type.row}>{s.durationMs < 60000 ? formatDurationPrecise(s.durationMs) : formatDuration(s.durationMs)}</Text>
                       </Row>
                       <Text style={[type.sub, { marginTop: 4 }]}>
                         {hm(s.startedAt)} ~ {hm(s.endedAt)}
