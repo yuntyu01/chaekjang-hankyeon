@@ -1,7 +1,7 @@
 // 공통 화면 부품. 색·글꼴·간격은 ui/screenTheme 토큰만 쓴다(설정 시안 기준: 아이보리 바탕, 짙은 갈색 글자, 둥근 고딕, 얇은 구분선).
 // 설정·목록은 카드 대신 여백과 구분선으로 나누고, 입력창처럼 구분이 필요한 곳만 표면색을 깐다.
 import { router } from 'expo-router';
-import { ChevronLeft, ChevronRight, Search, Star, X } from '@/ui/icons';
+import { Check, ChevronLeft, ChevronRight, Search, Star, X } from '@/ui/icons';
 import { Children, createContext, Fragment, isValidElement, useContext, useEffect, useRef, useState, type ReactNode } from 'react';
 import {
   ActivityIndicator,
@@ -413,6 +413,29 @@ export function Chip({ label, on, onPress, color }: { label: string; on?: boolea
   );
 }
 
+// 고르는 블록(2026-11): 서로 바꿔 고르는 선택지(갈피 '어떻게 남길까요?', 분위기, 목표 시간). 블록 전체가 누르는 자리.
+// 고르지 않은 것은 옅은 회백색 바탕, 고른 것은 흰 바탕 + 얇은 갈색 테두리 + 작은 체크(색만으로 구분하지 않는다). 단순 정보 블록과 구별된다
+export function Choice({ label, sub, selected, onPress, children, style, compact }: { label: string; sub?: string; selected: boolean; onPress: () => void; children?: ReactNode; style?: StyleProp<ViewStyle>; compact?: boolean }) {
+  const t = useTidy();
+  const tt = t ? tidyType : type;
+  return (
+    <Pressable onPress={onPress} accessibilityRole="radio" accessibilityState={{ selected, checked: selected }} accessibilityLabel={[label, sub].filter(Boolean).join(', ')} style={({ pressed }) => [cs.choice, compact && cs.choiceCompact, selected ? cs.choiceOn : null, pressed && !selected && { backgroundColor: colors.line }, style]}>
+      {children}
+      <View style={cs.choiceRow}>
+        <View style={{ flex: 1, minWidth: 0 }}>
+          <Text style={[tt.button, { color: colors.ink, textAlign: compact ? 'center' : 'left' }]}>{label}</Text>
+          {sub ? <Text style={[tt.caption, { marginTop: 2, textAlign: compact ? 'center' : 'left' }]}>{sub}</Text> : null}
+        </View>
+      </View>
+      {selected ? (
+        <View style={cs.check} pointerEvents="none">
+          <Check size={12} color={colors.onAccent} strokeWidth={3} />
+        </View>
+      ) : null}
+    </Pressable>
+  );
+}
+
 export function Row({ children, style, gap = 8 }: { children: ReactNode; style?: StyleProp<ViewStyle>; gap?: number }) {
   return <View style={[{ flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap }, style]}>{children}</View>;
 }
@@ -783,3 +806,13 @@ const ts = StyleSheet.create({
   sheet: { borderTopLeftRadius: tidyShape.sheet, borderTopRightRadius: tidyShape.sheet, paddingTop: 8 },
   handle: { marginBottom: 16 },
 });
+
+// 고르는 블록(Choice). 모서리 14, 안쪽 여백 16, 고른 것은 1.5 갈색 테두리
+const cs = StyleSheet.create({
+  choice: { borderRadius: 14, padding: 16, backgroundColor: colors.surface, borderWidth: 1.5, borderColor: colors.surface, minHeight: 56, justifyContent: 'center' },
+  choiceCompact: { paddingVertical: 12, paddingHorizontal: 8, alignItems: 'stretch' },
+  choiceOn: { backgroundColor: colors.raised, borderColor: colors.accent },
+  choiceRow: { flexDirection: 'row', alignItems: 'center' },
+  check: { position: 'absolute', top: 8, right: 8, width: 20, height: 20, borderRadius: 10, backgroundColor: colors.accent, alignItems: 'center', justifyContent: 'center' },
+});
+

@@ -5,7 +5,7 @@ import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { STATUS_LABEL } from '@/features/book/labels';
 import type { Library } from '@/domain/library';
 import { Btn, Divider, SearchField, Sheet, useUi } from '@/ui/kit';
-import { press } from '@/ui/screenTheme';
+import { colors, press } from '@/ui/screenTheme';
 
 export function recentBookIds(lib: Library) {
   const last = new Map<string, string>();
@@ -14,7 +14,8 @@ export function recentBookIds(lib: Library) {
   return [...last.entries()].sort((a, b) => b[1].localeCompare(a[1])).map(([id]) => id);
 }
 
-export function BookPicker({ lib, visible, allowNone, onPick, onClose }: { lib: Library; visible: boolean; allowNone?: boolean; onPick: (id: string | undefined) => void; onClose: () => void }) {
+// onAddNew: '새 책 등록'(등록 화면으로 갔다가 uiBus.offerPickedBook으로 돌아온다). 주지 않으면 줄을 보이지 않는다
+export function BookPicker({ lib, visible, allowNone, onPick, onClose, onAddNew }: { lib: Library; visible: boolean; allowNone?: boolean; onPick: (id: string | undefined) => void; onClose: () => void; onAddNew?: () => void }) {
   // 부르는 화면의 기준을 따른다(독서 타이머는 정돈 변형, 갈피 작성은 예전 그대로)
   const { type, space, tidy } = useUi();
   const [q, setQ] = useState('');
@@ -31,6 +32,11 @@ export function BookPicker({ lib, visible, allowNone, onPick, onClose }: { lib: 
     <Sheet visible={visible} onClose={onClose} title="책 고르기" maxHeight="85%">
       <SearchField value={q} onChangeText={setQ} placeholder="제목·저자" accessibilityLabel="책 찾기" style={{ marginTop: space.tight, marginBottom: tidy ? 4 : space.tight }} />
       <ScrollView style={{ flexShrink: 1 }} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
+        {onAddNew ? (
+          <Pressable style={({ pressed }) => [st.item, pressed && press]} onPress={onAddNew} accessibilityRole="button" accessibilityLabel="새 책 등록">
+            <Text style={[type.row, { color: colors.accent }]}>+ 새 책 등록</Text>
+          </Pressable>
+        ) : null}
         {allowNone ? (
           <Pressable style={({ pressed }) => [st.item, pressed && press]} onPress={() => onPick(undefined)} accessibilityRole="button">
             <Text style={type.row}>책 연결 없이</Text>
@@ -42,7 +48,7 @@ export function BookPicker({ lib, visible, allowNone, onPick, onClose }: { lib: 
           const color = b.bindingId ? lib.bindings[b.bindingId]?.spineColor : undefined;
           return (
             <View key={id}>
-              {i || allowNone ? <Divider /> : null}
+              {i || allowNone || onAddNew ? <Divider /> : null}
               <Pressable style={({ pressed }) => [st.item, pressed && press]} onPress={() => onPick(id)} accessibilityRole="button" accessibilityLabel={e?.title}>
                 <View style={[st.spine, { backgroundColor: color ?? '#B7AE9F' }]} />
                 <View style={{ flex: 1 }}>

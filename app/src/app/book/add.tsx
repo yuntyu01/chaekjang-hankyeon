@@ -51,7 +51,8 @@ const num = (v: string) => {
 
 export default function AddBook() {
   // 주소로 미리 채우기(공유·바로가기용): ?q=검색어 → 바로 검색, ?title=제목 → 직접 입력 확인 단계로
-  const params = useLocalSearchParams<{ q?: string; title?: string }>();
+  // returnTo=pick: 책 고르기(갈피 작성 등)에서 '새 책 등록'으로 왔다. 추가하면 그 책을 맡기고 쓰던 화면으로 돌아간다
+  const params = useLocalSearchParams<{ q?: string; title?: string; returnTo?: string }>();
   const [step, setStep] = useState<Step>(params.title ? 'confirm' : 'find');
   const [draft, setDraft] = useState<Draft>(() => ({ ...blank('manual'), title: params.title ?? '' }));
   const [binding, setBinding] = useState<BindingDraft | null>(null);
@@ -242,6 +243,9 @@ export default function AddBook() {
   return (
     <Screen tidy title="추가했어요" back={false}>
       <Text style={st.doneTitle}>《{draft.title}》을(를) 추가했어요.</Text>
+      {placed !== null && params.returnTo === 'pick' && addedId ? (
+        <Btn label="이 책으로 계속 쓰기" onPress={() => { uiBus.offerPickedBook(addedId); router.back(); }} style={{ marginTop: space.l }} />
+      ) : null}
       {placed === null ? null : (
         <View style={{ gap: space.s, marginTop: space.s }}>
           <Muted style={{ marginBottom: space.l }}>{placed === 'shelf' ? '책장에 놓았어요. 꾸미기에서 자리와 자세를 바꿀 수 있어요.' : '보관했어요. 전체 책에서 언제든 책장에 놓을 수 있어요.'}</Muted>

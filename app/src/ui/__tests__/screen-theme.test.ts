@@ -203,7 +203,8 @@ describe('정돈 변형(tidy)', () => {
     expect(read('features/reading/ReadingScreen.tsx')).toMatch(/<Tidy>/);
   });
   it('책장·책 고르기 시트·갈피 화면·하단 탭은 켜지 않는다', () => {
-    const off = ['app/(tabs)/bookmarks.tsx', 'app/(tabs)/_layout.tsx', 'app/bookmark/new.tsx', 'app/bookmark/[id].tsx', 'features/home/HomeScreen.tsx', 'features/home/BookSheet.tsx', 'features/home/BookDetail.tsx', 'features/bookmark/BookmarkCard.tsx', 'features/bookmark/BookmarkEmpty.tsx', 'features/reading/Scene.tsx'];
+    // 2026-11: 갈피 작성(app/bookmark/new.tsx)은 사진·문장 인식 흐름으로 새로 만들며 공통 기준을 쓴다(지시 0-3·7-2). 갈피 카드·목록·상세는 그대로 뺀다
+    const off = ['app/(tabs)/bookmarks.tsx', 'app/(tabs)/_layout.tsx', 'app/bookmark/[id].tsx', 'features/home/HomeScreen.tsx', 'features/home/BookSheet.tsx', 'features/home/BookDetail.tsx', 'features/bookmark/BookmarkCard.tsx', 'features/bookmark/BookmarkEmpty.tsx', 'features/reading/Scene.tsx'];
     for (const f of off) if (fs.existsSync(path.join(SRC, f))) expect(read(f)).not.toMatch(/<Tidy|Screen[^>]*\btidy\b|tidyType|tidySpace/);
   });
 });

@@ -118,6 +118,9 @@ export default function BookmarkDetail() {
         keyExtractor={(m) => m.id}
         horizontal
         pagingEnabled
+        // 안드로이드 FlatList 기본값(화면 밖 줄 떼어 두기)이 새 구조(Fabric)에서 'The specified child already has a parent'로 앱을 죽였다
+        // (갈피 저장 뒤 이 화면으로 바꿀 때, 2026-11-01 에뮬 재현). 갈피는 몇 장뿐이라 끈다
+        removeClippedSubviews={false}
         initialScrollIndex={index}
         getItemLayout={(_, i) => ({ length: width, offset: width * i, index: i })}
         showsHorizontalScrollIndicator={false}
