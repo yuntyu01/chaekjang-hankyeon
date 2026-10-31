@@ -196,10 +196,12 @@ func (s *Server) Handler() http.Handler {
 	m.HandleFunc("POST /auth/kakao/start", wrap(s.kakaoStart))
 	m.HandleFunc("GET /auth/kakao/callback", wrap(s.kakaoCallback))
 	m.HandleFunc("POST /auth/kakao/claim", wrap(s.kakaoClaim))
+	s.routeCommunity(m)
 	return m
 }
 func (s *Server) health(w http.ResponseWriter, r *http.Request) error {
-	writeJSON(w, 200, map[string]any{"ok": true, "books": bookSource(), "llmKeys": s.LLM.Available()})
+	// community: 이 서버에 공개 데이터 API가 있다(앱은 이것으로 커뮤니티 탭을 켠다. 예전 서버에는 없다)
+	writeJSON(w, 200, map[string]any{"ok": true, "books": bookSource(), "llmKeys": s.LLM.Available(), "community": true})
 	return nil
 }
 func New(db *pgxpool.Pool) *Server {
