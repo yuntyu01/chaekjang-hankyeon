@@ -12,6 +12,6 @@
   출처: https://github.com/notofonts/noto-cjk/tree/main/Serif/SubsetOTF/KR (2026-10-03 내려받음).
   SIL OFL 1.1: `NotoSerifKR-OFL.txt`.
 
-- `Hahmlet-Medium.ttf` — 함렛 Medium(Copyright 2020 The Hahmlet Project Authors, https://github.com/hyper-type/hahmlet). SIL OFL 1.1: `Hahmlet-OFL.txt`. 책 그림(표지·책등) 제목 글꼴(`src/ui/book3d/art.tsx`).
-  2026-10-31 사용자가 함렛을 고른 뒤 '조금 덜 두껍게'와 책장 시안 지시(부드러운 명조, 작은 책등에서도 읽히는 획)로 SemiBold에서 Medium으로 바꿨다.
-  파일은 npm `@expo-google-fonts/hahmlet@0.4.1`의 `500Medium/Hahmlet_500Medium.ttf` 그대로다(라이선스 전문은 google/fonts ofl/hahmlet/OFL.txt).
+- `Hahmlet-SemiBold.ttf` — 함렛 SemiBold(Copyright 2020 The Hahmlet Project Authors, https://github.com/hyper-type/hahmlet). SIL OFL 1.1: `Hahmlet-OFL.txt`. 책 그림(표지·책등) 제목 글꼴(`src/ui/book3d/art.tsx`).
+  2026-10-31 사용자가 함렛을 골랐다. 같은 날 책장 시안 지시로 Medium으로 낮췄다가, 사용자가 '제목 글자도'(더 또렷하게) 해서 SemiBold로 되돌렸다(Medium 파일은 지웠다).
+  파일은 npm `@expo-google-fonts/hahmlet@0.4.1`의 `600SemiBold/Hahmlet_600SemiBold.ttf` 그대로다(라이선스 전문은 google/fonts ofl/hahmlet/OFL.txt).

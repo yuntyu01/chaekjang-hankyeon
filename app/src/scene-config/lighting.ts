@@ -60,10 +60,13 @@ export type Grain = { kind: 'fiber' | 'weave' | 'sheets' | 'wood' | 'none'; size
 export type SurfaceMaterial = { roughness: number; bump: Bump | null; grain: Grain };
 const NONE: Grain = { kind: 'none', size: [1, 1], contrast: [0, 0] };
 export const materials = {
-  // 무광 종이(코팅 없는 종이, 거의 완전 확산면): 장정 기본·갈피 종이. 섬유 뭉침(약 1.5mm)의 아주 얕은 굴곡
-  paper: { roughness: 0.9, bump: { size: [1.5, 1.5], slope: 0.02 }, grain: { kind: 'fiber', size: [0.6, 3], contrast: [0.015, 0.01] } },
-  // 장정 천: 올(약 0.5mm 주기)이 높낮이를 만든다. 홈 화면에선 화소보다 작아 거칠기로 들어간다
-  cloth: { roughness: 0.75, bump: { size: [0.5, 0.5], slope: 0.3, weave: true }, grain: { kind: 'weave', size: [0.5, 2], contrast: [0.02, 0.008] } },
+  // 무광 종이(코팅 없는 종이, 거의 완전 확산면): 장정 기본·갈피 종이. 섬유 뭉침(약 1.5mm)의 아주 얕은 굴곡.
+  // 결(반사율): 표지 종이의 섬유 뭉침(지합, 1~5mm 구름 무늬)은 반사율이 몇 % 다르다. 2026-10-31 사용자 '잔결이 좀 보이게':
+  // 0.6mm(화면 1.3px, 안 보임)·1% 세기 → 1.5mm(약 3px)·4%, 4mm·2%(책등 밝기 표준편차 약 1.5단계, 사용자가 보여 준 사진의 책등 결과 비슷)
+  paper: { roughness: 0.9, bump: { size: [1.5, 1.5], slope: 0.02 }, grain: { kind: 'fiber', size: [1.5, 4], contrast: [0.04, 0.02] } },
+  // 장정 천: 올(약 0.5mm 주기)이 높낮이를 만든다. 홈 화면에선 화소보다 작아 거칠기로 들어간다.
+  // 두 번째 결은 실 굵기·물들기 차이(마디, 1~2mm): 2mm·0.8% → 1.5mm·4.5%(2026-10-31 사용자 '잔결이 좀 보이게', 종이와 같은 까닭)
+  cloth: { roughness: 0.75, bump: { size: [0.5, 0.5], slope: 0.3, weave: true }, grain: { kind: 'weave', size: [0.5, 1.5], contrast: [0.02, 0.045] } },
   // 코팅지: 표지에 흔한 무광 코팅 막(종이보다 매끈해 비스듬한 반사·창빛 하이라이트가 더 크다. 유광 막(r 0.2~0.3)이면 창이 비친다)
   coated: { roughness: 0.7, bump: null, grain: NONE },
   // 속지 단면: 낱장(약 0.1mm) 가장자리가 쌓인 면이라 두께 방향으로 촘촘한 굴곡(재단면이라 종이 면보다 거칠다).

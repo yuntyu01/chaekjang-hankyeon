@@ -27,11 +27,11 @@ import { ORIGINAL_ART, ReferenceGlyph, ReferenceMotif, ReferencePrint, drawOrigi
 import { createArtCache } from './art-cache';
 import { bookArtKey } from './art-key';
 
-// 책 제목 글꼴: 함렛 Medium(부드러운 명조). 2026-10-31 사용자가 고운바탕·나눔스퀘어라운드·주아·함렛을 책장에 넣어 비교해 함렛을 골랐고,
-// 같은 날 '조금 덜 두껍게' 요청과 책장 시안 지시(부드러운 명조, 작은 책등에서도 읽히는 획)로 SemiBold → Medium(획 약 84%).
+// 책 제목 글꼴: 함렛 SemiBold(부드러운 명조). 2026-10-31 사용자가 고운바탕·나눔스퀘어라운드·주아·함렛을 책장에 넣어 비교해 함렛을 골랐다.
+// 같은 날 책장 시안 지시로 Medium(획 약 84%)으로 낮췄다가, 사용자가 보여 준 더 생기 있는 화면(획 면적 +18~40%)을 보고 '제목 글자도' → SemiBold로 되돌림.
 // 고운바탕 Regular는 가로획이 가늘어 책등에서 실처럼 보였다. 한글은 전각(나아가기 폭 1em)이라 제목 맞추기(title-layout)는 그대로다.
 // 책장·책 정보 시트·책 상세·목록의 책 그림이 모두 이 그리기(Shared.regular, 이름만 예전 그대로)를 쓴다. assets/fonts/README.md
-const REGULAR = require('../../../assets/fonts/Hahmlet-Medium.ttf');
+const REGULAR = require('../../../assets/fonts/Hahmlet-SemiBold.ttf');
 
 // 굵기는 글꼴 굵기로 정한다(덧그리기 TITLE_WEIGHT 0). Skia에는 이 글꼴 하나만 읽는다
 // artworks: 기본 정면 장정 그림(cover-artworks) 여섯 장. 앱을 켤 때 한 번 읽어 모든 책이 같이 쓴다

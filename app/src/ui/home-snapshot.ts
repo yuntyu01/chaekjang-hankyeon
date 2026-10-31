@@ -14,7 +14,7 @@ import { PERF_ENABLED } from './perf';
 const DIR = screenCaptureAvailable && FS.documentDirectory ? `${FS.documentDirectory}home-snapshot/` : null;
 const META = DIR ? `${DIR}meta.json` : null;
 // 홈 그림이 크게 바뀌어 예전 사진을 버려야 할 때 올린다
-const REV = 2; // 2: 책 제목 글꼴을 고운바탕 Bold로
+const REV = 3; // 2: 책 제목 글꼴을 고운바탕 Bold로, 3: 함렛 SemiBold·종이·천 결 세기
 type Meta = { rev: number; file: string; w: number; h: number; scale: number; fontScale: number };
 
 const screenNow = () => {

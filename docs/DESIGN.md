@@ -101,7 +101,7 @@
 |---|---|---|
 | 화면 UI 전체 | Pretendard Regular·Medium·SemiBold (`assets/fonts/Pretendard-*.otf`) | `fonts.ui`, `fonts.uiMedium`, `fonts.uiBold` |
 | 갈피 문장·갈피 카드 | Noto Serif KR Regular·Medium·SemiBold | `fonts.serif*`(ReadingSerif) |
-| 책 그림(표지·책등) 제목 | 함렛 Medium (`assets/fonts/Hahmlet-Medium.ttf`, Skia로 그림. 책장·책 정보 시트·책 상세·목록이 같은 그리기) | `ui/book3d/art.tsx` |
+| 책 그림(표지·책등) 제목 | 함렛 SemiBold (`assets/fonts/Hahmlet-SemiBold.ttf`, Skia로 그림. 책장·책 정보 시트·책 상세·목록이 같은 그리기) | `ui/book3d/art.tsx` |
 | 홈 머리글('나의 책장'·연도·'전체 책') | Pretendard SemiBold·Regular (2026-10-31 시안 글자 그림·나눔스퀘어라운드에서 바꿈) | `screenTheme.fonts.uiBold`·`ui` |
 | 대체 표지 글자 | 고운바탕 | `theme.fonts.serif` |
 
@@ -144,7 +144,7 @@
 | 보조 행동('읽기 시작'·'갈피 남기기') | Pretendard Regular | 15/21 | 0 | `ink` |
 
 - 홈 머리글은 높이가 선반 배치에 묶여 있어 시스템 글자 확대를 1.3배까지만 따른다(`HEADER_TEXT_MAX`). 시트는 본문이 스크롤돼 제한하지 않는다.
-- 책등·표지 제목: 함렛 Medium. 세로쓰기는 글자를 세워 한 칸씩(돌리지 않는다). 글자 간격(글자 크기 배수)은 짧은 제목 1.22 → 1.16 → 1.1 → 1.04, 긴 제목 1.16 → 1.1 → 1.05 → 1.0 중 **들어가는 가장 넉넉한 값**(긴 제목만 좁히고, 짧은 제목을 책 높이에 맞춰 벌리지 않는다, `domain/title-layout.ts`).
+- 책등·표지 제목: 함렛 SemiBold. 세로쓰기는 글자를 세워 한 칸씩(돌리지 않는다). 글자 간격(글자 크기 배수)은 짧은 제목 1.22 → 1.16 → 1.1 → 1.04, 긴 제목 1.16 → 1.1 → 1.05 → 1.0 중 **들어가는 가장 넉넉한 값**(긴 제목만 좁히고, 짧은 제목을 책 높이에 맞춰 벌리지 않는다, `domain/title-layout.ts`).
 - 책등 제목 색: 밝은 크림 #F7EEDC 또는 짙은 남색 먹 #2F3944. 밝은 글자가 3:1에 못 미치면 대비가 큰 쪽(`domain/color.ts titleInk`). 장정에서 고를 수 있는 모든 색에서 3:1 이상(시험).
 
 ---
