@@ -106,9 +106,38 @@ export default function AddBook() {
     toConfirm({ ...blank('photo'), coverUri: r.uri, coverSource: 'photo' }, photoIdentify.available ? null : photoIdentify.reason ?? null);
   };
 
+  // 같은 ISBN이 이미 서재에 있으면: 기존 책 보기 / 별도 소장본으로 추가(같은 책을 한 권 더 가진 경우). 다시 읽기는 재등록이 아니라 기존 책에서
+  const existingOf = (isbn: string) => {
+    const code = isbn.replace(/[^\dXx]/g, '');
+    if (!code) return undefined;
+    const lib = libraryStore.get().lib;
+    return Object.values(lib.books).find((b) => lib.editions[b.editionId]?.isbn13 === code);
+  };
+  const confirmDuplicate = (isbn: string, go: () => void) => {
+    const dup = existingOf(isbn);
+    if (!dup) return go();
+    Alert.alert('이미 내 서재에 있는 책이에요', '같은 ISBN의 책이 있어요. 다시 읽으려면 그 책에서 ‘다시 읽기’를 하면 지난 기록이 그대로 이어져요. 같은 책을 한 권 더 가지고 있다면 별도 소장본으로 추가할 수 있어요.', [
+      { text: '취소', style: 'cancel' },
+      { text: '기존 책 보기', onPress: () => router.replace(`/book/${dup.id}`) },
+      { text: '별도 소장본으로 추가', onPress: go },
+    ]);
+  };
+
+  // 추천 장정 계산: 썸네일은 색 추출에만 쓰고(화면에 그리지 않는다) 결과 장정만 저장한다
+  const prepareBinding = async () => {
+    const palette: PaletteEntry[] | null = draft.coverSource === 'api' ? await coverPalette(draft.coverUri) : null;
+    const a = buildBookArt(rebindInput({ isbn13: draft.isbn.replace(/[^\dXx]/g, '') || undefined, title: draft.title.trim(), authors: [], publisher: draft.publisher, publishedAt: draft.publishedAt, pageCount: num(draft.pages), size, category: draft.category, seriesTitle: draft.seriesTitle }, { palette: palette ?? undefined }), new Date().toISOString());
+    const bd: BindingDraft = { ...bindingFields(a), seed: 0, source: 'default' };
+    setArt(a);
+    setBinding(bd);
+    return { a, bd };
+  };
+
   // 등록 완료: where 'shelf'(기본)는 바로 책장에 놓고, 'keep'은 책장에 없는 책으로 보관만 한다
-  const add = async (where: 'shelf' | 'keep') => {
-    if (!binding) return;
+  const add = async (where: 'shelf' | 'keep', chosen?: { a: BookArtParams; bd: BindingDraft }) => {
+    const binding_ = chosen?.bd ?? binding;
+    const art_ = chosen?.a ?? art;
+    if (!binding_) return;
     setSaving(true);
     try {
       let coverUri = draft.coverUri;
@@ -127,7 +156,7 @@ export default function AddBook() {
           size,
           category: draft.category,
           seriesTitle: draft.seriesTitle,
-          art: art ?? undefined,
+          art: art_ ?? undefined,
           coverUri,
           coverSource: coverUri ? draft.coverSource : undefined,
           source: draft.source,
@@ -136,7 +165,7 @@ export default function AddBook() {
           productId: draft.productId,
         },
         status: draft.status,
-        binding: { ...binding },
+        binding: { ...binding_ },
       });
       setAddedId(id);
       // 서재 → 책장 동기화는 addBook 안에서 바로 일어난다(책 모양이 책장 저장소에 들어간 뒤 놓는다)
@@ -163,21 +192,42 @@ export default function AddBook() {
         tidy
         title="책 확인"
         footer={
-          <Btn
-            label="장정 고르기"
-            disabled={!draft.title.trim()}
-            busy={saving}
-            onPress={async () => {
-              // 썸네일은 색 추출에만 쓰고(화면에 그리지 않는다) 결과 장정만 저장한다.
-              setSaving(true);
-              const palette: PaletteEntry[] | null = draft.coverSource === 'api' ? await coverPalette(draft.coverUri) : null;
-              const a = buildBookArt(rebindInput({ isbn13: draft.isbn.replace(/[^\dXx]/g, '') || undefined, title: draft.title.trim(), authors: [], publisher: draft.publisher, publishedAt: draft.publishedAt, pageCount: num(draft.pages), size, category: draft.category, seriesTitle: draft.seriesTitle }, { palette: palette ?? undefined }), new Date().toISOString());
-              setArt(a);
-              setBinding({ ...bindingFields(a), seed: 0, source: 'default' });
-              setSaving(false);
-              setStep('binding');
-            }}
-          />
+          // 주요 행동: 추천 장정으로 바로 추가(책장에 놓기). 장정은 고르고 싶을 때만(보조)
+          <View>
+            <Btn
+              label="추천 장정으로 추가"
+              disabled={!draft.title.trim() || saving}
+              busy={saving}
+              onPress={() =>
+                confirmDuplicate(draft.isbn, async () => {
+                  setSaving(true);
+                  try {
+                    const chosen = await prepareBinding();
+                    await add('shelf', chosen);
+                  } finally {
+                    setSaving(false);
+                  }
+                })
+              }
+            />
+            <TextLink
+              label="장정 직접 고르기"
+              tone="soft"
+              disabled={!draft.title.trim() || saving}
+              onPress={() =>
+                confirmDuplicate(draft.isbn, async () => {
+                  setSaving(true);
+                  try {
+                    await prepareBinding();
+                    setStep('binding');
+                  } finally {
+                    setSaving(false);
+                  }
+                })
+              }
+              style={{ marginTop: space.xs, marginBottom: -space.s }}
+            />
+          </View>
         }>
         {notice ? <Notice style={{ marginTop: space.m, marginBottom: space.xl }}>{notice}</Notice> : null}
         <Row style={{ alignItems: 'flex-start', flexWrap: 'nowrap', marginTop: notice ? 0 : space.m }} gap={space.l}>
@@ -303,7 +353,7 @@ function FindStep({ initial, notice, onPick, onPhoto, onManual }: { initial?: st
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
   return (
-    <Screen tidy title="책 추가">
+    <Screen tidy title="새 책 추가">
       <SearchField
         value={q}
         onChangeText={(t) => {
@@ -317,12 +367,13 @@ function FindStep({ initial, notice, onPick, onPhoto, onManual }: { initial?: st
         }}
         onSubmit={() => run()}
         busy={busy}
-        placeholder="제목이나 저자로 찾기"
+        placeholder="새 책 찾기 · 제목이나 저자"
         accessibilityLabel="제목이나 저자로 찾기"
         style={{ marginTop: space.item }}
       />
       <View style={st.findMethods}>
-        <IconAction label="사진으로 찾기" onPress={() => Alert.alert('사진으로 찾기', '표지 사진을 선택해 주세요.', [{ text: '사진 찍기', onPress: () => onPhoto('camera') }, { text: '사진 고르기', onPress: () => onPhoto('library') }, { text: '취소', style: 'cancel' }])} icon={<Camera size={icon.size + 2} color={colors.inkSoft} strokeWidth={icon.stroke} />} />
+        {/* 사진 인식은 아직 없다: 사진은 표지로만 쓰고 제목은 직접 적는다(동작에 맞는 이름) */}
+        <IconAction label={photoIdentify.available ? '사진으로 찾기' : '표지 사진으로 추가'} onPress={() => Alert.alert(photoIdentify.available ? '사진으로 찾기' : '표지 사진으로 추가', photoIdentify.available ? '표지 사진을 선택해 주세요.' : '사진은 표지로 쓰고, 제목은 다음 화면에서 적어요.', [{ text: '사진 찍기', onPress: () => onPhoto('camera') }, { text: '사진 고르기', onPress: () => onPhoto('library') }, { text: '취소', style: 'cancel' }])} icon={<Camera size={icon.size + 2} color={colors.inkSoft} strokeWidth={icon.stroke} />} />
         <IconAction label="직접 입력" onPress={() => onManual(q)} icon={<PenLine size={icon.size + 2} color={colors.inkSoft} strokeWidth={icon.stroke} />} />
       </View>
       {notice ? <Muted style={{ marginTop: space.s }}>{notice}</Muted> : null}

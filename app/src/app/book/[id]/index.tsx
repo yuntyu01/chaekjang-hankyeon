@@ -3,7 +3,7 @@
 import { router, useLocalSearchParams } from 'expo-router';
 import { ChevronDown, ChevronUp, MoreHorizontal } from '@/ui/icons';
 import { useState } from 'react';
-import { Alert, Linking, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Alert, Image, Linking, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 
 import { STATUS_LABEL, ymd } from '@/features/book/labels';
 import { placeWithChoice } from '@/features/book/place-books';
@@ -170,10 +170,16 @@ export default function BookDetailScreen() {
                 {marks.slice(0, 5).map((m) => (
                   <Pressable key={m.id} onPress={() => router.push(`/bookmark/${m.id}`)} style={({ pressed }) => [st.mark, pressed && press]} accessibilityRole="button">
                     <View style={[st.markBar, { backgroundColor: color }]} />
+                    {m.photoUri ? <Image source={{ uri: m.photoUri }} style={st.markPhoto} accessibilityLabel="갈피 사진" /> : null}
                     <View style={{ flex: 1 }}>
-                      <Text style={st.quote} numberOfLines={4}>
-                        {m.text}
-                      </Text>
+                      {/* 사진만 남긴 갈피는 글이 없다: '사진 갈피'로 보인다(문장으로 세지 않는다) */}
+                      {m.text.trim() ? (
+                        <Text style={st.quote} numberOfLines={4}>
+                          {m.text}
+                        </Text>
+                      ) : (
+                        <Text style={type.row}>사진 갈피</Text>
+                      )}
                       <Text style={[type.caption, { marginTop: space.s }]}>{[m.page ? `${m.page}쪽` : null, ymd(m.createdAt)].filter(Boolean).join(' · ')}</Text>
                     </View>
                   </Pressable>
@@ -252,4 +258,5 @@ const st = StyleSheet.create({
   mark: { flexDirection: 'row', gap: space.m, paddingVertical: space.l },
   markBar: { width: 3, borderRadius: 2 },
   quote: { fontFamily: fonts.serif, fontSize: 16, lineHeight: 27, color: colors.ink },
+  markPhoto: { width: 48, height: 64, borderRadius: 3, backgroundColor: colors.surface },
 });

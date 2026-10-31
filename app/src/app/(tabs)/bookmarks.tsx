@@ -32,7 +32,7 @@ export default function BookmarksTab() {
   // 불러오는 중에는 제목만(빈 화면이 잠깐 보이지 않게). 저장된 갈피가 하나도 없을 때만 빈 화면: 문장 수·검색·추가·분류는 감춘다
   if (!loaded) return <Screen title="갈피" back={false} scroll={false}><View /></Screen>;
   if (!all.length) return <Screen title="갈피" back={false} scroll={false}><BookmarkEmpty /></Screen>;
-  return <Screen title="갈피" subtitle={`${all.length}개의 문장`} back={false} scroll={false} right={
+  return <Screen title="갈피" subtitle={`갈피 ${all.length}개`} back={false} scroll={false} right={
     <View style={{ flexDirection: 'row', gap: 4 }}>
       <IconButton label={searching ? '갈피 검색 닫기' : '갈피 검색'} onPress={() => { if (searching) setQ(''); setSearching(!searching); }}>{searching ? <X size={icon.size} color={colors.ink} strokeWidth={icon.stroke} /> : <Search size={icon.size} color={colors.ink} strokeWidth={icon.stroke} />}</IconButton>
       <IconButton label="갈피 추가" circle onPress={() => router.push({ pathname: '/bookmark/new', params: { ...(book ? { book } : {}), ...(tab === 'photo' ? { mode: 'photo' } : {}) } })}><Plus size={icon.size} color={colors.ink} strokeWidth={icon.stroke} /></IconButton>

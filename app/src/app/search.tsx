@@ -38,7 +38,7 @@ export default function SearchMine() {
   };
   // 내 책 전부가 줄마다 책 그림(캔버스)으로 나온다: 화면 근처 줄만 그린다
   return (
-    <Screen tidy title="책 찾기" scroll={false}>
+    <Screen tidy title="내 책에서 찾기" scroll={false}>
       <ScreenList
         data={list}
         keyExtractor={(b) => b.id}

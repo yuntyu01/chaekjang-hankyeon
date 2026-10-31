@@ -189,11 +189,16 @@ export async function searchBooks(query: string, signal?: AbortSignal): Promise<
   const q = query.trim();
   if (!q) return { ok: true, items: [] };
   const sv = await searchServer(q, signal);
+  if (signal?.aborted) return { ok: true, items: [] }; // 취소: 늦게 온 결과로 새 검색 화면을 덮지 않는다(부르는 쪽도 확인)
   if (sv?.ok && sv.items.length) return sv;
-  if (sv && !sv.ok && sv.reason === 'network') return sv;
+  // 우리 서버에만 닿지 않으면(서버 장애) 보완 검색으로 넘어간다. 모든 곳에 닿지 않을 때만 '인터넷 연결 없음'
   const g = await searchGoogle(q, signal);
-  if (g.ok && g.items.length) return g;
-  if (!g.ok && g.reason === 'network') return g;
+  if (signal?.aborted) return { ok: true, items: [] };
+  if (g.ok && g.items.length) return { ...g, diag: sv && !sv.ok ? `서버 검색 실패(${sv.diag}) → Google Books` : g.diag };
+  if (!g.ok && g.reason === 'network') {
+    if (sv && !sv.ok && sv.reason === 'network') return { ...g, diag: `server: ${sv.diag}; ${g.diag}` };
+    return g;
+  }
   const o = await searchOpenLibrary(q, signal);
   const diag = g.ok ? 'Google Books 결과 없음' : g.diag;
   if (o.ok) return { ...o, diag };
