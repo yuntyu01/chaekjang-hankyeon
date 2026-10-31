@@ -11,6 +11,12 @@ export function Scene({ id, animate, height }: { id: SceneId; animate: boolean; 
   return <SceneVideo key={id} source={VIDEOS[id]} play={animate} W={W} H={height ?? windowHeight} />;
 }
 
+// 분위기 시트의 작은 미리보기: 같은 영상의 한 프레임을 줄인 정지 화면(assets/scenes/posters.provenance.json). 시트를 열어도 영상을 틀지 않는다
+export const SCENE_POSTERS = {
+  rain: require('../../../assets/scenes/rain-window-poster.jpg'),
+  fire: require('../../../assets/scenes/fireplace-poster.jpg'),
+};
+
 const VIDEOS = {
   rain: require('../../../assets/scenes/rain-window.mp4'),
   fire: require('../../../assets/scenes/fireplace.mp4'),

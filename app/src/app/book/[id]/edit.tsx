@@ -6,7 +6,7 @@ import { View } from 'react-native';
 import { pickPhoto, deniedMessage } from '@/services/photos';
 import { keepImage } from '@/store/files';
 import { libraryStore, useLibrary } from '@/store/library-store';
-import { Btn, Empty, Field, Muted, RealCover, Row, Screen } from '@/ui/kit';
+import { Btn, Empty, Field, H2, Muted, RealCover, Row, Screen } from '@/ui/kit';
 import { colors, tidySpace as space } from '@/ui/screenTheme';
 
 const num = (v: string) => {
@@ -78,9 +78,11 @@ export default function EditBook() {
           {msg ? <Muted>{msg}</Muted> : null}
         </View>
       </Row>
-      <View style={{ height: space.xl }} />
-      <Field label="제목" value={f.title} onChangeText={(t) => setF({ ...f, title: t })} />
-      <Field label="저자" value={f.authors} onChangeText={(t) => setF({ ...f, authors: t })} />
+      {/* 기본 정보(제목 필수) / 추가 서지정보(모두 선택)를 구역 이름과 간격으로 나눈다. 입력칸 바깥에 카드를 겹치지 않는다 */}
+      <H2>기본 정보</H2>
+      <Field label="제목 (필수)" value={f.title} onChangeText={(t) => setF({ ...f, title: t })} />
+      <Field label="저자 (선택)" value={f.authors} onChangeText={(t) => setF({ ...f, authors: t })} />
+      <H2>추가 서지정보 (선택)</H2>
       <Field label="출판사" value={f.publisher} onChangeText={(t) => setF({ ...f, publisher: t })} />
       <Field label="출간" value={f.publishedAt} onChangeText={(t) => setF({ ...f, publishedAt: t })} placeholder="YYYY 또는 YYYY-MM" />
       <Field label="ISBN" value={f.isbn} onChangeText={(t) => setF({ ...f, isbn: t })} keyboardType="number-pad" />

@@ -19,6 +19,7 @@ import { libraryStore } from '@/store/library-store';
 import { placeWithChoice } from '@/features/book/place-books';
 import { placementStore } from '@/store/placement-store';
 import { uiBus } from '@/store/ui-bus';
+import { LibraryCover } from '@/ui/BookVisual';
 import { Btn, Chip, Empty, Field, H2, IconAction, Loading, Muted, Notice, RealCover, Row, Screen, SearchField, TextLink } from '@/ui/kit';
 import { colors, icon, press, tidySpace as space, tidyType as type } from '@/ui/screenTheme';
 
@@ -248,9 +249,11 @@ export default function AddBook() {
             />
           </View>
         </Row>
-        <View style={{ height: space.xl }} />
+        {/* 기본 정보(제목 필수) / 추가 서지정보(모두 선택): 구역 이름과 간격으로 나눈다 */}
+        <H2>기본 정보</H2>
         <Field label="제목 (필수)" value={draft.title} onChangeText={(t) => setDraft({ ...draft, title: t })} placeholder="책 제목" />
-        <Field label="저자" value={draft.authors} onChangeText={(t) => setDraft({ ...draft, authors: t })} placeholder="여러 명은 쉼표로" />
+        <Field label="저자 (선택)" value={draft.authors} onChangeText={(t) => setDraft({ ...draft, authors: t })} placeholder="여러 명은 쉼표로" />
+        <H2>추가 서지정보 (선택)</H2>
         <Field label="출판사" value={draft.publisher} onChangeText={(t) => setDraft({ ...draft, publisher: t })} />
         <Row style={{ flexWrap: 'nowrap' }} gap={space.m}>
           <View style={{ flex: 1 }}>
@@ -293,17 +296,29 @@ export default function AddBook() {
       </Screen>
     );
 
-  // 추가 완료(결과만 알린다. 다시 묻지 않는다)
+  // 추가 완료(결과만 알린다. 다시 묻지 않는다). 2026-11: 장정 미리보기·제목·실제 결과(전시 책장에 놓음 / 전체 책에만 보관)를 한 요약 블록으로
+  const doneLib = libraryStore.get().lib;
   return (
     <Screen tidy title="추가했어요" back={false}>
-      <Text style={st.doneTitle}>《{draft.title}》을(를) 추가했어요.</Text>
+      <View style={st.doneBlock}>
+        {addedId && doneLib.books[addedId] ? <LibraryCover lib={doneLib} id={addedId} width={64} /> : null}
+        <View style={{ flex: 1, minWidth: 0 }}>
+          <Text style={type.rowStrong} numberOfLines={3}>{draft.title}</Text>
+          {draft.authors ? <Text style={[type.sub, { marginTop: 2 }]} numberOfLines={1}>{draft.authors}</Text> : null}
+          {placed !== null ? (
+            <View style={st.doneResult}>
+              <Text style={[type.label, { color: colors.ink }]}>{placed === 'shelf' ? '전시 책장에 놓았어요' : '전체 책에만 보관했어요'}</Text>
+              <Text style={[type.caption, { marginTop: 2 }]}>{placed === 'shelf' ? '꾸미기에서 자리와 자세를 바꿀 수 있어요.' : '책장에는 아직 없어요. 전체 책에서 언제든 놓을 수 있어요.'}</Text>
+            </View>
+          ) : null}
+        </View>
+      </View>
       {placed !== null && params.returnTo === 'pick' && addedId ? (
-        <Btn label="이 책으로 계속 쓰기" onPress={() => { uiBus.offerPickedBook(addedId); router.back(); }} style={{ marginTop: space.l }} />
+        <Btn label="이 책으로 계속 쓰기" onPress={() => { uiBus.offerPickedBook(addedId); router.back(); }} style={{ marginTop: space.xl }} />
       ) : null}
       {placed === null ? null : (
-        <View style={{ gap: space.s, marginTop: space.s }}>
-          <Muted style={{ marginBottom: space.l }}>{placed === 'shelf' ? '책장에 놓았어요. 꾸미기에서 자리와 자세를 바꿀 수 있어요.' : '보관했어요. 전체 책에서 언제든 책장에 놓을 수 있어요.'}</Muted>
-          {placed === 'shelf' ? (
+        <View style={{ gap: space.s, marginTop: space.xl }}>
+          {params.returnTo === 'pick' ? null : placed === 'shelf' ? (
             <Btn
               label="책장에서 보기"
               onPress={() => {
@@ -420,5 +435,6 @@ const st = StyleSheet.create({
   // 표지 사진 그림자는 옅게(갈색 기 없이)
   cover: { borderRadius: 3, boxShadow: [{ offsetX: 0, offsetY: 2, blurRadius: 4, color: 'rgba(0,0,0,0.10)' }] },
   add: { width: space.touch, height: space.touch, alignItems: 'center', justifyContent: 'center', marginRight: -space.s },
-  doneTitle: { ...type.heading, marginTop: space.m },
+  doneBlock: { flexDirection: 'row', gap: space.l, alignItems: 'flex-start', marginTop: space.l, padding: space.l, borderRadius: 16, backgroundColor: colors.surface },
+  doneResult: { marginTop: space.m, paddingTop: space.m, borderTopWidth: StyleSheet.hairlineWidth * 2, borderTopColor: colors.line },
 });

@@ -4,26 +4,27 @@
 // 2026-10-31 일반 UI 정돈: 조작부·시트는 정돈 변형(Tidy). 배경 장면(그림·영상)과 독서 세션 동작은 그대로.
 // 소리만 듣기(sound=1)는 타이머 없이 소리만: 독서 시간으로 기록하지 않는다.
 import { router, useFocusEffect } from 'expo-router';
-import { BookOpen, AudioLines, Check, ChevronDown, ChevronLeft, Timer, Volume1, Volume2, VolumeX } from '@/ui/icons';
+import { BookOpen, AudioLines, Check, ChevronDown, ChevronLeft, Timer, Volume2, VolumeX } from '@/ui/icons';
 import { useCallback, useEffect, useState, type ReactNode } from 'react';
-import { AccessibilityInfo, Alert, AppState, Pressable, ScrollView, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
+import { AccessibilityInfo, Alert, AppState, Image, Pressable, ScrollView, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Svg, { Defs, LinearGradient, Path, Rect, Stop } from 'react-native-svg';
 
 import { bookTitle, clock, useElapsed } from '@/features/reading/ActiveReading';
-import { Scene } from '@/features/reading/Scene';
+import { Scene, SCENE_POSTERS } from '@/features/reading/Scene';
 import { ambient, SCENES, useAmbient } from '@/services/ambient';
 import { useLibrary } from '@/store/library-store';
 import { readingStore, useReading } from '@/store/reading-store';
 import { saveAndStartOther } from '@/store/finish-reading';
-import { settingsStore, useSettings } from '@/store/settings-store';
+import { settingsStore, useSettings, type SceneId } from '@/store/settings-store';
 import { colors, fonts, icon, night, press, tidyShape as shape, tidySpace as space, tidyType as type } from '@/ui/screenTheme';
 import { LibraryCover } from '@/ui/BookVisual';
 import { BookPicker } from '@/features/bookmark/BookPicker';
-import { Btn, ListGroup, ListItem, Row, Sheet, Tidy } from '@/ui/kit';
+import { Btn, Choice, Sheet, Slider, Tidy } from '@/ui/kit';
 import { StatusBar } from 'expo-status-bar';
 
 const LIGHT = night.ink;
+const GOALS = [15, 30, 60] as const;
 // 장면 이름(밤의 창가는 소리 쪽 이름으로 부른다: 머리줄·분위기 줄·시트가 같은 이름)
 const sceneName = (id: string) => (id === 'rain' ? '창가의 빗소리' : SCENES.find((s) => s.id === id)?.name ?? '');
 
@@ -64,7 +65,14 @@ export function ReadingScreen({ initialBookId, soundOnly = false, inTab = false 
   const [draftBookId, setDraftBookId] = useState<string | undefined>(initialBookId);
   const selectedBookId = active ? active.myBookId : draftBookId;
   const bookId = selectedBookId && lib.books[selectedBookId] ? selectedBookId : undefined;
-  const { height } = useWindowDimensions();
+  const { height, width, fontScale } = useWindowDimensions();
+  // 좁은 화면·큰 글자: 장면은 1열, 목표 세 칸은 세로로(글자를 자르지 않게)
+  const oneColumn = width < 340 || fontScale >= 1.5;
+  // 장면 미리보기 크기는 화면 폭에서 직접 계산(그림 원본 크기가 칸 폭을 밀어내지 않게): 시트 좌우 여백 24·칸 사이 12·칸 안 여백 8
+  const tileW = oneColumn ? width - 48 : (width - 48 - 12) / 2;
+  const posterW = tileW - 16 - 3;
+  const bigText = fontScale >= 1.6 || width < 330;
+  const [dragVolume, setDragVolume] = useState<number | null>(null);
   const [viewportHeight, setViewportHeight] = useState(height);
   const [panelHeight, setPanelHeight] = useState(310);
   const [appActive, setAppActive] = useState(AppState.currentState === 'active');
@@ -125,6 +133,17 @@ export function ReadingScreen({ initialBookId, soundOnly = false, inTab = false 
   // 재생·일시정지: 펼친 조작부의 둥근 단추와 접었을 때 시간 옆 아이콘이 같은 동작이다
   const playing = soundOnly ? audio.playing : running;
   const playPause = soundOnly ? () => audio.playing ? ambient.pause() : void ambient.play(scene) : !active ? start : () => running ? readingStore.pause() : readingStore.resume();
+  // 장면 고르기: 배경과 환경음이 함께 바뀐다(소리가 나는 중이면 새 장면 소리로 바로 바꾼다)
+  const chooseScene = (id: SceneId) => {
+    settingsStore.set({ scene: id });
+    if (audio.playing) void ambient.play(id);
+  };
+  const pickGoal = (min: number | null) => {
+    settingsStore.set({ goalMin: min });
+    setControls(null);
+  };
+  // 퍼센트는 실제로 적용되는 값(끄는 중이면 그 값, 음소거면 '음소거')
+  const volumeText = settings.muted && dragVolume === null ? '음소거' : `${Math.round((dragVolume ?? settings.volume) * 100)}%`;
   const playLabel = soundOnly ? audio.playing ? '소리 멈추기' : '소리 재생' : !active ? '독서 시작' : running ? '일시정지' : '다시 읽기';
 
   return (
@@ -209,40 +228,49 @@ export function ReadingScreen({ initialBookId, soundOnly = false, inTab = false 
         </>
       ) : null}
       <BookPicker lib={lib} visible={bookPicker} allowNone onClose={() => setBookPicker(false)} onPick={(id) => { setBookPicker(false); if (active && active.myBookId !== id) askSwitch(id); else setDraftBookId(id); }} />
-      <Sheet visible={controls !== null} onClose={() => setControls(null)} title={controls === 'goal' ? '목표 시간' : '분위기'} scroll maxHeight={height * 0.8}>
-        {controls === 'goal' ? (
-          <View>
-            <Text style={[type.sub, { marginBottom: space.s }]}>목표 없이 읽어도 좋아요. 목표를 바꿔도 읽은 시간은 유지돼요.</Text>
-            <ListGroup>
-              {[null, 15, 30, 60].map((min) => (
-                <ListItem key={String(min)} label={min ? `${min}분` : '자유롭게 시간 재기'} selected={settings.goalMin === min} right={settings.goalMin === min ? <Check size={icon.size} color={colors.accent} strokeWidth={2} /> : null} onPress={() => { settingsStore.set({ goalMin: min }); setControls(null); }} />
-              ))}
-            </ListGroup>
-          </View>
-        ) : (
-          <View>
-            <Text style={[type.sub, { marginBottom: space.s }]}>장면과 환경음이 함께 바뀌어요.</Text>
-            <ListGroup>
-              {SCENES.map((sc) => (
-                <ListItem key={sc.id} label={sceneName(sc.id)} sub={`환경음 · ${sc.sound}`} selected={scene === sc.id} right={scene === sc.id ? <Check size={icon.size} color={colors.accent} strokeWidth={2} /> : null} onPress={() => { settingsStore.set({ scene: sc.id }); if (audio.playing) void ambient.play(sc.id); }} />
-              ))}
-            </ListGroup>
-            <Text style={[type.section, { marginTop: space.xl, marginBottom: space.s }]}>소리 크기</Text>
-            <Row style={{ justifyContent: 'space-between', flexWrap: 'nowrap' }}>
-              <Pressable onPress={() => settingsStore.set({ muted: !settings.muted })} style={st.control} accessibilityRole="button" accessibilityLabel={settings.muted ? '음소거 해제' : '음소거'}>{settings.muted ? <VolumeX size={icon.size} color={colors.ink} strokeWidth={icon.stroke} /> : <Volume2 size={icon.size} color={colors.ink} strokeWidth={icon.stroke} />}<Text style={st.controlText}>{settings.muted ? '음소거 해제' : '음소거'}</Text></Pressable>
-              <Pressable onPress={() => settingsStore.set({ volume: Math.max(0, Math.round((settings.volume - 0.2) * 10) / 10) })} style={st.icon} accessibilityRole="button" accessibilityLabel="소리 작게"><Volume1 size={icon.size} color={colors.ink} strokeWidth={icon.stroke} /></Pressable>
-              <Text style={[type.row, { fontVariant: ['tabular-nums'], minWidth: 56, textAlign: 'center' }]}>{Math.round(settings.volume * 100)}%</Text>
-              <Pressable onPress={() => settingsStore.set({ volume: Math.min(1, Math.round((settings.volume + 0.2) * 10) / 10), muted: false })} style={st.icon} accessibilityRole="button" accessibilityLabel="소리 크게"><Volume2 size={icon.size} color={colors.ink} strokeWidth={icon.stroke} /></Pressable>
-            </Row>
-            {!active ? (
-              <View style={{ marginTop: space.xl, gap: space.s }}>
-                <Text style={type.sub}>시간을 재지 않고 소리만 들을 수 있어요.</Text>
-                <Btn label={audio.playing ? '소리 멈추기' : '소리만 듣기'} kind="secondary" onPress={() => audio.playing ? ambient.pause() : void ambient.play(scene)} />
-              </View>
-            ) : null}
-          </View>
-        )}
-        <Btn label="닫기" kind="ghost" onPress={() => setControls(null)} style={{ marginTop: space.s }} />
+      {/* 목표 시간: 넓은 '목표 없이 읽기' 한 줄 + 15·30·60분 같은 크기 세 칸. 고르면 바로 적용하고 닫는다(경과 시간·책·회차·재생 상태는 그대로) */}
+      <Sheet visible={controls === 'goal'} onClose={() => setControls(null)} title="목표 시간" description="목표를 바꿔도 읽은 시간은 유지돼요." scroll maxHeight={height * 0.85}>
+        <Choice label="목표 없이 읽기" selected={settings.goalMin === null} onPress={() => pickGoal(null)} />
+        <View style={[st.goalRow, bigText && { flexDirection: 'column' }]}>
+          {GOALS.map((min) => <Choice key={min} label={`${min}분`} compact={!bigText} selected={settings.goalMin === min} onPress={() => pickGoal(min)} style={bigText ? undefined : { flex: 1 }} />)}
+        </View>
+      </Sheet>
+      {/* 분위기: 장면 고르기(기존 영상의 정지 화면 미리보기, 2열·좁거나 글자가 크면 1열) → 소리 크기(음소거 + 슬라이더) → 소리만 듣기 */}
+      <Sheet visible={controls === 'mood'} onClose={() => setControls(null)} title="분위기" description="장면과 소리가 함께 바뀌어요." scroll maxHeight={height * 0.88}>
+        <View style={[st.sceneGrid, oneColumn && { flexDirection: 'column' }]}>
+          {SCENES.map((sc) => {
+            const on = scene === sc.id;
+            return (
+              <Pressable key={sc.id} onPress={() => chooseScene(sc.id)} accessibilityRole="radio" accessibilityState={{ selected: on, checked: on }} accessibilityLabel={sceneName(sc.id)} style={({ pressed }) => [st.sceneTile, { width: tileW }, on && st.sceneTileOn, pressed && !on && { backgroundColor: colors.line }]}>
+                <Image source={SCENE_POSTERS[sc.id]} style={[st.scenePoster, { width: posterW, height: Math.round(posterW / (oneColumn ? 2 : 4 / 3)) }]} resizeMode="cover" accessibilityIgnoresInvertColors />
+                <Text style={[type.button, { color: colors.ink, marginTop: space.s }]}>{sceneName(sc.id)}</Text>
+                {on ? <View style={st.sceneCheck} pointerEvents="none"><Check size={13} color={colors.onAccent} strokeWidth={3} /></View> : null}
+              </Pressable>
+            );
+          })}
+        </View>
+        <View style={st.volHead}>
+          <Text style={type.label}>소리 크기</Text>
+          <Text style={[type.sub, { fontVariant: ['tabular-nums'] }]} accessibilityLiveRegion="polite">{volumeText}</Text>
+        </View>
+        <View style={st.volRow}>
+          <Pressable onPress={() => settingsStore.set({ muted: !settings.muted })} style={({ pressed }) => [st.mute, settings.muted && st.muteOn, pressed && press]} accessibilityRole="button" accessibilityState={{ selected: settings.muted }} accessibilityLabel={settings.muted ? '음소거 해제' : '음소거'}>
+            {settings.muted ? <VolumeX size={icon.size} color={colors.accent} strokeWidth={icon.stroke} /> : <Volume2 size={icon.size} color={colors.ink} strokeWidth={icon.stroke} />}
+          </Pressable>
+          <Slider
+            label="소리 크기"
+            value={dragVolume ?? settings.volume}
+            dim={settings.muted && dragVolume === null}
+            valueText={volumeText}
+            onChange={(v) => { setDragVolume(v); ambient.preview(v); }}
+            onCommit={(v) => { setDragVolume(null); settingsStore.set({ volume: Math.round(v * 100) / 100, muted: false }); }}
+          />
+        </View>
+        <View style={st.soundBlock}>
+          <Text style={type.label}>{active ? '소리' : '소리만 듣기'}</Text>
+          <Text style={[type.sub, { marginTop: space.xs }]}>{active ? '소리는 독서 타이머와 따로 켜고 꺼요. 읽은 시간은 그대로예요.' : '시간을 재지 않고 소리만 들어요. 독서 시간에는 쌓이지 않아요.'}</Text>
+          <Btn label={audio.playing ? (active ? '소리 끄기' : '소리 멈추기') : active ? '소리 켜기' : '소리만 듣기'} kind="secondary" size="m" onPress={() => (audio.playing ? ambient.pause() : void ambient.play(scene))} style={st.soundButton} />
+        </View>
       </Sheet>
     </View>
     </Tidy>
@@ -283,9 +311,18 @@ const st = StyleSheet.create({
   sideText: { ...type.caption, color: colors.ink, textAlign: 'center' },
   round: { width: 72, height: 72, borderRadius: 36, backgroundColor: colors.accent, alignItems: 'center', justifyContent: 'center' },
   roundPressed: { transform: [{ scale: 0.96 }], backgroundColor: colors.accentPressed },
-  control: { alignItems: 'center', justifyContent: 'center', gap: space.xs, minWidth: 64, minHeight: 56, paddingVertical: space.s },
-  controlText: { ...type.caption, color: colors.ink, textAlign: 'center' },
-  icon: { width: space.touch, height: space.touch, alignItems: 'center', justifyContent: 'center' },
+  goalRow: { flexDirection: 'row', gap: space.s, marginTop: space.s },
+  sceneGrid: { flexDirection: 'row', gap: space.m },
+  sceneTile: { borderRadius: 14, padding: space.s, paddingBottom: space.m, borderWidth: 1.5, borderColor: colors.line, backgroundColor: colors.bg },
+  sceneTileOn: { borderColor: colors.accent },
+  scenePoster: { borderRadius: 10, backgroundColor: colors.surface },
+  sceneCheck: { position: 'absolute', top: 14, right: 14, width: 22, height: 22, borderRadius: 11, backgroundColor: colors.accent, alignItems: 'center', justifyContent: 'center' },
+  volHead: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'baseline', marginTop: space.xl },
+  volRow: { flexDirection: 'row', alignItems: 'center', gap: space.s, marginTop: space.xs },
+  mute: { width: space.touch, height: space.touch, borderRadius: 22, alignItems: 'center', justifyContent: 'center' },
+  muteOn: { backgroundColor: colors.accentSoft },
+  soundBlock: { marginTop: space.xl, padding: space.l, borderRadius: 14, backgroundColor: colors.surface },
+  soundButton: { marginTop: space.m, backgroundColor: colors.bg, borderWidth: 1, borderColor: colors.border },
   error: { ...type.sub, color: colors.danger, marginTop: space.m },
   fade: { position: 'absolute', left: 0, right: 0, bottom: 0 },
   dock: { position: 'absolute', alignSelf: 'center', flexDirection: 'row', alignItems: 'center', gap: space.xl },

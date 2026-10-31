@@ -92,22 +92,39 @@ export default function BookDetailScreen() {
         <Text style={st.title}>{e.title}</Text>
         {e.authors.length ? <Text style={st.author}>{e.authors.join(', ')}</Text> : null}
       </View>
-      <View style={st.progressSection}>
-        <Pressable onPress={() => setPageEdit(!pageEdit)} accessibilityRole="button" accessibilityLabel="읽은 쪽수 기록">
-          <Text style={st.page}>{b.currentPage ?? 0}<Text style={st.pageTotal}>  /  {e.pageCount ? `${e.pageCount}쪽` : '전체 쪽수 미입력'}</Text></Text>
+      {/* 내 독서(2026-11): 읽기 상태·현재 쪽(전체 쪽수를 알 때만 진행 막대)·독서 기록·갈피를 한 블록으로. 모르는 값은 계산하지 않는다 */}
+      <View style={st.myBlock}>
+        <View style={st.myHead}>
+          <Text style={type.label}>내 독서</Text>
+          <Text style={type.caption}>{[STATUS_LABEL[b.status], done ? `완독 ${done}회` : null].filter(Boolean).join(' · ')}</Text>
+        </View>
+        <Pressable onPress={() => setPageEdit(!pageEdit)} accessibilityRole="button" accessibilityLabel={`현재 쪽 ${b.currentPage ?? 0}${e.pageCount ? ` / ${e.pageCount}쪽` : '쪽'}, 눌러서 고치기`} style={st.pageRow}>
+          <Text style={st.page}>{b.currentPage ?? 0}<Text style={st.pageTotal}>{e.pageCount ? `  /  ${e.pageCount}쪽` : '쪽'}</Text></Text>
+          {!e.pageCount ? <Text style={type.caption}>전체 쪽수 미입력</Text> : null}
         </Pressable>
+        {e.pageCount ? (
+          <View style={st.bar} accessibilityElementsHidden importantForAccessibility="no-hide-descendants">
+            <View style={[st.barFill, { width: `${Math.min(100, ((b.currentPage ?? 0) / e.pageCount) * 100)}%` }]} />
+          </View>
+        ) : null}
         {pageEdit ? <TextInput accessibilityLabel="읽은 쪽수" autoFocus defaultValue={b.currentPage ? String(b.currentPage) : ''} placeholder="읽은 쪽수" placeholderTextColor={colors.inkFaint} keyboardType="number-pad" returnKeyType="done" onEndEditing={(ev) => { const n = Number(ev.nativeEvent.text); libraryStore.updateBook(id, { currentPage: Number.isFinite(n) && n > 0 ? Math.round(n) : undefined }); setPageEdit(false); }} style={[kit.input, st.pageInput]} /> : null}
-        <View style={st.stars}><Stars value={b.rating} onChange={(v) => libraryStore.updateBook(id, { rating: v })} size={22} /></View>
-        {b.note ? <Text style={st.note}>{b.note}</Text> : null}
+        <View style={st.stats}>
+          <Pressable onPress={() => router.push({ pathname: '/stats', params: { book: id } })} accessibilityRole="button" style={({ pressed }) => [st.statCell, pressed && press]}>
+            <Text style={st.statLabel}>독서 기록</Text><Text style={st.statValue}>{sessions}회</Text>
+          </Pressable>
+          <View style={st.statDivider} />
+          <Pressable onPress={() => router.push({ pathname: '/bookmarks', params: { book: id } })} accessibilityRole="button" style={({ pressed }) => [st.statCell, pressed && press]}>
+            <Text style={st.statLabel}>갈피</Text><Text style={st.statValue}>{marks.length}개</Text>
+          </Pressable>
+        </View>
       </View>
-      <View style={st.stats}>
-        <Pressable onPress={() => router.push({ pathname: '/stats', params: { book: id } })} accessibilityRole="button" style={st.statCell}>
-          <Text style={st.statLabel}>독서 기록</Text><Text style={st.statValue}>{sessions}회</Text>
-        </Pressable>
-        <View style={st.statDivider} />
-        <Pressable onPress={() => router.push({ pathname: '/bookmarks', params: { book: id } })} accessibilityRole="button" style={st.statCell}>
-          <Text style={st.statLabel}>갈피</Text><Text style={st.statValue}>{marks.length}개</Text>
-        </Pressable>
+      {/* 내 평가: 별점과 한 줄 감상을 한자리에(나만 보는 기록. 다른 독자 평균은 아래 '다른 독자의 평가'에 따로) */}
+      <View style={st.rateArea}>
+        <View style={st.rateRow}>
+          <Text style={type.label}>내 평가</Text>
+          <Stars value={b.rating} onChange={(v) => libraryStore.updateBook(id, { rating: v })} size={24} />
+        </View>
+        {b.note ? <Text style={st.note}>{b.note}</Text> : <TextLink label="한 줄 감상 남기기" tone="soft" onPress={() => setRecords(true)} style={{ alignSelf: 'flex-start' }} />}
       </View>
       <Btn label="이어서 읽기" size="l" onPress={() => router.push({ pathname: '/read', params: { book: id } })} style={st.continueButton} />
       <TextLink label="갈피 남기기" onPress={() => router.push({ pathname: '/bookmark/new', params: { book: id } })} style={st.bookmarkButton} />
@@ -150,9 +167,7 @@ export default function BookDetailScreen() {
             <Muted style={{ marginTop: space.item }}>읽기 시작하면 회차가 생겨요. 날짜는 나중에 고칠 수 있어요.</Muted>
           )}
 
-          <H2>별점 (선택)</H2>
-          <Stars value={b.rating} onChange={(v) => libraryStore.updateBook(id, { rating: v })} size={28} />
-
+          {/* 별점은 위 '내 평가'에서(같은 값을 두 군데 두지 않는다). 감상은 여기서 쓰고 위에 함께 보인다 */}
           <H2>한 줄 감상 (선택)</H2>
           <TextInput
             accessibilityLabel="한 줄 감상"
@@ -243,18 +258,23 @@ const st = StyleSheet.create({
   hero: { alignItems: 'center', paddingTop: space.xxl },
   title: { fontFamily: fonts.uiMedium, fontSize: 22, lineHeight: 30, color: colors.ink, textAlign: 'center', marginTop: space.xl, includeFontPadding: false },
   author: { ...type.sub, fontSize: 16, lineHeight: 22, marginTop: space.xs, textAlign: 'center' },
-  progressSection: { marginTop: space.xxl, alignItems: 'center' },
-  page: { fontFamily: fonts.ui, fontSize: 36, lineHeight: 44, color: colors.ink, includeFontPadding: false, fontVariant: ['tabular-nums'] },
-  pageTotal: { fontFamily: fonts.ui, fontSize: 20, color: colors.inkSoft },
-  pageInput: { alignSelf: 'stretch', textAlign: 'center', marginTop: space.s },
-  stars: { marginTop: space.s },
-  note: { ...type.sub, marginTop: space.s, textAlign: 'center' },
-  stats: { flexDirection: 'row', alignItems: 'center', marginTop: space.xxl },
-  statCell: { flex: 1, flexDirection: 'row', alignItems: 'baseline', justifyContent: 'center', gap: space.s, minHeight: space.touch, paddingVertical: space.s },
+  myBlock: { marginTop: space.xxl, padding: space.l, paddingBottom: space.xs, borderRadius: 16, backgroundColor: colors.surface },
+  myHead: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'baseline' },
+  pageRow: { flexDirection: 'row', alignItems: 'baseline', justifyContent: 'space-between', marginTop: space.s, minHeight: space.touch },
+  page: { fontFamily: fonts.ui, fontSize: 32, lineHeight: 40, color: colors.ink, includeFontPadding: false, fontVariant: ['tabular-nums'] },
+  pageTotal: { fontFamily: fonts.ui, fontSize: 18, color: colors.inkSoft },
+  bar: { height: 4, borderRadius: 2, backgroundColor: colors.track, marginTop: space.s, overflow: 'hidden' },
+  barFill: { height: 4, borderRadius: 2, backgroundColor: colors.accent },
+  pageInput: { alignSelf: 'stretch', textAlign: 'center', marginTop: space.s, backgroundColor: colors.bg },
+  note: { ...type.body, marginTop: space.xs },
+  rateArea: { marginTop: space.xl, gap: space.xs },
+  rateRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', minHeight: space.touch },
+  stats: { flexDirection: 'row', alignItems: 'center', marginTop: space.m, borderTopWidth: shape.hairline * 2, borderTopColor: colors.line },
+  statCell: { flex: 1, flexDirection: 'row', alignItems: 'baseline', justifyContent: 'center', gap: space.s, minHeight: 48, paddingVertical: space.s },
   statLabel: type.row,
   statValue: type.sub,
   statDivider: { width: shape.hairline * 2, height: 24, backgroundColor: colors.line },
-  continueButton: { marginTop: space.xl },
+  continueButton: { marginTop: space.xxl },
   bookmarkButton: { marginTop: space.xs },
   recordsToggle: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: space.xs, minHeight: space.touch, marginTop: space.s },
   round: { paddingTop: space.xl, marginTop: space.s, borderTopWidth: shape.hairline, borderTopColor: colors.line },

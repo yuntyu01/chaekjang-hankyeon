@@ -10,6 +10,7 @@ import {
   Image,
   KeyboardAvoidingView,
   Modal,
+  PanResponder,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -423,12 +424,12 @@ export function Choice({ label, sub, selected, onPress, children, style, compact
       {children}
       <View style={cs.choiceRow}>
         <View style={{ flex: 1, minWidth: 0 }}>
-          <Text style={[tt.button, { color: colors.ink, textAlign: compact ? 'center' : 'left' }]}>{label}</Text>
+          <Text style={[tt.button, { color: colors.ink, textAlign: compact ? 'center' : 'left' }, !compact && !sub && selected && { paddingRight: 28 }]}>{label}</Text>
           {sub ? <Text style={[tt.caption, { marginTop: 2, textAlign: compact ? 'center' : 'left' }]}>{sub}</Text> : null}
         </View>
       </View>
       {selected ? (
-        <View style={cs.check} pointerEvents="none">
+        <View style={[cs.check, compact ? cs.checkCompact : !sub && cs.checkWide]} pointerEvents="none">
           <Check size={12} color={colors.onAccent} strokeWidth={3} />
         </View>
       ) : null}
@@ -547,10 +548,66 @@ export function Toggle({ value, onValueChange, label }: { value: boolean; onValu
       accessibilityRole="switch"
       accessibilityLabel={label}
       accessibilityState={{ checked: value }}>
-      <Animated.View style={[s.track, { backgroundColor: x.interpolate({ inputRange: [0, 1], outputRange: [colors.border, colors.accent] }) }]}>
+      <Animated.View style={[s.track, { backgroundColor: x.interpolate({ inputRange: [0, 1], outputRange: [colors.track, colors.accent] }) }]}>
         <Animated.View style={[s.knob, { transform: [{ translateX: x.interpolate({ inputRange: [0, 1], outputRange: [0, TRACK_W - KNOB - 6] }) }] }]} />
       </Animated.View>
     </Pressable>
+  );
+}
+
+// 슬라이더(소리 크기 등, 0~1): 손잡이를 끌거나 트랙을 누르면 onChange(움직이는 동안), 손을 떼면 onCommit.
+// 트랙 위치는 터치 시작 지점(locationX)과 이동량(dx)으로 계산한다(시트가 올라오는 중이어도 좌표가 어긋나지 않게).
+// 접근성: 조절 가능한 요소(위·아래로 쓸면 10%씩). dim이면 활성 트랙·손잡이를 회색으로(음소거처럼 값은 지키되 꺼진 상태)
+const SLIDER_PAD = 14;
+export function Slider({ value, onChange, onCommit, label, valueText, dim }: { value: number; onChange?: (v: number) => void; onCommit: (v: number) => void; label: string; valueText?: string; dim?: boolean }) {
+  const [w, setW] = useState(0);
+  const start = useRef(0);
+  const last = useRef(value);
+  const cb = useRef({ onChange, onCommit, w });
+  useEffect(() => {
+    cb.current = { onChange, onCommit, w };
+  });
+  // 손 움직임 처리기는 한 번만 만든다(최신 콜백·폭은 cb에서 읽는다)
+  const [pan] = useState(() => {
+    const at = (x: number) => {
+      const span = cb.current.w - SLIDER_PAD * 2;
+      return span > 0 ? Math.min(1, Math.max(0, (x - SLIDER_PAD) / span)) : last.current;
+    };
+    return PanResponder.create({
+      onStartShouldSetPanResponder: () => true,
+      onMoveShouldSetPanResponder: () => true,
+      onPanResponderTerminationRequest: () => false,
+      onPanResponderGrant: (e) => {
+        start.current = e.nativeEvent.locationX;
+        last.current = at(start.current);
+        cb.current.onChange?.(last.current);
+      },
+      onPanResponderMove: (_, g) => {
+        last.current = at(start.current + g.dx);
+        cb.current.onChange?.(last.current);
+      },
+      onPanResponderRelease: () => cb.current.onCommit(last.current),
+      onPanResponderTerminate: () => cb.current.onCommit(last.current),
+    });
+  });
+  const pct = Math.round(value * 100);
+  const span = Math.max(0, w - SLIDER_PAD * 2);
+  const fill = dim ? colors.inkFaint : colors.accent;
+  return (
+    <View
+      onLayout={(e) => setW(e.nativeEvent.layout.width)}
+      {...pan.panHandlers}
+      style={s.slider}
+      accessible
+      accessibilityRole="adjustable"
+      accessibilityLabel={label}
+      accessibilityValue={{ min: 0, max: 100, now: pct, text: valueText ?? `${pct}%` }}
+      accessibilityActions={[{ name: 'increment' }, { name: 'decrement' }]}
+      onAccessibilityAction={(e) => onCommit(Math.min(1, Math.max(0, Math.round((value + (e.nativeEvent.actionName === 'increment' ? 0.1 : -0.1)) * 10) / 10)))}>
+      <View pointerEvents="none" style={[s.sliderTrack, { left: SLIDER_PAD, right: SLIDER_PAD }]} />
+      <View pointerEvents="none" style={[s.sliderTrack, { left: SLIDER_PAD, width: span * value, backgroundColor: fill }]} />
+      <View pointerEvents="none" style={[s.sliderKnob, { left: SLIDER_PAD + span * value - 12, borderColor: fill }]} />
+    </View>
   );
 }
 
@@ -624,11 +681,12 @@ export function Tabs<T extends string>({ items, value, onChange, style }: { item
   );
 }
 
-// 목록 묶음: 줄 사이에만 얇은 구분선(마지막 줄 아래는 없음)
-export function ListGroup({ children, style }: { children: ReactNode; style?: StyleProp<ViewStyle> }) {
+// 목록 묶음: 줄 사이에만 얇은 구분선(마지막 줄 아래는 없음).
+// block이면 옅은 회백색 바탕의 한 덩어리(설정의 '독서 환경·내 기록·앱 안내'처럼 의미가 같은 줄을 묶을 때, 2026-11). 카드 안에 카드를 겹치지 않는다
+export function ListGroup({ children, style, block }: { children: ReactNode; style?: StyleProp<ViewStyle>; block?: boolean }) {
   const items = Children.toArray(children).filter(isValidElement);
   return (
-    <View style={style}>
+    <View style={[block && s.listBlock, style]}>
       {items.map((c, i) => (
         <Fragment key={c.key ?? i}>
           {i ? <View style={s.divider} /> : null}
@@ -663,19 +721,29 @@ export function ScreenList<T>({ contentContainerStyle, ...p }: FlatListProps<T>)
   );
 }
 
-// 하단 시트: 어두운 덮개 + 위쪽만 둥근 판(손잡이·제목·내용). 바깥을 누르거나 뒤로 가면 닫힌다.
-export function Sheet({ visible, onClose, title, children, scroll = false, maxHeight }: { visible: boolean; onClose: () => void; title?: string; children: ReactNode; scroll?: boolean; maxHeight?: DimensionValue }) {
+// 하단 시트: 어두운 덮개 + 위쪽만 둥근 판(손잡이·머리줄·내용). 바깥을 누르거나 뒤로 가면 닫힌다.
+// 제목이 있는 시트는 머리줄 오른쪽에 닫기 단추(2026-11: 분위기·목표 시간·책 고르기 공통. 아래쪽 '닫기' 글자 대신).
+// description은 제목 바로 아래 짧은 안내. 높이는 내용만큼(maxHeight를 넘으면 scroll 시트의 본문이 스크롤된다)
+export function Sheet({ visible, onClose, title, description, children, scroll = false, maxHeight }: { visible: boolean; onClose: () => void; title?: string; description?: string; children: ReactNode; scroll?: boolean; maxHeight?: DimensionValue }) {
   const insets = useSafeAreaInsets();
   const t = useTidy();
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose} statusBarTranslucent navigationBarTranslucent>
       <Pressable style={{ flex: 1, backgroundColor: colors.scrim }} onPress={onClose} accessibilityLabel="닫기" />
       <View style={[s.sheet, t && ts.sheet, { paddingBottom: insets.bottom + space.item, maxHeight }]}>
-        <View style={[s.handle, t && ts.handle]} />
+        <View style={[s.handle, t && ts.handle, title ? { marginBottom: 4 } : null]} />
         {title ? (
-          <Text style={[t ? tidyType.heading : type.heading, { marginBottom: t ? tidySpace.s : space.tight }]} accessibilityRole="header">
-            {title}
-          </Text>
+          <View style={{ marginBottom: t ? tidySpace.m : space.item }}>
+            <View style={s.sheetHead}>
+              <Text style={[t ? tidyType.heading : type.heading, { flex: 1 }]} accessibilityRole="header">
+                {title}
+              </Text>
+              <Pressable onPress={onClose} hitSlop={6} style={({ pressed }) => [s.sheetClose, pressed && press]} accessibilityRole="button" accessibilityLabel={`${title} 닫기`}>
+                <X size={icon.size} color={colors.inkSoft} strokeWidth={icon.stroke} />
+              </Pressable>
+            </View>
+            {description ? <Text style={[t ? tidyType.sub : type.sub, { marginTop: 2 }]}>{description}</Text> : null}
+          </View>
         ) : null}
         {scroll ? (
           <ScrollView keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
@@ -777,6 +845,12 @@ export const s = StyleSheet.create({
   knob: { width: KNOB, height: KNOB, borderRadius: KNOB / 2, backgroundColor: colors.raised, shadowColor: '#3B2A24', shadowOpacity: 0.18, shadowRadius: 2, shadowOffset: { width: 0, height: 1 }, elevation: 2 },
   sheet: { backgroundColor: colors.raised, borderTopLeftRadius: shape.sheet, borderTopRightRadius: shape.sheet, paddingHorizontal: space.page, paddingTop: 10 },
   handle: { width: 36, height: 4, borderRadius: 2, backgroundColor: colors.line, alignSelf: 'center', marginBottom: 14 },
+  sheetHead: { flexDirection: 'row', alignItems: 'center', minHeight: space.touch, gap: 8 },
+  listBlock: { backgroundColor: colors.surface, borderRadius: 16, paddingHorizontal: 16 },
+  slider: { height: 44, justifyContent: 'center', flex: 1 },
+  sliderTrack: { position: 'absolute', height: 6, borderRadius: 3, backgroundColor: colors.track, top: 19 },
+  sliderKnob: { position: 'absolute', top: 10, width: 24, height: 24, borderRadius: 12, backgroundColor: colors.bg, borderWidth: 2, ...shape.floatShadow },
+  sheetClose: { width: space.touch, height: space.touch, marginRight: -10, alignItems: 'center', justifyContent: 'center' },
   dialogWrap: { flex: 1, backgroundColor: colors.scrim, justifyContent: 'center', padding: space.page },
   dialog: { backgroundColor: colors.raised, borderRadius: shape.dialog, padding: space.page },
 });
@@ -814,5 +888,7 @@ const cs = StyleSheet.create({
   choiceOn: { backgroundColor: colors.raised, borderColor: colors.accent },
   choiceRow: { flexDirection: 'row', alignItems: 'center' },
   check: { position: 'absolute', top: 8, right: 8, width: 20, height: 20, borderRadius: 10, backgroundColor: colors.accent, alignItems: 'center', justifyContent: 'center' },
+  checkWide: { top: '50%', marginTop: -10, right: 16 },
+  checkCompact: { top: -7, right: -7, borderWidth: 2, borderColor: colors.bg, width: 22, height: 22, borderRadius: 11 }, // 좁은 칸: 모서리에 걸쳐 글자와 겹치지 않게
 });
 

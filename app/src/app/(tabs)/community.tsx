@@ -38,13 +38,20 @@ export default function CommunityTab() {
   };
 
   // 결과는 콜백에서만 반영한다. 불러오는 중 표시는 부르는 쪽이 켠다(효과 안에서 바로 상태를 바꾸지 않게)
-  const load = useCallback((s: Scope, mode: 'first' | 'refresh') => {
+  // first·refresh(당겨서 새로 고침)는 첫 쪽으로 바꾸고, focus(다른 화면에서 돌아옴)는 첫 쪽만 새것으로 바꾸고
+  // 이미 내려 받은 더 오래된 글·다음 쪽 위치는 지킨다(탭을 오가도 스크롤이 줄지 않게, 2026-11)
+  const itemsRef = useRef<Post[]>([]);
+  useEffect(() => { itemsRef.current = items; }, [items]);
+  const load = useCallback((s: Scope, mode: 'first' | 'refresh' | 'focus') => {
     const id = ++req.current;
     return community.feed(s).then(
       (f) => {
         if (id !== req.current) return;
-        setItems(f.items);
-        setNext(f.nextBefore);
+        const fresh = new Set(f.items.map((p) => p.id));
+        const oldest = f.items.length ? f.items[f.items.length - 1].id : 0;
+        const older = mode === 'focus' && f.nextBefore ? itemsRef.current.filter((p) => !fresh.has(p.id) && p.id < oldest) : [];
+        setItems([...f.items, ...older]);
+        if (!older.length) setNext(f.nextBefore);
         setMoreState('idle');
         setPhase('ready');
         setRefreshing(false);
@@ -70,7 +77,7 @@ export default function CommunityTab() {
   // 다른 화면(글쓰기·상세)에서 돌아오면 첫 쪽을 조용히 다시 받는다
   const shown = useRef(false);
   useFocusEffect(useCallback(() => {
-    if (shown.current && avail?.ok) void load(scope, 'refresh');
+    if (shown.current && avail?.ok) void load(scope, 'focus');
     shown.current = true;
   }, [avail, scope, load]));
 

@@ -1,5 +1,5 @@
 // 설정(2026-10-26 설정 시안): 독서 환경(진동·효과음·움직임 줄이기) / 내 기록(백업 및 복원 → 따로 된 화면) / 앱 안내(문의·개인정보·앱 정보).
-// 카드 없이 구역 이름과 얇은 구분선으로 나눈다. 백업·복원·동기화는 app/backup.tsx(기능은 그대로 옮겼다).
+// 2026-11: 의미별 묶음을 옅은 바탕 블록(ListGroup block)으로, 블록 안은 줄과 얇은 구분선. 다른 화면으로 가는 줄에만 화살표. 백업·복원·동기화는 app/backup.tsx(기능은 그대로 옮겼다).
 import Constants from 'expo-constants';
 import { router } from 'expo-router';
 import { useState, useSyncExternalStore } from 'react';
@@ -27,21 +27,22 @@ export default function SettingsScreen() {
   return (
     <Screen tidy title="설정">
       <H2 first>독서 환경</H2>
-      <ListGroup>
+      <ListGroup block>
         <ListItem label="진동" sub="책을 집거나 놓을 때 짧은 진동" right={<Toggle label="진동" value={s.haptics} onValueChange={(v) => settingsStore.set({ haptics: v })} />} />
         <ListItem label="효과음" sub="책장 효과음은 준비 중이에요. 켜 두면 준비되는 대로 들려요. 독서 환경음은 읽기 화면에서 따로 조절해요." right={<Toggle label="효과음" value={s.sound} onValueChange={(v) => settingsStore.set({ sound: v })} />} />
         <ListItem label="움직임 줄이기" value={MOTION.find((m) => m.id === s.reduceMotion)?.short} onPress={() => setMotion(true)} />
       </ListGroup>
 
       <H2>내 기록</H2>
-      <ListGroup>
+      <ListGroup block>
         <ListItem label="백업 및 복원" sub={backupSub} chevron onPress={() => router.push('/backup')} />
+        {syncStatus.available ? <ListItem label="커뮤니티 공개 프로필" sub="공개 닉네임·차단한 사용자" chevron onPress={() => router.push('/community/profile')} /> : null}
       </ListGroup>
 
       <H2>앱 안내</H2>
-      <ListGroup>
+      <ListGroup block>
         <ListItem label="문의하기" sub="yuntyu01@gmail.com" onPress={() => Linking.openURL('mailto:yuntyu01@gmail.com')} />
-        <ListItem label="개인정보 처리방침" chevron onPress={() => setPrivacy(true)} />
+        <ListItem label="개인정보 처리방침" onPress={() => setPrivacy(true)} />
         <ListItem label="앱 정보" value={Constants.expoConfig?.version ?? ''} />
       </ListGroup>
 
@@ -70,7 +71,6 @@ export default function SettingsScreen() {
         <PrivacyNote />
         <View style={{ gap: space.s, marginTop: space.xl }}>
           <Btn label="처리방침 전문 보기(웹)" kind="secondary" onPress={() => Linking.openURL(PRIVACY_URL)} />
-          <Btn label="닫기" kind="ghost" onPress={() => setPrivacy(false)} />
         </View>
       </Sheet>
     </Screen>
