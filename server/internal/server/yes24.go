@@ -36,6 +36,13 @@ type yes24Item struct {
 	ItemFormat  string `json:"itemFormat"`
 	Cover       string `json:"cover"`
 	Link        string `json:"link"`
+	GoodsSortNm string `json:"goodsSortNm"` // "국내도서-소설/시/희곡"
+	Series      []struct {
+		SeriesName string `json:"seriesName"`
+	} `json:"series"`
+	ContentDetail *struct {
+		BookIntroduction string `json:"bookIntroduction"`
+	} `json:"contentDetail"`
 }
 
 func (s *Server) yes24Search(q string, isbn bool) ([]searchItem, error) {
@@ -75,7 +82,13 @@ func (s *Server) yes24Search(q string, isbn bool) ([]searchItem, error) {
 		if !strings.Contains(it.GoodsType, "도서") || !validISBN(it.ISBN13) || (isbn && it.ISBN13 != q) {
 			continue
 		}
-		item := searchItem{ISBN: it.ISBN13, Title: it.Title, Authors: yes24Authors(it.Author), Publisher: it.Publisher, PublishedAt: yes24Date(it.PublishDate), Thumb: it.Cover, Binding: it.ItemFormat, Link: it.Link, Provider: "yes24"}
+		item := searchItem{ISBN: it.ISBN13, Title: it.Title, Authors: yes24Authors(it.Author), Publisher: it.Publisher, PublishedAt: yes24Date(it.PublishDate), Thumb: it.Cover, Binding: it.ItemFormat, Link: it.Link, Category: yes24Category(it.GoodsSortNm), Provider: "yes24"}
+		if len(it.Series) > 0 {
+			item.Series = strings.TrimSpace(it.Series[0].SeriesName)
+		}
+		if it.ContentDetail != nil {
+			item.Description = strings.TrimSpace(it.ContentDetail.BookIntroduction)
+		}
 		if it.Pages != nil && *it.Pages > 0 {
 			item.Pages = *it.Pages
 		}
@@ -86,6 +99,17 @@ func (s *Server) yes24Search(q string, isbn bool) ([]searchItem, error) {
 		out = append(out, item)
 	}
 	return out, nil
+}
+
+// "국내도서-소설/시/희곡" → "국내도서>소설/시/희곡"(앱 rebinding.genreOf가 '>' 경로를 안쪽부터 읽는다)
+func yes24Category(s string) string {
+	parts := []string{}
+	for _, p := range strings.Split(s, "-") {
+		if p = strings.TrimSpace(p); p != "" {
+			parts = append(parts, p)
+		}
+	}
+	return strings.Join(parts, ">")
 }
 
 // "20130401" → "2013-04-01"(형식이 다르면 비운다)

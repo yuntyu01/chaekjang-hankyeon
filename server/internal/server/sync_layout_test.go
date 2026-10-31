@@ -210,7 +210,7 @@ func TestFlywayV7UpgradesLayout(t *testing.T) {
 		AND NOT EXISTS(SELECT 1 FROM information_schema.columns WHERE table_name='books' AND column_name IN ('height_class','thickness_class','default_motif_id'))`).Scan(&gone); err != nil || !gone {
 		t.Fatalf("computed columns still stored: %v", err)
 	}
-	t.Setenv("KAKAO_REST_KEY", "")
+	t.Setenv("YES24_API_KEY", "")
 	t.Setenv("BOOKS_CACHE_TTL", "1000h")
 	w := httptest.NewRecorder()
 	New(db).Handler().ServeHTTP(w, httptest.NewRequest("GET", "/books/9790000000049", nil))

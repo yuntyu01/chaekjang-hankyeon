@@ -36,6 +36,7 @@ type Draft = {
   coverUri?: string;
   coverSource?: 'api' | 'photo';
   category?: string;
+  seriesTitle?: string;
   source: 'manual' | 'search' | 'photo';
   sourceName?: string;
   link?: string; // 판매처 상품 페이지(YES24 약관: 출처와 링크를 함께 보인다)
@@ -85,6 +86,7 @@ export default function AddBook() {
       coverUri: c.coverUrl,
       coverSource: c.coverUrl ? 'api' : undefined,
       category: c.category,
+      seriesTitle: c.seriesTitle,
       sourceName: c.sourceName,
       link: c.link,
     }, c.pageCount && c.size ? null : `${c.sourceName} 판본 기록에 ${[c.pageCount ? null : '쪽수', c.size ? null : '판형'].filter(Boolean).join('·')} 정보가 없어요. 알면 적고, 모르면 비워 두세요(장정은 흔한 크기로 만들고 ‘확인 전’으로 표시해요).`);
@@ -121,6 +123,7 @@ export default function AddBook() {
           pageCount: num(draft.pages),
           size,
           category: draft.category,
+          seriesTitle: draft.seriesTitle,
           art: art ?? undefined,
           coverUri,
           coverSource: coverUri ? draft.coverSource : undefined,
@@ -162,7 +165,7 @@ export default function AddBook() {
               // 썸네일은 색 추출에만 쓰고(화면에 그리지 않는다) 결과 장정만 저장한다.
               setSaving(true);
               const palette: PaletteEntry[] | null = draft.coverSource === 'api' ? await coverPalette(draft.coverUri) : null;
-              const a = buildBookArt(rebindInput({ isbn13: draft.isbn.replace(/[^\dXx]/g, '') || undefined, title: draft.title.trim(), authors: [], publisher: draft.publisher, publishedAt: draft.publishedAt, pageCount: num(draft.pages), size, category: draft.category }, { palette: palette ?? undefined }), new Date().toISOString());
+              const a = buildBookArt(rebindInput({ isbn13: draft.isbn.replace(/[^\dXx]/g, '') || undefined, title: draft.title.trim(), authors: [], publisher: draft.publisher, publishedAt: draft.publishedAt, pageCount: num(draft.pages), size, category: draft.category, seriesTitle: draft.seriesTitle }, { palette: palette ?? undefined }), new Date().toISOString());
               setArt(a);
               setBinding({ ...bindingFields(a), seed: 0, source: 'default' });
               setSaving(false);

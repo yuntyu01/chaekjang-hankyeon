@@ -1,6 +1,6 @@
-// 도서 검색 연결부. 제공자를 갈아 끼울 수 있게 분리한다.
-// 지금 연결: 우리 서버(EXPO_PUBLIC_API_URL이 있을 때. 서버에 YES24 키가 있으면 YES24) → 실패·결과 없음이면 Google Books → Open Library.
-// - 우리 서버 /books/search: YES24 키는 서버에만 둔다(YES24 문서: 클라이언트 코드에 넣지 말 것). YES24는 쪽수·가로·세로(mm)까지 준다.
+// 도서 검색 연결부. 책 정보는 YES24 기준이다.
+// 지금 연결: 우리 서버(EXPO_PUBLIC_API_URL, 서버가 YES24를 부른다) → 서버에 닿지 않거나 결과가 없을 때만 Google Books → Open Library.
+// - 우리 서버 /books/search: YES24 키는 서버에만 둔다(YES24 문서: 클라이언트 코드에 넣지 말 것). YES24는 쪽수·가로·세로(mm)·분류·시리즈까지 준다.
 //   YES24 약관: 앱에 보일 때 출처(YES24)와 상품 페이지 링크(link)를 함께 보인다.
 // - Google Books: 키가 없으면 여러 앱이 나눠 쓰는 공용 할당량을 쓴다(하루 한도가 차면 429 rateLimitExceeded).
 //   EXPO_PUBLIC_GOOGLE_BOOKS_KEY가 있으면 그 키의 할당량을 쓴다.
@@ -19,7 +19,8 @@ export type BookCandidate = {
   pageCount?: number;
   size?: SizeMm;
   coverUrl?: string;
-  category?: string; // 분류(Google Books categories). 재장정 모티프 선택에 쓴다
+  category?: string; // 분류(YES24 "국내도서>소설/시/희곡", Google Books categories). 재장정 모티프 선택에 쓴다
+  seriesTitle?: string; // 시리즈(YES24). 같은 시리즈는 같은 색 계열로 장정한다
   sourceName: string;
   detailRef?: string; // 판본 상세를 읽을 주소(고른 뒤)
   link?: string; // 판매처 상품 페이지(YES24 약관: 출처와 함께 보인다)
@@ -32,8 +33,8 @@ const GOOGLE_KEY = process.env.EXPO_PUBLIC_GOOGLE_BOOKS_KEY;
 const API = process.env.EXPO_PUBLIC_API_URL?.replace(/\/+$/, '');
 
 // 서버 검색 결과 한 권(server/internal/server/books.go searchItem)
-export type ServerItem = { isbn13: string; title: string; authors?: string[]; publisher?: string; publishedAt?: string; thumbnailUrl?: string; pages?: number; widthMm?: number; heightMm?: number; link?: string; provider?: string };
-const PROVIDER_NAME: Record<string, string> = { yes24: 'YES24', kakao: '카카오 책' };
+export type ServerItem = { isbn13: string; title: string; authors?: string[]; publisher?: string; publishedAt?: string; thumbnailUrl?: string; pages?: number; widthMm?: number; heightMm?: number; category?: string; series?: string; link?: string; provider?: string };
+const PROVIDER_NAME: Record<string, string> = { yes24: 'YES24' };
 
 export function fromServer(i: ServerItem): BookCandidate {
   return {
@@ -46,6 +47,8 @@ export function fromServer(i: ServerItem): BookCandidate {
     pageCount: i.pages && i.pages > 0 ? i.pages : undefined,
     size: i.widthMm && i.heightMm ? { widthMm: Math.min(i.widthMm, i.heightMm), heightMm: Math.max(i.widthMm, i.heightMm) } : undefined,
     coverUrl: i.thumbnailUrl?.replace(/^http:/, 'https:') || undefined,
+    category: i.category || undefined,
+    seriesTitle: i.series || undefined,
     sourceName: PROVIDER_NAME[i.provider ?? ''] ?? '도서 정보',
     link: i.link || undefined,
   };

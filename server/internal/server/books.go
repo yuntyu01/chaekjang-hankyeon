@@ -1,7 +1,6 @@
 package server
 
 import (
-	"encoding/json"
 	"fmt"
 	"github.com/jackc/pgx/v5"
 	"image"
@@ -9,7 +8,6 @@ import (
 	_ "image/png"
 	"io"
 	"net/http"
-	"net/url"
 	"os"
 	"regexp"
 	"strconv"
@@ -33,7 +31,9 @@ type searchItem struct {
 	HeightMm int    `json:"heightMm,omitempty"`
 	Binding  string `json:"binding,omitempty"`  // 양장·반양장 등
 	Link     string `json:"link,omitempty"`     // 상품 페이지(YES24 약관: 출처와 함께 링크를 보인다)
-	Provider string `json:"provider,omitempty"` // yes24·kakao·mock
+	Category string `json:"category,omitempty"` // 분류 경로 "국내도서>소설/시/희곡"(앱 장정 모티프)
+	Series   string `json:"series,omitempty"`   // 시리즈 이름(앱에서 같은 시리즈를 같은 색 계열로)
+	Provider string `json:"provider,omitempty"` // yes24·mock
 }
 type bookResponse struct {
 	searchItem
@@ -122,13 +122,10 @@ func validISBN(s string) bool {
 	return sum%10 == 0
 }
 
-// 검색 제공자: YES24 키가 있으면 YES24(쪽수·판형까지), 없으면 카카오, 둘 다 없으면 개발용 가짜 목록
+// 검색 제공자: 책 정보는 YES24 기준(쪽수·판형 mm·분류·시리즈까지). 키가 없으면(개발) 가짜 목록
 func bookSource() string {
-	switch {
-	case yes24Key() != "":
+	if yes24Key() != "" {
 		return "yes24"
-	case os.Getenv("KAKAO_REST_KEY") != "":
-		return "kakao"
 	}
 	return "mock"
 }
@@ -136,63 +133,11 @@ func (s *Server) searchBooks(q string, isbn bool) ([]searchItem, error) {
 	if yes24Key() != "" {
 		return s.yes24Search(q, isbn)
 	}
-	key := os.Getenv("KAKAO_REST_KEY")
 	out := []searchItem{}
-	if key == "" {
-		for _, b := range mocks {
-			if (isbn && b.ISBN == q) || (!isbn && (strings.Contains(b.Title, q) || strings.Contains(strings.Join(b.Authors, " "), q))) {
-				out = append(out, b)
-			}
+	for _, b := range mocks {
+		if (isbn && b.ISBN == q) || (!isbn && (strings.Contains(b.Title, q) || strings.Contains(strings.Join(b.Authors, " "), q))) {
+			out = append(out, b)
 		}
-		return out, nil
-	}
-	v := url.Values{"query": {q}, "size": {"30"}}
-	if isbn {
-		v.Set("target", "isbn")
-	}
-	req, e := http.NewRequest("GET", "https://dapi.kakao.com/v3/search/book?"+v.Encode(), nil)
-	if e != nil {
-		return nil, e
-	}
-	req.Header.Set("Authorization", "KakaoAK "+key)
-	res, e := s.HTTP.Do(req)
-	if e != nil {
-		return nil, upstream
-	}
-	defer res.Body.Close()
-	if res.StatusCode != 200 {
-		return nil, upstream
-	}
-	var data struct {
-		Documents []struct {
-			ISBN      string   `json:"isbn"`
-			Title     string   `json:"title"`
-			Authors   []string `json:"authors"`
-			Publisher string   `json:"publisher"`
-			Datetime  string   `json:"datetime"`
-			Thumbnail string   `json:"thumbnail"`
-			Contents  string   `json:"contents"`
-		} `json:"documents"`
-	}
-	if e = json.NewDecoder(io.LimitReader(res.Body, 5<<20)).Decode(&data); e != nil {
-		return nil, upstream
-	}
-	for _, d := range data.Documents {
-		code := ""
-		for _, part := range strings.Fields(d.ISBN) {
-			if len(part) == 13 {
-				code = part
-				break
-			}
-		}
-		if code == "" || (isbn && code != q) {
-			continue
-		}
-		date := d.Datetime
-		if len(date) >= 10 {
-			date = date[:10]
-		}
-		out = append(out, searchItem{ISBN: code, Title: d.Title, Authors: d.Authors, Publisher: d.Publisher, PublishedAt: date, Thumb: d.Thumbnail, Description: d.Contents, Provider: "kakao"})
 	}
 	return out, nil
 }

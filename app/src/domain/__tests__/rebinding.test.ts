@@ -91,6 +91,9 @@ describe('모티프 선택', () => {
     expect(genreOf('420')).toBe('science');
     expect(genreOf('911')).toBe('history');
     expect(genreOf('국내도서>소설/시/희곡>한국소설')).toBe('novel');
+    expect(genreOf('국내도서>소설/시/희곡')).toBe('novel'); // YES24 goodsSortNm(두 단계)
+    expect(genreOf('국내도서>소설/시/희곡>시')).toBe('poem');
+    expect(genreOf('시/희곡')).toBe('poem');
     expect(genreOf(undefined, '우주의 역사')).toBe('science');
   });
   it.each(['813.7', '814', '420', '911'])('분류 %s: 한쪽으로 몰리지 않는다', (cat) => {

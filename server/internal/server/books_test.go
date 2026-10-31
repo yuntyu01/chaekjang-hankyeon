@@ -9,17 +9,17 @@ import (
 )
 
 func TestSearchCacheAndUpstream(t *testing.T) {
-	t.Setenv("YES24_API_KEY", "")
-	t.Setenv("KAKAO_REST_KEY", "fake")
+	t.Setenv("YES24_API_KEY", "fake")
+	t.Setenv("YES24_API_URL", "https://yes24.test/v1")
 	t.Setenv("SEARCH_CACHE_TTL", "10m")
 	calls := 0
 	s := New(nil)
 	s.HTTP = &http.Client{Transport: roundTripFunc(func(r *http.Request) (*http.Response, error) {
 		calls++
-		if r.Header.Get("Authorization") != "KakaoAK fake" {
-			t.Error("missing kakao authorization")
+		if r.Header.Get("X-Api-Key") != "fake" {
+			t.Error("missing yes24 key")
 		}
-		body := `{"documents":[{"isbn":"1234567890 9790000000018","title":"여름의 숲","authors":["작가"],"datetime":"2024-01-02T00:00:00Z"},{"isbn":"","title":"no isbn"}]}`
+		body := `{"success":true,"data":{"items":[{"isbn13":"9790000000018","title":"여름의 숲","author":"작가 저","goodsType":"도서","publishDate":"20240102"},{"isbn13":"","title":"no isbn","goodsType":"도서"}]}}`
 		return &http.Response{StatusCode: 200, Body: io.NopCloser(strings.NewReader(body)), Header: make(http.Header)}, nil
 	})}
 	h := s.Handler()
