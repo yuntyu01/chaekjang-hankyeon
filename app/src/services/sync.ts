@@ -86,6 +86,14 @@ async function ensureToken(): Promise<string> {
   return created.token;
 }
 
+// 커뮤니티(공개 데이터) API도 같은 서버 계정 토큰을 쓴다(개인 동기화와 엔드포인트·표는 따로). 동기화가 중지되어 있으면 쓰지 않는다
+export async function serverToken(): Promise<string> {
+  if (!BASE) throw new Error('이 빌드에는 서버 주소가 없어요');
+  await loadPause();
+  return ensureToken();
+}
+export const serverBase = BASE;
+
 const mime = (id: string) => (/\.png$/i.test(id) ? 'image/png' : /\.webp$/i.test(id) ? 'image/webp' : 'image/jpeg');
 
 async function uploadFiles(token: string, ids: string[]) {

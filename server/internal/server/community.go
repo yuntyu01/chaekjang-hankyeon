@@ -34,6 +34,7 @@ func (s *Server) routeCommunity(m *http.ServeMux) {
 	m.HandleFunc("GET /community/users/{id}", wrap(s.publicUser))
 	m.HandleFunc("PUT /community/users/{id}/follow", wrap(s.follow(true)))
 	m.HandleFunc("DELETE /community/users/{id}/follow", wrap(s.follow(false)))
+	m.HandleFunc("GET /community/blocks", wrap(s.blocks))
 	m.HandleFunc("PUT /community/users/{id}/block", wrap(s.block(true)))
 	m.HandleFunc("DELETE /community/users/{id}/block", wrap(s.block(false)))
 	m.HandleFunc("GET /community/books/{isbn}/reviews", wrap(s.reviews))
@@ -292,19 +293,47 @@ func (s *Server) block(on bool) handler {
 	}
 }
 
+// 내가 차단한 사람(풀 수 있게). 차단한 사람의 프로필은 보이지 않으므로 목록은 여기서만 준다
+func (s *Server) blocks(w http.ResponseWriter, r *http.Request) error {
+	user, err := s.user(r)
+	if err != nil {
+		return err
+	}
+	rows, err := s.DB.Query(r.Context(), `SELECT b.blocked_id, COALESCE(pp.nickname, '') FROM community_blocks b
+	  LEFT JOIN public_profiles pp ON pp.user_id=b.blocked_id WHERE b.blocker_id=$1 ORDER BY b.created_at DESC LIMIT 200`, user)
+	if err != nil {
+		return err
+	}
+	type blockedOut struct {
+		UserID   int64  `json:"userId"`
+		Nickname string `json:"nickname"`
+	}
+	items, err := pgx.CollectRows(rows, func(row pgx.CollectableRow) (blockedOut, error) {
+		var o blockedOut
+		err := row.Scan(&o.UserID, &o.Nickname)
+		return o, err
+	})
+	if err != nil {
+		return err
+	}
+	writeJSON(w, 200, map[string]any{"items": items})
+	return nil
+}
+
 // ---------- 책별 별점·후기 ----------
 
 type reviewOut struct {
 	UserID    int64     `json:"userId"`
 	Nickname  string    `json:"nickname"`
 	ISBN      string    `json:"isbn13"`
+	BookTitle *string   `json:"bookTitle,omitempty"`
 	Rating    int       `json:"rating"`
 	Body      *string   `json:"body,omitempty"`
 	UpdatedAt time.Time `json:"updatedAt"`
 }
 
 func (s *Server) listReviews(ctx context.Context, viewer int64, where string, args []any, limit int) ([]reviewOut, error) {
-	rows, err := s.DB.Query(ctx, `SELECT rv.user_id, pp.nickname, rv.isbn13, rv.rating, rv.body, rv.updated_at
+	rows, err := s.DB.Query(ctx, `SELECT rv.user_id, pp.nickname, rv.isbn13, rv.book_title, rv.rating, rv.body, rv.updated_at
 	  FROM book_reviews rv JOIN public_profiles pp ON pp.user_id=rv.user_id
 	  WHERE rv.hidden_at IS NULL AND `+visible("rv.user_id")+` AND `+where+`
 	  ORDER BY rv.updated_at DESC LIMIT `+strconv.Itoa(limit), append([]any{viewer}, args...)...)
@@ -313,7 +342,7 @@ func (s *Server) listReviews(ctx context.Context, viewer int64, where string, ar
 	}
 	return pgx.CollectRows(rows, func(row pgx.CollectableRow) (reviewOut, error) {
 		var o reviewOut
-		err := row.Scan(&o.UserID, &o.Nickname, &o.ISBN, &o.Rating, &o.Body, &o.UpdatedAt)
+		err := row.Scan(&o.UserID, &o.Nickname, &o.ISBN, &o.BookTitle, &o.Rating, &o.Body, &o.UpdatedAt)
 		return o, err
 	})
 }
@@ -340,7 +369,7 @@ func (s *Server) reviews(w http.ResponseWriter, r *http.Request) error {
 	}
 	var mine *reviewOut
 	var m reviewOut
-	err = s.DB.QueryRow(ctx, "SELECT user_id, isbn13, rating, body, updated_at FROM book_reviews WHERE user_id=$1 AND isbn13=$2", viewer, isbn).Scan(&m.UserID, &m.ISBN, &m.Rating, &m.Body, &m.UpdatedAt)
+	err = s.DB.QueryRow(ctx, "SELECT user_id, isbn13, book_title, rating, body, updated_at FROM book_reviews WHERE user_id=$1 AND isbn13=$2", viewer, isbn).Scan(&m.UserID, &m.ISBN, &m.BookTitle, &m.Rating, &m.Body, &m.UpdatedAt)
 	if err == nil {
 		mine = &m
 	} else if !errors.Is(err, pgx.ErrNoRows) {
@@ -363,8 +392,9 @@ func (s *Server) putReview(w http.ResponseWriter, r *http.Request) error {
 		return err
 	}
 	var in struct {
-		Rating int     `json:"rating"`
-		Body   *string `json:"body"`
+		Rating    int     `json:"rating"`
+		Body      *string `json:"body"`
+		BookTitle *string `json:"bookTitle"`
 	}
 	if err = decode(r, &in); err != nil {
 		return err
@@ -376,8 +406,12 @@ func (s *Server) putReview(w http.ResponseWriter, r *http.Request) error {
 	if err != nil {
 		return err
 	}
-	if _, err = s.DB.Exec(r.Context(), `INSERT INTO book_reviews(user_id,isbn13,rating,body) VALUES($1,$2,$3,$4)
-	  ON CONFLICT(user_id,isbn13) DO UPDATE SET rating=EXCLUDED.rating, body=EXCLUDED.body, updated_at=now()`, user, isbn, in.Rating, body); err != nil {
+	title, err := trimmed(in.BookTitle, 200)
+	if err != nil {
+		return err
+	}
+	if _, err = s.DB.Exec(r.Context(), `INSERT INTO book_reviews(user_id,isbn13,rating,body,book_title) VALUES($1,$2,$3,$4,$5)
+	  ON CONFLICT(user_id,isbn13) DO UPDATE SET rating=EXCLUDED.rating, body=EXCLUDED.body, book_title=COALESCE(EXCLUDED.book_title, book_reviews.book_title), updated_at=now()`, user, isbn, in.Rating, body, title); err != nil {
 		return err
 	}
 	return s.reviews(w, r)

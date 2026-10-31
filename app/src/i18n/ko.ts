@@ -31,7 +31,7 @@ export const ko = {
   refitMoved: (n: number) => `선반 크기가 바뀌어 들어가지 않는 책 ${n}권을 책장에서 뺐어요. 전체 책에서 다시 놓을 수 있어요.`,
   fellToDrawer: (n: number) => `받침을 잃은 책 ${n}권이 선반에서 떨어져 책장에서 빠졌어요. 전체 책에 그대로 있어요.`,
   done: '완료',
-  tabs: { shelf: '책장', bookmarks: '갈피', read: '읽기' },
+  tabs: { shelf: '책장', bookmarks: '갈피', read: '읽기', community: '커뮤니티' },
   pose: { spine: '세우기', horizontal: '눕히기', front: '표지 보기' },
   poseState: { spine: '세워 둠', horizontal: '눕혀 둠', front: '표지 전시' },
   tilt: { left: '왼쪽', none: '똑바로', right: '오른쪽' },

@@ -117,7 +117,12 @@ function SyncSection() {
   const providers = loginProviders.get();
   const [loggingIn, setLoggingIn] = useState(false);
   const label = !syncStatus.available ? '이 기기에만 저장돼요' : st.paused ? '서버 동기화를 중지했어요' : st.state === 'syncing' ? '동기화하는 중…' : st.state === 'error' ? '동기화하지 못했어요' : st.lastAt ? `마지막 동기화 ${localTime(st.lastAt)}` : '아직 동기화 전이에요';
-  const login = async (provider: 'google' | 'kakao') => {
+  // 연결 전에 알린다: 이 기기의 기록이 계정 기록과 합쳐지고(같은 항목은 더 최근에 고친 쪽), 아무것도 자동 공개되지 않는다
+  const login = (provider: 'google' | 'kakao') => Alert.alert('계정을 연결할까요?', '이 기기의 책·독서 기록·갈피가 계정에 저장된 기록과 합쳐져요. 같은 항목을 양쪽에서 고쳤다면 더 최근에 고친 쪽이 남아요. 연결해도 내 기록은 공개되지 않아요(커뮤니티에는 직접 고른 것만 올라가요).', [
+    { text: '취소', style: 'cancel' },
+    { text: '연결', onPress: () => void doLogin(provider) },
+  ]);
+  const doLogin = async (provider: 'google' | 'kakao') => {
     setLoggingIn(true);
     try {
       const r = await (provider === 'google' ? linkGoogle() : linkKakao());

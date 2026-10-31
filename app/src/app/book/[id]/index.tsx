@@ -5,6 +5,7 @@ import { ChevronDown, ChevronUp, MoreHorizontal } from '@/ui/icons';
 import { useState } from 'react';
 import { Alert, Image, Linking, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 
+import { BookReviews } from '@/features/community/BookReviews';
 import { STATUS_LABEL, ymd } from '@/features/book/labels';
 import { placeWithChoice } from '@/features/book/place-books';
 import { ko } from '@/i18n/ko';
@@ -162,6 +163,8 @@ export default function BookDetailScreen() {
             style={kit.input}
             maxLength={140}
           />
+
+          <BookReviews isbn13={e.isbn13} title={e.title} myRating={b.rating} />
 
           <H2>남긴 갈피{marks.length ? ` · ${marks.length}` : ''}</H2>
           {marks.length ? (

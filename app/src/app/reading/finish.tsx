@@ -1,7 +1,7 @@
 // 독서 종료 기록: 연결된 책(바꾸거나 연결하기), 실제 독서 시간, 선택 입력(시작 쪽·도달한 쪽·짧은 메모) → 개인 기록 저장(기본) 또는 버리기.
 // 적는 중인 쪽수·메모는 종료 초안에 함께 저장돼 앱이 꺼져도 이어서 쓴다(reading-store notes).
 // 분량은 시작 쪽과 도달한 쪽을 둘 다 알 때만 보인다(모르면 비워 둔다). 완독 여부는 여기서 자동으로 정하지 않는다.
-// 저장 후: 이 책에 갈피 남기기(이번 기록과 연결) · 책 정보 · 내 기록 · 닫기.
+// 저장 후: 이 책에 갈피 남기기(이번 기록과 연결) · 커뮤니티에 공유하기(고른 것만, 선택) · 책 정보 · 내 기록 · 닫기.
 import { router } from 'expo-router';
 import { useEffect, useRef, useState } from 'react';
 import { Alert, StyleSheet, Text, View } from 'react-native';
@@ -15,6 +15,7 @@ import { useLibrary } from '@/store/library-store';
 import { readingStore, useReading } from '@/store/reading-store';
 import { Btn, Empty, Field, Muted, Row, Screen, SelectField } from '@/ui/kit';
 import { colors, fonts, shape, tidySpace as space, tidyType as type } from '@/ui/screenTheme';
+import { serverBase } from '@/services/sync';
 
 const page = (v?: string) => {
   const n = Number((v ?? '').replace(/[^\d]/g, ''));
@@ -53,6 +54,7 @@ export default function Finish() {
         <Text style={[type.body, { marginTop: space.m }]}>독서 기록을 저장했어요.</Text>
         <View style={{ gap: space.s, marginTop: space.xl }}>
           {saved.bookId ? <Btn label="이 책에 갈피 남기기" onPress={() => router.replace({ pathname: '/bookmark/new', params: { book: saved.bookId, session: saved.sessionId } })} /> : null}
+          {saved.bookId && serverBase ? <Btn label="커뮤니티에 공유하기" kind="secondary" onPress={() => router.push({ pathname: '/community/share', params: { session: saved.sessionId } })} /> : null}
           {saved.bookId ? <Btn label="책 정보 보기" kind="secondary" onPress={() => router.replace(`/book/${saved.bookId}`)} /> : null}
           <Btn label="내 기록 보기" kind="secondary" onPress={() => router.replace('/stats')} />
           <Btn label="닫기" kind="ghost" onPress={() => router.dismissTo('/read')} />

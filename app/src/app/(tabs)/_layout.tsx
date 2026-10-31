@@ -3,12 +3,12 @@ import { StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { ko } from '@/i18n/ko';
-import { BookmarkTabIcon, ReadTabIcon, ShelfIcon } from '@/ui/TabIcons';
+import { BookmarkTabIcon, CommunityTabIcon, ReadTabIcon, ShelfIcon } from '@/ui/TabIcons';
 import { tabBarStyle } from '@/ui/tabBar';
 import { colors, navigation } from '@/ui/theme';
 import { colors as ui, fonts } from '@/ui/screenTheme';
 
-// 하단 탭: 책장 · 갈피 · 읽기. 시안처럼 아이콘 아래에 글자를 두고, 선택된 탭만 속이 차고 진하게 나머지는 연한 윤곽선. 아이콘은 책장 장면과 같은 종이 위에 뜬다.
+// 하단 탭: 책장 · 갈피 · 읽기 · 커뮤니티(2026-11). 시안처럼 아이콘 아래에 글자를 두고, 선택된 탭만 속이 차고 진하게 나머지는 연한 윤곽선. 아이콘은 책장 장면과 같은 종이 위에 뜬다.
 export default function TabsLayout() {
   const insets = useSafeAreaInsets();
   return (
@@ -49,6 +49,15 @@ export default function TabsLayout() {
           title: ko.tabs.read,
           tabBarAccessibilityLabel: ko.tabs.read,
           tabBarIcon: ({ color, focused }) => <ReadTabIcon color={String(color)} bg={colors.bg} size={navigation.iconSize} filled={focused} />,
+        }}
+      />
+      <Tabs.Screen
+        name="community"
+        options={{
+          tabBarStyle: { ...tabBarStyle(insets.bottom), backgroundColor: ui.bg, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: ui.line },
+          title: ko.tabs.community,
+          tabBarAccessibilityLabel: ko.tabs.community,
+          tabBarIcon: ({ color, focused }) => <CommunityTabIcon color={String(color)} bg={ui.bg} size={navigation.iconSize} filled={focused} />,
         }}
       />
     </Tabs>

@@ -142,7 +142,7 @@ func TestCommunity(t *testing.T) {
 
 	// 별점·후기: 사용자당 하나(고치면 갱신), 평가 안 한 사람은 0점으로 세지 않는다
 	call("PUT", "/community/books/9788937460449/review", a.token, map[string]any{"rating": 5})
-	call("PUT", "/community/books/9788937460449/review", a.token, map[string]any{"rating": 4, "body": "다시 읽어도"})
+	call("PUT", "/community/books/9788937460449/review", a.token, map[string]any{"rating": 4, "body": "다시 읽어도", "bookTitle": "데미안"})
 	_, rv := call("PUT", "/community/books/9788937460449/review", b.token, map[string]any{"rating": 2})
 	if rv["count"] != float64(2) || rv["average"] != float64(3) {
 		t.Fatalf("reviews %v", rv)
@@ -153,6 +153,9 @@ func TestCommunity(t *testing.T) {
 	_, rv = call("GET", "/community/books/9788937460449/reviews", c.token, nil)
 	if rv["count"] != float64(2) || rv["mine"] != nil {
 		t.Fatalf("reviews for reader %v", rv)
+	}
+	if _, pa := call("GET", fmt.Sprintf("/community/users/%d", a.id), c.token, nil); pa["reviews"].([]any)[0].(map[string]any)["bookTitle"] != "데미안" {
+		t.Fatalf("review title %v", pa["reviews"])
 	}
 
 	// 차단: 서로의 게시물·댓글·후기가 보이지 않고 팔로우가 끊긴다
@@ -178,7 +181,14 @@ func TestCommunity(t *testing.T) {
 	if pu["profile"].(map[string]any)["followers"] != float64(0) {
 		t.Fatalf("block unfollows %v", pu)
 	}
+	_, bl := call("GET", "/community/blocks", a.token, nil)
+	if items := bl["items"].([]any); len(items) != 1 || items[0].(map[string]any)["nickname"] != "책벌레" {
+		t.Fatalf("block list %v", bl)
+	}
 	call("DELETE", fmt.Sprintf("/community/users/%d/block", b.id), a.token, nil)
+	if _, bl = call("GET", "/community/blocks", a.token, nil); len(bl["items"].([]any)) != 0 {
+		t.Fatalf("block list after unblock %v", bl)
+	}
 
 	// 신고 → 운영자 숨김: 피드·상세·집계에서 빠진다
 	call("POST", "/community/reports", c.token, map[string]any{"kind": "post", "id": fmt.Sprint(pid), "reason": "시험"})

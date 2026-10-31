@@ -7,6 +7,7 @@ import { Alert, View } from 'react-native';
 import { BookPicker } from '@/features/bookmark/BookPicker';
 import { formatDurationPrecise } from '@/domain/library';
 import { sessionEditPatch, sessionFormOf, validDay, validTime } from '@/domain/session-edit';
+import { serverBase } from '@/services/sync';
 import { libraryStore, useLibrary } from '@/store/library-store';
 import { Btn, Empty, Field, Muted, Row, Screen, SelectField } from '@/ui/kit';
 import { space } from '@/ui/screenTheme';
@@ -54,6 +55,7 @@ export default function EditSession() {
         </View>
       </Row>
       <Field label="메모 (선택)" value={memo} onChangeText={setMemo} />
+      {s.myBookId && serverBase ? <Btn label="커뮤니티에 공유하기" kind="secondary" style={{ marginTop: space.item }} onPress={() => router.push({ pathname: '/community/share', params: { session: id } })} /> : null}
       <Btn
         label="이 기록 삭제"
         kind="danger"
