@@ -25,13 +25,16 @@ export type Active = {
   runningSince: number | null; // 지금 달리는 구간 시작(ms). null이면 일시정지
   lastBeat: number; // 마지막으로 앱이 살아 있음을 저장한 시각(ms)
   interruptedAt?: number; // 강제 종료에서 복구했고 아직 고르지 않았다(= 그때의 마지막 확인 시각)
+  startPage?: number; // 시작할 때 그 책의 현재 쪽(알 때만). 종료 화면의 '시작 쪽' 기본값
 };
 
 // 강제 종료 뒤 복구: 마지막 확인 시각까지 센 시간과 그 뒤 지난 시간
 export type Interrupted = { active: Active; countedMs: number; lastBeat: number; gapMs: number };
 
-// 끝낸 뒤 종료 화면이 저장·버리기를 정할 값(id = 타이머 id = 저장할 세션 id)
-export type FinishDraft = { id: string; myBookId?: string; startedAt: string; endedAt: string; durationMs: number };
+// 끝낸 뒤 종료 화면이 저장·버리기를 정할 값(id = 타이머 id = 저장할 세션 id).
+// notes: 종료 화면에 적는 중인 값(시작 쪽·도달 쪽·메모, 입력 그대로의 글자). 앱이 꺼져도 다시 켜면 이어서 쓴다
+export type FinishNotes = { startPage?: string; pages?: string; memo?: string };
+export type FinishDraft = { id: string; myBookId?: string; startedAt: string; endedAt: string; durationMs: number; startPage?: number; notes?: FinishNotes };
 
 const KEY = 'active-reading:v1';
 const PENDING_KEY = 'finished-reading:v1';
@@ -61,7 +64,7 @@ export function finishActive(a: Active, now: number, endAt?: number): FinishDraf
   const running = a.runningSince !== null;
   const durationMs = running ? a.accumulatedMs + Math.max(0, t - a.runningSince!) : a.accumulatedMs;
   const end = running ? t : (a.interruptedAt ?? Math.max(a.lastBeat, Date.parse(a.startedAt)));
-  return { id: a.id, myBookId: a.myBookId, startedAt: a.startedAt, endedAt: new Date(end).toISOString(), durationMs };
+  return { id: a.id, myBookId: a.myBookId, startedAt: a.startedAt, endedAt: new Date(end).toISOString(), durationMs, startPage: a.startPage };
 }
 
 // ---------- 상태 ----------
@@ -137,9 +140,10 @@ export const readingStore = {
     set({ active: r.active, interrupted: r.interrupted, pending, pendingRestored: !!pending, loaded: true, error: null });
   },
 
-  start(myBookId?: string) {
+  // startPage: 그 책의 지금 쪽(알 때만, 이번 독서의 시작 쪽 기본값)
+  start(myBookId?: string, startPage?: number) {
     const t = Date.now();
-    set({ active: { id: newId('ss'), myBookId, startedAt: new Date(t).toISOString(), accumulatedMs: 0, runningSince: t, lastBeat: t }, interrupted: null });
+    set({ active: { id: newId('ss'), myBookId, startedAt: new Date(t).toISOString(), accumulatedMs: 0, runningSince: t, lastBeat: t, startPage: myBookId ? startPage : undefined }, interrupted: null });
     save();
     startBeat();
   },
@@ -159,10 +163,11 @@ export const readingStore = {
     save();
     startBeat();
   },
-  setBook(myBookId?: string) {
+  // 이 기록의 연결 책 정정(같은 독서를 다른 책으로 바로잡기). 시작 쪽은 새 책 기준을 모르므로 그 책의 현재 쪽으로(없으면 비움)
+  setBook(myBookId?: string, startPage?: number) {
     const a = state.active;
     if (!a) return;
-    set({ active: { ...a, myBookId } });
+    set({ active: { ...a, myBookId, startPage: myBookId ? startPage : undefined } });
     save();
   },
   // 복구 창을 닫기(일시정지로 둠. 표시(interruptedAt)는 남겨 다음 실행에서 다시 묻는다)
@@ -179,9 +184,16 @@ export const readingStore = {
     save();
     return pending;
   },
-  setPendingBook(myBookId?: string) {
+  setPendingBook(myBookId?: string, startPage?: number) {
     if (!state.pending) return;
-    set({ pending: { ...state.pending, myBookId } });
+    const notes = state.pending.notes;
+    set({ pending: { ...state.pending, myBookId, startPage: myBookId ? startPage : undefined, notes: notes ? { ...notes, startPage: undefined } : notes } });
+    save();
+  },
+  // 종료 화면에 적는 중인 값(쪽수·메모)을 초안에 함께 둔다(앱이 꺼져도 복구)
+  setPendingNotes(notes: FinishNotes) {
+    if (!state.pending) return;
+    set({ pending: { ...state.pending, notes: { ...state.pending.notes, ...notes } } });
     save();
   },
   async clearPending() {

@@ -24,7 +24,8 @@ type Photo = { uri: string; ratio?: number };
 type Recog = { uri: string; state: 'running' } | { uri: string; state: 'done'; result: OcrResult } | { uri: string; state: 'failed'; message: string };
 
 export default function NewBookmark() {
-  const { book, text: initialText, page: initialPage, mode: initialMode } = useLocalSearchParams<{ book?: string; text?: string; page?: string; mode?: string }>();
+  // session: 독서를 끝내고 저장한 기록에서 왔을 때 그 기록 id(갈피에 선택적으로 연결). 갈피 탭에서 쓰면 없다
+  const { book, text: initialText, page: initialPage, mode: initialMode, session } = useLocalSearchParams<{ book?: string; text?: string; page?: string; mode?: string; session?: string }>();
   const { lib } = useLibrary();
   const [bookId, setBookId] = useState<string | undefined>(book && lib.books[book] ? book : undefined);
   const [picking, setPicking] = useState(false);
@@ -100,7 +101,7 @@ export default function NewBookmark() {
     try {
       const n = Number(page);
       const photoUri = photo && (asPhoto || keepPhoto) ? await keepImage(photo.uri, 'page') : undefined;
-      const id = libraryStore.addBookmark({ myBookId: bookId, text: text.trim(), page: Number.isFinite(n) && n > 0 ? Math.round(n) : undefined, memo: memo.trim() || undefined, photoUri, photoRatio: photoUri ? photo?.ratio : undefined });
+      const id = libraryStore.addBookmark({ myBookId: bookId, text: text.trim(), page: Number.isFinite(n) && n > 0 ? Math.round(n) : undefined, memo: memo.trim() || undefined, photoUri, photoRatio: photoUri ? photo?.ratio : undefined, sessionId: session && lib.sessions[session] && lib.sessions[session].myBookId === bookId ? session : undefined });
       await libraryStore.flushPending();
       // 화면을 바꾼 뒤에는 이 화면의 상태를 건드리지 않는다: 사라지는 화면 갱신과 새 화면 붙이기가 한 프레임에 겹치면
       // 새 구조(Fabric)가 'The specified child already has a parent'로 앱을 죽였다(2026-11-01 에뮬 재현)

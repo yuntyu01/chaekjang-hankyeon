@@ -16,7 +16,7 @@ type Wire = { id: string; updatedAt: string; deleted?: boolean | null };
 export type WireEdition = Wire & {
   isbn13?: string | null; title?: string; authors?: string[]; publisher?: string | null; publishedAt?: string | null; pageCount?: number | null;
   widthMm?: number | null; heightMm?: number | null; category?: string | null; seriesTitle?: string | null; coverUrl?: string | null; coverFileId?: string | null;
-  coverSource?: string | null; source?: string; sourceName?: string | null;
+  coverSource?: string | null; source?: string; sourceName?: string | null; productId?: string | null; link?: string | null;
   art?: { baseColor: string; inkColor?: string | null; accentColor?: string | null; motifId?: string | null; layoutVariant?: string | null; version?: number | null; generatedAt?: string | null } | null;
   createdAt?: string;
 };
@@ -27,9 +27,9 @@ export type WireBinding = Wire & {
 };
 export type WireRound = Wire & { myBookId?: string; index?: number; startedAt?: string | null; finishedAt?: string | null; paused?: boolean | null; createdAt?: string };
 export type WireSession = Wire & {
-  myBookId?: string | null; roundId?: string | null; startedAt?: string; endedAt?: string; durationMs?: number; pagesRead?: number | null; memo?: string | null; createdAt?: string;
+  myBookId?: string | null; roundId?: string | null; startedAt?: string; endedAt?: string; durationMs?: number; startPage?: number | null; pagesRead?: number | null; memo?: string | null; createdAt?: string;
 };
-export type WireBookmark = Wire & { myBookId?: string; text?: string; page?: number | null; memo?: string | null; photoFileId?: string | null; photoRatio?: number | null; createdAt?: string };
+export type WireBookmark = Wire & { myBookId?: string; text?: string; page?: number | null; memo?: string | null; photoFileId?: string | null; photoRatio?: number | null; sessionId?: string | null; savedAt?: string | null; createdAt?: string };
 export type WireLayout = { layoutJson: string; version: number; updatedAt: string };
 
 export type PushBody = {
@@ -59,7 +59,7 @@ export function editionToWire(e: Edition, imageDir: string): WireEdition {
     id: e.id, isbn13: e.isbn13, title: e.title, authors: e.authors, publisher: e.publisher, publishedAt: e.publishedAt, pageCount: e.pageCount,
     widthMm: e.size?.widthMm, heightMm: e.size?.heightMm, category: e.category, seriesTitle: e.seriesTitle,
     coverUrl: e.coverSource === 'api' ? e.coverUri : undefined, coverFileId: photo, coverSource: photo || e.coverSource === 'api' ? e.coverSource : undefined,
-    source: e.source, sourceName: e.sourceName,
+    source: e.source, sourceName: e.sourceName, productId: e.productId, link: e.link,
     art: e.art ? { baseColor: e.art.baseColor, inkColor: e.art.inkColor, accentColor: e.art.accentColor, motifId: e.art.motifId, layoutVariant: e.art.layoutVariant, version: e.art.version, generatedAt: e.art.generatedAt || undefined } : undefined,
     createdAt: e.createdAt, updatedAt: e.updatedAt,
   };
@@ -71,10 +71,10 @@ export const bindingToWire = (b: Binding, imageDir: string): WireBinding => ({
 });
 export const roundToWire = (r: Round): WireRound => ({ id: r.id, myBookId: r.myBookId, index: r.index, startedAt: r.startedAt, finishedAt: r.finishedAt, paused: !!r.paused, createdAt: r.createdAt, updatedAt: r.updatedAt });
 export const sessionToWire = (s: Session): WireSession => ({
-  id: s.id, myBookId: s.myBookId, roundId: s.roundId, startedAt: s.startedAt, endedAt: s.endedAt, durationMs: s.durationMs, pagesRead: s.pagesRead, memo: s.memo, createdAt: s.createdAt, updatedAt: s.updatedAt,
+  id: s.id, myBookId: s.myBookId, roundId: s.roundId, startedAt: s.startedAt, endedAt: s.endedAt, durationMs: s.durationMs, startPage: s.startPage, pagesRead: s.pagesRead, memo: s.memo, createdAt: s.createdAt, updatedAt: s.updatedAt,
 });
 export const bookmarkToWire = (m: Bookmark, imageDir: string): WireBookmark => ({
-  id: m.id, myBookId: m.myBookId, text: m.text, page: m.page, memo: m.memo, photoFileId: fileIdOf(m.photoUri, imageDir), photoRatio: m.photoRatio, createdAt: m.createdAt, updatedAt: m.updatedAt,
+  id: m.id, myBookId: m.myBookId, text: m.text, page: m.page, memo: m.memo, photoFileId: fileIdOf(m.photoUri, imageDir), photoRatio: m.photoRatio, sessionId: m.sessionId, savedAt: m.savedAt, createdAt: m.createdAt, updatedAt: m.updatedAt,
 });
 
 // 올릴 변경 묶음: 바뀐 항목(현재 값)과 삭제 표시. 이미 사라진 항목이 dirty에 없고 삭제도 아니면 건너뛴다.
@@ -116,7 +116,7 @@ export const editionFromWire = (w: WireEdition, imageDir: string): Edition => ({
   id: w.id, isbn13: nz(w.isbn13), title: w.title ?? '', authors: w.authors ?? [], publisher: nz(w.publisher), publishedAt: nz(w.publishedAt), pageCount: nz(w.pageCount),
   size: w.widthMm && w.heightMm ? { widthMm: w.widthMm, heightMm: w.heightMm } : undefined, category: nz(w.category), seriesTitle: nz(w.seriesTitle),
   coverUri: w.coverFileId ? `${imageDir}${w.coverFileId}` : nz(w.coverUrl), coverSource: (nz(w.coverSource) as Edition['coverSource']) ?? undefined,
-  source: (w.source as Edition['source']) ?? 'manual', sourceName: nz(w.sourceName),
+  source: (w.source as Edition['source']) ?? 'manual', sourceName: nz(w.sourceName), productId: nz(w.productId), link: nz(w.link),
   art: w.art?.baseColor
     ? { baseColor: w.art.baseColor, inkColor: w.art.inkColor ?? '#2F3944', accentColor: w.art.accentColor ?? w.art.baseColor, motifId: (w.art.motifId ?? 'leaf') as never, layoutVariant: (w.art.layoutVariant ?? 'spine_a') as LayoutVariant, heightClass: heightClassOf(w.heightMm ?? 188), thicknessClass: thicknessClassOf(w.pageCount ?? 250), generatedAt: w.art.generatedAt ?? '', version: w.art.version ?? 1 }
     : undefined,
@@ -132,11 +132,11 @@ export const bindingFromWire = (w: WireBinding, imageDir: string): Binding => ({
 });
 export const roundFromWire = (w: WireRound): Round => ({ id: w.id, myBookId: w.myBookId ?? '', index: w.index ?? 1, startedAt: nz(w.startedAt), finishedAt: nz(w.finishedAt), paused: w.paused ? true : undefined, createdAt: w.createdAt ?? w.updatedAt, updatedAt: w.updatedAt });
 export const sessionFromWire = (w: WireSession): Session => ({
-  id: w.id, myBookId: nz(w.myBookId), roundId: nz(w.roundId), startedAt: w.startedAt ?? w.updatedAt, endedAt: w.endedAt ?? w.updatedAt, durationMs: w.durationMs ?? 0, pagesRead: nz(w.pagesRead), memo: nz(w.memo),
+  id: w.id, myBookId: nz(w.myBookId), roundId: nz(w.roundId), startedAt: w.startedAt ?? w.updatedAt, endedAt: w.endedAt ?? w.updatedAt, durationMs: w.durationMs ?? 0, startPage: nz(w.startPage), pagesRead: nz(w.pagesRead), memo: nz(w.memo),
   createdAt: w.createdAt ?? w.updatedAt, updatedAt: w.updatedAt,
 });
 export const bookmarkFromWire = (w: WireBookmark, imageDir: string): Bookmark => ({
-  id: w.id, myBookId: w.myBookId ?? '', text: w.text ?? '', page: nz(w.page), memo: nz(w.memo), photoUri: w.photoFileId ? `${imageDir}${w.photoFileId}` : undefined, photoRatio: nz(w.photoRatio),
+  id: w.id, myBookId: w.myBookId ?? '', text: w.text ?? '', page: nz(w.page), memo: nz(w.memo), photoUri: w.photoFileId ? `${imageDir}${w.photoFileId}` : undefined, photoRatio: nz(w.photoRatio), sessionId: nz(w.sessionId), savedAt: nz(w.savedAt),
   createdAt: w.createdAt ?? w.updatedAt, updatedAt: w.updatedAt,
 });
 

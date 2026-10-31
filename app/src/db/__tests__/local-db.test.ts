@@ -114,7 +114,7 @@ it('v3(JSON 줄·배치 JSON) 저장본을 v4 표로 옮긴다: 서재·대기 �
   expect(snapshot.lib).toEqual(lib);
   expect(snapshot.dirty).toEqual({ 'books:m1': { deleted: false, at, revision: 5 } });
   expect(snapshot.layout).toEqual({ json: JSON.stringify({ version: 2, shelves: [{ id: 's1', order: 0 }], placements: [{ ...full, bookId: 'm1' }], drawer: [] }), at, dirty: true, revision: 5 });
-  expect(await mockDb.getFirstAsync('PRAGMA user_version')).toEqual({ user_version: 4 });
+  expect(await mockDb.getFirstAsync('PRAGMA user_version')).toEqual({ user_version: 5 });
   expect(await mockDb.getAllAsync("SELECT name FROM sqlite_master WHERE type='table' AND name LIKE 'v3_%'")).toEqual([]);
   expect(await mockDb.getAllAsync('SELECT position, name FROM edition_authors ORDER BY position')).toEqual([{ position: 0, name: '가' }, { position: 1, name: '나' }]);
 });
@@ -145,7 +145,7 @@ it('2026-10-17 앱(로컬 main 1165c16, 이미 정규화한 v3) 저장본도 지
   expect(JSON.parse(snapshot.layout.json!)).toEqual({ version: 2, shelves: [{ id: 's1', order: 0 }, { id: 's2', order: 1 }], placements: [{ bookId: 'm1', shelfId: 's1', order: 0, pose: 'spine', tilt: 0, pos: 40.5, lean: { angle: -4, on: 'm3' }, depth: 12 }], drawer: ['m2'] });
   expect(snapshot.layout).toMatchObject({ at, dirty: true });
   expect(snapshot.dirty).toEqual({ 'books:m1': { deleted: false, at, revision: 1 } });
-  expect(await mockDb.getFirstAsync('PRAGMA user_version')).toEqual({ user_version: 4 });
+  expect(await mockDb.getFirstAsync('PRAGMA user_version')).toEqual({ user_version: 5 });
   expect(await mockDb.getAllAsync("SELECT name FROM sqlite_master WHERE type='table' AND (name LIKE 'old_%' OR name = 'sync_dirty')")).toEqual([]);
   // 다시 켜도(kv 옮기기는 이미 끝난 것으로) 배치 표를 지우지 않는다
   restart();
@@ -164,4 +164,21 @@ it('판본을 지우면 저자 줄도 함께 지우고, 다시 쓰면 저자 순
   await local.applyLocalChanges([{ kind: 'editions', id: 'e', at, deleted: true }]);
   expect(await mockDb.getAllAsync('SELECT * FROM edition_authors')).toEqual([]);
   expect((await local.loadLib()).editions).toEqual({});
+});
+
+it('v5 열(독서 시작 쪽·갈피의 기록 연결·아껴둔 때·판본 상품 번호·링크)을 담았다가 그대로 읽는다', async () => {
+  const lib = {
+    editions: { e1: { id: 'e1', title: '모순', authors: ['양귀자'], source: 'search' as const, sourceName: 'YES24', productId: '8759796', link: 'https://www.yes24.com/product/goods/8759796', createdAt: at, updatedAt: at } },
+    books: { b1: { id: 'b1', editionId: 'e1', status: 'reading' as const, createdAt: at, updatedAt: at } },
+    rounds: {},
+    sessions: { s1: { id: 's1', myBookId: 'b1', startedAt: at, endedAt: at, durationMs: 20_000, startPage: 12, pagesRead: 30, createdAt: at, updatedAt: at } },
+    bookmarks: { m1: { id: 'm1', myBookId: 'b1', text: '문장', sessionId: 's1', savedAt: at, createdAt: at, updatedAt: at } },
+    bindings: {},
+  };
+  await local.replaceLib(lib, true);
+  restart();
+  const read = await local.loadLib();
+  expect(read.editions.e1).toMatchObject({ productId: '8759796', link: 'https://www.yes24.com/product/goods/8759796' });
+  expect(read.sessions.s1).toMatchObject({ startPage: 12, pagesRead: 30, durationMs: 20_000 });
+  expect(read.bookmarks.m1).toMatchObject({ sessionId: 's1', savedAt: at });
 });

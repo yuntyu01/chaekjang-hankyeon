@@ -26,14 +26,15 @@ type searchItem struct {
 	Thumb       string   `json:"thumbnailUrl,omitempty"`
 	Description string   `json:"description,omitempty"`
 	// 판본 정보(YES24 detail=Y에만 있다). 없으면 비운다(추정하지 않는다)
-	Pages    int    `json:"pages,omitempty"`
-	WidthMm  int    `json:"widthMm,omitempty"`
-	HeightMm int    `json:"heightMm,omitempty"`
-	Binding  string `json:"binding,omitempty"`  // 양장·반양장 등
-	Link     string `json:"link,omitempty"`     // 상품 페이지(YES24 약관: 출처와 함께 링크를 보인다)
-	Category string `json:"category,omitempty"` // 분류 경로 "국내도서>소설/시/희곡"(앱 장정 모티프)
-	Series   string `json:"series,omitempty"`   // 시리즈 이름(앱에서 같은 시리즈를 같은 색 계열로)
-	Provider string `json:"provider,omitempty"` // yes24·mock
+	Pages     int    `json:"pages,omitempty"`
+	WidthMm   int    `json:"widthMm,omitempty"`
+	HeightMm  int    `json:"heightMm,omitempty"`
+	Binding   string `json:"binding,omitempty"`   // 양장·반양장 등
+	Link      string `json:"link,omitempty"`      // 상품 페이지(YES24 약관: 출처와 함께 링크를 보인다)
+	ProductID string `json:"productId,omitempty"` // 제공처 상품 번호(YES24 itemId)
+	Category  string `json:"category,omitempty"`  // 분류 경로 "국내도서>소설/시/희곡"(앱 장정 모티프)
+	Series    string `json:"series,omitempty"`    // 시리즈 이름(앱에서 같은 시리즈를 같은 색 계열로)
+	Provider  string `json:"provider,omitempty"`  // yes24·mock
 }
 type bookResponse struct {
 	searchItem

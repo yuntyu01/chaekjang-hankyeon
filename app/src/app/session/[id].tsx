@@ -21,11 +21,12 @@ export default function EditSession() {
   const [day, setDay] = useState(initial?.day ?? '');
   const [time, setTime] = useState(initial?.time ?? '');
   const [minutes, setMinutes] = useState(initial?.minutes ?? '');
+  const [startPage, setStartPage] = useState(initial?.startPage ?? '');
   const [pages, setPages] = useState(initial?.pages ?? '');
   const [memo, setMemo] = useState(initial?.memo ?? '');
   if (!s || !initial) return <Screen title="독서 기록"><Empty title="기록을 찾을 수 없어요" /></Screen>;
   const e = bookId ? lib.editions[lib.books[bookId]?.editionId] : undefined;
-  const patch = sessionEditPatch(s, initial, { bookId, day, time, minutes, pages, memo });
+  const patch = sessionEditPatch(s, initial, { bookId, day, time, minutes, startPage, pages, memo });
   const save = () => {
     if (!patch) return;
     if (Object.keys(patch).length) libraryStore.updateSession(id, patch);
@@ -44,7 +45,14 @@ export default function EditSession() {
         </View>
       </Row>
       <Field label="독서 시간(분)" value={minutes} onChangeText={setMinutes} keyboardType="number-pad" hint={minutes === initial.minutes ? '고치지 않으면 저장된 시간(초 단위)이 그대로 남아요.' : undefined} error={minutes !== initial.minutes && !(Number(minutes) > 0) ? '1분 이상으로 적어 주세요' : undefined} />
-      <Field label="읽은 쪽수까지 (선택)" value={pages} onChangeText={setPages} keyboardType="number-pad" />
+      <Row style={{ flexWrap: 'nowrap' }} gap={10}>
+        <View style={{ flex: 1 }}>
+          <Field label="시작 쪽 (선택)" value={startPage} onChangeText={setStartPage} keyboardType="number-pad" />
+        </View>
+        <View style={{ flex: 1 }}>
+          <Field label="도달한 쪽 (선택)" value={pages} onChangeText={setPages} keyboardType="number-pad" />
+        </View>
+      </Row>
       <Field label="메모 (선택)" value={memo} onChangeText={setMemo} />
       <Btn
         label="이 기록 삭제"

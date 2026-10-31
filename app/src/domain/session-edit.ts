@@ -6,7 +6,7 @@
 import type { Session } from './library';
 import type { SessionPatch } from './library';
 
-export type SessionForm = { bookId?: string; day: string; time: string; minutes: string; pages: string; memo: string };
+export type SessionForm = { bookId?: string; day: string; time: string; minutes: string; startPage?: string; pages: string; memo: string };
 
 const pad = (n: number) => String(n).padStart(2, '0');
 function localParts(iso: string) {
@@ -16,7 +16,7 @@ function localParts(iso: string) {
 
 export function sessionFormOf(s: Session): SessionForm {
   const { day, time } = localParts(s.startedAt);
-  return { bookId: s.myBookId, day, time, minutes: String(Math.max(1, Math.round(s.durationMs / 60000))), pages: s.pagesRead ? String(s.pagesRead) : '', memo: s.memo ?? '' };
+  return { bookId: s.myBookId, day, time, minutes: String(Math.max(1, Math.round(s.durationMs / 60000))), startPage: s.startPage ? String(s.startPage) : '', pages: s.pagesRead ? String(s.pagesRead) : '', memo: s.memo ?? '' };
 }
 
 export const validDay = (v: string) => /^\d{4}-\d{2}-\d{2}$/.test(v);
@@ -57,6 +57,10 @@ export function sessionEditPatch(s: Session, initial: SessionForm, form: Session
   if (form.pages.trim() !== initial.pages.trim()) {
     const n = Number(form.pages);
     patch.pagesRead = form.pages.trim() && Number.isFinite(n) && n > 0 ? Math.round(n) : undefined;
+  }
+  if ((form.startPage ?? '').trim() !== (initial.startPage ?? '').trim()) {
+    const n = Number(form.startPage);
+    patch.startPage = form.startPage?.trim() && Number.isFinite(n) && n > 0 ? Math.round(n) : undefined;
   }
   if (form.memo.trim() !== initial.memo.trim()) patch.memo = form.memo.trim() || undefined;
   return patch;

@@ -198,6 +198,7 @@ const MIGRATIONS: Migration[] = [
     if (await d.getFirstAsync("SELECT 1 FROM sqlite_master WHERE type='table' AND name='sync_dirty'")) return fromNormalizedV3(d);
     for (const k of LIB_KINDS) await d.execAsync(`ALTER TABLE ${k} RENAME TO v3_${k}`);
     await d.execAsync(SCHEMA_V4);
+    await addV5Columns(d);
     for (const k of LIB_KINDS) {
       for (const r of await d.getAllAsync<{ id: string; data: string }>(`SELECT id, data FROM v3_${k}`)) {
         const item = JSON.parse(r.data) as Item;
@@ -209,7 +210,18 @@ const MIGRATIONS: Migration[] = [
     const m = await d.getFirstAsync<{ layout: string | null }>('SELECT layout FROM sync_meta WHERE id=1');
     if (m?.layout) await storeLayout(d, m.layout);
   },
+  // v5(2026-11, 서버 V9와 같은 열): 독서 시작 쪽, 갈피의 독서 기록 연결·아껴둔 때, 판본 제공처 상품 번호·링크. 모두 선택 값(예전 기록은 비어 있다)
+  addV5Columns,
 ];
+
+// v5 열(없을 때만 더한다). v3 → v4 이주도 지금 열 목록으로 기록을 옮기므로 표를 만든 직후 먼저 부른다
+const V5_COLUMNS: [string, string, string][] = [['sessions', 'start_page', 'INTEGER'], ['bookmarks', 'session_id', 'TEXT'], ['bookmarks', 'saved_at', 'TEXT'], ['editions', 'product_id', 'TEXT'], ['editions', 'link', 'TEXT']];
+async function addV5Columns(d: SQLite.SQLiteDatabase) {
+  for (const [t, c, kind] of V5_COLUMNS) {
+    const cols = (await d.getAllAsync<{ name: string }>(`PRAGMA table_info(${t})`)).map((x) => x.name);
+    if (!cols.includes(c)) await d.execAsync(`ALTER TABLE ${t} ADD COLUMN ${c} ${kind}`);
+  }
+}
 
 // 2026-10-17 앱(로컬 main 1165c16)의 v3: 서재·배치가 이미 지금과 같은 이름의 표(더 엄격한 CHECK, 책 자리 열 몇 개 없음)이고,
 // 대기 목록은 sync_dirty(배치 표시는 kind = id = 'layout'), 배치 시각은 kv 'shelf-layout-at'이다. sync_outbox·sync_meta는 없다.
@@ -223,6 +235,7 @@ async function fromNormalizedV3(d: SQLite.SQLiteDatabase) {
   for (const r of await d.getAllAsync<{ name: string }>(`SELECT name FROM sqlite_master WHERE type='index' AND sql IS NOT NULL AND tbl_name IN (${list})`)) await d.execAsync(`DROP INDEX "${r.name}"`);
   for (const t of NORMALIZED) await d.execAsync(`ALTER TABLE ${t} RENAME TO old_${t}`);
   await d.execAsync(SCHEMA_V4);
+  await addV5Columns(d);
   for (const t of NORMALIZED) {
     const old = new Set((await d.getAllAsync<{ name: string }>(`PRAGMA table_info(old_${t})`)).map((c) => c.name));
     const cols = (await d.getAllAsync<{ name: string }>(`PRAGMA table_info(${t})`)).map((c) => c.name).filter((c) => old.has(c)).join(', ');
@@ -306,12 +319,12 @@ function put<T extends object>(o: T, key: keyof T, v: Value) {
 
 const COLUMNS: Record<LibKind, string[]> = {
   editions: ['id', 'isbn13', 'title', 'publisher', 'published_at', 'page_count', 'width_mm', 'height_mm', 'cover_uri', 'cover_source', 'category', 'series_title', 'source', 'source_name',
-    'art_base_color', 'art_ink_color', 'art_accent_color', 'art_motif_id', 'art_layout', 'art_version', 'art_generated_at', 'created_at', 'updated_at'],
+    'product_id', 'link', 'art_base_color', 'art_ink_color', 'art_accent_color', 'art_motif_id', 'art_layout', 'art_version', 'art_generated_at', 'created_at', 'updated_at'],
   books: ['id', 'edition_id', 'status', 'rating', 'note', 'current_page', 'binding_id', 'created_at', 'updated_at'],
   bindings: ['id', 'my_book_id', 'spine_color', 'motif', 'ink_color', 'accent_color', 'layout', 'material', 'cover_art_uri', 'cover_art_id', 'spine_art_uri', 'source', 'status', 'seed', 'created_at', 'updated_at'],
   rounds: ['id', 'my_book_id', 'idx', 'started_on', 'finished_on', 'paused', 'created_at', 'updated_at'],
-  sessions: ['id', 'my_book_id', 'round_id', 'started_at', 'ended_at', 'duration_ms', 'pages_read', 'memo', 'created_at', 'updated_at'],
-  bookmarks: ['id', 'my_book_id', 'body', 'page', 'memo', 'photo_uri', 'photo_ratio', 'created_at', 'updated_at'],
+  sessions: ['id', 'my_book_id', 'round_id', 'started_at', 'ended_at', 'duration_ms', 'start_page', 'pages_read', 'memo', 'created_at', 'updated_at'],
+  bookmarks: ['id', 'my_book_id', 'body', 'page', 'memo', 'photo_uri', 'photo_ratio', 'session_id', 'saved_at', 'created_at', 'updated_at'],
 };
 const UPSERT: Record<LibKind, string> = Object.fromEntries(
   LIB_KINDS.map((k) => [k, `INSERT INTO ${TABLE[k]} (${COLUMNS[k].join(', ')}) VALUES (${COLUMNS[k].map(() => '?').join(', ')}) ON CONFLICT(id) DO UPDATE SET ${COLUMNS[k].slice(1).map((c) => `${c} = excluded.${c}`).join(', ')}`]),
@@ -324,7 +337,7 @@ function values(kind: LibKind, item: Item): Value[] {
       const e = item as Edition;
       const a = e.art;
       return [e.id, opt(e.isbn13), e.title ?? '', opt(e.publisher), opt(e.publishedAt), opt(e.pageCount), opt(e.size?.widthMm), opt(e.size?.heightMm), opt(e.coverUri), opt(e.coverSource),
-        opt(e.category), opt(e.seriesTitle), e.source ?? 'manual', opt(e.sourceName), opt(a?.baseColor), opt(a?.inkColor), opt(a?.accentColor), opt(a?.motifId), opt(a?.layoutVariant),
+        opt(e.category), opt(e.seriesTitle), e.source ?? 'manual', opt(e.sourceName), opt(e.productId), opt(e.link), opt(a?.baseColor), opt(a?.inkColor), opt(a?.accentColor), opt(a?.motifId), opt(a?.layoutVariant),
         opt(a?.version), a ? a.generatedAt ?? '' : null, e.createdAt ?? fallback, e.updatedAt ?? fallback];
     }
     case 'books': {
@@ -342,11 +355,11 @@ function values(kind: LibKind, item: Item): Value[] {
     }
     case 'sessions': {
       const s = item as Session;
-      return [s.id, opt(s.myBookId), opt(s.roundId), s.startedAt ?? fallback, s.endedAt ?? fallback, s.durationMs ?? 0, opt(s.pagesRead), opt(s.memo), s.createdAt ?? fallback, s.updatedAt ?? fallback];
+      return [s.id, opt(s.myBookId), opt(s.roundId), s.startedAt ?? fallback, s.endedAt ?? fallback, s.durationMs ?? 0, opt(s.startPage), opt(s.pagesRead), opt(s.memo), s.createdAt ?? fallback, s.updatedAt ?? fallback];
     }
     case 'bookmarks': {
       const m = item as Bookmark;
-      return [m.id, m.myBookId ?? '', m.text ?? '', opt(m.page), opt(m.memo), opt(m.photoUri), opt(m.photoRatio), m.createdAt ?? fallback, m.updatedAt ?? fallback];
+      return [m.id, m.myBookId ?? '', m.text ?? '', opt(m.page), opt(m.memo), opt(m.photoUri), opt(m.photoRatio), opt(m.sessionId), opt(m.savedAt), m.createdAt ?? fallback, m.updatedAt ?? fallback];
     }
   }
 }
@@ -382,6 +395,8 @@ function edition(r: Row, authors: string[]): Edition {
   put(e, 'category', r.category);
   put(e, 'seriesTitle', r.series_title);
   put(e, 'sourceName', r.source_name);
+  put(e, 'productId', r.product_id);
+  put(e, 'link', r.link);
   if (has(r.art_base_color)) {
     e.art = {
       baseColor: str(r.art_base_color),
@@ -435,6 +450,7 @@ function session(r: Row): Session {
   const s: Session = { id: str(r.id), startedAt: str(r.started_at), endedAt: str(r.ended_at), durationMs: num(r.duration_ms), createdAt: str(r.created_at), updatedAt: str(r.updated_at) };
   put(s, 'myBookId', r.my_book_id);
   put(s, 'roundId', r.round_id);
+  put(s, 'startPage', r.start_page);
   put(s, 'pagesRead', r.pages_read);
   put(s, 'memo', r.memo);
   return s;
@@ -446,6 +462,8 @@ function bookmark(r: Row): Bookmark {
   put(m, 'memo', r.memo);
   put(m, 'photoUri', r.photo_uri);
   put(m, 'photoRatio', r.photo_ratio);
+  put(m, 'sessionId', r.session_id);
+  put(m, 'savedAt', r.saved_at);
   return m;
 }
 

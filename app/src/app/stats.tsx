@@ -115,7 +115,7 @@ export default function Stats() {
                       </Row>
                       <Text style={[type.sub, { marginTop: 4 }]}>
                         {hm(s.startedAt)} ~ {hm(s.endedAt)}
-                        {s.pagesRead ? ` · ${s.pagesRead}쪽까지` : ''}
+                        {s.startPage !== undefined && s.pagesRead !== undefined && s.pagesRead >= s.startPage ? ` · ${s.startPage}→${s.pagesRead}쪽(${s.pagesRead - s.startPage}쪽)` : s.pagesRead ? ` · ${s.pagesRead}쪽까지` : ''}
                         {s.memo ? ` · ${s.memo}` : ''}
                       </Text>
                     </View>

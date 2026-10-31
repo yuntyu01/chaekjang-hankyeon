@@ -35,6 +35,8 @@ export type Edition = {
   art?: BookArtParams; // 재장정 계산값. ISBN당 한 번 계산해 저장한다(썸네일은 색 추출에만 쓰고 저장하지 않는다)
   source: 'manual' | 'search' | 'photo';
   sourceName?: string; // 예: 'Google Books'
+  productId?: string; // 제공처 상품 번호(YES24 상품 등). 등록 뒤에도 보존(2026-11)
+  link?: string; // 제공처 상품 페이지(YES24 약관: 출처와 링크 표시)
   createdAt: string;
   updatedAt: string;
 };
@@ -69,7 +71,8 @@ export type Session = {
   startedAt: string; // ISO
   endedAt: string; // ISO
   durationMs: number; // 실제 독서 시간(일시정지 제외)
-  pagesRead?: number;
+  startPage?: number; // 이 독서를 시작한 쪽(2026-11~). 예전 기록은 없음(지어내지 않는다)
+  pagesRead?: number; // 이 독서에서 도달한 쪽(예전부터 같은 뜻: '읽은 쪽수까지'). 시작 쪽과 둘 다 있을 때만 분량을 센다
   memo?: string;
   createdAt: string;
   updatedAt: string;
@@ -83,6 +86,8 @@ export type Bookmark = {
   memo?: string;
   photoUri?: string; // 사진 갈피: 페이지 사진(앱 보관 파일). 있으면 '사진 갈피'로 그린다
   photoRatio?: number; // 사진 가로/세로(카드에서 비율 유지)
+  sessionId?: string; // 이 갈피를 남긴 독서 기록(선택). 기록이 지워지면 연결만 비운다(갈피는 그대로)
+  savedAt?: string; // '아껴둔' 갈피로 표시한 때(백업·동기화에 포함)
   createdAt: string;
   updatedAt: string;
 };
@@ -236,7 +241,7 @@ export function sessionRound(lib: Library, myBookId: string, day: string, now: s
   return { lib: { ...lib, rounds: { ...lib.rounds, [r.id]: book.status === 'paused' ? { ...r, paused: true } : r }, books: { ...lib.books, [myBookId]: { ...book, status, updatedAt: now } } }, roundId: r.id };
 }
 
-export type SessionInput = Pick<Session, 'myBookId' | 'startedAt' | 'endedAt' | 'durationMs' | 'pagesRead' | 'memo'> & { id?: string };
+export type SessionInput = Pick<Session, 'myBookId' | 'startedAt' | 'endedAt' | 'durationMs' | 'startPage' | 'pagesRead' | 'memo'> & { id?: string };
 // 독서 기록 저장: 같은 id(타이머 id)로 다시 저장해도 하나로 남는다. 책이 있으면 회차를 먼저 확보해 연결하고,
 // 적은 쪽수는 현재 쪽수를 앞으로만 옮긴다(선택 입력). 책 없이 시간만도 저장한다
 export function addSessionTo(lib: Library, input: SessionInput, now: string, newIdFn = () => newId('ss')): { lib: Library; id: string } {
@@ -256,7 +261,7 @@ export function addSessionTo(lib: Library, input: SessionInput, now: string, new
   return { lib: next, id };
 }
 
-export type SessionPatch = Partial<Pick<Session, 'myBookId' | 'startedAt' | 'endedAt' | 'durationMs' | 'pagesRead' | 'memo'>>;
+export type SessionPatch = Partial<Pick<Session, 'myBookId' | 'startedAt' | 'endedAt' | 'durationMs' | 'startPage' | 'pagesRead' | 'memo'>>;
 // 독서 기록 수정: 준 필드만 바꾼다. myBookId 키가 있으면 연결을 바꾸거나(값) 끊는다(undefined) — 키가 없으면 그대로.
 // 연결이 바뀌면 회차도 새 책의 회차로(없으면 비움, 지난 기록 수정으로 회차를 새로 만들지 않는다). 다른 책의 회차는 남기지 않는다
 export function updateSessionIn(lib: Library, id: string, patch: SessionPatch, now: string): Library {

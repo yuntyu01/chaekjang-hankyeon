@@ -40,6 +40,7 @@ type Draft = {
   source: 'manual' | 'search' | 'photo';
   sourceName?: string;
   link?: string; // 판매처 상품 페이지(YES24 약관: 출처와 링크를 함께 보인다)
+  productId?: string; // 제공처 상품 번호(등록 뒤에도 보존)
   status: ReadStatus;
 };
 
@@ -90,6 +91,7 @@ export default function AddBook() {
       seriesTitle: c.seriesTitle,
       sourceName: c.sourceName,
       link: c.link,
+      productId: c.productId,
     }, c.pageCount && c.size ? null : `${c.sourceName} 판본 기록에 ${[c.pageCount ? null : '쪽수', c.size ? null : '판형'].filter(Boolean).join('·')} 정보가 없어요. 알면 적고, 모르면 비워 두세요(장정은 흔한 크기로 만들고 ‘확인 전’으로 표시해요).`);
   };
 
@@ -130,6 +132,8 @@ export default function AddBook() {
           coverSource: coverUri ? draft.coverSource : undefined,
           source: draft.source,
           sourceName: draft.sourceName,
+          link: draft.link,
+          productId: draft.productId,
         },
         status: draft.status,
         binding: { ...binding },

@@ -27,6 +27,7 @@ func yes24Base() string {
 }
 
 type yes24Item struct {
+	ItemID      int64  `json:"itemId"`
 	Title       string `json:"title"`
 	Author      string `json:"author"`
 	GoodsType   string `json:"goodsType"`
@@ -142,7 +143,7 @@ func (s *Server) yes24Fetch(path string, v url.Values) ([]yes24Item, error) {
 }
 
 func (it yes24Item) item() searchItem {
-	item := searchItem{ISBN: it.ISBN13, Title: it.Title, Authors: yes24Authors(it.Author, yes24Foreign(it)), Publisher: it.Publisher, PublishedAt: yes24Date(it.PublishDate), Thumb: it.Cover, Binding: it.ItemFormat, Link: it.Link, Category: yes24Category(it.GoodsSortNm), Provider: "yes24"}
+	item := searchItem{ISBN: it.ISBN13, Title: it.Title, Authors: yes24Authors(it.Author, yes24Foreign(it)), Publisher: it.Publisher, PublishedAt: yes24Date(it.PublishDate), Thumb: it.Cover, Binding: it.ItemFormat, Link: it.Link, ProductID: yes24ProductID(it.ItemID), Category: yes24Category(it.GoodsSortNm), Provider: "yes24"}
 	if len(it.Series) > 0 {
 		item.Series = strings.TrimSpace(it.Series[0].SeriesName)
 	}
@@ -325,4 +326,12 @@ func (it searchItem) format() string {
 		return it.Binding
 	}
 	return strings.TrimSpace(fmt.Sprintf("%s %dx%d", it.Binding, it.WidthMm, it.HeightMm))
+}
+
+// 상품 번호(등록 뒤에도 보존해 상품 페이지를 다시 찾는다). 없으면 비운다
+func yes24ProductID(id int64) string {
+	if id <= 0 {
+		return ""
+	}
+	return fmt.Sprintf("%d", id)
 }

@@ -3,7 +3,7 @@
 import { router, useLocalSearchParams } from 'expo-router';
 import { ChevronDown, ChevronUp, MoreHorizontal } from '@/ui/icons';
 import { useState } from 'react';
-import { Alert, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Alert, Linking, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 
 import { STATUS_LABEL, ymd } from '@/features/book/labels';
 import { placeWithChoice } from '@/features/book/place-books';
@@ -121,6 +121,7 @@ export default function BookDetailScreen() {
             <Muted>ISBN {e.isbn13 ?? '미입력'} · {e.pageCount ? `${e.pageCount}쪽` : '쪽수 미입력'}</Muted>
             <Muted>판형 {e.size ? `${e.size.widthMm}×${e.size.heightMm}mm` : '확인 전 · 책장에는 기본 크기로 표시'}</Muted>
             <Muted>{e.source === 'search' ? `도서 정보: ${e.sourceName ?? '검색'}` : e.source === 'photo' ? '사진으로 추가' : '직접 입력'}</Muted>
+            {e.link ? <TextLink label={`${e.sourceName ?? '판매처'} 상품 페이지 보기`} tone="soft" onPress={() => void Linking.openURL(e.link!)} style={{ alignSelf: 'flex-start' }} /> : null}
           </View>
 
           <H2>읽기 상태</H2>

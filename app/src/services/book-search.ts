@@ -24,6 +24,7 @@ export type BookCandidate = {
   sourceName: string;
   detailRef?: string; // 판본 상세를 읽을 주소(고른 뒤)
   link?: string; // 판매처 상품 페이지(YES24 약관: 출처와 함께 보인다)
+  productId?: string; // 제공처 상품 번호(등록 뒤에도 보존)
 };
 
 export type SearchError = { ok: false; reason: 'network' | 'quota' | 'auth' | 'unknown'; message: string; diag: string };
@@ -33,7 +34,7 @@ const GOOGLE_KEY = process.env.EXPO_PUBLIC_GOOGLE_BOOKS_KEY;
 const API = process.env.EXPO_PUBLIC_API_URL?.replace(/\/+$/, '');
 
 // 서버 검색 결과 한 권(server/internal/server/books.go searchItem)
-export type ServerItem = { isbn13: string; title: string; authors?: string[]; publisher?: string; publishedAt?: string; thumbnailUrl?: string; pages?: number; widthMm?: number; heightMm?: number; category?: string; series?: string; link?: string; provider?: string };
+export type ServerItem = { isbn13: string; title: string; authors?: string[]; publisher?: string; publishedAt?: string; thumbnailUrl?: string; pages?: number; widthMm?: number; heightMm?: number; category?: string; series?: string; link?: string; productId?: string; provider?: string };
 const PROVIDER_NAME: Record<string, string> = { yes24: 'YES24' };
 
 export function fromServer(i: ServerItem): BookCandidate {
@@ -51,6 +52,7 @@ export function fromServer(i: ServerItem): BookCandidate {
     seriesTitle: i.series || undefined,
     sourceName: PROVIDER_NAME[i.provider ?? ''] ?? '도서 정보',
     link: i.link || undefined,
+    productId: i.productId || undefined,
   };
 }
 

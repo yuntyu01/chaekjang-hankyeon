@@ -14,7 +14,7 @@ import (
 
 // YES24 응답 모양은 2026-10-31 실제 호출(detail=Y)에서 옮겼다
 const yes24Body = `{"success":true,"message":"성공","errorCode":null,"data":{"items":[
-{"title":"모순","author":"양귀자 저","goodsType":"도서","publisher":"쓰다","isbn13":"9788998441012","publishDate":"20130401","pages":308,"width":128,"length":188,"itemFormat":"양장","cover":"https://image.yes24.com/goods/8759796/L","link":"https://www.yes24.com/product/goods/8759796","goodsSortNm":"국내도서-소설/시/희곡","series":[],"contentDetail":{"bookIntroduction":" 초판이 나온 지 벌써 15년이 흘렀지만 ","bookSummary":null}},
+{"itemId":8759796,"title":"모순","author":"양귀자 저","goodsType":"도서","publisher":"쓰다","isbn13":"9788998441012","publishDate":"20130401","pages":308,"width":128,"length":188,"itemFormat":"양장","cover":"https://image.yes24.com/goods/8759796/L","link":"https://www.yes24.com/product/goods/8759796","goodsSortNm":"국내도서-소설/시/희곡","series":[],"contentDetail":{"bookIntroduction":" 초판이 나온 지 벌써 15년이 흘렀지만 ","bookSummary":null}},
 {"title":"모순","author":"양귀자 저","goodsType":"eBook","publisher":"쓰다","isbn13":"9791134373641","publishDate":"20220712","pages":308,"width":null,"length":null,"cover":"x","link":"y"},
 {"title":"해리 포터와 마법사의 돌 1","author":"J.K 롤링 저/강동혁 역","goodsType":"도서","publisher":"문학수첩","isbn13":"9791193790403","publishDate":"20240101","pages":null,"width":137,"length":null,"cover":"","link":"https://www.yes24.com/product/goods/1","series":[{"seriesId":1,"seriesName":"해리 포터 20주년 개정판"}],"contentDetail":null},
 {"title":"영화음악","author":"John Williams","goodsType":"LP","isbn13":"8809000000000"}],"currentPage":1,"pageSize":30,"totalCount":4}}`
@@ -49,7 +49,7 @@ func TestYes24Search(t *testing.T) {
 	}
 	// 종이책만(eBook·LP 제외), 쪽수·판형은 있을 때만, 옮긴이는 지은이에서 뺀다. 분류는 '>' 경로, 시리즈는 첫 이름, 책 소개는 앞뒤 공백 없이
 	want := []searchItem{
-		{ISBN: "9788998441012", Title: "모순", Authors: []string{"양귀자"}, Publisher: "쓰다", PublishedAt: "2013-04-01", Thumb: "https://image.yes24.com/goods/8759796/L", Description: "초판이 나온 지 벌써 15년이 흘렀지만", Pages: 308, WidthMm: 128, HeightMm: 188, Binding: "양장", Link: "https://www.yes24.com/product/goods/8759796", Category: "국내도서>소설/시/희곡", Provider: "yes24"},
+		{ISBN: "9788998441012", Title: "모순", Authors: []string{"양귀자"}, Publisher: "쓰다", PublishedAt: "2013-04-01", Thumb: "https://image.yes24.com/goods/8759796/L", Description: "초판이 나온 지 벌써 15년이 흘렀지만", Pages: 308, WidthMm: 128, HeightMm: 188, Binding: "양장", Link: "https://www.yes24.com/product/goods/8759796", ProductID: "8759796", Category: "국내도서>소설/시/희곡", Provider: "yes24"},
 		{ISBN: "9791193790403", Title: "해리 포터와 마법사의 돌 1", Authors: []string{"J.K 롤링"}, Publisher: "문학수첩", PublishedAt: "2024-01-01", Link: "https://www.yes24.com/product/goods/1", Series: "해리 포터 20주년 개정판", Provider: "yes24"},
 	}
 	if !reflect.DeepEqual(got.Items, want) {

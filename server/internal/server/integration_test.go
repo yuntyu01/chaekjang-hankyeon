@@ -74,7 +74,7 @@ func TestIntegration(t *testing.T) {
 		t.Fatalf("cross-user file: %d", status)
 	}
 	at := "2026-10-01T12:00:00Z"
-	body := map[string]any{"editions": []any{map[string]any{"id": "ed1", "title": "Book", "authors": []string{"A", "B"}, "source": "manual", "updatedAt": at}}, "books": []any{map[string]any{"id": "book1", "editionId": "ed1", "status": "reading", "currentPage": 12, "updatedAt": at}}, "bookmarks": []any{map[string]any{"id": "mark1", "myBookId": "book1", "text": "hello", "photoFileId": "a.png", "updatedAt": at}}, "layout": map[string]any{"layoutJson": "{\"shelves\":[]}", "version": 2, "updatedAt": at}}
+	body := map[string]any{"editions": []any{map[string]any{"id": "ed1", "title": "Book", "authors": []string{"A", "B"}, "source": "manual", "updatedAt": at}}, "books": []any{map[string]any{"id": "book1", "editionId": "ed1", "status": "reading", "currentPage": 12, "updatedAt": at}}, "bookmarks": []any{map[string]any{"id": "mark1", "myBookId": "book1", "text": "hello", "photoFileId": "a.png", "sessionId": "session1", "savedAt": at, "updatedAt": at}}, "layout": map[string]any{"layoutJson": "{\"shelves\":[]}", "version": 2, "updatedAt": at}}
 	if status, out := request("POST", "/sync/push", one, body); status != 200 || out["applied"] != float64(4) {
 		t.Fatalf("push %d %+v", status, out)
 	}
@@ -87,7 +87,12 @@ func TestIntegration(t *testing.T) {
 		}
 		for _, key := range []string{"editions", "books", "bookmarks"} {
 			for _, v := range out[key].([]any) {
-				seen[v.(map[string]any)["id"].(string)] = true
+				item := v.(map[string]any)
+				seen[item["id"].(string)] = true
+				// V9: 갈피의 독서 기록 연결·아껴둔 때가 그대로 돌아온다
+				if item["id"] == "mark1" && (item["sessionId"] != "session1" || item["savedAt"] == nil) {
+					t.Fatalf("bookmark V9 fields %+v", item)
+				}
 			}
 		}
 		if out["layout"] != nil {
@@ -121,7 +126,7 @@ func TestIntegration(t *testing.T) {
 	extended := map[string]any{
 		"bindings": []any{map[string]any{"id": "binding1", "myBookId": "book1", "spineColor": "#abcdef", "motif": "leaf", "material": "cloth", "coverArtId": "cover1", "source": "custom", "status": "ready", "seed": 12, "updatedAt": at}},
 		"rounds":   []any{map[string]any{"id": "round1", "myBookId": "book1", "index": 1, "startedAt": "2026-10-01", "paused": false, "updatedAt": at}},
-		"sessions": []any{map[string]any{"id": "session1", "myBookId": "book1", "roundId": "round1", "startedAt": at, "endedAt": "2026-10-01T12:01:00Z", "durationMs": 60000, "pagesRead": 3, "updatedAt": at}},
+		"sessions": []any{map[string]any{"id": "session1", "myBookId": "book1", "roundId": "round1", "startedAt": at, "endedAt": "2026-10-01T12:01:00Z", "durationMs": 60000, "startPage": 1, "pagesRead": 3, "updatedAt": at}},
 	}
 	if status, out := request("POST", "/sync/push", one, extended); status != 200 || out["applied"] != float64(3) {
 		t.Fatalf("extended push %d %+v", status, out)
@@ -143,7 +148,7 @@ func TestIntegration(t *testing.T) {
 			t.Fatalf("round %+v", round)
 		}
 		session := out["sessions"].([]any)[0].(map[string]any)
-		if session["durationMs"] != float64(60000) {
+		if session["durationMs"] != float64(60000) || session["startPage"] != float64(1) || session["pagesRead"] != float64(3) {
 			t.Fatalf("session %+v", session)
 		}
 	}

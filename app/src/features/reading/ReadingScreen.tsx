@@ -6,7 +6,7 @@
 import { router, useFocusEffect } from 'expo-router';
 import { BookOpen, AudioLines, Check, ChevronDown, ChevronLeft, Timer, Volume1, Volume2, VolumeX } from '@/ui/icons';
 import { useCallback, useEffect, useState, type ReactNode } from 'react';
-import { AccessibilityInfo, AppState, Pressable, ScrollView, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
+import { AccessibilityInfo, Alert, AppState, Pressable, ScrollView, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Svg, { Defs, LinearGradient, Path, Rect, Stop } from 'react-native-svg';
 
@@ -15,6 +15,7 @@ import { Scene } from '@/features/reading/Scene';
 import { ambient, SCENES, useAmbient } from '@/services/ambient';
 import { useLibrary } from '@/store/library-store';
 import { readingStore, useReading } from '@/store/reading-store';
+import { saveAndStartOther } from '@/store/finish-reading';
 import { settingsStore, useSettings } from '@/store/settings-store';
 import { colors, fonts, icon, night, press, tidyShape as shape, tidySpace as space, tidyType as type } from '@/ui/screenTheme';
 import { LibraryCover } from '@/ui/BookVisual';
@@ -83,11 +84,26 @@ export function ReadingScreen({ initialBookId, soundOnly = false, inTab = false 
   useEffect(() => {
     if (!initialBookId) return;
     if (lib.books[initialBookId] && !active) setDraftBookId(initialBookId);
+    // 다른 책을 읽는 중에 이 책의 '읽기'를 눌렀다: 계속할지, 지금까지 저장하고 이 책으로 새로 읽을지 묻는다
+    else if (lib.books[initialBookId] && active && active.myBookId !== initialBookId) askSwitch(initialBookId);
     // Consume the book-detail handoff so revisiting that same book can select it again.
     // Leaving and returning to the tab must retain the choice made inside the timer.
     router.setParams({ book: undefined });
   }, [initialBookId, lib.books, active]);
   useEffect(() => { if (!active && !soundOnly && !audio.playing) setOpen(true); }, [active, soundOnly, audio.playing]);
+
+  // 읽는 중에 다른 책을 골랐을 때: '이 기록의 책 정정'(같은 독서를 다른 책으로 바로잡기)과 '다른 책 읽기 시작'(지금까지 저장 후 새 타이머)을 나눈다.
+  // 앞 책에서 잰 시간이 설명 없이 새 책으로 옮겨 가지 않게
+  const askSwitch = (nextId: string | undefined) => {
+    const cur = readingStore.get().active;
+    if (!cur) return;
+    const title = (id?: string) => (id ? bookTitle(lib, id) : undefined) ?? '책 없음';
+    Alert.alert('읽는 책을 바꿀까요?', `지금 ‘${title(cur.myBookId)}’를 읽는 중이에요.`, [
+      { text: '계속 읽기', style: 'cancel' },
+      { text: '이 기록의 책을 바꾸기', onPress: () => { setDraftBookId(nextId); readingStore.setBook(nextId, nextId ? lib.books[nextId]?.currentPage : undefined); } },
+      { text: `지금까지 저장하고 새로 읽기`, onPress: () => { setDraftBookId(nextId); void saveAndStartOther(nextId).catch((err) => Alert.alert('저장하지 못했어요', String((err as Error)?.message ?? err))); } },
+    ]);
+  };
 
   const finish = () => {
     if (!active) return;
@@ -102,7 +118,8 @@ export function ReadingScreen({ initialBookId, soundOnly = false, inTab = false 
       if (readingStore.get().pending) router.push('/reading/finish');
       return;
     }
-    readingStore.start(draftBookId && lib.books[draftBookId] ? draftBookId : undefined);
+    const id = draftBookId && lib.books[draftBookId] ? draftBookId : undefined;
+    readingStore.start(id, id ? lib.books[id]?.currentPage : undefined);
     void ambient.play(settings.scene);
   };
   // 재생·일시정지: 펼친 조작부의 둥근 단추와 접었을 때 시간 옆 아이콘이 같은 동작이다
@@ -191,7 +208,7 @@ export function ReadingScreen({ initialBookId, soundOnly = false, inTab = false 
           </View>
         </>
       ) : null}
-      <BookPicker lib={lib} visible={bookPicker} allowNone onClose={() => setBookPicker(false)} onPick={(id) => { setDraftBookId(id); if (active) readingStore.setBook(id); setBookPicker(false); }} />
+      <BookPicker lib={lib} visible={bookPicker} allowNone onClose={() => setBookPicker(false)} onPick={(id) => { setBookPicker(false); if (active && active.myBookId !== id) askSwitch(id); else setDraftBookId(id); }} />
       <Sheet visible={controls !== null} onClose={() => setControls(null)} title={controls === 'goal' ? '목표 시간' : '분위기'} scroll maxHeight={height * 0.8}>
         {controls === 'goal' ? (
           <View>

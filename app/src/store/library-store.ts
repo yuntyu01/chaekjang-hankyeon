@@ -195,13 +195,13 @@ export const libraryStore = {
     commit(lib);
   },
 
-  addBookmark(input: Pick<Bookmark, 'myBookId' | 'text' | 'page' | 'memo' | 'photoUri' | 'photoRatio'>) {
+  addBookmark(input: Pick<Bookmark, 'myBookId' | 'text' | 'page' | 'memo' | 'photoUri' | 'photoRatio' | 'sessionId'>) {
     const t = now();
     const m: Bookmark = { id: newId('bm'), createdAt: t, updatedAt: t, ...input };
     commit({ ...state.lib, bookmarks: { ...state.lib.bookmarks, [m.id]: m } });
     return m.id;
   },
-  updateBookmark(id: string, patch: Partial<Pick<Bookmark, 'text' | 'page' | 'memo' | 'myBookId' | 'photoUri' | 'photoRatio'>>) {
+  updateBookmark(id: string, patch: Partial<Pick<Bookmark, 'text' | 'page' | 'memo' | 'myBookId' | 'photoUri' | 'photoRatio' | 'sessionId' | 'savedAt'>>) {
     const m = state.lib.bookmarks[id];
     if (!m) return;
     commit({ ...state.lib, bookmarks: { ...state.lib.bookmarks, [id]: { ...m, ...patch, updatedAt: now() } } });
@@ -223,10 +223,14 @@ export const libraryStore = {
     const next = updateSessionIn(state.lib, id, patch, now());
     if (next !== state.lib) commit(next);
   },
+  // 기록을 지우면 그 기록에 연결된 갈피는 연결만 비운다(갈피 원문은 그대로)
   deleteSession(id: string) {
     const next = { ...state.lib.sessions };
     delete next[id];
-    commit({ ...state.lib, sessions: next });
+    const t = now();
+    const marks = { ...state.lib.bookmarks };
+    for (const m of Object.values(state.lib.bookmarks)) if (m.sessionId === id) marks[m.id] = { ...m, sessionId: undefined, updatedAt: t };
+    commit({ ...state.lib, sessions: next, bookmarks: marks });
   },
 
   // 서버에서 받은 변경은 올릴 변경으로 세지 않고, 기록 완료 후 커서를 옮긴다.
