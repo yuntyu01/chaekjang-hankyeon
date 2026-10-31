@@ -3,7 +3,7 @@
 //   책등 제목은 조판 두 가지(세운 책등 = 세로, 눕힌 책등 = 가로 한 줄)를 따로 기록해 두고 자세(눕힘 정도)로 고른다.
 // - 머리·꼬리·책배: 판 끝보다 안쪽으로 들어간 속지 면 + 판·책등 테두리(BookFaces). 뒤표지: 판 면.
 // - 그리는 순서: 속지 면(안쪽) 먼저, 바깥 면(판·책등·앞표지) 나중: 들어간 속지 가운데 바깥 면 뒤로 숨는 부분은 바깥 면이 덮는다.
-// - 윤곽: 투영 껍질을 판 모서리 반지름(EDGE_R)으로 둥글린 모양. 레이어에 그린 뒤 그 모양으로 잘라 가장자리를 매끈하게 한다(dstIn).
+// - 윤곽: 투영 껍질을 판 모서리 반지름(EDGE_R)으로 둥글린 모양. 레이어에 그린 뒤 윤곽 밖을 지워(반전 채움 dstOut) 가장자리를 매끈하게 한다.
 // - 밝기: 빛 모델 하나(domain/light-model, ui/SceneLight). 책끼리 앞뒤는 매 프레임 가림 순서로(zIndex).
 import { Group, Path, Picture, Rect, Skia, type SkRect } from '@shopify/react-native-skia';
 import { useLayoutEffect, useMemo } from 'react';
@@ -180,7 +180,7 @@ export function BookNode({ book, dims, state, cam, px, shared, keyShadow, order,
   const sur: Surround = { env, atlas, id: book.id, boxes, self };
   return (
     <Group zIndex={z} clip={clip} opacity={opacity}>
-      {/* 경로 자르기(clip)는 안티에일리어싱 없이 계단이 된다. 책 둘레 사각형 크기 레이어에 그린 뒤 안티에일리어싱된 윤곽 경로로 남길 곳만 남긴다(dstIn) */}
+      {/* 경로 자르기(clip)는 안티에일리어싱 없이 계단이 된다. 책 둘레 사각형 크기 레이어에 그린 뒤 안티에일리어싱된 윤곽 경로 밖을 지운다 */}
       <Group clip={bounds}>
         <Group layer>
           <Path path={outline} color={tone} />
@@ -203,7 +203,9 @@ export function BookNode({ book, dims, state, cam, px, shared, keyShadow, order,
           )}
           {/* 빛: 책 윤곽 안을 화소마다 광선으로(보이는 면·속지 구멍을 셰이더가 찾는다). 받는 창빛 그림자도 그 빛 계산 안에서 */}
           {SHOW.body && LIGHT_ON.face ? <BookLight dims={dims} state={state} cam={cam} px={px} outline={outline} albedo={albedo} material={book.art.material} env={env} atlas={atlas} id={book.id} keyShadow={keyShadow} picture={!!book.cover?.artworkId && !book.art.vectorCover} /> : null}
-          <Path path={outline} color="black" blendMode="dstIn" />
+          {/* 윤곽 밖을 지운다: 반전 채움 경로를 dstOut으로(윤곽 밖은 다 지우고, 가장자리 화소는 덮인 만큼만 남는다).
+              dstIn 경로는 경로가 덮는 화소에만 적용돼, 둥근 윤곽 밖으로 나온 사각형 면(책등 그림)의 귀퉁이가 직각으로 남았다(2026-11-01) */}
+          <Path path={outline} fillType="inverseWinding" color="black" blendMode="dstOut" />
         </Group>
       </Group>
       {/* 갈피: 머리 위로 나오므로 둥근 윤곽 밖에 */}
