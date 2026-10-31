@@ -19,12 +19,10 @@ import { LoadingScreen } from '@/ui/LoadingScreen';
 import { colors } from '@/ui/theme';
 import { colors as screenColors } from '@/ui/screenTheme';
 
-// 화면 UI 글꼴: Pretendard R·M·SB(시안과 같은 글꼴). 나눔스퀘어라운드 B·EB는 홈 머리글. assets/fonts/README.md
+// 화면 UI 글꼴: Pretendard R·M·SB(시안과 같은 글꼴, 홈 머리글 포함). assets/fonts/README.md
 const PretendardRegular = require('../../assets/fonts/Pretendard-Regular.otf');
 const PretendardMedium = require('../../assets/fonts/Pretendard-Medium.otf');
 const PretendardSemiBold = require('../../assets/fonts/Pretendard-SemiBold.otf');
-const NanumSquareRoundEB = require('../../assets/fonts/NanumSquareRoundEB.ttf');
-const NanumSquareRoundB = require('../../assets/fonts/NanumSquareRoundB.ttf');
 const ReadingSerif = require('../../assets/fonts/NotoSerifKR-Regular.otf');
 const ReadingSerifMedium = require('../../assets/fonts/NotoSerifKR-Medium.otf');
 const ReadingSerifSemiBold = require('../../assets/fonts/NotoSerifKR-SemiBold.otf');
@@ -34,7 +32,7 @@ bootMark('js-layout-module');
 void SplashScreen.preventAutoHideAsync();
 
 export default function RootLayout() {
-  const [loaded, error] = useFonts({ GowunBatang_400Regular, GowunBatang_700Bold, PretendardRegular, PretendardMedium, PretendardSemiBold, NanumSquareRoundEB, NanumSquareRoundB, ReadingSerif, ReadingSerifMedium, ReadingSerifSemiBold });
+  const [loaded, error] = useFonts({ GowunBatang_400Regular, GowunBatang_700Bold, PretendardRegular, PretendardMedium, PretendardSemiBold, ReadingSerif, ReadingSerifMedium, ReadingSerifSemiBold });
   const [booted, setBooted] = useState(false);
   const [bootError, setBootError] = useState(false);
   const [bootAttempt, setBootAttempt] = useState(0);

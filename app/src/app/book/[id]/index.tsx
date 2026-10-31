@@ -6,6 +6,8 @@ import { useState } from 'react';
 import { Alert, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 
 import { STATUS_LABEL, ymd } from '@/features/book/labels';
+import { placeWithChoice } from '@/features/book/place-books';
+import { ko } from '@/i18n/ko';
 import { placementOf } from '@/domain/layout-engine';
 import { bookmarksOf, bookReadMs, completions, formatDuration, READ_STATUSES, roundsOf } from '@/domain/library';
 import { useLibrary, libraryStore } from '@/store/library-store';
@@ -38,15 +40,14 @@ export default function BookDetailScreen() {
   const readMs = bookReadMs(lib, id);
   const sessions = Object.values(lib.sessions).filter((s) => s.myBookId === id).length;
   const onShelf = !!placementOf(place.layout, id);
-  const inDrawer = place.layout.drawer.includes(id);
   const done = completions(lib, id);
   const color = bd?.spineColor ?? '#8A8378';
   const pub = [e.publisher, e.publishedAt?.slice(0, 4)].filter(Boolean).join(' · ');
 
   const confirmDelete = () => {
     Alert.alert(
-      '내 책에서 삭제할까요?',
-      `이 책과 함께 삭제돼요: 독서 회차 ${rounds.length}개, 갈피 ${marks.length}개, 장정.\n독서 시간 기록 ${sessions}개는 ‘책 없음’으로 남아 통계에 계속 포함돼요.\n되돌릴 수 없어요.`,
+      '책을 삭제할까요?',
+      `책 정보와 함께 삭제돼요: 독서 회차 ${rounds.length}개, 갈피 ${marks.length}개, 장정.\n독서 시간 기록 ${sessions}개는 ‘책 없음’으로 남아 통계에 계속 포함돼요.\n되돌릴 수 없어요. 책장에서만 치우려면 ‘책장에서 빼기’를 쓰세요(기록은 그대로).`,
       [
         { text: '취소', style: 'cancel' },
         {
@@ -175,19 +176,13 @@ export default function BookDetailScreen() {
           <ListItem label="책 정보 수정" chevron={false} onPress={() => { setMenu(false); router.push(`/book/${id}/edit`); }} />
           <ListItem label="장정 편집" chevron={false} onPress={() => { setMenu(false); router.push(`/book/${id}/binding`); }} />
           {onShelf ? <ListItem label="책장 위치로 이동" chevron={false} onPress={() => { setMenu(false); uiBus.focusBook(id); router.dismissTo('/'); }} /> : null}
+          {/* 책장에서 빼기는 배치만 푼다(책 정보·장정·독서 기록·갈피 그대로). 삭제(빨간 글자)는 책 데이터 자체를 지운다 */}
           {onShelf ? (
-            <ListItem label="서랍으로 이동(기록은 그대로)" chevron={false} onPress={() => { setMenu(false); placementStore.toDrawer(id); }} />
+            <ListItem label={ko.allBooks.removeFromShelf} sub={ko.allBooks.removeNote} chevron={false} onPress={() => { setMenu(false); if (placementStore.toDrawer(id)) Alert.alert(ko.allBooks.removed); }} />
           ) : (
-            <ListItem
-              label={inDrawer ? '책장에 꺼내 놓기' : '책장에 꽂기'}
-              chevron={false}
-              onPress={() => {
-                setMenu(false);
-                if (placementStore.fromDrawer(id) === 'none' && placementStore.addToShelf(id) === 'none') Alert.alert('책장에 빈 자리가 없어요', '선반을 추가하거나 다른 책을 서랍에 넣어 주세요.');
-              }}
-            />
+            <ListItem label={ko.allBooks.place} chevron={false} onPress={() => { setMenu(false); placeWithChoice([id]); }} />
           )}
-          <ListItem label="내 책 삭제" danger chevron={false} onPress={() => { setMenu(false); confirmDelete(); }} />
+          <ListItem label="책 삭제" sub="책 정보·장정·독서 회차·갈피를 지워요" danger chevron={false} onPress={() => { setMenu(false); confirmDelete(); }} />
         </ListGroup>
       </Sheet>
     </Screen>

@@ -27,6 +27,13 @@ type searchItem struct {
 	PublishedAt string   `json:"publishedAt,omitempty"`
 	Thumb       string   `json:"thumbnailUrl,omitempty"`
 	Description string   `json:"description,omitempty"`
+	// 판본 정보(YES24 detail=Y에만 있다). 없으면 비운다(추정하지 않는다)
+	Pages    int    `json:"pages,omitempty"`
+	WidthMm  int    `json:"widthMm,omitempty"`
+	HeightMm int    `json:"heightMm,omitempty"`
+	Binding  string `json:"binding,omitempty"`  // 양장·반양장 등
+	Link     string `json:"link,omitempty"`     // 상품 페이지(YES24 약관: 출처와 함께 링크를 보인다)
+	Provider string `json:"provider,omitempty"` // yes24·kakao·mock
 }
 type bookResponse struct {
 	searchItem
@@ -41,7 +48,7 @@ type bookResponse struct {
 	Source         string `json:"source"`
 }
 
-var mocks = []searchItem{{"9790000000018", "여름의 숲", []string{"가짜 작가"}, "샘플 출판", "2021-06-01", "", ""}, {"9790000000025", "여름의 숲", []string{"가짜 작가"}, "샘플 출판 개정판", "2025-03-15", "", ""}, {"9790000000032", "달과 나", []string{"시험 저자"}, "개발 문고", "2019-11-20", "", ""}, {"9790000000049", "고요한 우연", []string{"시험 저자"}, "개발 문고", "2023-02-08", "", ""}, {"9790000000056", "작은 것들의 깊이", []string{"목업 작가", "공동 저자"}, "샘플 출판", "2024-09-01", "", ""}}
+var mocks = []searchItem{{ISBN: "9790000000018", Title: "여름의 숲", Authors: []string{"가짜 작가"}, Publisher: "샘플 출판", PublishedAt: "2021-06-01"}, {ISBN: "9790000000025", Title: "여름의 숲", Authors: []string{"가짜 작가"}, Publisher: "샘플 출판 개정판", PublishedAt: "2025-03-15"}, {ISBN: "9790000000032", Title: "달과 나", Authors: []string{"시험 저자"}, Publisher: "개발 문고", PublishedAt: "2019-11-20"}, {ISBN: "9790000000049", Title: "고요한 우연", Authors: []string{"시험 저자"}, Publisher: "개발 문고", PublishedAt: "2023-02-08"}, {ISBN: "9790000000056", Title: "작은 것들의 깊이", Authors: []string{"목업 작가", "공동 저자"}, Publisher: "샘플 출판", PublishedAt: "2024-09-01"}}
 var pages = map[string]int{"9790000000018": 180, "9790000000025": 196, "9790000000032": 312, "9790000000049": 460, "9790000000056": 240}
 var motifs = strings.Split("leaf sprig cotton moon crescent star constellation wave ripple flower wildflower tulip camellia pine mountain cloud sun rain snow feather bird cat teacup candle key letter window lantern shell mushroom", " ")
 var colors = []string{"#EFE6D3", "#2F5A45", "#B5503A", "#A8C3DA", "#223A63", "#F2C9A0", "#D98A7E", "#7D2E35"}
@@ -114,7 +121,21 @@ func validISBN(s string) bool {
 	}
 	return sum%10 == 0
 }
+
+// 검색 제공자: YES24 키가 있으면 YES24(쪽수·판형까지), 없으면 카카오, 둘 다 없으면 개발용 가짜 목록
+func bookSource() string {
+	switch {
+	case yes24Key() != "":
+		return "yes24"
+	case os.Getenv("KAKAO_REST_KEY") != "":
+		return "kakao"
+	}
+	return "mock"
+}
 func (s *Server) searchBooks(q string, isbn bool) ([]searchItem, error) {
+	if yes24Key() != "" {
+		return s.yes24Search(q, isbn)
+	}
 	key := os.Getenv("KAKAO_REST_KEY")
 	out := []searchItem{}
 	if key == "" {
@@ -171,7 +192,7 @@ func (s *Server) searchBooks(q string, isbn bool) ([]searchItem, error) {
 		if len(date) >= 10 {
 			date = date[:10]
 		}
-		out = append(out, searchItem{code, d.Title, d.Authors, d.Publisher, date, d.Thumbnail, d.Contents})
+		out = append(out, searchItem{ISBN: code, Title: d.Title, Authors: d.Authors, Publisher: d.Publisher, PublishedAt: date, Thumb: d.Thumbnail, Description: d.Contents, Provider: "kakao"})
 	}
 	return out, nil
 }
@@ -296,10 +317,7 @@ func (s *Server) book(w http.ResponseWriter, r *http.Request) error {
 		return notFound
 	}
 	item := found[0]
-	source := "kakao"
-	if os.Getenv("KAKAO_REST_KEY") == "" {
-		source = "mock"
-	}
+	source := bookSource()
 	color := ""
 	if cached && b.CoverURL == item.Thumb {
 		color = b.ThemeColor
@@ -312,9 +330,9 @@ func (s *Server) book(w http.ResponseWriter, r *http.Request) error {
 	}
 	page := pages[isbn]
 	if source != "mock" {
-		page = 0
+		page = item.Pages
 	}
-	b = bookResponse{searchItem: searchItem{ISBN: isbn, Title: item.Title, Authors: item.Authors, Publisher: item.Publisher, PublishedAt: item.PublishedAt, Description: item.Description}, PageCount: page, CoverURL: item.Thumb, CoverThumbURL: item.Thumb, ThemeColor: color, Source: source}
+	b = bookResponse{searchItem: searchItem{ISBN: isbn, Title: item.Title, Authors: item.Authors, Publisher: item.Publisher, PublishedAt: item.PublishedAt, Description: item.Description, Link: item.Link, Provider: item.Provider}, PageCount: page, Format: item.format(), CoverURL: item.Thumb, CoverThumbURL: item.Thumb, ThemeColor: color, Source: source}
 	b.classify()
 	tx, e := s.DB.Begin(ctx)
 	if e != nil {

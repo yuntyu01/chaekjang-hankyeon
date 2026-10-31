@@ -1,9 +1,10 @@
-// 책 추가: 책 찾기(검색·사진·직접 입력) → 책·판본 확인 → 재장정 미리보기 → 내 책에 추가 → 책장에 꽂기 또는 서랍에 보관.
+// 책 추가: 책 찾기(검색·사진·직접 입력) → 책·판본 확인 → 재장정 미리보기 → 추가하고 책장에 놓기(기본) 또는 보관만 하기.
+// 저장한 뒤 다시 묻지 않는다. 자리가 모자랄 때만 새 선반 추가 / 보관만 하기를 고른다(place-books). 보관만 한 책도 전체 책에 있다.
 // 검색 결과·표지·쪽수가 없어도 직접 입력과 기본 장정으로 끝낼 수 있다. 추정 크기를 확인된 정보처럼 저장하지 않는다.
 import { router, useLocalSearchParams } from 'expo-router';
 import { Camera, ImageIcon, PenLine, Plus } from '@/ui/icons';
 import { useEffect, useRef, useState } from 'react';
-import { Alert, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Alert, Linking, Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { BindingEditor, type BindingDraft } from '@/features/book/BindingEditor';
 import { buildBookArt, type BookArtParams, type PaletteEntry } from '@/domain/rebinding';
@@ -15,9 +16,10 @@ import { photoIdentify } from '@/services/connectors';
 import { deniedMessage, pickPhoto } from '@/services/photos';
 import { keepImage } from '@/store/files';
 import { libraryStore } from '@/store/library-store';
+import { placeWithChoice } from '@/features/book/place-books';
 import { placementStore } from '@/store/placement-store';
 import { uiBus } from '@/store/ui-bus';
-import { Btn, Chip, Empty, Field, H2, IconAction, Muted, Notice, RealCover, Row, Screen, SearchField } from '@/ui/kit';
+import { Btn, Chip, Empty, Field, H2, IconAction, Muted, Notice, RealCover, Row, Screen, SearchField, TextLink } from '@/ui/kit';
 import { colors, icon, press, space, type } from '@/ui/screenTheme';
 
 type Step = 'find' | 'confirm' | 'binding' | 'done';
@@ -36,6 +38,7 @@ type Draft = {
   category?: string;
   source: 'manual' | 'search' | 'photo';
   sourceName?: string;
+  link?: string; // 판매처 상품 페이지(YES24 약관: 출처와 링크를 함께 보인다)
   status: ReadStatus;
 };
 
@@ -54,7 +57,7 @@ export default function AddBook() {
   const [art, setArt] = useState<BookArtParams | null>(null); // 추천 장정(ISBN당 한 번 계산해 판본에 저장)
   const [notice, setNotice] = useState<string | null>(null);
   const [addedId, setAddedId] = useState<string | null>(null);
-  const [placed, setPlaced] = useState<'shelf' | 'drawer' | 'none' | null>(null);
+  const [placed, setPlaced] = useState<'shelf' | 'kept' | null>(null);
   const [saving, setSaving] = useState(false);
 
   const size: SizeMm | undefined = num(draft.width) && num(draft.height) ? { widthMm: Math.min(num(draft.width)!, num(draft.height)!), heightMm: Math.max(num(draft.width)!, num(draft.height)!) } : undefined;
@@ -83,6 +86,7 @@ export default function AddBook() {
       coverSource: c.coverUrl ? 'api' : undefined,
       category: c.category,
       sourceName: c.sourceName,
+      link: c.link,
     }, c.pageCount && c.size ? null : `${c.sourceName} 판본 기록에 ${[c.pageCount ? null : '쪽수', c.size ? null : '판형'].filter(Boolean).join('·')} 정보가 없어요. 알면 적고, 모르면 비워 두세요(장정은 흔한 크기로 만들고 ‘확인 전’으로 표시해요).`);
   };
 
@@ -97,7 +101,8 @@ export default function AddBook() {
     toConfirm({ ...blank('photo'), coverUri: r.uri, coverSource: 'photo' }, photoIdentify.available ? null : photoIdentify.reason ?? null);
   };
 
-  const add = async () => {
+  // 등록 완료: where 'shelf'(기본)는 바로 책장에 놓고, 'keep'은 책장에 없는 책으로 보관만 한다
+  const add = async (where: 'shelf' | 'keep') => {
     if (!binding) return;
     setSaving(true);
     try {
@@ -126,23 +131,20 @@ export default function AddBook() {
         binding: { ...binding },
       });
       setAddedId(id);
-      setStep('done');
+      // 서재 → 책장 동기화는 addBook 안에서 바로 일어난다(책 모양이 책장 저장소에 들어간 뒤 놓는다)
+      if (where === 'keep') {
+        placementStore.addToDrawer(id);
+        setPlaced('kept');
+        setStep('done');
+      } else {
+        placeWithChoice([id], (n) => {
+          setPlaced(n ? 'shelf' : 'kept');
+          setStep('done');
+        });
+      }
     } finally {
       setSaving(false);
     }
-  };
-
-  // 추가 직후: 책 모양이 책장 저장소에 들어간 뒤 꽂는다(서재 → 책장 동기화는 바로 일어난다)
-  const place = (where: 'shelf' | 'drawer' | 'newShelf') => {
-    if (!addedId) return;
-    if (where === 'drawer') {
-      placementStore.addToDrawer(addedId);
-      setPlaced('drawer');
-      return;
-    }
-    if (where === 'newShelf') placementStore.addShelf();
-    const r = placementStore.addToShelf(addedId);
-    setPlaced(r === 'shelf' ? 'shelf' : 'none');
   };
 
   if (step === 'find') return <FindStep initial={params.q} notice={notice} onPick={fromCandidate} onPhoto={fromPhoto} onManual={(q) => toConfirm({ ...blank('manual'), title: q })} />;
@@ -173,6 +175,7 @@ export default function AddBook() {
           <RealCover uri={draft.coverUri} title={draft.title || '표지'} color={colors.input} width={96} />
           <View style={{ flex: 1, gap: 10 }}>
             <Muted>{draft.coverUri ? (draft.coverSource === 'photo' ? '내가 찍은 사진' : `${draft.sourceName ?? '도서 정보'} 표지`) : '표지가 없어요. 사진을 등록할 수 있어요.'}</Muted>
+            {draft.link ? <TextLink label={`${draft.sourceName ?? '판매처'}에서 보기`} tone="soft" onPress={() => void Linking.openURL(draft.link!)} style={{ alignSelf: 'flex-start', marginVertical: -10 }} /> : null}
             <Btn
               label={draft.coverUri ? '사진으로 바꾸기' : '표지 사진 등록'}
               kind="secondary"
@@ -218,29 +221,25 @@ export default function AddBook() {
 
   if (step === 'binding' && binding)
     return (
-      <Screen title="장정 미리보기" footer={<Btn label="이 장정으로 추가" busy={saving} onPress={add} />}>
+      <Screen
+        title="장정 미리보기"
+        footer={
+          <View>
+            <Btn label="추가하고 책장에 놓기" busy={saving} onPress={() => void add('shelf')} />
+            <TextLink label="보관만 하기" tone="soft" disabled={saving} onPress={() => void add('keep')} style={{ marginTop: 2, marginBottom: -8 }} />
+          </View>
+        }>
         <BindingEditor title={draft.title} author={draft.authors} size={size} pages={num(draft.pages)} value={binding} recommended={{ ...bindingFields(art ?? buildBookArt({ title: draft.title })), seed: 0, source: 'default' }} onChange={setBinding} />
       </Screen>
     );
 
-  // 추가 완료: 책장에 꽂기 / 서랍에 보관(공간이 없으면 새 선반 또는 서랍을 제안)
+  // 추가 완료(결과만 알린다. 다시 묻지 않는다)
   return (
     <Screen title="추가했어요" back={false}>
-      <Text style={st.doneTitle}>《{draft.title}》을(를) 내 책에 추가했어요.</Text>
-      {placed === null ? (
+      <Text style={st.doneTitle}>《{draft.title}》을(를) 추가했어요.</Text>
+      {placed === null ? null : (
         <View style={{ gap: 10, marginTop: space.section }}>
-          <Btn label="책장에 꽂기" onPress={() => place('shelf')} />
-          <Btn label="서랍에 보관" kind="secondary" onPress={() => place('drawer')} />
-        </View>
-      ) : placed === 'none' ? (
-        <View style={{ gap: 10, marginTop: space.section }}>
-          <Muted>책장에 빈 자리가 없어요.</Muted>
-          <Btn label="선반을 하나 더하고 꽂기" onPress={() => place('newShelf')} />
-          <Btn label="서랍에 보관" kind="secondary" onPress={() => place('drawer')} />
-        </View>
-      ) : (
-        <View style={{ gap: 10, marginTop: space.section }}>
-          <Muted>{placed === 'shelf' ? '책장에 꽂았어요. 꾸미기에서 자리와 자세를 바꿀 수 있어요.' : '서랍에 넣었어요. 서랍에서 언제든 꺼내 놓을 수 있어요.'}</Muted>
+          <Muted>{placed === 'shelf' ? '책장에 놓았어요. 꾸미기에서 자리와 자세를 바꿀 수 있어요.' : '보관했어요. 전체 책에서 언제든 책장에 놓을 수 있어요.'}</Muted>
           {placed === 'shelf' ? (
             <Btn
               label="책장에서 보기"
@@ -249,8 +248,10 @@ export default function AddBook() {
                 router.dismissTo('/');
               }}
             />
-          ) : null}
-          <Btn label="책 상세 보기" kind="secondary" onPress={() => router.replace(`/book/${addedId}`)} />
+          ) : (
+            <Btn label="전체 책 보기" onPress={() => router.replace({ pathname: '/books', params: { filter: 'off' } })} />
+          )}
+          <Btn label="책 정보 보기" kind="secondary" onPress={() => router.replace(`/book/${addedId}`)} />
           <Btn label="한 권 더 추가" kind="ghost" onPress={() => router.replace('/book/add')} />
         </View>
       )}
@@ -261,6 +262,7 @@ export default function AddBook() {
 function FindStep({ initial, notice, onPick, onPhoto, onManual }: { initial?: string; notice: string | null; onPick: (c: BookCandidate) => void; onPhoto: (from: 'camera' | 'library') => void; onManual: (q: string) => void }) {
   const [q, setQ] = useState(initial ?? '');
   const [items, setItems] = useState<BookCandidate[] | null>(null);
+  const [provider, setProvider] = useState<string | undefined>(undefined);
   const [err, setErr] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const ctrl = useRef<AbortController | null>(null);
@@ -276,6 +278,7 @@ function FindStep({ initial, notice, onPick, onPhoto, onManual }: { initial?: st
     setBusy(false);
     if (r.ok) {
       setItems(r.items);
+      setProvider(r.provider);
     } else {
       setErr(r.message);
       setItems(null);
@@ -320,7 +323,7 @@ function FindStep({ initial, notice, onPick, onPhoto, onManual }: { initial?: st
       {items && !items.length ? <Empty title="찾는 책이 없어요" body="검색어를 바꾸거나 위의 직접 입력으로 추가해 주세요." /> : null}
       {items?.length ? (
         <View style={{ marginTop: space.section - 2 }}>
-          <Row gap={12}><Text style={st.resultHeading}>검색 결과</Text><Text style={type.sub}>{items.length}권</Text></Row>
+          <Row gap={12}><Text style={st.resultHeading}>검색 결과</Text><Text style={type.sub}>{items.length}권{provider ? ` · ${provider} 제공` : ''}</Text></Row>
           {/* 책 추가 시안: 표지 76×105, 제목·지은이 두 줄, 오른쪽 갈색 '+', 줄 사이 구분선 없이 여백만 */}
           <View style={{ marginTop: space.tight }}>
             {items.map((c) => (

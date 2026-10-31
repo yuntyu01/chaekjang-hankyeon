@@ -51,7 +51,6 @@ import { bootMark, watchResponsive } from '@/ui/boot-trace';
 import { placementStore, usePlacementStore } from '@/store/placement-store';
 import { useShelfShared } from '@/ui/book3d/art';
 import { useHomeSnapshot } from '@/ui/home-snapshot';
-import { ReferenceUI } from '@/ui/ReferenceUI';
 import { CONTENT_TOP, computeRows, LAYOUT, rowAffine, toContent, useShelfMetrics, type RowGeom } from '@/ui/shelf/metrics';
 import { benchProjection, type BenchRow } from '@/ui/shelf/ShelfMotion';
 import { flushApply, lastPlan, PULL_MS, WAIT_MAX } from '@/ui/shelf/planner';
@@ -60,7 +59,7 @@ import { HANDLE_HIT, handlePoint, HeaderWall, SHELF_CAST_EXTENT, ShelfScene, typ
 import { ANIM, frameStats, logChunks, MENU_FLAGS, PERF_DETAIL, PERF_ENABLED, PERF_LEVELS, PUSH_DEBUG, setLightOff, setPerfLevel, TL, tl, tlEv, tlOn, tlu, TRANSIT_DEBUG, setShelfMode, setShelfView, SHELF_MODES, SHELF_VIEWS, type PerfLevel, type ShelfMode } from '@/ui/perf';
 import { colors, fonts, motion, navigation } from '@/ui/theme';
 // 책장 밖 UI(메뉴 시트·알림·빈 책장 안내)는 화면 공통 토큰을 쓴다(책장 장면·머리글은 theme.ts 그대로)
-import { colors as ui, fonts as uiFonts, icon, shape, space, type } from '@/ui/screenTheme';
+import { colors as ui, fonts as uiFonts, icon, press, shape, space, type } from '@/ui/screenTheme';
 import { Btn, TextLink } from '@/ui/kit';
 
 import { BookSheet } from './BookSheet';
@@ -90,6 +89,9 @@ const EMPTY_IDS: readonly string[] = [];
 const FRONT_HIT = 48;
 const FRONT_PAD = 10;
 
+// 머리글 글자는 시스템 글자 확대를 이 배수까지만 따른다(머리글 높이가 선반 배치에 묶여 있다)
+const HEADER_TEXT_MAX = 1.3;
+
 function HeaderButton({ size, on, label, onPress, children }: { size: number; on?: boolean; label: string; onPress: () => void; children: React.ReactNode }) {
   return (
     <Pressable
@@ -112,7 +114,9 @@ export function HomeScreen() {
   const { lib, error: libraryError } = useLibrary();
   const m = useShelfMetrics();
   const bookShared = useShelfShared(); // 책 그림 공용 자원(글꼴·종이 결). 캔버스 안에는 컨텍스트가 닿지 않아 여기서 읽어 넘긴다(바뀔 때만 줄을 다시 기록)
-  const { width: winW } = useWindowDimensions();
+  const { width: winW, fontScale } = useWindowDimensions();
+  // 시스템 글자가 커지면 머리글 글자(제목·연도)가 늘어난 만큼 위 여백을 줄인다(머리글 높이는 선반 배치에 묶여 그대로, 연도가 잘리지 않게)
+  const headerGrow = (Math.min(Math.max(fontScale, 1), HEADER_TEXT_MAX) - 1) * (29 + 18 + 4);
   const sysReduceMotion = useReducedMotion();
   const appSettings = useSettings();
   // 동작 줄이기: 설정에서 기기 설정을 따르거나 앱에서 켜고 끈다
@@ -1122,16 +1126,15 @@ export function HomeScreen() {
           {`저장 ${view.pitch}° · ${camNow || `적용 ${view.pitch}°`} · 배율 ${m.scale.toFixed(4)}dp/DU(${(m.scale * PixelRatio.get()).toFixed(3)}px/DU) · 3D 줄 간격 ${(rows[0]?.space ?? 0).toFixed(1)}DU · 꾸미기 ${editing ? '켬' : '끔'}`}
         </Text>
       ) : null}
-      {/* 시안 비율: 제목은 작고 둥근 고딕(잉크 약 86×21.5DU, 따뜻한 짙은 갈색), 연도 잉크 높이 약 11.9DU·제목 잉크 위 끝에서 약 30DU 아래,
-          원형 버튼 32DU, 좌우 여백 23/18DU */}
+      {/* 시안 비율: 제목 잉크 약 86×21.5DU(예전 시안 글자 그림과 같은 크기를 Pretendard SemiBold 23.5DU 글자로), 연도는 그 아래 보조 정보,
+          오른쪽 '전체 책'(글자 버튼)과 원형 더하기 32DU, 좌우 여백 23/18DU. 글자는 중립 회색(갈색 기 없음, 2026-10-31).
+          머리글 높이가 정해져 있어 시스템 글자 확대는 1.3배까지만 따른다(선반과 겹치지 않게) */}
       {bare ? null : (
-        <View style={[styles.header, { paddingLeft: 26 * m.scale + m.originX, paddingRight: 22 * m.scale + m.originX, paddingTop: 55 * m.scale, height: 104 * m.scale }]}>
+        <View style={[styles.header, { paddingLeft: 26 * m.scale + m.originX, paddingRight: 22 * m.scale + m.originX, paddingTop: (55 - headerGrow) * m.scale, height: 104 * m.scale }]}>
           <Pressable style={{ flex: 1 }} onPress={() => setShelfMenuOpen(true)} accessibilityRole="button" accessibilityLabel={ko.menu.title}>
-            <View style={{ height: 29*m.scale }} accessibilityRole="header" accessibilityLabel={ko.title}>
-              <View style={{ position:'absolute', left:-0.4*m.scale, top:3.065*m.scale }}>
-                <ReferenceUI name="heading" width={191*390/853*m.scale} height={51*390/853*m.scale}/>
-              </View>
-            </View>
+            <Text style={[styles.title, { fontSize: 23.5 * m.scale, lineHeight: 29 * m.scale, letterSpacing: -0.2 * m.scale }]} numberOfLines={1} maxFontSizeMultiplier={HEADER_TEXT_MAX} accessibilityRole="header">
+              {ko.title}
+            </Text>
             <Pressable
               onPress={() => setSelectedYear(years[(years.indexOf(year) + 1) % years.length])}
               disabled={years.length < 2}
@@ -1139,20 +1142,26 @@ export function HomeScreen() {
               accessibilityRole="button"
               accessibilityLabel={ko.yearA11y(year, count)}
               style={{ alignSelf: 'flex-start' }}>
-              <Text style={[styles.summary, { fontSize: 12.25 * m.scale, marginTop: 5.1 * m.scale }]}>
+              <Text style={[styles.summary, { fontSize: 13.5 * m.scale, lineHeight: 18 * m.scale, marginTop: 4 * m.scale }]} maxFontSizeMultiplier={HEADER_TEXT_MAX}>
                 {ko.year(year)}
                 {years.length > 1 ? ' ▾' : ''}
                 {editing ? ` · ${ko.decorating}` : ''}
               </Text>
             </Pressable>
           </Pressable>
-          <View style={[styles.actions, { gap: 8 * m.scale, marginTop: -18 * m.scale }]}>
+          <View style={[styles.actions, { gap: 8 * m.scale, marginTop: (-18 + headerGrow / 2) * m.scale }]}>
             {/* 꾸미기를 끌며 시작한 동안(머리글을 아직 숨기기 전)에는 더하기를 숨긴다 */}
             {editing ? null : (
-              // 시안: 둥근 테두리 원 버튼(약 33DU)과 따뜻한 짙은 갈색의 굵은 더하기
-              <HeaderButton size={33.5 * m.scale} label={ko.add} onPress={() => router.push('/book/add')}>
-                <Plus size={18 * m.scale} color={colors.homeTitle} strokeWidth={1.9} />
-              </HeaderButton>
+              <>
+                {/* 등록한 모든 책(책장에 없는 책 포함)을 보고 골라 책장에 놓는 곳. 보관함 아이콘 대신 글자 */}
+                <Pressable onPress={() => router.push('/books')} hitSlop={{ top: 8, bottom: 8, left: 6, right: 2 }} accessibilityRole="button" accessibilityLabel={ko.allBooks.title} style={({ pressed }) => [styles.allBooks, pressed && press]}>
+                  <Text style={[styles.allBooksText, { fontSize: 15 * m.scale }]} maxFontSizeMultiplier={HEADER_TEXT_MAX}>{ko.allBooks.title}</Text>
+                </Pressable>
+                {/* 시안: 둥근 테두리 원 버튼(약 33DU)과 굵은 더하기 */}
+                <HeaderButton size={33.5 * m.scale} label={ko.add} onPress={() => router.push('/book/add')}>
+                  <Plus size={18 * m.scale} color={colors.homeTitle} strokeWidth={1.9} />
+                </HeaderButton>
+              </>
             )}
           </View>
         </View>
@@ -1254,9 +1263,9 @@ export function HomeScreen() {
           <View pointerEvents="box-none" style={styles.emptyWrap}>
             <View style={styles.emptyCard}>
               <Text style={styles.emptyTitle}>{ko.empty.title}</Text>
-              <Text style={styles.emptyBody}>{layout.drawer.length ? `${ko.empty.body}\n서랍에 ${layout.drawer.length}권이 있어요.` : ko.empty.body}</Text>
+              <Text style={styles.emptyBody}>{layout.drawer.length ? `${ko.empty.body}\n책장에 없는 책이 ${layout.drawer.length}권 있어요.` : ko.empty.body}</Text>
               <Btn label={ko.add} onPress={() => router.push('/book/add')} icon={<Plus size={icon.small} color={ui.onAccent} strokeWidth={icon.stroke} />} style={styles.emptyBtn} />
-              {layout.drawer.length ? <TextLink label="서랍 열기" tone="soft" onPress={() => router.push('/drawer')} style={{ marginTop: 4 }} /> : null}
+              {layout.drawer.length ? <TextLink label="전체 책에서 고르기" tone="soft" onPress={() => router.push({ pathname: '/books', params: { filter: 'off' } })} style={{ marginTop: 4 }} /> : null}
             </View>
           </View>
         ) : null}
@@ -1327,8 +1336,8 @@ export function HomeScreen() {
           <Pressable accessibilityRole="button" style={styles.menuItem} onPress={() => { setShelfMenuOpen(false); router.push('/search'); }}>
             <Search size={icon.size} color={ui.ink} strokeWidth={icon.stroke} /><Text style={styles.menuText}>{ko.menu.search}</Text>
           </Pressable>
-          <Pressable accessibilityRole="button" style={styles.menuItem} onPress={() => { setShelfMenuOpen(false); router.push('/drawer'); }}>
-            <BookMarked size={icon.size} color={ui.ink} strokeWidth={icon.stroke} /><Text style={styles.menuText}>{ko.drawer.title}{layout.drawer.length ? ` · ${layout.drawer.length}권` : ''}</Text>
+          <Pressable accessibilityRole="button" style={styles.menuItem} onPress={() => { setShelfMenuOpen(false); router.push('/books'); }}>
+            <BookMarked size={icon.size} color={ui.ink} strokeWidth={icon.stroke} /><Text style={styles.menuText}>{ko.allBooks.title}{layout.drawer.length ? ` · 책장에 없는 책 ${layout.drawer.length}권` : ''}</Text>
           </Pressable>
           <Pressable accessibilityRole="button" style={styles.menuItem} onPress={() => { setShelfMenuOpen(false); router.push('/stats'); }}>
             <ChartNoAxesColumn size={icon.size} color={ui.ink} strokeWidth={icon.stroke} /><Text style={styles.menuText}>{ko.menu.stats}</Text>
@@ -1402,8 +1411,10 @@ export function HomeScreen() {
 const styles = StyleSheet.create({
   root: { flex: 1 },
   header: { flexDirection: 'row', alignItems: 'flex-start' },
-  title: { fontFamily: fonts.roundTitle, color: colors.homeTitle },
-  summary: { fontFamily: fonts.round, color: colors.homeSummary, letterSpacing: 0.2 },
+  title: { fontFamily: uiFonts.uiBold, color: colors.homeTitle, includeFontPadding: false },
+  summary: { fontFamily: uiFonts.ui, color: colors.homeSummary, includeFontPadding: false },
+  allBooks: { minHeight: 44, justifyContent: 'center', paddingHorizontal: 6 },
+  allBooksText: { fontFamily: uiFonts.ui, color: colors.homeTitle, includeFontPadding: false },
   actions: { flexDirection: 'row', alignItems: 'center', alignSelf: 'center' },
   circle: { borderWidth: 1, borderColor: colors.circle, alignItems: 'center', justifyContent: 'center' },
   circleOn: { backgroundColor: ui.accent, borderColor: ui.accent },

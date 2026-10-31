@@ -199,11 +199,7 @@ func (s *Server) Handler() http.Handler {
 	return m
 }
 func (s *Server) health(w http.ResponseWriter, r *http.Request) error {
-	source := "mock"
-	if os.Getenv("KAKAO_REST_KEY") != "" {
-		source = "kakao"
-	}
-	writeJSON(w, 200, map[string]any{"ok": true, "books": source, "llmKeys": s.LLM.Available()})
+	writeJSON(w, 200, map[string]any{"ok": true, "books": bookSource(), "llmKeys": s.LLM.Available()})
 	return nil
 }
 func New(db *pgxpool.Pool) *Server {

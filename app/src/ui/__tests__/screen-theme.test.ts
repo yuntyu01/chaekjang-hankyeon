@@ -19,18 +19,24 @@ const contrast = (a: string, b: string) => {
   return (x + 0.05) / (y + 0.05);
 };
 
-// 2026-10-26 색상 기준(갈피 수정 시안): 바탕·입력칸·구분선·버튼 글자는 사용자 지정값, 글자색·대표색은 시안에서 뽑은 값
+// 2026-10-26 색상 기준(갈피 수정 시안): 바탕·입력칸·버튼 글자는 사용자 지정값, 대표색은 시안에서 뽑은 값.
+// 2026-10-31 책장 시안 지시: 글자·구분선은 갈색 기 없는 중립 회색(주요 #303030, 보조 #757575 기준 → 입력칸 대비로 #707070, 구분선 #E5E5E5)
 describe('색: 지정한 기준값', () => {
   it('배경·입력칸·대표색·글자·구분선·버튼 글자', () => {
     expect(colors.bg).toBe('#FEFEFD');
     expect(colors.input).toBe('#F6F5F2');
     expect(colors.accent).toBe('#6C534A');
-    expect(colors.ink).toBe('#1A1716');
-    expect(colors.inkSoft).toBe('#6A5854');
-    expect(colors.title).toBe('#624C47');
-    expect(colors.line).toBe('#E8E5E0');
-    expect(colors.border).toBe('#E8E5E0');
+    expect(colors.ink).toBe('#303030');
+    expect(colors.inkSoft).toBe('#707070');
+    expect(colors.title).toBe('#303030');
+    expect(colors.line).toBe('#E5E5E5');
+    expect(colors.border).toBe('#E5E5E5');
     expect(colors.onAccent).toBe('#FFFFFF');
+  });
+  it('UI 글자·구분선은 갈색 기가 없는 중립 회색(빨강=초록=파랑), 갈색은 대표색(버튼 바탕)에만', () => {
+    const neutral = (hex: string) => hex.slice(1, 3) === hex.slice(3, 5) && hex.slice(3, 5) === hex.slice(5, 7);
+    for (const c of [colors.ink, colors.title, colors.inkSoft, colors.inkFaint, colors.line, colors.border, colors.disabledInk]) expect(neutral(c)).toBe(true);
+    expect(neutral(colors.accent)).toBe(false);
   });
   it('화면 배경과 입력칸 배경은 다른 토큰이고, 입력칸은 바탕과 구별된다', () => {
     expect(colors.input).not.toBe(colors.bg);
@@ -100,8 +106,8 @@ describe('글자·간격 범위(지시: 제목 22~24를 출발점으로 시안�
     expect(space.touch).toBeGreaterThanOrEqual(44);
     expect(space.row).toBeGreaterThanOrEqual(48);
   });
-  it('UI 글자는 모두 UI 글꼴(R·B) 가족', () => {
-    for (const t of Object.values(type)) expect([fonts.ui, fonts.uiBold]).toContain(t.fontFamily);
+  it('UI 글자는 모두 UI 글꼴(R·M·SB) 가족', () => {
+    for (const t of Object.values(type)) expect([fonts.ui, fonts.uiMedium, fonts.uiBold]).toContain(t.fontFamily);
   });
 });
 

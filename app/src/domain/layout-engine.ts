@@ -1510,6 +1510,21 @@ function placeAtFirstFit(layout: ShelfLayout, books: BookMap, bookId: string): R
   return { ok: false, reason: 'no-space' };
 }
 
+// 책장에 놓기 후보: 선반 순서대로, 그 선반 맨 끝에 세워 꽂아 넘치지 않는 배치들(placeAtFirstFit은 그 첫째).
+// 기대기는 여기서 풀지 않는다: 부르는 쪽(placement-store)이 기대기까지 풀어 보고 다른 책을 움직이지 않는 첫 후보를 고른다.
+export function firstFitCandidates(layout: ShelfLayout, books: BookMap, bookId: string): ShelfLayout[] {
+  const base = { ...layout, drawer: layout.drawer.filter((id) => id !== bookId) };
+  const out: ShelfLayout[] = [];
+  const xs = bookXs(base, books);
+  for (const shelf of sortedShelves(base)) {
+    // 그 선반만 맞춘다(insertItem에 books를 주면 모든 선반을 다시 맞춰 다른 선반 책이 조금씩 밀릴 수 있다)
+    const raw = insertItem(base, { bookId, pose: 'spine', tilt: 0 }, shelf.id, shelfItems(base, shelf.id).length);
+    const next = settle(raw, books, xs, shelf.id);
+    if (!checkSpace(next, books, shelf.id)) out.push(next);
+  }
+  return out;
+}
+
 export function placeFromDrawer(layout: ShelfLayout, books: BookMap, bookId: string): Result {
   if (!layout.drawer.includes(bookId)) return { ok: false, reason: 'unknown-book' };
   const base = { ...layout, drawer: layout.drawer.filter((id) => id !== bookId) };

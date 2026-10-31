@@ -6,9 +6,9 @@ import type { Book } from '@/domain/types';
 import { StandaloneBook } from '@/ui/book3d/StandaloneBook';
 import { press, type } from '@/ui/screenTheme';
 
-export const BookRow = memo(function BookRow({ book, sub, right, onPress }: { book: Book; sub?: string; right?: React.ReactNode; onPress?: () => void }) {
+export const BookRow = memo(function BookRow({ book, sub, right, onPress, onLongPress, selected }: { book: Book; sub?: string; right?: React.ReactNode; onPress?: () => void; onLongPress?: () => void; selected?: boolean }) {
   return (
-    <Pressable onPress={onPress} style={({ pressed }) => [st.row, pressed && press]} accessibilityRole="button" accessibilityLabel={[book.title, book.author, sub].filter(Boolean).join(', ')}>
+    <Pressable onPress={onPress} onLongPress={onLongPress} style={({ pressed }) => [st.row, pressed && press]} accessibilityRole="button" accessibilityState={selected === undefined ? undefined : { selected }} accessibilityLabel={[book.title, book.author, sub].filter(Boolean).join(', ')}>
       <View style={st.thumb}>
         <StandaloneBook book={book} pose="front" scale={0.42} />
       </View>

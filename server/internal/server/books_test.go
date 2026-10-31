@@ -9,6 +9,7 @@ import (
 )
 
 func TestSearchCacheAndUpstream(t *testing.T) {
+	t.Setenv("YES24_API_KEY", "")
 	t.Setenv("KAKAO_REST_KEY", "fake")
 	t.Setenv("SEARCH_CACHE_TTL", "10m")
 	calls := 0

@@ -119,6 +119,42 @@ it('v3(JSON 줄·배치 JSON) 저장본을 v4 표로 옮긴다: 서재·대기 �
   expect(await mockDb.getAllAsync('SELECT position, name FROM edition_authors ORDER BY position')).toEqual([{ position: 0, name: '가' }, { position: 1, name: '나' }]);
 });
 
+it('2026-10-17 앱(로컬 main 1165c16, 이미 정규화한 v3) 저장본도 지운 것 없이 v4로 옮긴다: 서재·배치·대기 목록·배치 시각', async () => {
+  const fs = require('fs') as typeof import('fs');
+  const path = require('path') as typeof import('path');
+  await mockDb.execAsync(fs.readFileSync(path.join(__dirname, 'fixtures/schema-1165c16-v3.sql'), 'utf8'));
+  await mockDb.execAsync(`
+    INSERT INTO editions(id,title,page_count,width_mm,height_mm,source,created_at,updated_at) VALUES('e1','모순',308,128,188,'search','${at}','${at}');
+    INSERT INTO edition_authors(edition_id,position,name) VALUES('e1',0,'양귀자');
+    INSERT INTO my_books(id,edition_id,status,binding_id,created_at,updated_at) VALUES('m1','e1','reading','bd1','${at}','${at}'),('m2','e1','want',NULL,'${at}','${at}');
+    INSERT INTO bindings(id,my_book_id,spine_color,motif,source,status,created_at,updated_at) VALUES('bd1','m1','#5A6B7C','leaf','custom','ready','${at}','${at}');
+    INSERT INTO bookmarks(id,my_book_id,body,created_at,updated_at) VALUES('k1','m1','문장','${at}','${at}');
+    INSERT INTO shelves(id,position) VALUES('s1',0),('s2',1);
+    INSERT INTO shelf_placements(book_id,shelf_id,position,pose,tilt,pos,lean_angle,lean_on,depth) VALUES('m1','s1',0,'spine',0,40.5,-4,'m3',12);
+    INSERT INTO shelf_placements(book_id,shelf_id,position) VALUES('m2',NULL,0);
+    INSERT INTO sync_dirty(kind,id,deleted,at) VALUES('books','m1',0,'${at}'),('layout','layout',0,'${at}');
+  `);
+  mockStorage['shelf-layout-at'] = at;
+
+  const snapshot = await local.captureSyncSnapshot();
+  expect(Object.keys(snapshot.lib.books).sort()).toEqual(['m1', 'm2']);
+  expect(snapshot.lib.editions.e1).toMatchObject({ title: '모순', authors: ['양귀자'], pageCount: 308, size: { widthMm: 128, heightMm: 188 } });
+  expect(snapshot.lib.bindings.bd1).toMatchObject({ myBookId: 'm1', spineColor: '#5A6B7C', motif: 'leaf' });
+  expect(snapshot.lib.bookmarks.k1).toMatchObject({ myBookId: 'm1', text: '문장' });
+  // 배치는 표에 있던 그대로(자리·기대기·깊이, 서랍), 아직 못 올린 표시와 시각도 그대로
+  expect(JSON.parse(snapshot.layout.json!)).toEqual({ version: 2, shelves: [{ id: 's1', order: 0 }, { id: 's2', order: 1 }], placements: [{ bookId: 'm1', shelfId: 's1', order: 0, pose: 'spine', tilt: 0, pos: 40.5, lean: { angle: -4, on: 'm3' }, depth: 12 }], drawer: ['m2'] });
+  expect(snapshot.layout).toMatchObject({ at, dirty: true });
+  expect(snapshot.dirty).toEqual({ 'books:m1': { deleted: false, at, revision: 1 } });
+  expect(await mockDb.getFirstAsync('PRAGMA user_version')).toEqual({ user_version: 4 });
+  expect(await mockDb.getAllAsync("SELECT name FROM sqlite_master WHERE type='table' AND (name LIKE 'old_%' OR name = 'sync_dirty')")).toEqual([]);
+  // 다시 켜도(kv 옮기기는 이미 끝난 것으로) 배치 표를 지우지 않는다
+  restart();
+  expect(JSON.parse((await local.readLayout()).json!).placements).toHaveLength(1);
+  // 새 열이 있는 표에 지금 모양으로 쓸 수 있다(뒤집기·튀어나옴)
+  await local.saveLayout(JSON.stringify({ version: 2, shelves: [{ id: 's1', order: 0 }], placements: [{ bookId: 'm1', shelfId: 's1', order: 0, pose: 'front', tilt: 0, flip: true, overhang: true }], drawer: ['m2'] }), at);
+  expect(JSON.parse((await local.readLayout()).json!).placements[0]).toMatchObject({ flip: true, overhang: true });
+});
+
 it('판본을 지우면 저자 줄도 함께 지우고, 다시 쓰면 저자 순서를 새로 쓴다', async () => {
   const edition = { id: 'e', title: 'T', authors: ['a', 'b', 'c'], source: 'manual', createdAt: at, updatedAt: at };
   await local.applyLocalChanges([{ kind: 'editions', id: 'e', at, deleted: false, item: edition }]);

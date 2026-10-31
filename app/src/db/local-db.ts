@@ -156,6 +156,19 @@ CREATE INDEX shelf_placements_shelf_idx ON shelf_placements (shelf_id, position)
 ALTER TABLE sync_meta ADD COLUMN layout_stored INTEGER NOT NULL DEFAULT 0;
 `;
 
+// v3 표(변경 목록·배치 메타). 1165c16 저장본을 옮길 때도 쓴다
+const V3_SYNC = `CREATE TABLE IF NOT EXISTS sync_outbox (
+     kind TEXT NOT NULL, id TEXT NOT NULL, deleted INTEGER NOT NULL,
+     updated_at TEXT NOT NULL, revision INTEGER NOT NULL,
+     PRIMARY KEY (kind, id)
+   );
+   CREATE TABLE IF NOT EXISTS sync_meta (
+     id INTEGER PRIMARY KEY CHECK (id = 1), revision INTEGER NOT NULL DEFAULT 0,
+     migrated INTEGER NOT NULL DEFAULT 0, layout TEXT, layout_at TEXT,
+     layout_dirty INTEGER NOT NULL DEFAULT 0, layout_revision INTEGER NOT NULL DEFAULT 0
+   );
+   INSERT OR IGNORE INTO sync_meta(id) VALUES(1);`;
+
 type Migration = string | ((d: SQLite.SQLiteDatabase) => Promise<void>);
 const MIGRATIONS: Migration[] = [
   `CREATE TABLE IF NOT EXISTS catalog_books (
@@ -177,20 +190,12 @@ const MIGRATIONS: Migration[] = [
    );`,
   ).join('\n'),
   // v3: 변경 목록과 책장 배치를 서재와 같은 DB에 둔다.
-  `CREATE TABLE IF NOT EXISTS sync_outbox (
-     kind TEXT NOT NULL, id TEXT NOT NULL, deleted INTEGER NOT NULL,
-     updated_at TEXT NOT NULL, revision INTEGER NOT NULL,
-     PRIMARY KEY (kind, id)
-   );
-   CREATE TABLE IF NOT EXISTS sync_meta (
-     id INTEGER PRIMARY KEY CHECK (id = 1), revision INTEGER NOT NULL DEFAULT 0,
-     migrated INTEGER NOT NULL DEFAULT 0, layout TEXT, layout_at TEXT,
-     layout_dirty INTEGER NOT NULL DEFAULT 0, layout_revision INTEGER NOT NULL DEFAULT 0
-   );
-   INSERT OR IGNORE INTO sync_meta(id) VALUES(1);`,
+  V3_SYNC,
   // v4: 정규화. JSON 줄을 풀어 열로, 배치 JSON을 선반·책 자리 표로 옮긴다.
   // 깨진 줄이 있으면 건너뛰지 않고 실패한다(트랜잭션이라 v3 그대로 남고, 시작 화면이 읽기 실패를 알린다. 빈 서재로 덮어쓰지 않게)
   async (d) => {
+    // 2026-10-17 앱(로컬 main 1165c16)은 v3에서 이미 정규화했다: 그 저장본은 아래 fromNormalizedV3로 옮긴다
+    if (await d.getFirstAsync("SELECT 1 FROM sqlite_master WHERE type='table' AND name='sync_dirty'")) return fromNormalizedV3(d);
     for (const k of LIB_KINDS) await d.execAsync(`ALTER TABLE ${k} RENAME TO v3_${k}`);
     await d.execAsync(SCHEMA_V4);
     for (const k of LIB_KINDS) {
@@ -205,6 +210,38 @@ const MIGRATIONS: Migration[] = [
     if (m?.layout) await storeLayout(d, m.layout);
   },
 ];
+
+// 2026-10-17 앱(로컬 main 1165c16)의 v3: 서재·배치가 이미 지금과 같은 이름의 표(더 엄격한 CHECK, 책 자리 열 몇 개 없음)이고,
+// 대기 목록은 sync_dirty(배치 표시는 kind = id = 'layout'), 배치 시각은 kv 'shelf-layout-at'이다. sync_outbox·sync_meta는 없다.
+// 표를 지금 모양으로 다시 만들어 같은 이름의 열을 모두 옮기고(새 열은 기본값), 대기 목록을 sync_outbox·sync_meta로 옮긴다.
+// 그 앱은 예전 kv 저장본을 이미 표로 옮기고 지웠다: migrated=1로 둬서 ensureMigrated가 빈 kv로 배치 표를 지우지 않게 한다.
+const NORMALIZED = ['editions', 'edition_authors', 'my_books', 'bindings', 'rounds', 'sessions', 'bookmarks', 'shelves', 'shelf_placements'] as const; // 부모 → 자식
+async function fromNormalizedV3(d: SQLite.SQLiteDatabase) {
+  await d.execAsync(V3_SYNC);
+  const list = NORMALIZED.map((t) => `'${t}'`).join(',');
+  // 예전 표의 색인 이름이 새 표의 색인과 같아 먼저 지운다(기본 키 색인은 표와 함께 옮겨진다)
+  for (const r of await d.getAllAsync<{ name: string }>(`SELECT name FROM sqlite_master WHERE type='index' AND sql IS NOT NULL AND tbl_name IN (${list})`)) await d.execAsync(`DROP INDEX "${r.name}"`);
+  for (const t of NORMALIZED) await d.execAsync(`ALTER TABLE ${t} RENAME TO old_${t}`);
+  await d.execAsync(SCHEMA_V4);
+  for (const t of NORMALIZED) {
+    const old = new Set((await d.getAllAsync<{ name: string }>(`PRAGMA table_info(old_${t})`)).map((c) => c.name));
+    const cols = (await d.getAllAsync<{ name: string }>(`PRAGMA table_info(${t})`)).map((c) => c.name).filter((c) => old.has(c)).join(', ');
+    await d.execAsync(`INSERT INTO ${t} (${cols}) SELECT ${cols} FROM old_${t}`);
+  }
+  for (const t of [...NORMALIZED].reverse()) await d.execAsync(`DROP TABLE old_${t}`);
+  const dirty = await d.getAllAsync<{ kind: string; id: string; deleted: number; at: string }>('SELECT kind, id, deleted, at FROM sync_dirty');
+  const items = dirty.filter((r) => (LIB_KINDS as readonly string[]).includes(r.kind));
+  for (const r of items) await d.runAsync('INSERT OR REPLACE INTO sync_outbox(kind,id,deleted,updated_at,revision) VALUES(?,?,?,?,1)', r.kind, r.id, r.deleted ? 1 : 0, r.at);
+  const layoutDirty = dirty.some((r) => r.kind === 'layout');
+  const stored = !!(await d.getFirstAsync('SELECT 1 FROM shelf_placements LIMIT 1')) || !!(await d.getFirstAsync('SELECT 1 FROM shelves LIMIT 1'));
+  const at = (await Storage.getItem('shelf-layout-at')) ?? (stored ? new Date().toISOString() : null);
+  await d.runAsync(
+    'UPDATE sync_meta SET revision=?, migrated=1, layout=NULL, layout_stored=?, layout_at=?, layout_dirty=?, layout_revision=? WHERE id=1',
+    items.length || layoutDirty ? 1 : 0, stored ? 1 : 0, at, layoutDirty ? 1 : 0, layoutDirty ? 1 : 0,
+  );
+  await d.execAsync('DROP TABLE sync_dirty');
+}
+
 
 let dbPromise: Promise<SQLite.SQLiteDatabase> | null = null;
 

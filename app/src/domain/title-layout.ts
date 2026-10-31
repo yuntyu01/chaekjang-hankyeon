@@ -62,6 +62,8 @@ export function layoutVerticalTitle(
 // 글자 크기의 약 1.1배(잉크 높이의 1.2~1.3배), 첫 글자 잉크 위 끝은 책 높이의 약 0.23(긴 제목은 0.17~0.2)에서 시작한다.
 // 우리 책등은 실제 두께라 시안보다 좁으므로 폭의 40%로 두되 읽을 수 있는 8.5DU 아래로는 줄이지 않는다.
 // 길이에 따라: 짧은 제목(3글자 이하)은 조금 더 넉넉한 간격, 긴 제목은 간격 → 시작 위치 → 크기 순으로 줄여 그림 자리를 지킨다.
+// 2026-10-31: 첫 간격을 한 단계 넉넉하게(짧은 1.22, 긴 1.16). 들어가지 않는 제목만 좁힌다(모든 제목에 같은 간격을 강제하지 않고,
+// 짧은 제목을 책 높이에 맞춰 벌리지도 않는다: 간격은 위 후보 중 들어가는 가장 넉넉한 값).
 // 그림 자리(모티프·풍경)를 먼저 지킨다: 제목은 그림 위 남은 칸에서 크기 → 간격 → 시작 위치로 맞추고,
 // 그래도 안 되면 그림을 밀되 그림 칸(artBottom까지)의 최소 비율을 남긴다(작은 기호로 줄어들지 않게).
 // artBottom: 그림 아래 끝(책 높이 비율), minArt: 남길 그림 칸(짧은 제목·긴 제목 공통 0.3, 그래도 안 되면 0.2까지).
@@ -73,7 +75,7 @@ export function spineTitleLayout(title: string, hDU: number, faceDU: number, art
   const all: number[] = [];
   for (let v = base; v >= MIN - 1e-9; v -= 0.5) all.push(Math.round(v * 10) / 10);
   const short = units(title) <= 3;
-  const pitches = short ? [1.16, 1.1, 1.04] : [1.1, 1.05, 1.0];
+  const pitches = short ? [1.22, 1.16, 1.1, 1.04] : [1.16, 1.1, 1.05, 1.0];
   const tops = [0.255, 0.23, 0.20];
   const tryIt = (sizes: number[], maxArt: number) => {
     const hi = Math.max(artTop0, maxArt);

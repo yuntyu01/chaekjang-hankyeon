@@ -1,4 +1,6 @@
-import { contrast, shade, titleInk, TITLE_DARK, TITLE_LIGHT } from '../color';
+import { contrast, shade, titleInk, TITLE_DARK, TITLE_LIGHT, TITLE_MIN_CONTRAST } from '../color';
+import { BOOK_COLORS } from '../rebinding';
+import { SPINE_PALETTE } from '../library';
 import { coverTitleLayout, layoutVerticalTitle, LYING_START, lyingTitleLayout, spineTitleLayout, titleOpacity, TITLE_SWAP } from '../title-layout';
 
 describe('세로 제목 조판', () => {
@@ -27,12 +29,17 @@ describe('색', () => {
     for (const bg of ['#FBEDDD', '#B5C7D7', '#E39E8A', '#BE5D47', '#3D5F57', '#1D426B']) expect(contrast(titleInk(bg), bg)).toBeGreaterThan(3.5);
     expect(shade('#808080', -0.5)).toBe('#404040');
   });
-  it('시안 책장의 글자색: 중간 밝기의 붉은·푸른 책등은 밝은 글자, 연한 책은 짙은 남색 먹', () => {
-    // 문장 수집·여행의 이유·사람의 마음이란·데미안·고요한 우연
-    for (const bg of ['#CE886F', '#819AB1', '#475A78', '#647361', '#8F5654']) expect(titleInk(bg)).toBe(TITLE_LIGHT);
+  it('시안 책장의 글자색: 어두운·중간 밝기의 진한 책등은 밝은 글자, 연한 책은 짙은 남색 먹', () => {
+    // 사람의 마음이란·데미안·고요한 우연
+    for (const bg of ['#475A78', '#647361', '#8F5654']) expect(titleInk(bg)).toBe(TITLE_LIGHT);
+    // 문장 수집·여행의 이유: 시안은 밝은 글자지만 2.5:1이라 대비를 지키려 먹색(2026-10-31 지시)
+    for (const bg of ['#CE886F', '#819AB1']) expect(titleInk(bg)).toBe(TITLE_DARK);
     // 모순·어린 왕자·작은 것들의 기쁨·너라는 계절·찰나의 마음, 느린 하루(연한 하늘색: 그림자 참고 그림도 짙은 먹)
     for (const bg of ['#FDF0E0', '#FBD392', '#FDECD4', '#F0BDA0', '#F3B497', '#8DA5B9']) expect(titleInk(bg)).toBe(TITLE_DARK);
     expect(TITLE_DARK).toBe('#2F3944');
+  });
+  it('장정에서 고를 수 있는 모든 색에서 제목 대비가 3:1 이상(밝은 책등·어두운 책등 모두)', () => {
+    for (const bg of [...BOOK_COLORS.map((c) => c.hex), ...SPINE_PALETTE]) expect(contrast(titleInk(bg), bg)).toBeGreaterThanOrEqual(TITLE_MIN_CONTRAST);
   });
 });
 
@@ -84,9 +91,14 @@ describe('책등 제목(장정 규칙)', () => {
     expect(spineTitleLayout('모순', 188, 27.7, 0.5).fontSize).toBe(11);
     expect(spineTitleLayout('흰', 188, 21, 0.5).fontSize).toBe(9);
   });
-  it('글자 간격은 시안처럼 글자 크기의 약 1.1배(짧은 제목 1.16), 긴 제목은 간격부터 줄인다', () => {
-    expect(spineTitleLayout('데미안', 225, 24.6, 0.5).pitch).toBe(1.16);
+  it('글자 간격은 글자 크기의 약 1.16배(짧은 제목 1.22)로 조금 넉넉하게, 들어가지 않는 긴 제목만 간격부터 줄인다', () => {
+    expect(spineTitleLayout('데미안', 225, 24.6, 0.5).pitch).toBe(1.22);
+    expect(spineTitleLayout('작은 것들의 기쁨', 225, 24.6, 0.9).pitch).toBe(1.16);
     expect(spineTitleLayout('달러구트 꿈 백화점', 205, 27.5, 0.65).pitch).toBeLessThan(1.16);
+  });
+  it('짧은 제목을 책 높이에 맞춰 벌리지 않는다(키 큰 책도 간격은 같은 상한)', () => {
+    expect(spineTitleLayout('흰', 300, 24.6, 0.9).pitch).toBe(1.22);
+    expect(spineTitleLayout('모순', 300, 24.6, 0.9).pitch).toBe(spineTitleLayout('모순', 200, 24.6, 0.9).pitch);
   });
   it('짧은 제목은 둥글게 감싼 머리 아래 약 1/4에서 시작한다', () => {
     expect(spineTitleLayout('데미안', 225, 24.6, 0.9).textTop).toBe(0.255);

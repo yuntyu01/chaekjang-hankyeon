@@ -3,13 +3,13 @@
 import { useSyncExternalStore } from 'react';
 import { readLayout, saveLayout } from '@/db/local-db';
 
-import { addBook as placeNewBook, addShelf, applySwapTarget, bookXs, findSwapTarget, fitToShelf, moveToDrawer, placeFromDrawer, pruneEmptyShelves, setDepth, validate } from '@/domain/layout-engine';
+import { addShelf, applySwapTarget, bookXs, findSwapTarget, firstFitCandidates, fitToShelf, moveToDrawer, pruneEmptyShelves, setDepth, validate } from '@/domain/layout-engine';
 import { ensureShelves, migrate, normalize, type BookMap } from '@/domain/layout-schema';
 import { ensureLeanGaps, resolveLeans, withLeans, type FallDirections, type LeanResolution } from '@/domain/shelf-scene';
 import { SHELF_DEPTH, SHELF_FRONT } from '@/domain/geometry';
 import { MOCKUP_BOOKS, MOCKUP_LAYOUT } from '@/domain/mockup-sample';
 import { SAMPLE_BOOKS, SAMPLE_LAYOUT } from '@/domain/onboarding-sample';
-import type { ShelfLayout, ShelfLayoutV1 } from '@/domain/types';
+import type { BookPlacement, ShelfLayout, ShelfLayoutV1 } from '@/domain/types';
 
 export type SaveStatus = 'idle' | 'saving' | 'error' | 'read-error';
 
@@ -80,6 +80,25 @@ async function persist(layout: ShelfLayout) {
     // 저장 도중 다른 변경이 있었으면 그쪽이 다시 저장한다.
     if (state.layout === layout) set({ save: 'error' });
   }
+}
+
+// 책장에 놓기는 다른 책을 건드리지 않는다(2026-10-31 지시: 기존 책을 자동으로 옮기거나 눕히거나 기울기를 바꿔 끼워 넣지 않는다).
+// 선반마다 맨 끝 후보를 기대기까지 풀어 보고, 다른 책의 선반·자세·자리·깊이·쌓기·기대기가 모두 그대로이고 떨어지는 책이 없는 첫 후보만 쓴다.
+// 예: 맨 끝 책이 왼쪽으로 기대 있으면 그 기댄 자리에 새 책을 넣으면 그 책이 바로 서므로 그 선반은 건너뛴다.
+const r2 = (v?: number) => (v === undefined ? null : Math.round(v * 100) / 100);
+const spot = (p: BookPlacement) => JSON.stringify([p.shelfId, p.pose, p.tilt, r2(p.pos), r2(p.depth), r2(p.spin), r2(p.pitch), p.stackId ?? null, p.stackOrder ?? null, r2(p.lean?.angle), p.lean?.on ?? null]);
+function undisturbed(next: ShelfLayout): boolean {
+  const r = resolveLeans(ensureShelves(next), state.books);
+  if (Object.keys(r.falls).length) return false;
+  const after = new Map(r.layout.placements.map((p) => [p.bookId, p]));
+  return state.layout.placements.every((p) => {
+    const q = after.get(p.bookId);
+    return !!q && spot(q) === spot(p);
+  });
+}
+function placeUndisturbed(bookId: string): 'shelf' | 'none' {
+  const next = firstFitCandidates(state.layout, state.books, bookId).find(undisturbed);
+  return next && placementStore.commit(next) ? 'shelf' : 'none';
 }
 
 export const placementStore = {
@@ -153,12 +172,10 @@ export const placementStore = {
     void persist(layout);
   },
 
-  // 새 책을 책장 빈 자리에(없으면 where: 'none' — 새 선반 추가 또는 서랍 보관을 고르게 한다)
+  // 새 책을 책장 빈 자리에(없으면 'none' — 새 선반 추가 또는 보관만 하기를 고르게 한다, features/book/place-books)
   addToShelf(bookId: string): 'shelf' | 'none' {
-    const base = { ...state.layout, drawer: state.layout.drawer.filter((id) => id !== bookId) };
-    const r = placeNewBook(base, state.books, bookId);
-    if (r.where !== 'shelf') return 'none';
-    return placementStore.commit(r.layout) ? 'shelf' : 'none';
+    if (state.save === 'read-error') return 'none';
+    return placeUndisturbed(bookId);
   },
   addToDrawer(bookId: string) {
     if (state.layout.drawer.includes(bookId) || state.layout.placements.some((p) => p.bookId === bookId)) return true;
@@ -169,9 +186,8 @@ export const placementStore = {
     return r.ok ? placementStore.commit(r.layout, [bookId]) : false;
   },
   fromDrawer(bookId: string): 'shelf' | 'none' {
-    const r = placeFromDrawer(state.layout, state.books, bookId);
-    if (!r.ok) return 'none';
-    return placementStore.commit(r.layout) ? 'shelf' : 'none';
+    if (!state.layout.drawer.includes(bookId)) return 'none';
+    return placeUndisturbed(bookId);
   },
   addShelf() {
     const id = `shelf-${Date.now().toString(36)}`;

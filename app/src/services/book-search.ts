@@ -1,5 +1,7 @@
 // 도서 검색 연결부. 제공자를 갈아 끼울 수 있게 분리한다.
-// 지금 연결(키 없이도): Google Books → 실패·결과 없음이면 Open Library. 국립중앙도서관·카카오 등은 키가 생기면 여기에 추가.
+// 지금 연결: 우리 서버(EXPO_PUBLIC_API_URL이 있을 때. 서버에 YES24 키가 있으면 YES24) → 실패·결과 없음이면 Google Books → Open Library.
+// - 우리 서버 /books/search: YES24 키는 서버에만 둔다(YES24 문서: 클라이언트 코드에 넣지 말 것). YES24는 쪽수·가로·세로(mm)까지 준다.
+//   YES24 약관: 앱에 보일 때 출처(YES24)와 상품 페이지 링크(link)를 함께 보인다.
 // - Google Books: 키가 없으면 여러 앱이 나눠 쓰는 공용 할당량을 쓴다(하루 한도가 차면 429 rateLimitExceeded).
 //   EXPO_PUBLIC_GOOGLE_BOOKS_KEY가 있으면 그 키의 할당량을 쓴다.
 // - Open Library: 검색 색인에는 판본별 쪽수가 없고(작품 단위 중앙값만), 판본 기록(/books/{id}.json)에 number_of_pages·
@@ -20,12 +22,49 @@ export type BookCandidate = {
   category?: string; // 분류(Google Books categories). 재장정 모티프 선택에 쓴다
   sourceName: string;
   detailRef?: string; // 판본 상세를 읽을 주소(고른 뒤)
+  link?: string; // 판매처 상품 페이지(YES24 약관: 출처와 함께 보인다)
 };
 
 export type SearchError = { ok: false; reason: 'network' | 'quota' | 'auth' | 'unknown'; message: string; diag: string };
 export type SearchResult = { ok: true; items: BookCandidate[]; provider?: string; diag?: string } | SearchError;
 
 const GOOGLE_KEY = process.env.EXPO_PUBLIC_GOOGLE_BOOKS_KEY;
+const API = process.env.EXPO_PUBLIC_API_URL?.replace(/\/+$/, '');
+
+// 서버 검색 결과 한 권(server/internal/server/books.go searchItem)
+export type ServerItem = { isbn13: string; title: string; authors?: string[]; publisher?: string; publishedAt?: string; thumbnailUrl?: string; pages?: number; widthMm?: number; heightMm?: number; link?: string; provider?: string };
+const PROVIDER_NAME: Record<string, string> = { yes24: 'YES24', kakao: '카카오 책' };
+
+export function fromServer(i: ServerItem): BookCandidate {
+  return {
+    key: `${i.provider ?? 'server'}:${i.isbn13}`,
+    title: i.title || '(제목 없음)',
+    authors: i.authors ?? [],
+    publisher: i.publisher || undefined,
+    publishedAt: i.publishedAt || undefined,
+    isbn13: i.isbn13 || undefined,
+    pageCount: i.pages && i.pages > 0 ? i.pages : undefined,
+    size: i.widthMm && i.heightMm ? { widthMm: Math.min(i.widthMm, i.heightMm), heightMm: Math.max(i.widthMm, i.heightMm) } : undefined,
+    coverUrl: i.thumbnailUrl?.replace(/^http:/, 'https:') || undefined,
+    sourceName: PROVIDER_NAME[i.provider ?? ''] ?? '도서 정보',
+    link: i.link || undefined,
+  };
+}
+
+// 서버가 없거나(측정 번들) 개발용 가짜 목록이면 건너뛴다(가짜 책이 실제 검색 결과처럼 보이지 않게)
+async function searchServer(query: string, signal?: AbortSignal): Promise<SearchResult | null> {
+  if (!API) return null;
+  try {
+    const res = await fetch(`${API}/books/search?q=${encodeURIComponent(query)}`, { signal });
+    if (!res.ok) return { ok: false, reason: res.status === 429 ? 'quota' : 'unknown', message: `검색하지 못했어요(${res.status}).`, diag: `server ${res.status}` };
+    const json = (await res.json()) as { items?: ServerItem[] };
+    const items = (json.items ?? []).filter((i) => i.provider && i.provider !== 'mock').map(fromServer);
+    return { ok: true, items, provider: items[0]?.sourceName ?? '서버' };
+  } catch (e) {
+    if ((e as Error)?.name === 'AbortError') return { ok: true, items: [] };
+    return { ok: false, reason: 'network', message: '인터넷에 연결되지 않았어요. 직접 입력으로 추가할 수 있어요.', diag: `server network ${String((e as Error)?.message ?? e)}` };
+  }
+}
 
 type GVolume = {
   id: string;
@@ -144,6 +183,9 @@ async function searchOpenLibrary(query: string, signal?: AbortSignal): Promise<S
 export async function searchBooks(query: string, signal?: AbortSignal): Promise<SearchResult> {
   const q = query.trim();
   if (!q) return { ok: true, items: [] };
+  const sv = await searchServer(q, signal);
+  if (sv?.ok && sv.items.length) return sv;
+  if (sv && !sv.ok && sv.reason === 'network') return sv;
   const g = await searchGoogle(q, signal);
   if (g.ok && g.items.length) return g;
   if (!g.ok && g.reason === 'network') return g;

@@ -35,8 +35,14 @@ export function contrast(a: string, b: string) {
 // 제목 먹색: 밝은 장정은 짙은 남색 먹(그림자 참고 그림 책등 제목의 가장 진한 획 약 (30~55, 40~60, 47~67)), 어두운 장정은 밝은 크림
 export const TITLE_DARK = '#2F3944';
 export const TITLE_LIGHT = '#F7EEDC';
+// 2026-10-31 책장 시안 지시(밝은·어두운 책등 모두 제목 대비 확보): 밝은 글자가 3:1에 못 미치면 대비가 더 큰 쪽.
+// 연한 올리브(#9FA568)가 밝은 글자 2.3:1로 흐렸고, 시안의 문장 수집(#CE886F)·여행의 이유(#819AB1)도 밝은 글자 2.5:1이라 먹색(4.0~4.1:1)으로 바뀐다.
+export const TITLE_MIN_CONTRAST = 3;
 export function titleInk(bg: string) {
-  return contrast(TITLE_DARK, bg) >= contrast(TITLE_LIGHT, bg) * 2 ? TITLE_DARK : TITLE_LIGHT;
+  const dark = contrast(TITLE_DARK, bg);
+  const light = contrast(TITLE_LIGHT, bg);
+  if (light < TITLE_MIN_CONTRAST) return dark > light ? TITLE_DARK : TITLE_LIGHT;
+  return dark >= light * 2 ? TITLE_DARK : TITLE_LIGHT;
 }
 
 export function rgbHex(r: number, g: number, b: number) {

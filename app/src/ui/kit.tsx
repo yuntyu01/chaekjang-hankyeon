@@ -195,7 +195,7 @@ export function Btn({
 export function TextLink({ label, onPress, tone = 'accent', disabled, style }: { label: string; onPress: () => void; tone?: 'accent' | 'soft'; disabled?: boolean; style?: StyleProp<ViewStyle> }) {
   return (
     <Pressable onPress={onPress} disabled={disabled} hitSlop={{ left: 8, right: 8 }} accessibilityRole="button" accessibilityLabel={label} accessibilityState={{ disabled: !!disabled }} style={({ pressed }) => [s.link, pressed && press, disabled && { opacity: 0.4 }, style]}>
-      <Text style={[s.linkText, { color: tone === 'accent' ? colors.accent : colors.inkSoft }]}>{label}</Text>
+      <Text style={[s.linkText, { color: tone === 'accent' ? colors.ink : colors.inkSoft }]}>{label}</Text>
     </Pressable>
   );
 }
@@ -209,7 +209,7 @@ export function IconButton({ label, onPress, children, circle, style }: { label:
   );
 }
 
-// 아이콘 + 글자 행동: 한 줄에 나란히 나눠 놓는 보조 행동(책 정보 시트 '자세히 보기·갈피 남기기', 책 추가 '사진으로 찾기·직접 입력').
+// 아이콘 + 글자 행동: 한 줄에 나란히 나눠 놓는 보조 행동(책 추가 '사진으로 찾기·직접 입력').
 // 부르는 쪽이 Row 안에 넣으면 칸을 똑같이 나눠 가진다. 아이콘은 부르는 쪽이 icon.size~large로 넘긴다
 export function IconAction({ label, icon: iconNode, onPress, style }: { label: string; icon: ReactNode; onPress: () => void; style?: StyleProp<ViewStyle> }) {
   return (
@@ -217,6 +217,23 @@ export function IconAction({ label, icon: iconNode, onPress, style }: { label: s
       {iconNode}
       <Text style={s.iconActionText} numberOfLines={1}>{label}</Text>
     </Pressable>
+  );
+}
+
+// 글자만 있는 나란한 보조 행동(책 정보 시트 '읽기 시작 | 갈피 남기기'): 칸을 똑같이 나누고 사이에 옅은 세로선(1×18, 누르는 자리 아님).
+// 글자는 작아도 누르는 자리는 칸 전체(높이 48 이상). 글자가 커지면(시스템 글자 크기) 줄을 넘겨 겹치지 않는다
+export function TextActions({ actions, style }: { actions: readonly { label: string; onPress: () => void }[]; style?: StyleProp<ViewStyle> }) {
+  return (
+    <View style={[s.textActions, style]}>
+      {actions.map((a, i) => (
+        <Fragment key={a.label}>
+          {i > 0 ? <View style={s.textActionRule} importantForAccessibility="no" accessible={false} /> : null}
+          <Pressable onPress={a.onPress} accessibilityRole="button" accessibilityLabel={a.label} style={({ pressed }) => [s.textAction, pressed && press]}>
+            <Text style={s.textActionText}>{a.label}</Text>
+          </Pressable>
+        </Fragment>
+      ))}
+    </View>
   );
 }
 
@@ -618,6 +635,10 @@ export const s = StyleSheet.create({
   linkText: { ...type.sub, textDecorationLine: 'underline' },
   iconAction: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 10, minHeight: 52, paddingHorizontal: 8 },
   iconActionText: { ...type.row, fontSize: 16, color: colors.inkSoft, flexShrink: 1 },
+  textActions: { flexDirection: 'row', alignItems: 'center' },
+  textAction: { flex: 1, minHeight: 48, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 8 },
+  textActionText: { ...type.sub, color: colors.ink, textAlign: 'center' }, // 보조 행동: 15 Regular, 본문색
+  textActionRule: { width: 1, height: 18, backgroundColor: colors.line },
   btnText: { ...type.button, flexShrink: 1, textAlign: 'center' },
   field: { marginBottom: 26 }, // 갈피 수정 시안: 칸 아래 → 다음 이름 글자 위 약 30
   labelRow: { flexDirection: 'row', alignItems: 'baseline', gap: 8, marginBottom: 7 },
@@ -638,7 +659,7 @@ export const s = StyleSheet.create({
   tabs: { flexDirection: 'row', justifyContent: 'space-between' },
   tab: { alignItems: 'center', paddingTop: 4, paddingHorizontal: 6, minHeight: space.touch },
   tabText: { ...type.row, fontSize: 14, lineHeight: 20, color: colors.inkSoft },
-  tabTextOn: { fontFamily: type.button.fontFamily, color: colors.accent },
+  tabTextOn: { fontFamily: type.button.fontFamily, color: colors.ink },
   tabBar: { width: 32, height: 3, borderRadius: 2, backgroundColor: colors.accent, marginTop: 8 },
   searchInput: { ...type.input, flex: 1, paddingVertical: 12 },
   clear: { width: 22, height: 22, borderRadius: 11, backgroundColor: colors.inkFaint, alignItems: 'center', justifyContent: 'center' },

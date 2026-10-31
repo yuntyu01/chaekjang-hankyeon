@@ -27,9 +27,11 @@
 
 ### 1-1. 화면 UI 색 **[코드]** (`screenTheme.colors`)
 
+2026-10-31 책장 시안 지시로 **UI 글자·구분선에서 갈색 기를 뺐다**(중립 회색, 빨강=초록=파랑, 시험으로 검사). 갈색은 큰 버튼 바탕·선택 표시(탭 밑줄·칩·체크)에만 남는다. 책등·표지 제목 색은 책마다 바탕에 맞춰 따로 정한다(2-3).
+
 | 역할 | 토큰 | 값 | 쓰는 곳 |
 |---|---|---|---|
-| 대표색(강조) | `accent` | #6C534A | 주요 버튼, 고른 탭·칩, 입력 포커스 테두리, 켜진 스위치 |
+| 대표색(강조) | `accent` | #6C534A | 주요 버튼 바탕, 고른 탭 밑줄·칩, 입력 포커스 테두리, 켜진 스위치(글자색으로는 쓰지 않는다) |
 | 대표색 눌림 | `accentPressed` | #5A443C | 주요 버튼을 누르는 동안 |
 | 옅은 강조 바탕 | `accentSoft` | #F2EDEA | 고른 칸(장정 편집), 검색 결과 '추가' |
 | 대표색 위 글자 | `onAccent` | #FFFFFF | 주요 버튼 글자·아이콘 |
@@ -37,18 +39,20 @@
 | 떠 있는 판 | `raised` | #FEFEFD | 하단 시트, 확인창, 카드(배경과 같은 흰색 — 구분은 테두리·그림자로) |
 | 입력칸 | `input` | #F6F5F2 | 입력칸, 검색칸, 보조 버튼, 칩 |
 | 작은 구분 영역 | `surface` | #F6F5F2 | 안내 상자(Notice), 눌린 카드 |
-| 본문 글자 | `ink` | #1A1716 | 본문, 목록, 입력 글자, 입력칸 이름 |
-| 제목 글자 | `title` | #624C47 | 화면 제목, 뒤로 화살표 |
-| 보조 글자 | `inkSoft` | #6A5854 | 설명, 값, 구역 이름, 날짜 |
-| 흐린 글자 | `inkFaint` | #A9A29C | 입력 안내 글자, 장식 선(본문 금지) |
-| 구분선 | `line` | #E8E5E0 | 목록 줄 사이, 시트 손잡이 |
-| 테두리 | `border` | #E8E5E0 | 꺼진 스위치, 원형 아이콘 버튼 |
-| 사용할 수 없음 | `disabled` / `disabledInk` | #ECE9E5 / #ADA6A0 | 누를 수 없는 주요 버튼 |
+| 본문 글자 | `ink` | #303030 | 본문, 목록, 입력 글자, 입력칸 이름, 글자 행동, 고른 탭 글자 |
+| 제목 글자 | `title` | #303030 | 화면 제목, 뒤로 화살표 |
+| 보조 글자 | `inkSoft` | #707070 | 설명, 값, 구역 이름, 날짜, 읽기 상태 |
+| 흐린 글자 | `inkFaint` | #A3A3A3 | 입력 안내 글자, 장식 선(본문 금지) |
+| 구분선 | `line` | #E5E5E5 | 목록 줄 사이, 시트 손잡이, 글자 행동 사이 세로선 |
+| 테두리 | `border` | #E5E5E5 | 꺼진 스위치, 원형 아이콘 버튼 |
+| 사용할 수 없음 | `disabled` / `disabledInk` | #ECE9E5 / #A6A6A6 | 누를 수 없는 주요 버튼 |
 | 오류·삭제 | `danger` | #A5483A | 오류 문구·테두리, 삭제 버튼·메뉴 |
 | 별점 | `star` | #A8865F | 별 |
 | 덮개 | `scrim` | rgba(43,39,37,0.32) | 시트·확인창 뒤 |
 
 대비(시험으로 지키는 기준) **[코드]**: 본문·제목은 배경 대비 7:1 이상, 보조·강조·오류는 4.5:1 이상, 주요 버튼 글자도 4.5:1 이상.
+지시 기준값과 실제 값: 주요 글자 #303030(그대로, 흰 바탕 12.5:1), 구분선 #E5E5E5(그대로), 보조 글자는 기준 #757575가 입력칸(#F6F5F2) 위 4.3:1이라 한 단계 짙은 #707070(흰 바탕 4.9:1, 입력칸 4.6:1).
+홈 머리글·탭 바(`theme.ts`)도 같은 값: `homeTitle` #303030, `homeSummary` #707070, `tabActive` #303030, `tabInactive` #8A8A8A.
 
 ### 1-2. 완료·주의 색 **[제안·시작값]**
 
@@ -77,15 +81,15 @@
 |---|---|---|
 | `bg`, `raised` | #FEFEFD | #1C1917, #26211E |
 | `input`, `surface` | #F6F5F2 | #2E2825 |
-| `ink` | #1A1716 | #EEE7E1 |
-| `title` | #624C47 | #D9C3B8 |
-| `inkSoft` | #6A5854 | #B7AAA2 |
-| `inkFaint` | #A9A29C | #7D726B |
-| `line`, `border` | #E8E5E0 | #3A332F |
+| `ink` | #303030 | #EEEEEE |
+| `title` | #303030 | #EEEEEE |
+| `inkSoft` | #707070 | #B3B3B3 |
+| `inkFaint` | #A3A3A3 | #7A7A7A |
+| `line`, `border` | #E5E5E5 | #3A3A3A |
 | `accent` | #6C534A | #C9A99B(버튼 글자는 #1C1917) |
 | `danger` | #A5483A | #E07A68 |
 
-다크 시작값의 대비(계산): 본문 14.3:1, 제목 10.4:1, 보조 7.7:1(입력칸 위 6.4:1), 오류 6.0:1, 갈색 버튼 위 어두운 글자 8.0:1.
+다크 시작값의 대비(계산, 글자는 라이트처럼 중립 회색): 본문 약 14:1, 보조 약 7.5:1(입력칸 위 약 6:1), 오류 6.0:1, 갈색 버튼 위 어두운 글자 8.0:1.
 
 ---
 
@@ -97,8 +101,8 @@
 |---|---|---|
 | 화면 UI 전체 | Pretendard Regular·Medium·SemiBold (`assets/fonts/Pretendard-*.otf`) | `fonts.ui`, `fonts.uiMedium`, `fonts.uiBold` |
 | 갈피 문장·갈피 카드 | Noto Serif KR Regular·Medium·SemiBold | `fonts.serif*`(ReadingSerif) |
-| 책 그림(표지·책등) 제목 | 함렛 SemiBold (`assets/fonts/Hahmlet-SemiBold.ttf`, Skia로 그림) | `ui/book3d/art.tsx` |
-| 홈 머리글('2026년' 등) | 나눔스퀘어라운드 B·EB | `theme.fonts.round*` |
+| 책 그림(표지·책등) 제목 | 함렛 Medium (`assets/fonts/Hahmlet-Medium.ttf`, Skia로 그림. 책장·책 정보 시트·책 상세·목록이 같은 그리기) | `ui/book3d/art.tsx` |
+| 홈 머리글('나의 책장'·연도·'전체 책') | Pretendard SemiBold·Regular (2026-10-31 시안 글자 그림·나눔스퀘어라운드에서 바꿈) | `screenTheme.fonts.uiBold`·`ui` |
 | 대체 표지 글자 | 고운바탕 | `theme.fonts.serif` |
 
 - 굵기는 글꼴 파일로 고른다. `fontWeight`를 함께 주지 않는다(Android가 가짜 굵게를 덧입힌다) **[코드, 시험으로 검사]**.
@@ -117,12 +121,31 @@
 | 본문·안내 문단 | `body` | Regular 16/25 | `ink` |
 | 보조 설명·값 | `sub` | Regular 15/21 | `inkSoft` |
 | 날짜·작은 메타 | `caption` | Regular 13/18 | `inkSoft` |
-| 버튼 | `button` | SemiBold 16/22 | 버튼마다 |
+| 버튼 | `button` | **Medium** 16/22 (2026-10-31 SemiBold → Medium) | 버튼마다(갈색 버튼은 흰 글자) |
 | 입력칸 이름 | `label` | SemiBold 16/22 | `ink` |
 | 입력 글자 | `input` | Regular 16(줄 높이는 플랫폼) | `ink` |
 | 요약 숫자 | `number` | SemiBold 22/28, 고정폭 숫자 | `ink` |
 
 화면 코드에서 `fontSize`를 쓰면 같은 스타일에 `type.*` 또는 `fonts.*`도 있어야 한다 **[코드, 시험]**. 크기만 조금 바꿀 때는 `{ ...type.sub, fontSize: 16 }`처럼 토큰에서 시작한다.
+
+### 2-3. 책장 화면·책 정보 시트 글자 **[코드, 2026-10-31 지시 시작값을 적용]**
+
+자간은 따로 적은 곳만 주고 나머지는 0이다. 크기는 Android sp / iOS pt(시스템 글자 크기를 따른다).
+
+| 자리 | 글꼴·굵기 | 크기/줄 높이 | 자간 | 색 |
+|---|---|---|---|---|
+| '나의 책장' | Pretendard SemiBold | 23.5/29 DU(예전 시안 글자 그림과 같은 잉크 폭 86DU, 기기에서 약 24) | −0.2 DU | `homeTitle` #303030 |
+| 연도('2026년') | Pretendard Regular | 13.5/18 DU | 0 | `homeSummary` #707070 |
+| '전체 책'(머리글 글자 버튼) | Pretendard Regular | 15 DU | 0 | #303030 |
+| 시트 책 제목 | Pretendard Medium | 20/27 | −0.2 | `ink` |
+| 시트 읽기 상태 | Pretendard Regular | 14/20 | 0 | `inkSoft` |
+| '꾸민 표지' | Pretendard Regular | 13/18 | 0 | `inkSoft` |
+| 주요 버튼('책 정보 보기') | Pretendard Medium | 16/22 | 0 | 흰색, 바탕 `accent` |
+| 보조 행동('읽기 시작'·'갈피 남기기') | Pretendard Regular | 15/21 | 0 | `ink` |
+
+- 홈 머리글은 높이가 선반 배치에 묶여 있어 시스템 글자 확대를 1.3배까지만 따른다(`HEADER_TEXT_MAX`). 시트는 본문이 스크롤돼 제한하지 않는다.
+- 책등·표지 제목: 함렛 Medium. 세로쓰기는 글자를 세워 한 칸씩(돌리지 않는다). 글자 간격(글자 크기 배수)은 짧은 제목 1.22 → 1.16 → 1.1 → 1.04, 긴 제목 1.16 → 1.1 → 1.05 → 1.0 중 **들어가는 가장 넉넉한 값**(긴 제목만 좁히고, 짧은 제목을 책 높이에 맞춰 벌리지 않는다, `domain/title-layout.ts`).
+- 책등 제목 색: 밝은 크림 #F7EEDC 또는 짙은 남색 먹 #2F3944. 밝은 글자가 3:1에 못 미치면 대비가 큰 쪽(`domain/color.ts titleInk`). 장정에서 고를 수 있는 모든 색에서 3:1 이상(시험).
 
 ---
 
@@ -172,16 +195,17 @@
 | 부품 | 쓰임 | 종류·크기 | 출처 |
 |---|---|---|---|
 | `Screen` | 화면 틀: 머리줄 + 스크롤 본문 + 아래 고정 버튼. 키보드가 열리면 아래 버튼이 키보드 위로 | `back`, `scroll`, `footer`, `right`, `titleNote` | [코드] |
-| `ScreenList` | 줄마다 책 그림이 있는 긴 목록(서랍·책 찾기). 화면 근처 줄만 그린다 | `Screen scroll={false}` 안에 | [코드] |
+| `ScreenList` | 줄마다 책 그림이 있는 긴 목록(전체 책·책 찾기). 화면 근처 줄만 그린다 | `Screen scroll={false}` 안에 | [코드] |
 | `Btn` | 버튼 | 종류 `primary`(갈색 채움) · `secondary`(입력칸색) · `ghost`(글자만) · `danger`(빨간 글자) / 크기 `l` 56 · `m` 46 · `s` 40 / `icon`, `busy`, `disabled` | [코드], `l`은 [제안·시작값] |
-| `TextLink` | 주요 버튼 아래의 덜 중요한 행동(밑줄 글자) | `tone` accent(이어서 할 일) · soft(되돌리기·열어 보기). 글자 `sub`, 누르는 자리 44 이상 | [제안·시작값] |
+| `TextLink` | 주요 버튼 아래의 덜 중요한 행동(밑줄 글자) | `tone` accent(이어서 할 일, `ink`) · soft(되돌리기·열어 보기·보관만 하기, `inkSoft`). 글자 `sub`, 누르는 자리 44 이상 | [제안·시작값] |
+| `TextActions` | 글자만 있는 나란한 보조 행동(책 정보 시트 '읽기 시작 \| 갈피 남기기') | 칸을 똑같이 나눔, 글자 `sub` 15 `ink`, 칸 높이 48 이상, 사이 세로선 1×18 `line`(누르는 자리 아님) | [2026-10-31 지시] |
 | `IconAction` | 한 줄에 나란히 나눠 놓는 아이콘+글자 행동 | 높이 52, 글자 `row` 16 `inkSoft`, 칸을 똑같이 나눔. 아이콘 색 `inkSoft`(4-4) | [제안·시작값] |
 | `IconButton` | 아이콘만 있는 버튼(머리줄 검색·추가·더 보기, 달 넘기기) | 44×44, `circle`이면 36 원 테두리 | [제안·시작값] |
 | `Field` | 글자 입력칸 | 이름(+'선택'/'필수') 위, 단위 칸 안 오른쪽, 도움말·오류 아래 | [코드] |
 | `SelectField` | 눌러서 고르는 칸(연결할 책) | 입력칸과 같은 모양 + 오른쪽 화살표 | [코드] |
 | `SearchField` | 검색칸 | 돋보기 + 입력 + 지우기, 찾는 중이면 도는 표시 | [코드] |
 | `Chip` | 고르기·거르기(읽기 상태, 완독 연도, 문장/사진) | 높이 38, 고르면 갈색 채움·흰 글자 | [코드] |
-| `Tabs` | 같은 화면 안 분류 전환(서랍 상태, 갈피 분류) | 글자 폭대로, 고른 탭은 갈색 굵은 글자 + 짧은 밑줄 32×3 | [코드] |
+| `Tabs` | 같은 화면 안 분류 전환(전체 책 읽기 상태, 갈피 분류) | 글자 폭대로, 고른 탭은 짙은 회색 Medium 글자 + 갈색 짧은 밑줄 32×3 | [코드] |
 | `ListGroup` / `ListItem` | 설정·메뉴·시트의 목록 | 줄 높이 56 이상, 줄 사이에만 구분선, 오른쪽 값·화살표·스위치 | [코드] |
 | `Toggle` | 켜고 끄기 | 50×30, 켜면 갈색 | [코드] |
 | `Card` | 정말 한 덩어리여야 하는 것만(요약 등). 목록에는 쓰지 않는다 | 모서리 10, 안쪽 18 | [코드] |
@@ -259,20 +283,22 @@
 <TextLink label="갈피 남기기" onPress={…} />
 ```
 
-### 6-3. 책 정보 시트: 주요 버튼 + 나란한 보조 행동 **[적용]**
+### 6-3. 책 정보 시트: 주요 버튼 + 나란한 글자 행동 **[2026-10-31 책장 시안 적용]**
+
+왼쪽 작은 표지(실제 표지 사진, 없거나 못 읽으면 이 책의 저장된 장정 정면 + '꾸민 표지'), 오른쪽 제목·읽기 상태.
 
 ```tsx
-<Btn label="이 책 읽기" icon={<Play … />} onPress={onRead} />
-<View style={{ flexDirection: 'row' }}>
-  <IconAction label="자세히 보기" icon={<BookOpen size={icon.large} color={colors.inkSoft} … />} onPress={onDetail} />
-  <IconAction label="갈피 남기기" icon={<Bookmark … />} onPress={onBookmark} />
-</View>
+<Btn label="책 정보 보기" onPress={onDetail} />            {/* 아이콘 없이 글자만, 그림자·그라데이션 없음 */}
+<TextActions style={{ marginTop: 10 }} actions={[       {/* 버튼 아래 끝 → 글자 위 끝 약 24 */}
+  { label: '읽기 시작', onPress: onRead },               {/* 진행 중 독서가 있으면 기존 규칙대로 그 독서를 이어 간다 */}
+  { label: '갈피 남기기', onPress: onBookmark },
+]} />
 ```
 
-### 6-4. 분류가 있는 목록 화면(서랍·갈피) **[적용]**
+### 6-4. 분류가 있는 목록 화면(전체 책·갈피) **[적용]**
 
 ```tsx
-<Screen title="서랍" scroll={false}>
+<Screen title="전체 책" scroll={false}>
   <ScreenList data={list} renderItem={…}
     ListHeaderComponent={<>
       <SearchField … />

@@ -29,7 +29,7 @@ export default function SearchMine() {
       .filter((b) => (!t || `${b.title} ${b.author ?? ''}`.includes(t)) && (!status || lib.books[b.id].status === status) && (!year || finishedYear(lib, b.id) === year))
       .sort((a, b) => a.title.localeCompare(b.title, 'ko'));
   }, [lib, place.books, q, status, year]);
-  const where = (id: string) => (placementOf(place.layout, id) ? '책장' : place.layout.drawer.includes(id) ? '서랍' : '');
+  const where = (id: string) => (placementOf(place.layout, id) ? '책장' : '책장에 없음');
   const open = (id: string) => {
     if (placementOf(place.layout, id)) {
       uiBus.focusBook(id);

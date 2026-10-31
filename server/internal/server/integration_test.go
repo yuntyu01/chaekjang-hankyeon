@@ -31,6 +31,7 @@ func TestIntegration(t *testing.T) {
 	}
 	t.Setenv("FILE_DIR", t.TempDir())
 	t.Setenv("S3_BUCKET", "")
+	t.Setenv("YES24_API_KEY", "")
 	t.Setenv("KAKAO_REST_KEY", "")
 	h := New(db).Handler()
 	request := func(method, path, token string, body any) (int, map[string]any) {

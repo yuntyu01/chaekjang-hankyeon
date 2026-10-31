@@ -382,7 +382,7 @@ const styles = StyleSheet.create({
   poses: { flexDirection: 'row', marginTop: 18 },
   poseTab: { flex: 1, alignItems: 'center', paddingTop: 2, minHeight: space.touch },
   poseText: { ...type.row, fontSize: 16, lineHeight: 22, color: colors.inkSoft, marginTop: 6 },
-  poseTextOn: { fontFamily: fonts.uiBold, color: colors.accent },
+  poseTextOn: { fontFamily: fonts.uiBold, color: colors.ink },
   poseBar: { width: 52, height: 2.5, borderRadius: 2, backgroundColor: colors.accent, marginTop: 9 },
   section: { marginTop: 22 },
   label: { ...type.sub, color: colors.inkSoft },

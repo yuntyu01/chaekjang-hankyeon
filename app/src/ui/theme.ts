@@ -18,11 +18,11 @@ export const colors = {
   tabBar: '#FBF6EE',
   title: '#1B2433',
   summary: '#7F858C',
-  homeTitle: '#4A3C3A', // 홈 머리글 '나의 책장'(시안의 따뜻한 짙은 갈색)
-  homeSummary: '#918880', // 홈 머리글 연도(시안의 따뜻한 회색)
+  homeTitle: '#303030', // 홈 머리글 '나의 책장'·더하기(화면 UI 글자와 같은 중립 짙은 회색, 2026-10-31)
+  homeSummary: '#707070', // 홈 머리글 연도·'전체 책'(화면 UI 보조 글자와 같은 중립 회색)
   circle: '#D8CFC4',
-  tabActive: '#574946',
-  tabInactive: '#93897F',
+  tabActive: '#303030',
+  tabInactive: '#8A8A8A',
   danger: '#A5483A',
   dropOk: 'rgba(60, 70, 60, 0.12)',
   dropBad: 'rgba(165, 72, 58, 0.16)',
@@ -37,9 +37,6 @@ export const fonts = {
   bookTitle: 'GowunBatang_700Bold',
   // 메뉴·숫자는 시스템 고딕(안드로이드 Noto Sans CJK, iOS Apple SD Gothic Neo)
   sans: undefined as string | undefined,
-  // 홈 머리글: 시안의 작고 둥근 고딕(제목 ExtraBold, 연도 Bold)
-  roundTitle: 'NanumSquareRoundEB',
-  round: 'NanumSquareRoundB',
 };
 
 // 하단 탭 바: 2026-10-26 12dp 내림(height 78→66, bottomAir 22→10). shelfReserve는 책장 줄 배치 계산용으로 예전 높이를 유지한다(시안에 맞춘 배치가 바뀌지 않게)

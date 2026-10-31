@@ -4,7 +4,6 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { ko } from '@/i18n/ko';
 import { BookmarkTabIcon, ReadTabIcon, ShelfIcon } from '@/ui/TabIcons';
-import { ReferenceUI } from '@/ui/ReferenceUI';
 import { tabBarStyle } from '@/ui/tabBar';
 import { colors, navigation } from '@/ui/theme';
 import { colors as ui, fonts } from '@/ui/screenTheme';
@@ -28,7 +27,8 @@ export default function TabsLayout() {
         options={{
           title: ko.tabs.shelf,
           tabBarAccessibilityLabel: ko.tabs.shelf,
-          tabBarIcon: ({ color, focused }) => focused ? <ReferenceUI name="shelfIcon" width={navigation.iconSize} height={navigation.iconSize}/> : <ShelfIcon color={String(color)} size={navigation.iconSize} filled={focused} />,
+          // 시안 그림 조각 대신 다른 탭과 같은 선 아이콘(선택되면 속을 채운다, 2026-10-31)
+          tabBarIcon: ({ color, focused }) => <ShelfIcon color={String(color)} size={navigation.iconSize} filled={focused} />,
         }}
       />
       <Tabs.Screen

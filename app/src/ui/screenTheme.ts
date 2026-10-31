@@ -2,8 +2,8 @@ import { StyleSheet, type TextStyle } from 'react-native';
 
 import { colors as shelfColors, fonts as shelfFonts } from './theme';
 
-// 화면 UI 공통 기준. 색은 2026-10-26 갈피 수정 시안에서 뽑은 값(부드러운 흰 바탕, 옅은 아이보리 입력칸, 차분한 갈색), 글꼴·간격은 설정 시안.
-// 글자색은 시안 글자 획 안쪽 픽셀의 중간값. 가는 글자는 시안의 선명화로 진하게 잡혀 굵은 제목에서 잰 치우침(약 0x12)만큼 보정했다.
+// 화면 UI 공통 기준. 바탕·갈색은 2026-10-26 갈피 수정 시안에서 뽑은 값(부드러운 흰 바탕, 옅은 아이보리 입력칸, 차분한 갈색), 글꼴·간격은 설정 시안.
+// 2026-10-31 책장 시안 지시: UI 글자에서 갈색 기를 뺐다(주요 #303030, 보조 #757575 기준, 구분선 #E5E5E5). 갈색은 큰 버튼 바탕·선택 표시에만.
 // 색·글꼴·간격·모양은 여기서만 정한다. 화면마다 비슷한 값을 따로 적지 말고 아래 토큰과 ui/kit 부품을 쓴다.
 // 책장 재질·빛·치수는 theme.ts의 따로 된 토큰을 쓴다(시안 벽색에 맞춰 보정돼 있다).
 export const colors = {
@@ -12,18 +12,18 @@ export const colors = {
   input: '#F6F5F2', // 입력칸·검색창 배경: 노란기 없는 아주 옅은 아이보리(균일한 단색, 질감·그라데이션 없음)
   surface: '#F6F5F2', // 입력칸 말고 구분이 필요한 작은 영역(안내 상자·눌린 줄)
   raised: '#FEFEFD', // 하단 시트·확인창·정보 상자(화면 배경과 같은 흰색)
-  ink: '#1A1716', // 본문 글자·입력칸 이름(시안: 거의 검정)
-  title: '#624C47', // 화면 제목·뒤로(시안 획 안쪽 #624C47)
-  inkSoft: '#6A5854', // 보조 글자('선택'·책 정보 줄·단위·구역 이름). 시안 #584642~#5B4947 + 보정. 흰 바탕 6.6:1, 입력칸 6.1:1
-  inkFaint: '#A9A29C', // 입력 안내 글자·장식 선(본문에 쓰지 않는다)
-  line: '#E8E5E0', // 구분선
-  border: '#E8E5E0', // 기본 테두리(보조 버튼·칩)
+  ink: '#303030', // 본문 글자·입력칸 이름: 중립 짙은 회색(바탕 12.5:1)
+  title: '#303030', // 화면 제목·뒤로(본문과 같은 중립 짙은 회색)
+  inkSoft: '#707070', // 보조 글자('선택'·책 정보 줄·단위·구역 이름). 기준 #757575는 입력칸 위 4.3:1이라 한 단계 짙게(흰 바탕 4.9:1, 입력칸 4.6:1)
+  inkFaint: '#A3A3A3', // 입력 안내 글자·장식 선(본문에 쓰지 않는다)
+  line: '#E5E5E5', // 구분선
+  border: '#E5E5E5', // 기본 테두리(보조 버튼·칩)
   accent: '#6C534A', // 대표색: 주요 버튼·선택 상태·입력 포커스·켜진 스위치(시안 버튼 #6C534A~#6C544A)
   accentPressed: '#5A443C',
   accentSoft: '#F2EDEA', // 작은 강조 바탕(검색 결과 '추가', 고른 칸). 크림·베이지가 아닌 옅은 갈색 기운
   onAccent: '#FFFFFF', // 갈색 버튼 안 글자
   disabled: '#ECE9E5', // 누를 수 없는 주요 버튼 바탕(입력칸과 구별되게 한 단계 짙게)
-  disabledInk: '#ADA6A0',
+  disabledInk: '#A6A6A6',
   danger: '#A5483A', // 오류·삭제(갈색과 구별되는 붉은 기)
   star: '#A8865F',
   scrim: 'rgba(43,39,37,0.32)',
@@ -56,7 +56,7 @@ export const type = {
   body: text(fonts.ui, 16, 25, colors.ink), // 본문·안내 문단
   sub: text(fonts.ui, 15, 21, colors.inkSoft), // 보조 설명·값(시안 글자 높이 12.8dp)
   caption: text(fonts.ui, 13, 18, colors.inkSoft), // 날짜·작은 메타
-  button: text(fonts.uiBold, 16, 22, colors.ink),
+  button: text(fonts.uiMedium, 16, 22, colors.ink), // 버튼 글자: Medium(SemiBold보다 부드럽게, 2026-10-31)
   input: { fontFamily: fonts.ui, fontSize: 16, color: colors.ink } as TextStyle, // 입력창(줄 높이는 플랫폼에 맡긴다)
   label: text(fonts.uiBold, 16, 22, colors.ink), // 입력칸 이름(갈피 수정 시안: 굵은 16, 본문색)
   number: { ...text(fonts.uiBold, 22, 28, colors.ink), fontVariant: ['tabular-nums'] } as TextStyle, // 요약 숫자(16권·2분)
