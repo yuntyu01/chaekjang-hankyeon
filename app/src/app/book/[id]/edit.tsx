@@ -7,7 +7,7 @@ import { pickPhoto, deniedMessage } from '@/services/photos';
 import { keepImage } from '@/store/files';
 import { libraryStore, useLibrary } from '@/store/library-store';
 import { Btn, Empty, Field, Muted, RealCover, Row, Screen } from '@/ui/kit';
-import { colors } from '@/ui/screenTheme';
+import { colors, tidySpace as space } from '@/ui/screenTheme';
 
 const num = (v: string) => {
   const n = Number(v.replace(/[^\d.]/g, ''));
@@ -32,7 +32,12 @@ export default function EditBook() {
     coverSource: e?.coverSource,
   }));
   const [msg, setMsg] = useState<string | null>(null);
-  if (!b || !e) return <Screen title="책 정보 수정"><Empty title="책을 찾을 수 없어요" /></Screen>;
+  if (!b || !e)
+    return (
+      <Screen tidy title="책 정보 수정">
+        <Empty title="책을 찾을 수 없어요" body="삭제되었거나 예시 책장 책이에요." action="책장으로" onAction={() => router.dismissTo('/')} />
+      </Screen>
+    );
   const save = async () => {
     let coverUri = f.coverUri;
     if (coverUri !== e.coverUri && f.coverSource === 'photo' && coverUri) {
@@ -54,31 +59,33 @@ export default function EditBook() {
     router.back();
   };
   return (
-    <Screen title="책 정보 수정" footer={<Btn label="저장" onPress={save} disabled={!f.title.trim()} />}>
-      <Row style={{ flexWrap: 'nowrap', alignItems: 'flex-start' }} gap={16}>
-        <RealCover uri={f.coverUri} title={f.title} color={colors.input} width={90} />
-        <View style={{ flex: 1, gap: 8 }}>
+    <Screen tidy title="책 정보 수정" footer={<Btn label="저장" onPress={save} disabled={!f.title.trim()} />}>
+      {/* 책 추가 '책 확인'과 같은 짜임: 표지 96 · 사이 16 · 작은 보조 버튼 */}
+      <Row style={{ flexWrap: 'nowrap', alignItems: 'flex-start', marginTop: space.m }} gap={space.l}>
+        <RealCover uri={f.coverUri} title={f.title} color={colors.input} width={96} />
+        <View style={{ flex: 1, gap: space.s, alignItems: 'flex-start' }}>
           <Btn
             label="표지 사진 바꾸기"
             kind="secondary"
+            size="s"
             onPress={async () => {
               const r = await pickPhoto('library');
               if (r.ok) setF({ ...f, coverUri: r.uri, coverSource: 'photo' });
               else if (r.reason === 'denied') setMsg(deniedMessage('library'));
             }}
           />
-          {f.coverUri ? <Btn label="표지 지우기" kind="ghost" onPress={() => setF({ ...f, coverUri: undefined, coverSource: undefined })} /> : null}
+          {f.coverUri ? <Btn label="표지 지우기" kind="ghost" size="s" onPress={() => setF({ ...f, coverUri: undefined, coverSource: undefined })} style={{ paddingHorizontal: 0 }} /> : null}
           {msg ? <Muted>{msg}</Muted> : null}
         </View>
       </Row>
-      <View style={{ height: 16 }} />
+      <View style={{ height: space.xl }} />
       <Field label="제목" value={f.title} onChangeText={(t) => setF({ ...f, title: t })} />
       <Field label="저자" value={f.authors} onChangeText={(t) => setF({ ...f, authors: t })} />
       <Field label="출판사" value={f.publisher} onChangeText={(t) => setF({ ...f, publisher: t })} />
       <Field label="출간" value={f.publishedAt} onChangeText={(t) => setF({ ...f, publishedAt: t })} placeholder="YYYY 또는 YYYY-MM" />
       <Field label="ISBN" value={f.isbn} onChangeText={(t) => setF({ ...f, isbn: t })} keyboardType="number-pad" />
       <Field label="쪽수" value={f.pages} onChangeText={(t) => setF({ ...f, pages: t })} keyboardType="number-pad" hint="비우면 ‘확인 전’으로 표시돼요." />
-      <Row style={{ flexWrap: 'nowrap' }} gap={10}>
+      <Row style={{ flexWrap: 'nowrap' }} gap={space.m}>
         <View style={{ flex: 1 }}>
           <Field label="판형 가로(mm)" value={f.width} onChangeText={(t) => setF({ ...f, width: t })} keyboardType="number-pad" />
         </View>

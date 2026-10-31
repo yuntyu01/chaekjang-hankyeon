@@ -9,7 +9,7 @@ import { settingsStore, useSettings } from '@/store/settings-store';
 import { syncStatus } from '@/services/sync';
 import { Check } from '@/ui/icons';
 import { BrandFooter, Btn, H2, ListGroup, ListItem, Screen, Sheet, Toggle } from '@/ui/kit';
-import { colors, icon, space, type } from '@/ui/screenTheme';
+import { colors, icon, tidySpace as space, tidyType as type } from '@/ui/screenTheme';
 
 const PRIVACY_URL = 'https://midi-broccoli-56c.notion.site/Covebook-3eb50284670881b0a0e2c6029cea29c7';
 const MOTION = [
@@ -25,7 +25,7 @@ export default function SettingsScreen() {
   const [privacy, setPrivacy] = useState(false);
   const backupSub = !syncStatus.available ? '기록은 이 기기에 저장돼요' : st.state === 'error' ? '동기화하지 못했어요' : '기록은 이 기기와 서버에 저장돼요';
   return (
-    <Screen title="설정">
+    <Screen tidy title="설정">
       <H2 first>독서 환경</H2>
       <ListGroup>
         <ListItem label="진동" sub="책을 집거나 놓을 때 짧은 진동" right={<Toggle label="진동" value={s.haptics} onValueChange={(v) => settingsStore.set({ haptics: v })} />} />
@@ -35,20 +35,20 @@ export default function SettingsScreen() {
 
       <H2>내 기록</H2>
       <ListGroup>
-        <ListItem label="백업 및 복원" sub={backupSub} onPress={() => router.push('/backup')} />
+        <ListItem label="백업 및 복원" sub={backupSub} chevron onPress={() => router.push('/backup')} />
       </ListGroup>
 
       <H2>앱 안내</H2>
       <ListGroup>
         <ListItem label="문의하기" sub="yuntyu01@gmail.com" onPress={() => Linking.openURL('mailto:yuntyu01@gmail.com')} />
-        <ListItem label="개인정보 처리방침" onPress={() => setPrivacy(true)} />
+        <ListItem label="개인정보 처리방침" chevron onPress={() => setPrivacy(true)} />
         <ListItem label="앱 정보" value={Constants.expoConfig?.version ?? ''} />
       </ListGroup>
 
       <BrandFooter />
 
       <Sheet visible={motion} onClose={() => setMotion(false)} title="움직임 줄이기">
-        <Text style={[type.sub, { marginBottom: space.tight }]}>켜면 책이 움직이는 연출과 독서 장면의 움직임을 줄여요.</Text>
+        <Text style={[type.sub, { marginBottom: space.s }]}>켜면 책이 움직이는 연출과 독서 장면의 움직임을 줄여요.</Text>
         <ListGroup>
           {MOTION.map((m) => (
             <ListItem
@@ -68,7 +68,7 @@ export default function SettingsScreen() {
 
       <Sheet visible={privacy} onClose={() => setPrivacy(false)} title="개인정보 처리 안내" scroll maxHeight="80%">
         <PrivacyNote />
-        <View style={{ gap: 8, marginTop: space.group }}>
+        <View style={{ gap: space.s, marginTop: space.xl }}>
           <Btn label="처리방침 전문 보기(웹)" kind="secondary" onPress={() => Linking.openURL(PRIVACY_URL)} />
           <Btn label="닫기" kind="ghost" onPress={() => setPrivacy(false)} />
         </View>

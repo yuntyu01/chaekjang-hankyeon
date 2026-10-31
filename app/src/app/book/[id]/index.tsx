@@ -14,7 +14,7 @@ import { useLibrary, libraryStore } from '@/store/library-store';
 import { placementStore, usePlacementStore } from '@/store/placement-store';
 import { uiBus } from '@/store/ui-bus';
 import { Btn, Chip, Empty, Field, H2, IconButton, ListGroup, ListItem, Muted, Row, Screen, Sheet, Stars, TextLink, s as kit } from '@/ui/kit';
-import { colors, fonts, icon, press, shape, space, type } from '@/ui/screenTheme';
+import { colors, fonts, icon, press, shape, tidySpace as space, tidyType as type } from '@/ui/screenTheme';
 import { BookVisual, LibraryCover } from '@/ui/BookVisual';
 
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
@@ -30,7 +30,7 @@ export default function BookDetailScreen() {
   const e = b && lib.editions[b.editionId];
   if (!b || !e)
     return (
-      <Screen title="책">
+      <Screen tidy title="책">
         <Empty title="책을 찾을 수 없어요" body="삭제되었거나 예시 책장 책이에요." action="책장으로" onAction={() => router.dismissTo('/')} />
       </Screen>
     );
@@ -64,6 +64,7 @@ export default function BookDetailScreen() {
 
   return (
     <Screen
+      tidy
       title="책 정보"
       right={
         <IconButton label="더 보기" onPress={() => setMenu(true)}>
@@ -114,7 +115,7 @@ export default function BookDetailScreen() {
               <Chip key={s} label={STATUS_LABEL[s]} on={b.status === s} onPress={() => libraryStore.setStatus(id, s)} />
             ))}
           </Row>
-          {b.status === 'read' ? <Btn label="다시 읽기 시작(새 회차)" kind="ghost" size="s" onPress={() => libraryStore.reread(id)} style={{ marginTop: 6, alignSelf: 'flex-start', paddingHorizontal: 0 }} /> : null}
+          {b.status === 'read' ? <Btn label="다시 읽기 시작(새 회차)" kind="ghost" size="s" onPress={() => libraryStore.reread(id)} style={{ marginTop: space.s, alignSelf: 'flex-start', paddingHorizontal: 0 }} /> : null}
 
           <H2>내 기록</H2>
           <ListGroup>
@@ -124,7 +125,7 @@ export default function BookDetailScreen() {
           </ListGroup>
 
           {rounds.length ? (
-            <View style={{ marginTop: space.tight }}>
+            <View style={{ marginTop: space.s }}>
               {rounds.map((r) => (
                 <RoundCard key={`${r.id}|${r.startedAt ?? ''}|${r.finishedAt ?? ''}`} idx={r.index} startedAt={r.startedAt} finishedAt={r.finishedAt} paused={r.paused} onSave={(p) => libraryStore.updateRound(r.id, p)} />
               ))}
@@ -158,7 +159,7 @@ export default function BookDetailScreen() {
                       <Text style={st.quote} numberOfLines={4}>
                         {m.text}
                       </Text>
-                      <Text style={[type.caption, { marginTop: 6 }]}>{[m.page ? `${m.page}쪽` : null, ymd(m.createdAt)].filter(Boolean).join(' · ')}</Text>
+                      <Text style={[type.caption, { marginTop: space.s }]}>{[m.page ? `${m.page}쪽` : null, ymd(m.createdAt)].filter(Boolean).join(' · ')}</Text>
                     </View>
                   </Pressable>
                 ))}
@@ -200,7 +201,7 @@ function RoundCard({ idx, startedAt, finishedAt, paused, onSave }: { idx: number
         {idx}회차{idx > 1 ? ' · 재독' : ''}
         <Text style={type.sub}>{finishedAt ? '   완독' : paused ? '   보류' : '   읽는 중'}</Text>
       </Text>
-      <Row style={{ marginTop: space.item, flexWrap: 'nowrap', alignItems: 'flex-start' }} gap={10}>
+      <Row style={{ marginTop: space.m, flexWrap: 'nowrap', alignItems: 'flex-start' }} gap={space.m}>
         <View style={{ flex: 1 }}>
           <Field label="시작일" value={s} onChangeText={setS} placeholder="YYYY-MM-DD" onEndEditing={() => !bad(s) && onSave({ startedAt: s || undefined })} error={bad(s) ? 'YYYY-MM-DD로 적어 주세요' : undefined} keyboardType="numbers-and-punctuation" />
         </View>
@@ -212,26 +213,28 @@ function RoundCard({ idx, startedAt, finishedAt, paused, onSave }: { idx: number
   );
 }
 
+// 정돈 변형: 책(그림·제목·저자)이 먼저, 그다음 진행(쪽·별점), 기록 요약, 주요 행동 '이어서 읽기'.
+// 제목과 저자는 붙이고(4), 역할이 바뀌는 묶음 사이는 32. 책 제목은 Medium(굵게 키우지 않는다)
 const st = StyleSheet.create({
-  hero: { alignItems: 'center', paddingTop: 72 },
-  title: { ...type.title, fontSize: 24, lineHeight: 32, color: colors.ink, textAlign: 'center', marginTop: 22 },
-  author: { ...type.sub, fontSize: 16, lineHeight: 22, marginTop: 6, textAlign: 'center' },
-  progressSection: { marginTop: 44, alignItems: 'center' },
-  page: { fontFamily: fonts.ui, fontSize: 36, lineHeight: 44, color: colors.ink, includeFontPadding: false },
+  hero: { alignItems: 'center', paddingTop: space.xxl },
+  title: { fontFamily: fonts.uiMedium, fontSize: 22, lineHeight: 30, color: colors.ink, textAlign: 'center', marginTop: space.xl, includeFontPadding: false },
+  author: { ...type.sub, fontSize: 16, lineHeight: 22, marginTop: space.xs, textAlign: 'center' },
+  progressSection: { marginTop: space.xxl, alignItems: 'center' },
+  page: { fontFamily: fonts.ui, fontSize: 36, lineHeight: 44, color: colors.ink, includeFontPadding: false, fontVariant: ['tabular-nums'] },
   pageTotal: { fontFamily: fonts.ui, fontSize: 20, color: colors.inkSoft },
-  pageInput: { alignSelf: 'stretch', textAlign: 'center', marginTop: 8 },
-  stars: { marginTop: 10 },
-  note: { ...type.sub, marginTop: 10, textAlign: 'center' },
-  stats: { flexDirection: 'row', alignItems: 'center', marginTop: 44 },
-  statCell: { flex: 1, flexDirection: 'row', alignItems: 'baseline', justifyContent: 'center', gap: 10, minHeight: space.touch, paddingVertical: 8 },
-  statLabel: type.rowStrong,
-  statValue: { ...type.sub, fontSize: 15 },
-  statDivider: { width: shape.hairline * 2, height: 30, backgroundColor: colors.line },
-  continueButton: { marginTop: 20 },
-  bookmarkButton: { marginTop: 4 },
-  recordsToggle: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, minHeight: space.touch, marginTop: 8 },
-  round: { paddingTop: space.group, marginTop: space.tight, borderTopWidth: shape.hairline, borderTopColor: colors.line },
-  mark: { flexDirection: 'row', gap: 14, paddingVertical: 16 },
+  pageInput: { alignSelf: 'stretch', textAlign: 'center', marginTop: space.s },
+  stars: { marginTop: space.s },
+  note: { ...type.sub, marginTop: space.s, textAlign: 'center' },
+  stats: { flexDirection: 'row', alignItems: 'center', marginTop: space.xxl },
+  statCell: { flex: 1, flexDirection: 'row', alignItems: 'baseline', justifyContent: 'center', gap: space.s, minHeight: space.touch, paddingVertical: space.s },
+  statLabel: type.row,
+  statValue: type.sub,
+  statDivider: { width: shape.hairline * 2, height: 24, backgroundColor: colors.line },
+  continueButton: { marginTop: space.xl },
+  bookmarkButton: { marginTop: space.xs },
+  recordsToggle: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: space.xs, minHeight: space.touch, marginTop: space.s },
+  round: { paddingTop: space.xl, marginTop: space.s, borderTopWidth: shape.hairline, borderTopColor: colors.line },
+  mark: { flexDirection: 'row', gap: space.m, paddingVertical: space.l },
   markBar: { width: 3, borderRadius: 2 },
   quote: { fontFamily: fonts.serif, fontSize: 16, lineHeight: 27, color: colors.ink },
 });

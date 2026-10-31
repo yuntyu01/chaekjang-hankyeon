@@ -91,6 +91,32 @@ export const icon = { size: 22, small: 18, large: 26, stroke: 1.6, color: colors
 // 눌림: 바탕을 칠하지 않는 누를 것(글자·아이콘 행동, 목록 줄, 갈피 카드)은 누르는 동안 이만큼 옅어진다. 채운 버튼·칩은 바탕색으로 표시
 export const press = { opacity: 0.55 };
 
+// ---------- 일반 UI 정돈 변형(2026-10-31, 토스의 정보 위계·노션의 절제된 장식 참고) ----------
+// 대상 화면에서만 쓴다: 전체 책·책 찾기·책 추가(검색·결과·확인·완료)·책 정보·정보 수정·설정·독서 타이머 조작부와 그 안의 버튼·입력창·메뉴·시트.
+// 책장·책 고르기(홈) 시트·갈피 화면·하단 탭·그 밖의 화면은 위 기준 그대로다. 그래서 위 토큰을 고치지 않고 따로 두며,
+// ui/kit 부품은 <Tidy>(또는 Screen tidy) 안에서만 이 값으로 그린다.
+// 글꼴: Pretendard 그대로(R 400·M 500·SB 600 파일). 프로젝트에 '살짝 둥근 고딕'이 R·M·SB로 갖춰진 것이 없다(나눔스퀘어라운드는 B·EB뿐).
+// 굵기 기준: 화면 제목 SemiBold, 시트·묶음 제목·책 제목·주요 버튼·입력칸 이름 Medium, 본문·저자·상태·설명·보조 행동 Regular.
+// 간격은 4·8·12·16·24·32 단계만, 모서리는 조작 요소 10·칩 8·시트 20·확인창 16.
+export const tidyType = {
+  title: text(fonts.uiBold, 20, 28, colors.title), // 머리줄 화면 제목(22 → 20: 내용보다 크게 튀지 않게)
+  heading: text(fonts.uiMedium, 18, 26, colors.ink), // 시트 제목·빈 화면 제목·묶음 제목
+  section: text(fonts.ui, 14, 20, colors.inkSoft), // 구역 이름
+  row: text(fonts.ui, 17, 24, colors.ink), // 목록·메뉴 한 줄
+  rowStrong: text(fonts.uiMedium, 17, 24, colors.ink), // 책 제목(목록)
+  body: text(fonts.ui, 16, 26, colors.ink), // 여러 줄 문단(행간 1.6)
+  sub: text(fonts.ui, 15, 22, colors.inkSoft), // 저자·설명·값
+  caption: text(fonts.ui, 14, 20, colors.inkSoft), // 읽기 상태·날짜(13 → 14: 보조 정보도 읽히게)
+  button: text(fonts.uiMedium, 16, 22, colors.ink), // 버튼 글자(작은 버튼은 15)
+  input: type.input,
+  label: text(fonts.uiMedium, 15, 21, colors.ink), // 입력칸 이름(SemiBold 16 → Medium 15: 입력값보다 덜 무겁게)
+  number: { ...text(fonts.uiMedium, 22, 28, colors.ink), fontVariant: ['tabular-nums'] } as TextStyle,
+};
+export const tidySpace = { ...space, group: 24, tight: 8, xs: 4, s: 8, m: 12, l: 16, xl: 24, xxl: 32 };
+export const tidyShape = { ...shape, button: 10, input: 10, chip: 8, sheet: 20, dialog: 16, cover: 4 };
+// 버튼 높이: 화면의 단 하나뿐인 주요 행동 l, 보통 m, 줄 안의 작은 행동 s
+export const tidyButton = { l: 56, m: 48, s: 40 };
+
 // 어두운 장면 위 UI(독서 타이머 머리줄 등): 밝은 글자, 바탕 대비를 위한 옅은 그늘
 export const night = {
   ink: '#F6EFE6',

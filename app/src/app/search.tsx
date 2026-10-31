@@ -12,7 +12,7 @@ import { useLibrary } from '@/store/library-store';
 import { usePlacementStore } from '@/store/placement-store';
 import { uiBus } from '@/store/ui-bus';
 import { Chip, Empty, Muted, Row, Screen, ScreenList, SearchField } from '@/ui/kit';
-import { space } from '@/ui/screenTheme';
+import { tidySpace as space } from '@/ui/screenTheme';
 
 export default function SearchMine() {
   const { lib } = useLibrary();
@@ -38,22 +38,22 @@ export default function SearchMine() {
   };
   // 내 책 전부가 줄마다 책 그림(캔버스)으로 나온다: 화면 근처 줄만 그린다
   return (
-    <Screen title="책 찾기" scroll={false}>
+    <Screen tidy title="책 찾기" scroll={false}>
       <ScreenList
         data={list}
         keyExtractor={(b) => b.id}
         renderItem={({ item: b }) => <BookRow book={b} sub={[STATUS_LABEL[lib.books[b.id].status], where(b.id)].filter(Boolean).join(' · ')} onPress={() => open(b.id)} />}
         ListHeaderComponent={
-          <View style={{ marginBottom: list.length ? space.tight : 0 }}>
+          <View style={{ marginBottom: list.length ? space.xs : 0 }}>
             <SearchField value={q} onChangeText={setQ} autoFocus placeholder="제목·저자" accessibilityLabel="내 책 찾기" style={{ marginTop: space.item }} />
-            <Row style={{ marginTop: space.item }}>
+            <Row style={{ marginTop: space.l }}>
               {READ_STATUSES.map((st) => (
                 <Chip key={st} label={STATUS_LABEL[st]} on={status === st} onPress={() => setStatus(status === st ? null : st)} />
               ))}
             </Row>
             {years.length ? (
               <Row style={{ marginTop: space.item }}>
-                <Muted style={{ marginRight: 4 }}>완독 연도</Muted>
+                <Muted style={{ marginRight: space.xs }}>완독 연도</Muted>
                 {years.map((y) => (
                   <Chip key={y} label={`${y}`} on={year === y} onPress={() => setYear(year === y ? null : y)} />
                 ))}
@@ -65,7 +65,13 @@ export default function SearchMine() {
           !Object.keys(lib.books).length ? (
             <Empty title="아직 내 책이 없어요" action="책 추가" onAction={() => router.push('/book/add')} />
           ) : (
-            <Empty title="맞는 책이 없어요" body="검색어나 필터를 바꿔 보세요." />
+            <Empty
+              title={q.trim() ? `‘${q.trim()}’에 맞는 책이 없어요` : '이 조건에 맞는 책이 없어요'}
+              body={q.trim() ? '제목이나 저자의 일부만 입력해 보세요.' : '다른 읽기 상태나 연도를 골라 보세요.'}
+              action={q.trim() ? '검색어 지우기' : '조건 풀기'}
+              actionKind="secondary"
+              onAction={() => (q.trim() ? setQ('') : (setStatus(null), setYear(null)))}
+            />
           )
         }
       />

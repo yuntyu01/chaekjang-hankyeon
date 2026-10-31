@@ -1,5 +1,5 @@
 // 화면 공통 기준(2026-10-26 설정 시안): 대비·글자 크기·간격 범위, 글꼴 등록, 화면 코드가 토큰을 벗어나지 않는지.
-import { colors, fonts, night, space, type } from '../screenTheme';
+import { colors, fonts, night, space, tidyButton, tidyShape, tidySpace, tidyType, type } from '../screenTheme';
 
 // 노드 형식 정의 없이 쓰는 최소한의 fs·path(light-calibration 시험과 같은 방식)
 declare const __dirname: string;
@@ -156,7 +156,7 @@ describe('화면 코드가 공통 기준을 쓴다', () => {
         .readFileSync(f, 'utf8')
         .split('\n')
         .map((l, i) => [l, i + 1] as const)
-        .filter(([l]) => /fontSize\s*:/.test(l) && !/fontFamily|\.\.\.type\.|type\.[a-z]+|\[(s|st|styles)\.[a-zA-Z]+|측정용/.test(l))
+        .filter(([l]) => /fontSize\s*:/.test(l) && !/fontFamily|\.\.\.type\.|type\.[a-z]+|tidyType\.[a-z]+|\[(s|st|styles)\.[a-zA-Z]+|측정용/.test(l))
         .map(([, i]) => `${path.relative(SRC, f)}:${i}`),
     );
     expect(bad).toEqual([]);
@@ -171,5 +171,39 @@ describe('화면 코드가 공통 기준을 쓴다', () => {
         .map(([, i]) => `${path.relative(SRC, f)}:${i}`),
     );
     expect(bad).toEqual([]);
+  });
+});
+
+// 2026-10-31 일반 UI 정돈 변형: 대상 화면에만 켜고(전역 토큰은 그대로), 간격은 제한된 단계, 굵기는 역할대로
+describe('정돈 변형(tidy)', () => {
+  const read = (rel: string) => fs.readFileSync(path.join(SRC, rel), 'utf8');
+  it('간격은 4·8·12·16·24·32 단계만(목록 줄 높이·누르는 자리는 따로)', () => {
+    const { row, touch, ...rest } = tidySpace;
+    expect(row).toBe(56);
+    expect(touch).toBe(44);
+    for (const v of Object.values(rest)) expect([4, 8, 12, 16, 24, 32]).toContain(v);
+  });
+  it('버튼 높이·모서리 한 벌', () => {
+    expect(tidyButton).toEqual({ l: 56, m: 48, s: 40 });
+    expect([tidyShape.button, tidyShape.input, tidyShape.chip, tidyShape.sheet, tidyShape.dialog]).toEqual([10, 10, 8, 20, 16]);
+  });
+  it('굵기: 화면 제목 SemiBold, 묶음 제목·책 제목·입력칸 이름·버튼 Medium, 본문·보조 Regular', () => {
+    expect(tidyType.title.fontFamily).toBe(fonts.uiBold);
+    for (const k of ['heading', 'rowStrong', 'label', 'button'] as const) expect(tidyType[k].fontFamily).toBe(fonts.uiMedium);
+    for (const k of ['row', 'body', 'sub', 'caption', 'section'] as const) expect(tidyType[k].fontFamily).toBe(fonts.ui);
+  });
+  it('보조 글자도 바탕 위 4.5:1 이상, 너무 작지 않다(14 이상)', () => {
+    for (const k of ['sub', 'caption', 'section'] as const) {
+      expect(contrast(String(tidyType[k].color), colors.bg)).toBeGreaterThanOrEqual(4.5);
+      expect(tidyType[k].fontSize).toBeGreaterThanOrEqual(14);
+    }
+  });
+  it('대상 화면만 켠다', () => {
+    for (const f of ['app/books.tsx', 'app/search.tsx', 'app/book/add.tsx', 'app/book/[id]/index.tsx', 'app/book/[id]/edit.tsx', 'app/settings.tsx']) expect(read(f)).toMatch(/<Screen\s+tidy|<Screen tidy/);
+    expect(read('features/reading/ReadingScreen.tsx')).toMatch(/<Tidy>/);
+  });
+  it('책장·책 고르기 시트·갈피 화면·하단 탭은 켜지 않는다', () => {
+    const off = ['app/(tabs)/bookmarks.tsx', 'app/(tabs)/_layout.tsx', 'app/bookmark/new.tsx', 'app/bookmark/[id].tsx', 'features/home/HomeScreen.tsx', 'features/home/BookSheet.tsx', 'features/home/BookDetail.tsx', 'features/bookmark/BookmarkCard.tsx', 'features/bookmark/BookmarkEmpty.tsx', 'features/reading/Scene.tsx'];
+    for (const f of off) if (fs.existsSync(path.join(SRC, f))) expect(read(f)).not.toMatch(/<Tidy|Screen[^>]*\btidy\b|tidyType|tidySpace/);
   });
 });

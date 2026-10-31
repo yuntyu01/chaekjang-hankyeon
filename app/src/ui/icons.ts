@@ -17,6 +17,7 @@ export { default as Paintbrush } from 'lucide-react-native/icons/paintbrush';
 export { default as Pause } from 'lucide-react-native/icons/pause';
 export { default as PenLine } from 'lucide-react-native/icons/pen-line';
 export { default as Play } from 'lucide-react-native/icons/play';
+export { default as Timer } from 'lucide-react-native/icons/timer';
 export { default as Plus } from 'lucide-react-native/icons/plus';
 export { default as Search } from 'lucide-react-native/icons/search';
 export { default as Settings } from 'lucide-react-native/icons/settings';

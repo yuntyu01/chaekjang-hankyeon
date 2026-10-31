@@ -2,7 +2,7 @@
 // 저장한 뒤 다시 묻지 않는다. 자리가 모자랄 때만 새 선반 추가 / 보관만 하기를 고른다(place-books). 보관만 한 책도 전체 책에 있다.
 // 검색 결과·표지·쪽수가 없어도 직접 입력과 기본 장정으로 끝낼 수 있다. 추정 크기를 확인된 정보처럼 저장하지 않는다.
 import { router, useLocalSearchParams } from 'expo-router';
-import { Camera, ImageIcon, PenLine, Plus } from '@/ui/icons';
+import { Camera, PenLine, Plus } from '@/ui/icons';
 import { useEffect, useRef, useState } from 'react';
 import { Alert, Linking, Pressable, StyleSheet, Text, View } from 'react-native';
 
@@ -19,8 +19,8 @@ import { libraryStore } from '@/store/library-store';
 import { placeWithChoice } from '@/features/book/place-books';
 import { placementStore } from '@/store/placement-store';
 import { uiBus } from '@/store/ui-bus';
-import { Btn, Chip, Empty, Field, H2, IconAction, Muted, Notice, RealCover, Row, Screen, SearchField, TextLink } from '@/ui/kit';
-import { colors, icon, press, space, type } from '@/ui/screenTheme';
+import { Btn, Chip, Empty, Field, H2, IconAction, Loading, Muted, Notice, RealCover, Row, Screen, SearchField, TextLink } from '@/ui/kit';
+import { colors, icon, press, tidySpace as space, tidyType as type } from '@/ui/screenTheme';
 
 type Step = 'find' | 'confirm' | 'binding' | 'done';
 
@@ -155,6 +155,7 @@ export default function AddBook() {
   if (step === 'confirm')
     return (
       <Screen
+        tidy
         title="책 확인"
         footer={
           <Btn
@@ -173,17 +174,17 @@ export default function AddBook() {
             }}
           />
         }>
-        {notice ? <Notice style={{ marginTop: space.item, marginBottom: space.group }}>{notice}</Notice> : null}
-        <Row style={{ alignItems: 'flex-start', flexWrap: 'nowrap', marginTop: notice ? 0 : space.item }} gap={16}>
+        {notice ? <Notice style={{ marginTop: space.m, marginBottom: space.xl }}>{notice}</Notice> : null}
+        <Row style={{ alignItems: 'flex-start', flexWrap: 'nowrap', marginTop: notice ? 0 : space.m }} gap={space.l}>
           <RealCover uri={draft.coverUri} title={draft.title || '표지'} color={colors.input} width={96} />
-          <View style={{ flex: 1, gap: 10 }}>
+          <View style={{ flex: 1, gap: space.s }}>
             <Muted>{draft.coverUri ? (draft.coverSource === 'photo' ? '내가 찍은 사진' : `${draft.sourceName ?? '도서 정보'} 표지`) : '표지가 없어요. 사진을 등록할 수 있어요.'}</Muted>
             {draft.link ? <TextLink label={`${draft.sourceName ?? '판매처'}에서 보기`} tone="soft" onPress={() => void Linking.openURL(draft.link!)} style={{ alignSelf: 'flex-start', marginVertical: -10 }} /> : null}
             <Btn
               label={draft.coverUri ? '사진으로 바꾸기' : '표지 사진 등록'}
               kind="secondary"
               size="s"
-              icon={<ImageIcon size={icon.small} color={colors.ink} strokeWidth={icon.stroke} />}
+              style={{ alignSelf: 'flex-start' }}
               onPress={async () => {
                 const r = await pickPhoto('library');
                 if (r.ok) setDraft({ ...draft, coverUri: r.uri, coverSource: 'photo' });
@@ -192,11 +193,11 @@ export default function AddBook() {
             />
           </View>
         </Row>
-        <View style={{ height: space.group + 4 }} />
+        <View style={{ height: space.xl }} />
         <Field label="제목 (필수)" value={draft.title} onChangeText={(t) => setDraft({ ...draft, title: t })} placeholder="책 제목" />
         <Field label="저자" value={draft.authors} onChangeText={(t) => setDraft({ ...draft, authors: t })} placeholder="여러 명은 쉼표로" />
         <Field label="출판사" value={draft.publisher} onChangeText={(t) => setDraft({ ...draft, publisher: t })} />
-        <Row style={{ flexWrap: 'nowrap' }} gap={10}>
+        <Row style={{ flexWrap: 'nowrap' }} gap={space.m}>
           <View style={{ flex: 1 }}>
             <Field label="ISBN" value={draft.isbn} onChangeText={(t) => setDraft({ ...draft, isbn: t })} keyboardType="number-pad" />
           </View>
@@ -204,7 +205,7 @@ export default function AddBook() {
             <Field label="쪽수" value={draft.pages} onChangeText={(t) => setDraft({ ...draft, pages: t })} keyboardType="number-pad" />
           </View>
         </Row>
-        <Row style={{ flexWrap: 'nowrap' }} gap={10}>
+        <Row style={{ flexWrap: 'nowrap' }} gap={space.m}>
           <View style={{ flex: 1 }}>
             <Field label="판형 가로(mm)" value={draft.width} onChangeText={(t) => setDraft({ ...draft, width: t })} keyboardType="number-pad" />
           </View>
@@ -225,11 +226,12 @@ export default function AddBook() {
   if (step === 'binding' && binding)
     return (
       <Screen
+        tidy
         title="장정 미리보기"
         footer={
           <View>
             <Btn label="추가하고 책장에 놓기" busy={saving} onPress={() => void add('shelf')} />
-            <TextLink label="보관만 하기" tone="soft" disabled={saving} onPress={() => void add('keep')} style={{ marginTop: 2, marginBottom: -8 }} />
+            <TextLink label="보관만 하기" tone="soft" disabled={saving} onPress={() => void add('keep')} style={{ marginTop: space.xs, marginBottom: -space.s }} />
           </View>
         }>
         <BindingEditor title={draft.title} author={draft.authors} size={size} pages={num(draft.pages)} value={binding} recommended={{ ...bindingFields(art ?? buildBookArt({ title: draft.title })), seed: 0, source: 'default' }} onChange={setBinding} />
@@ -238,11 +240,11 @@ export default function AddBook() {
 
   // 추가 완료(결과만 알린다. 다시 묻지 않는다)
   return (
-    <Screen title="추가했어요" back={false}>
+    <Screen tidy title="추가했어요" back={false}>
       <Text style={st.doneTitle}>《{draft.title}》을(를) 추가했어요.</Text>
       {placed === null ? null : (
-        <View style={{ gap: 10, marginTop: space.section }}>
-          <Muted>{placed === 'shelf' ? '책장에 놓았어요. 꾸미기에서 자리와 자세를 바꿀 수 있어요.' : '보관했어요. 전체 책에서 언제든 책장에 놓을 수 있어요.'}</Muted>
+        <View style={{ gap: space.s, marginTop: space.s }}>
+          <Muted style={{ marginBottom: space.l }}>{placed === 'shelf' ? '책장에 놓았어요. 꾸미기에서 자리와 자세를 바꿀 수 있어요.' : '보관했어요. 전체 책에서 언제든 책장에 놓을 수 있어요.'}</Muted>
           {placed === 'shelf' ? (
             <Btn
               label="책장에서 보기"
@@ -293,7 +295,7 @@ function FindStep({ initial, notice, onPick, onPhoto, onManual }: { initial?: st
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
   return (
-    <Screen title="책 추가">
+    <Screen tidy title="책 추가">
       <SearchField
         value={q}
         onChangeText={(t) => {
@@ -315,28 +317,35 @@ function FindStep({ initial, notice, onPick, onPhoto, onManual }: { initial?: st
         <IconAction label="사진으로 찾기" onPress={() => Alert.alert('사진으로 찾기', '표지 사진을 선택해 주세요.', [{ text: '사진 찍기', onPress: () => onPhoto('camera') }, { text: '사진 고르기', onPress: () => onPhoto('library') }, { text: '취소', style: 'cancel' }])} icon={<Camera size={icon.size + 2} color={colors.inkSoft} strokeWidth={icon.stroke} />} />
         <IconAction label="직접 입력" onPress={() => onManual(q)} icon={<PenLine size={icon.size + 2} color={colors.inkSoft} strokeWidth={icon.stroke} />} />
       </View>
-      {notice ? <Muted style={{ marginTop: space.tight }}>{notice}</Muted> : null}
+      {notice ? <Muted style={{ marginTop: space.s }}>{notice}</Muted> : null}
 
+      {/* 상태: 찾는 중(결과가 아직 없을 때) · 오류(다시 시도) · 결과 없음(직접 입력) · 결과 */}
+      {busy && !items ? <Loading label="책을 찾는 중이에요" /> : null}
       {err ? (
-        <Notice tone="error" style={{ marginTop: space.group }}>
-          {err}
-        </Notice>
+        <View style={{ marginTop: space.xl, gap: space.s, alignItems: 'flex-start' }}>
+          <Notice tone="error" style={{ alignSelf: 'stretch' }}>
+            {err}
+          </Notice>
+          <Btn label="다시 시도" kind="secondary" size="s" onPress={() => run()} />
+        </View>
       ) : null}
-      {err ? <Btn label="다시 시도" kind="secondary" size="s" onPress={() => run()} style={{ marginTop: 10, alignSelf: 'flex-start' }} /> : null}
-      {items && !items.length ? <Empty title="찾는 책이 없어요" body="검색어를 바꾸거나 위의 직접 입력으로 추가해 주세요." /> : null}
+      {items && !items.length && !busy ? (
+        <Empty title={`‘${q.trim()}’에 맞는 책이 없어요`} body="제목이나 저자 이름을 짧게 줄여 찾거나, 직접 입력으로 추가할 수 있어요." action="직접 입력" actionKind="secondary" onAction={() => onManual(q)} />
+      ) : null}
       {items?.length ? (
-        <View style={{ marginTop: space.section - 2 }}>
-          <Row gap={12}><Text style={st.resultHeading}>검색 결과</Text><Text style={type.sub}>{items.length}권{provider ? ` · ${provider} 제공` : ''}</Text></Row>
-          {/* 책 추가 시안: 표지 76×105, 제목·지은이 두 줄, 오른쪽 갈색 '+', 줄 사이 구분선 없이 여백만 */}
-          <View style={{ marginTop: space.tight }}>
+        <View style={{ marginTop: space.xl }}>
+          {/* 결과 머리: 구역 이름처럼 작게(출처 표시는 YES24 약관) */}
+          <Text style={type.section}>{`검색 결과 ${items.length}권${provider ? ` · ${provider} 제공` : ''}`}</Text>
+          {/* 전체 책 목록과 같은 줄 짜임: 표지 64 · 사이 16 · 제목 Medium 17 · 저자 Regular 15, 오른쪽 '+'(누르는 자리는 줄 전체) */}
+          <View style={{ marginTop: space.xs }}>
             {items.map((c) => (
               <Pressable key={c.key} onPress={() => onPick(c)} style={({ pressed }) => [st.result, pressed && press]} accessibilityRole="button" accessibilityLabel={`${c.title}, ${c.authors.join(', ')}, 추가`}>
-                <View style={st.coverShadow}><RealCover uri={c.coverUrl} title={c.title} color={colors.input} width={76} ratio={0.72} /></View>
-                <View style={{ flex: 1, gap: 6 }}>
-                  <Text style={type.row} numberOfLines={2}>{c.title}</Text>
-                  {c.authors.length ? <Text style={st.author} numberOfLines={1}>{c.authors.join(', ')}</Text> : null}
+                <View style={st.cover}><RealCover uri={c.coverUrl} title={c.title} color={colors.input} width={64} ratio={0.72} /></View>
+                <View style={{ flex: 1, gap: space.xs }}>
+                  <Text style={type.rowStrong} numberOfLines={3}>{c.title}</Text>
+                  {c.authors.length ? <Text style={type.sub} numberOfLines={1}>{c.authors.join(', ')}</Text> : null}
                 </View>
-                <View style={st.add}><Plus size={28} color={colors.accent} strokeWidth={icon.stroke} /></View>
+                <View style={st.add}><Plus size={24} color={colors.inkSoft} strokeWidth={icon.stroke} /></View>
               </Pressable>
             ))}
           </View>
@@ -347,11 +356,10 @@ function FindStep({ initial, notice, onPick, onPhoto, onManual }: { initial?: st
 }
 
 const st = StyleSheet.create({
-  findMethods: { flexDirection: 'row', alignItems: 'center', marginTop: space.tight },
-  result: { flexDirection: 'row', alignItems: 'center', gap: 20, paddingVertical: 11 },
-  author: { ...type.sub, fontSize: 15 },
-  resultHeading: { ...type.heading, fontSize: 20 },
-  coverShadow: { borderRadius: 3, boxShadow: [{ offsetX: 0, offsetY: 5, blurRadius: 6, color: 'rgba(118,77,38,0.16)' }] },
-  add: { width: space.touch + 4, height: space.touch + 4, alignItems: 'center', justifyContent: 'center', marginRight: -10 },
-  doneTitle: { ...type.body, fontSize: 17, lineHeight: 26, marginTop: space.item },
+  findMethods: { flexDirection: 'row', alignItems: 'center', marginTop: space.s },
+  result: { flexDirection: 'row', alignItems: 'center', gap: space.l, paddingVertical: space.m },
+  // 표지 사진 그림자는 옅게(갈색 기 없이)
+  cover: { borderRadius: 3, boxShadow: [{ offsetX: 0, offsetY: 2, blurRadius: 4, color: 'rgba(0,0,0,0.10)' }] },
+  add: { width: space.touch, height: space.touch, alignItems: 'center', justifyContent: 'center', marginRight: -space.s },
+  doneTitle: { ...type.heading, marginTop: space.m },
 });

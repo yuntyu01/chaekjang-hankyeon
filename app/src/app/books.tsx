@@ -14,9 +14,9 @@ import { READ_STATUSES, type ReadStatus } from '@/domain/library';
 import { ko } from '@/i18n/ko';
 import { useLibrary } from '@/store/library-store';
 import { usePlacementStore } from '@/store/placement-store';
-import { Check } from '@/ui/icons';
+import { Check, ChevronDown } from '@/ui/icons';
 import { Btn, Chip, Empty, Muted, Screen, ScreenList, SearchField, Tabs, TextLink } from '@/ui/kit';
-import { colors, press, space, type } from '@/ui/screenTheme';
+import { colors, icon, press, tidySpace as space, tidyType as type } from '@/ui/screenTheme';
 
 const TABS = [{ id: 'all', label: '전체' }, ...READ_STATUSES.map((st) => ({ id: st, label: STATUS_LABEL[st] }))] as const satisfies readonly { id: ReadStatus | 'all'; label: string }[];
 const SORT_LABEL: Record<AllBooksSort, string> = { recent: '최근 추가순', title: '제목순' };
@@ -60,7 +60,7 @@ export default function AllBooks() {
       const on = picked.includes(book.id);
       return (
         <View style={onShelf ? s.dim : undefined}>
-          <BookRow book={book} sub={sub} selected={onShelf ? undefined : on} onPress={onShelf ? undefined : () => toggle(book.id)} right={onShelf ? null : <View style={[s.check, on && s.checkOn]}>{on ? <Check size={16} color={colors.onAccent} strokeWidth={2.4} /> : null}</View>} />
+          <BookRow book={book} sub={sub} selected={onShelf ? undefined : on} onPress={onShelf ? undefined : () => toggle(book.id)} right={onShelf ? null : <View style={[s.check, on && s.checkOn]}>{on ? <Check size={14} color={colors.onAccent} strokeWidth={2.4} /> : null}</View>} />
         </View>
       );
     }
@@ -75,8 +75,16 @@ export default function AllBooks() {
     );
   };
 
+  const filtered = !!q.trim() || status !== 'all' || offShelfOnly;
+  const clearFilters = () => {
+    setQ('');
+    setStatus('all');
+    setOffShelfOnly(false);
+  };
+
   return (
     <Screen
+      tidy
       title={ko.allBooks.title}
       titleNote={total ? `· ${total}권` : undefined}
       scroll={false}
@@ -88,17 +96,18 @@ export default function AllBooks() {
         renderItem={row}
         extraData={`${selecting}:${picked.join()}`}
         ListHeaderComponent={
-          <View style={{ marginBottom: rows.length ? space.tight : 0 }}>
+          <View style={{ marginBottom: rows.length ? space.xs : 0 }}>
             <SearchField value={q} onChangeText={setQ} placeholder="제목, 저자 검색" accessibilityLabel="전체 책에서 찾기" style={{ marginTop: space.item }} />
-            <Tabs items={TABS} value={status} onChange={setStatus} style={{ marginTop: space.item, marginHorizontal: -6 }} />
+            <Tabs items={TABS} value={status} onChange={setStatus} style={{ marginTop: space.l, marginHorizontal: -6 }} />
             <View style={s.tools}>
               <Chip label={offCount ? `${ko.allBooks.offShelf} ${offCount}` : ko.allBooks.offShelf} on={offShelfOnly} onPress={() => setOffShelfOnly(!offShelfOnly)} />
               <Pressable onPress={() => setSort(sort === 'recent' ? 'title' : 'recent')} hitSlop={8} accessibilityRole="button" accessibilityLabel={`정렬: ${SORT_LABEL[sort]}, 바꾸기`} style={({ pressed }) => [s.sort, pressed && press]}>
-                <Text style={s.sortText}>{SORT_LABEL[sort]} ▾</Text>
+                <Text style={s.sortText}>{SORT_LABEL[sort]}</Text>
+                <ChevronDown size={icon.small - 2} color={colors.inkSoft} strokeWidth={icon.stroke} />
               </Pressable>
             </View>
-            {selecting ? <Muted style={{ marginTop: space.tight }}>책장에 놓을 책을 고르세요. 이미 책장에 있는 책은 고를 수 없어요.</Muted> : null}
-            {message ? <Muted style={{ marginTop: space.tight }}>{message}</Muted> : null}
+            {selecting ? <Muted style={{ marginTop: space.s }}>책장에 놓을 책을 고르세요. 이미 책장에 있는 책은 고를 수 없어요.</Muted> : null}
+            {message ? <Muted style={{ marginTop: space.s, color: colors.ink }} >{message}</Muted> : null}
           </View>
         }
         ListEmptyComponent={
@@ -106,7 +115,13 @@ export default function AllBooks() {
             {!total ? (
               <Empty title="아직 등록한 책이 없어요" body="책을 추가하면 여기에서 모두 볼 수 있어요." action="책 추가" onAction={() => router.push('/book/add')} />
             ) : (
-              <Empty title="맞는 책이 없어요" body={q.trim() ? '검색어를 바꿔 보세요.' : '다른 조건을 선택해 보세요.'} />
+              <Empty
+                title={q.trim() ? `‘${q.trim()}’에 맞는 책이 없어요` : '이 조건에 맞는 책이 없어요'}
+                body={q.trim() ? '제목이나 저자의 일부만 입력해 보세요.' : '다른 읽기 상태를 고르거나 조건을 풀어 보세요.'}
+                action={filtered ? (q.trim() ? '검색어 지우기' : '모든 책 보기') : undefined}
+                actionKind="secondary"
+                onAction={q.trim() ? () => setQ('') : clearFilters}
+              />
             )}
           </View>
         }
@@ -116,11 +131,11 @@ export default function AllBooks() {
 }
 
 const s = StyleSheet.create({
-  tools: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: space.item },
-  sort: { minHeight: 44, justifyContent: 'center', paddingLeft: 12 },
+  tools: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: space.m },
+  sort: { minHeight: space.touch, flexDirection: 'row', alignItems: 'center', gap: space.xs, paddingLeft: space.m },
   sortText: { ...type.sub, color: colors.ink },
-  check: { width: 26, height: 26, borderRadius: 13, borderWidth: 1.5, borderColor: colors.inkFaint, alignItems: 'center', justifyContent: 'center', marginRight: 4 },
+  check: { width: 24, height: 24, borderRadius: 12, borderWidth: 1.5, borderColor: colors.inkFaint, alignItems: 'center', justifyContent: 'center', marginRight: space.xs },
   checkOn: { backgroundColor: colors.accent, borderColor: colors.accent },
   dim: { opacity: 0.45 },
-  emptyWrap: { paddingTop: 90 },
+  emptyWrap: { paddingTop: space.xxl },
 });
