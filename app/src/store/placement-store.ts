@@ -3,7 +3,7 @@
 import { useSyncExternalStore } from 'react';
 import { readLayout, saveLayout } from '@/db/local-db';
 
-import { addBook as placeNewBook, addShelf, applySwapTarget, bookXs, findSwapTarget, fitToShelf, moveToDrawer, placeFromDrawer, pruneEmptyShelves, setDepth, validate, withNormalizedX } from '@/domain/layout-engine';
+import { addBook as placeNewBook, addShelf, applySwapTarget, bookXs, findSwapTarget, fitToShelf, moveToDrawer, placeFromDrawer, pruneEmptyShelves, setDepth, validate } from '@/domain/layout-engine';
 import { ensureShelves, migrate, normalize, type BookMap } from '@/domain/layout-schema';
 import { ensureLeanGaps, resolveLeans, withLeans, type FallDirections, type LeanResolution } from '@/domain/shelf-scene';
 import { SHELF_DEPTH, SHELF_FRONT } from '@/domain/geometry';
@@ -69,14 +69,15 @@ export function restore(saved: ShelfLayout | ShelfLayoutV1, bookMap: BookMap) {
   return { layout: withLeans(lean.layout, bookMap), moved: fit.moved, changed: fit.changed || lean.changed };
 }
 
+// 저장 중 표시는 따로 알리지 않는다(확정마다 홈 전체가 두 번 더 그려졌다). 실패했을 때와 다시 성공했을 때만 알린다.
+// 선반 폭 대비 위치 x는 저장하지 않는 계산값이라(로컬 표·서버 모두 pos로 다시 계산) 덧붙이지 않는다.
 async function persist(layout: ShelfLayout) {
   if (state.demo || state.save === 'read-error') return;
-  set({ save: 'saving' });
   try {
-    await saveLayout(JSON.stringify(withNormalizedX(layout, state.books)), new Date().toISOString());
-    // 저장 도중 다른 변경이 있었으면 그쪽이 다시 저장한다.
-    if (state.layout === layout) set({ save: 'idle' });
+    await saveLayout(JSON.stringify(layout), new Date().toISOString());
+    if (state.save !== 'idle' && state.layout === layout) set({ save: 'idle' });
   } catch {
+    // 저장 도중 다른 변경이 있었으면 그쪽이 다시 저장한다.
     if (state.layout === layout) set({ save: 'error' });
   }
 }
@@ -119,7 +120,13 @@ export const placementStore = {
       userSnapshot = userSnapshot && { ...userSnapshot, books };
       return;
     }
-    const known = new Set(Object.keys(books));
+    // 책 객체가 모두 그대로면(shelfBooks가 같은 책은 같은 객체로 넘긴다) 책장은 그대로다. 지난 확정의 낙하 정보만 지운다(있을 때만 알린다)
+    const ids = Object.keys(books);
+    if (ids.length === Object.keys(state.books).length && ids.every((id) => state.books[id] === books[id])) {
+      if (state.fell !== null || state.fellIds.length || Object.keys(state.fallDirections).length) set(noFalls());
+      return;
+    }
+    const known = new Set(ids);
     const gone = [...state.layout.placements.map((p) => p.bookId), ...state.layout.drawer].filter((id) => !known.has(id));
     // 크기(판형·쪽수)가 바뀐 책이 선반에 있으면 그 선반만 다시 맞춘다(안 들어가면 끝 책을 서랍으로, 알림)
     const resized = state.layout.placements.some((p) => {

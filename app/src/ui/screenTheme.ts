@@ -88,12 +88,16 @@ export const shape = {
 // 아이콘: 선 아이콘 하나의 굵기·크기
 export const icon = { size: 22, small: 18, large: 26, stroke: 1.6, color: colors.ink };
 
+// 눌림: 바탕을 칠하지 않는 누를 것(글자·아이콘 행동, 목록 줄, 갈피 카드)은 누르는 동안 이만큼 옅어진다. 채운 버튼·칩은 바탕색으로 표시
+export const press = { opacity: 0.55 };
+
 // 어두운 장면 위 UI(독서 타이머 머리줄 등): 밝은 글자, 바탕 대비를 위한 옅은 그늘
 export const night = {
   ink: '#F6EFE6',
   inkSoft: 'rgba(246,239,230,0.78)',
   line: 'rgba(246,239,230,0.22)',
   shade: 'rgba(16,13,11,0.28)',
+  fade: '#100D0B', // 장면 아래쪽 어둡게 물들이기(독서 타이머를 접었을 때 시간 글자 뒤): 그늘과 같은 색, 세기는 그라데이션 불투명도로
 };
 
 // 예전 이름(screenTheme.*)을 쓰는 곳을 위해 같은 값으로 이어 둔다

@@ -9,6 +9,7 @@ import Animated, { SlideInDown, SlideOutDown } from 'react-native-reanimated';
 import type { Book } from '@/domain/types';
 import { ko } from '@/i18n/ko';
 import { colors, fonts, icon, shape, space, type } from '@/ui/screenTheme';
+import { Btn, IconAction } from '@/ui/kit';
 
 type Props = {
   book: Book;
@@ -78,19 +79,10 @@ export function BookSheet({ book, status, bottomInset, reduceMotion, onClose, on
               ) : null}
             </View>
           </View>
-          <Pressable onPress={onRead} accessibilityRole="button" style={({ pressed }) => [styles.read, pressed && { backgroundColor: colors.accentPressed }]}>
-            <Play size={17} color={colors.onAccent} fill={colors.onAccent} strokeWidth={1.5} />
-            <Text style={styles.readText}>{ko.info.read}</Text>
-          </Pressable>
+          <Btn label={ko.info.read} onPress={onRead} icon={<Play size={17} color={colors.onAccent} fill={colors.onAccent} strokeWidth={1.5} />} style={styles.read} />
           <View style={styles.links}>
-            <Pressable onPress={onDetail} accessibilityRole="button" style={({ pressed }) => [styles.link, pressed && { opacity: 0.55 }]}>
-              <BookOpen size={icon.large} color={colors.inkSoft} strokeWidth={icon.stroke} />
-              <Text style={styles.linkText}>{ko.info.detail}</Text>
-            </Pressable>
-            <Pressable onPress={onBookmark} accessibilityRole="button" style={({ pressed }) => [styles.link, pressed && { opacity: 0.55 }]}>
-              <Bookmark size={icon.large} color={colors.inkSoft} strokeWidth={icon.stroke} />
-              <Text style={styles.linkText}>{ko.info.bookmark}</Text>
-            </Pressable>
+            <IconAction label={ko.info.detail} onPress={onDetail} icon={<BookOpen size={icon.large} color={colors.inkSoft} strokeWidth={icon.stroke} />} />
+            <IconAction label={ko.info.bookmark} onPress={onBookmark} icon={<Bookmark size={icon.large} color={colors.inkSoft} strokeWidth={icon.stroke} />} />
           </View>
         </ScrollView>
       </Animated.View>
@@ -131,19 +123,6 @@ const styles = StyleSheet.create({
   title: { ...type.title, color: colors.ink, fontSize: 21, lineHeight: 28 },
   author: { ...type.row, fontSize: 16, lineHeight: 22, color: colors.inkSoft, marginTop: 6 },
   meta: { ...type.caption, fontSize: 14, lineHeight: 20, color: colors.inkSoft, marginTop: 10 },
-  read: {
-    marginTop: 14,
-    minHeight: 48,
-    paddingVertical: 10,
-    borderRadius: shape.button,
-    backgroundColor: colors.accent,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 10,
-  },
-  readText: { ...type.button, fontSize: 17, color: colors.onAccent },
+  read: { marginTop: 14 },
   links: { flexDirection: 'row', marginTop: 8 },
-  link: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 10, minHeight: 58 },
-  linkText: { ...type.row, fontSize: 16, color: colors.inkSoft },
 });

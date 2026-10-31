@@ -1,6 +1,7 @@
 package server
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"github.com/jackc/pgx/v5"
@@ -129,97 +130,18 @@ func (s *Server) push(w http.ResponseWriter, r *http.Request) error {
 				return bad
 			}
 		}
-		for _, item := range items {
-			id, ok := item["id"].(string)
-			if !ok || strings.TrimSpace(id) == "" || len(id) > 80 {
-				return bad
-			}
-			at, err := parseField(item["updatedAt"], field{typ: "time", required: true})
-			if err != nil {
-				return err
-			}
-			deleted, _ := item["deleted"].(bool)
-			var changed bool
-			if deleted {
-				tag, e := tx.Exec(ctx, "UPDATE "+k.table+" SET deleted_at=$3, updated_at=$3, rev=nextval('sync_rev_seq') WHERE user_id=$1 AND id=$2 AND updated_at <= $3", user, id, at)
-				if e != nil {
-					return e
-				}
-				changed = tag.RowsAffected() > 0
-			} else {
-				cols := []string{"user_id", "id"}
-				args := []any{user, id}
-				params := []string{"$1", "$2"}
-				updates := []string{}
-				for _, f := range fields(k) {
-					v := getValue(item, f.json)
-					if f.json == "createdAt" && v == nil {
-						v = item["updatedAt"]
-					}
-					parsed, e := parseField(v, f)
-					if e != nil {
-						return e
-					}
-					cols = append(cols, f.col)
-					args = append(args, parsed)
-					params = append(params, fmt.Sprintf("$%d", len(args)))
-					if f.col != "created_at" {
-						updates = append(updates, f.col+"=EXCLUDED."+f.col)
-					}
-				}
-				cols = append(cols, "rev", "deleted_at")
-				params = append(params, "nextval('sync_rev_seq')", "NULL")
-				updates = append(updates, "rev=EXCLUDED.rev", "deleted_at=NULL")
-				sql := "INSERT INTO " + k.table + " (" + strings.Join(cols, ",") + ") VALUES (" + strings.Join(params, ",") + ") ON CONFLICT(user_id,id) DO UPDATE SET " + strings.Join(updates, ",") + " WHERE " + k.table + ".updated_at <= EXCLUDED.updated_at"
-				tag, e := tx.Exec(ctx, sql, args...)
-				if e != nil {
-					return e
-				}
-				changed = tag.RowsAffected() > 0
-				if changed && k.name == "editions" {
-					if _, e = tx.Exec(ctx, "DELETE FROM edition_authors WHERE user_id=$1 AND edition_id=$2", user, id); e != nil {
-						return e
-					}
-					if a, ok := item["authors"].([]any); ok {
-						for i, v := range a {
-							name, ok := v.(string)
-							if !ok {
-								return bad
-							}
-							if strings.TrimSpace(name) != "" {
-								if _, e = tx.Exec(ctx, "INSERT INTO edition_authors(user_id,edition_id,position,name) VALUES($1,$2,$3,$4)", user, id, i, name); e != nil {
-									return e
-								}
-							}
-						}
-					}
-				}
-			}
-			if changed {
-				applied++
-			} else {
-				skipped = append(skipped, k.name+":"+id)
-			}
-		}
-	}
-	if raw := body["layout"]; len(raw) > 0 && string(raw) != "null" {
-		var l struct {
-			LayoutJSON string `json:"layoutJson"`
-			Version    *int   `json:"version"`
-			UpdatedAt  string `json:"updatedAt"`
-		}
-		if json.Unmarshal(raw, &l) != nil || l.Version == nil || !json.Valid([]byte(l.LayoutJSON)) {
-			return bad
-		}
-		at, e := time.Parse(time.RFC3339Nano, l.UpdatedAt)
-		if e != nil {
-			return bad
-		}
-		tag, e := tx.Exec(ctx, `INSERT INTO shelf_layouts(user_id,layout,version,client_updated_at,updated_at,rev) VALUES($1,$2::jsonb,$3,$4,now(),nextval('sync_rev_seq')) ON CONFLICT(user_id) DO UPDATE SET layout=EXCLUDED.layout,version=EXCLUDED.version,client_updated_at=EXCLUDED.client_updated_at,updated_at=now(),rev=EXCLUDED.rev WHERE shelf_layouts.client_updated_at <= EXCLUDED.client_updated_at`, user, l.LayoutJSON, *l.Version, at)
+		n, e := pushKind(ctx, tx, user, k, items, &skipped)
 		if e != nil {
 			return e
 		}
-		if tag.RowsAffected() > 0 {
+		applied += n
+	}
+	if raw := body["layout"]; len(raw) > 0 && string(raw) != "null" {
+		ok, e := pushLayout(ctx, tx, user, raw)
+		if e != nil {
+			return e
+		}
+		if ok {
 			applied++
 		} else {
 			skipped = append(skipped, "layout")
@@ -235,6 +157,116 @@ func (s *Server) push(w http.ResponseWriter, r *http.Request) error {
 	}
 	writeJSON(w, 200, map[string]any{"rev": rev, "applied": applied, "skipped": skipped})
 	return nil
+}
+
+// 종류마다 고정된 upsert 문(모든 열을 늘 보내므로 항목마다 같다)
+var upsertSQL = func() map[string]string {
+	out := map[string]string{}
+	for _, k := range kinds {
+		cols := []string{"user_id", "id"}
+		params := []string{"$1", "$2"}
+		updates := []string{}
+		for _, f := range fields(k) {
+			cols = append(cols, f.col)
+			params = append(params, fmt.Sprintf("$%d", len(cols)))
+			if f.col != "created_at" {
+				updates = append(updates, f.col+"=EXCLUDED."+f.col)
+			}
+		}
+		cols = append(cols, "rev", "deleted_at")
+		params = append(params, "nextval('sync_rev_seq')", "NULL")
+		updates = append(updates, "rev=EXCLUDED.rev", "deleted_at=NULL")
+		out[k.name] = "INSERT INTO " + k.table + " (" + strings.Join(cols, ",") + ") VALUES (" + strings.Join(params, ",") + ") ON CONFLICT(user_id,id) DO UPDATE SET " + strings.Join(updates, ",") + " WHERE " + k.table + ".updated_at <= EXCLUDED.updated_at"
+	}
+	return out
+}()
+
+// 한 종류를 묶어서 쓴다: 값 검사를 먼저 다 하고, upsert·삭제 표시를 한 번의 batch로 보낸다(항목마다 왕복하지 않게).
+// 반영된 판본은 저자 표를 그 판본만 지우고 다시 넣는다(두 번째 batch).
+func pushKind(ctx context.Context, tx pgx.Tx, user int64, k kind, items []map[string]any, skipped *[]string) (int, error) {
+	if len(items) == 0 {
+		return 0, nil
+	}
+	type pending struct {
+		id      string
+		deleted bool
+		authors []string
+	}
+	list := make([]pending, 0, len(items))
+	batch := &pgx.Batch{}
+	for _, item := range items {
+		id, ok := item["id"].(string)
+		if !ok || strings.TrimSpace(id) == "" || len(id) > 80 {
+			return 0, bad
+		}
+		at, err := parseField(item["updatedAt"], field{typ: "time", required: true})
+		if err != nil {
+			return 0, err
+		}
+		p := pending{id: id}
+		p.deleted, _ = item["deleted"].(bool)
+		if p.deleted {
+			batch.Queue("UPDATE "+k.table+" SET deleted_at=$3, updated_at=$3, rev=nextval('sync_rev_seq') WHERE user_id=$1 AND id=$2 AND updated_at <= $3", user, id, at)
+			list = append(list, p)
+			continue
+		}
+		args := []any{user, id}
+		for _, f := range fields(k) {
+			v := getValue(item, f.json)
+			if f.json == "createdAt" && v == nil {
+				v = item["updatedAt"]
+			}
+			parsed, e := parseField(v, f)
+			if e != nil {
+				return 0, e
+			}
+			args = append(args, parsed)
+		}
+		if k.name == "editions" {
+			if a, ok := item["authors"].([]any); ok {
+				p.authors = make([]string, len(a))
+				for i, v := range a {
+					if p.authors[i], ok = v.(string); !ok {
+						return 0, bad
+					}
+				}
+			}
+		}
+		batch.Queue(upsertSQL[k.name], args...)
+		list = append(list, p)
+	}
+	results := tx.SendBatch(ctx, batch)
+	applied := 0
+	authors := &pgx.Batch{}
+	for _, p := range list {
+		tag, err := results.Exec()
+		if err != nil {
+			results.Close()
+			return 0, err
+		}
+		if tag.RowsAffected() == 0 {
+			*skipped = append(*skipped, k.name+":"+p.id)
+			continue
+		}
+		applied++
+		if k.name == "editions" && !p.deleted {
+			authors.Queue("DELETE FROM edition_authors WHERE user_id=$1 AND edition_id=$2", user, p.id)
+			for i, name := range p.authors {
+				if strings.TrimSpace(name) != "" {
+					authors.Queue("INSERT INTO edition_authors(user_id,edition_id,position,name) VALUES($1,$2,$3,$4)", user, p.id, i, name)
+				}
+			}
+		}
+	}
+	if err := results.Close(); err != nil {
+		return 0, err
+	}
+	if authors.Len() > 0 {
+		if err := tx.SendBatch(ctx, authors).Close(); err != nil {
+			return 0, err
+		}
+	}
+	return applied, nil
 }
 
 type syncRow struct {
@@ -377,17 +409,20 @@ func (s *Server) pull(w http.ResponseWriter, r *http.Request) error {
 			return e
 		}
 	}
-	var layout string
 	var version int
 	var at time.Time
 	var lr int64
-	e := tx.QueryRow(ctx, "SELECT layout::text,version,client_updated_at,rev FROM shelf_layouts WHERE user_id=$1 AND rev>$2 AND rev<=$3", user, since, cut).Scan(&layout, &version, &at, &lr)
+	e := tx.QueryRow(ctx, "SELECT version,client_updated_at,rev FROM shelf_layouts WHERE user_id=$1 AND rev>$2 AND rev<=$3", user, since, cut).Scan(&version, &at, &lr)
 	if e != nil && e != pgx.ErrNoRows {
 		return e
 	}
 	out["layout"] = nil
 	if e == nil {
-		out["layout"] = map[string]any{"layoutJson": layout, "version": version, "updatedAt": at.UTC().Format(time.RFC3339Nano)}
+		layout, e := readLayout(ctx, tx, user, version, at)
+		if e != nil {
+			return e
+		}
+		out["layout"] = layout
 		if lr > max {
 			max = lr
 		}

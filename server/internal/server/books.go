@@ -11,6 +11,8 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"regexp"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -43,6 +45,50 @@ var mocks = []searchItem{{"9790000000018", "여름의 숲", []string{"가짜 작
 var pages = map[string]int{"9790000000018": 180, "9790000000025": 196, "9790000000032": 312, "9790000000049": 460, "9790000000056": 240}
 var motifs = strings.Split("leaf sprig cotton moon crescent star constellation wave ripple flower wildflower tulip camellia pine mountain cloud sun rain snow feather bird cat teacup candle key letter window lantern shell mushroom", " ")
 var colors = []string{"#EFE6D3", "#2F5A45", "#B5503A", "#A8C3DA", "#223A63", "#F2C9A0", "#D98A7E", "#7D2E35"}
+
+// 키·두께 분류와 기본 모티프는 저장하지 않고 판형·쪽수·ISBN으로 계산한다(V8, 앱 domain/catalog.ts와 같은 규칙).
+// ISBN 해시라 같은 책의 모티프는 늘 같다.
+func (b *bookResponse) classify() {
+	b.HeightClass = heightFromFormat(b.Format)
+	b.ThicknessClass = thicknessFromPages(b.PageCount)
+	b.DefaultMotifID = motifs[int(hashISBN(b.ISBN)%uint32(len(motifs)))]
+}
+
+func thicknessFromPages(pages int) string {
+	switch {
+	case pages <= 0:
+		return "medium"
+	case pages < 220:
+		return "thin"
+	case pages < 420:
+		return "medium"
+	}
+	return "thick"
+}
+
+var formatSize = regexp.MustCompile(`(\d{2,3})\s*[*xX×]\s*(\d{2,3})`)
+var formatNamed = regexp.MustCompile(`\b(A[4-6]|B[5-6])\b`)
+var namedHeight = map[string]int{"A6": 148, "B6": 182, "A5": 210, "B5": 257, "A4": 297}
+
+func heightFromFormat(format string) string {
+	h := 0
+	if m := formatSize.FindStringSubmatch(format); m != nil {
+		a, _ := strconv.Atoi(m[1])
+		b, _ := strconv.Atoi(m[2])
+		h = max(a, b)
+	} else if m := formatNamed.FindStringSubmatch(strings.ToUpper(format)); m != nil {
+		h = namedHeight[m[1]]
+	}
+	switch {
+	case h == 0:
+		return "medium"
+	case h < 195:
+		return "short"
+	case h < 230:
+		return "medium"
+	}
+	return "tall"
+}
 
 func hashISBN(s string) uint32 {
 	var h uint32
@@ -219,8 +265,11 @@ func (s *Server) book(w http.ResponseWriter, r *http.Request) error {
 	var b bookResponse
 	var updated time.Time
 	var authors []string
-	e := s.DB.QueryRow(ctx, `SELECT isbn13,title,COALESCE(publisher,''),COALESCE(to_char(published_at,'YYYY-MM-DD'),''),COALESCE(page_count,0),COALESCE(format,''),COALESCE(cover_url,''),COALESCE(cover_thumb_url,''),COALESCE(description,''),theme_color,height_class,thickness_class,default_motif_id,source,updated_at,ARRAY(SELECT name FROM book_authors WHERE isbn13=$1 ORDER BY position) FROM books WHERE isbn13=$1`, isbn).Scan(&b.ISBN, &b.Title, &b.Publisher, &b.PublishedAt, &b.PageCount, &b.Format, &b.CoverURL, &b.CoverThumbURL, &b.Description, &b.ThemeColor, &b.HeightClass, &b.ThicknessClass, &b.DefaultMotifID, &b.Source, &updated, &authors)
+	e := s.DB.QueryRow(ctx, `SELECT isbn13,title,COALESCE(publisher,''),COALESCE(to_char(published_at,'YYYY-MM-DD'),''),COALESCE(page_count,0),COALESCE(format,''),COALESCE(cover_url,''),COALESCE(cover_thumb_url,''),COALESCE(description,''),theme_color,source,updated_at,ARRAY(SELECT name FROM book_authors WHERE isbn13=$1 ORDER BY position) FROM books WHERE isbn13=$1`, isbn).Scan(&b.ISBN, &b.Title, &b.Publisher, &b.PublishedAt, &b.PageCount, &b.Format, &b.CoverURL, &b.CoverThumbURL, &b.Description, &b.ThemeColor, &b.Source, &updated, &authors)
 	cached := e == nil
+	if cached {
+		b.classify()
+	}
 	if e != nil && e != pgx.ErrNoRows {
 		return e
 	}
@@ -261,21 +310,12 @@ func (s *Server) book(w http.ResponseWriter, r *http.Request) error {
 	if color == "" {
 		color = colors[int(hashISBN(isbn)%uint32(len(colors)))]
 	}
-	motif := motifs[int(hashISBN(isbn)%uint32(len(motifs)))]
-	if cached {
-		motif = b.DefaultMotifID
-	}
 	page := pages[isbn]
 	if source != "mock" {
 		page = 0
 	}
-	thickness := "medium"
-	if page > 0 && page < 220 {
-		thickness = "thin"
-	} else if page >= 420 {
-		thickness = "thick"
-	}
-	b = bookResponse{searchItem: searchItem{ISBN: isbn, Title: item.Title, Authors: item.Authors, Publisher: item.Publisher, PublishedAt: item.PublishedAt, Description: item.Description}, PageCount: page, CoverURL: item.Thumb, CoverThumbURL: item.Thumb, ThemeColor: color, HeightClass: "medium", ThicknessClass: thickness, DefaultMotifID: motif, Source: source}
+	b = bookResponse{searchItem: searchItem{ISBN: isbn, Title: item.Title, Authors: item.Authors, Publisher: item.Publisher, PublishedAt: item.PublishedAt, Description: item.Description}, PageCount: page, CoverURL: item.Thumb, CoverThumbURL: item.Thumb, ThemeColor: color, Source: source}
+	b.classify()
 	tx, e := s.DB.Begin(ctx)
 	if e != nil {
 		return e
@@ -288,7 +328,7 @@ func (s *Server) book(w http.ResponseWriter, r *http.Request) error {
 			date = t
 		}
 	}
-	_, e = tx.Exec(ctx, `INSERT INTO books(isbn13,title,publisher,published_at,page_count,format,cover_url,cover_thumb_url,description,theme_color,height_class,thickness_class,default_motif_id,source,updated_at) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,now()) ON CONFLICT(isbn13) DO UPDATE SET title=EXCLUDED.title,publisher=EXCLUDED.publisher,published_at=EXCLUDED.published_at,page_count=EXCLUDED.page_count,format=EXCLUDED.format,cover_url=EXCLUDED.cover_url,cover_thumb_url=EXCLUDED.cover_thumb_url,description=EXCLUDED.description,theme_color=EXCLUDED.theme_color,height_class=EXCLUDED.height_class,thickness_class=EXCLUDED.thickness_class,default_motif_id=EXCLUDED.default_motif_id,source=EXCLUDED.source,updated_at=now()`, isbn, b.Title, b.Publisher, date, page, b.Format, b.CoverURL, b.CoverThumbURL, b.Description, b.ThemeColor, b.HeightClass, b.ThicknessClass, b.DefaultMotifID, b.Source)
+	_, e = tx.Exec(ctx, `INSERT INTO books(isbn13,title,publisher,published_at,page_count,format,cover_url,cover_thumb_url,description,theme_color,source,updated_at) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,now()) ON CONFLICT(isbn13) DO UPDATE SET title=EXCLUDED.title,publisher=EXCLUDED.publisher,published_at=EXCLUDED.published_at,page_count=EXCLUDED.page_count,format=EXCLUDED.format,cover_url=EXCLUDED.cover_url,cover_thumb_url=EXCLUDED.cover_thumb_url,description=EXCLUDED.description,theme_color=EXCLUDED.theme_color,source=EXCLUDED.source,updated_at=now()`, isbn, b.Title, b.Publisher, date, page, b.Format, b.CoverURL, b.CoverThumbURL, b.Description, b.ThemeColor, b.Source)
 	if e != nil {
 		return e
 	}

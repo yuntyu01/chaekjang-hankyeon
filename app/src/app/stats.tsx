@@ -10,8 +10,8 @@ import { hm } from '@/features/book/labels';
 import { formatDuration, monthPeriod, periodStats, sessionDay, yearPeriod } from '@/domain/library';
 import { useLibrary } from '@/store/library-store';
 import { usePlacementStore } from '@/store/placement-store';
-import { Chip, Empty, H2, ListGroup, Muted, Row, Screen } from '@/ui/kit';
-import { colors, icon, shape, space, type } from '@/ui/screenTheme';
+import { Chip, Empty, H2, IconButton, ListGroup, Muted, Row, Screen } from '@/ui/kit';
+import { colors, icon, press, shape, space, type } from '@/ui/screenTheme';
 
 export default function Stats() {
   const params = useLocalSearchParams<{ book?: string }>();
@@ -56,13 +56,13 @@ export default function Stats() {
         <Chip label="연도" on={mode === 'year'} onPress={() => setMode('year')} />
       </Row>
       <Row style={{ marginTop: space.group, justifyContent: 'space-between', flexWrap: 'nowrap' }}>
-        <Pressable onPress={() => shift(-1)} hitSlop={6} style={st.nav} accessibilityRole="button" accessibilityLabel={mode === 'month' ? '이전 달' : '이전 해'}>
+        <IconButton label={mode === 'month' ? '이전 달' : '이전 해'} onPress={() => shift(-1)}>
           <ChevronLeft size={icon.size} color={colors.ink} strokeWidth={icon.stroke} />
-        </Pressable>
+        </IconButton>
         <Text style={type.heading} accessibilityRole="header">{mode === 'month' ? `${y}년 ${m}월` : `${y}년`}</Text>
-        <Pressable onPress={() => shift(1)} hitSlop={6} style={st.nav} accessibilityRole="button" accessibilityLabel={mode === 'month' ? '다음 달' : '다음 해'}>
+        <IconButton label={mode === 'month' ? '다음 달' : '다음 해'} onPress={() => shift(1)}>
           <ChevronRight size={icon.size} color={colors.ink} strokeWidth={icon.stroke} />
-        </Pressable>
+        </IconButton>
       </Row>
 
       <View style={st.summary}>
@@ -106,7 +106,7 @@ export default function Stats() {
               <Text style={type.caption}>{d.day.replace(/-/g, '.')}</Text>
               <ListGroup>
                 {d.items.map((s) => (
-                  <Pressable key={s.id} onPress={() => router.push(`/session/${s.id}`)} style={({ pressed }) => [st.session, pressed && { opacity: 0.6 }]} accessibilityRole="button" accessibilityLabel={`${title(s.myBookId) ?? '책 없음'}, ${formatDuration(s.durationMs)}, 기록 수정`}>
+                  <Pressable key={s.id} onPress={() => router.push(`/session/${s.id}`)} style={({ pressed }) => [st.session, pressed && press]} accessibilityRole="button" accessibilityLabel={`${title(s.myBookId) ?? '책 없음'}, ${formatDuration(s.durationMs)}, 기록 수정`}>
                     <View style={{ flex: 1 }}>
                       <Row style={{ justifyContent: 'space-between', flexWrap: 'nowrap' }}>
                         <Text style={[type.row, { flex: 1 }]} numberOfLines={1}>
@@ -133,7 +133,6 @@ export default function Stats() {
 }
 
 const st = StyleSheet.create({
-  nav: { width: space.touch, height: space.touch, alignItems: 'center', justifyContent: 'center' },
   summary: { flexDirection: 'row', marginTop: space.group, paddingVertical: space.group, borderTopWidth: shape.hairline, borderBottomWidth: shape.hairline, borderColor: colors.line },
   cell: { flex: 1, paddingHorizontal: 12 },
   cellLine: { borderLeftWidth: shape.hairline, borderLeftColor: colors.line },

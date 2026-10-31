@@ -41,8 +41,10 @@ const LIT = [make(litSource(false)), make(litSource(true))];
 // 단색 재질(벽)은 재질 색 × 빛을 한 번에(대상 색을 읽는 겹치기가 없다)
 const LIT_DIRECT = make(litSource('direct'));
 const BOOK = [make(bookSource(false)), make(bookSource(true))];
+// 그림 표지 책: 곱하기·닷지는 확산 몫만, 반사광은 더하기 겹으로(어두운 그림 위에도 반사광이 보이게, shadeCode split)
+const BOOK_ART = [make(bookSource(false, true)), make(bookSource(true, true)), make(bookSource('spec'))];
 const TAB = [make(tabSource(false)), make(tabSource(true))];
-const BLEND = ['multiply', 'colorDodge'] as const;
+const BLEND = ['multiply', 'colorDodge', 'plus'] as const;
 
 const ZERO3 = [0, 0, 0];
 const NO_EDGE = [0, 0, 0, 1e9];
@@ -392,10 +394,10 @@ export function bookItems(id: string, b: Book3, env: Env | null, bx: BoxBuf, sel
 
 // 책 한 권의 빛: 책 윤곽(outline, 캔버스 px) 안을 화소마다 광선으로(셰이더 bookSource가 보이는 면·속지 구멍을 찾는다).
 // albedo: 장정 색(선형 RGB, 속지는 셰이더 상수), material: 장정 재질(없으면 무광 종이), atlas·id: 이 책이 있는 줄의 구운 하늘 가림(면 key = faceKey(id, 면)), env: 둘레,
-// keyShadow: 이 책 면이 받는 창빛 그림자(bookKeyImage)
-export function BookLight({ dims: d, state, cam, px, outline, albedo, material = 'paper', env, atlas, id, keyShadow }: {
+// keyShadow: 이 책 면이 받는 창빛 그림자(bookKeyImage), picture: 그림 표지 책(반사광을 더하기 겹으로 따로)
+export function BookLight({ dims: d, state, cam, px, outline, albedo, material = 'paper', env, atlas, id, keyShadow, picture = false }: {
   dims: Book3['dims']; state: RO<Book3>; cam: RO<Cam>; px: Affine; outline: RO<SkPath>; albedo: C3; material?: BindingMaterial;
-  env?: RO<Env | null>; atlas?: RO<Atlas>; id: string; keyShadow?: RO<BookKey>;
+  env?: RO<Env | null>; atlas?: RO<Atlas>; id: string; keyShadow?: RO<BookKey>; picture?: boolean;
 }) {
   const { bd, sp, sq } = rigOf(d);
   const pg = MAT_UNIFORMS.pages;
@@ -459,7 +461,7 @@ export function BookLight({ dims: d, state, cam, px, outline, albedo, material =
   const image2 = useDerivedValue(() => prev.value.image);
   return (
     <>
-      {BOOK.map((e, i) => (
+      {(picture ? BOOK_ART : BOOK).map((e, i) => (
         <Path key={i} path={outline} blendMode={BLEND[i]}>
           <Shader source={e} uniforms={uniforms}>
             <ImageShader image={image} tx="clamp" ty="clamp" sampling={LINEAR} matrix={matrix} />

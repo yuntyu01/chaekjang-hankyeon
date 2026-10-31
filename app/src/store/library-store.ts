@@ -112,6 +112,7 @@ export const libraryStore = {
       if (migrated) await replaceLib(lib, true);
       set({ lib, loaded: true, error: null });
     } catch (e) {
+      console.warn('library load failed', String((e as Error)?.stack ?? e));
       set({ loaded: true, error: String((e as Error)?.message ?? e) });
     }
   },

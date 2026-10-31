@@ -2,7 +2,7 @@ import { GowunBatang_400Regular, GowunBatang_700Bold, useFonts } from '@expo-goo
 import { Stack } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import { StatusBar } from 'expo-status-bar';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
@@ -11,7 +11,9 @@ import { RecoveryDialog } from '@/features/reading/ActiveReading';
 import { MiniTimer } from '@/features/reading/MiniTimer';
 import { bootStores } from '@/store/boot';
 import { bootMark } from '@/ui/boot-trace';
+import { startProfile } from '@/ui/profile';
 import { BookArtProvider } from '@/ui/book3d/art';
+import { setSnapshotRoot, setSnapshotShown } from '@/ui/home-snapshot';
 import { PaperBackground } from '@/ui/PaperBackground';
 import { LoadingScreen } from '@/ui/LoadingScreen';
 import { colors } from '@/ui/theme';
@@ -27,6 +29,7 @@ const ReadingSerif = require('../../assets/fonts/NotoSerifKR-Regular.otf');
 const ReadingSerifMedium = require('../../assets/fonts/NotoSerifKR-Medium.otf');
 const ReadingSerifSemiBold = require('../../assets/fonts/NotoSerifKR-SemiBold.otf');
 
+startProfile();
 bootMark('js-layout-module');
 void SplashScreen.preventAutoHideAsync();
 
@@ -36,7 +39,13 @@ export default function RootLayout() {
   const [bootError, setBootError] = useState(false);
   const [bootAttempt, setBootAttempt] = useState(0);
   const [loadingVisible, setLoadingVisible] = useState(true);
-  const finishLoading = useCallback(() => setLoadingVisible(false), []);
+  const finishLoading = useCallback(() => {
+    setSnapshotShown();
+    setLoadingVisible(false);
+  }, []);
+  // 홈 사진(다음 실행의 시작 화면)을 찍을 화면: 시작 화면을 뺀 앱 전체
+  const shotRoot = useRef<View>(null);
+  useEffect(() => setSnapshotRoot(shotRoot), []);
   useEffect(() => {
     // 저장소를 다 불러온 뒤 첫 화면을 그린다(빈 책장이 잠깐 보였다가 책이 나타나지 않게)
     let active = true;
@@ -44,7 +53,9 @@ export default function RootLayout() {
       if (!active) return;
       bootMark('stores-ready');
       setBooted(true);
-    }).catch(() => {
+    }).catch((e) => {
+      // 화면에는 짧은 안내만, 원인은 기기 로그로(배포 번들에서도 남는다)
+      console.warn('boot failed', String((e as Error)?.stack ?? e));
       if (active) setBootError(true);
     });
     return () => { active = false; };
@@ -53,6 +64,15 @@ export default function RootLayout() {
     if (bootError) void SplashScreen.hideAsync();
   }, [bootError]);
   const ready = (loaded || !!error) && booted;
+  // 첫 책장의 책 그림(글꼴·원본 그림·입힌 장정 그림, 책마다 기록)이 다 되면 시작 화면을 걷는다(그림 표지 책만 빈자리로 보이다 나타나지 않게).
+  // 그림 하나를 못 읽어도 멈추지 않게 15초 뒤에는 걷는다(느린 에뮬레이터에서 첫 기록이 20초 가까이 걸린 적이 있어 넉넉히)
+  const [artReady, setArtReady] = useState(false);
+  const onArtReady = useCallback(() => setArtReady(true), []);
+  useEffect(() => {
+    if (!ready) return;
+    const t = setTimeout(() => setArtReady(true), 15000);
+    return () => clearTimeout(t);
+  }, [ready]);
   useEffect(() => {
     if (loaded || error) bootMark('fonts-ready', error ? 'error' : '');
   }, [loaded, error]);
@@ -60,15 +80,17 @@ export default function RootLayout() {
   return (
     <GestureHandlerRootView style={{ flex: 1, backgroundColor: colors.bg }}>
       <SafeAreaProvider>
-        <StatusBar style="dark" />
-        <PaperBackground />
-        {ready ? <BookArtProvider>
-          <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: 'transparent' }, animation: 'fade' }}>
-            <Stack.Screen name="reading/session" options={{ animation: 'fade', contentStyle: { backgroundColor: '#0E1016' } }} />
-          </Stack>
-          <MiniTimer />
-          <RecoveryDialog />
-        </BookArtProvider> : null}
+        <View ref={shotRoot} collapsable={false} style={{ flex: 1, backgroundColor: colors.bg }}>
+          <StatusBar style="dark" />
+          <PaperBackground />
+          {ready ? <BookArtProvider onReady={onArtReady}>
+            <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: 'transparent' }, animation: 'fade' }}>
+              <Stack.Screen name="reading/session" options={{ animation: 'fade', contentStyle: { backgroundColor: '#0E1016' } }} />
+            </Stack>
+            <MiniTimer />
+            <RecoveryDialog />
+          </BookArtProvider> : null}
+        </View>
         {bootError ? (
           <View style={styles.error} accessibilityRole="alert">
             <Text style={styles.errorTitle}>서재를 불러오지 못했어요</Text>
@@ -77,7 +99,7 @@ export default function RootLayout() {
               <Text style={styles.retryText}>다시 시도</Text>
             </Pressable>
           </View>
-        ) : loadingVisible ? <LoadingScreen ready={ready} onFinished={finishLoading} /> : null}
+        ) : loadingVisible ? <LoadingScreen ready={ready && artReady} step={!ready ? 1 : !artReady ? 2 : 3} onFinished={finishLoading} /> : null}
       </SafeAreaProvider>
     </GestureHandlerRootView>
   );

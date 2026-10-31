@@ -12,7 +12,7 @@ import { DU_PER_MM, MAX_FRONT_SPIN, MAX_SPIN, SHELF_DEPTH, SHELF_FRONT } from '@
 import type { Pose } from '@/domain/types';
 import { ko } from '@/i18n/ko';
 import { Undo2 } from '@/ui/icons';
-import { colors, fonts, icon, shape, space, type } from '@/ui/screenTheme';
+import { colors, fonts, icon, press, shape, space, type } from '@/ui/screenTheme';
 import { PERF_ENABLED } from '@/ui/perf';
 import { createPreviewFrame } from './preview-frame';
 
@@ -246,7 +246,7 @@ function PoseTab({ pose, on, disabled, onPress }: { pose: Pose; on: boolean; dis
       accessibilityRole="tab"
       accessibilityLabel={ko.decoratePanel.poses[pose]}
       accessibilityState={{ selected: on, disabled }}
-      style={({ pressed }) => [styles.poseTab, pressed && !on && { opacity: 0.6 }, disabled && { opacity: 0.35 }]}>
+      style={({ pressed }) => [styles.poseTab, pressed && !on && press, disabled && { opacity: 0.35 }]}>
       <PoseIcon pose={pose} color={on ? colors.accent : colors.inkSoft} />
       <Text style={[styles.poseText, on && styles.poseTextOn]}>{ko.decoratePanel.poses[pose]}</Text>
       <View style={[styles.poseBar, !on && { backgroundColor: 'transparent' }]} />
@@ -292,10 +292,10 @@ export function DecoratePanel({ bookId, title, pose, lean, canLean, msg, bottomI
           accessibilityRole="button"
           accessibilityLabel={ko.undo}
           accessibilityState={{ disabled: !canUndo }}
-          style={({ pressed }) => [styles.headBtn, { opacity: !canUndo ? 0.35 : pressed ? 0.55 : 1 }]}>
+          style={({ pressed }) => [styles.headBtn, { opacity: !canUndo ? 0.35 : pressed ? press.opacity : 1 }]}>
           <Undo2 size={22} color={colors.ink} strokeWidth={1.5} />
         </Pressable>
-        <Pressable onPress={onDone} hitSlop={10} accessibilityRole="button" accessibilityLabel={ko.done} style={({ pressed }) => [styles.headBtn, styles.done, pressed && { opacity: 0.55 }]}>
+        <Pressable onPress={onDone} hitSlop={10} accessibilityRole="button" accessibilityLabel={ko.done} style={({ pressed }) => [styles.headBtn, styles.done, pressed && press]}>
           <Text style={styles.doneText}>{ko.done}</Text>
         </Pressable>
       </View>
@@ -320,7 +320,7 @@ export function DecoratePanel({ bookId, title, pose, lean, canLean, msg, bottomI
         disabled={!title}
         accessibilityRole="button"
         accessibilityState={{ expanded: more, disabled: !title }}
-        style={({ pressed }) => [styles.moreRow, pressed && { opacity: 0.6 }, !title && { opacity: 0.35 }]}>
+        style={({ pressed }) => [styles.moreRow, pressed && press, !title && { opacity: 0.35 }]}>
         <Text style={styles.moreText}>{ko.decoratePanel.more}</Text>
         {more ? <ChevronUp {...chevron} /> : <ChevronDown {...chevron} />}
       </Pressable>

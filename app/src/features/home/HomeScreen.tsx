@@ -49,7 +49,8 @@ import { DEMO_BOOT_KEY } from '@/store/boot';
 import Storage from 'expo-sqlite/kv-store';
 import { bootMark, watchResponsive } from '@/ui/boot-trace';
 import { placementStore, usePlacementStore } from '@/store/placement-store';
-import { useBookShared } from '@/ui/book3d/art';
+import { useShelfShared } from '@/ui/book3d/art';
+import { useHomeSnapshot } from '@/ui/home-snapshot';
 import { ReferenceUI } from '@/ui/ReferenceUI';
 import { CONTENT_TOP, computeRows, LAYOUT, rowAffine, toContent, useShelfMetrics, type RowGeom } from '@/ui/shelf/metrics';
 import { benchProjection, type BenchRow } from '@/ui/shelf/ShelfMotion';
@@ -60,6 +61,7 @@ import { ANIM, frameStats, logChunks, MENU_FLAGS, PERF_DETAIL, PERF_ENABLED, PER
 import { colors, fonts, motion, navigation } from '@/ui/theme';
 // 책장 밖 UI(메뉴 시트·알림·빈 책장 안내)는 화면 공통 토큰을 쓴다(책장 장면·머리글은 theme.ts 그대로)
 import { colors as ui, fonts as uiFonts, icon, shape, space, type } from '@/ui/screenTheme';
+import { Btn, TextLink } from '@/ui/kit';
 
 import { BookSheet } from './BookSheet';
 import { STATUS_LABEL } from '@/features/book/labels';
@@ -68,6 +70,7 @@ import { miniTimerStore } from '@/store/mini-timer-store';
 import { tabBarStyle } from '@/ui/tabBar';
 
 import { DecoratePanel } from './DecoratePanel';
+import { TabBarVeil } from './TabBarVeil';
 import { useShelfEditCommands } from './useShelfEditCommands';
 import { useShelfInteraction } from './useShelfInteraction';
 import { useShelfDragPreview } from './useShelfDragPreview';
@@ -108,7 +111,7 @@ export function HomeScreen() {
   const { books, layout } = store;
   const { lib, error: libraryError } = useLibrary();
   const m = useShelfMetrics();
-  const bookShared = useBookShared(); // 책 그림 공용 자원(글꼴·종이 결). 캔버스 안에는 컨텍스트가 닿지 않아 여기서 읽어 넘긴다
+  const bookShared = useShelfShared(); // 책 그림 공용 자원(글꼴·종이 결). 캔버스 안에는 컨텍스트가 닿지 않아 여기서 읽어 넘긴다(바뀔 때만 줄을 다시 기록)
   const { width: winW } = useWindowDimensions();
   const sysReduceMotion = useReducedMotion();
   const appSettings = useSettings();
@@ -168,6 +171,14 @@ export function HomeScreen() {
     const id = setTimeout(() => setSettled(true), 400);
     return () => clearTimeout(id);
   }, [store.loaded]);
+  // 다음 실행의 시작 화면에 띄울 홈 사진: 다른 화면·상자·끌기 없이 맨 위에 가만히 있을 때 찍는다
+  const [focused, setFocused] = useState(true);
+  useFocusEffect(useCallback(() => {
+    setFocused(true);
+    return () => setFocused(false);
+  }, []));
+  const atRest = focused && settled && !drag && !popId && !editing && !shelfMenuOpen && !toast;
+  useHomeSnapshot(atRest, [layout, books, bookShared, appSettings, view, winW, selectedYear], () => scrollY.value < 1);
 
   // 측정 번들: 끌기 한 번 동안 JS 쪽 시간(미리보기 계산, 미리보기 → 커밋, JS 프레임 간격)
   const dragJs = useRef({ preview: [] as number[], commit: [] as number[], js: [] as number[], commitStart: 0, raf: 0, last: 0 });
@@ -1197,6 +1208,14 @@ export function HomeScreen() {
           </GestureDetector>
         </Animated.ScrollView>
         </GestureDetector>
+        <TabBarVeil
+          scrollY={scrollY}
+          contentBottom={rows.at(-1) ? rows.at(-1)!.top + rows.at(-1)!.height : 0}
+          barTop={vpH - navigation.height - insets.bottom}
+          height={navigation.height + insets.bottom}
+          hidden={editing}
+          instant={reduceMotion}
+        />
 
         {popId && books[popId] && placementOf(layout, popId) ? (
           <BookSheet
@@ -1236,15 +1255,8 @@ export function HomeScreen() {
             <View style={styles.emptyCard}>
               <Text style={styles.emptyTitle}>{ko.empty.title}</Text>
               <Text style={styles.emptyBody}>{layout.drawer.length ? `${ko.empty.body}\n서랍에 ${layout.drawer.length}권이 있어요.` : ko.empty.body}</Text>
-              <Pressable onPress={() => router.push('/book/add')} accessibilityRole="button" style={styles.emptyBtn}>
-                <Plus size={icon.small} color={ui.onAccent} strokeWidth={icon.stroke} />
-                <Text style={styles.emptyBtnText}>{ko.add}</Text>
-              </Pressable>
-              {layout.drawer.length ? (
-                <Pressable onPress={() => router.push('/drawer')} accessibilityRole="button" hitSlop={8} style={{ marginTop: 12 }}>
-                  <Text style={styles.emptyLink}>서랍 열기</Text>
-                </Pressable>
-              ) : null}
+              <Btn label={ko.add} onPress={() => router.push('/book/add')} icon={<Plus size={icon.small} color={ui.onAccent} strokeWidth={icon.stroke} />} style={styles.emptyBtn} />
+              {layout.drawer.length ? <TextLink label="서랍 열기" tone="soft" onPress={() => router.push('/drawer')} style={{ marginTop: 4 }} /> : null}
             </View>
           </View>
         ) : null}
@@ -1435,8 +1447,6 @@ const styles = StyleSheet.create({
   emptyCard: { alignItems: 'center', backgroundColor: 'rgba(254,254,253,0.94)', borderRadius: shape.dialog, paddingVertical: 28, paddingHorizontal: 28, marginHorizontal: space.page },
   emptyTitle: { ...type.heading, textAlign: 'center' },
   emptyBody: { ...type.sub, textAlign: 'center', marginTop: 8 },
-  emptyBtn: { marginTop: space.group, minHeight: 48, borderRadius: shape.button, backgroundColor: ui.accent, paddingHorizontal: 24, flexDirection: 'row', alignItems: 'center', gap: 6 },
-  emptyBtnText: { ...type.button, color: ui.onAccent },
-  emptyLink: { ...type.sub, textDecorationLine: 'underline' },
+  emptyBtn: { marginTop: space.group, paddingHorizontal: 24 },
   menuDivider: { height: shape.hairline, backgroundColor: ui.line, marginVertical: 6 },
 });

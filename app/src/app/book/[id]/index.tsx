@@ -11,9 +11,9 @@ import { bookmarksOf, bookReadMs, completions, formatDuration, READ_STATUSES, ro
 import { useLibrary, libraryStore } from '@/store/library-store';
 import { placementStore, usePlacementStore } from '@/store/placement-store';
 import { uiBus } from '@/store/ui-bus';
-import { Btn, Chip, Empty, Field, H2, ListGroup, ListItem, Muted, Row, Screen, Sheet, Stars, s as kit } from '@/ui/kit';
-import { colors, fonts, icon, shape, space, type } from '@/ui/screenTheme';
-import { LibraryCover } from '@/ui/BookVisual';
+import { Btn, Chip, Empty, Field, H2, IconButton, ListGroup, ListItem, Muted, Row, Screen, Sheet, Stars, TextLink, s as kit } from '@/ui/kit';
+import { colors, fonts, icon, press, shape, space, type } from '@/ui/screenTheme';
+import { BookVisual, LibraryCover } from '@/ui/BookVisual';
 
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
 
@@ -65,12 +65,13 @@ export default function BookDetailScreen() {
     <Screen
       title="책 정보"
       right={
-        <Pressable onPress={() => setMenu(true)} hitSlop={6} style={st.iconBtn} accessibilityRole="button" accessibilityLabel="더 보기">
+        <IconButton label="더 보기" onPress={() => setMenu(true)}>
           <MoreHorizontal size={icon.size} color={colors.title} strokeWidth={icon.stroke} />
-        </Pressable>
+        </IconButton>
       }>
       <View style={st.hero}>
-        <LibraryCover lib={lib} id={id} width={194} />
+        {/* 책장에 놓인 모습 그대로(시안 장정·표지 그림 포함). 책장에 없는 책만 서재 기록으로 그린다 */}
+        {place.books[id] ? <BookVisual book={place.books[id]} width={194} /> : <LibraryCover lib={lib} id={id} width={194} />}
         <Text style={st.title}>{e.title}</Text>
         {e.authors.length ? <Text style={st.author}>{e.authors.join(', ')}</Text> : null}
       </View>
@@ -91,8 +92,8 @@ export default function BookDetailScreen() {
           <Text style={st.statLabel}>갈피</Text><Text style={st.statValue}>{marks.length}개</Text>
         </Pressable>
       </View>
-      <Btn label="이어서 읽기" onPress={() => router.push({ pathname: '/read', params: { book: id } })} style={st.continueButton} />
-      <Pressable onPress={() => router.push({ pathname: '/bookmark/new', params: { book: id } })} accessibilityRole="button" style={st.bookmarkButton}><Text style={st.bookmarkLabel}>갈피 남기기</Text></Pressable>
+      <Btn label="이어서 읽기" size="l" onPress={() => router.push({ pathname: '/read', params: { book: id } })} style={st.continueButton} />
+      <TextLink label="갈피 남기기" onPress={() => router.push({ pathname: '/bookmark/new', params: { book: id } })} style={st.bookmarkButton} />
       <Pressable onPress={() => setRecords(!records)} accessibilityRole="button" accessibilityState={{ expanded: records }} style={st.recordsToggle}>
         <Text style={type.sub}>내 기록 · 책 정보</Text>
         {records ? <ChevronUp size={icon.small} color={colors.inkSoft} strokeWidth={icon.stroke} /> : <ChevronDown size={icon.small} color={colors.inkSoft} strokeWidth={icon.stroke} />}
@@ -150,7 +151,7 @@ export default function BookDetailScreen() {
             <View>
               <ListGroup>
                 {marks.slice(0, 5).map((m) => (
-                  <Pressable key={m.id} onPress={() => router.push(`/bookmark/${m.id}`)} style={({ pressed }) => [st.mark, pressed && { opacity: 0.6 }]} accessibilityRole="button">
+                  <Pressable key={m.id} onPress={() => router.push(`/bookmark/${m.id}`)} style={({ pressed }) => [st.mark, pressed && press]} accessibilityRole="button">
                     <View style={[st.markBar, { backgroundColor: color }]} />
                     <View style={{ flex: 1 }}>
                       <Text style={st.quote} numberOfLines={4}>
@@ -217,7 +218,6 @@ function RoundCard({ idx, startedAt, finishedAt, paused, onSave }: { idx: number
 }
 
 const st = StyleSheet.create({
-  iconBtn: { width: space.touch, height: space.touch, alignItems: 'center', justifyContent: 'center' },
   hero: { alignItems: 'center', paddingTop: 72 },
   title: { ...type.title, fontSize: 24, lineHeight: 32, color: colors.ink, textAlign: 'center', marginTop: 22 },
   author: { ...type.sub, fontSize: 16, lineHeight: 22, marginTop: 6, textAlign: 'center' },
@@ -232,9 +232,8 @@ const st = StyleSheet.create({
   statLabel: type.rowStrong,
   statValue: { ...type.sub, fontSize: 15 },
   statDivider: { width: shape.hairline * 2, height: 30, backgroundColor: colors.line },
-  continueButton: { marginTop: 20, minHeight: 56 },
-  bookmarkButton: { alignItems: 'center', justifyContent: 'center', minHeight: 48, marginTop: 4 },
-  bookmarkLabel: { ...type.sub, fontSize: 15, color: colors.accent, textDecorationLine: 'underline' },
+  continueButton: { marginTop: 20 },
+  bookmarkButton: { marginTop: 4 },
   recordsToggle: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, minHeight: space.touch, marginTop: 8 },
   round: { paddingTop: space.group, marginTop: space.tight, borderTopWidth: shape.hairline, borderTopColor: colors.line },
   mark: { flexDirection: 'row', gap: 14, paddingVertical: 16 },

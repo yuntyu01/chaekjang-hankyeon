@@ -22,8 +22,24 @@ import { PERF_ENABLED } from '@/ui/perf';
 export const DEMO_BOOT_KEY = 'perf-demo-boot';
 let homeProfile: HomeReferenceProfile = {};
 
+// 서재가 바뀌면 책 모양을 다시 만들되, 내용이 같은 책은 이전 객체를 그대로 쓴다
+// (책장 줄·책 그림 기록이 객체가 같은지로 다시 그릴지 정하므로, 한 권만 바뀌면 그 책만 다시 그린다)
+let lastBooks: BookMap = {};
 export function shelfBooks(lib: Library): BookMap {
-  return referenceHomeBooks(lib, homeProfile);
+  const next = referenceHomeBooks(lib, homeProfile);
+  for (const id of Object.keys(next)) if (lastBooks[id] && same(lastBooks[id], next[id])) next[id] = lastBooks[id];
+  lastBooks = next;
+  return next;
+}
+
+function same(a: unknown, b: unknown): boolean {
+  if (a === b) return true;
+  if (!a || !b || typeof a !== 'object' || typeof b !== 'object') return false;
+  if (Array.isArray(a) !== Array.isArray(b)) return false;
+  const ka = Object.keys(a).filter((k) => (a as Record<string, unknown>)[k] !== undefined);
+  const kb = Object.keys(b).filter((k) => (b as Record<string, unknown>)[k] !== undefined);
+  if (ka.length !== kb.length) return false;
+  return ka.every((k) => same((a as Record<string, unknown>)[k], (b as Record<string, unknown>)[k]));
 }
 
 let started: Promise<void> | null = null;

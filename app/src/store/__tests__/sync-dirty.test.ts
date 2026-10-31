@@ -44,9 +44,23 @@ it('동기화 스냅샷은 대기 중인 항목만 읽고 삭제 표시도 보�
 });
 
 it('손상된 서재 항목은 건너뛰지 않고 읽기 실패로 알려 기존 배치를 보호한다', async () => {
-  await local.db();
+  // v3(JSON 줄) 저장본에 깨진 줄이 있으면 v4 정규화가 실패하고, v3 그대로 남는다(빈 서재로 덮어쓰지 않게)
+  await mockDb.execAsync(`
+    CREATE TABLE editions(id TEXT PRIMARY KEY, data TEXT NOT NULL, updated_at TEXT NOT NULL);
+    CREATE TABLE books(id TEXT PRIMARY KEY, data TEXT NOT NULL, updated_at TEXT NOT NULL);
+    CREATE TABLE bindings(id TEXT PRIMARY KEY, data TEXT NOT NULL, updated_at TEXT NOT NULL);
+    CREATE TABLE rounds(id TEXT PRIMARY KEY, data TEXT NOT NULL, updated_at TEXT NOT NULL);
+    CREATE TABLE sessions(id TEXT PRIMARY KEY, data TEXT NOT NULL, updated_at TEXT NOT NULL);
+    CREATE TABLE bookmarks(id TEXT PRIMARY KEY, data TEXT NOT NULL, updated_at TEXT NOT NULL);
+    CREATE TABLE sync_meta(id INTEGER PRIMARY KEY CHECK (id = 1), revision INTEGER NOT NULL DEFAULT 0, migrated INTEGER NOT NULL DEFAULT 0, layout TEXT, layout_at TEXT,
+      layout_dirty INTEGER NOT NULL DEFAULT 0, layout_revision INTEGER NOT NULL DEFAULT 0);
+    INSERT INTO sync_meta(id) VALUES(1);
+    PRAGMA user_version=3;
+  `);
   await mockDb.runAsync('INSERT INTO books(id,data,updated_at) VALUES(?,?,?)', 'broken', '{bad json', '2026-01-01T00:00:00Z');
   await expect(local.loadLib()).rejects.toThrow();
+  expect(await mockDb.getFirstAsync('PRAGMA user_version')).toEqual({ user_version: 3 });
+  expect(await mockDb.getFirstAsync('SELECT data FROM books WHERE id=?', 'broken')).toEqual({ data: '{bad json' });
 });
 
 it('올린 뒤 바뀌지 않은 배치는 대기 표시를 지운다', async () => {

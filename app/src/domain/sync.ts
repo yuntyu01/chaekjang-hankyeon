@@ -5,7 +5,7 @@
 import { LIB_KINDS, type LibKind } from '@/db/local-db';
 import { isCoverArtworkId } from './cover-artworks';
 import type { Binding, Bookmark, Edition, Library, MyBook, Round, Session } from './library';
-import type { LayoutVariant } from './rebinding';
+import { heightClassOf, thicknessClassOf, type LayoutVariant } from './rebinding';
 import { BINDING_MATERIALS, type BindingMaterial } from './types';
 
 export type Dirty = Record<string, { deleted: boolean; at: string }>; // 키: "kind:id"
@@ -118,7 +118,7 @@ export const editionFromWire = (w: WireEdition, imageDir: string): Edition => ({
   coverUri: w.coverFileId ? `${imageDir}${w.coverFileId}` : nz(w.coverUrl), coverSource: (nz(w.coverSource) as Edition['coverSource']) ?? undefined,
   source: (w.source as Edition['source']) ?? 'manual', sourceName: nz(w.sourceName),
   art: w.art?.baseColor
-    ? { baseColor: w.art.baseColor, inkColor: w.art.inkColor ?? '#2F3944', accentColor: w.art.accentColor ?? w.art.baseColor, motifId: (w.art.motifId ?? 'leaf') as never, layoutVariant: (w.art.layoutVariant ?? 'spine_a') as LayoutVariant, heightClass: 'medium', thicknessClass: 'medium', generatedAt: w.art.generatedAt ?? '', version: w.art.version ?? 1 }
+    ? { baseColor: w.art.baseColor, inkColor: w.art.inkColor ?? '#2F3944', accentColor: w.art.accentColor ?? w.art.baseColor, motifId: (w.art.motifId ?? 'leaf') as never, layoutVariant: (w.art.layoutVariant ?? 'spine_a') as LayoutVariant, heightClass: heightClassOf(w.heightMm ?? 188), thicknessClass: thicknessClassOf(w.pageCount ?? 250), generatedAt: w.art.generatedAt ?? '', version: w.art.version ?? 1 }
     : undefined,
   createdAt: w.createdAt ?? w.updatedAt, updatedAt: w.updatedAt,
 });

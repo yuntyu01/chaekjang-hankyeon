@@ -28,8 +28,9 @@ DATABASE_URL='postgres://user:pass@localhost:5432/chaekjang?sslmode=disable' go 
 | 경로 | 역할 |
 |---|---|
 | `app/src/domain/` | 타입, 배치 엔진(이동·쌓기·형태·서랍·검증), 회전 형상, 제목 조판, 카탈로그 매핑·등급 규칙, 모티프 슬롯 30개, 선반 측정값 |
-| `app/src/store/placement-store.ts` | 확정 배치, 로컬 저장(v2: 선반+서랍, 정규화 x 기록), 되돌리기, 저장 실패 표시 |
-| `app/src/db/local-db.ts` | 기기 SQLite 서재, 책장 배치와 동기화 대기 목록 |
+| `app/src/store/placement-store.ts` | 확정 배치, 로컬 저장(v2: 선반+서랍), 되돌리기, 저장 실패 표시 |
+| `app/src/ui/screenTheme.ts`, `app/src/ui/kit.tsx` | 화면 UI 토큰(색·글자·간격·모양)과 공통 부품. 기준 문서는 `docs/DESIGN.md` |
+| `app/src/db/local-db.ts` | 기기 SQLite(v4: 서버와 같은 정규화 표). 서재, 책장 배치(선반·책 자리 표, 바뀐 줄만 저장), 동기화 대기 목록 |
 | `app/src/ui/` | 종이 배경, 책 렌더러, 선반 줄(선반 PNG)·그림자·드래그 오버레이 |
 | `app/src/features/home/` | 홈, 상세·배치 메뉴, 책 서랍 |
 | `server/internal/server/` | 계정, 동기화, 파일, 도서 API와 DB 마이그레이션 |
@@ -51,7 +52,7 @@ DATABASE_URL='postgres://user:pass@localhost:5432/chaekjang?sslmode=disable' go 
 ## 과거 백엔드·동기화 기록 (2026-10-05)
 
 - **구조:** 앱은 로컬 우선(오프라인 동작)이고, `EXPO_PUBLIC_API_URL`이 있는 빌드에서만 서버와 동기화한다(`app/src/services/sync.ts`, 순수 규칙은 `domain/sync.ts`).
-- **스키마(Flyway V2):** 판본(`editions`+`edition_authors`)·내 책·장정·회차·세션·갈피·파일을 앱 모델 그대로 정규화. 사용자 표는 `(user_id, id)` 복합 키 + 같은 사용자 안 복합 외래키. 공유 카탈로그 `books`는 저자를 `book_authors`로 분리.
+- **스키마(Flyway V2):** 판본(`editions`+`edition_authors`)·내 책·장정·회차·세션·갈피·파일을 앱 모델 그대로 정규화. 사용자 표는 `(user_id, id)` 복합 키 + 같은 사용자 안 복합 외래키. 공유 카탈로그 `books`는 저자를 `book_authors`로 분리. V8에서 책장 배치 JSON을 `shelves`·`shelf_placements` 표로 나누고 `books`의 계산 열(키·두께 분류, 기본 모티프)을 뺐다(`server/README.md`).
 - **API:** `POST /auth/device`(기기 계정·토큰), `GET /me`, `POST /sync/push`, `GET /sync/pull?since=`, `PUT|GET /files/{id}`(사진), 기존 `/books/search`·`/books/{isbn13}`.
 - **충돌·삭제:** `updatedAt`이 더 새로운 쪽이 이김, 삭제는 `deleted_at` 표시로 전달. 한 번 올리기는 한 트랜잭션.
 - **미구현:** 소셜 로그인 검증(표 `auth_identities`만 준비), 요청 제한, 고아 파일 정리, 배포(HTTPS) — 보고서 `docs/REPORT-2026-10-05-photo-bookmark-rebinding.md` 참고.

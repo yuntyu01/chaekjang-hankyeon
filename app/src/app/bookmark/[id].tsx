@@ -11,13 +11,13 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { ymd } from '@/features/book/labels';
 import { BookmarkCard, PAGE_BG, type BookmarkCardData } from '@/features/bookmark/BookmarkCard';
-import { bookmarksOf, toShelfBook, type Bookmark, type Library } from '@/domain/library';
+import { bookmarksOf, memoShelfBook, type Bookmark, type Library } from '@/domain/library';
 import { PhotoPlate } from '@/features/bookmark/PhotoPlate';
 import { deniedMessage, pickPhoto } from '@/services/photos';
 import { keepImage } from '@/store/files';
 import { libraryStore, useLibrary } from '@/store/library-store';
 import { ChevronLeft, MoreHorizontal, PenLine, Share } from '@/ui/icons';
-import { Btn, Chip, Empty, Field, ListGroup, ListItem, Muted, Row, Screen, Sheet } from '@/ui/kit';
+import { Btn, Chip, Empty, Field, IconButton, ListGroup, ListItem, Muted, Row, Screen, Sheet } from '@/ui/kit';
 import { colors, fonts, icon, screenTheme, shape, space, type } from '@/ui/screenTheme';
 
 export function cardData(lib: Library, m: Bookmark): BookmarkCardData | null {
@@ -33,7 +33,7 @@ export function cardData(lib: Library, m: Bookmark): BookmarkCardData | null {
     memo: m.memo,
     color: (b.bindingId && lib.bindings[b.bindingId]?.spineColor) || '#8A8378',
     coverUri: e.coverUri,
-    book: toShelfBook(lib, b.id) ?? undefined,
+    book: memoShelfBook(lib, b.id) ?? undefined,
     photoUri: m.photoUri,
     photoRatio: m.photoRatio,
   };
@@ -104,13 +104,13 @@ export default function BookmarkDetail() {
   return (
     <View style={{ flex: 1, backgroundColor: PAGE_BG, paddingTop: insets.top }}>
       <View style={st.header}>
-        <Pressable onPress={() => router.back()} hitSlop={8} style={st.headerBtn} accessibilityRole="button" accessibilityLabel="뒤로">
+        <IconButton label="뒤로" onPress={() => router.back()}>
           <ChevronLeft size={28} color={colors.title} strokeWidth={icon.stroke} />
-        </Pressable>
+        </IconButton>
         <Text style={type.title} accessibilityRole="header">갈피</Text>
-        <Pressable onPress={() => setMenu(true)} hitSlop={8} style={st.headerBtn} accessibilityRole="button" accessibilityLabel="더 보기">
+        <IconButton label="더 보기" onPress={() => setMenu(true)}>
           <MoreHorizontal size={icon.size} color={colors.title} strokeWidth={icon.stroke} />
-        </Pressable>
+        </IconButton>
       </View>
 
       <FlatList
@@ -261,7 +261,6 @@ function EditBookmark({ m, onDone }: { m: Bookmark; onDone: () => void }) {
 
 const st = StyleSheet.create({
   header: { minHeight: 60, paddingTop: 4, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 8 },
-  headerBtn: { width: space.touch, height: space.touch, alignItems: 'center', justifyContent: 'center' },
   dot: { width: 7, height: 7, borderRadius: 3.5, backgroundColor: colors.inkFaint, opacity: 0.6 },
   count: type.caption,
   bottom: { flexDirection: 'row', flexWrap: 'wrap', gap: 16, alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: space.page, paddingTop: 12 },

@@ -3,7 +3,7 @@
  */
 // 빛 셰이더(SkSL)가 컴파일되고, 같은 점에서 JS 빛 모델(domain/light-model)과 같은 값을 내는지(CanvasKit으로 실제로 그려 읽는다).
 import type { Book3, Vec3 } from '@/domain/book3';
-import { boxOf, DESIGN, ENV_NX, ENV_NY, EREF, FAR, GRID_N, GRID_PASSES, KEY_C, KEY_DIRS, lightWithLoss, skyIrradiance, ROUGH, linearOf, packBoxes, skyLossAt, solveGrid, toEye, toneDodge, toneMul, withCovers, type BoxBuf, type C3, type Env } from '@/domain/light-model';
+import { boxOf, DESIGN, ENV_NX, ENV_NY, EREF, FAR, GRID_N, GRID_PASSES, KEY_C, KEY_DIRS, lightWithLoss, skyIrradiance, ROUGH, linearOf, packBoxes, skyLossAt, solveGrid, toEye, toneDodge, toneMul, toneSpec, GAMMA, withCovers, type BoxBuf, type C3, type Env } from '@/domain/light-model';
 import { MAT_UNIFORMS, matSample, type MatUniforms } from '@/domain/surface-pattern';
 import { SHELF_DEPTH, SHELF_X0, SHELF_X1 } from '@/domain/geometry';
 import { bakeSource, bookSource, GRID_SCALE, gridSource, litSource, lossDecode, lossEncode, lossStep, LOSS_RN, LOSS_RP, planeFrame } from '../scene-light-sksl';
@@ -397,9 +397,9 @@ describe('책 광선 셰이더 = 광선 기하 + JS 빛', () => {
     return [1, 0.5 - S.x, 0.5 + S.y];
   }
   // kx: 책등 면이 받는 창빛 그림자(그림자 그림 자리를 고른 알파로)
-  const shader = (Q: Vec3, dodge: boolean, kx = 0) =>
+  const shader = (Q: Vec3, dodge: boolean | 'spec', kx = 0, split = false) =>
     draw(
-      bookSource(dodge),
+      bookSource(dodge, split),
       {
         kRect: kx > 0 ? [0, 0, 1, 1, ...new Array(20).fill(0)] : new Array(24).fill(0),
         cam4: CAM4, pxa: pxaOf(Q), bO: [bO.x, bO.y, bO.z], bX: [1, 0, 0], bY: [0, 1, 0], bZ: [0, 0, 1],
@@ -468,6 +468,30 @@ describe('책 광선 셰이더 = 광선 기하 + JS 빛', () => {
     const P = { x: F.x + r.x * t, y: F.y + r.y * t, z: F.z + r.z * t };
     const n = wall ? { x: 1, y: 0, z: 0 } : { x: 0, y: 1, z: 0 };
     for (const dodge of [false, true]) expect(maxDiff(shader(F, dodge), expected(F, { x: 0, y: 1, z: 0 }, { P, n, a: wall ? tone : paper }, dodge))).toBeLessThan(1.5 / 255);
+  });
+  it('그림 표지 책(split): 곱하기·닷지는 확산 몫만, 반사광은 더하기 겹. 책 색 자리는 두 겹과 같은 색, 어두운 그림 위에는 반사광이 더 남는다', () => {
+    const F = { x: bO.x + d.T / 2, y: 80, z: 0 };
+    const n = { x: 0, y: 0, z: -1 };
+    const lt = lightWithLoss(F, n, toEye(cam, F), row, skyLossAt(F, n, row, []), true, EREF.book, n, ROUGH.coated, 0);
+    const mul = shader(F, false, 0, true);
+    const dod = shader(F, true, 0, true);
+    const spec = shader(F, 'spec');
+    expect(maxDiff(mul, lt.r.map((r, c) => toneMul(tone[c], r, 0)) as C3)).toBeLessThan(1.5 / 255);
+    expect(maxDiff(dod, lt.r.map((r, c) => toneDodge(tone[c], r, 0)) as C3)).toBeLessThan(1.5 / 255);
+    expect(maxDiff(spec, lt.r.map((r, c) => toneSpec(tone[c], r, lt.spec[c])) as C3)).toBeLessThan(1.5 / 255);
+    expect(spec[0] + spec[1] + spec[2]).toBeGreaterThan(3 / 255);
+    // 화면에 깔린 그림 색 g(감마)에 겹을 차례로: 곱하기 → 닷지 → (split이면) 더하기
+    const m2 = shader(F, false);
+    const d2 = shader(F, true);
+    const two = (g: number, c: number) => Math.min(1, (g * m2[c]) / Math.max(1e-4, 1 - d2[c]));
+    const three = (g: number, c: number) => Math.min(1, (g * mul[c]) / Math.max(1e-4, 1 - dod[c]) + spec[c]);
+    const own = tone.map((x) => Math.pow(x, 1 / GAMMA));
+    expect(maxDiff(own.map(three) as C3, own.map(two) as C3)).toBeLessThan(2 / 255);
+    // 책 색보다 훨씬 어두운 그림 자리: 두 겹은 반사광이 밑 색에 비례해 줄지만 더하기 겹은 그대로 얹힌다
+    const dark = own.map((x) => x / 8);
+    const lift3 = dark.reduce((s, g, c) => s + three(g, c) - g * mul[c] / Math.max(1e-4, 1 - dod[c]), 0);
+    const lift2 = dark.reduce((s, g, c) => s + two(g, c) - g * mul[c] / Math.max(1e-4, 1 - dod[c]), 0);
+    expect(lift3).toBeGreaterThan(lift2 + 2 / 255);
   });
 });
 

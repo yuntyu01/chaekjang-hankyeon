@@ -107,7 +107,8 @@ func (s *Server) auth(ctx context.Context, header string) (int64, error) {
 	}
 	var user int64
 	var created time.Time
-	err := s.DB.QueryRow(ctx, "SELECT u.id,u.created_at FROM api_tokens t JOIN users u ON u.id=t.user_id WHERE t.token_hash=$1", hash(token)).Scan(&user, &created)
+	var stale bool
+	err := s.DB.QueryRow(ctx, "SELECT u.id,u.created_at,t.last_used_at < now()-interval '1 hour' FROM api_tokens t JOIN users u ON u.id=t.user_id WHERE t.token_hash=$1", hash(token)).Scan(&user, &created, &stale)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return 0, unauthorized
 	}
@@ -116,6 +117,10 @@ func (s *Server) auth(ctx context.Context, header string) (int64, error) {
 	}
 	if s.deletionBlocked(user, created) {
 		return 0, unauthorized
+	}
+	// 요청마다 쓰지 않게 마지막 사용 시각은 한 시간에 한 번만 고친다(그 사이 요청은 위의 읽기 한 번)
+	if !stale {
+		return user, nil
 	}
 	tag, err := s.DB.Exec(ctx, "UPDATE api_tokens SET last_used_at=now() WHERE token_hash=$1", hash(token))
 	if err == nil && tag.RowsAffected() == 0 {

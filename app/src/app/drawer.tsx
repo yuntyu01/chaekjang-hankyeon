@@ -9,7 +9,7 @@ import { STATUS_LABEL } from '@/features/book/labels';
 import { READ_STATUSES, type ReadStatus } from '@/domain/library';
 import { useLibrary } from '@/store/library-store';
 import { placementStore, usePlacementStore } from '@/store/placement-store';
-import { Btn, Empty, ListGroup, Muted, Screen, SearchField, Tabs } from '@/ui/kit';
+import { Btn, Empty, Muted, Screen, ScreenList, SearchField, Tabs } from '@/ui/kit';
 import { space } from '@/ui/screenTheme';
 
 export default function Drawer() {
@@ -29,41 +29,47 @@ export default function Drawer() {
         }),
     [place, lib, q, status],
   );
+  const row = ({ item: b }: { item: (typeof list)[number] }) => (
+    <BookRow
+      book={b}
+      sub={lib.books[b.id] ? STATUS_LABEL[lib.books[b.id].status] : undefined}
+      onPress={() => router.push(`/book/${b.id}`)}
+      right={
+        <Btn
+          label="꺼내 놓기"
+          kind="secondary"
+          size="s"
+          onPress={() => {
+            if (placementStore.fromDrawer(b.id) === 'none') Alert.alert('책장에 빈 자리가 없어요', '선반을 추가하거나 다른 책을 서랍에 넣어 주세요.', [{ text: '확인' }, { text: '선반 추가 후 꽂기', onPress: () => { placementStore.addShelf(); placementStore.fromDrawer(b.id); } }]);
+          }}
+        />
+      }
+    />
+  );
+  // 서랍은 책장에 자리가 없는 책이 모이는 곳이라 가장 길어진다: 책 그림(캔버스)은 화면 근처 줄만 그린다
   return (
-    <Screen title="서랍" titleNote={place.layout.drawer.length ? `· ${place.layout.drawer.length}권` : undefined}>
-      <Muted style={{ marginTop: space.item }}>책장에 두지 않은 책을 보관해요.</Muted>
-      <SearchField value={q} onChangeText={setQ} placeholder="제목, 저자 검색" accessibilityLabel="서랍에서 찾기" style={{ marginTop: space.group }} />
-      <Tabs items={TABS} value={status} onChange={setStatus} style={{ marginTop: space.item, marginHorizontal: -6 }} />
-      {!place.layout.drawer.length ? (
-        <View style={st.emptyWrap}>
-          <Empty title="서랍이 비어 있어요" body="책장에 자리가 없거나 잠시 치워 두고 싶은 책을 여기에 보관할 수 있어요." action="책 추가" onAction={() => router.push('/book/add')} />
-        </View>
-      ) : !list.length ? (
-        <View style={st.emptyWrap}>
-          <Empty title="맞는 책이 없어요" body={q.trim() ? '검색어를 바꿔 보세요.' : '다른 상태를 선택해 보세요.'} />
-        </View>
-      ) : (
-        <ListGroup style={{ marginTop: space.tight }}>
-          {list.map((b) => (
-            <BookRow
-              key={b.id}
-              book={b}
-              sub={lib.books[b.id] ? STATUS_LABEL[lib.books[b.id].status] : undefined}
-              onPress={() => router.push(`/book/${b.id}`)}
-              right={
-                <Btn
-                  label="꺼내 놓기"
-                  kind="secondary"
-                  size="s"
-                  onPress={() => {
-                    if (placementStore.fromDrawer(b.id) === 'none') Alert.alert('책장에 빈 자리가 없어요', '선반을 추가하거나 다른 책을 서랍에 넣어 주세요.', [{ text: '확인' }, { text: '선반 추가 후 꽂기', onPress: () => { placementStore.addShelf(); placementStore.fromDrawer(b.id); } }]);
-                  }}
-                />
-              }
-            />
-          ))}
-        </ListGroup>
-      )}
+    <Screen title="서랍" titleNote={place.layout.drawer.length ? `· ${place.layout.drawer.length}권` : undefined} scroll={false}>
+      <ScreenList
+        data={list}
+        keyExtractor={(b) => b.id}
+        renderItem={row}
+        ListHeaderComponent={
+          <View style={{ marginBottom: list.length ? space.tight : 0 }}>
+            <Muted style={{ marginTop: space.item }}>책장에 두지 않은 책을 보관해요.</Muted>
+            <SearchField value={q} onChangeText={setQ} placeholder="제목, 저자 검색" accessibilityLabel="서랍에서 찾기" style={{ marginTop: space.group }} />
+            <Tabs items={TABS} value={status} onChange={setStatus} style={{ marginTop: space.item, marginHorizontal: -6 }} />
+          </View>
+        }
+        ListEmptyComponent={
+          <View style={st.emptyWrap}>
+            {!place.layout.drawer.length ? (
+              <Empty title="서랍이 비어 있어요" body="책장에 자리가 없거나 잠시 치워 두고 싶은 책을 여기에 보관할 수 있어요." action="책 추가" onAction={() => router.push('/book/add')} />
+            ) : (
+              <Empty title="맞는 책이 없어요" body={q.trim() ? '검색어를 바꿔 보세요.' : '다른 상태를 선택해 보세요.'} />
+            )}
+          </View>
+        }
+      />
     </Screen>
   );
 }

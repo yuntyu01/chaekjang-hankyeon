@@ -7,8 +7,11 @@ type Ink = { bounds: number[]; alpha: number[]; color?: string | null };
 type Face = { face: number[]; decoration: Ink[] };
 type Print = Face & { pose: string; title: Ink; motif: string; registration?: number[] };
 export const ORIGINAL_ART = require('../../../assets/reference/bookshelf-original.png');
+// 시안 책장 15권의 제목을 시안 그림 글자(원본 그림의 잉크)로 그릴지. 끄면 모든 책 제목을 책 제목 글꼴(art.tsx, 함렛)로 그린다.
+// 2026-10-31 사용자가 그림 글자를 끄고 찍은 비교 화면에서 함렛을 골랐다(그림 글자는 획이 가늘고 글꼴과 섞여 보였다). 장식 무늬 인쇄도 함께 꺼진다
+export const REFERENCE_TITLES = false;
 export function referencePrint(title: string): Print | undefined {
-  return (prints as Record<string, Print>)[title];
+  return REFERENCE_TITLES ? (prints as Record<string, Print>)[title] : undefined;
 }
 
 // 제목 잉크 진하기: 원본 그림(처음 시안)의 획은 그림자 참고 그림 제목보다 가늘어(사용자: 글씨가 너무 얇다) 잉크 알파를 키운다.
@@ -29,7 +32,7 @@ function InkLayer({ image, layer, color, boost = 1 }: { image: SkImage; layer: I
 }
 
 export function drawOriginalGlyph(canvas: SkCanvas, image: SkImage, text: string, font: SkFont, x: number, y: number, color: string) {
-  const layer=(glyphs as Record<string,Ink>)[text];
+  const layer=REFERENCE_TITLES ? (glyphs as Record<string,Ink>)[text] : undefined;
   if (!layer) return false;
   const b=font.measureText(text);
   const [sx,sy,w,h]=layer.bounds;
@@ -46,7 +49,7 @@ export function ReferenceGlyph({ image, text, font, x, y, color }: { image: SkIm
   const b=font.measureText(text), [sx,sy,w,h]=layer.bounds;
   return <Group matrix={[b.width/w,0,x+b.x-sx*b.width/w,0,b.height/h,y+b.y-sy*b.height/h,0,0,1]}><InkLayer image={image} layer={layer} color={color} boost={TITLE_INK_BOOST} /></Group>;
 }
-export const hasOriginalGlyph = (text: string) => text in glyphs;
+export const hasOriginalGlyph = (text: string) => REFERENCE_TITLES && text in glyphs;
 
 // Preserve the original ink's antialiasing instead of thresholding thin strokes.
 function faceMatrix(face: number[], w: number, h: number) {

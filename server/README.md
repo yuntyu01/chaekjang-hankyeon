@@ -17,11 +17,13 @@ Docker 이미지: `docker build -t chaekjang-go server`. 운영에서는 사진�
 ## 데이터베이스
 
 - 기존 Flyway 데이터베이스는 V1~V7의 성공 이력이 있어야 실행되며, Go 서버는 해당 마이그레이션을 다시 실행하지 않는다. V5인 DB는 `internal/server/migrations`의 V6·V7을 Flyway 도구로 먼저 적용해야 한다.
-- 새 데이터베이스에는 V1~V7 SQL을 트랜잭션으로 적용하고 `go_schema_history`에 기록한다. 기존 Flyway의 이력 테이블을 위조하지 않는다.
+- V8부터는 Go 서버의 마이그레이션이다. Flyway V7 DB와 Go가 만든 DB 모두에 시작할 때 트랜잭션으로 적용하고 `go_schema_history`에 기록한다. 기존 Flyway의 이력 테이블을 위조하지 않는다.
+- 새 데이터베이스에는 V1부터 모두 적용한다. 버전은 파일 이름의 `V<번호>__`로 정하며 1부터 빠짐없이 이어져야 한다.
+- V8(`normalized_layout`): 책장 배치 JSON(`shelf_layouts.layout`)을 `shelves`·`shelf_placements` 표로 옮기고, `books`의 키·두께 분류와 기본 모티프 열을 지운다(판형·쪽수·ISBN으로 계산). 되돌릴 수 없으니 운영 DB는 백업한 뒤 재배포한다.
 - 알 수 없는 이력을 가진 기존 스키마에는 적용하지 않는다. 실제 데이터 전환 전에 백업과 별도 환경에서의 검증이 필요하다.
 
 ## 검증과 남은 작업
 
-`go test ./...`로 일반 시험을 실행하고, **전용 테스트 DB**를 준비한 뒤 `TEST_DATABASE_URL=postgres://... go test ./...`로 PostgreSQL 통합 시험을 실행한다. 이 시험은 계정과 데이터를 생성하므로 실제 데이터베이스를 지정하지 않는다.
+`go test ./...`로 일반 시험을 실행하고, **전용 테스트 DB**를 준비한 뒤 `TEST_DATABASE_URL=postgres://... go test ./...`로 PostgreSQL 통합 시험을 실행한다. Flyway V7 DB를 V8로 올리는 시험은 빈 DB를 하나 더 만들어 `TEST_EMPTY_DATABASE_URL`로 넘긴다. 이 시험은 계정과 데이터를 생성하므로 실제 데이터베이스를 지정하지 않는다.
 
 기기 계정, Google·카카오 로그인, 계정 삭제, 도서 검색·상세, 파일, 동기화 API를 구현했다. 계정 삭제 저널은 R2에 남으며 서버 시작 전 재적용한다. Google·카카오와 객체 저장소의 실서비스 자격 증명은 시험하지 않았다. LLM 키 순환 게이트웨이는 이전했지만 기존 서버처럼 외부 API 엔드포인트에는 연결되어 있지 않다. 실제 서비스 교체 전 외부 연동과 양 서버의 응답 및 부하를 추가 검증해야 한다. 로그인 설정과 삭제·복원 주의사항은 `../docs/social-login.md`를 참고한다.

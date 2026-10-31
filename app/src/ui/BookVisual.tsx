@@ -4,15 +4,15 @@ import Svg, { Defs, LinearGradient, Rect, Stop } from 'react-native-svg';
 import { useCanvasRef } from '@shopify/react-native-skia';
 import { useBookShared } from '@/ui/book3d/art';
 import { frameBBox, standaloneFrame } from '@/domain/shelf-scene';
-import { toShelfBook, type Library } from '@/domain/library';
+import { memoShelfBook, type Library } from '@/domain/library';
 import type { Book } from '@/domain/types';
-import { BOOK_PAD, frameCam, StandaloneBook } from '@/ui/book3d/StandaloneBook';
+import { BOOK_PAD, frameCam, noRibbon, StandaloneBook } from '@/ui/book3d/StandaloneBook';
 
 // Every screen uses the same saved book model and renderer as the bookshelf.
 export const BookVisual = memo(function BookVisual({ book, width, rasterize = false, onReady }: { book: Book; width: number; rasterize?: boolean; onReady?: () => void }) {
   // The protruding ribbon is a bookshelf count indicator, not part of a saved cover.
   // Keep the stored binding/art and the 3D engine intact in every presentation.
-  const displayBook = useMemo(() => ({ ...book, quotes: 0 }), [book]);
+  const displayBook = useMemo(() => noRibbon(book), [book]);
   const bbox = useMemo(() => {
     const frame = standaloneFrame(displayBook, 'front');
     return frameBBox(frame, frameCam(frame));
@@ -23,7 +23,8 @@ export const BookVisual = memo(function BookVisual({ book, width, rasterize = fa
   // Some renderers also load reference glyphs; the base renderer only needs its font.
   const referenceReady = !('original' in shared) || !!shared.original;
   const [uri, setUri] = useState<string | null>(null);
-  const revision = JSON.stringify(book);
+  // 그림으로 굳힐 때만 내용 비교값을 만든다(목록마다 책 전체를 문자열로 만들지 않게)
+  const revision = rasterize ? JSON.stringify(book) : '';
   useEffect(() => {
     if (!rasterize || !shared.regular || !referenceReady) return;
     let live = true;
@@ -51,6 +52,6 @@ export const BookVisual = memo(function BookVisual({ book, width, rasterize = fa
 });
 
 export function LibraryCover({ lib, id, width }: { lib: Library; id: string; width: number }) {
-  const book = useMemo(() => toShelfBook(lib, id), [lib, id]);
+  const book = memoShelfBook(lib, id);
   return book ? <BookVisual book={book} width={width} /> : null;
 }

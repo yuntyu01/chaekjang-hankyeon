@@ -54,7 +54,7 @@ it('서버 기록을 저장하지 못하면 화면을 바꾸지 않고 재시도
   const remote = { ...current.books[id], note: '서버 기록', updatedAt: '2030-01-01T00:00:00.000Z' };
   const merged = { ...current, books: { ...current.books, [id]: remote } };
   const change = { lib: merged, writes: [{ kind: 'books' as const, item: remote }], erases: [], files: [] };
-  await mockDb.execAsync("CREATE TRIGGER reject_remote BEFORE INSERT ON books BEGIN SELECT RAISE(ABORT, 'disk failure'); END");
+  await mockDb.execAsync("CREATE TRIGGER reject_remote BEFORE INSERT ON my_books BEGIN SELECT RAISE(ABORT, 'disk failure'); END");
   await expect(store.applyRemote(change)).rejects.toThrow('disk failure');
   expect(store.get().lib.books[id].note).toBeUndefined();
   await mockDb.execAsync('DROP TRIGGER reject_remote');
@@ -75,7 +75,7 @@ it('서버 기록을 저장하는 사이 사용자가 고친 같은 책을 덮�
   const started = new Promise<void>(resolve => { entered = resolve; });
   const original = mockDb.runAsync.bind(mockDb);
   jest.spyOn(mockDb, 'runAsync').mockImplementation(async (sql, ...args) => {
-    if (sql.startsWith('INSERT INTO books') && args[0] === id) { entered(); await gate; }
+    if (sql.startsWith('INSERT INTO my_books') && args[0] === id) { entered(); await gate; }
     return original(sql, ...args);
   });
   const applying = store.applyRemote({ lib: merged, writes: [{ kind: 'books', item: remote }], erases: [], files: [] });

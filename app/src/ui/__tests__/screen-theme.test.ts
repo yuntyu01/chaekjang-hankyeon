@@ -155,4 +155,15 @@ describe('화면 코드가 공통 기준을 쓴다', () => {
     );
     expect(bad).toEqual([]);
   });
+  it('누르는 동안 옅어지는 정도는 숫자로 따로 적지 않고 press 토큰을 쓴다', () => {
+    const bad = screens.flatMap((f) =>
+      fs
+        .readFileSync(f, 'utf8')
+        .split('\n')
+        .map((l, i) => [l, i + 1] as const)
+        .filter(([l]) => /pressed\s*(&&[^,\]]*\{\s*opacity\s*:|\?\s*0?\.\d)/.test(l))
+        .map(([, i]) => `${path.relative(SRC, f)}:${i}`),
+    );
+    expect(bad).toEqual([]);
+  });
 });

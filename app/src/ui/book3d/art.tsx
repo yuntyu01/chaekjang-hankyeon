@@ -20,38 +20,87 @@ import { bookFacePath, CoverFaceArt, PAGE_BASE, SpineFaceArt } from '@/ui/book/B
 import { ReferenceCover } from './ReferenceCover';
 import { ReferenceBinding } from './ReferenceBinding';
 import { bookTone, referenceBinding } from '@/domain/binding-material';
+import { useLibrary } from '@/store/library-store';
+import { placementStore } from '@/store/placement-store';
+import { TL, tl } from '@/ui/perf';
 import { ORIGINAL_ART, ReferenceGlyph, ReferenceMotif, ReferencePrint, drawOriginalGlyph, hasOriginalGlyph, hasReferenceMotif, referencePrint } from './ReferencePrint';
 import { createArtCache } from './art-cache';
 import { bookArtKey } from './art-key';
 
-const REGULAR = require('@expo-google-fonts/gowun-batang/400Regular/GowunBatang_400Regular.ttf');
+// 책 제목 글꼴: 함렛 SemiBold(2026-10-31 사용자 선택: 고운바탕·나눔스퀘어라운드·주아·함렛을 책장에 넣어 비교. assets/fonts/README.md).
+// 고운바탕 Regular는 가로획이 가늘어 책등에서 실처럼 보였다. 한글은 전각(나아가기 폭 1em)이라 제목 맞추기(title-layout)는 그대로다.
+// Shared.regular는 이 글꼴이다(이름만 예전 그대로)
+const REGULAR = require('../../../assets/fonts/Hahmlet-SemiBold.ttf');
 
-// 제목은 보통 굵기 + 윤곽 덧그리기로 굵기를 정하므로 Skia에는 보통 굵기 글꼴 하나만 읽는다(굵은 글꼴 8MB를 따로 읽지 않는다)
+// 굵기는 글꼴 굵기로 정한다(덧그리기 TITLE_WEIGHT 0). Skia에는 이 글꼴 하나만 읽는다
 // artworks: 기본 정면 장정 그림(cover-artworks) 여섯 장. 앱을 켤 때 한 번 읽어 모든 책이 같이 쓴다
 // (책마다 따로 읽으면 그 책만 몇 초 늦게 나타나 책장에 빈자리가 보였다)
 export type Shared = { regular: SkTypeface | null; original: SkImage | null; artworks: Record<string, SkImage | null> };
 const Ctx = createContext<Shared>({ regular: null, original: null, artworks: {} });
+const NOT_READY: Shared = { regular: null, original: null, artworks: {} };
+const ShelfCtx = createContext<Shared>(NOT_READY);
 
-// 앱 뿌리에 한 번: 제목 글꼴, 시안 원본 그림, 기본 정면 장정 그림
-export function BookArtProvider({ children }: { children: ReactNode }) {
+// 앱 뿌리에 한 번: 제목 글꼴, 시안 원본 그림, 기본 정면 장정 그림.
+// 장정 그림은 지금 책에 입힌 것부터 읽고 나머지는 그 뒤에 읽는다(여섯 장을 한꺼번에 풀면 에뮬레이터에서 그 책만 5초쯤 늦게 나타났다).
+// onReady: 첫 책장에 필요한 것(글꼴·원본 그림·입힌 장정 그림)이 다 준비됨. 뿌리가 그때까지 시작 화면을 덮어 둔다
+export function BookArtProvider({ children, onReady }: { children: ReactNode; onReady?: () => void }) {
   const regular = useTypeface(REGULAR);
   const original = useImage(ORIGINAL_ART);
-  // 훅 순서가 바뀌지 않게 여섯 장을 고정 순서로 읽는다
-  const a0 = useImage(COVER_ARTWORKS[0].image);
-  const a1 = useImage(COVER_ARTWORKS[1].image);
-  const a2 = useImage(COVER_ARTWORKS[2].image);
-  const a3 = useImage(COVER_ARTWORKS[3].image);
-  const a4 = useImage(COVER_ARTWORKS[4].image);
-  const a5 = useImage(COVER_ARTWORKS[5].image);
+  const { lib } = useLibrary();
+  const used = useMemo(() => new Set(Object.values(lib.bindings).map((b) => b.coverArtId)), [lib.bindings]);
+  const [rest, setRest] = useState(false);
+  const want = (i: number) => (rest || used.has(COVER_ARTWORKS[i].id) ? COVER_ARTWORKS[i].image : null);
+  // 훅 순서가 바뀌지 않게 여섯 장을 고정 순서로 읽는다(아직 안 읽을 그림은 null)
+  const a0 = useImage(want(0));
+  const a1 = useImage(want(1));
+  const a2 = useImage(want(2));
+  const a3 = useImage(want(3));
+  const a4 = useImage(want(4));
+  const a5 = useImage(want(5));
+  const images = [a0, a1, a2, a3, a4, a5];
   const artworks = useMemo(() => Object.fromEntries(COVER_ARTWORKS.map((a, i) => [a.id, [a0, a1, a2, a3, a4, a5][i] ?? null])), [a0, a1, a2, a3, a4, a5]);
+  const usedReady = COVER_ARTWORKS.every((a, i) => !used.has(a.id) || !!images[i]);
+  const ready = !!regular && !!original && usedReady;
   useEffect(() => {
     if (regular) bootMark('skia-font-regular');
   }, [regular]);
+  useEffect(() => {
+    if (!ready) return;
+    bootMark('book-art-ready');
+    // 책 그림은 캔버스 안(따로 도는 렌더러)에서 대기열에 들어가므로 이 효과보다 늦게 들어올 수 있다.
+    // 책장에 책이 있으면 한 권 이상 기록되고 대기열이 빌 때까지 기다린 뒤 시작 화면을 걷고, 나머지 장정 그림은 그 뒤에 읽는다(첫 기록과 겹쳐 느려지지 않게)
+    let alive = true;
+    let t: ReturnType<typeof setTimeout> | undefined;
+    whenArtIdle(placementStore.get().layout.placements.length > 0, () => {
+      if (!alive) return;
+      onReady?.();
+      t = setTimeout(() => setRest(true), 1500);
+    });
+    return () => {
+      alive = false;
+      if (t) clearTimeout(t);
+    };
+  }, [ready, onReady]);
   const value = useMemo(() => ({ regular, original, artworks }), [regular, original, artworks]);
-  return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
+  // 책장 줄 캔버스용: 준비가 끝났을 때와 책장 책이 쓰는 장정 그림이 바뀔 때만 새 객체.
+  // 줄 캔버스는 이 값이 바뀌면 줄 전체를 다시 기록하는데(그때 공유 값마다 UI 스레드를 기다린다), 글꼴·원본 그림이 따로 도착하거나
+  // 쓰지 않는 장정 그림이 뒤늦게 읽힐 때마다 다시 기록하면 시작 직후 몇 초씩 막혔다
+  const usedImages = COVER_ARTWORKS.map((a, i) => (used.has(a.id) ? images[i] : null));
+  const shelfValue = useMemo<Shared>(
+    () => (ready ? { regular, original, artworks: Object.fromEntries(COVER_ARTWORKS.map((a, i) => [a.id, usedImages[i] ?? null])) } : NOT_READY),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [ready, regular, original, ...usedImages],
+  );
+  return (
+    <Ctx.Provider value={value}>
+      <ShelfCtx.Provider value={shelfValue}>{children}</ShelfCtx.Provider>
+    </Ctx.Provider>
+  );
 }
 
 export const useBookShared = () => useContext(Ctx);
+// 책장(홈) 줄 캔버스에 넘길 공용 자원(위 shelfValue)
+export const useShelfShared = () => useContext(ShelfCtx);
 
 export type BookArt = {
   spine: SkPicture; // 책등 면(책 색)
@@ -70,22 +119,19 @@ export type BookArt = {
 const faceOf = (b: Book) => jacketColor(b.cover?.edge ?? b.body?.face ?? b.themeColor);
 export const inkOf = (b: Book) => b.art.inkColor ?? titleInk(faceOf(b));
 
-// 제목 획 두께: 보통 굵기 글꼴에 글자 크기의 일부만큼 같은 색 윤곽을 더해 중간 굵기로(글자 모양·크기는 그대로).
-// 시안의 제목 획은 보통 굵기보다 약 30% 두껍고, 가는 획은 실제 표시 크기에서 바탕에 묻혀 옅어 보인다.
-// 어두운 바탕의 밝은 글자는 번져 보여 같은 두께도 더 굵게 읽히므로 덧그리는 두께를 조금 줄인다(바탕·글자색에 따른 공통 규칙).
-// 책등·눕힘 제목: 시안 책장 같은 글자(모순·데미안·어린 왕자)의 잉크 면적에 맞춘 중간 굵기(예전 0.03/0.022는 17~26% 굵었다)
-// 2026-10-09 그림자 참고 그림 책등 제목이 더 굵고 진해 보여(사용자: 글씨가 너무 얇다) 0.014 → 0.022(먹색도 짙은 남색으로)
-export const TITLE_WEIGHT = 0.022;
-export const TITLE_WEIGHT_LIGHT = 0.016;
-// 앞표지 제목: 시안 표지 제목 획은 글자 높이의 약 10%(보통 굵기 약 8%)라 조금 더 굵게
-export const COVER_WEIGHT = 0.024;
+// 제목 획 두께: 글꼴 굵기 위에 글자 크기의 일부만큼 같은 색 윤곽을 더 그릴 몫(0이면 덧그리지 않는다. 윤곽 두께 0은 Skia에서 1px 선이라 아예 뺀다).
+// 예전에는 고운바탕 Regular에 0.022(앞표지 0.024, 어두운 바탕의 밝은 글자 0.016)를 더했다(2026-10-09 사용자: 글씨가 너무 얇다).
+// 2026-10-31 사용자가 고운바탕 Bold를 골라 덧그리지 않는다: Bold만으로 예전보다 잉크가 약 13% 많고, 더 그리면 43% 많아 무겁다.
+export const TITLE_WEIGHT = 0;
+export const TITLE_WEIGHT_LIGHT = 0;
+export const COVER_WEIGHT = 0;
 const weightFor = (ink: string) => (ink === TITLE_LIGHT ? TITLE_WEIGHT_LIGHT : TITLE_WEIGHT);
 function Glyph({ x, y, text, font, color, weight, original }: { x: number; y: number; text: string; font: SkFont; color: string; weight: number; original: SkImage }) {
   if (hasOriginalGlyph(text)) return <ReferenceGlyph image={original} text={text} font={font} x={x} y={y} color={color} />;
   return (
     <>
       <Text x={x} y={y} text={text} font={font} color={color} />
-      <Text x={x} y={y} text={text} font={font} color={color} style="stroke" strokeWidth={weight} strokeJoin="round" />
+      {weight > 0 ? <Text x={x} y={y} text={text} font={font} color={color} style="stroke" strokeWidth={weight} strokeJoin="round" /> : null}
     </>
   );
 }
@@ -95,9 +141,11 @@ function inkPaints(ink: string, fs: number) {
   const fill = Skia.Paint();
   fill.setColor(Skia.Color(ink));
   fill.setAntiAlias(true);
+  const weight = fs * weightFor(ink);
+  if (weight <= 0) return [fill];
   const stroke = fill.copy();
   stroke.setStyle(PaintStyle.Stroke);
-  stroke.setStrokeWidth(fs * weightFor(ink));
+  stroke.setStrokeWidth(weight);
   stroke.setStrokeJoin(StrokeJoin.Round);
   return [fill, stroke];
 }
@@ -133,10 +181,14 @@ function verticalTitlePicture(title: string, dims: { T: number; H: number }, s: 
         continue;
       }
       const ch = fs * t.pitch;
-      const gw = font.measureText(cell.ch).width;
+      // 세로 조판: 글자마다 전각 칸(나아가기 폭)의 가운데를 열의 가운데에 둔다. measureText는 잉크 상자라(x = 왼쪽 여백)
+      // 잉크 폭의 절반만 빼면 글자가 왼쪽 여백(글자 크기의 약 5%)만큼 오른쪽으로 밀리고 글자마다 들쭉날쭉했다
+      const adv = font.getGlyphWidths(font.getGlyphIDs(cell.ch))[0] ?? font.measureText(cell.ch).width;
+      const gx = cx - adv / 2;
+      const ink0 = font.measureText(cell.ch);
       const cy = y + ch / 2;
-      if (!drawOriginalGlyph(c,original,cell.ch,font,cx-gw/2,cy+gy,ink)) for (const p of paints) c.drawText(cell.ch,cx-gw/2,cy+gy,p,font);
-      if (cell.punct) for (const p of paints) c.drawText(cell.punct,cx+gw/2-fs*0.05,cy+fs*0.5,p,font);
+      if (!drawOriginalGlyph(c,original,cell.ch,font,gx,cy+gy,ink)) for (const p of paints) c.drawText(cell.ch,gx,cy+gy,p,font);
+      if (cell.punct) for (const p of paints) c.drawText(cell.punct,gx+ink0.x+ink0.width-fs*0.05,cy+fs*0.5,p,font);
       // 쉼표·마침표 뒤는 조금 더 띄운다(시안 '아무튼, 독서': 쉼표와 띄어쓰기를 합쳐 글자 높이의 약 0.84배)
       y += ch + (cell.punct ? fs * 0.36 : 0);
     }
@@ -289,6 +341,38 @@ let queue: Promise<unknown> = Promise.resolve();
 let pendingArt = 0;
 let builtArt = 0;
 let artMs = 0;
+// 기록 대기열이 빌 때 부를 것(시작 화면을 첫 책장의 그림이 다 기록된 뒤에 걷는다).
+// expect: 기록될 책이 있다(아직 한 권도 안 들어왔으면 들어와서 빌 때까지 기다린다)
+const idleWaiters: (() => void)[] = [];
+function whenArtIdle(expect: boolean, cb: () => void) {
+  if (pendingArt === 0 && (!expect || builtArt > 0)) cb();
+  else idleWaiters.push(cb);
+}
+// 지금 기록할 책 그림이 없다(홈 사진은 그림이 다 올라간 뒤에 찍는다)
+export const artIdle = () => pendingArt === 0 && deliveries.length === 0;
+// 대기열이 비면 잠깐(다른 줄 캔버스의 책이 이어서 들어올 틈) 뒤에도 비어 있을 때 기다리던 쪽을 부른다
+function idleSoon() {
+  setTimeout(() => {
+    if (pendingArt === 0) idleWaiters.splice(0).forEach((f) => f());
+  }, 32);
+}
+
+// 기록된 그림 알리기: 대기열이 도는 동안은 모아 두었다가 빌 때(또는 0.4초마다) 한꺼번에 알린다.
+// 한 권씩 알리면 그때마다 그 책이 있는 줄 전체를 다시 그려(첫 화면 18권이면 줄 그리기 18번) 기록보다 오래 걸렸다.
+const deliveries: (() => void)[] = [];
+let deliverTimer: ReturnType<typeof setTimeout> | null = null;
+function flushDeliveries() {
+  if (deliverTimer) clearTimeout(deliverTimer);
+  deliverTimer = null;
+  deliveries.splice(0).forEach((f) => f());
+}
+// 첫 책장(시작 화면 뒤)은 대기열이 빌 때 한 번에만 알린다(줄마다 한 번만 다시 기록). 그 뒤 많은 책을 한꺼번에 기록할 때는 1.5초마다 보여 준다
+let firstIdle = false;
+function deliver(f: () => void) {
+  deliveries.push(f);
+  if (pendingArt === 0) flushDeliveries();
+  else if (firstIdle) deliverTimer ??= setTimeout(flushDeliveries, 1500);
+}
 
 // 서버에서 받은 책 전체 그림(표지·책등). 있으면 코드로 그리는 장정 대신 이 그림을 그대로 쓴다(제목·장식도 그림 안에 있다).
 type MadeArt = { cover: SkImage | null; spine: SkImage | null };
@@ -426,27 +510,41 @@ export function useBookArt(book: Book, s: number, dims: { T: number; H: number; 
     return hit ? { key, art: hit } : null;
   });
   useEffect(() => {
-    if (!ready) return;
+    if (!ready) {
+      if (TL.on) tl(`art-wait ${book.id} motif=${!needMotif || !!motif} cover=${!needCover || !!coverImg} made=${!madeCoverUri || !!madeCover}`);
+      return;
+    }
     const p = artCache.load(key, () => {
+      if (TL.on) tl(`art-enq ${book.id}`);
       // 한 권씩 차례로 기록한다(한꺼번에 하면 앱이 멈춘다)
       pendingArt++;
       const task = queue.then(async () => {
         const t0 = Date.now();
+        if (TL.on) tl(`art-start ${book.id}`);
         const a = await buildArt(book, s, dims, shared, motif, coverImg, { cover: madeCoverUri ? madeCover : null, spine: madeSpineUri ? madeSpine : null });
         artMs += Date.now() - t0;
+        if (TL.on) tl(`art-end ${book.id} ${Date.now() - t0}ms`);
         builtArt++;
         if (builtArt === 1) bootMark('art-first', `${Date.now() - t0}ms`);
         return a;
       }).finally(() => {
+        // 실패해도 대기 수는 줄인다(시작 화면이 대기열을 기다리다 멈추지 않게)
         pendingArt--;
-        if (pendingArt === 0) bootMark(`art-idle-${builtArt}`, `books=${builtArt} build=${artMs}ms`);
+        if (pendingArt === 0) {
+          firstIdle = true;
+          bootMark(`art-idle-${builtArt}`, `books=${builtArt} build=${artMs}ms`);
+          idleSoon();
+        }
       });
       queue = task.catch(() => undefined).then(() => new Promise((r) => setTimeout(r, 0)));
       return task;
     });
     let alive = true;
     p.then((a) => {
-      if (alive) setArt({ key, art: a });
+      deliver(() => {
+        if (TL.on) tl(`art-deliver ${book.id}`);
+        if (alive) setArt({ key, art: a });
+      });
     }).catch((e) => {
       console.warn('book art failed', book.id, String(e?.message ?? e));
     });

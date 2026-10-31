@@ -2,7 +2,7 @@ import { Pressable, StyleSheet, Text, View, type StyleProp, type TextStyle } fro
 import type { Book } from '@/domain/types';
 import { BookVisual } from '@/ui/BookVisual';
 import { RealCover } from '@/ui/kit';
-import { colors, fonts } from '@/ui/screenTheme';
+import { colors, fonts, press } from '@/ui/screenTheme';
 import { Bookmark } from '@/ui/icons';
 import { BookmarkPaper } from './BookmarkPaper';
 import { BookmarkTape } from './BookmarkTape';
@@ -55,7 +55,7 @@ export function BookmarkCard({ data, showMemo, width, seed, compact = false, ras
       </View>
       <View style={[st.card, compact && st.compactShadow, { width: cardW, borderRadius: compact ? 12 : 9, transform: [{ translateX: compact ? 0 : 8 }, { rotate: compact ? '-0.7deg' : '-1deg' }] }]}>
         <BookmarkPaper color={CARD_PAPER} radius={compact ? 12 : 9} seed={`${seed}-front`} />
-        <Pressable disabled={!onOpen} onPress={onOpen} accessible={!!onOpen} accessibilityRole={onOpen ? 'button' : undefined} accessibilityLabel={onOpen ? `${data.text || "사진 갈피"}, ${data.title}` : undefined} style={({ pressed }) => ({ paddingHorizontal: compact ? 30 : 33, paddingTop: compact ? 20 : 36, paddingBottom: compact ? 12 : 34, opacity: pressed ? 0.75 : 1 })}>
+        <Pressable disabled={!onOpen} onPress={onOpen} accessible={!!onOpen} accessibilityRole={onOpen ? 'button' : undefined} accessibilityLabel={onOpen ? `${data.text || "사진 갈피"}, ${data.title}` : undefined} style={({ pressed }) => ({ paddingHorizontal: compact ? 30 : 33, paddingTop: compact ? 20 : 36, paddingBottom: compact ? 12 : 34, opacity: pressed ? press.opacity : 1 })}>
         {photo ? null : <View pointerEvents="none" style={[st.tape, { right: compact ? 20 : 16, top: compact ? -16 : -13 }]}>
           <BookmarkTape color={tone.tape} seed={`${seed}-tape`} width={compact ? 39 : 44} height={compact ? 43 : 45} paperEdge={compact ? 16 : 13} />
         </View>}

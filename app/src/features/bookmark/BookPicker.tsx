@@ -5,7 +5,7 @@ import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { STATUS_LABEL } from '@/features/book/labels';
 import type { Library } from '@/domain/library';
 import { Btn, Divider, SearchField, Sheet } from '@/ui/kit';
-import { space, type } from '@/ui/screenTheme';
+import { press, space, type } from '@/ui/screenTheme';
 
 export function recentBookIds(lib: Library) {
   const last = new Map<string, string>();
@@ -30,7 +30,7 @@ export function BookPicker({ lib, visible, allowNone, onPick, onClose }: { lib: 
       <SearchField value={q} onChangeText={setQ} placeholder="제목·저자" accessibilityLabel="책 찾기" style={{ marginTop: space.tight, marginBottom: space.tight }} />
       <ScrollView style={{ flexShrink: 1 }} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
         {allowNone ? (
-          <Pressable style={({ pressed }) => [st.item, pressed && { opacity: 0.6 }]} onPress={() => onPick(undefined)} accessibilityRole="button">
+          <Pressable style={({ pressed }) => [st.item, pressed && press]} onPress={() => onPick(undefined)} accessibilityRole="button">
             <Text style={type.row}>책 연결 없이</Text>
           </Pressable>
         ) : null}
@@ -41,7 +41,7 @@ export function BookPicker({ lib, visible, allowNone, onPick, onClose }: { lib: 
           return (
             <View key={id}>
               {i || allowNone ? <Divider /> : null}
-              <Pressable style={({ pressed }) => [st.item, pressed && { opacity: 0.6 }]} onPress={() => onPick(id)} accessibilityRole="button" accessibilityLabel={e?.title}>
+              <Pressable style={({ pressed }) => [st.item, pressed && press]} onPress={() => onPick(id)} accessibilityRole="button" accessibilityLabel={e?.title}>
                 <View style={[st.spine, { backgroundColor: color ?? '#B7AE9F' }]} />
                 <View style={{ flex: 1 }}>
                   <Text style={type.row} numberOfLines={2}>

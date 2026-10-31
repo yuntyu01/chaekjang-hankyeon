@@ -6,20 +6,23 @@
 // 탭을 바꿔도 고르던 값은 그대로다(값은 부모가 가진다). 저장하면 사용자 오버라이드(source 'custom')가 된다.
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { FlatList, Image, Pressable, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
+import Svg, { Circle, Defs, LinearGradient, Path, Rect, Stop } from 'react-native-svg';
 
 import { artworkCover, COVER_ARTWORKS } from '@/domain/cover-artworks';
 import { ESTIMATED_PAGES, ESTIMATED_SIZE, type Binding, type SizeMm } from '@/domain/library';
 import { MOTIF_SLOTS } from '@/domain/motif-slots';
 import { BOOK_COLORS, LAYOUT_VARIANTS, layoutArt, suggestColors, tonesFor, type LayoutVariant } from '@/domain/rebinding';
 import { BINDING_MATERIALS, type BindingMaterial, type Book } from '@/domain/types';
-import { StandaloneBook } from '@/ui/book3d/StandaloneBook';
+import { noRibbon, RotatableBook, StandaloneBook } from '@/ui/book3d/StandaloneBook';
+import { frameBBox, standaloneFrame } from '@/domain/shelf-scene';
+import { frameCam } from '@/ui/book3d/StandaloneBook';
 import { Check } from '@/ui/icons';
-import { Row } from '@/ui/kit';
 import { colors, fonts, shape, space, type } from '@/ui/screenTheme';
+import { TextLink } from '@/ui/kit';
 
 export type BindingDraft = Pick<Binding, 'spineColor' | 'motif' | 'seed' | 'source' | 'inkColor' | 'accentColor' | 'layout' | 'material' | 'coverArtId'>;
 
-const LAYOUT_NAMES: Record<LayoutVariant, string> = { spine_a: '가', spine_b: '나', spine_c: '다' };
+const LAYOUT_NAMES: Record<LayoutVariant, string> = { spine_a: '기본', spine_b: '제목 낮게', spine_c: '무늬 낮게' };
 const MATERIAL_NAMES: Record<BindingMaterial, string> = { paper: '무광 종이', cloth: '천', coated: '코팅지' };
 
 export function previewBook(p: { title: string; author?: string; size?: SizeMm; pages?: number; binding: BindingDraft }): Book {
@@ -50,24 +53,20 @@ const TABS: { id: Tab; label: string }[] = [
 ];
 const INK = colors.accent; // 고른 것 표시(공통 강조색)
 
-export function BindingEditor({ title, author, size, pages, value, recommended, onChange }: { title: string; author?: string; size?: SizeMm; pages?: number; value: BindingDraft; recommended: BindingDraft; onChange: (v: BindingDraft) => void }) {
+// current: 아직 아무것도 고르지 않았을 때 보여 줄 지금 모습(책장에 놓인 그대로). 하나라도 고르면 고른 장정으로 바뀐다
+export function BindingEditor({ title, author, size, pages, value, recommended, current, onChange }: { title: string; author?: string; size?: SizeMm; pages?: number; value: BindingDraft; recommended: BindingDraft; current?: Book; onChange: (v: BindingDraft) => void }) {
   const [tab, setTab] = useState<Tab>('art');
   const { width } = useWindowDimensions();
   const custom = (patch: Partial<BindingDraft>): BindingDraft => ({ ...value, ...patch, source: 'custom' });
   const book = useMemo(() => previewBook({ title, author, size, pages, binding: value }), [title, author, size, pages, value]);
-  // 미리보기 크기: 화면 폭에 맞춘다(책 치수·카메라는 그대로, 그리는 배율만)
-  const scale = Math.max(0.8, Math.min(1.15, width / 390));
+  const shown = useMemo(() => (current ? noRibbon(current) : book), [current, book]);
+  // 미리보기 크기: 정면 폭을 화면 폭에 맞춘다(책 치수·카메라는 그대로, 그리는 배율만)
+  const frontWidth = Math.min(170, width * 0.39);
   return (
     <View>
-      <View style={st.stage} accessibilityLabel="장정 미리보기: 책등과 정면">
-        <View style={st.col}>
-          <StandaloneBook book={book} pose="spine" scale={scale} />
-          <Text style={st.cap}>책등</Text>
-        </View>
-        <View style={st.col}>
-          <StandaloneBook book={book} pose="front" scale={scale} />
-          <Text style={st.cap}>정면</Text>
-        </View>
+      <View style={st.stage}>
+        <RotatableBook book={shown} frontWidth={frontWidth} initialSpin={32} shadow />
+        <Text style={st.cap}>드래그해서 돌려보세요</Text>
       </View>
 
       <View style={st.tabs} accessibilityRole="tablist">
@@ -78,9 +77,9 @@ export function BindingEditor({ title, author, size, pages, value, recommended, 
         ))}
       </View>
 
-      {tab === 'art' ? <ArtPane title={title} author={author} size={size} pages={pages} value={value} custom={custom} onChange={onChange} /> : null}
+      {tab === 'art' ? <ArtPane showingCurrent={!!current} title={title} author={author} size={size} pages={pages} value={value} custom={custom} onChange={onChange} /> : null}
       {tab === 'color' ? <ColorPane value={value} recommended={recommended} custom={custom} onChange={onChange} /> : null}
-      {tab === 'material' ? <MaterialPane value={value} custom={custom} onChange={onChange} /> : null}
+      {tab === 'material' ? <MaterialPane title={title} author={author} size={size} pages={pages} value={value} custom={custom} onChange={onChange} /> : null}
     </View>
   );
 }
@@ -88,8 +87,9 @@ export function BindingEditor({ title, author, size, pages, value, recommended, 
 type PaneProps = { value: BindingDraft; custom: (patch: Partial<BindingDraft>) => BindingDraft; onChange: (v: BindingDraft) => void };
 
 // 그림: 6종 3열. 고른 그림만 얇은 테두리 + 작은 체크. 아래에 '그림 없음'(단색 정면)과 그때 쓰는 정면 무늬
-function ArtPane({ title, author, size, pages, value, custom, onChange }: PaneProps & { title: string; author?: string; size?: SizeMm; pages?: number }) {
-  const none = !value.coverArtId;
+function ArtPane({ title, author, size, pages, value, custom, onChange, showingCurrent }: PaneProps & { title: string; author?: string; size?: SizeMm; pages?: number; showingCurrent?: boolean }) {
+  // 책장 모습 그대로 보여 주는 중이면(시안 예시 표지 등) 아무것도 고르지 않은 상태로 둔다
+  const none = !value.coverArtId && !showingCurrent;
   return (
     <View>
       <View style={st.artGrid}>
@@ -198,42 +198,69 @@ function ColorPane({ value, recommended, custom, onChange }: PaneProps & { recom
       <View style={st.swatches}>{rec.map((hex, i) => swatch(hex, i === 0 ? '추천' : `추천 ${i + 1}`))}</View>
       <Text style={st.h}>모든 색</Text>
       <View style={st.swatches}>{rest.map((c) => swatch(c.hex, c.name))}</View>
-      <Pressable disabled={same && value.source !== 'custom'} onPress={() => onChange({ ...recommended, seed: value.seed, source: 'default' })} accessibilityRole="button" style={[st.reset, same && value.source !== 'custom' && { opacity: 0.4 }]}>
-        <Text style={st.resetText}>추천 장정으로 되돌리기</Text>
-      </Pressable>
+      <TextLink label="추천 장정으로 되돌리기" tone="soft" disabled={same && value.source !== 'custom'} onPress={() => onChange({ ...recommended, seed: value.seed, source: 'default' })} style={st.reset} />
     </View>
   );
 }
 
-// 재질: 무광 종이·천·코팅지 + 책등 글자 배치(가·나·다)
-function MaterialPane({ value, custom, onChange }: PaneProps) {
+// 재질: 무광 종이·천·코팅지(이 책 색에 그 재질의 결을 크게 그린 견본) + 책등 글자 배치(이 책 책등)
+function MaterialPane({ value, custom, onChange, title, author, size, pages }: PaneProps & { title: string; author?: string; size?: SizeMm; pages?: number }) {
+  const { width } = useWindowDimensions();
+  const tile = (width - 40 - 24) / 3;
   const material = value.material ?? 'paper';
+  const layout = value.layout ?? 'spine_a';
+  const base = useMemo(() => previewBook({ title, author, size, pages, binding: value }), [title, author, size, pages, value]);
+  // 책등 배율: 칸 높이에 맞게
+  const zoom = useMemo(() => {
+    const sp = standaloneFrame(base, 'spine');
+    return { spine: (tile * 0.8) / frameBBox(sp, frameCam(sp)).height };
+  }, [base, tile]);
   return (
     <View>
       <Text style={st.h}>표면</Text>
-      <Row gap={10}>
-        {BINDING_MATERIALS.map((m) => (
-          <Pressable key={m} onPress={() => onChange(custom({ material: m }))} accessibilityRole="button" accessibilityLabel={`재질 ${MATERIAL_NAMES[m]}`} accessibilityState={{ selected: material === m }} style={[st.chip, material === m && st.chipOn]}>
-            <Text style={[st.chipText, material === m && st.chipTextOn]}>{MATERIAL_NAMES[m]}</Text>
-          </Pressable>
-        ))}
-      </Row>
-      <Text style={st.h}>책등 글자 배치</Text>
-      <Row gap={10}>
-        {LAYOUT_VARIANTS.map((v) => (
-          <Pressable key={v} onPress={() => onChange(custom({ layout: v }))} accessibilityRole="button" accessibilityLabel={`책등 글자 배치 ${LAYOUT_NAMES[v]}`} accessibilityState={{ selected: (value.layout ?? 'spine_a') === v }} style={[st.chip, (value.layout ?? 'spine_a') === v && st.chipOn]}>
-            <Text style={[st.chipText, (value.layout ?? 'spine_a') === v && st.chipTextOn]}>{LAYOUT_NAMES[v]}</Text>
-          </Pressable>
-        ))}
-      </Row>
+      <View style={st.tiles}>
+        {BINDING_MATERIALS.map((m) => {
+          const on = material === m;
+          return (
+            <Pressable key={m} onPress={() => onChange(custom({ material: m }))} accessibilityRole="button" accessibilityLabel={`재질 ${MATERIAL_NAMES[m]}`} accessibilityState={{ selected: on }} style={{ width: tile, alignItems: 'center' }}>
+              <View style={[st.tile, { width: tile, height: tile * 0.86 }, on && st.tileOn]}>
+                <MaterialSwatch material={m} color={value.spineColor} w={tile - 4} h={tile * 0.86 - 4} />
+                {on ? <View style={st.check}><Check size={15} color={colors.onAccent} strokeWidth={2.6} /></View> : null}
+              </View>
+              <Text style={[st.artName, on && st.nameOn]}>{MATERIAL_NAMES[m]}</Text>
+            </Pressable>
+          );
+        })}
+      </View>
+      <Text style={st.h}>책등 글자</Text>
+      <View style={st.tiles}>
+        {LAYOUT_VARIANTS.map((v) => {
+          const on = layout === v;
+          return (
+            <Pressable key={v} onPress={() => onChange(custom({ layout: v }))} accessibilityRole="button" accessibilityLabel={`책등 글자 ${LAYOUT_NAMES[v]}`} accessibilityState={{ selected: on }} style={{ width: tile, alignItems: 'center' }}>
+              <View style={[st.tile, st.spineTile, { width: tile, height: tile * 0.86 }, on && st.tileOn]}>
+                <View pointerEvents="none" style={st.tileInner}>
+                  <StandaloneBook book={previewBook({ title, author, size, pages, binding: { ...value, layout: v } })} pose="spine" scale={zoom.spine} />
+                </View>
+                {on ? <View style={st.check}><Check size={15} color={colors.onAccent} strokeWidth={2.6} /></View> : null}
+              </View>
+              <Text style={[st.artName, on && st.nameOn]}>{LAYOUT_NAMES[v]}</Text>
+            </Pressable>
+          );
+        })}
+      </View>
     </View>
   );
 }
 
 const st = StyleSheet.create({
-  stage: { flexDirection: 'row', justifyContent: 'center', alignItems: 'flex-end', gap: 22, paddingTop: 4, paddingBottom: 6 },
-  col: { alignItems: 'center', gap: 4 },
-  cap: type.caption,
+  stage: { alignItems: 'center', paddingTop: 4 },
+  cap: { ...type.caption, marginTop: 2 },
+  tiles: { flexDirection: 'row', justifyContent: 'space-between' },
+  tile: { borderRadius: shape.input, borderWidth: 2, borderColor: 'transparent', overflow: 'hidden', backgroundColor: colors.surface, alignItems: 'center', justifyContent: 'center' },
+  spineTile: { backgroundColor: colors.surface },
+  tileInner: { position: 'absolute', left: 0, right: 0, top: 0, bottom: 0, alignItems: 'center', justifyContent: 'center' },
+  tileOn: { borderColor: INK },
   tabs: { flexDirection: 'row', marginTop: 16, padding: 3, borderRadius: shape.input + 3, backgroundColor: colors.surface },
   tab: { flex: 1, minHeight: 42, borderRadius: shape.input, alignItems: 'center', justifyContent: 'center' },
   tabOn: { backgroundColor: INK },
@@ -261,10 +288,51 @@ const st = StyleSheet.create({
   swatchCell: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center' },
   swatch: { width: 40, height: 40, borderRadius: 20, borderWidth: 1, borderColor: 'rgba(0,0,0,0.08)', alignItems: 'center', justifyContent: 'center' },
   swatchOn: { borderWidth: 2.5, borderColor: INK },
-  reset: { alignSelf: 'flex-start', marginTop: space.group, minHeight: space.touch, justifyContent: 'center' },
-  resetText: { ...type.sub, textDecorationLine: 'underline' },
+  reset: { alignSelf: 'flex-start', marginTop: space.group },
   chip: { minHeight: 44, minWidth: 64, paddingHorizontal: 16, borderRadius: 22, borderWidth: shape.border, borderColor: colors.input, backgroundColor: colors.input, alignItems: 'center', justifyContent: 'center' },
   chipOn: { backgroundColor: INK, borderColor: INK },
   chipText: { ...type.sub, fontSize: 15, color: colors.ink },
   chipTextOn: { color: colors.onAccent },
 });
+
+// 재질 견본: 책 렌더러의 결은 아주 은은해서 작은 칸에서는 셋이 똑같아 보인다. 견본은 결을 과장해 차이가 보이게 그린다
+// 무광 종이 = 고른 잔 얼룩, 천 = 가로세로 실 짜임, 코팅지 = 비스듬한 광택
+function MaterialSwatch({ material, color, w, h }: { material: BindingMaterial; color: string; w: number; h: number }) {
+  const speck = useMemo(() => {
+    let x = 7;
+    const rnd = () => ((x = (x * 16807) % 2147483647) / 2147483647);
+    return Array.from({ length: 140 }, () => ({ cx: rnd() * w, cy: rnd() * h, r: 0.5 + rnd() * 1.4, o: 0.05 + rnd() * 0.08, d: rnd() > 0.25 }));
+  }, [w, h]);
+  const weave = useMemo(() => {
+    const step = 3;
+    let d = '';
+    for (let y = 1; y < h; y += step) d += `M0 ${y.toFixed(1)}H${w.toFixed(1)}`;
+    let v = '';
+    for (let x = 1; x < w; x += step) v += `M${x.toFixed(1)} 0V${h.toFixed(1)}`;
+    return { d, v };
+  }, [w, h]);
+  return (
+    <Svg width={w} height={h} style={{ borderRadius: 10 }}>
+      <Defs>
+        <LinearGradient id="gloss" x1="0" y1="0" x2="1" y2="1">
+          <Stop offset="0" stopColor="#FFFFFF" stopOpacity="0.2" />
+          <Stop offset="0.45" stopColor="#FFFFFF" stopOpacity="0.04" />
+          <Stop offset="1" stopColor="#000000" stopOpacity="0.22" />
+        </LinearGradient>
+        <LinearGradient id="soft" x1="0" y1="0" x2="0" y2="1">
+          <Stop offset="0" stopColor="#FFFFFF" stopOpacity="0.06" />
+          <Stop offset="1" stopColor="#000000" stopOpacity="0.08" />
+        </LinearGradient>
+      </Defs>
+      <Rect width={w} height={h} rx={10} fill={color} />
+      {material === 'paper' ? speck.map((p, i) => <Circle key={i} cx={p.cx} cy={p.cy} r={p.r} fill={p.d ? '#000000' : '#FFFFFF'} opacity={p.d ? p.o : p.o * 0.5} />) : null}
+      {material === 'cloth' ? (
+        <>
+          <Path d={weave.d} stroke="#000000" strokeOpacity={0.22} strokeWidth={1.1} />
+          <Path d={weave.v} stroke="#FFFFFF" strokeOpacity={0.14} strokeWidth={1.1} />
+        </>
+      ) : null}
+      <Rect width={w} height={h} rx={10} fill={material === 'coated' ? 'url(#gloss)' : 'url(#soft)'} />
+    </Svg>
+  );
+}

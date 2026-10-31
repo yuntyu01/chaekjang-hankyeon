@@ -6,6 +6,7 @@ import { Children, Fragment, isValidElement, useEffect, useRef, useState, type R
 import {
   ActivityIndicator,
   Animated,
+  FlatList,
   Image,
   KeyboardAvoidingView,
   Modal,
@@ -16,6 +17,7 @@ import {
   TextInput,
   View,
   type DimensionValue,
+  type FlatListProps,
   type StyleProp,
   type TextInputProps,
   type TextStyle,
@@ -25,7 +27,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { MINI_TIMER_SPACE, miniTimerStore } from '@/store/mini-timer-store';
 import { useReading } from '@/store/reading-store';
-import { colors, fonts, icon, shape, space, type } from '@/ui/screenTheme';
+import { colors, fonts, icon, press, shape, space, type } from '@/ui/screenTheme';
 
 export const ui = {
   pad: space.page,
@@ -149,7 +151,8 @@ export function Btn({
   label: string;
   onPress: () => void;
   kind?: 'primary' | 'secondary' | 'ghost' | 'danger';
-  size?: 'm' | 's';
+  // m 기본(46), s 줄 안의 작은 행동(40), l 화면의 단 하나뿐인 주요 행동(56: 책 상세 '이어서 읽기')
+  size?: 'l' | 'm' | 's';
   disabled?: boolean;
   busy?: boolean;
   icon?: ReactNode;
@@ -169,6 +172,7 @@ export function Btn({
       style={({ pressed }) => [
         s.btn,
         size === 's' && s.btnSmall,
+        size === 'l' && s.btnLarge,
         primary && { backgroundColor: colors.accent, borderColor: colors.accent },
         primary && pressed && { backgroundColor: colors.accentPressed, borderColor: colors.accentPressed },
         primary && disabled && { backgroundColor: colors.disabled, borderColor: colors.disabled },
@@ -179,9 +183,39 @@ export function Btn({
         style,
       ]}>
       {busy ? <ActivityIndicator color={ink} size="small" /> : iconNode}
-      <Text style={[s.btnText, size === 's' && { fontSize: 15 }, { color: ink }]} numberOfLines={2}>
+      <Text style={[s.btnText, size === 's' && { fontSize: 15 }, size === 'l' && { fontSize: 17 }, { color: ink }]} numberOfLines={2}>
         {label}
       </Text>
+    </Pressable>
+  );
+}
+
+// 글자 행동(밑줄): 주요 버튼 아래의 덜 중요한 행동('갈피 남기기', '추천 장정으로 되돌리기', '서랍 보기').
+// accent는 이어서 할 일, soft는 되돌리기처럼 조심스러운 일. 글자는 작아도 누르는 자리는 44 이상
+export function TextLink({ label, onPress, tone = 'accent', disabled, style }: { label: string; onPress: () => void; tone?: 'accent' | 'soft'; disabled?: boolean; style?: StyleProp<ViewStyle> }) {
+  return (
+    <Pressable onPress={onPress} disabled={disabled} hitSlop={{ left: 8, right: 8 }} accessibilityRole="button" accessibilityLabel={label} accessibilityState={{ disabled: !!disabled }} style={({ pressed }) => [s.link, pressed && press, disabled && { opacity: 0.4 }, style]}>
+      <Text style={[s.linkText, { color: tone === 'accent' ? colors.accent : colors.inkSoft }]}>{label}</Text>
+    </Pressable>
+  );
+}
+
+// 아이콘만 있는 버튼(머리줄의 검색·추가·더 보기, 달 넘기기): 44×44 누르는 자리, 눌리면 옅어진다. circle이면 얇은 테두리 원(갈피 '추가')
+export function IconButton({ label, onPress, children, circle, style }: { label: string; onPress: () => void; children: ReactNode; circle?: boolean; style?: StyleProp<ViewStyle> }) {
+  return (
+    <Pressable onPress={onPress} hitSlop={6} accessibilityRole="button" accessibilityLabel={label} style={({ pressed }) => [s.iconButton, pressed && press, style]}>
+      {circle ? <View style={s.iconCircle}>{children}</View> : children}
+    </Pressable>
+  );
+}
+
+// 아이콘 + 글자 행동: 한 줄에 나란히 나눠 놓는 보조 행동(책 정보 시트 '자세히 보기·갈피 남기기', 책 추가 '사진으로 찾기·직접 입력').
+// 부르는 쪽이 Row 안에 넣으면 칸을 똑같이 나눠 가진다. 아이콘은 부르는 쪽이 icon.size~large로 넘긴다
+export function IconAction({ label, icon: iconNode, onPress, style }: { label: string; icon: ReactNode; onPress: () => void; style?: StyleProp<ViewStyle> }) {
+  return (
+    <Pressable onPress={onPress} accessibilityRole="button" accessibilityLabel={label} style={({ pressed }) => [s.iconAction, pressed && press, style]}>
+      {iconNode}
+      <Text style={s.iconActionText} numberOfLines={1}>{label}</Text>
     </Pressable>
   );
 }
@@ -437,7 +471,7 @@ export function ListItem({
     <Pressable
       onPress={onPress}
       disabled={!onPress}
-      style={({ pressed }) => [s.item, pressed && { opacity: 0.6 }]}
+      style={({ pressed }) => [s.item, pressed && press]}
       accessibilityRole={onPress ? 'button' : undefined}
       accessibilityState={selected !== undefined ? { selected } : undefined}
       accessibilityLabel={[label, sub, value].filter(Boolean).join(', ')}>
@@ -493,6 +527,26 @@ export function ListGroup({ children, style }: { children: ReactNode; style?: St
 
 export function Divider({ style }: { style?: StyleProp<ViewStyle> }) {
   return <View style={[s.divider, style]} />;
+}
+
+// 줄마다 책 그림(캔버스)이 있는 긴 목록(서랍·책 찾기): Screen의 스크롤 대신(scroll={false}) 화면 근처 줄만 그린다.
+// 검색·필터는 ListHeaderComponent로 목록과 함께 스크롤된다. 줄 사이 구분선·아래 여백은 ListGroup·Screen과 같다
+const ListDivider = () => <View style={s.divider} />;
+export function ScreenList<T>({ contentContainerStyle, ...p }: FlatListProps<T>) {
+  const insets = useSafeAreaInsets();
+  const { active } = useReading();
+  return (
+    <FlatList
+      keyboardShouldPersistTaps="handled"
+      initialNumToRender={8}
+      maxToRenderPerBatch={6}
+      windowSize={5}
+      ItemSeparatorComponent={ListDivider}
+      showsVerticalScrollIndicator={false}
+      {...p}
+      contentContainerStyle={[{ paddingBottom: space.section + (active ? MINI_TIMER_SPACE : 0) + insets.bottom }, contentContainerStyle]}
+    />
+  );
 }
 
 // 하단 시트: 어두운 덮개 + 위쪽만 둥근 판(손잡이·제목·내용). 바깥을 누르거나 뒤로 가면 닫힌다.
@@ -557,6 +611,13 @@ export const s = StyleSheet.create({
   muted: { ...type.sub },
   btn: { minHeight: 46, borderRadius: shape.button, borderWidth: shape.border, borderColor: colors.border, paddingHorizontal: 18, paddingVertical: 12, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, backgroundColor: 'transparent' },
   btnSmall: { minHeight: 40, paddingVertical: 8, paddingHorizontal: 14, borderRadius: shape.input },
+  btnLarge: { minHeight: 56, paddingVertical: 14 },
+  iconButton: { width: space.touch, height: space.touch, alignItems: 'center', justifyContent: 'center' },
+  iconCircle: { width: 36, height: 36, borderRadius: 18, borderWidth: shape.border, borderColor: colors.border, alignItems: 'center', justifyContent: 'center' },
+  link: { minHeight: space.touch, alignItems: 'center', justifyContent: 'center', alignSelf: 'center' },
+  linkText: { ...type.sub, textDecorationLine: 'underline' },
+  iconAction: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 10, minHeight: 52, paddingHorizontal: 8 },
+  iconActionText: { ...type.row, fontSize: 16, color: colors.inkSoft, flexShrink: 1 },
   btnText: { ...type.button, flexShrink: 1, textAlign: 'center' },
   field: { marginBottom: 26 }, // 갈피 수정 시안: 칸 아래 → 다음 이름 글자 위 약 30
   labelRow: { flexDirection: 'row', alignItems: 'baseline', gap: 8, marginBottom: 7 },

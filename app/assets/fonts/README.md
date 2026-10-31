@@ -11,3 +11,6 @@
 - `NotoSerifKR-{Regular,Medium,SemiBold}.otf` — Noto Serif CJK KR 400·500·600. 갈피 문장(갈피 카드·갈피 작성 입력창) 같은 내용 글꼴(명조)로 쓴다. 화면 UI에는 쓰지 않는다.
   출처: https://github.com/notofonts/noto-cjk/tree/main/Serif/SubsetOTF/KR (2026-10-03 내려받음).
   SIL OFL 1.1: `NotoSerifKR-OFL.txt`.
+
+- `Hahmlet-SemiBold.ttf` — 함렛 SemiBold(Copyright 2020 The Hahmlet Project Authors, https://github.com/hyper-type/hahmlet). SIL OFL 1.1: `Hahmlet-OFL.txt`. 책 그림(표지·책등) 제목 글꼴(2026-10-31 사용자 선택, `src/ui/book3d/art.tsx`).
+  파일은 npm `@expo-google-fonts/hahmlet@0.4.1`의 `600SemiBold/Hahmlet_600SemiBold.ttf` 그대로다(라이선스 전문은 google/fonts ofl/hahmlet/OFL.txt).

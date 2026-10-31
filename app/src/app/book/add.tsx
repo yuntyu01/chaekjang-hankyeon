@@ -17,8 +17,8 @@ import { keepImage } from '@/store/files';
 import { libraryStore } from '@/store/library-store';
 import { placementStore } from '@/store/placement-store';
 import { uiBus } from '@/store/ui-bus';
-import { Btn, Chip, Empty, Field, H2, Muted, Notice, RealCover, Row, Screen, SearchField } from '@/ui/kit';
-import { colors, icon, space, type } from '@/ui/screenTheme';
+import { Btn, Chip, Empty, Field, H2, IconAction, Muted, Notice, RealCover, Row, Screen, SearchField } from '@/ui/kit';
+import { colors, icon, press, space, type } from '@/ui/screenTheme';
 
 type Step = 'find' | 'confirm' | 'binding' | 'done';
 
@@ -306,8 +306,8 @@ function FindStep({ initial, notice, onPick, onPhoto, onManual }: { initial?: st
         style={{ marginTop: space.item }}
       />
       <View style={st.findMethods}>
-        <Pressable accessibilityRole="button" accessibilityLabel="사진으로 찾기" onPress={() => Alert.alert('사진으로 찾기', '표지 사진을 선택해 주세요.', [{ text: '사진 찍기', onPress: () => onPhoto('camera') }, { text: '사진 고르기', onPress: () => onPhoto('library') }, { text: '취소', style: 'cancel' }])} style={({ pressed }) => [st.method, pressed && { opacity: 0.6 }]}><Camera size={icon.size + 2} color={colors.accent} strokeWidth={icon.stroke} /><Text style={st.methodText}>사진으로 찾기</Text></Pressable>
-        <Pressable accessibilityRole="button" accessibilityLabel="직접 입력" onPress={() => onManual(q)} style={({ pressed }) => [st.method, pressed && { opacity: 0.6 }]}><PenLine size={icon.size + 2} color={colors.accent} strokeWidth={icon.stroke} /><Text style={st.methodText}>직접 입력</Text></Pressable>
+        <IconAction label="사진으로 찾기" onPress={() => Alert.alert('사진으로 찾기', '표지 사진을 선택해 주세요.', [{ text: '사진 찍기', onPress: () => onPhoto('camera') }, { text: '사진 고르기', onPress: () => onPhoto('library') }, { text: '취소', style: 'cancel' }])} icon={<Camera size={icon.size + 2} color={colors.inkSoft} strokeWidth={icon.stroke} />} />
+        <IconAction label="직접 입력" onPress={() => onManual(q)} icon={<PenLine size={icon.size + 2} color={colors.inkSoft} strokeWidth={icon.stroke} />} />
       </View>
       {notice ? <Muted style={{ marginTop: space.tight }}>{notice}</Muted> : null}
 
@@ -324,7 +324,7 @@ function FindStep({ initial, notice, onPick, onPhoto, onManual }: { initial?: st
           {/* 책 추가 시안: 표지 76×105, 제목·지은이 두 줄, 오른쪽 갈색 '+', 줄 사이 구분선 없이 여백만 */}
           <View style={{ marginTop: space.tight }}>
             {items.map((c) => (
-              <Pressable key={c.key} onPress={() => onPick(c)} style={({ pressed }) => [st.result, pressed && { opacity: 0.7 }]} accessibilityRole="button" accessibilityLabel={`${c.title}, ${c.authors.join(', ')}, 추가`}>
+              <Pressable key={c.key} onPress={() => onPick(c)} style={({ pressed }) => [st.result, pressed && press]} accessibilityRole="button" accessibilityLabel={`${c.title}, ${c.authors.join(', ')}, 추가`}>
                 <View style={st.coverShadow}><RealCover uri={c.coverUrl} title={c.title} color={colors.input} width={76} ratio={0.72} /></View>
                 <View style={{ flex: 1, gap: 6 }}>
                   <Text style={type.row} numberOfLines={2}>{c.title}</Text>
@@ -342,8 +342,6 @@ function FindStep({ initial, notice, onPick, onPhoto, onManual }: { initial?: st
 
 const st = StyleSheet.create({
   findMethods: { flexDirection: 'row', alignItems: 'center', marginTop: space.tight },
-  method: { flex: 1, flexDirection: 'row', gap: 12, alignItems: 'center', justifyContent: 'center', paddingVertical: 12, minHeight: 52 },
-  methodText: { ...type.row, fontSize: 16, color: colors.inkSoft, flexShrink: 1 },
   result: { flexDirection: 'row', alignItems: 'center', gap: 20, paddingVertical: 11 },
   author: { ...type.sub, fontSize: 15 },
   resultHeading: { ...type.heading, fontSize: 20 },
