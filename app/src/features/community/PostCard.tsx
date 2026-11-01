@@ -89,7 +89,7 @@ const st = StyleSheet.create({
   nick: { fontFamily: fonts.uiBold, fontSize: 15, lineHeight: 21, color: colors.ink },
   time: { fontFamily: fonts.ui, fontSize: 14, lineHeight: 20, color: colors.inkSoft },
   body: { fontFamily: fonts.ui, fontSize: 16, lineHeight: 24, color: colors.ink, marginTop: 4 },
-  bodyFull: { fontSize: 17, lineHeight: 26, marginTop: 6 },
+  bodyFull: { fontFamily: fonts.ui, fontSize: 17, lineHeight: 26, marginTop: 6 },
   // 갈피 문장: 왼쪽 세로줄 인용(명조). 게시물 안에 상자를 겹치지 않는다
   quote: { marginTop: 10, paddingVertical: 2, paddingLeft: 12, borderLeftWidth: 3, borderLeftColor: colors.track },
   quoteText: { fontFamily: fonts.serif, fontSize: 15, lineHeight: 24, color: colors.ink },
