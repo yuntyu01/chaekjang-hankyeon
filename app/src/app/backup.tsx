@@ -1,94 +1,78 @@
 // 백업 및 복원(설정 → 내 기록): 저장 위치 안내, 백업 파일 저장·공유·복원, 서버 동기화 상태·카카오 연결.
 // 2026-10-26 디자인 통일 때 설정 화면에서 그대로 옮겼다(기능·문구·확인창은 같다).
 import { useState, useSyncExternalStore } from 'react';
-import { Alert, Image, Pressable, Text, View } from 'react-native';
+import { ActivityIndicator, Alert, Image, Pressable, Text } from 'react-native';
 
 import { exportShare, exportToFolder, readBackupFile, restoreBackup } from '@/store/backup';
 import { PERF_ENABLED } from '@/ui/perf';
 import { accountInfo, deleteCloudAccount, linkGoogle, linkKakao, loginProviders, resumeCloudSync, syncNow, syncStatus } from '@/services/sync';
-import { Btn, Chip, H2, ListGroup, ListItem, Muted, Row, Screen } from '@/ui/kit';
-import { space, type } from '@/ui/screenTheme';
+import { Chip, H2, ListGroup, ListItem, Row, Screen, SectionBand } from '@/ui/kit';
+import { colors, tidySpace as space, tidyType as type } from '@/ui/screenTheme';
 
 export default function BackupScreen() {
   const [busy, setBusy] = useState<'export' | 'share' | 'restore' | null>(null);
   const [failTest, setFailTest] = useState<'library' | 'after-library' | undefined>(undefined);
-  return (
-    <Screen title="백업 및 복원">
-      <Text style={[type.body, { marginTop: space.item }]}>
-        {syncStatus.available ? '기록은 이 기기에 저장되고, 기기 전용 계정이나 연결한 계정으로 서버에 동기화돼요.' : '모든 기록은 이 기기에만 저장돼요. 계정·클라우드 동기화는 아직 없어요.'}
-      </Text>
-
-      <H2>백업 파일</H2>
-      <Muted>
-        백업 파일에 들어가는 것: 내 책(도서 정보·상태·별점·감상), 독서 회차, 독서 시간 기록, 갈피, 장정, 책장 배치와 시점, 설정, 앱에 보관한 사진(표지 사진·갈피 페이지 사진·장정 그림). 진행 중인 독서 타이머는 들어가지 않아요.
-      </Muted>
-      <View style={{ gap: 10, marginTop: space.group }}>
-        <Btn
-          label="폴더에 백업 파일 저장"
-          busy={busy === 'export'}
-          onPress={async () => {
-            setBusy('export');
-            try {
-              const r = await exportToFolder();
-              if (r.ok) Alert.alert('백업 파일을 저장했어요', `${r.name}\n책 ${r.counts.books}권 · 갈피 ${r.counts.bookmarks}개 · 독서 회차 ${r.counts.rounds}개 · 독서 기록 ${r.counts.sessions}개 · 장정 ${r.counts.bindings}개 · 사진 ${r.counts.images}장`);
-              else if (r.reason === 'error') Alert.alert('저장하지 못했어요', `${r.message ?? ''}\n다음에는 저장할 폴더를 다시 고르게 해요.`);
-            } finally {
-              setBusy(null);
-            }
-          }}
-        />
-        <Btn
-          label="공유로 보내기"
-          kind="secondary"
-          busy={busy === 'share'}
-          onPress={async () => {
-            setBusy('share');
-            try {
-              await exportShare();
-            } catch (e) {
-              Alert.alert('내보내지 못했어요', String((e as Error)?.message ?? e));
-            } finally {
-              setBusy(null);
-            }
-          }}
-        />
-        <Btn
-          label="백업에서 복원"
-          kind="secondary"
-          busy={busy === 'restore'}
-          onPress={async () => {
+  const saveToFolder = async () => {
+    setBusy('export');
+    try {
+      const r = await exportToFolder();
+      if (r.ok) Alert.alert('백업 파일을 저장했어요', `${r.name}\n책 ${r.counts.books}권 · 갈피 ${r.counts.bookmarks}개 · 독서 회차 ${r.counts.rounds}개 · 독서 기록 ${r.counts.sessions}개 · 장정 ${r.counts.bindings}개 · 사진 ${r.counts.images}장`);
+      else if (r.reason === 'error') Alert.alert('저장하지 못했어요', `${r.message ?? ''}\n다음에는 저장할 폴더를 다시 고르게 해요.`);
+    } finally {
+      setBusy(null);
+    }
+  };
+  const share = async () => {
+    setBusy('share');
+    try {
+      await exportShare();
+    } catch (e) {
+      Alert.alert('내보내지 못했어요', String((e as Error)?.message ?? e));
+    } finally {
+      setBusy(null);
+    }
+  };
+  const restore = async () => {
+    setBusy('restore');
+    const r = await readBackupFile();
+    setBusy(null);
+    if (!r.ok) {
+      if (r.reason === 'invalid') Alert.alert('복원할 수 없어요', r.message);
+      return;
+    }
+    Alert.alert(
+      '백업으로 바꿀까요?',
+      `백업(${r.data.exportedAt.slice(0, 10)}): 책 ${r.counts.books}권 · 갈피 ${r.counts.bookmarks}개 · 독서 기록 ${r.counts.sessions}개 · 사진 ${r.counts.images}장\n지금 기기의 기록은 이 백업 내용으로 바뀌어요.`,
+      [
+        { text: '취소', style: 'cancel' },
+        {
+          text: '복원',
+          style: 'destructive',
+          onPress: async () => {
             setBusy('restore');
-            const r = await readBackupFile();
-            setBusy(null);
-            if (!r.ok) {
-              if (r.reason === 'invalid') Alert.alert('복원할 수 없어요', r.message);
-              return;
+            try {
+              await restoreBackup(r.data, failTest);
+              Alert.alert('복원했어요');
+            } catch (e) {
+              Alert.alert('복원하지 못했어요', String((e as Error)?.message ?? e));
+            } finally {
+              setBusy(null);
             }
-            Alert.alert(
-              '백업으로 바꿀까요?',
-              `백업(${r.data.exportedAt.slice(0, 10)}): 책 ${r.counts.books}권 · 갈피 ${r.counts.bookmarks}개 · 독서 기록 ${r.counts.sessions}개 · 사진 ${r.counts.images}장\n지금 기기의 기록은 이 백업 내용으로 바뀌어요.`,
-              [
-                { text: '취소', style: 'cancel' },
-                {
-                  text: '복원',
-                  style: 'destructive',
-                  onPress: async () => {
-                    setBusy('restore');
-                    try {
-                      await restoreBackup(r.data, failTest);
-                      Alert.alert('복원했어요');
-                    } catch (e) {
-                      Alert.alert('복원하지 못했어요', String((e as Error)?.message ?? e));
-                    } finally {
-                      setBusy(null);
-                    }
-                  },
-                },
-              ],
-            );
-          }}
-        />
-      </View>
+          },
+        },
+      ],
+    );
+  };
+  return (
+    <Screen tidy title="백업 및 복원" subtitle={syncStatus.available ? '기록은 이 기기와 서버에 함께 저장돼요' : '모든 기록은 이 기기에만 저장돼요'}>
+      {/* 2026-11-01 토스식: 세로로 쌓인 버튼 대신 누르는 줄 목록, 설명은 한 줄. 동작·확인창은 그대로 */}
+      <H2 first>백업 파일</H2>
+      <Text style={[type.sub, { marginBottom: space.s }]}>책·독서 기록·갈피·장정·책장 배치·설정·사진이 들어가요. 진행 중인 타이머는 빠져요.</Text>
+      <ListGroup>
+        <ListItem label="폴더에 백업 파일 저장" chevron={busy !== 'export'} right={busy === 'export' ? <ActivityIndicator color={colors.accent} /> : undefined} onPress={busy ? undefined : () => void saveToFolder()} />
+        <ListItem label="공유로 보내기" sub="메신저·드라이브로 보내요" chevron={busy !== 'share'} right={busy === 'share' ? <ActivityIndicator color={colors.accent} /> : undefined} onPress={busy ? undefined : () => void share()} />
+        <ListItem label="백업에서 복원" sub="지금 기기의 기록이 백업 내용으로 바뀌어요" chevron={busy !== 'restore'} right={busy === 'restore' ? <ActivityIndicator color={colors.accent} /> : undefined} onPress={busy ? undefined : () => void restore()} />
+      </ListGroup>
 
       {PERF_ENABLED ? (
         <Row style={{ marginTop: 10 }}>
@@ -97,6 +81,7 @@ export default function BackupScreen() {
         </Row>
       ) : null}
 
+      <SectionBand />
       <SyncSection />
     </Screen>
   );
@@ -145,30 +130,28 @@ function SyncSection() {
   ]);
   return (
     <>
-      <H2>동기화</H2>
+      <H2 first>동기화</H2>
+      {/* 계정마다 한 줄: 연결됨이면 안내, 연결할 수 있으면 그 줄이 곧 행동, 준비 전이면 짧은 안내. 설명은 한 줄 */}
       <ListGroup>
         <ListItem
           label={label}
-          sub={syncStatus.available ? `${st.pending ? `올리지 못한 변경 ${st.pending}개` : st.lastAt && !st.paused && st.state !== 'error' ? '대기 중인 변경이 없어요' : '기기에 기록을 보관하고 있어요'}${st.error ? `\n${st.error}` : ''}` : '서버 주소가 없는 빌드예요. 기록은 이 기기에만 있고, 백업 파일로 옮길 수 있어요.'}
+          sub={syncStatus.available ? `${st.pending ? `올리지 못한 변경 ${st.pending}개` : st.lastAt && !st.paused && st.state !== 'error' ? '대기 중인 변경이 없어요' : '기기에 기록을 보관하고 있어요'}${st.error ? ` · ${st.error}` : ''}` : '기록은 이 기기에만 있어요. 백업 파일로 옮길 수 있어요.'}
+          chevron={false}
+          right={st.state === 'syncing' ? <ActivityIndicator color={colors.accent} /> : undefined}
         />
+        {syncStatus.available && !st.paused ? <ListItem label="지금 동기화" chevron={false} onPress={st.state === 'syncing' || loggingIn ? undefined : () => void syncNow()} /> : null}
         {syncStatus.available ? (
-          <ListItem
-            label={acct.kakao ? `카카오 계정 연결됨${acct.nickname ? ` · ${acct.nickname}` : ''}` : '카카오 계정 연결'}
-            sub={acct.kakao ? '다른 기기에서 같은 카카오 계정으로 로그인하면 이 기록을 이어 볼 수 있어요.' : '연결하면 기기를 바꾸거나 앱을 지웠다 깔아도 기록을 이어 볼 수 있어요. 연결하지 않아도 앱은 그대로 써요.'}
-          />
+          acct.kakao ? <ListItem label="카카오 계정 연결됨" sub={acct.nickname ? `${acct.nickname} · 다른 기기에서도 이어 봐요` : '다른 기기에서도 이어 봐요'} />
+            : providers.kakao && !st.paused ? <ListItem label="카카오로 계속하기" sub="연결하면 기기를 바꿔도 기록을 이어 봐요" chevron onPress={loggingIn ? undefined : () => login('kakao')} />
+            : <ListItem label="카카오 로그인 준비 중" sub="서버 설정이 끝나면 쓸 수 있어요" />
         ) : null}
-        {syncStatus.available && acct.google ? <ListItem label="Google 계정 연결됨" sub="같은 Google 계정으로 다른 기기에서 기록을 이어 볼 수 있어요." /> : null}
-        {syncStatus.available && !acct.google && !providers.google ? <ListItem label="Google 로그인 준비 중" sub="서버 연결과 Google 로그인 설정이 완료되면 이용할 수 있어요." /> : null}
+        {syncStatus.available && acct.google ? <ListItem label="Google 계정 연결됨" sub="다른 기기에서도 이어 봐요" /> : null}
+        {syncStatus.available && !acct.google && !providers.google ? <ListItem label="Google 로그인 준비 중" sub="서버 설정이 끝나면 쓸 수 있어요" /> : null}
+        {syncStatus.available && st.paused && !st.deletionPending ? <ListItem label="새 계정으로 동기화" chevron onPress={loggingIn ? undefined : resume} /> : null}
+        {syncStatus.available && (st.deletionPending || (providers.accountDeletion && !st.paused)) ? <ListItem label={st.deletionPending ? '계정 삭제 다시 요청' : '서버 계정 삭제'} danger chevron={false} onPress={loggingIn ? undefined : removeAccount} /> : null}
       </ListGroup>
-      {syncStatus.available ? (
-        <View style={{ gap: 10, marginTop: space.item }}>
-          {!st.paused ? <Btn label="지금 동기화" kind="secondary" disabled={st.state === 'syncing' || loggingIn} onPress={() => void syncNow()} /> : null}
-          {!st.paused && !acct.kakao && providers.kakao ? <Btn label="카카오로 계속하기" kind="secondary" disabled={loggingIn} onPress={() => void login('kakao')} /> : null}
-          {!st.paused && !acct.google && providers.google ? <Pressable accessibilityRole="button" accessibilityLabel="Google로 계속하기" disabled={loggingIn} onPress={() => void login('google')}><Image source={require('../../assets/google-signin-light.png')} resizeMode="contain" style={{ width: 240, height: 44, alignSelf: 'center' }} /></Pressable> : null}
-          {st.paused && !st.deletionPending ? <Btn label="새 계정으로 동기화" kind="secondary" disabled={loggingIn} onPress={resume} /> : null}
-          {(st.deletionPending || (providers.accountDeletion && !st.paused)) ? <Btn label={st.deletionPending ? '계정 삭제 다시 요청' : '서버 계정 삭제'} kind="ghost" disabled={loggingIn} onPress={removeAccount} /> : null}
-        </View>
-      ) : null}
+      {/* Google 로그인은 Google 공식 버튼 모양을 지켜야 해서 그대로 둔다 */}
+      {syncStatus.available && !st.paused && !acct.google && providers.google ? <Pressable accessibilityRole="button" accessibilityLabel="Google로 계속하기" disabled={loggingIn} onPress={() => login('google')} style={{ marginTop: space.m }}><Image source={require('../../assets/google-signin-light.png')} resizeMode="contain" style={{ width: 240, height: 44, alignSelf: 'center' }} /></Pressable> : null}
     </>
   );
 }

@@ -17,7 +17,7 @@ import { noRibbon, RotatableBook, StandaloneBook } from '@/ui/book3d/StandaloneB
 import { frameBBox, standaloneFrame } from '@/domain/shelf-scene';
 import { frameCam } from '@/ui/book3d/StandaloneBook';
 import { Check } from '@/ui/icons';
-import { colors, fonts, shape, space, type } from '@/ui/screenTheme';
+import { colors, fonts, shape, space, tidyType, type } from '@/ui/screenTheme';
 import { TextLink } from '@/ui/kit';
 
 export type BindingDraft = Pick<Binding, 'spineColor' | 'motif' | 'seed' | 'source' | 'inkColor' | 'accentColor' | 'layout' | 'material' | 'coverArtId'>;
@@ -258,14 +258,15 @@ const st = StyleSheet.create({
   cap: { ...type.caption, marginTop: 2 },
   tiles: { flexDirection: 'row', justifyContent: 'space-between' },
   tile: { borderRadius: shape.input, borderWidth: 2, borderColor: 'transparent', overflow: 'hidden', backgroundColor: colors.surface, alignItems: 'center', justifyContent: 'center' },
-  spineTile: { backgroundColor: colors.surface },
+  spineTile: { backgroundColor: colors.bg, borderWidth: 1.5, borderColor: colors.line }, // 선택 칸: 회색 채움 대신 흰 바탕 + 얇은 테두리(2026-11-01)
   tileInner: { position: 'absolute', left: 0, right: 0, top: 0, bottom: 0, alignItems: 'center', justifyContent: 'center' },
   tileOn: { borderColor: INK },
   tabs: { flexDirection: 'row', marginTop: 16, padding: 3, borderRadius: shape.input + 3, backgroundColor: colors.surface },
   tab: { flex: 1, minHeight: 42, borderRadius: shape.input, alignItems: 'center', justifyContent: 'center' },
-  tabOn: { backgroundColor: INK },
+  // 전환 칸(토스 SegmentedControl처럼): 회색 바탕 안에서 고른 칸만 흰 칸 + 진한 굵은 글자(진한 갈색 칠 대신)
+  tabOn: { backgroundColor: colors.bg, ...shape.floatShadow, shadowOpacity: 0.08, elevation: 1 },
   tabText: { ...type.row, fontSize: 15, color: colors.inkSoft },
-  tabTextOn: { fontFamily: fonts.uiBold, color: colors.onAccent },
+  tabTextOn: { fontFamily: fonts.uiBold, color: colors.ink },
   artGrid: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between', rowGap: 16, marginTop: 18 },
   artCell: { width: '31.5%', alignItems: 'center' },
   artFrame: { width: '100%', aspectRatio: 1, borderRadius: 8, padding: 3, borderWidth: 1.5, borderColor: 'transparent', overflow: 'hidden' },
@@ -282,7 +283,7 @@ const st = StyleSheet.create({
   design: { borderRadius: shape.input, borderWidth: 1.5, borderColor: 'transparent', backgroundColor: colors.surface, paddingBottom: 8, alignItems: 'center' },
   designOn: { borderColor: INK, backgroundColor: colors.accentSoft },
   designName: { ...type.caption, marginTop: 2 },
-  h: { ...type.section, marginTop: space.group + 4, marginBottom: space.item },
+  h: { ...tidyType.section, marginTop: space.section, marginBottom: space.item }, // 구역 제목 18(2026-11-01 일반 화면 기준)
   hint: { ...type.caption },
   swatches: { flexDirection: 'row', flexWrap: 'wrap', gap: 12 },
   swatchCell: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center' },

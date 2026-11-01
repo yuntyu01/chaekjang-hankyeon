@@ -9,7 +9,7 @@ import { formatDurationPrecise } from '@/domain/library';
 import { sessionEditPatch, sessionFormOf, validDay, validTime } from '@/domain/session-edit';
 import { serverBase } from '@/services/sync';
 import { libraryStore, useLibrary } from '@/store/library-store';
-import { Btn, Empty, Field, Muted, Row, Screen, SelectField } from '@/ui/kit';
+import { Btn, Empty, Field, ListGroup, ListItem, Muted, Row, Screen, SelectField } from '@/ui/kit';
 import { space } from '@/ui/screenTheme';
 
 export default function EditSession() {
@@ -25,7 +25,7 @@ export default function EditSession() {
   const [startPage, setStartPage] = useState(initial?.startPage ?? '');
   const [pages, setPages] = useState(initial?.pages ?? '');
   const [memo, setMemo] = useState(initial?.memo ?? '');
-  if (!s || !initial) return <Screen title="독서 기록"><Empty title="기록을 찾을 수 없어요" /></Screen>;
+  if (!s || !initial) return <Screen tidy title="독서 기록"><Empty title="기록을 찾을 수 없어요" /></Screen>;
   const e = bookId ? lib.editions[lib.books[bookId]?.editionId] : undefined;
   const patch = sessionEditPatch(s, initial, { bookId, day, time, minutes, startPage, pages, memo });
   const save = () => {
@@ -34,7 +34,7 @@ export default function EditSession() {
     router.back();
   };
   return (
-    <Screen title="독서 기록 수정" footer={<Btn label="저장" onPress={save} disabled={!patch} />}>
+    <Screen tidy title="독서 기록 수정" footer={<Btn label="저장" onPress={save} disabled={!patch} />}>
       <Muted style={{ marginTop: space.item, marginBottom: space.group }}>지금 저장된 독서 시간: {formatDurationPrecise(s.durationMs)} (일시정지 제외)</Muted>
       <SelectField label="연결된 책" value={e?.title} placeholder="책 없음 (눌러서 연결)" onPress={() => setPicking(true)} />
       <Row style={{ flexWrap: 'nowrap' }} gap={10}>
@@ -55,25 +55,28 @@ export default function EditSession() {
         </View>
       </Row>
       <Field label="메모 (선택)" value={memo} onChangeText={setMemo} />
-      {s.myBookId && serverBase ? <Btn label="커뮤니티에 공유하기" kind="secondary" style={{ marginTop: space.item }} onPress={() => router.push({ pathname: '/community/share', params: { session: id } })} /> : null}
-      <Btn
-        label="이 기록 삭제"
-        kind="danger"
-        style={{ marginTop: space.item }}
-        onPress={() =>
-          Alert.alert('이 독서 기록을 삭제할까요?', '통계에서도 빠져요. 되돌릴 수 없어요.', [
-            { text: '취소', style: 'cancel' },
-            {
-              text: '삭제',
-              style: 'destructive',
-              onPress: () => {
-                libraryStore.deleteSession(id);
-                router.back();
+      {/* 기록으로 할 일은 줄 목록으로(버튼을 쌓지 않는다). 저장은 아래 고정 버튼 하나 */}
+      <ListGroup style={{ marginTop: space.tight }}>
+        {s.myBookId && serverBase ? <ListItem label="커뮤니티에 공유하기" sub="고른 것만 공개돼요" chevron onPress={() => router.push({ pathname: '/community/share', params: { session: id } })} /> : null}
+        <ListItem
+          label="이 기록 삭제"
+          danger
+          chevron={false}
+          onPress={() =>
+            Alert.alert('이 독서 기록을 삭제할까요?', '통계에서도 빠져요. 되돌릴 수 없어요.', [
+              { text: '취소', style: 'cancel' },
+              {
+                text: '삭제',
+                style: 'destructive',
+                onPress: () => {
+                  libraryStore.deleteSession(id);
+                  router.back();
+                },
               },
-            },
-          ])
-        }
-      />
+            ])
+          }
+        />
+      </ListGroup>
       <BookPicker
         lib={lib}
         visible={picking}
