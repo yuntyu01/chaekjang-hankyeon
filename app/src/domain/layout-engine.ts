@@ -323,6 +323,25 @@ export function bookXs(layout: ShelfLayout, books: BookMap) {
   return xs;
 }
 
+// 책 크기가 바뀌었을 때(실제 크기로 바꿈·책등 비율을 잼): 사용자가 둔 책 사이 틈은 그대로 두고 옆 책을 당기거나 민다(얇아진 만큼 틈이 벌어지지 않게)
+export function keepGaps(layout: ShelfLayout, before: BookMap, after: BookMap): ShelfLayout {
+  const desired = new Map<string, number>();
+  for (const shelf of layout.shelves) {
+    const items = shelfItems(layout, shelf.id);
+    const old = itemPositions(items, layout, before);
+    const now = itemPositions(items, layout, after);
+    let x = 0;
+    let oldEnd = 0;
+    now.forEach((n, i) => {
+      x += Math.max(0, old[i].x - oldEnd);
+      n.item.bookIds.forEach((id) => desired.set(id, x));
+      x += n.width;
+      oldEnd = old[i].x + old[i].width;
+    });
+  }
+  return settle(layout, after, desired);
+}
+
 // 연산 뒤 위치 확정: desired(연산 전 위치 + 옮긴 책의 목표 위치)를 지키며 겹치면 민다. 결과를 pos로 저장한다.
 // only: 그 선반만 다시 맞춘다(다른 선반은 그대로라 끄는 동안 미리보기가 가볍다)
 export function settle(layout: ShelfLayout, books: BookMap, desired: Map<string, number>, only?: string): ShelfLayout {

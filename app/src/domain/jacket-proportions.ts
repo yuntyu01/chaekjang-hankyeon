@@ -1,5 +1,5 @@
 import type { Book, Physical } from './types';
-import { spineDU, thicknessMm } from './geometry';
+import { mm, spineDU, thicknessMm } from './geometry';
 
 type Dims = NonNullable<Book['dims']>;
 const clamp = (v: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, v));
@@ -14,6 +14,19 @@ export function illustratedDimensions(p: Physical): Dims {
     coverWidth: height * aspect,
     thickness: clamp(spineDU(thicknessMm(p.pages)) - 3.2, 26.8, 44.8),
   };
+}
+
+// 내 책의 실제 크기(2026-11-01 사용자 '책 크기·두께가 제공된 쪽수·길이에 맞아야'): 제공된 mm를 선반과 같은 축척으로 그대로 쓴다.
+// 두께는 책등 사진 비율(폭/높이)이 있으면 그 값(사진이 늘어나 뭉개지지 않는다), 없으면 쪽수로 어림한다.
+// 잘못 온 값(가로 20mm 같은 것)은 흔한 판형으로 그린다.
+// 최소 두께 10DU(실제 약 13mm, 2026-11-01 사용자 '최소 넓이는 정해야겠다'): 더 얇으면 책장에서 안 보이고 누르기 어렵다.
+// 이보다 얇은 책의 책등 사진만 그만큼 늘어난다(데미안 8.2DU → 1.2배, 표본 절반은 이 위라 그대로)
+export const REAL_SPINE_MIN = 10;
+const saneSize = (w: number, h: number) => w >= 70 && h >= 90 && w / h >= 0.45 && w / h <= 1.3;
+export function realDimensions(p: Physical, spineRatio?: number): Dims {
+  const [w, h] = saneSize(p.widthMm, p.heightMm) ? [p.widthMm, p.heightMm] : [128, 188];
+  const height = mm(h);
+  return { height, coverWidth: mm(w), thickness: Math.max(REAL_SPINE_MIN, spineRatio ? height * spineRatio : mm(thicknessMm(p.pages))) };
 }
 
 // Measured jacket templates, converted from the 853px reference to 390DU.

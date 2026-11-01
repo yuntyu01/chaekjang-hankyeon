@@ -10,6 +10,8 @@ import { checkSampleBooks, referenceHomeBooks, type HomeReferenceProfile } from 
 import { libraryStore } from './library-store';
 import { EMPTY_LAYOUT, placementStore } from './placement-store';
 import { installReferenceHome } from './home-reference-install';
+import { loadSpineRatios } from './spine-ratio-store';
+import { illustratedDimensions } from '@/domain/jacket-proportions';
 import { readingStore } from './reading-store';
 import { initSync } from '@/services/sync';
 import { settingsStore } from './settings-store';
@@ -27,6 +29,8 @@ let homeProfile: HomeReferenceProfile = {};
 // 서재가 바뀌면 책 모양을 다시 만들되, 내용이 같은 책은 이전 객체를 그대로 쓴다
 // (책장 줄·책 그림 기록이 객체가 같은지로 다시 그릴지 정하므로, 한 권만 바뀌면 그 책만 다시 그린다)
 let lastBooks: BookMap = {};
+const REAL_SIZE_KEY = 'real-size-layout-v1';
+
 export function shelfBooks(lib: Library): BookMap {
   const next = referenceHomeBooks(lib, homeProfile);
   for (const id of Object.keys(next)) if (lastBooks[id] && same(lastBooks[id], next[id])) next[id] = lastBooks[id];
@@ -83,7 +87,13 @@ export function bootStores() {
       console.warn('예시 책 분리 실패(다음 시작 때 다시)', error);
     }
     let lib = libraryStore.get().lib;
-    await placementStore.load(shelfBooks(lib));
+    // 내 책은 실제 크기로 그린다(2026-11-01). 예전 표시 크기로 저장한 배치를 처음 한 번 틈을 지키며 새 크기로 맞춘다
+    await loadSpineRatios();
+    const firstRealSize = !(await Storage.getItem(REAL_SIZE_KEY));
+    const shelf = shelfBooks(lib);
+    const before = firstRealSize ? Object.fromEntries(Object.entries(shelf).map(([id, b]) => [id, lib.books[id] && b.physical ? { ...b, dims: illustratedDimensions(b.physical) } : b])) : undefined;
+    await placementStore.load(shelf, before);
+    if (firstRealSize) await Storage.setItem(REAL_SIZE_KEY, '1');
     bootMark('layout-loaded');
     if (PERF_ENABLED) {
       const demo = await Storage.getItem(DEMO_BOOT_KEY);

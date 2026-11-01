@@ -3,7 +3,7 @@
 import { useSyncExternalStore } from 'react';
 import { readLayout, saveLayout } from '@/db/local-db';
 
-import { addShelf, applySwapTarget, bookXs, findSwapTarget, firstFitCandidates, fitToShelf, moveToDrawer, pruneEmptyShelves, setDepth, validate } from '@/domain/layout-engine';
+import { addShelf, applySwapTarget, bookXs, findSwapTarget, firstFitCandidates, fitToShelf, keepGaps, moveToDrawer, pruneEmptyShelves, setDepth, validate } from '@/domain/layout-engine';
 import { ensureShelves, migrate, normalize, type BookMap } from '@/domain/layout-schema';
 import { ensureLeanGaps, resolveLeans, withLeans, type FallDirections, type LeanResolution } from '@/domain/shelf-scene';
 import { SHELF_DEPTH, SHELF_FRONT } from '@/domain/geometry';
@@ -109,7 +109,8 @@ export const placementStore = {
   },
 
   // 저장된 배치를 읽는다. 책 목록은 서재(library-store)가 syncBooks로 넘긴다(먼저 불러온 뒤 호출).
-  async load(books: BookMap) {
+  // before: 저장본을 만들 때의 책 크기(실제 크기로 처음 바꾸는 시작 때 한 번, boot): 틈을 그대로 두고 새 크기로 맞춘다
+  async load(books: BookMap, before?: BookMap) {
     state = { ...state, books, undo: null, ...noFalls() };
     try {
       const raw = (await readLayout()).json;
@@ -118,6 +119,13 @@ export const placementStore = {
         if (saved.version === 1 || saved.version === 2) {
           // 예전 예시 책(b01~b18)만 있던 저장본은 내 책이 아니므로 배치에서 빠진다(repair가 모르는 책을 버린다)
           const r = restore(saved, books);
+          if (before) {
+            const fit = fitToShelf(keepGaps(r.layout, before, books), books);
+            const layout = withLeans(fit.layout, books);
+            set({ layout, loaded: true, save: 'idle', notice: r.moved.length + fit.moved.length || null });
+            void persist(layout);
+            return;
+          }
           set({ layout: r.layout, loaded: true, save: 'idle', notice: r.moved.length ? r.moved.length : null });
           if (r.changed) void persist(r.layout);
           return;
@@ -151,17 +159,19 @@ export const placementStore = {
     const resized = state.layout.placements.some((p) => {
       const a = state.books[p.bookId]?.physical;
       const b = books[p.bookId]?.physical;
-      return !!a && !!b && (a.widthMm !== b.widthMm || a.heightMm !== b.heightMm || a.pages !== b.pages);
+      const da = state.books[p.bookId]?.dims;
+      const db = books[p.bookId]?.dims;
+      return (!!a && !!b && (a.widthMm !== b.widthMm || a.heightMm !== b.heightMm || a.pages !== b.pages)) || da?.thickness !== db?.thickness || da?.height !== db?.height || da?.coverWidth !== db?.coverWidth;
     });
     if (!gone.length && !resized) {
       set({ books, ...noFalls() });
       return;
     }
     if (!gone.length) {
-      const fit = fitToShelf(state.layout, books);
+      const fit = fitToShelf(keepGaps(state.layout, state.books, books), books);
       const layout = withLeans(fit.layout, books);
       set({ books, layout, undo: null, notice: fit.moved.length ? fit.moved.length : state.notice, ...noFalls() });
-      if (fit.changed) void persist(layout);
+      void persist(layout);
       return;
     }
     const layout = withLeans(

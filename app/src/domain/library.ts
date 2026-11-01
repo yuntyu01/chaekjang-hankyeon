@@ -8,10 +8,10 @@
 // - Session(독서 세션): 연결 책·회차, 시작·종료 시각, 실제 독서 시간(일시정지 제외)
 // - Bookmark(갈피): 연결 책, 문장, 쪽수, 메모, 날짜
 // - Binding(재장정 자산): 책등 색, 모티프, 그림 파일, 생성 상태(기본 장정 / AI)
-import { coverAtSize, spineOfCover } from './cover-url';
+import { coverAtSize, spineOfCover, spineRatioOf } from './cover-url';
 import { artworkCover, type CoverArtworkId } from './cover-artworks';
 import { formatMm } from './catalog';
-import { illustratedDimensions } from './jacket-proportions';
+import { realDimensions } from './jacket-proportions';
 import { buildBookArt, heightClassOf, layoutArt, REBIND_VERSION, thicknessClassOf, tonesFor, type BookArtParams, type LayoutVariant, type RebindInput } from './rebinding';
 import type { BindingMaterial, Book } from './types';
 
@@ -379,6 +379,7 @@ export function toShelfBook(lib: Library, myBookId: string): Book | null {
   const themeColor = bd?.spineColor ?? e.art?.baseColor ?? SPINE_PALETTE[0];
   // 고른 정면 그림(없으면 지금처럼 단색 정면). 책 색은 그대로 둔다
   const art = artworkCover(bd?.coverArtId, themeColor);
+  const ratio = spineRatioOf(e.coverUri);
   return {
     id: b.id,
     title: e.title,
@@ -390,14 +391,14 @@ export function toShelfBook(lib: Library, myBookId: string): Book | null {
     // 정면에 꽉 채워 그리고 제목은 겹쳐 쓰지 않는다(art.tsx made.cover). 못 읽으면(오프라인 등) 코드로 그리는 단색 정면으로. 책등은 YES24 그림이 없어 책 색 + 제목
     coverArtUri: art ? undefined : bd?.coverArtUri ?? coverAtSize(e.coverUri, 'L'),
     // 책등 그림: YES24 책등(sideCover). 기본 정면 그림을 골랐거나 사용자가 책 색을 직접 바꿨으면 그 선택이 보이게 책 색 + 제목.
-    // 책등이 없는 책은 '이미지 준비중'이 와서 그릴 때 걸러진다(art.tsx isSpineImage) → 표지 왼쪽 가장자리 색 + 제목
-    spineArtUri: bd?.spineArtUri ?? (art || (bd?.source === 'custom' && bd.spineColor !== e.art?.baseColor) ? undefined : spineOfCover(e.coverUri, 'XL')),
+    // 책등 사진이 없는 책(잰 비율 0)·아직 못 잰 책은 표지 왼쪽 가장자리 색 + 제목
+    spineArtUri: bd?.spineArtUri ?? (art || !ratio || (bd?.source === 'custom' && bd.spineColor !== e.art?.baseColor) ? undefined : spineOfCover(e.coverUri, 'XL')),
     themeColor,
     heightClass: heightClassOf(size.heightMm),
     thicknessClass: thicknessClassOf(pages),
     coverAspectRatio: size.widthMm / size.heightMm,
     physical: { widthMm: size.widthMm, heightMm: size.heightMm, pages },
-    dims: illustratedDimensions({ widthMm: size.widthMm, heightMm: size.heightMm, pages }),
+    dims: realDimensions({ widthMm: size.widthMm, heightMm: size.heightMm, pages }, ratio || undefined),
     // 갈피가 있으면 책 위로 작은 종이 탭(최대 두 장, art.tsx Ribbons)
     art: { motif: bd?.motif ?? e.art?.motifId ?? 'none', inkColor: bd?.inkColor, accentColor: bd?.accentColor, material: bd?.material, vectorCover: !art, ...layoutArt(bd?.layout ?? e.art?.layoutVariant ?? 'spine_a'), ribbon: marks ? PAPER_TAB : undefined },
     cover: art,
@@ -435,7 +436,7 @@ export function withCoverEdges(lib: Library, edges: { editionId: string; color: 
 const shelfBookMemo = new Map<string, { deps: unknown[]; book: Book | null }>();
 export function memoShelfBook(lib: Library, myBookId: string): Book | null {
   const b = lib.books[myBookId];
-  const deps = [b, b && lib.editions[b.editionId], b?.bindingId ? lib.bindings[b.bindingId] : undefined, currentRound(lib, myBookId), bookmarksOf(lib, myBookId).length];
+  const deps = [b, b && lib.editions[b.editionId], b?.bindingId ? lib.bindings[b.bindingId] : undefined, currentRound(lib, myBookId), bookmarksOf(lib, myBookId).length, spineRatioOf(b && lib.editions[b.editionId]?.coverUri)];
   const hit = shelfBookMemo.get(myBookId);
   if (hit && hit.deps.every((d, i) => d === deps[i])) return hit.book;
   const book = toShelfBook(lib, myBookId);

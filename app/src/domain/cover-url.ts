@@ -18,3 +18,22 @@ export function spineOfCover(uri: string | undefined, size: 'L' | 'XL'): string 
 // 책등 그림 판별: 진짜 책등은 좁고 길다(표본 27권 폭/높이 0.02~0.16). 책등이 없는 책은 '이미지 준비중' 대체 그림(280×400, HTTP 200)이 온다.
 // 그 그림을 책등에 늘려 그리지 않고 표지 색 + 제목으로 그린다
 export const isSpineImage = (width: number, height: number) => height > 0 && width / height < 0.3;
+
+// 책등 사진 비율(폭/높이)을 재 둔 값. 0 = 재 봤더니 책등 사진이 없음. 없음(undefined) = 아직 못 쟀다(사진을 쓰지 않고 쪽수 두께로 그린다).
+// 판본 데이터가 아니라 공개 그림에서 다시 잴 수 있는 값이라 기기에만 둔다(store/spine-ratio-store)
+const spineRatios = new Map<string, number>();
+const goodsOf = (uri: string | undefined) => (uri ? YES24.exec(uri)?.[1] : undefined);
+export function spineRatioOf(coverUri: string | undefined): number | undefined {
+  const g = goodsOf(coverUri);
+  return g ? spineRatios.get(g) : undefined;
+}
+export function rememberSpineRatio(coverUri: string, ratio: number) {
+  const g = goodsOf(coverUri);
+  if (g) spineRatios.set(g, ratio);
+}
+export const spineRatioEntries = () => [...spineRatios.entries()];
+export function loadSpineRatioEntries(entries: [string, number][]) {
+  for (const [k, v] of entries) spineRatios.set(k, v);
+}
+export const needsSpineRatio = (coverUri: string | undefined) => !!goodsOf(coverUri) && spineRatioOf(coverUri) === undefined;
+

@@ -18,7 +18,8 @@ import { frameCam } from '@/ui/book3d/StandaloneBook';
 import { Check } from '@/ui/icons';
 import { colors, fonts, shape, space, tidyType, type } from '@/ui/screenTheme';
 import { RealCover, TextLink } from '@/ui/kit';
-import { coverAtSize, spineOfCover } from '@/domain/cover-url';
+import { coverAtSize, spineOfCover, spineRatioOf } from '@/domain/cover-url';
+import { realDimensions } from '@/domain/jacket-proportions';
 
 export type BindingDraft = Pick<Binding, 'spineColor' | 'motif' | 'seed' | 'source' | 'inkColor' | 'accentColor' | 'layout' | 'material' | 'coverArtId'>;
 
@@ -32,6 +33,7 @@ export function previewBook(p: { title: string; author?: string; size?: SizeMm; 
   return {
     coverArtUri: cover ? undefined : coverAtSize(p.realCover, 'XL'),
     spineArtUri: cover ? undefined : p.realSpine,
+    dims: realDimensions({ ...size, pages: p.pages ?? ESTIMATED_PAGES }, spineRatioOf(p.realCover) || undefined),
     id: 'preview',
     title: p.title || '제목',
     author: p.author || undefined,
@@ -59,7 +61,7 @@ export function BindingEditor({ title, author, size, pages, value, recommended, 
   const { width } = useWindowDimensions();
   const custom = (patch: Partial<BindingDraft>): BindingDraft => ({ ...value, ...patch, source: 'custom' });
   // 책등: 추천 색 그대로면 YES24 책등, 색을 바꾸면 고른 색이 보이게 책 색 + 제목(책장과 같은 규칙, toShelfBook)
-  const realSpine = value.spineColor === recommended.spineColor ? spineOfCover(realCover, 'XL') : undefined;
+  const realSpine = value.spineColor === recommended.spineColor && spineRatioOf(realCover) ? spineOfCover(realCover, 'XL') : undefined;
   const book = useMemo(() => previewBook({ title, author, size, pages, binding: value, realCover, realSpine }), [title, author, size, pages, value, realCover, realSpine]);
   const shown = useMemo(() => (current ? noRibbon(current) : book), [current, book]);
   // 미리보기 크기: 정면 폭을 화면 폭에 맞춘다(책 치수·카메라는 그대로, 그리는 배율만)

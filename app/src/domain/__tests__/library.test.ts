@@ -1,5 +1,7 @@
 // 내 서재 규칙: 읽기 상태와 회차(재독은 새 회차, 지난 기록은 그대로), 통계 기준(완독 권수·재독), 책장용 책 모양.
-import { coverAtSize, isSpineImage } from '../cover-url';
+import { coverAtSize, isSpineImage, rememberSpineRatio } from '../cover-url';
+import { mm } from '../geometry';
+import { REAL_SPINE_MIN, realDimensions } from '../jacket-proportions';
 import { bookLightRef, bookTone } from '../binding-material';
 import { linearOf } from '../light-model';
 import { ARTWORK_INK } from '../cover-artworks';
@@ -114,6 +116,8 @@ describe('책장용 책 모양', () => {
     const bdId = lib.books.bk1.bindingId!;
     expect(toShelfBook(lib, 'bk1')!.spineArtUri).toBeUndefined(); // 표지 없는 책
     lib.editions[eId] = { ...lib.editions[eId], coverUri: 'https://image.yes24.com/goods/13137546/L', coverSource: 'api' };
+    expect(toShelfBook(lib, 'bk1')!.spineArtUri).toBeUndefined(); // 아직 안 잰 책: 늘어난 사진을 그리지 않는다
+    rememberSpineRatio('https://image.yes24.com/goods/13137546/L', 36 / 400);
     expect(toShelfBook(lib, 'bk1')!.spineArtUri).toBe('https://image.yes24.com/goods/13137546/SIDE/XL');
     const orig = lib.bindings[bdId];
     lib.bindings[bdId] = { ...orig, source: 'custom', spineColor: '#123456' };
@@ -137,6 +141,26 @@ describe('책장용 책 모양', () => {
       lib.bindings[bdId] = { ...lib.bindings[bdId], spineColor: color };
       expect(bookLightRef(toShelfBook(lib, 'bk1')!, linearOf)).toEqual({ albedo: [0.5, 0.5, 0.5], picture: true });
     }
+  });
+
+  it('실제 크기: 제공된 mm를 선반 축척 그대로, 두께는 책등 사진 비율(없으면 쪽수), 책등 사진은 늘어나지 않는다', () => {
+    const lib = withBook();
+    const eId = lib.books.bk1.editionId;
+    lib.editions[eId] = { ...lib.editions[eId], size: { widthMm: 153, heightMm: 224 }, pageCount: 216, coverUri: 'https://image.yes24.com/goods/77/L', coverSource: 'api' };
+    const byPages = toShelfBook(lib, 'bk1')!.dims!;
+    expect(byPages.height).toBeCloseTo(mm(224), 6);
+    expect(byPages.coverWidth).toBeCloseTo(mm(153), 6);
+    expect(byPages.thickness).toBeCloseTo(mm(216 * 0.06 + 1.5), 6);
+    rememberSpineRatio('https://image.yes24.com/goods/77/L', 36 / 400);
+    const d = toShelfBook(lib, 'bk1')!.dims!;
+    expect(d.thickness! / d.height!).toBeCloseTo(36 / 400, 6); // 면 비율 = 사진 비율
+    rememberSpineRatio('https://image.yes24.com/goods/77/L', 0); // 책등 사진 없음
+    expect(toShelfBook(lib, 'bk1')!.dims!.thickness).toBeCloseTo(mm(216 * 0.06 + 1.5), 6);
+    // 아주 얇은 책도 최소 두께(잘 보이고 누를 수 있게)
+    expect(realDimensions({ widthMm: 130, heightMm: 200, pages: 40 }).thickness).toBe(REAL_SPINE_MIN);
+    expect(realDimensions({ widthMm: 130, heightMm: 200, pages: 40 }, 0.02).thickness).toBe(REAL_SPINE_MIN);
+    // 잘못 온 판형(20×260mm)은 흔한 판형으로
+    expect(realDimensions({ widthMm: 20, heightMm: 260, pages: 200 }).coverWidth).toBeCloseTo(mm(128), 6);
   });
 
   it('책등 그림 판별: 좁고 긴 그림만 책등, 이미지 준비중(280×400)은 아니다', () => {

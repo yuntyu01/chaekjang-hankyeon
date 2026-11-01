@@ -2,6 +2,7 @@
 // Skia로 작은 화면 밖 표면에 줄여 그린 뒤 픽셀을 읽어 median cut(domain/rebinding.extractPalette). 실패하면 null(재장정은 제목 해시 색으로).
 import { AlphaType, ColorType, Skia } from '@shopify/react-native-skia';
 
+import { isSpineImage, spineOfCover } from '@/domain/cover-url';
 import { edgeColorOf, extractPalette, type PaletteEntry } from '@/domain/rebinding';
 
 const W = 24;
@@ -45,3 +46,17 @@ export async function coverEdgeColor(url: string | undefined): Promise<string | 
     return null;
   }
 }
+
+// YES24 책등 사진의 폭/높이. 책등 사진이 없는 책('이미지 준비중')은 0, 받지 못하면 null(나중에 다시)
+export async function coverSpineRatio(coverUri: string): Promise<number | null> {
+  const url = spineOfCover(coverUri, 'L');
+  if (!url) return 0;
+  try {
+    const img = Skia.Image.MakeImageFromEncoded(await Skia.Data.fromURI(url));
+    if (!img) return null;
+    return isSpineImage(img.width(), img.height()) ? img.width() / img.height() : 0;
+  } catch {
+    return null;
+  }
+}
+
