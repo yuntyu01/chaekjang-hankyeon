@@ -1,4 +1,5 @@
 // 내 서재 규칙: 읽기 상태와 회차(재독은 새 회차, 지난 기록은 그대로), 통계 기준(완독 권수·재독), 책장용 책 모양.
+import { coverAtSize } from '../cover-url';
 import { bookTone } from '../binding-material';
 import { ARTWORK_INK } from '../cover-artworks';
 import { ensureShelves, pruneEmptyShelves } from '../layout-engine';
@@ -89,6 +90,26 @@ describe('책장용 책 모양', () => {
     expect(toShelfBook(lib, 'bk1')!.art.material).toBeUndefined();
     lib.bindings[bdId] = { ...lib.bindings[bdId], material: 'cloth' };
     expect(toShelfBook(lib, 'bk1')!.art.material).toBe('cloth');
+  });
+
+  it('실제 표지가 있는 책은 정면 그림이 실제 표지(YES24는 L 크기), 기본 정면 그림을 고르면 그 그림이 앞선다', () => {
+    const lib = withBook();
+    const eId = lib.books.bk1.editionId;
+    expect(toShelfBook(lib, 'bk1')!.coverArtUri).toBeUndefined(); // 표지 없는 책: 단색 정면
+    lib.editions[eId] = { ...lib.editions[eId], coverUri: 'https://image.yes24.com/goods/176787/XL', coverSource: 'api' };
+    expect(toShelfBook(lib, 'bk1')!.coverArtUri).toBe('https://image.yes24.com/goods/176787/L');
+    lib.editions[eId] = { ...lib.editions[eId], coverUri: 'file:///photo.jpg', coverSource: 'photo' };
+    expect(toShelfBook(lib, 'bk1')!.coverArtUri).toBe('file:///photo.jpg'); // 내가 찍은 사진은 그대로
+    const bdId = lib.books.bk1.bindingId!;
+    lib.bindings[bdId] = { ...lib.bindings[bdId], coverArtId: 'autumn-field' };
+    expect(toShelfBook(lib, 'bk1')!.coverArtUri).toBeUndefined();
+  });
+
+  it('coverAtSize: YES24 표지 주소만 크기를 바꾸고 다른 주소는 그대로', () => {
+    expect(coverAtSize('https://image.yes24.com/goods/176787/L', 'XL')).toBe('https://image.yes24.com/goods/176787/XL');
+    expect(coverAtSize('https://image.yes24.com/goods/176787/M', 'L')).toBe('https://image.yes24.com/goods/176787/L');
+    expect(coverAtSize('https://books.google.com/x.jpg', 'XL')).toBe('https://books.google.com/x.jpg');
+    expect(coverAtSize(undefined, 'XL')).toBeUndefined();
   });
 
   it('표지 그림을 고르면 정면에 그 그림을 입히고 책 색(책등·몸체)은 그대로, AI 표지 그림은 지우지 않고 가려 둔다', () => {

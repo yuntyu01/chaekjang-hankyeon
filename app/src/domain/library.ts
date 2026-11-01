@@ -8,6 +8,7 @@
 // - Session(독서 세션): 연결 책·회차, 시작·종료 시각, 실제 독서 시간(일시정지 제외)
 // - Bookmark(갈피): 연결 책, 문장, 쪽수, 메모, 날짜
 // - Binding(재장정 자산): 책등 색, 모티프, 그림 파일, 생성 상태(기본 장정 / AI)
+import { coverAtSize } from './cover-url';
 import { artworkCover, type CoverArtworkId } from './cover-artworks';
 import { formatMm } from './catalog';
 import { illustratedDimensions } from './jacket-proportions';
@@ -385,7 +386,9 @@ export function toShelfBook(lib: Library, myBookId: string): Book | null {
     publisher: e.publisher,
     publishedAt: e.publishedAt,
     originalCoverUri: e.coverUri,
-    coverArtUri: art ? undefined : bd?.coverArtUri,
+    // 정면 그림: 고른 기본 정면 그림이 없으면 실제 표지(YES24 도서 이미지·내가 찍은 사진, 2026-11-01 사용자 '책장 책도 YES24 표지로').
+    // 정면에 꽉 채워 그리고 제목은 겹쳐 쓰지 않는다(art.tsx made.cover). 못 읽으면(오프라인 등) 코드로 그리는 단색 정면으로. 책등은 YES24 그림이 없어 책 색 + 제목
+    coverArtUri: art ? undefined : bd?.coverArtUri ?? coverAtSize(e.coverUri, 'L'),
     spineArtUri: bd?.spineArtUri,
     themeColor,
     heightClass: heightClassOf(size.heightMm),

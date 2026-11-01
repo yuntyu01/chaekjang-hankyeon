@@ -6,6 +6,7 @@ import { useBookShared } from '@/ui/book3d/art';
 import { frameBBox, standaloneFrame } from '@/domain/shelf-scene';
 import { memoShelfBook, type Library } from '@/domain/library';
 import type { Book } from '@/domain/types';
+import { coverAtSize } from '@/domain/cover-url';
 import { RealCover } from '@/ui/kit';
 import { colors } from '@/ui/screenTheme';
 import { BOOK_PAD, frameCam, noRibbon, StandaloneBook } from '@/ui/book3d/StandaloneBook';
@@ -14,7 +15,11 @@ import { BOOK_PAD, frameCam, noRibbon, StandaloneBook } from '@/ui/book3d/Standa
 export const BookVisual = memo(function BookVisual({ book, width, rasterize = false, onReady }: { book: Book; width: number; rasterize?: boolean; onReady?: () => void }) {
   // The protruding ribbon is a bookshelf count indicator, not part of a saved cover.
   // Keep the stored binding/art and the 3D engine intact in every presentation.
-  const displayBook = useMemo(() => noRibbon(book), [book]);
+  // 크게 그릴 때(책 정보 등 폭 120 이상)는 실제 표지를 큰 그림(XL)으로 받는다
+  const displayBook = useMemo(() => {
+    const b = noRibbon(book);
+    return width >= 120 && b.coverArtUri ? { ...b, coverArtUri: coverAtSize(b.coverArtUri, 'XL') } : b;
+  }, [book, width]);
   const bbox = useMemo(() => {
     const frame = standaloneFrame(displayBook, 'front');
     return frameBBox(frame, frameCam(frame));

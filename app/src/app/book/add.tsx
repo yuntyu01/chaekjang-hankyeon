@@ -288,7 +288,7 @@ export default function AddBook() {
             <TextLink label="보관만 하기" tone="soft" disabled={saving} onPress={() => void add('keep')} style={{ marginTop: space.xs, marginBottom: -space.s }} />
           </View>
         }>
-        <BindingEditor title={draft.title} author={draft.authors} size={size} pages={num(draft.pages)} value={binding} recommended={{ ...bindingFields(art ?? buildBookArt({ title: draft.title })), seed: 0, source: 'default' }} onChange={setBinding} />
+        <BindingEditor title={draft.title} author={draft.authors} size={size} pages={num(draft.pages)} value={binding} recommended={{ ...bindingFields(art ?? buildBookArt({ title: draft.title })), seed: 0, source: 'default' }} realCover={draft.coverUri} onChange={setBinding} />
       </Screen>
     );
 

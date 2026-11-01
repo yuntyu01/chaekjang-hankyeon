@@ -17,17 +17,20 @@ import { frameBBox, standaloneFrame } from '@/domain/shelf-scene';
 import { frameCam } from '@/ui/book3d/StandaloneBook';
 import { Check } from '@/ui/icons';
 import { colors, fonts, shape, space, tidyType, type } from '@/ui/screenTheme';
-import { TextLink } from '@/ui/kit';
+import { RealCover, TextLink } from '@/ui/kit';
+import { coverAtSize } from '@/domain/cover-url';
 
 export type BindingDraft = Pick<Binding, 'spineColor' | 'motif' | 'seed' | 'source' | 'inkColor' | 'accentColor' | 'layout' | 'material' | 'coverArtId'>;
 
 const LAYOUT_NAMES: Record<LayoutVariant, string> = { spine_a: '기본', spine_b: '제목 낮게', spine_c: '무늬 낮게' };
 const MATERIAL_NAMES: Record<BindingMaterial, string> = { paper: '무광 종이', cloth: '천', coated: '코팅지' };
 
-export function previewBook(p: { title: string; author?: string; size?: SizeMm; pages?: number; binding: BindingDraft }): Book {
+// realCover: 실제 표지(YES24 도서 이미지·내가 찍은 사진). 기본 정면 그림을 고르지 않았으면 책장처럼 정면에 꽉 채워 그린다
+export function previewBook(p: { title: string; author?: string; size?: SizeMm; pages?: number; binding: BindingDraft; realCover?: string }): Book {
   const size = p.size ?? ESTIMATED_SIZE;
   const cover = artworkCover(p.binding.coverArtId, p.binding.spineColor);
   return {
+    coverArtUri: cover ? undefined : coverAtSize(p.realCover, 'XL'),
     id: 'preview',
     title: p.title || '제목',
     author: p.author || undefined,
@@ -50,11 +53,11 @@ const TABS: { id: Tab; label: string }[] = [
 const INK = colors.accent; // 고른 것 표시(공통 강조색)
 
 // current: 아직 아무것도 고르지 않았을 때 보여 줄 지금 모습(책장에 놓인 그대로). 하나라도 고르면 고른 장정으로 바뀐다
-export function BindingEditor({ title, author, size, pages, value, recommended, current, onChange }: { title: string; author?: string; size?: SizeMm; pages?: number; value: BindingDraft; recommended: BindingDraft; current?: Book; onChange: (v: BindingDraft) => void }) {
+export function BindingEditor({ title, author, size, pages, value, recommended, current, realCover, onChange }: { title: string; author?: string; size?: SizeMm; pages?: number; value: BindingDraft; recommended: BindingDraft; current?: Book; realCover?: string; onChange: (v: BindingDraft) => void }) {
   const [tab, setTab] = useState<Tab>('art');
   const { width } = useWindowDimensions();
   const custom = (patch: Partial<BindingDraft>): BindingDraft => ({ ...value, ...patch, source: 'custom' });
-  const book = useMemo(() => previewBook({ title, author, size, pages, binding: value }), [title, author, size, pages, value]);
+  const book = useMemo(() => previewBook({ title, author, size, pages, binding: value, realCover }), [title, author, size, pages, value, realCover]);
   const shown = useMemo(() => (current ? noRibbon(current) : book), [current, book]);
   // 미리보기 크기: 정면 폭을 화면 폭에 맞춘다(책 치수·카메라는 그대로, 그리는 배율만)
   const frontWidth = Math.min(170, width * 0.39);
@@ -73,7 +76,7 @@ export function BindingEditor({ title, author, size, pages, value, recommended, 
         ))}
       </View>
 
-      {tab === 'art' ? <ArtPane showingCurrent={!!current} value={value} custom={custom} onChange={onChange} /> : null}
+      {tab === 'art' ? <ArtPane showingCurrent={!!current} realCover={realCover} title={title} value={value} custom={custom} onChange={onChange} /> : null}
       {tab === 'color' ? <ColorPane value={value} recommended={recommended} custom={custom} onChange={onChange} /> : null}
       {tab === 'material' ? <MaterialPane title={title} author={author} size={size} pages={pages} value={value} custom={custom} onChange={onChange} /> : null}
     </View>
@@ -83,7 +86,7 @@ export function BindingEditor({ title, author, size, pages, value, recommended, 
 type PaneProps = { value: BindingDraft; custom: (patch: Partial<BindingDraft>) => BindingDraft; onChange: (v: BindingDraft) => void };
 
 // 그림: 6종 3열. 고른 그림만 얇은 테두리 + 작은 체크. 아래에 '그림 없음'(단색 정면)
-function ArtPane({ value, custom, onChange, showingCurrent }: PaneProps & { showingCurrent?: boolean }) {
+function ArtPane({ value, custom, onChange, showingCurrent, realCover, title }: PaneProps & { showingCurrent?: boolean; realCover?: string; title: string }) {
   // 책장 모습 그대로 보여 주는 중이면(시안 예시 표지 등) 아무것도 고르지 않은 상태로 둔다
   const none = !value.coverArtId && !showingCurrent;
   return (
@@ -106,9 +109,10 @@ function ArtPane({ value, custom, onChange, showingCurrent }: PaneProps & { show
           );
         })}
       </View>
-      <Pressable onPress={() => onChange(custom({ coverArtId: undefined }))} accessibilityRole="button" accessibilityLabel="그림 없음, 단색 정면" accessibilityState={{ selected: none }} style={[st.noneRow, none && st.noneRowOn]}>
-        <View style={[st.noneSwatch, { backgroundColor: value.spineColor }]} />
-        <Text style={[st.noneText, none && st.nameOn]}>그림 없음 · 단색 정면</Text>
+      {/* 기본 정면 그림을 고르지 않으면: 실제 표지가 있는 책은 실제 표지(책장과 같다), 없는 책은 단색 정면 */}
+      <Pressable onPress={() => onChange(custom({ coverArtId: undefined }))} accessibilityRole="button" accessibilityLabel={realCover ? '실제 표지' : '그림 없음, 단색 정면'} accessibilityState={{ selected: none }} style={[st.noneRow, none && st.noneRowOn]}>
+        {realCover ? <RealCover uri={coverAtSize(realCover, 'L')} title={title} color={value.spineColor} width={22} /> : <View style={[st.noneSwatch, { backgroundColor: value.spineColor }]} />}
+        <Text style={[st.noneText, none && st.nameOn]}>{realCover ? '실제 표지' : '그림 없음 · 단색 정면'}</Text>
         {none ? <Check size={16} color={INK} strokeWidth={2.2} /> : null}
       </Pressable>
     </View>

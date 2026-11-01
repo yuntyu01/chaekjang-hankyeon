@@ -44,7 +44,7 @@ export default function EditBinding() {
           }}
         />
       }>
-      <BindingEditor title={e.title} author={e.authors.join(', ')} size={e.size} pages={e.pageCount} value={v} recommended={recommended} current={touched ? undefined : place.books[id]} onChange={(next) => { setTouched(true); setV(next); }} />
+      <BindingEditor title={e.title} author={e.authors.join(', ')} size={e.size} pages={e.pageCount} value={v} recommended={recommended} current={touched ? undefined : place.books[id]} realCover={e.coverUri} onChange={(next) => { setTouched(true); setV(next); }} />
     </Screen>
   );
 }
