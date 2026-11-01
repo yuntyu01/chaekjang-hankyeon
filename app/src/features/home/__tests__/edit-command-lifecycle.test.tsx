@@ -20,6 +20,7 @@ jest.mock('@/domain/layout-engine', () => ({
   placementOf: () => ({ bookId: 'a', shelfId: 's', pose: 'front', tilt: 0, spin: 0, pitch: 0 }),
   frontStateOf: () => ({ qx: 0, state: { spin: 0, pitch: 0 } }),
   depthRange: () => null,
+  spinRangeOf: () => null,
   frontSpin: jest.fn((layout: unknown, _books: unknown, _id: string, _state: unknown, _qx: number, spin: number) => ({ layout, state: { spin, pitch: 0 } })),
   frontRelease: (layout: unknown) => layout,
 }));

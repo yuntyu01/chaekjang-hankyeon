@@ -1327,6 +1327,23 @@ export function setSpin(layout: ShelfLayout, books: BookMap, bookId: string, deg
   return finish(layout, best, books);
 }
 
+// 지금 자리에서 돌릴 수 있는 각도 범위(꾸미기 막대에 띠로 미리 그린다, 2026-11-01). 표지 책은 frontSpin이 닿는 데까지(옆 책은 밀어 준다),
+// 눕힌 책은 setSpin이 0 쪽으로 좁혀 찾은 각도까지. 지금 각도는 늘 범위 안. 돌릴 수 없는 자세(세운 책)면 null.
+export function spinRangeOf(layout: ShelfLayout, books: BookMap, bookId: string): { lo: number; hi: number } | null {
+  const p = placementOf(layout, bookId);
+  if (!p) return null;
+  const fs = p.pose === 'front' ? frontStateOf(layout, books, bookId) : null;
+  if (!fs && p.pose !== 'horizontal') return null;
+  const max = fs ? MAX_FRONT_SPIN : MAX_SPIN;
+  const cur = fs ? fs.state.spin : p.spin ?? 0;
+  const reach = (want: number): number => {
+    if (fs) return frontSpin(layout, books, bookId, fs.state, fs.qx, want)?.state.spin ?? cur;
+    const r = setSpin(layout, books, bookId, want);
+    return r.ok ? placementOf(r.layout, bookId)?.spin ?? 0 : cur;
+  };
+  return { lo: Math.min(cur, reach(-max)), hi: Math.max(cur, reach(max)) };
+}
+
 export function setTilt(layout: ShelfLayout, books: BookMap, bookId: string, tilt: Tilt): Result {
   const p = placementOf(layout, bookId);
   if (!p) return { ok: false, reason: 'unknown-book' };

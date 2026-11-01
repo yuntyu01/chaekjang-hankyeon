@@ -3,7 +3,7 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } fr
 import { useFocusEffect } from 'expo-router';
 import { AppState } from 'react-native';
 import { Easing, useSharedValue, withTiming } from 'react-native-reanimated';
-import { boxOf, depthRange, frontRelease, frontSpin, frontStateOf, frontTilt, placementOf, setDepth, setPose, setSpin, setTilt, type BookMap, type Result } from '@/domain/layout-engine';
+import { boxOf, depthRange, frontRelease, frontSpin, frontStateOf, frontTilt, placementOf, setDepth, setPose, setSpin, setTilt, spinRangeOf, type BookMap, type Result } from '@/domain/layout-engine';
 import { computeShelf, resolveLeans, withLeans } from '@/domain/shelf-scene';
 import { tiltToward, type Pose, type ShelfLayout } from '@/domain/types';
 import type { FrontState } from '@/domain/front-pose';
@@ -168,7 +168,8 @@ export function useShelfEditCommands({ layout, books, editId, motions, scale, re
     setEditMsg(err ?? (fell ? ko.fellToDrawer(fell) : null));
   };
   const frontInfo = useMemo(() => (editId ? frontStateOf(layout, books, editId) : null), [editId, layout, books]);
-  const anglesText = frontInfo ? ko.decoratePanel.angles((headLive ?? frontInfo.state).spin, (headLive ?? frontInfo.state).pitch) : null;
+  const pitchNow = frontInfo ? (headLive ?? frontInfo.state).pitch : 0;
+  const anglesText = pitchNow >= 0.5 ? ko.decoratePanel.pitch(pitchNow) : null;
 
   // 앞뒤: 끄는 동안은 그 선반 경로만 바로 바꾸고(미리보기) 놓으면 확정한다. 옆 책·벽에 닿으면 가능한 데까지. 실제로 된 깊이를 돌려준다.
   const editDepth = (z: number, done: boolean): number => {
@@ -196,6 +197,8 @@ export function useShelfEditCommands({ layout, books, editId, motions, scale, re
     return err ? cur : got;
   };
   const depthInfo = useMemo(() => (editId && placementOf(layout, editId) ? depthRange(layout, books, editId) : null), [editId, layout, books]);
+  // 돌릴 수 있는 범위(2026-11-01 사용자 '누르자마자 미리 계산해 막대에 표시'): 고른 책·자세가 바뀔 때 한 번 계산한다
+  const spinRange = useMemo(() => (editId && (editDisplayPose === 'front' || editDisplayPose === 'horizontal') ? spinRangeOf(layout, books, editId) : null), [editId, layout, books, editDisplayPose]);
   // 돌리기: 끄는 동안은 그 선반 경로만 바로 바꾸고(미리보기) 놓으면 확정한다. 실제로 된 각도를 돌려준다.
   const editSpin = (deg: number, done: boolean): number => {
     if (!editId) return 0;
@@ -243,5 +246,5 @@ export function useShelfEditCommands({ layout, books, editId, motions, scale, re
     const sub = AppState.addEventListener('change', (state) => { if (state !== 'active') cancelRef.current(true); });
     return () => sub.remove();
   }, []);
-  return { editPlacement, editDisplayPose, canLean, editPose, editLean, onHandle, headOffX, headOffY, anglesText, editDepth, depthInfo, editSpin };
+  return { editPlacement, editDisplayPose, canLean, editPose, editLean, onHandle, headOffX, headOffY, anglesText, editDepth, depthInfo, editSpin, spinRange };
 }

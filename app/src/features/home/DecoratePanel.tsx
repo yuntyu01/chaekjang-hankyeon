@@ -1,7 +1,7 @@
 // 꾸미기 모드에서 하단 탭 바 자리에 뜨는 조작부(2026-10-26 꾸미기 시안): 고른 책 제목, 자세 탭(책등·표지·눕힘, 아이콘 + 밑줄),
-// 앞뒤 위치 막대(왼쪽 뒤로 · 오른쪽 앞으로), 접어 둔 '세부 조정'(기대기 왼쪽·바로·오른쪽 / 돌리기와 표지 책 각도).
-// 기대기는 방향만 고르고 각도는 옆 책과의 틈으로 계산한다. 기댈 책이 없는 방향은 처음부터 누를 수 없게 표시한다.
-import { ChevronDown, ChevronUp } from 'lucide-react-native';
+// 그 아래 줄마다 '이름 · 막대 · 숫자'(2026-11-01 사용자: 접는 '세부 조정' 없이 위치·회전을 바로, 막대 끝에 얼마인지 숫자).
+// 막대에는 갈 수 있는 범위를 진한 띠로 미리 그린다(고르는 순간 부모가 계산: depth.lo~hi, spinRange).
+// 책등 책은 회전 대신 기대기(왼쪽·바로·오른쪽): 방향만 고르고 각도는 옆 책과의 틈으로 계산한다. 기댈 책이 없는 방향은 누를 수 없게 표시한다.
 import { useLayoutEffect, useRef, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { Gesture, GestureDetector, State } from 'react-native-gesture-handler';
@@ -12,7 +12,7 @@ import { DU_PER_MM, MAX_FRONT_SPIN, MAX_SPIN, SHELF_DEPTH, SHELF_FRONT } from '@
 import type { Pose } from '@/domain/types';
 import { ko } from '@/i18n/ko';
 import { Undo2 } from '@/ui/icons';
-import { colors, fonts, icon, press, shape, space, type } from '@/ui/screenTheme';
+import { colors, fonts, press, shape, space, type } from '@/ui/screenTheme';
 import { PERF_ENABLED } from '@/ui/perf';
 import { createPreviewFrame } from './preview-frame';
 
@@ -33,6 +33,7 @@ type Props = {
   depth: { lo: number; hi: number; z: number } | null; // 앞뒤: 상자 앞면 깊이(선반 공간 DU)와 갈 수 있는 범위
   onDepth: (z: number, done: boolean) => number; // 끄는 동안 미리보기, 놓으면 확정. 실제로 된 깊이를 돌려준다
   onSpin: (deg: number, done: boolean) => number; // 끄는 동안 미리보기, 놓으면 확정. 실제로 된 각도를 돌려준다
+  spinRange: { lo: number; hi: number } | null; // 지금 자리에서 돌릴 수 있는 각도(막대에 띠로)
   onHeight?: (h: number) => void;
   angles?: string | null; // 표지 책: 지금 좌우·뒤로 각도
   canUndo: boolean;
@@ -51,7 +52,7 @@ function usePreviewFrame() {
   useLayoutEffect(() => () => preview.cancel(), [preview]);
   return preview;
 }
-function SpinSlider({ value, onChange, max }: { value: number; onChange: (deg: number, done: boolean) => number; max: number }) {
+function SpinSlider({ value, onChange, max, range }: { value: number; onChange: (deg: number, done: boolean) => number; max: number; range: { lo: number; hi: number } | null }) {
   const MAX = max;
   const [w, setW] = useState(1);
   const [live, setLive] = useState<number | null>(null); // 끄는 동안 실제로 된 각도
@@ -122,7 +123,10 @@ function SpinSlider({ value, onChange, max }: { value: number; onChange: (deg: n
     });
   const shown = live ?? value;
   shownRef.current = shown;
-  const pos = ((shown / MAX + 1) / 2) * w;
+  const xOf = (d: number) => ((Math.max(-MAX, Math.min(MAX, d)) / MAX + 1) / 2) * w;
+  const pos = xOf(shown);
+  const zero = xOf(0);
+  const band = range ? [xOf(range.lo), xOf(range.hi)] : [0, w];
   return (
     <>
       <GestureDetector gesture={pan}>
@@ -136,17 +140,19 @@ function SpinSlider({ value, onChange, max }: { value: number; onChange: (deg: n
           accessibilityActions={[{ name: 'increment' }, { name: 'decrement' }]}
           onAccessibilityAction={(e) => onChange(Math.max(-MAX, Math.min(MAX, Math.round(value) + (e.nativeEvent.actionName === 'increment' ? 2 : -2))), true)}>
           <View style={styles.track} />
-          <View style={[styles.tick, { left: w / 2 - 0.5 }]} />
+          <View style={[styles.band, { left: band[0], width: Math.max(0, band[1] - band[0]) }]} />
+          <View style={[styles.fill, { left: Math.min(zero, pos), width: Math.abs(pos - zero) }]} />
+          <View style={[styles.tick, { left: zero - 1 }]} />
           <View style={[styles.thumb, { left: pos - THUMB / 2, opacity: w > 1 ? 1 : 0 /* 폭을 재기 전에는 0 위치에 잠깐 보이지 않게 */ }]} />
         </View>
       </GestureDetector>
-      <Text style={styles.deg}>{`${shown > 0 ? '+' : ''}${Math.round(shown)}°`}</Text>
+      <Text style={styles.value}>{`${Math.round(shown) > 0 ? '+' : ''}${Math.round(shown)}°`}</Text>
     </>
   );
 }
 
-// 앞뒤(깊이): 끈 거리만큼 상대로 옮긴다(누른 곳으로 바로 뛰지 않게). 막대 전체 = 벽(왼쪽, 뒤로) ~ 선반 앞 끝(오른쪽, 앞으로).
-// 시안처럼 왼쪽 끝부터 손잡이까지 갈색으로 채운다. 읽어 주기 값은 선반 앞 끝에서 책 앞면까지의 거리(mm).
+// 앞뒤(깊이): 끈 거리만큼 상대로 옮긴다(누른 곳으로 바로 뛰지 않게). 막대 전체 = 벽(왼쪽, 뒤) ~ 선반 앞 끝(오른쪽, 앞).
+// 갈 수 있는 범위(lo~hi)는 진한 띠, 가장 뒤에서 손잡이까지 갈색. 숫자는 가장 뒤에서 앞으로 나온 거리(mm, 맨 뒤 0).
 function DepthSlider({ lo, hi, value, onChange }: { lo: number; hi: number; value: number; onChange: (z: number, done: boolean) => number }) {
   const [w, setW] = useState(1);
   const [live, setLive] = useState<number | null>(null);
@@ -183,8 +189,10 @@ function DepthSlider({ lo, hi, value, onChange }: { lo: number; hi: number; valu
       if (!success && (last.current !== null || preview.pending)) send(start.current, true);
     });
   const shown = live ?? value;
-  const pos = (1 - (shown + SHELF_FRONT) / full) * w;
-  const mmOf = (z: number) => Math.round((z + SHELF_FRONT) / DU_PER_MM);
+  const xOf = (z: number) => (1 - (z + SHELF_FRONT) / full) * w;
+  const pos = xOf(shown);
+  const back = xOf(hi);
+  const mmOf = (z: number) => Math.max(0, Math.round((hi - z) / DU_PER_MM));
   return (
     <>
       <GestureDetector gesture={pan}>
@@ -194,14 +202,16 @@ function DepthSlider({ lo, hi, value, onChange }: { lo: number; hi: number; valu
           onLayout={(e) => setW(e.nativeEvent.layout.width)}
           accessibilityRole="adjustable"
           accessibilityLabel={ko.decoratePanel.depth}
-          accessibilityValue={{ min: mmOf(lo), max: mmOf(hi), now: mmOf(value), text: `선반 앞 끝에서 ${mmOf(value)}밀리미터` }}
+          accessibilityValue={{ min: 0, max: mmOf(lo), now: mmOf(value), text: `가장 뒤에서 ${mmOf(value)}밀리미터 앞` }}
           accessibilityActions={[{ name: 'increment' }, { name: 'decrement' }]}
           onAccessibilityAction={(e) => onChange(Math.max(lo, Math.min(hi, value + (e.nativeEvent.actionName === 'increment' ? 10 : -10) * DU_PER_MM)), true)}>
           <View style={styles.track} />
-          <View style={[styles.fill, { width: Math.max(0, pos) }]} />
+          <View style={[styles.band, { left: back, width: Math.max(0, xOf(lo) - back) }]} />
+          <View style={[styles.fill, { left: back, width: Math.max(0, pos - back) }]} />
           <View style={[styles.thumb, { left: pos - THUMB / 2, opacity: w > 1 ? 1 : 0 /* 폭을 재기 전에는 0 위치에 잠깐 보이지 않게 */ }]} />
         </View>
       </GestureDetector>
+      <Text style={styles.value}>{`${mmOf(shown)}mm`}</Text>
     </>
   );
 }
@@ -269,10 +279,8 @@ function Choice({ label, on, disabled, onPress, children }: { label: string; on:
   );
 }
 
-export function DecoratePanel({ bookId, title, pose, lean, canLean, msg, bottomInset, reduceMotion, onPose, onLean, spin, onSpin, depth, onDepth, onHeight, angles, canUndo, onUndo, onDone }: Props) {
-  // 세부 조정(기대기 · 돌리기)은 접어 둔다. 펼친 채로 다른 책을 골라도 그대로
-  const [more, setMore] = useState(false);
-  const chevron = { size: icon.size, color: colors.inkSoft, strokeWidth: icon.stroke };
+export function DecoratePanel({ bookId, title, pose, lean, canLean, msg, bottomInset, reduceMotion, onPose, onLean, spin, onSpin, spinRange, depth, onDepth, onHeight, angles, canUndo, onUndo, onDone }: Props) {
+  const turns = pose === 'horizontal' || pose === 'front';
   return (
     <Animated.View
       entering={reduceMotion ? undefined : FadeInDown.duration(160)}
@@ -305,38 +313,23 @@ export function DecoratePanel({ bookId, title, pose, lean, canLean, msg, bottomI
           <PoseTab key={p} pose={p} on={!!title && pose === p} disabled={!title} onPress={() => onPose(p)} />
         ))}
       </View>
-      {depth ? (
-        <View style={styles.section}>
-          <Text style={styles.label}>{ko.decoratePanel.depthTitle}</Text>
-          <View style={styles.sliderRow}>
-            <Text style={styles.end}>{ko.decoratePanel.back}</Text>
+      <View style={styles.rows}>
+        {depth ? (
+          <View style={styles.row}>
+            <Text style={styles.rowLabel}>{ko.decoratePanel.depth}</Text>
             <DepthSlider key={bookId} lo={depth.lo} hi={depth.hi} value={depth.z} onChange={onDepth} />
-            <Text style={styles.end}>{ko.decoratePanel.forward}</Text>
           </View>
-        </View>
-      ) : null}
-      <Pressable
-        onPress={() => setMore((v) => !v)}
-        disabled={!title}
-        accessibilityRole="button"
-        accessibilityState={{ expanded: more, disabled: !title }}
-        style={({ pressed }) => [styles.moreRow, pressed && press, !title && { opacity: 0.35 }]}>
-        <Text style={styles.moreText}>{ko.decoratePanel.more}</Text>
-        {more ? <ChevronUp {...chevron} /> : <ChevronDown {...chevron} />}
-      </Pressable>
-      {more && title ? (
-        <View style={styles.detail}>
-          {pose === 'horizontal' || pose === 'front' ? (
-            <>
-              <View style={styles.row}>
-                <Text style={styles.rowLabel}>{ko.decoratePanel.spin}</Text>
-                <SpinSlider key={`${bookId}:${pose}`} value={spin} onChange={onSpin} max={pose === 'front' ? MAX_FRONT_SPIN : MAX_SPIN} />
-              </View>
-              {angles ? <Text style={styles.caption}>{angles}</Text> : null}
-            </>
-          ) : (
-            <View style={styles.row}>
-              <Text style={styles.rowLabel}>{ko.decoratePanel.lean}</Text>
+        ) : null}
+        {title && turns ? (
+          <View style={styles.row}>
+            <Text style={styles.rowLabel}>{ko.decoratePanel.spin}</Text>
+            <SpinSlider key={`${bookId}:${pose}`} value={spin} onChange={onSpin} max={pose === 'front' ? MAX_FRONT_SPIN : MAX_SPIN} range={spinRange} />
+          </View>
+        ) : null}
+        {title && !turns ? (
+          <View style={styles.row}>
+            <Text style={styles.rowLabel}>{ko.decoratePanel.lean}</Text>
+            <View style={styles.choices}>
               {([-1, 0, 1] as LeanDir[]).map((d) => (
                 <Choice
                   key={d}
@@ -348,14 +341,16 @@ export function DecoratePanel({ bookId, title, pose, lean, canLean, msg, bottomI
                 </Choice>
               ))}
             </View>
-          )}
-        </View>
-      ) : null}
+          </View>
+        ) : null}
+        {angles && pose === 'front' ? <Text style={styles.caption}>{angles}</Text> : null}
+      </View>
     </Animated.View>
   );
 }
 
 const THUMB = 26; // 막대 손잡이 지름(시안 약 26)
+const TRACK = 4; // 막대 두께
 
 const styles = StyleSheet.create({
   panel: {
@@ -384,25 +379,23 @@ const styles = StyleSheet.create({
   poseText: { ...type.row, fontSize: 16, lineHeight: 22, color: colors.inkSoft, marginTop: 6 },
   poseTextOn: { fontFamily: fonts.uiBold, color: colors.ink },
   poseBar: { width: 52, height: 2.5, borderRadius: 2, backgroundColor: colors.accent, marginTop: 9 },
-  section: { marginTop: 22 },
-  label: { ...type.sub, color: colors.inkSoft },
-  sliderRow: { flexDirection: 'row', alignItems: 'center', marginTop: 6 },
-  end: { ...type.caption, fontSize: 14, color: colors.inkSoft },
-  moreRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', minHeight: 52, marginTop: 6 },
-  moreText: { ...type.label, fontSize: 16.5 },
-  detail: { paddingBottom: 4 },
-  caption: { ...type.caption, marginTop: 2 },
-  row: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingVertical: 4 },
-  rowLabel: { ...type.sub, fontSize: 14, color: colors.inkSoft, width: 52 },
+  rows: { marginTop: 14, paddingBottom: 6 },
+  // 줄: 이름(왼쪽 고정 폭) · 막대 · 숫자(오른쪽 고정 폭)
+  row: { flexDirection: 'row', alignItems: 'center', minHeight: 52 },
+  rowLabel: { ...type.sub, color: colors.ink, width: 48 },
+  value: { ...type.sub, color: colors.ink, width: 52, textAlign: 'right', fontVariant: ['tabular-nums'] },
+  caption: { ...type.caption, marginLeft: 48 },
+  choices: { flex: 1, flexDirection: 'row', gap: 6 },
   choice: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, height: 44, borderRadius: shape.input },
   choiceOn: { backgroundColor: colors.accentSoft },
   pressed: { backgroundColor: colors.surface },
   choiceText: { ...type.caption, fontSize: 13.5, color: colors.ink },
-  slider: { flex: 1, height: 44, justifyContent: 'center', marginHorizontal: 12 },
-  track: { height: 3, borderRadius: 2, backgroundColor: colors.line },
-  // 앞뒤 막대: 왼쪽 끝부터 손잡이까지 갈색
-  fill: { position: 'absolute', left: 0, height: 3, top: 20.5, borderRadius: 2, backgroundColor: colors.accent },
-  tick: { position: 'absolute', width: 1, height: 10, top: 17, backgroundColor: colors.inkFaint },
+  slider: { flex: 1, height: 44, justifyContent: 'center', marginLeft: 4 },
+  // 막대: 전체(옅게) 위에 갈 수 있는 범위(진한 띠), 기준점에서 손잡이까지 갈색
+  track: { height: TRACK, borderRadius: TRACK / 2, backgroundColor: colors.surface },
+  band: { position: 'absolute', height: TRACK, top: (44 - TRACK) / 2, borderRadius: TRACK / 2, backgroundColor: colors.track },
+  fill: { position: 'absolute', height: TRACK, top: (44 - TRACK) / 2, borderRadius: TRACK / 2, backgroundColor: colors.accent },
+  tick: { position: 'absolute', width: 2, height: 12, top: 16, borderRadius: 1, backgroundColor: colors.inkFaint },
   thumb: {
     position: 'absolute',
     width: THUMB,
@@ -413,5 +406,4 @@ const styles = StyleSheet.create({
     borderWidth: 1.5,
     borderColor: colors.inkSoft,
   },
-  deg: { ...type.caption, width: 44, textAlign: 'right' },
 });

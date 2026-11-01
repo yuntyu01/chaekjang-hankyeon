@@ -2,10 +2,10 @@
 import { corners, fromPlaced } from '../book3';
 import { project } from '../box';
 import { camCenteredAt, VIEW_PITCH_MIN, type Cam } from '../camera';
-import { CAMERA, SHELF, SHELF_DEPTH, SHELF_DEPTH_MM, SHELF_FRONT, SHELF_FRONT_MM, SHELF_THICK, SHELF_TOTAL_DEPTH_MM, SHELF_USABLE_WIDTH, SHELF_X0, SHELF_X1 } from '../geometry';
+import { CAMERA, MAX_SPIN, SHELF, SHELF_DEPTH, SHELF_DEPTH_MM, SHELF_FRONT, SHELF_FRONT_MM, SHELF_THICK, SHELF_TOTAL_DEPTH_MM, SHELF_USABLE_WIDTH, SHELF_X0, SHELF_X1 } from '../geometry';
 import { shadowOnPlane, travelOf } from '../cast-shadow';
 import { light } from '@/scene-config/lighting';
-import { normalize, setSpin, type BookMap } from '../layout-engine';
+import { normalize, setSpin, spinRangeOf, type BookMap } from '../layout-engine';
 import { SAMPLE_BOOKS, SAMPLE_LAYOUT } from '../onboarding-sample';
 import { computeShelf } from '../shelf-scene';
 import { faceTextureMatrix, shelfBoxCorners, shelfFaces, shelfVertices } from '../shelf-geom';
@@ -110,6 +110,32 @@ it.each([
     expect(cx).toBeGreaterThan(SHELF_X0);
     expect(cx).toBeLessThan(SHELF_X1);
   }
+});
+
+// 꾸미기 막대의 회전 범위(미리 계산): 범위 끝 각도는 실제로 돌릴 수 있고 지금 각도를 품는다. 혼자 놓인 눕힌 책은 양쪽 끝까지
+it('spinRangeOf: 혼자 놓인 눕힌 책은 ±MAX_SPIN, 범위 끝 각도는 setSpin으로 그대로 된다', () => {
+  const p = SAMPLE_LAYOUT.placements.find((q) => q.bookId === 'b12')!;
+  const lone = normalize({
+    ...SAMPLE_LAYOUT,
+    placements: [{ ...p, stackId: undefined, stackOrder: undefined, pos: 120 }],
+    drawer: SAMPLE_LAYOUT.placements.filter((q) => q.bookId !== 'b12').map((q) => q.bookId),
+  });
+  const r = spinRangeOf(lone, books, 'b12')!;
+  expect(r.lo).toBeCloseTo(-MAX_SPIN, 6);
+  expect(r.hi).toBeCloseTo(MAX_SPIN, 6);
+  for (const d of [r.lo, r.hi]) {
+    const s = setSpin(lone, books, 'b12', d);
+    expect(s.ok).toBe(true);
+  }
+});
+
+it('spinRangeOf: 쌓인 책 아래 눕힌 책도 범위 안에 지금 각도가 있고, 세운 책은 null', () => {
+  const r = spinRangeOf(SAMPLE_LAYOUT, books, 'b12');
+  expect(r).not.toBeNull();
+  expect(r!.lo).toBeLessThanOrEqual(0);
+  expect(r!.hi).toBeGreaterThanOrEqual(0);
+  const spine = SAMPLE_LAYOUT.placements.find((q) => q.pose === 'spine')!;
+  expect(spinRangeOf(SAMPLE_LAYOUT, books, spine.bookId)).toBeNull();
 });
 
 describe('판 → 벽 그림자 모양', () => {

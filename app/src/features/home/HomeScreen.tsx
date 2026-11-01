@@ -961,7 +961,7 @@ export function HomeScreen() {
     return tasks.active() && placementStore.undo();
   }, [holdRows, releaseLater]);
 
-  const { editPlacement, editDisplayPose, canLean, editPose, editLean, onHandle, headOffX, headOffY, anglesText, editDepth, depthInfo, editSpin } = useShelfEditCommands({
+  const { editPlacement, editDisplayPose, canLean, editPose, editLean, onHandle, headOffX, headOffY, anglesText, editDepth, depthInfo, editSpin, spinRange } = useShelfEditCommands({
     layout, books, editId, motions, scale: m.scale, reduceMotion, settled, commit,
     getCommittedLayout: () => placementStore.get().layout,
     getFallDirections: () => placementStore.get().fallDirections,
@@ -1306,6 +1306,7 @@ export function HomeScreen() {
           onLean={editLean}
           spin={editPlacement?.spin ?? 0}
           onSpin={editSpin}
+          spinRange={spinRange}
           depth={depthInfo}
           onDepth={editDepth}
           angles={anglesText}
