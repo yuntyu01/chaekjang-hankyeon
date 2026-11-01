@@ -5,7 +5,7 @@ import { ChevronDown, ChevronUp, MoreHorizontal } from '@/ui/icons';
 import { useState } from 'react';
 import { Alert, Image, Linking, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 
-import { BookReviews } from '@/features/community/BookReviews';
+import { ReaderRating, ReviewsPane, useBookReviews } from '@/features/community/BookReviews';
 import { STATUS_LABEL, ymd } from '@/features/book/labels';
 import { placeWithChoice } from '@/features/book/place-books';
 import { ko } from '@/i18n/ko';
@@ -14,11 +14,12 @@ import { bookmarksOf, bookReadMs, completions, formatDuration, READ_STATUSES, ro
 import { useLibrary, libraryStore } from '@/store/library-store';
 import { placementStore, usePlacementStore } from '@/store/placement-store';
 import { uiBus } from '@/store/ui-bus';
-import { Btn, Chip, Empty, Field, H2, IconButton, ListGroup, ListItem, Muted, Row, Screen, Sheet, Stars, TextLink, s as kit } from '@/ui/kit';
+import { Btn, Chip, Empty, Field, H2, IconButton, ListGroup, ListItem, Muted, Row, Screen, Segmented, Sheet, Stars, TextLink, s as kit } from '@/ui/kit';
 import { colors, fonts, icon, press, shape, tidySpace as space, tidyType as type } from '@/ui/screenTheme';
 import { BookVisual, LibraryCover } from '@/ui/BookVisual';
 
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
+const VIEW_TABS = [{ id: 'mine', label: '내 기록' }, { id: 'readers', label: '독자 후기' }] as const;
 
 export default function BookDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -27,8 +28,11 @@ export default function BookDetailScreen() {
   const [menu, setMenu] = useState(false);
   const [records, setRecords] = useState(false);
   const [pageEdit, setPageEdit] = useState(false);
+  const [tab, setTab] = useState<'mine' | 'readers'>('mine');
   const b = lib.books[id];
   const e = b && lib.editions[b.editionId];
+  // 독자 후기: ISBN이 있고 커뮤니티를 쓸 수 있을 때만 '내 기록 | 독자 후기' 전환 칸을 보인다
+  const reviews = useBookReviews(e?.isbn13);
   if (!b || !e)
     return (
       <Screen tidy title="책">
@@ -92,10 +96,13 @@ export default function BookDetailScreen() {
         {place.books[id] ? <BookVisual book={place.books[id]} width={194} /> : <LibraryCover lib={lib} id={id} width={194} />}
         <Text style={st.title}>{e.title}</Text>
         {e.authors.length ? <Text style={st.author}>{e.authors.join(', ')}</Text> : null}
+        <ReaderRating data={reviews.data} />
       </View>
+      {reviews.available ? <Segmented items={VIEW_TABS} value={tab} onChange={setTab} style={st.tabs} /> : null}
+      {reviews.available && tab === 'readers' ? <ReviewsPane isbn13={e.isbn13!} title={e.title} myRating={b.rating} state={reviews} /> : (<>
       {/* 내 독서(2026-11): 읽기 상태·현재 쪽(전체 쪽수를 알 때만 진행 막대)·독서 기록·갈피를 한 묶음으로. 모르는 값은 계산하지 않는다.
           회색 상자 없이 구역 제목·여백·얇은 선으로 묶는다(2026-11-01 사용자 '내부 회색 박스 별로', 토스·노션처럼) */}
-      <View style={st.myBlock}>
+      <View style={[st.myBlock, !reviews.available && { marginTop: space.xxl }]}>
         <View style={st.myHead}>
           <Text style={type.section} accessibilityRole="header">내 독서</Text>
           <Text style={type.caption}>{[STATUS_LABEL[b.status], done ? `완독 ${done}회` : null].filter(Boolean).join(' · ')}</Text>
@@ -123,7 +130,10 @@ export default function BookDetailScreen() {
       {/* 내 평가: 별점과 한 줄 감상을 한자리에(나만 보는 기록. 다른 독자 평균은 아래 '다른 독자의 평가'에 따로) */}
       <View style={st.rateArea}>
         <View style={st.rateRow}>
-          <Text style={type.section} accessibilityRole="header">내 평가</Text>
+          <View>
+            <Text style={type.section} accessibilityRole="header">내 평가</Text>
+            <Text style={[type.caption, { marginTop: 2 }]}>나만 보는 평가예요</Text>
+          </View>
           <Stars value={b.rating} onChange={(v) => libraryStore.updateBook(id, { rating: v })} size={24} />
         </View>
         {b.note ? <Text style={st.note}>{b.note}</Text> : <TextLink label="한 줄 감상 남기기" tone="soft" onPress={() => setRecords(true)} style={{ alignSelf: 'flex-start' }} />}
@@ -181,8 +191,6 @@ export default function BookDetailScreen() {
             maxLength={140}
           />
 
-          <BookReviews isbn13={e.isbn13} title={e.title} myRating={b.rating} />
-
           <H2>남긴 갈피{marks.length ? ` · ${marks.length}` : ''}</H2>
           {marks.length ? (
             <View>
@@ -212,6 +220,7 @@ export default function BookDetailScreen() {
           )}
         </View>
       ) : null}
+      </>)}
 
       <Sheet visible={menu} onClose={() => setMenu(false)}>
         <ListGroup>
@@ -260,7 +269,8 @@ const st = StyleSheet.create({
   hero: { alignItems: 'center', paddingTop: space.xxl },
   title: { fontFamily: fonts.uiTitle, fontSize: 24, lineHeight: 32, color: colors.ink, textAlign: 'center', marginTop: space.xl, includeFontPadding: false },
   author: { ...type.sub, fontSize: 16, lineHeight: 22, marginTop: space.xs, textAlign: 'center' },
-  myBlock: { marginTop: space.xxl },
+  tabs: { marginTop: space.xxl },
+  myBlock: { marginTop: space.xl },
   myHead: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'baseline' },
   pageRow: { flexDirection: 'row', alignItems: 'baseline', justifyContent: 'space-between', marginTop: space.s, minHeight: space.touch },
   page: { fontFamily: fonts.ui, fontSize: 32, lineHeight: 40, color: colors.ink, includeFontPadding: false, fontVariant: ['tabular-nums'] },
