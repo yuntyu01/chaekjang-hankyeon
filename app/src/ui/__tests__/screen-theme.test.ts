@@ -20,23 +20,24 @@ const contrast = (a: string, b: string) => {
 };
 
 // 2026-10-26 색상 기준(갈피 수정 시안): 바탕·입력칸·버튼 글자는 사용자 지정값, 대표색은 시안에서 뽑은 값.
-// 2026-10-31 책장 시안 지시: 글자·구분선은 갈색 기 없는 중립 회색(주요 #303030, 보조 #757575 기준 → 입력칸 대비로 #707070, 구분선 #E5E5E5)
+// 2026-10-31 책장 시안 지시: 글자·구분선은 갈색 기 없는 회색. 2026-11-01 사용자 '본문색 토스처럼': 토스 디자인 시스템(TDS) grey 단계로
+// (본문 grey900 #191F28, 입력칸 grey100 #F2F4F6, 구분선 grey200 #E5E8EB, 보조는 grey600보다 한 단계 짙은 #646F7E — 입력칸 위 4.5:1)
 describe('색: 지정한 기준값', () => {
   it('배경·입력칸·대표색·글자·구분선·버튼 글자', () => {
-    expect(colors.bg).toBe('#FEFEFD');
-    expect(colors.input).toBe('#F6F5F2');
+    expect(colors.bg).toBe('#FFFFFF');
+    expect(colors.input).toBe('#F2F4F6');
     expect(colors.accent).toBe('#6C534A');
-    expect(colors.ink).toBe('#303030');
-    expect(colors.inkSoft).toBe('#707070');
-    expect(colors.title).toBe('#303030');
-    expect(colors.line).toBe('#E5E5E5');
-    expect(colors.border).toBe('#E5E5E5');
+    expect(colors.ink).toBe('#191F28');
+    expect(colors.inkSoft).toBe('#646F7E');
+    expect(colors.title).toBe('#191F28');
+    expect(colors.line).toBe('#E5E8EB');
+    expect(colors.border).toBe('#E5E8EB');
     expect(colors.onAccent).toBe('#FFFFFF');
   });
-  it('UI 글자·구분선은 갈색 기가 없는 중립 회색(빨강=초록=파랑), 갈색은 대표색(버튼 바탕)에만', () => {
-    const neutral = (hex: string) => hex.slice(1, 3) === hex.slice(3, 5) && hex.slice(3, 5) === hex.slice(5, 7);
-    for (const c of [colors.ink, colors.title, colors.inkSoft, colors.inkFaint, colors.line, colors.border, colors.disabledInk]) expect(neutral(c)).toBe(true);
-    expect(neutral(colors.accent)).toBe(false);
+  it('UI 글자·구분선은 갈색 기가 없는 회색(빨강이 파랑보다 크지 않다: 중립이거나 토스처럼 살짝 차가움), 갈색은 대표색에만', () => {
+    const rb = (hex: string) => parseInt(hex.slice(1, 3), 16) - parseInt(hex.slice(5, 7), 16);
+    for (const c of [colors.ink, colors.title, colors.inkSoft, colors.inkFaint, colors.line, colors.border, colors.disabledInk]) expect(rb(c)).toBeLessThanOrEqual(0);
+    expect(rb(colors.accent)).toBeGreaterThan(0);
   });
   it('화면 배경과 입력칸 배경은 다른 토큰이고, 입력칸은 바탕과 구별된다', () => {
     expect(colors.input).not.toBe(colors.bg);
@@ -115,8 +116,8 @@ describe('글꼴 파일·등록', () => {
   it('UI 글꼴(Pretendard) 이름마다 assets 파일이 있고 루트 레이아웃 useFonts에 등록돼 있다', () => {
     const layout = fs.readFileSync(path.join(SRC, 'app', '_layout.tsx'), 'utf8');
     const useFonts = layout.slice(layout.indexOf('useFonts({'));
-    const files: Record<string, string> = { PretendardRegular: 'Pretendard-Regular.otf', PretendardMedium: 'Pretendard-Medium.otf', PretendardSemiBold: 'Pretendard-SemiBold.otf' };
-    for (const name of [fonts.ui, fonts.uiMedium, fonts.uiBold]) {
+    const files: Record<string, string> = { PretendardRegular: 'Pretendard-Regular.otf', PretendardMedium: 'Pretendard-Medium.otf', PretendardSemiBold: 'Pretendard-SemiBold.otf', PretendardBold: 'Pretendard-Bold.otf' };
+    for (const name of [fonts.ui, fonts.uiMedium, fonts.uiBold, fonts.uiTitle]) {
       expect(files[name]).toBeDefined();
       expect(fs.existsSync(path.join(SRC, '..', 'assets', 'fonts', files[name]))).toBe(true);
       expect(layout).toContain(`const ${name} = require('../../assets/fonts/${files[name]}')`);
@@ -187,10 +188,15 @@ describe('정돈 변형(tidy)', () => {
     expect(tidyButton).toEqual({ l: 56, m: 48, s: 40 });
     expect([tidyShape.button, tidyShape.input, tidyShape.chip, tidyShape.sheet, tidyShape.dialog]).toEqual([10, 10, 8, 20, 16]);
   });
-  it('굵기: 화면 제목 SemiBold, 묶음 제목·책 제목·입력칸 이름·버튼 Medium, 본문·보조 Regular', () => {
-    expect(tidyType.title.fontFamily).toBe(fonts.uiBold);
-    for (const k of ['heading', 'rowStrong', 'label', 'button'] as const) expect(tidyType[k].fontFamily).toBe(fonts.uiMedium);
-    for (const k of ['row', 'body', 'sub', 'caption', 'section'] as const) expect(tidyType[k].fontFamily).toBe(fonts.ui);
+  // 2026-11-01 '제목 키워'(토스식 위계): 큰 제목 Bold 24, 시트·묶음·구역 제목·책 제목·버튼 SemiBold, 입력칸 이름 Medium, 본문·보조 Regular
+  it('굵기·크기 위계: 큰 제목 Bold, 제목류·버튼 SemiBold, 입력칸 이름 Medium, 본문·보조 Regular', () => {
+    expect(tidyType.title.fontFamily).toBe(fonts.uiTitle);
+    for (const k of ['navTitle', 'heading', 'section', 'rowStrong', 'button'] as const) expect(tidyType[k].fontFamily).toBe(fonts.uiBold);
+    expect(tidyType.label.fontFamily).toBe(fonts.uiMedium);
+    for (const k of ['row', 'body', 'sub', 'caption'] as const) expect(tidyType[k].fontFamily).toBe(fonts.ui);
+    // 제목은 본문보다 분명히 크다(본문 17 기준 1.4배 이상), 시트 제목은 본문보다 크다
+    expect(tidyType.title.fontSize! / tidyType.row.fontSize!).toBeGreaterThanOrEqual(1.4);
+    expect(tidyType.heading.fontSize!).toBeGreaterThan(tidyType.row.fontSize!);
   });
   it('보조 글자도 바탕 위 4.5:1 이상, 너무 작지 않다(14 이상)', () => {
     for (const k of ['sub', 'caption', 'section'] as const) {

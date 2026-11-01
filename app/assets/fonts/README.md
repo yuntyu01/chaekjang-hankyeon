@@ -1,9 +1,10 @@
 # 앱에 넣은 글꼴
 
-- `Pretendard-{Regular,Medium,SemiBold}.otf` — Pretendard 1.3.9 (길형진, https://github.com/orioncactus/pretendard). SIL OFL 1.1: `Pretendard-OFL.txt`.
+- `Pretendard-{Regular,Medium,SemiBold,Bold}.otf` — Pretendard 1.3.9 (길형진, https://github.com/orioncactus/pretendard). SIL OFL 1.1: `Pretendard-OFL.txt`.
   화면 UI 글꼴(2026-10-26 시안과 같은 글꼴): Regular 본문·목록·입력칸, Medium 예비, SemiBold 제목·버튼·입력칸 이름. 토큰은 `src/ui/screenTheme.ts`의 `fonts.ui`·`fonts.uiMedium`·`fonts.uiBold`·`type`.
   한글 11,172자(본고딕 뼈대)·영문·숫자(Inter 모양). 숫자 폭이 서로 달라 바뀌는 시간 숫자에는 `fontVariant: ['tabular-nums']`(글꼴의 tnum)를 쓴다.
-  파일은 npm `pretendard@1.3.9`의 `dist/public/static` 그대로다.
+  Bold는 2026-11-01 추가: 일반 화면의 큰 제목(토스식 위계, `fonts.uiTitle`)에만 쓴다.
+  파일은 npm `pretendard@1.3.9`의 `dist/public/static` 그대로다(Bold는 jsDelivr 같은 경로에서 받음, 같은 경로의 SemiBold가 저장소 파일과 md5 같음).
 
 - `NanumSquareRoundB.ttf`, `NanumSquareRoundEB.ttf` — 나눔스퀘어라운드 Bold·ExtraBold (Copyright © 2017 NAVER Corporation, 디자인 산돌커뮤니케이션). SIL OFL 1.1(https://hangeul.naver.com/fonts).
   웹폰트 배포본(https://github.com/innks/NanumSquareRound)의 TTF. 2026-10-31부터 앱에서 쓰지 않는다(홈 머리글 '나의 책장'·연도가 Pretendard로 바뀜). 등록도 뺐고 파일만 남겨 둔다.

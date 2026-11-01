@@ -18,11 +18,11 @@ export const colors = {
   tabBar: '#FBF6EE',
   title: '#1B2433',
   summary: '#7F858C',
-  homeTitle: '#303030', // 홈 머리글 '나의 책장'·더하기(화면 UI 글자와 같은 중립 짙은 회색, 2026-10-31)
-  homeSummary: '#707070', // 홈 머리글 연도·'전체 책'(화면 UI 보조 글자와 같은 중립 회색)
+  homeTitle: '#191F28', // 홈 머리글 '나의 책장'·더하기(화면 UI 본문과 같은 색. 2026-11-01 토스 grey900)
+  homeSummary: '#646F7E', // 홈 머리글 연도·'전체 책'(화면 UI 보조 글자와 같은 색)
   circle: '#D8CFC4',
-  tabActive: '#303030',
-  tabInactive: '#8A8A8A',
+  tabActive: '#191F28',
+  tabInactive: '#8B95A1', // TDS grey500
   danger: '#A5483A',
   dropOk: 'rgba(60, 70, 60, 0.12)',
   dropBad: 'rgba(165, 72, 58, 0.16)',

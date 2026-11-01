@@ -68,7 +68,8 @@ const st = StyleSheet.create({
   head: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 8, marginBottom: 8 },
   nick: { fontFamily: fonts.uiBold, fontSize: 14, color: colors.ink },
   title: { fontFamily: fonts.serif, fontSize: 18, lineHeight: 25, color: colors.title },
-  quote: { marginTop: 12, paddingVertical: 12, paddingHorizontal: 14, borderRadius: 10, backgroundColor: colors.surface },
+  // 갈피 문장 인용: 회색 상자 대신 왼쪽 세로줄(노션 인용 블록처럼). 게시물 하나 안에 상자를 겹치지 않는다
+  quote: { marginTop: 12, paddingVertical: 2, paddingLeft: 14, borderLeftWidth: 3, borderLeftColor: colors.track },
   quoteText: { fontFamily: fonts.serif, fontSize: 15, lineHeight: 24, color: colors.ink },
   foot: { flexDirection: 'row', gap: 18, marginTop: 12 },
   stat: { flexDirection: 'row', alignItems: 'center', gap: 5, minHeight: 28 },

@@ -269,7 +269,7 @@ export function ReadingScreen({ initialBookId, soundOnly = false, inTab = false 
         <View style={st.soundBlock}>
           <Text style={type.label}>{active ? '소리' : '소리만 듣기'}</Text>
           <Text style={[type.sub, { marginTop: space.xs }]}>{active ? '소리는 독서 타이머와 따로 켜고 꺼요. 읽은 시간은 그대로예요.' : '시간을 재지 않고 소리만 들어요. 독서 시간에는 쌓이지 않아요.'}</Text>
-          <Btn label={audio.playing ? (active ? '소리 끄기' : '소리 멈추기') : active ? '소리 켜기' : '소리만 듣기'} kind="secondary" size="m" onPress={() => (audio.playing ? ambient.pause() : void ambient.play(scene))} style={st.soundButton} />
+          <Btn label={audio.playing ? (active ? '소리 끄기' : '소리 멈추기') : active ? '소리 켜기' : '소리만 듣기'} kind="secondary" size="m" onPress={() => (audio.playing ? ambient.pause() : void ambient.play(scene))} style={{ marginTop: space.m }} />
         </View>
       </Sheet>
     </View>
@@ -321,8 +321,8 @@ const st = StyleSheet.create({
   volRow: { flexDirection: 'row', alignItems: 'center', gap: space.s, marginTop: space.xs },
   mute: { width: space.touch, height: space.touch, borderRadius: 22, alignItems: 'center', justifyContent: 'center' },
   muteOn: { backgroundColor: colors.accentSoft },
-  soundBlock: { marginTop: space.xl, padding: space.l, borderRadius: 14, backgroundColor: colors.surface },
-  soundButton: { marginTop: space.m, backgroundColor: colors.bg, borderWidth: 1, borderColor: colors.border },
+  // 소리 묶음: 회색 상자 대신 위 얇은 선과 여백으로 나눈다(2026-11-01)
+  soundBlock: { marginTop: space.xl, paddingTop: space.xl, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.line },
   error: { ...type.sub, color: colors.danger, marginTop: space.m },
   fade: { position: 'absolute', left: 0, right: 0, bottom: 0 },
   dock: { position: 'absolute', alignSelf: 'center', flexDirection: 'row', alignItems: 'center', gap: space.xl },

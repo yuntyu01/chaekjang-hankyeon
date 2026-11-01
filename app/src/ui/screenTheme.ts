@@ -8,26 +8,29 @@ import { colors as shelfColors, fonts as shelfFonts } from './theme';
 // 책장 재질·빛·치수는 theme.ts의 따로 된 토큰을 쓴다(시안 벽색에 맞춰 보정돼 있다).
 export const colors = {
   ...shelfColors,
-  bg: '#FEFEFD', // 화면 배경: 부드러운 흰색(시트·확인창·메뉴도 같은 바탕)
-  input: '#F6F5F2', // 입력칸·검색창 배경: 노란기 없는 아주 옅은 아이보리(균일한 단색, 질감·그라데이션 없음)
-  surface: '#F6F5F2', // 입력칸 말고 구분이 필요한 작은 영역(안내 상자·눌린 줄)
-  raised: '#FEFEFD', // 하단 시트·확인창·정보 상자(화면 배경과 같은 흰색)
-  ink: '#303030', // 본문 글자·입력칸 이름: 중립 짙은 회색(바탕 12.5:1)
-  title: '#303030', // 화면 제목·뒤로(본문과 같은 중립 짙은 회색)
-  inkSoft: '#707070', // 보조 글자('선택'·책 정보 줄·단위·구역 이름). 기준 #757575는 입력칸 위 4.3:1이라 한 단계 짙게(흰 바탕 4.9:1, 입력칸 4.6:1)
-  inkFaint: '#A3A3A3', // 입력 안내 글자·장식 선(본문에 쓰지 않는다)
-  track: '#D3CFCA', // 슬라이더의 남은 트랙(흰 바탕·입력칸 위에서 구분선보다 분명히 보이게, 2026-11)
-  line: '#E5E5E5', // 구분선
-  border: '#E5E5E5', // 기본 테두리(보조 버튼·칩)
-  accent: '#6C534A', // 대표색: 주요 버튼·선택 상태·입력 포커스·켜진 스위치(시안 버튼 #6C534A~#6C544A)
+  // 2026-11-01 사용자 '본문색 토스처럼': 글자·바탕 회색을 토스 디자인 시스템(TDS) grey 단계로 맞췄다(차가운 중립 회색, 노란기 없음).
+  // 갈색(accent)은 브랜드색으로 주요 버튼·선택 표시·활성 조절부에만 그대로 쓴다. 책장 재질·갈피 카드 종이색은 따로(theme.ts·BookmarkCard).
+  bg: '#FFFFFF', // 화면 배경(시트·확인창·메뉴도 같은 바탕)
+  input: '#F2F4F6', // 입력칸·검색창 배경(TDS grey100)
+  surface: '#F2F4F6', // 구분이 필요한 작은 영역(요약 블록·안내 상자·눌린 줄)·묶음 사이 띠
+  raised: '#FFFFFF', // 하단 시트·확인창·정보 상자
+  ink: '#191F28', // 본문 글자(TDS grey900, 흰 바탕 16.6:1)
+  title: '#191F28', // 화면 제목·뒤로
+  inkSoft: '#646F7E', // 보조 글자: TDS grey600(#6B7684)보다 한 단계 짙게(회색 입력칸 위 4.5:1 이상: 흰 바탕 5.1, 입력칸 4.6)
+  inkFaint: '#B0B8C1', // 입력 안내 글자·장식 선(TDS grey400, 본문에 쓰지 않는다)
+  line: '#E5E8EB', // 구분선(TDS grey200)
+  border: '#E5E8EB', // 기본 테두리
+  track: '#D1D6DB', // 슬라이더 남은 트랙·꺼진 스위치(TDS grey300)
+  accent: '#6C534A', // 대표색: 주요 버튼·선택 상태·입력 포커스·켜진 스위치
   accentPressed: '#5A443C',
-  accentSoft: '#F2EDEA', // 작은 강조 바탕(검색 결과 '추가', 고른 칸). 크림·베이지가 아닌 옅은 갈색 기운
-  onAccent: '#FFFFFF', // 갈색 버튼 안 글자
-  disabled: '#ECE9E5', // 누를 수 없는 주요 버튼 바탕(입력칸과 구별되게 한 단계 짙게)
-  disabledInk: '#A6A6A6',
-  danger: '#A5483A', // 오류·삭제(갈색과 구별되는 붉은 기)
+  accentSoft: '#F2EDEA', // 옅은 갈색 바탕: 보조 버튼·고른 칸(토스의 옅은 파랑 바탕 + 파랑 글자 자리)
+  accentSoftPressed: '#E8DED9',
+  onAccent: '#FFFFFF',
+  disabled: '#E5E8EB', // 누를 수 없는 주요 버튼 바탕
+  disabledInk: '#B0B8C1',
+  danger: '#A5483A',
   star: '#A8865F',
-  scrim: 'rgba(43,39,37,0.32)',
+  scrim: 'rgba(25,31,40,0.36)',
   inkAction: '#F2D9A6', // 짙은 알림(토스트) 위 행동 글자(되돌리기)
 };
 
@@ -40,6 +43,7 @@ export const fonts = {
   ui: 'PretendardRegular',
   uiMedium: 'PretendardMedium',
   uiBold: 'PretendardSemiBold', // 시안의 굵은 글자는 Bold보다 한 단계 가벼운 SemiBold
+  uiTitle: 'PretendardBold', // 일반 화면의 큰 제목만(2026-11-01 '제목 키워', 토스식 위계)
   serif: 'ReadingSerif',
   serifMedium: 'ReadingSerifMedium',
   serifBold: 'ReadingSerifSemiBold',
@@ -100,18 +104,21 @@ export const press = { opacity: 0.55 };
 // 굵기 기준: 화면 제목 SemiBold, 시트·묶음 제목·책 제목·주요 버튼·입력칸 이름 Medium, 본문·저자·상태·설명·보조 행동 Regular.
 // 간격은 4·8·12·16·24·32 단계만, 모서리는 조작 요소 10·칩 8·시트 20·확인창 16.
 export const tidyType = {
-  title: text(fonts.uiBold, 20, 28, colors.title), // 머리줄 화면 제목(22 → 20: 내용보다 크게 튀지 않게)
-  heading: text(fonts.uiMedium, 18, 26, colors.ink), // 시트 제목·빈 화면 제목·묶음 제목
-  section: text(fonts.ui, 14, 20, colors.inkSoft), // 구역 이름
+  // 2026-11-01 토스(TDS) 기준으로 위계를 다시 세웠다: 큰 제목 24 Bold(TDS 24 '조금 큰 제목') · 시트·묶음 제목 20(TDS 20 '작은 제목') ·
+  // 구역 제목 18 · 본문 17(TDS '일반 본문') · 보조 15('작은 본문') · 작은 메타 14. 크기 차이로 무엇이 주인공인지 보이게 한다
+  title: text(fonts.uiTitle, 24, 32, colors.title), // 화면 큰 제목(왼쪽 정렬, 내용 맨 위)
+  navTitle: text(fonts.uiBold, 17, 24, colors.title), // 머리줄 가운데 작은 제목(책 정보처럼 내용이 바로 주인공인 화면)
+  heading: text(fonts.uiBold, 20, 28, colors.ink), // 시트 제목·빈 화면 제목·묶음 제목
+  section: text(fonts.uiBold, 18, 26, colors.ink), // 구역 제목(H2)
   row: text(fonts.ui, 17, 24, colors.ink), // 목록·메뉴 한 줄
-  rowStrong: text(fonts.uiMedium, 17, 24, colors.ink), // 책 제목(목록)
-  body: text(fonts.ui, 16, 26, colors.ink), // 여러 줄 문단(행간 1.6)
+  rowStrong: text(fonts.uiBold, 17, 24, colors.ink), // 책 제목(목록)
+  body: text(fonts.ui, 16, 25, colors.ink), // 여러 줄 문단
   sub: text(fonts.ui, 15, 22, colors.inkSoft), // 저자·설명·값
-  caption: text(fonts.ui, 14, 20, colors.inkSoft), // 읽기 상태·날짜(13 → 14: 보조 정보도 읽히게)
-  button: text(fonts.uiMedium, 16, 22, colors.ink), // 버튼 글자(작은 버튼은 15)
+  caption: text(fonts.ui, 14, 20, colors.inkSoft), // 읽기 상태·날짜
+  button: text(fonts.uiBold, 16, 22, colors.ink), // 버튼 글자(작은 버튼은 15)
   input: type.input,
-  label: text(fonts.uiMedium, 15, 21, colors.ink), // 입력칸 이름(SemiBold 16 → Medium 15: 입력값보다 덜 무겁게)
-  number: { ...text(fonts.uiMedium, 22, 28, colors.ink), fontVariant: ['tabular-nums'] } as TextStyle,
+  label: text(fonts.uiMedium, 15, 21, colors.ink), // 입력칸 이름
+  number: { ...text(fonts.uiTitle, 24, 30, colors.ink), fontVariant: ['tabular-nums'] } as TextStyle,
 };
 export const tidySpace = { ...space, group: 24, tight: 8, xs: 4, s: 8, m: 12, l: 16, xl: 24, xxl: 32 };
 export const tidyShape = { ...shape, button: 10, input: 10, chip: 8, sheet: 20, dialog: 16, cover: 4 };

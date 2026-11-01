@@ -63,8 +63,10 @@ export function Screen({
   footer,
   bottomPad = 0,
   tidy: tidyProp,
+  compact,
 }: {
   tidy?: boolean; // 이 화면과 그 안의 부품을 정돈 변형으로(Tidy로 감싼다)
+  compact?: boolean; // 정돈 변형에서 큰 제목 대신 머리줄 가운데 작은 제목(책 정보처럼 내용 첫머리가 주인공인 화면)
   title?: string;
   titleNote?: string; // 제목 옆 회색 꼬리글(서랍 시안의 '· 4권')
   subtitle?: string;
@@ -84,12 +86,28 @@ export function Screen({
   const timerPad = active ? MINI_TIMER_SPACE : 0;
   // 화면 아래 고정 버튼이 있으면 미니 타이머를 그 위에 둔다(떠날 때 되돌린다)
   useEffect(() => () => miniTimerStore.setBottom(null), []);
+  // 정돈 변형(2026-11-01 토스식 위계): 뒤로가 있는 화면은 머리줄에 뒤로·행동만 두고, 제목은 내용 맨 위 왼쪽에 크게(24 Bold).
+  // 스크롤 화면이면 제목도 내용과 함께 올라간다
+  const large = t && back && !compact && !!title;
+  const largeTitle = large ? (
+    <View style={ts.largeTitle}>
+      <Text style={tidyType.title} accessibilityRole="header">
+        {title}
+        {titleNote ? <Text style={[s.titleNote, { fontFamily: fonts.ui }]}>{`  ${titleNote}`}</Text> : null}
+      </Text>
+      {subtitle ? <Text style={[tidyType.sub, { marginTop: 4 }]}>{subtitle}</Text> : null}
+    </View>
+  ) : null;
   const body = scroll ? (
     <ScrollView contentContainerStyle={{ paddingHorizontal: space.page, paddingBottom: space.section + bottomPad + timerPad + (footer ? 0 : insets.bottom) }} keyboardShouldPersistTaps="handled">
+      {largeTitle}
       {children}
     </ScrollView>
   ) : (
-    <View style={{ flex: 1, paddingHorizontal: space.page }}>{children}</View>
+    <View style={{ flex: 1, paddingHorizontal: space.page }}>
+      {largeTitle}
+      {children}
+    </View>
   );
   const screen = (
     <View style={{ flex: 1, paddingTop: insets.top, backgroundColor: colors.bg }}>
@@ -97,11 +115,13 @@ export function Screen({
         <View style={s.header}>
           {/* 제목은 화면 가운데(양옆 버튼 폭과 상관없이) */}
           <View pointerEvents="none" style={s.titleCenter}>
-            <Text style={tt.title} numberOfLines={1} accessibilityRole="header">
+            {large ? null : <>
+            <Text style={t ? tidyType.navTitle : tt.title} numberOfLines={1} accessibilityRole="header">
               {title ?? ''}
               {titleNote ? <Text style={s.titleNote}>{`  ${titleNote}`}</Text> : null}
             </Text>
             {subtitle ? <Text style={[tt.caption, { marginTop: t ? 4 : 2 }]} numberOfLines={1}>{subtitle}</Text> : null}
+            </>}
           </View>
           <Pressable onPress={() => (router.canGoBack() ? router.back() : router.replace('/'))} hitSlop={8} accessibilityRole="button" accessibilityLabel="뒤로" style={s.back}>
             <ChevronLeft size={28} color={colors.title} strokeWidth={icon.stroke} />
@@ -111,7 +131,8 @@ export function Screen({
       ) : (
         <View style={[s.headerLeft, t && ts.headerLeft]}>
           <View style={{ flex: 1 }}>
-            <Text style={tt.title} accessibilityRole="header">
+            {/* 탭 첫 화면·완료 화면의 왼쪽 제목은 정돈 여부와 상관없이 같은 큰 제목(24 Bold, 2026-11-01) */}
+            <Text style={tidyType.title} accessibilityRole="header">
               {title ?? ''}
             </Text>
             {subtitle ? <Text style={[tt.sub, { marginTop: 4 }]}>{subtitle}</Text> : null}
@@ -138,7 +159,7 @@ export function Screen({
 export function H2({ children, style, first }: { children: ReactNode; style?: StyleProp<ViewStyle>; first?: boolean }) {
   const t = useTidy();
   return (
-    <View style={[t ? { marginTop: first ? tidySpace.xl : tidySpace.section, marginBottom: tidySpace.s } : { marginTop: first ? space.group + 8 : space.section, marginBottom: space.tight + 2 }, style]}>
+    <View style={[t ? { marginTop: first ? tidySpace.l : tidySpace.section, marginBottom: tidySpace.s } : { marginTop: first ? space.group + 8 : space.section, marginBottom: space.tight + 2 }, style]}>
       <Text style={t ? tidyType.section : type.section} accessibilityRole="header">
         {children}
       </Text>
@@ -199,9 +220,11 @@ export function Btn({
           primary && { backgroundColor: colors.accent },
           primary && pressed && { backgroundColor: colors.accentPressed },
           primary && disabled && { backgroundColor: colors.disabled },
-          (kind === 'secondary' || kind === 'danger') && { backgroundColor: colors.input },
+          // 보조 버튼은 옅은 갈색 바탕 + 갈색 글자(토스의 옅은 파랑 바탕 + 파랑 글자 자리). 삭제는 회색 바탕 + 붉은 글자
+          kind === 'secondary' && { backgroundColor: colors.accentSoft },
+          kind === 'danger' && { backgroundColor: colors.input },
           !primary && disabled && { opacity: 0.45 },
-          !primary && pressed && { backgroundColor: colors.line },
+          !primary && pressed && { backgroundColor: kind === 'secondary' ? colors.accentSoftPressed : colors.line },
           style,
         ]}>
         <View style={[ts.btnInner, busy && { opacity: 0 }]}>
@@ -247,7 +270,7 @@ export function Btn({
 export function TextLink({ label, onPress, tone = 'accent', disabled, style }: { label: string; onPress: () => void; tone?: 'accent' | 'soft'; disabled?: boolean; style?: StyleProp<ViewStyle> }) {
   return (
     <Pressable onPress={onPress} disabled={disabled} hitSlop={{ left: 8, right: 8 }} accessibilityRole="button" accessibilityLabel={label} accessibilityState={{ disabled: !!disabled }} style={({ pressed }) => [s.link, pressed && press, disabled && { opacity: 0.4 }, style]}>
-      <Text style={[s.linkText, useTidy() && ts.linkText, { color: tone === 'accent' ? colors.ink : colors.inkSoft }]}>{label}</Text>
+      <Text style={[s.linkText, useTidy() && ts.linkText, { color: tone === 'accent' ? colors.accent : colors.inkSoft }]}>{label}</Text>
     </Pressable>
   );
 }
@@ -420,7 +443,7 @@ export function Choice({ label, sub, selected, onPress, children, style, compact
   const t = useTidy();
   const tt = t ? tidyType : type;
   return (
-    <Pressable onPress={onPress} accessibilityRole="radio" accessibilityState={{ selected, checked: selected }} accessibilityLabel={[label, sub].filter(Boolean).join(', ')} style={({ pressed }) => [cs.choice, compact && cs.choiceCompact, selected ? cs.choiceOn : null, pressed && !selected && { backgroundColor: colors.line }, style]}>
+    <Pressable onPress={onPress} accessibilityRole="radio" accessibilityState={{ selected, checked: selected }} accessibilityLabel={[label, sub].filter(Boolean).join(', ')} style={({ pressed }) => [cs.choice, compact && cs.choiceCompact, selected ? cs.choiceOn : null, pressed && !selected && { backgroundColor: colors.surface }, style]}>
       {children}
       <View style={cs.choiceRow}>
         <View style={{ flex: 1, minWidth: 0 }}>
@@ -429,9 +452,18 @@ export function Choice({ label, sub, selected, onPress, children, style, compact
         </View>
       </View>
       {selected ? (
-        <View style={[cs.check, compact ? cs.checkCompact : !sub && cs.checkWide]} pointerEvents="none">
-          <Check size={12} color={colors.onAccent} strokeWidth={3} />
-        </View>
+        // 넓은 한 줄은 오른쪽 세로 가운데(높이 전체를 덮는 칸 안에서 가운데 맞춤), 좁은 칸은 모서리, 설명이 있는 칸은 오른쪽 위
+        !compact && !sub ? (
+          <View style={cs.checkWideBox} pointerEvents="none">
+            <View style={[cs.check, cs.checkInline]}>
+              <Check size={12} color={colors.onAccent} strokeWidth={3} />
+            </View>
+          </View>
+        ) : (
+          <View style={[cs.check, compact && cs.checkCompact]} pointerEvents="none">
+            <Check size={12} color={colors.onAccent} strokeWidth={3} />
+          </View>
+        )
       ) : null}
     </Pressable>
   );
@@ -646,7 +678,8 @@ export function ListItem({
       accessibilityState={selected !== undefined ? { selected } : undefined}
       accessibilityLabel={[label, sub, value].filter(Boolean).join(', ')}>
       {iconNode ? <View style={s.itemIcon}>{iconNode}</View> : null}
-      <View style={{ flex: 1, paddingVertical: sub ? (t ? 16 : 14) : 12, paddingRight: right || value || arrow ? 12 : 0 }}>
+      {/* 정돈 변형은 줄 위아래를 넉넉히(2026-11-01: 12~16 → 16~18. TDS 목록 줄 기본 위아래 여백 24) */}
+      <View style={{ flex: 1, paddingVertical: sub ? (t ? 18 : 14) : t ? 16 : 12, paddingRight: right || value || arrow ? 12 : 0 }}>
         <Text style={[tt.row, danger && { color: colors.danger }]}>{label}</Text>
         {sub ? <Text style={[tt.sub, { marginTop: 4 }]}>{sub}</Text> : null}
       </View>
@@ -681,12 +714,11 @@ export function Tabs<T extends string>({ items, value, onChange, style }: { item
   );
 }
 
-// 목록 묶음: 줄 사이에만 얇은 구분선(마지막 줄 아래는 없음).
-// block이면 옅은 회백색 바탕의 한 덩어리(설정의 '독서 환경·내 기록·앱 안내'처럼 의미가 같은 줄을 묶을 때, 2026-11). 카드 안에 카드를 겹치지 않는다
-export function ListGroup({ children, style, block }: { children: ReactNode; style?: StyleProp<ViewStyle>; block?: boolean }) {
+// 목록 묶음: 줄 사이에만 얇은 구분선(마지막 줄 아래는 없음). 회색 상자에 넣지 않고 화면 폭 그대로 쓴다(2026-11-01 토스식)
+export function ListGroup({ children, style }: { children: ReactNode; style?: StyleProp<ViewStyle> }) {
   const items = Children.toArray(children).filter(isValidElement);
   return (
-    <View style={[block && s.listBlock, style]}>
+    <View style={style}>
       {items.map((c, i) => (
         <Fragment key={c.key ?? i}>
           {i ? <View style={s.divider} /> : null}
@@ -695,6 +727,11 @@ export function ListGroup({ children, style, block }: { children: ReactNode; sty
       ))}
     </View>
   );
+}
+
+// 묶음 사이 띠: 화면 끝까지 닿는 8 높이 회색 띠(설정의 '독서 환경 / 내 기록 / 앱 안내'처럼 의미가 다른 묶음을 나눌 때)
+export function SectionBand({ style }: { style?: StyleProp<ViewStyle> }) {
+  return <View style={[s.band, style]} />;
 }
 
 export function Divider({ style }: { style?: StyleProp<ViewStyle> }) {
@@ -799,7 +836,7 @@ export const s = StyleSheet.create({
   iconButton: { width: space.touch, height: space.touch, alignItems: 'center', justifyContent: 'center' },
   iconCircle: { width: 36, height: 36, borderRadius: 18, borderWidth: shape.border, borderColor: colors.border, alignItems: 'center', justifyContent: 'center' },
   link: { minHeight: space.touch, alignItems: 'center', justifyContent: 'center', alignSelf: 'center' },
-  linkText: { ...type.sub, textDecorationLine: 'underline' },
+  linkText: { ...type.sub, fontFamily: fonts.uiBold }, // 밑줄 없이 굵은 갈색(이어서 할 일)·회색(조심스러운 일). 2026-11-01 토스처럼 밑줄을 뺐다
   iconAction: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 10, minHeight: 52, paddingHorizontal: 8 },
   iconActionText: { ...type.row, fontSize: 16, color: colors.inkSoft, flexShrink: 1 },
   textActions: { flexDirection: 'row', alignItems: 'center' },
@@ -846,7 +883,7 @@ export const s = StyleSheet.create({
   sheet: { backgroundColor: colors.raised, borderTopLeftRadius: shape.sheet, borderTopRightRadius: shape.sheet, paddingHorizontal: space.page, paddingTop: 10 },
   handle: { width: 36, height: 4, borderRadius: 2, backgroundColor: colors.line, alignSelf: 'center', marginBottom: 14 },
   sheetHead: { flexDirection: 'row', alignItems: 'center', minHeight: space.touch, gap: 8 },
-  listBlock: { backgroundColor: colors.surface, borderRadius: 16, paddingHorizontal: 16 },
+  band: { height: 8, backgroundColor: colors.surface, marginHorizontal: -space.page, marginTop: 24 },
   slider: { height: 44, justifyContent: 'center', flex: 1 },
   sliderTrack: { position: 'absolute', height: 6, borderRadius: 3, backgroundColor: colors.track, top: 19 },
   sliderKnob: { position: 'absolute', top: 10, width: 24, height: 24, borderRadius: 12, backgroundColor: colors.bg, borderWidth: 2, ...shape.floatShadow },
@@ -858,13 +895,14 @@ export const s = StyleSheet.create({
 // 정돈 변형 덮어쓰기(Tidy 안에서만). 간격 4·8·12·16·24·32, 조작 요소 모서리 10, 칩 8, 시트 20
 const ts = StyleSheet.create({
   headerLeft: { paddingTop: 16, paddingBottom: 8 },
+  largeTitle: { paddingTop: 4, paddingBottom: 16 },
   footer: { paddingHorizontal: tidySpace.page }, // 버튼 좌우 끝을 본문(입력칸·목록)과 같은 24에 맞춘다
   btn: { borderRadius: tidyShape.button, paddingHorizontal: 16, paddingVertical: 12, alignItems: 'center', justifyContent: 'center', backgroundColor: 'transparent' },
   btnSmall: { paddingVertical: 8, paddingHorizontal: 12 },
   btnInner: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8 },
   btnText: { ...tidyType.button, flexShrink: 1, textAlign: 'center' },
   btnTextSmall: { ...tidyType.button, fontSize: 15, lineHeight: 20, flexShrink: 1, textAlign: 'center' },
-  linkText: { ...tidyType.sub },
+  linkText: { ...tidyType.sub, fontFamily: fonts.uiBold },
   field: { marginBottom: tidySpace.xl },
   labelRow: { marginBottom: tidySpace.s },
   labelTag: { ...tidyType.caption },
@@ -881,14 +919,15 @@ const ts = StyleSheet.create({
   handle: { marginBottom: 16 },
 });
 
-// 고르는 블록(Choice). 모서리 14, 안쪽 여백 16, 고른 것은 1.5 갈색 테두리
+// 고르는 블록(Choice). 모서리 14, 안쪽 여백 16. 2026-11-01: 회색으로 채우지 않고 흰 바탕 + 얇은 테두리, 고르면 옅은 갈색 바탕 + 갈색 테두리 + 체크
 const cs = StyleSheet.create({
-  choice: { borderRadius: 14, padding: 16, backgroundColor: colors.surface, borderWidth: 1.5, borderColor: colors.surface, minHeight: 56, justifyContent: 'center' },
+  choice: { borderRadius: 14, padding: 16, backgroundColor: colors.bg, borderWidth: 1.5, borderColor: colors.line, minHeight: 56, justifyContent: 'center' },
   choiceCompact: { paddingVertical: 12, paddingHorizontal: 8, alignItems: 'stretch' },
-  choiceOn: { backgroundColor: colors.raised, borderColor: colors.accent },
+  choiceOn: { backgroundColor: colors.accentSoft, borderColor: colors.accent },
   choiceRow: { flexDirection: 'row', alignItems: 'center' },
   check: { position: 'absolute', top: 8, right: 8, width: 20, height: 20, borderRadius: 10, backgroundColor: colors.accent, alignItems: 'center', justifyContent: 'center' },
-  checkWide: { top: '50%', marginTop: -10, right: 16 },
+  checkWideBox: { position: 'absolute', top: 0, bottom: 0, right: 16, justifyContent: 'center' },
+  checkInline: { position: 'relative', top: 0, right: 0 },
   checkCompact: { top: -7, right: -7, borderWidth: 2, borderColor: colors.bg, width: 22, height: 22, borderRadius: 11 }, // 좁은 칸: 모서리에 걸쳐 글자와 겹치지 않게
 });
 

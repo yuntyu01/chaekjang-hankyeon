@@ -23,6 +23,7 @@ import { colors as screenColors } from '@/ui/screenTheme';
 const PretendardRegular = require('../../assets/fonts/Pretendard-Regular.otf');
 const PretendardMedium = require('../../assets/fonts/Pretendard-Medium.otf');
 const PretendardSemiBold = require('../../assets/fonts/Pretendard-SemiBold.otf');
+const PretendardBold = require('../../assets/fonts/Pretendard-Bold.otf');
 const ReadingSerif = require('../../assets/fonts/NotoSerifKR-Regular.otf');
 const ReadingSerifMedium = require('../../assets/fonts/NotoSerifKR-Medium.otf');
 const ReadingSerifSemiBold = require('../../assets/fonts/NotoSerifKR-SemiBold.otf');
@@ -32,7 +33,7 @@ bootMark('js-layout-module');
 void SplashScreen.preventAutoHideAsync();
 
 export default function RootLayout() {
-  const [loaded, error] = useFonts({ GowunBatang_400Regular, GowunBatang_700Bold, PretendardRegular, PretendardMedium, PretendardSemiBold, ReadingSerif, ReadingSerifMedium, ReadingSerifSemiBold });
+  const [loaded, error] = useFonts({ GowunBatang_400Regular, GowunBatang_700Bold, PretendardRegular, PretendardMedium, PretendardSemiBold, PretendardBold, ReadingSerif, ReadingSerifMedium, ReadingSerifSemiBold });
   const [booted, setBooted] = useState(false);
   const [bootError, setBootError] = useState(false);
   const [bootAttempt, setBootAttempt] = useState(0);

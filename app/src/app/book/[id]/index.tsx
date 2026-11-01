@@ -80,6 +80,7 @@ export default function BookDetailScreen() {
   return (
     <Screen
       tidy
+      compact
       title="책 정보"
       right={
         <IconButton label="더 보기" onPress={() => setMenu(true)}>
@@ -92,10 +93,11 @@ export default function BookDetailScreen() {
         <Text style={st.title}>{e.title}</Text>
         {e.authors.length ? <Text style={st.author}>{e.authors.join(', ')}</Text> : null}
       </View>
-      {/* 내 독서(2026-11): 읽기 상태·현재 쪽(전체 쪽수를 알 때만 진행 막대)·독서 기록·갈피를 한 블록으로. 모르는 값은 계산하지 않는다 */}
+      {/* 내 독서(2026-11): 읽기 상태·현재 쪽(전체 쪽수를 알 때만 진행 막대)·독서 기록·갈피를 한 묶음으로. 모르는 값은 계산하지 않는다.
+          회색 상자 없이 구역 제목·여백·얇은 선으로 묶는다(2026-11-01 사용자 '내부 회색 박스 별로', 토스·노션처럼) */}
       <View style={st.myBlock}>
         <View style={st.myHead}>
-          <Text style={type.label}>내 독서</Text>
+          <Text style={type.section} accessibilityRole="header">내 독서</Text>
           <Text style={type.caption}>{[STATUS_LABEL[b.status], done ? `완독 ${done}회` : null].filter(Boolean).join(' · ')}</Text>
         </View>
         <Pressable onPress={() => setPageEdit(!pageEdit)} accessibilityRole="button" accessibilityLabel={`현재 쪽 ${b.currentPage ?? 0}${e.pageCount ? ` / ${e.pageCount}쪽` : '쪽'}, 눌러서 고치기`} style={st.pageRow}>
@@ -121,7 +123,7 @@ export default function BookDetailScreen() {
       {/* 내 평가: 별점과 한 줄 감상을 한자리에(나만 보는 기록. 다른 독자 평균은 아래 '다른 독자의 평가'에 따로) */}
       <View style={st.rateArea}>
         <View style={st.rateRow}>
-          <Text style={type.label}>내 평가</Text>
+          <Text style={type.section} accessibilityRole="header">내 평가</Text>
           <Stars value={b.rating} onChange={(v) => libraryStore.updateBook(id, { rating: v })} size={24} />
         </View>
         {b.note ? <Text style={st.note}>{b.note}</Text> : <TextLink label="한 줄 감상 남기기" tone="soft" onPress={() => setRecords(true)} style={{ alignSelf: 'flex-start' }} />}
@@ -256,24 +258,24 @@ function RoundCard({ idx, startedAt, finishedAt, paused, onSave }: { idx: number
 // 제목과 저자는 붙이고(4), 역할이 바뀌는 묶음 사이는 32. 책 제목은 Medium(굵게 키우지 않는다)
 const st = StyleSheet.create({
   hero: { alignItems: 'center', paddingTop: space.xxl },
-  title: { fontFamily: fonts.uiMedium, fontSize: 22, lineHeight: 30, color: colors.ink, textAlign: 'center', marginTop: space.xl, includeFontPadding: false },
+  title: { fontFamily: fonts.uiTitle, fontSize: 24, lineHeight: 32, color: colors.ink, textAlign: 'center', marginTop: space.xl, includeFontPadding: false },
   author: { ...type.sub, fontSize: 16, lineHeight: 22, marginTop: space.xs, textAlign: 'center' },
-  myBlock: { marginTop: space.xxl, padding: space.l, paddingBottom: space.xs, borderRadius: 16, backgroundColor: colors.surface },
+  myBlock: { marginTop: space.xxl },
   myHead: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'baseline' },
   pageRow: { flexDirection: 'row', alignItems: 'baseline', justifyContent: 'space-between', marginTop: space.s, minHeight: space.touch },
   page: { fontFamily: fonts.ui, fontSize: 32, lineHeight: 40, color: colors.ink, includeFontPadding: false, fontVariant: ['tabular-nums'] },
   pageTotal: { fontFamily: fonts.ui, fontSize: 18, color: colors.inkSoft },
   bar: { height: 4, borderRadius: 2, backgroundColor: colors.track, marginTop: space.s, overflow: 'hidden' },
   barFill: { height: 4, borderRadius: 2, backgroundColor: colors.accent },
-  pageInput: { alignSelf: 'stretch', textAlign: 'center', marginTop: space.s, backgroundColor: colors.bg },
+  pageInput: { alignSelf: 'stretch', textAlign: 'center', marginTop: space.s },
   note: { ...type.body, marginTop: space.xs },
-  rateArea: { marginTop: space.xl, gap: space.xs },
+  rateArea: { marginTop: space.l, gap: space.xs },
   rateRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', minHeight: space.touch },
-  stats: { flexDirection: 'row', alignItems: 'center', marginTop: space.m, borderTopWidth: shape.hairline * 2, borderTopColor: colors.line },
+  stats: { flexDirection: 'row', alignItems: 'center', marginTop: space.l, borderTopWidth: shape.hairline, borderBottomWidth: shape.hairline, borderColor: colors.line },
   statCell: { flex: 1, flexDirection: 'row', alignItems: 'baseline', justifyContent: 'center', gap: space.s, minHeight: 48, paddingVertical: space.s },
   statLabel: type.row,
   statValue: type.sub,
-  statDivider: { width: shape.hairline * 2, height: 24, backgroundColor: colors.line },
+  statDivider: { width: shape.hairline * 2, height: 20, backgroundColor: colors.track },
   continueButton: { marginTop: space.xxl },
   bookmarkButton: { marginTop: space.xs },
   recordsToggle: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: space.xs, minHeight: space.touch, marginTop: space.s },

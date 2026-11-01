@@ -296,7 +296,8 @@ export default function AddBook() {
       </Screen>
     );
 
-  // 추가 완료(결과만 알린다. 다시 묻지 않는다). 2026-11: 장정 미리보기·제목·실제 결과(전시 책장에 놓음 / 전체 책에만 보관)를 한 요약 블록으로
+  // 추가 완료(결과만 알린다. 다시 묻지 않는다). 2026-11: 장정 미리보기·제목·실제 결과(전시 책장에 놓음 / 전체 책에만 보관)를 한 요약으로.
+  // 회색 상자 없이 표지 옆에 제목·결과를 나란히(토스 결과 화면처럼 결과 문장이 주인공)
   const doneLib = libraryStore.get().lib;
   return (
     <Screen tidy title="추가했어요" back={false}>
@@ -307,7 +308,7 @@ export default function AddBook() {
           {draft.authors ? <Text style={[type.sub, { marginTop: 2 }]} numberOfLines={1}>{draft.authors}</Text> : null}
           {placed !== null ? (
             <View style={st.doneResult}>
-              <Text style={[type.label, { color: colors.ink }]}>{placed === 'shelf' ? '전시 책장에 놓았어요' : '전체 책에만 보관했어요'}</Text>
+              <Text style={[type.button, { color: colors.accent }]}>{placed === 'shelf' ? '전시 책장에 놓았어요' : '전체 책에만 보관했어요'}</Text>
               <Text style={[type.caption, { marginTop: 2 }]}>{placed === 'shelf' ? '꾸미기에서 자리와 자세를 바꿀 수 있어요.' : '책장에는 아직 없어요. 전체 책에서 언제든 놓을 수 있어요.'}</Text>
             </View>
           ) : null}
@@ -435,6 +436,6 @@ const st = StyleSheet.create({
   // 표지 사진 그림자는 옅게(갈색 기 없이)
   cover: { borderRadius: 3, boxShadow: [{ offsetX: 0, offsetY: 2, blurRadius: 4, color: 'rgba(0,0,0,0.10)' }] },
   add: { width: space.touch, height: space.touch, alignItems: 'center', justifyContent: 'center', marginRight: -space.s },
-  doneBlock: { flexDirection: 'row', gap: space.l, alignItems: 'flex-start', marginTop: space.l, padding: space.l, borderRadius: 16, backgroundColor: colors.surface },
-  doneResult: { marginTop: space.m, paddingTop: space.m, borderTopWidth: StyleSheet.hairlineWidth * 2, borderTopColor: colors.line },
+  doneBlock: { flexDirection: 'row', gap: space.l, alignItems: 'flex-start', marginTop: space.s },
+  doneResult: { marginTop: space.m },
 });

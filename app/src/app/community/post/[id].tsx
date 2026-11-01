@@ -71,13 +71,14 @@ export default function PostScreen() {
   ]);
 
   const right = post ? <IconButton label="더보기" onPress={() => setMenu(true)}><MoreHorizontal size={icon.size} color={colors.ink} strokeWidth={icon.stroke} /></IconButton> : undefined;
-  if (phase === 'loading') return <Screen title="독서 기록" tidy><Loading /></Screen>;
-  if (phase === 'gone') return <Screen title="독서 기록" tidy><Empty title="볼 수 없는 게시물이에요" body="지워졌거나 숨겨진 게시물이에요." /></Screen>;
-  if (phase === 'error' || !post) return <Screen title="독서 기록" tidy><Empty title="불러오지 못했어요" body={error} action="다시 시도" actionKind="secondary" onAction={() => { setPhase('loading'); void load(); }} /></Screen>;
+  if (phase === 'loading') return <Screen title="독서 기록" tidy compact><Loading /></Screen>;
+  if (phase === 'gone') return <Screen title="독서 기록" tidy compact><Empty title="볼 수 없는 게시물이에요" body="지워졌거나 숨겨진 게시물이에요." /></Screen>;
+  if (phase === 'error' || !post) return <Screen title="독서 기록" tidy compact><Empty title="불러오지 못했어요" body={error} action="다시 시도" actionKind="secondary" onAction={() => { setPhase('loading'); void load(); }} /></Screen>;
   return (
     <Screen
       title="독서 기록"
       tidy
+      compact
       right={right}
       footer={
         <View style={st.compose}>
