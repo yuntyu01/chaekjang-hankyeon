@@ -12,8 +12,8 @@ import { hm } from '@/features/book/labels';
 import { formatDuration, formatDurationPrecise, monthPeriod, periodStats, sessionDay, yearPeriod } from '@/domain/library';
 import { useLibrary } from '@/store/library-store';
 import { usePlacementStore } from '@/store/placement-store';
-import { Chip, Empty, H2, IconButton, ListGroup, Muted, Row, Screen, Tabs } from '@/ui/kit';
-import { colors, icon, press, shape, tidySpace as space, tidyType as type } from '@/ui/screenTheme';
+import { Chip, Empty, H2, IconButton, ListGroup, ListItem, Muted, Row, Screen, Tabs } from '@/ui/kit';
+import { colors, fonts, icon, press, tidySpace as space, tidyType as type } from '@/ui/screenTheme';
 
 const MODES = [{ id: 'month', label: '월' }, { id: 'year', label: '연도' }] as const;
 const WEEK = ['일', '월', '화', '수', '목', '금', '토'];
@@ -78,22 +78,16 @@ export default function Stats() {
         </IconButton>
       </Row>
 
-      <View style={st.summary}>
-        {[
-          { k: '완독', v: `${st0.completedCount}권`, sub: st0.completedRounds > st0.completedCount || st0.rereads ? `완독 ${st0.completedRounds}회 · 재독 ${st0.rereads}회` : undefined },
-          { k: '독서 시간', v: formatDuration(st0.readMs), sub: `${st0.sessions.length}회` },
-          { k: '남긴 갈피', v: `${st0.bookmarkCount}개` },
-        ].map((c, i) => (
-          <View key={c.k} style={[st.cell, i > 0 && st.cellLine]} accessible accessibilityLabel={`${c.k} ${c.v}${c.sub ? `, ${c.sub}` : ''}`}>
-            <Text style={type.sub}>{c.k}</Text>
-            <Text style={[type.number, { marginTop: 6 }]} adjustsFontSizeToFit numberOfLines={1}>{c.v}</Text>
-            {c.sub ? <Text style={[type.caption, { marginTop: 2 }]}>{c.sub}</Text> : null}
-          </View>
-        ))}
+      {/* 요약(2026-11-01 토스 자산 화면처럼): 읽은 시간 하나를 크게, 나머지는 '이름 | 값' 줄. 세로선 표·숫자 밑 긴 설명은 쓰지 않는다 */}
+      <View style={st.hero} accessible accessibilityLabel={`${mode === 'month' ? `${m}월` : `${y}년`}에 ${formatDuration(st0.readMs)} 읽었어요, 독서 기록 ${st0.sessions.length}회`}>
+        <Text style={type.sub}>{mode === 'month' ? `${m}월에 읽은 시간` : `${y}년에 읽은 시간`}</Text>
+        <Text style={st.heroValue}>{formatDuration(st0.readMs)}</Text>
+        <Text style={[type.caption, { marginTop: 2 }]}>독서 기록 {st0.sessions.length}회{book ? '' : ' · 책 없이 잰 시간 포함'}</Text>
       </View>
-      <Text style={[type.caption, { marginTop: space.m }]} accessibilityHint="완독은 이 기간에 완독일이 있는 책 수예요. 같은 책을 다시 완독해도 1권으로 세고 회차·재독은 따로 보여요.">
-        같은 책은 1권으로 세요 · 일시정지 시간은 빼요{book ? '' : ' · 책 없이 잰 시간 포함'}
-      </Text>
+      <ListGroup>
+        <ListItem label="완독" sub={st0.completedRounds > st0.completedCount || st0.rereads ? `완독 ${st0.completedRounds}회 · 재독 ${st0.rereads}회` : undefined} value={`${st0.completedCount}권`} />
+        <ListItem label="남긴 갈피" value={`${st0.bookmarkCount}개`} />
+      </ListGroup>
 
       <H2>이 기간에 읽은 책</H2>
       {st0.booksRead.length ? (
@@ -138,13 +132,14 @@ export default function Stats() {
           ))}
         </View>
       )}
+      {/* 세는 기준은 맨 아래 작은 글씨로(요약 바로 밑에서 눈을 끌지 않게) */}
+      <Text style={[type.caption, { marginTop: space.section }]}>완독은 완독일이 이 기간에 있는 책 수예요. 같은 책을 다시 완독해도 1권으로 세요. 읽은 시간은 일시정지를 빼요.</Text>
     </Screen>
   );
 }
 
 const st = StyleSheet.create({
-  summary: { flexDirection: 'row', marginTop: space.l, paddingVertical: space.xl, borderTopWidth: shape.hairline, borderBottomWidth: shape.hairline, borderColor: colors.line },
-  cell: { flex: 1, paddingHorizontal: 12 },
-  cellLine: { borderLeftWidth: shape.hairline, borderLeftColor: colors.line },
+  hero: { marginTop: space.l, paddingBottom: space.s },
+  heroValue: { fontFamily: fonts.uiTitle, fontSize: 32, lineHeight: 40, color: colors.ink, marginTop: 4, fontVariant: ['tabular-nums'], includeFontPadding: false },
   session: { flexDirection: 'row', alignItems: 'center', paddingVertical: 16 },
 });

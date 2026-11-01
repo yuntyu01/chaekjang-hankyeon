@@ -11,7 +11,7 @@ export type CoverArtworkId = (typeof COVER_ARTWORK_IDS)[number];
 
 export type CoverArtwork = { id: CoverArtworkId; name: string; image: number; thumb: number; ink: 'dark' | 'light' };
 
-export const ARTWORK_INK = { dark: '#4A3F3A', light: '#F7EEDC' } as const;
+export const ARTWORK_INK = { dark: '#3A3B3D', light: '#FFFFFF' } as const; // 2026-11-01 책 글씨 색(흰색·회색빛 검정)과 같게
 // 제목 칸 위 끝(표지 높이에 대한 몫): 그림 하늘 여백 안
 export const ARTWORK_TITLE_TOP = 0.11;
 export const ARTWORK_FOCUS_Y = 0.35;

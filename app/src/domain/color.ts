@@ -33,8 +33,14 @@ export function contrast(a: string, b: string) {
 // 대비비 공식은 중간 밝기의 진한 색(붉은·푸른 책등 등) 위 밝은 글자를 낮게 쳐서, 먹색은 2배 이상 앞설 때만 고른다
 // (시안 책장 18권 중 17권이 시안과 같은 색. 연한 쑥색 #A7AF95만 시안은 밝은 글자, 여기선 대비 3.5:1을 지키려 먹색).
 // 제목 먹색: 밝은 장정은 짙은 남색 먹(그림자 참고 그림 책등 제목의 가장 진한 획 약 (30~55, 40~60, 47~67)), 어두운 장정은 밝은 크림
-export const TITLE_DARK = '#2F3944';
-export const TITLE_LIGHT = '#F7EEDC';
+// 2026-11-01 사용자 '책 글씨는 될 수 있으면 흰색, 검정은 완전 검정 말고 회색빛 검정': 밝은 글자는 흰색, 먹색은 중립 회색빛 검정.
+// 고르는 규칙(밝은 글자 대비 3:1 이상이면 밝은 글자 쪽)은 그대로라 시안 팔레트에서 고르는 쪽은 같다
+export const TITLE_DARK = '#3A3B3D';
+export const TITLE_LIGHT = '#FFFFFF';
+// 예전 자동 글자색(남색 먹·크림, 그림 표지의 갈색 먹): 장정에 저장돼 있어도 지금 규칙으로 다시 고른다
+export const LEGACY_TITLE_INKS = ['#2F3944', '#F7EEDC', '#4A3F3A'];
+// 그림 위 제목처럼 밝음·어두움을 그림에 맞춰 정해 둔 색은 같은 쪽의 새 색으로만 바꾼다
+export const modernInk = (c: string) => (c.toUpperCase() === '#F7EEDC' ? TITLE_LIGHT : LEGACY_TITLE_INKS.includes(c.toUpperCase()) ? TITLE_DARK : c);
 // 2026-10-31 책장 시안 지시(밝은·어두운 책등 모두 제목 대비 확보): 밝은 글자가 3:1에 못 미치면 대비가 더 큰 쪽.
 // 연한 올리브(#9FA568)가 밝은 글자 2.3:1로 흐렸고, 시안의 문장 수집(#CE886F)·여행의 이유(#819AB1)도 밝은 글자 2.5:1이라 먹색(4.0~4.1:1)으로 바뀐다.
 export const TITLE_MIN_CONTRAST = 3;

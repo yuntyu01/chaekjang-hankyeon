@@ -1,4 +1,4 @@
-import { contrast, shade, titleInk, TITLE_DARK, TITLE_LIGHT, TITLE_MIN_CONTRAST } from '../color';
+import { contrast, modernInk, shade, titleInk, TITLE_DARK, TITLE_LIGHT, TITLE_MIN_CONTRAST } from '../color';
 import { BOOK_COLORS } from '../rebinding';
 import { SPINE_PALETTE } from '../library';
 import { coverTitleLayout, layoutVerticalTitle, LYING_START, lyingTitleLayout, spineTitleLayout, titleOpacity, TITLE_SWAP } from '../title-layout';
@@ -36,7 +36,15 @@ describe('색', () => {
     for (const bg of ['#CE886F', '#819AB1']) expect(titleInk(bg)).toBe(TITLE_DARK);
     // 모순·어린 왕자·작은 것들의 기쁨·너라는 계절·찰나의 마음, 느린 하루(연한 하늘색: 그림자 참고 그림도 짙은 먹)
     for (const bg of ['#FDF0E0', '#FBD392', '#FDECD4', '#F0BDA0', '#F3B497', '#8DA5B9']) expect(titleInk(bg)).toBe(TITLE_DARK);
-    expect(TITLE_DARK).toBe('#2F3944');
+    // 2026-11-01 사용자 '글씨는 될 수 있으면 흰색, 검정은 회색빛 검정': 고르는 쪽은 그대로, 색만 흰색·회색빛 검정
+    expect(TITLE_DARK).toBe('#3A3B3D');
+    expect(TITLE_LIGHT).toBe('#FFFFFF');
+  });
+  it('예전 자동 글자색으로 저장된 장정·그림 표지 글자는 새 색으로 바뀐다(사용자가 고른 다른 색은 그대로)', () => {
+    expect(modernInk('#2F3944')).toBe(TITLE_DARK);
+    expect(modernInk('#4a3f3a')).toBe(TITLE_DARK);
+    expect(modernInk('#F7EEDC')).toBe(TITLE_LIGHT);
+    expect(modernInk('#123456')).toBe('#123456');
   });
   it('장정에서 고를 수 있는 모든 색에서 제목 대비가 3:1 이상(밝은 책등·어두운 책등 모두)', () => {
     for (const bg of [...BOOK_COLORS.map((c) => c.hex), ...SPINE_PALETTE]) expect(contrast(titleInk(bg), bg)).toBeGreaterThanOrEqual(TITLE_MIN_CONTRAST);

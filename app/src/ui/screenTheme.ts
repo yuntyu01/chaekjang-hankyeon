@@ -120,6 +120,9 @@ export const tidyType = {
   label: text(fonts.uiMedium, 15, 21, colors.ink), // 입력칸 이름
   number: { ...text(fonts.uiTitle, 24, 30, colors.ink), fontVariant: ['tabular-nums'] } as TextStyle,
 };
+// 탭 첫 화면 머리줄(책장·갈피·커뮤니티 공통, 2026-11-01 '제목 위치 통일'): 위 16·좌우 24·최소 높이 60, 제목 24 Bold·아래 보조 15
+export const tabHeader = { paddingTop: 16, paddingBottom: 8, paddingHorizontal: 24, minHeight: 60 };
+export const headerType = { title: tidyType.title, sub: tidyType.sub };
 export const tidySpace = { ...space, group: 24, tight: 8, xs: 4, s: 8, m: 12, l: 16, xl: 24, xxl: 32 };
 export const tidyShape = { ...shape, button: 10, input: 10, chip: 8, sheet: 20, dialog: 16, cover: 4 };
 // 버튼 높이: 화면의 단 하나뿐인 주요 행동 l, 보통 m, 줄 안의 작은 행동 s

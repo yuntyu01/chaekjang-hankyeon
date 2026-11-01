@@ -25,13 +25,15 @@ import {
   type ViewStyle,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import Svg, { Defs, LinearGradient, Rect, Stop } from 'react-native-svg';
 
 import { MINI_TIMER_SPACE, miniTimerStore } from '@/store/mini-timer-store';
 import { useReading } from '@/store/reading-store';
-import { colors, fonts, icon, press, shape, space, tidyButton, tidyShape, tidySpace, tidyType, type } from '@/ui/screenTheme';
+import { colors, fonts, headerType, icon, press, shape, space, tabHeader, tidyButton, tidyShape, tidySpace, tidyType, type } from '@/ui/screenTheme';
 
 // 일반 UI 정돈 변형(screenTheme tidy*): 대상 화면(전체 책·책 추가·책 정보·수정·설정·독서 타이머 조작부)만 <Tidy>로 감싼다.
 // 그 밖의 화면(책장·책 고르기 시트·갈피 등)은 감싸지 않아 예전 모습 그대로다. 모달(시트·확인창) 안에도 이어진다.
+const FOOTER_FADE = 24;
 const TidyContext = createContext(false);
 export function Tidy({ children }: { children: ReactNode }) {
   return <TidyContext.Provider value>{children}</TidyContext.Provider>;
@@ -129,15 +131,15 @@ export function Screen({
           <View style={s.right}>{right}</View>
         </View>
       ) : (
-        <View style={[s.headerLeft, t && ts.headerLeft]}>
+        <View style={s.headerLeft}>
           <View style={{ flex: 1 }}>
-            {/* 탭 첫 화면·완료 화면의 왼쪽 제목은 정돈 여부와 상관없이 같은 큰 제목(24 Bold, 2026-11-01) */}
-            <Text style={tidyType.title} accessibilityRole="header">
+            {/* 탭 첫 화면·완료 화면의 왼쪽 제목: 책장 홈 머리줄과 같은 기준(screenTheme.tabHeader·headerType, 2026-11-01) */}
+            <Text style={headerType.title} accessibilityRole="header">
               {title ?? ''}
             </Text>
-            {subtitle ? <Text style={[tt.sub, { marginTop: 4 }]}>{subtitle}</Text> : null}
+            {subtitle ? <Text style={[headerType.sub, { marginTop: 4 }]}>{subtitle}</Text> : null}
           </View>
-          {right ? <View style={[s.right, { marginRight: -10 }]}>{right}</View> : null}
+          {right ? <View style={[s.right, { marginRight: -10, marginTop: -6 }]}>{right}</View> : null}
         </View>
       )}
       {/* 안드로이드도 padding: 화면 끝까지 그리는(edge-to-edge) 창은 키보드가 열려도 줄지 않아 아래 저장 버튼이 가려진다.
@@ -146,6 +148,17 @@ export function Screen({
         {body}
         {footer ? (
           <View onLayout={(e) => miniTimerStore.setBottom(e.nativeEvent.layout.height)} style={[s.footer, t && ts.footer, { paddingBottom: 12 + insets.bottom }]}>
+            {/* 아래 고정 버튼 위 24는 흰색으로 번지게: 스크롤하다 멈춘 내용이 버튼 경계에서 뚝 잘려 가린 것처럼 보이지 않게(토스 하단 버튼처럼, 2026-11-01).
+                내용은 버튼 밑으로 들어가지 않는다(스크롤 영역이 버튼 위에서 끝난다) */}
+            <Svg pointerEvents="none" width="100%" height={FOOTER_FADE} style={s.footerFade}>
+              <Defs>
+                <LinearGradient id="screenFooterFade" x1="0" y1="0" x2="0" y2="1">
+                  <Stop offset="0" stopColor={colors.bg} stopOpacity={0} />
+                  <Stop offset="1" stopColor={colors.bg} stopOpacity={1} />
+                </LinearGradient>
+              </Defs>
+              <Rect x="0" y="0" width="100%" height={FOOTER_FADE} fill="url(#screenFooterFade)" />
+            </Svg>
             {footer}
           </View>
         ) : null}
@@ -825,11 +838,13 @@ export function BrandFooter({ style }: { style?: StyleProp<ViewStyle> }) {
 
 export const s = StyleSheet.create({
   header: { minHeight: 60, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingTop: 4 },
-  headerLeft: { minHeight: 60, flexDirection: 'row', alignItems: 'center', paddingHorizontal: space.page, paddingTop: 20, paddingBottom: 8 },
+  // 제목은 위 기준(부제가 있든 없든 같은 높이), 오른쪽 아이콘(44)은 제목 줄(32) 가운데에 오게 -6
+  headerLeft: { ...tabHeader, flexDirection: 'row', alignItems: 'flex-start' },
   titleCenter: { position: 'absolute', left: 64, right: 64, top: 4, bottom: 0, alignItems: 'center', justifyContent: 'center' },
   back: { width: space.touch, height: space.touch, alignItems: 'center', justifyContent: 'center', marginLeft: 8 },
   right: { flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-end', minWidth: space.touch, marginRight: 10 },
-  footer: { paddingHorizontal: space.page - 4, paddingTop: 12, backgroundColor: colors.bg }, // 시안: 버튼은 입력칸보다 좌우로 조금 넓다(19~20)
+  footer: { paddingHorizontal: space.page - 4, paddingTop: 12, backgroundColor: colors.bg },
+  footerFade: { position: 'absolute', left: 0, right: 0, top: -FOOTER_FADE }, // 시안: 버튼은 입력칸보다 좌우로 조금 넓다(19~20)
   muted: { ...type.sub },
   btn: { minHeight: 46, borderRadius: shape.button, borderWidth: shape.border, borderColor: colors.border, paddingHorizontal: 18, paddingVertical: 12, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, backgroundColor: 'transparent' },
   btnSmall: { minHeight: 40, paddingVertical: 8, paddingHorizontal: 14, borderRadius: shape.input },
@@ -899,7 +914,6 @@ export const s = StyleSheet.create({
 
 // 정돈 변형 덮어쓰기(Tidy 안에서만). 간격 4·8·12·16·24·32, 조작 요소 모서리 10, 칩 8, 시트 20
 const ts = StyleSheet.create({
-  headerLeft: { paddingTop: 16, paddingBottom: 8 },
   largeTitle: { paddingTop: 4, paddingBottom: 16 },
   footer: { paddingHorizontal: tidySpace.page }, // 버튼 좌우 끝을 본문(입력칸·목록)과 같은 24에 맞춘다
   btn: { borderRadius: tidyShape.button, paddingHorizontal: 16, paddingVertical: 12, alignItems: 'center', justifyContent: 'center', backgroundColor: 'transparent' },

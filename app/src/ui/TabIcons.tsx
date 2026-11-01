@@ -67,8 +67,9 @@ export function ReadTabIcon({ color, size = 26, filled, bg }: { color: string; s
 export function CommunityTabIcon({ color, size = 26, filled, bg }: { color: string; size?: number; filled?: boolean; bg: string }) {
   return (
     <Svg width={size} height={size} viewBox="0 -0.6 26 26">
-      <Path d="M9.2 7.4 V6.4 A2.2 2.2 0 0 1 11.4 4.2 H20.6 A2.2 2.2 0 0 1 22.8 6.4 V12.6 A2.2 2.2 0 0 1 20.6 14.8 H20.2 V17.6 L17.2 14.8" fill="none" stroke={color} strokeWidth={1.6} strokeLinejoin="round" strokeLinecap="round" />
-      <Path d="M5.4 8.6 H14.6 A2.2 2.2 0 0 1 16.8 10.8 V17 A2.2 2.2 0 0 1 14.6 19.2 H9.4 L5.8 22 V19.2 H5.4 A2.2 2.2 0 0 1 3.2 17 V10.8 A2.2 2.2 0 0 1 5.4 8.6 Z" fill={filled ? color : bg} stroke={color} strokeWidth={1.6} strokeLinejoin="round" />
+      <Path d="M9.2 7.4 V6.4 A2.2 2.2 0 0 1 11.4 4.2 H20.6 A2.2 2.2 0 0 1 22.8 6.4 V12.6 A2.2 2.2 0 0 1 20.6 14.8 H20.2 V17.6 L17.2 14.8 H9.2 Z" fill={filled ? color : 'none'} stroke={color} strokeWidth={1.6} strokeLinejoin="round" strokeLinecap="round" />
+      {/* 앞 말풍선: 속이 찬 모양이면 바탕색 테두리로 뒤 말풍선과 띄운다 */}
+      <Path d="M5.4 8.6 H14.6 A2.2 2.2 0 0 1 16.8 10.8 V17 A2.2 2.2 0 0 1 14.6 19.2 H9.4 L5.8 22 V19.2 H5.4 A2.2 2.2 0 0 1 3.2 17 V10.8 A2.2 2.2 0 0 1 5.4 8.6 Z" fill={filled ? color : bg} stroke={filled ? bg : color} strokeWidth={filled ? 2.2 : 1.6} strokeLinejoin="round" />
     </Svg>
   );
 }

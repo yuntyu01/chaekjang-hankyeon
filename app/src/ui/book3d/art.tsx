@@ -7,7 +7,7 @@
 import { ColorType, AlphaType, Group, Image as SkiaImage, PaintStyle, StrokeJoin, ImageSVG, Path, Picture, Rect, Skia, Text, drawAsPicture, useImage, useTypeface, type SkFont, type SkImage, type SkPath, type SkPicture, type SkTypeface } from '@shopify/react-native-skia';
 import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
 
-import { rgbHex, tabColors, TITLE_LIGHT, titleInk } from '@/domain/color';
+import { LEGACY_TITLE_INKS, modernInk, rgbHex, tabColors, TITLE_LIGHT, titleInk } from '@/domain/color';
 import { COVER_ARTWORKS } from '@/domain/cover-artworks';
 import { COVER_LINE_H, COVER_SPACE, COVER_TRACK, coverTitleLayout, LYING_TRACK, lyingTitleLayout, SPINE_SPACE, spineTitleLayout } from '@/domain/title-layout';
 import type { Book, CoverArt } from '@/domain/types';
@@ -118,7 +118,8 @@ export type BookArt = {
 // 책 몸체 색 하나: 표지판·책등·판 끝이 모두 같은 색이다(같은 책의 판 두 장과 책등). 표지 그림이 있는 책은 그 판 색(가장자리 색)을 쓴다.
 // 책 재질 색(장정·표지 가장자리). 모든 화면의 책이 이 색 하나를 쓴다
 const faceOf = (b: Book) => jacketColor(b.cover?.edge ?? b.body?.face ?? b.themeColor);
-export const inkOf = (b: Book) => b.art.inkColor ?? titleInk(faceOf(b));
+// 장정에 저장된 글자색이 예전 자동 색이면 지금 규칙(흰색·회색빛 검정)으로 다시 고른다. 사용자가 고른 다른 색은 그대로
+export const inkOf = (b: Book) => (b.art.inkColor && !LEGACY_TITLE_INKS.includes(b.art.inkColor.toUpperCase()) ? b.art.inkColor : titleInk(faceOf(b)));
 
 // 제목 획 두께: 글꼴 굵기 위에 글자 크기의 일부만큼 같은 색 윤곽을 더 그릴 몫(0이면 덧그리지 않는다. 윤곽 두께 0은 Skia에서 1px 선이라 아예 뺀다).
 // 예전에는 고운바탕 Regular에 0.022(앞표지 0.024, 어두운 바탕의 밝은 글자 0.016)를 더했다(2026-10-09 사용자: 글씨가 너무 얇다).
@@ -442,7 +443,7 @@ async function buildArt(book: Book, s: number, dims: { T: number; H: number; W: 
   const bandW = Math.min(cw * 0.84, Math.max(...lines.map((l) => cfont.measureText(l).width)) + cfs);
   const band = coverImg && !cover.sourceRect && !cover.artworkId ? bandColor(coverImg, cw, h, cx0 - bandW / 2, top, cx0 + bandW / 2, top + lines.length * lh) : null;
   // 기본 정면 장정 그림은 그림마다 정해 둔 제목 색(cover-artworks ink: 밝은 하늘 따뜻한 먹색, 어두운 하늘 아이보리)
-  const cink = vector ? ink : cover.sourceRect || cover.artworkId ? cover.ink : band ? titleInk(band) : titleInk(face);
+  const cink = vector ? ink : cover.sourceRect || cover.artworkId ? modernInk(cover.ink) : band ? titleInk(band) : titleInk(face);
   const lineEls = lines.map((line, i) => {
     const chars = [...line];
     const ws = chars.map((c) => (c === ' ' ? cfs * COVER_SPACE : cfont.measureText(c).width));

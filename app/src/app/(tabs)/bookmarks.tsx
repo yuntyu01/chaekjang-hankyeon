@@ -35,7 +35,7 @@ export default function BookmarksTab() {
   return <Screen title="갈피" subtitle={`갈피 ${all.length}개`} back={false} scroll={false} right={
     <View style={{ flexDirection: 'row', gap: 4 }}>
       <IconButton label={searching ? '갈피 검색 닫기' : '갈피 검색'} onPress={() => { if (searching) setQ(''); setSearching(!searching); }}>{searching ? <X size={icon.size} color={colors.ink} strokeWidth={icon.stroke} /> : <Search size={icon.size} color={colors.ink} strokeWidth={icon.stroke} />}</IconButton>
-      <IconButton label="갈피 추가" circle onPress={() => router.push({ pathname: '/bookmark/new', params: { ...(book ? { book } : {}), ...(tab === 'photo' ? { mode: 'photo' } : {}) } })}><Plus size={icon.size} color={colors.ink} strokeWidth={icon.stroke} /></IconButton>
+      <IconButton label="갈피 추가" onPress={() => router.push({ pathname: '/bookmark/new', params: { ...(book ? { book } : {}), ...(tab === 'photo' ? { mode: 'photo' } : {}) } })}><Plus size={icon.size} color={colors.ink} strokeWidth={icon.stroke} /></IconButton>
     </View>}>
     {searching ? <SearchField accessibilityLabel="갈피 검색어" value={q} onChangeText={setQ} autoFocus placeholder="문장·메모에서 찾기" style={{ marginTop: space.tight, marginBottom: space.item }} /> : null}
     <Tabs items={FILTERS} value={tab} onChange={(id) => { setTab(id); if (id === 'all') setBook(null); }} style={{ marginTop: 4, marginBottom: space.item, marginHorizontal: -6 }} />
