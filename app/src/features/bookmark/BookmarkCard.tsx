@@ -74,7 +74,8 @@ export function BookmarkCard({ data, showMemo, width, seed, compact = false, ras
         </View>)}
         <View style={[st.rule, { marginTop: compact ? 15 : 30, marginBottom: compact ? 10 : 17 }]} />
         <View style={[st.srcRow, { gap: compact ? 13 : 16 }]}>
-          {data.book ? <BookVisual book={data.book} width={coverW} rasterize={rasterizeBook} onReady={onCoverReady} /> : <RealCover uri={data.coverUri} title={data.title} color={data.color} width={coverW} />}
+          {/* 연결된 책은 실물 표지(도서 이미지·내가 찍은 사진, 2026-11-01 사용자 '연결된 거 전부 실물로'). 사진이 없는 책만 책장과 같은 장정 그림 */}
+          {data.coverUri || !data.book ? <RealCover uri={data.coverUri} title={data.title} color={data.color} width={coverW} onReady={onCoverReady} /> : <BookVisual book={data.book} width={coverW} rasterize={rasterizeBook} onReady={onCoverReady} />}
           <View style={{ flex: 1, gap: compact ? 3 : 8, marginTop: compact ? 0 : -4, paddingRight: compact && onToggleSaved ? 32 : 0 }}>
             {photo ? <>
               <Text style={[st.srcTitle, { fontSize: compact ? 16 : 22, lineHeight: compact ? 24 : 32 }]} numberOfLines={compact ? 2 : undefined}>{data.title}</Text>

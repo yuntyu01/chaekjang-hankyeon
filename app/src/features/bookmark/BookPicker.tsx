@@ -6,6 +6,7 @@ import { STATUS_LABEL } from '@/features/book/labels';
 import type { Library } from '@/domain/library';
 import { Btn, Divider, SearchField, Sheet, useUi } from '@/ui/kit';
 import { colors, press } from '@/ui/screenTheme';
+import { LinkedCover } from '@/ui/BookVisual';
 
 export function recentBookIds(lib: Library) {
   const last = new Map<string, string>();
@@ -45,12 +46,12 @@ export function BookPicker({ lib, visible, allowNone, onPick, onClose, onAddNew 
         {list.map((id, i) => {
           const b = lib.books[id];
           const e = lib.editions[b.editionId];
-          const color = b.bindingId ? lib.bindings[b.bindingId]?.spineColor : undefined;
           return (
             <View key={id}>
               {i || allowNone || onAddNew ? <Divider /> : null}
               <Pressable style={({ pressed }) => [st.item, pressed && press]} onPress={() => onPick(id)} accessibilityRole="button" accessibilityLabel={e?.title}>
-                <View style={[st.spine, { backgroundColor: color ?? '#B7AE9F' }]} />
+                {/* 연결할 책: 실물 표지(사진이 없는 책만 장정 그림) */}
+                <View style={st.cover} pointerEvents="none"><LinkedCover lib={lib} id={id} width={34} /></View>
                 <View style={{ flex: 1 }}>
                   <Text style={tidy ? type.rowStrong : type.row} numberOfLines={2}>
                     {e?.title}
@@ -72,5 +73,5 @@ export function BookPicker({ lib, visible, allowNone, onPick, onClose, onAddNew 
 
 const st = StyleSheet.create({
   item: { flexDirection: 'row', alignItems: 'center', gap: 14, minHeight: 60, paddingVertical: 10 },
-  spine: { width: 8, height: 38, borderRadius: 2 },
+  cover: { width: 34, alignItems: 'center' },
 });

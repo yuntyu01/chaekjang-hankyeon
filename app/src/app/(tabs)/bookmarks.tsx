@@ -9,7 +9,7 @@ import { useLibrary } from '@/store/library-store';
 import { MINI_TIMER_SPACE } from '@/store/mini-timer-store';
 import { useReading } from '@/store/reading-store';
 import { bookmarkPreferencesStore, useBookmarkPreferences } from '@/store/bookmark-preferences-store';
-import { LibraryCover } from '@/ui/BookVisual';
+import { LinkedCover } from '@/ui/BookVisual';
 import { Check, Plus, Search, X } from '@/ui/icons';
 import { Empty, FilterButton, IconButton, ListGroup, ListItem, Screen, SearchField, Segmented, Sheet, ui } from '@/ui/kit';
 import { colors, icon, press, space, type } from '@/ui/screenTheme';
@@ -66,13 +66,13 @@ export default function BookmarksTab() {
     <FlatList data={list} keyExtractor={(m) => m.id} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled" initialNumToRender={4} windowSize={5} style={{ marginHorizontal: -ui.pad }} contentContainerStyle={{ paddingHorizontal: ui.pad, paddingBottom: navigation.height + 40 + (active ? MINI_TIMER_SPACE : 0) }}
       // 갈피는 있지만 검색·거르기 결과만 없을 때: 조작부는 그대로 두고 안내만
       ListEmptyComponent={<Empty title={emptyTitle} body={emptyBody} />}
-      renderItem={({ item: m }) => { const b = lib.books[m.myBookId]; const e = lib.editions[b.editionId]; if (!e) return null; return <BookmarkCard compact showMemo={false} width={width - ui.pad * 2} seed={m.id} onOpen={() => router.push(`/bookmark/${m.id}`)} saved={savedIds.includes(m.id)} onToggleSaved={() => toggleSaved(m.id)} data={{ text: m.text, title: e.title, author: e.authors.join(', '), page: m.page, date: ymd(m.createdAt), color: (b.bindingId && lib.bindings[b.bindingId]?.spineColor) || '#A3B8C5', book: memoShelfBook(lib, b.id) ?? undefined, photoUri: m.photoUri, photoRatio: m.photoRatio }} />; }} />
+      renderItem={({ item: m }) => { const b = lib.books[m.myBookId]; const e = lib.editions[b.editionId]; if (!e) return null; return <BookmarkCard compact showMemo={false} width={width - ui.pad * 2} seed={m.id} onOpen={() => router.push(`/bookmark/${m.id}`)} saved={savedIds.includes(m.id)} onToggleSaved={() => toggleSaved(m.id)} data={{ text: m.text, title: e.title, author: e.authors.join(', '), page: m.page, date: ymd(m.createdAt), color: (b.bindingId && lib.bindings[b.bindingId]?.spineColor) || '#A3B8C5', coverUri: e.coverUri, book: memoShelfBook(lib, b.id) ?? undefined, photoUri: m.photoUri, photoRatio: m.photoRatio }} />; }} />
     {/* 책 선택: 내 책 검색 + '모든 책' + 갈피가 있는 책(표지·갈피 수). 고른 줄에 체크 */}
     <Sheet visible={sheet === 'book'} onClose={closeSheet} title="책 선택" scroll maxHeight="80%">
       {books.length > 5 ? <SearchField value={bookQ} onChangeText={setBookQ} placeholder="내 책 검색" accessibilityLabel="갈피를 볼 책 찾기" style={{ marginBottom: space.tight }} /> : null}
       <BookChoice label="모든 책" sub={`갈피 ${all.length}개`} on={!book} onPress={() => { setBook(null); closeSheet(); }} />
       {shownBooks.map((x) => (
-        <BookChoice key={x.id} label={x.title} sub={`갈피 ${x.count}개`} on={book === x.id} onPress={() => { setBook(x.id); closeSheet(); }} cover={<LibraryCover lib={lib} id={x.id} width={40} />} />
+        <BookChoice key={x.id} label={x.title} sub={`갈피 ${x.count}개`} on={book === x.id} onPress={() => { setBook(x.id); closeSheet(); }} cover={<LinkedCover lib={lib} id={x.id} width={40} />} />
       ))}
     </Sheet>
     <Sheet visible={sheet === 'kind'} onClose={closeSheet} title="갈피 유형">

@@ -551,11 +551,16 @@ function isLight(hex: string) {
 }
 
 // 실제 표지(도서 이미지·사용자 사진). 없거나 못 읽으면 책 색 대체 표지(제목)
-export function RealCover({ uri, title, color, width, ratio = 0.68 }: { uri?: string; title: string; color: string; width: number; ratio?: number }) {
+// onReady: 그림이 다 그려졌을 때(사진을 읽었거나 대체 표지로 그렸을 때) 한 번. 갈피 공유 이미지가 표지를 기다릴 때 쓴다
+export function RealCover({ uri, title, color, width, ratio = 0.68, onReady }: { uri?: string; title: string; color: string; width: number; ratio?: number; onReady?: () => void }) {
   const [ok, setOk] = useState(true);
   const h = width / ratio;
-  if (uri && ok)
-    return <Image source={{ uri }} style={{ width, height: h, borderRadius: 3, backgroundColor: colors.surface }} resizeMode="cover" onError={() => setOk(false)} accessibilityLabel={`${title} 표지`} />;
+  const showImage = !!uri && ok;
+  useEffect(() => {
+    if (!showImage) onReady?.();
+  }, [showImage, onReady]);
+  if (showImage)
+    return <Image source={{ uri }} style={{ width, height: h, borderRadius: 3, backgroundColor: colors.surface }} resizeMode="cover" onLoad={onReady} onError={() => setOk(false)} accessibilityLabel={`${title} 표지`} />;
   return (
     <View style={{ width, height: h, borderRadius: 3, backgroundColor: color, padding: 8, justifyContent: 'center' }} accessibilityLabel={`${title} 대체 표지`}>
       <Text style={{ fontFamily: fonts.serif, fontSize: Math.max(10, width / 8), color: isLight(color) ? colors.inkSoft : colors.onAccent, textAlign: 'center' }} numberOfLines={4}>

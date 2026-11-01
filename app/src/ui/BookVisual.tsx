@@ -6,6 +6,8 @@ import { useBookShared } from '@/ui/book3d/art';
 import { frameBBox, standaloneFrame } from '@/domain/shelf-scene';
 import { memoShelfBook, type Library } from '@/domain/library';
 import type { Book } from '@/domain/types';
+import { RealCover } from '@/ui/kit';
+import { colors } from '@/ui/screenTheme';
 import { BOOK_PAD, frameCam, noRibbon, StandaloneBook } from '@/ui/book3d/StandaloneBook';
 
 // Every screen uses the same saved book model and renderer as the bookshelf.
@@ -54,4 +56,13 @@ export const BookVisual = memo(function BookVisual({ book, width, rasterize = fa
 export function LibraryCover({ lib, id, width }: { lib: Library; id: string; width: number }) {
   const book = memoShelfBook(lib, id);
   return book ? <BookVisual book={book} width={width} /> : null;
+}
+
+// 다른 것에 연결된 책의 작은 표지(갈피의 책 고르기·책 고르기 시트 등): 실물 표지(도서 이미지·내가 찍은 사진)를 먼저,
+// 사진이 없는 책만 책장과 같은 장정 그림(2026-11-01 사용자 '연결된 거 전부 실물로')
+export function LinkedCover({ lib, id, width }: { lib: Library; id: string; width: number }) {
+  const b = lib.books[id];
+  const e = b && lib.editions[b.editionId];
+  if (e?.coverUri) return <RealCover uri={e.coverUri} title={e.title} color={(b.bindingId && lib.bindings[b.bindingId]?.spineColor) || colors.input} width={width} />;
+  return <LibraryCover lib={lib} id={id} width={width} />;
 }
