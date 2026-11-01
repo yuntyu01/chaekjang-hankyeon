@@ -3,7 +3,7 @@
 import { AlphaType, ColorType, Skia } from '@shopify/react-native-skia';
 
 import { isSpineImage, spineOfCover } from '@/domain/cover-url';
-import { edgeColorOf, extractPalette, type PaletteEntry } from '@/domain/rebinding';
+import { dominantColorOf, extractPalette, type PaletteEntry } from '@/domain/rebinding';
 
 const W = 24;
 const H = 36;
@@ -27,27 +27,27 @@ export async function coverPalette(url: string | undefined): Promise<PaletteEntr
   }
 }
 
-// 표지 왼쪽 가장자리 띠의 주된 색(책등과 맞닿는 쪽). 맨 끝 1.5%는 스캔 테두리·JPEG 번짐이 있어 건너뛴다. 실패하면 null
-const EDGE_W = 12;
-const EDGE_H = 96;
-export async function coverEdgeColor(url: string | undefined): Promise<string | null> {
+// 표지에서 가장 넓게 차지하는 색(책등·몸체 색). 실패하면 null
+const COLOR_W = 48;
+const COLOR_H = 72;
+export async function coverDominantColor(url: string | undefined): Promise<string | null> {
   if (!url || !/^(https?:|file:|data:)/.test(url)) return null;
   try {
     const data = await Skia.Data.fromURI(url);
     const img = Skia.Image.MakeImageFromEncoded(data);
     if (!img) return null;
-    const surface = Skia.Surface.MakeOffscreen(EDGE_W, EDGE_H);
+    const surface = Skia.Surface.MakeOffscreen(COLOR_W, COLOR_H);
     if (!surface) return null;
-    surface.getCanvas().drawImageRect(img, Skia.XYWHRect(img.width() * 0.015, 0, img.width() * 0.07, img.height()), Skia.XYWHRect(0, 0, EDGE_W, EDGE_H), Skia.Paint());
+    surface.getCanvas().drawImageRect(img, Skia.XYWHRect(0, 0, img.width(), img.height()), Skia.XYWHRect(0, 0, COLOR_W, COLOR_H), Skia.Paint());
     surface.flush();
-    const px = surface.makeImageSnapshot().readPixels(0, 0, { width: EDGE_W, height: EDGE_H, colorType: ColorType.RGBA_8888, alphaType: AlphaType.Unpremul });
-    return px ? edgeColorOf(px as ArrayLike<number>) : null;
+    const px = surface.makeImageSnapshot().readPixels(0, 0, { width: COLOR_W, height: COLOR_H, colorType: ColorType.RGBA_8888, alphaType: AlphaType.Unpremul });
+    return px ? dominantColorOf(px as ArrayLike<number>) : null;
   } catch {
     return null;
   }
 }
 
-// YES24 책등 사진의 폭/높이. 책등 사진이 없는 책('이미지 준비중')은 0, 받지 못하면 null(나중에 다시)
+// YES24 책등 사진의 폭/높이(그림은 쓰지 않고 실제 두께만 읽는다). 책등 사진이 없는 책('이미지 준비중')은 0, 받지 못하면 null(나중에 다시)
 export async function coverSpineRatio(coverUri: string): Promise<number | null> {
   const url = spineOfCover(coverUri, 'L');
   if (!url) return 0;

@@ -8,7 +8,7 @@
 // - Session(독서 세션): 연결 책·회차, 시작·종료 시각, 실제 독서 시간(일시정지 제외)
 // - Bookmark(갈피): 연결 책, 문장, 쪽수, 메모, 날짜
 // - Binding(재장정 자산): 책등 색, 모티프, 그림 파일, 생성 상태(기본 장정 / AI)
-import { coverAtSize, spineOfCover, spineRatioOf } from './cover-url';
+import { coverAtSize, spineRatioOf } from './cover-url';
 import { artworkCover, type CoverArtworkId } from './cover-artworks';
 import { formatMm } from './catalog';
 import { realDimensions } from './jacket-proportions';
@@ -390,9 +390,8 @@ export function toShelfBook(lib: Library, myBookId: string): Book | null {
     // 정면 그림: 고른 기본 정면 그림이 없으면 실제 표지(YES24 도서 이미지·내가 찍은 사진, 2026-11-01 사용자 '책장 책도 YES24 표지로').
     // 정면에 꽉 채워 그리고 제목은 겹쳐 쓰지 않는다(art.tsx made.cover). 못 읽으면(오프라인 등) 코드로 그리는 단색 정면으로. 책등은 YES24 그림이 없어 책 색 + 제목
     coverArtUri: art ? undefined : bd?.coverArtUri ?? coverAtSize(e.coverUri, 'L'),
-    // 책등 그림: YES24 책등(sideCover). 기본 정면 그림을 골랐거나 사용자가 책 색을 직접 바꿨으면 그 선택이 보이게 책 색 + 제목.
-    // 책등 사진이 없는 책(잰 비율 0)·아직 못 잰 책은 표지 왼쪽 가장자리 색 + 제목
-    spineArtUri: bd?.spineArtUri ?? (art || !ratio || (bd?.source === 'custom' && bd.spineColor !== e.art?.baseColor) ? undefined : spineOfCover(e.coverUri, 'XL')),
+    // 책등은 표지에서 가장 넓게 차지하는 색 + 제목(2026-11-01 사용자). YES24 책등 사진은 그리지 않고 실제 두께를 재는 데만 쓴다
+    spineArtUri: bd?.spineArtUri,
     themeColor,
     heightClass: heightClassOf(size.heightMm),
     thicknessClass: thicknessClassOf(pages),
@@ -408,20 +407,20 @@ export function toShelfBook(lib: Library, myBookId: string): Book | null {
   };
 }
 
-// 책 색을 표지 왼쪽 가장자리 색으로 아직 맞추지 않은 판본(검색으로 받은 표지만. 내가 찍은 사진은 가장자리에 배경이 섞일 수 있어 뺀다)
-export function pendingCoverEdges(lib: Library): { editionId: string; coverUri: string }[] {
+// 책 색을 표지에서 가장 넓게 차지하는 색으로 아직 맞추지 않은 판본(검색으로 받은 표지만. 내가 찍은 사진은 배경이 섞일 수 있어 뺀다)
+export function pendingCoverColors(lib: Library): { editionId: string; coverUri: string }[] {
   return Object.values(lib.editions).flatMap((e) => (e.coverSource === 'api' && e.coverUri && (e.art?.version ?? 1) < REBIND_VERSION ? [{ editionId: e.id, coverUri: e.coverUri }] : []));
 }
 
 // 뽑은 색을 판본의 추천 장정과 그 판본 책들의 기본 장정에 넣는다. 사용자가 고친 장정(custom)은 그대로 둔다
-export function withCoverEdges(lib: Library, edges: { editionId: string; color: string }[], now: string): Library {
+export function withCoverColors(lib: Library, colors: { editionId: string; color: string }[], now: string): Library {
   const editions = { ...lib.editions };
   const bindings = { ...lib.bindings };
-  for (const { editionId, color } of edges) {
+  for (const { editionId, color } of colors) {
     const e = editions[editionId];
     if (!e) continue;
     const tones = tonesFor(color);
-    const art = e.art ? { ...e.art, baseColor: color, ...tones, version: REBIND_VERSION } : buildBookArt(rebindInput(e, { coverEdge: color }), now);
+    const art = e.art ? { ...e.art, baseColor: color, ...tones, version: REBIND_VERSION } : buildBookArt(rebindInput(e, { coverColor: color }), now);
     editions[editionId] = { ...e, art, updatedAt: now };
     for (const b of Object.values(lib.books)) {
       const bd = b.editionId === editionId && b.bindingId ? bindings[b.bindingId] : undefined;

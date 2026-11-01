@@ -18,7 +18,7 @@ import { frameCam } from '@/ui/book3d/StandaloneBook';
 import { Check } from '@/ui/icons';
 import { colors, fonts, shape, space, tidyType, type } from '@/ui/screenTheme';
 import { RealCover, TextLink } from '@/ui/kit';
-import { coverAtSize, spineOfCover, spineRatioOf } from '@/domain/cover-url';
+import { coverAtSize, spineRatioOf } from '@/domain/cover-url';
 import { realDimensions } from '@/domain/jacket-proportions';
 
 export type BindingDraft = Pick<Binding, 'spineColor' | 'motif' | 'seed' | 'source' | 'inkColor' | 'accentColor' | 'layout' | 'material' | 'coverArtId'>;
@@ -27,12 +27,11 @@ const LAYOUT_NAMES: Record<LayoutVariant, string> = { spine_a: '기본', spine_b
 const MATERIAL_NAMES: Record<BindingMaterial, string> = { paper: '무광 종이', cloth: '천', coated: '코팅지' };
 
 // realCover: 실제 표지(YES24 도서 이미지·내가 찍은 사진). 기본 정면 그림을 고르지 않았으면 책장처럼 정면에 꽉 채워 그린다
-export function previewBook(p: { title: string; author?: string; size?: SizeMm; pages?: number; binding: BindingDraft; realCover?: string; realSpine?: string }): Book {
+export function previewBook(p: { title: string; author?: string; size?: SizeMm; pages?: number; binding: BindingDraft; realCover?: string }): Book {
   const size = p.size ?? ESTIMATED_SIZE;
   const cover = artworkCover(p.binding.coverArtId, p.binding.spineColor);
   return {
     coverArtUri: cover ? undefined : coverAtSize(p.realCover, 'XL'),
-    spineArtUri: cover ? undefined : p.realSpine,
     dims: realDimensions({ ...size, pages: p.pages ?? ESTIMATED_PAGES }, spineRatioOf(p.realCover) || undefined),
     id: 'preview',
     title: p.title || '제목',
@@ -60,9 +59,7 @@ export function BindingEditor({ title, author, size, pages, value, recommended, 
   const [tab, setTab] = useState<Tab>('art');
   const { width } = useWindowDimensions();
   const custom = (patch: Partial<BindingDraft>): BindingDraft => ({ ...value, ...patch, source: 'custom' });
-  // 책등: 추천 색 그대로면 YES24 책등, 색을 바꾸면 고른 색이 보이게 책 색 + 제목(책장과 같은 규칙, toShelfBook)
-  const realSpine = value.spineColor === recommended.spineColor && spineRatioOf(realCover) ? spineOfCover(realCover, 'XL') : undefined;
-  const book = useMemo(() => previewBook({ title, author, size, pages, binding: value, realCover, realSpine }), [title, author, size, pages, value, realCover, realSpine]);
+  const book = useMemo(() => previewBook({ title, author, size, pages, binding: value, realCover }), [title, author, size, pages, value, realCover]);
   const shown = useMemo(() => (current ? noRibbon(current) : book), [current, book]);
   // 미리보기 크기: 정면 폭을 화면 폭에 맞춘다(책 치수·카메라는 그대로, 그리는 배율만)
   const frontWidth = Math.min(170, width * 0.39);

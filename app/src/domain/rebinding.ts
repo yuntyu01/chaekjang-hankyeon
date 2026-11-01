@@ -6,8 +6,8 @@ import { contrast, rgbHex, TITLE_DARK, TITLE_LIGHT } from './color';
 import { MOTIF_SLOTS, type MotifSlotId } from './motif-slots';
 import type { HeightClass, ThicknessClass } from './types';
 
-// 2: 실제 표지가 있는 책의 기본 색 = 표지 왼쪽 가장자리 색 그대로(2026-11-01 사용자 '책등 색도 표지 색으로'). 1은 시작할 때 한 번 다시 계산한다(cover-edge-backfill)
-export const REBIND_VERSION = 2;
+// 3: 실제 표지가 있는 책의 기본 색 = 표지에서 가장 넓게 차지하는 색 그대로(2026-11-01 사용자). 예전 판은 시작할 때 한 번 다시 계산한다(cover-color-backfill)
+export const REBIND_VERSION = 3;
 
 // 팔레트 범위(지시서 2): 채도 25~55%, 명도 35~80%
 export const SAT_RANGE = [0.25, 0.55] as const;
@@ -34,7 +34,7 @@ export type RebindInput = {
   seriesTitle?: string;
   palette?: PaletteEntry[]; // 썸네일 상위 색(extractPalette). 없으면 themeColor
   themeColor?: string; // 서버가 뽑아 준 주조색(팔레트가 없을 때)
-  coverEdge?: string; // 실제 표지 왼쪽 가장자리 색(edgeColorOf). 있으면 팔레트로 길들이지 않고 그대로 책 색으로 쓴다(시리즈 색보다 앞선다)
+  coverColor?: string; // 실제 표지에서 가장 넓게 차지하는 색(dominantColorOf). 있으면 팔레트로 길들이지 않고 그대로 책 색으로 쓴다(시리즈 색보다 앞선다)
 };
 
 export type BookArtParams = {
@@ -269,9 +269,9 @@ export function layoutArt(v: LayoutVariant): { titleTop?: number; motifScale?: n
 export function buildBookArt(input: RebindInput, now = ''): BookArtParams {
   const seed = input.isbn || input.title;
   const series = input.seriesTitle?.trim() || undefined;
-  const edge = input.coverEdge && /^#[\da-f]{6}$/i.test(input.coverEdge) ? input.coverEdge : undefined;
+  const real = input.coverColor && /^#[\da-f]{6}$/i.test(input.coverColor) ? input.coverColor : undefined;
   const source = series ? seriesBase(series, seed) : pickSourceColor(input.palette, input.themeColor, seed);
-  const { base, ink } = edge ? { base: edge, ink: tonesFor(edge).inkColor } : inkFor(tameToPalette(source));
+  const { base, ink } = real ? { base: real, ink: tonesFor(real).inkColor } : inkFor(tameToPalette(source));
   const height = input.heightMm ?? 188;
   const pages = input.pageCount ?? 250;
   return {
@@ -306,12 +306,25 @@ export function applyOverride(art: BookArtParams, o: ArtOverride | undefined): B
 
 // ---------- 썸네일 색 추출(median cut) ----------
 // rgba: 픽셀 RGBA 바이트 배열. 상위 n색과 비중을 돌려준다. 투명 픽셀은 건너뛴다.
-// 표지 왼쪽 가장자리 띠의 픽셀에서 가장 넓은 색 하나(책등과 맞닿는 쪽이라 책등 색으로 쓴다).
-// 표지 그림의 흰 바탕은 화면 순백(#FFFFFF)이지만 실제 종이는 그만큼 희지 않다: 그대로 칠하면 음영이 잘려 흰 벽에 묻히므로 종이 흰색까지만
+// 표지에서 가장 넓게 차지하는 색(2026-11-01 사용자 '제일 비중을 많이 차지하는 색상을 책등으로'): 비슷한 색끼리(채널마다 8단계) 묶어 픽셀 수를 세고,
+// 가장 많은 묶음의 평균색. 표지 그림의 흰 바탕은 화면 순백이지만 실제 종이는 그만큼 희지 않다: 그대로 칠하면 음영이 잘려 흰 벽에 묻히므로 종이 흰색까지만
 const PAPER_WHITE_L = 0.93;
-export function edgeColorOf(rgba: ArrayLike<number>): string | null {
-  const hex = extractPalette(rgba, 3)[0]?.hex;
-  if (!hex) return null;
+export function dominantColorOf(rgba: ArrayLike<number>): string | null {
+  const bins = new Map<number, { n: number; r: number; g: number; b: number }>();
+  for (let i = 0; i + 3 < rgba.length; i += 4) {
+    if (rgba[i + 3] < 128) continue;
+    const key = ((rgba[i] >> 5) << 6) | ((rgba[i + 1] >> 5) << 3) | (rgba[i + 2] >> 5);
+    const bin = bins.get(key) ?? { n: 0, r: 0, g: 0, b: 0 };
+    bin.n++;
+    bin.r += rgba[i];
+    bin.g += rgba[i + 1];
+    bin.b += rgba[i + 2];
+    bins.set(key, bin);
+  }
+  let top: { n: number; r: number; g: number; b: number } | null = null;
+  for (const bin of bins.values()) if (!top || bin.n > top.n) top = bin;
+  if (!top) return null;
+  const hex = rgbHex(top.r / top.n, top.g / top.n, top.b / top.n);
   const c = hexToHsl(hex);
   return c.l > PAPER_WHITE_L ? hslToHex({ ...c, l: PAPER_WHITE_L }) : hex;
 }

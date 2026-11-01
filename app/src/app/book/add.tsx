@@ -7,7 +7,7 @@ import { Alert, Linking, Pressable, StyleSheet, Text, View } from 'react-native'
 
 import { BindingEditor, type BindingDraft } from '@/features/book/BindingEditor';
 import { buildBookArt, type BookArtParams, type PaletteEntry } from '@/domain/rebinding';
-import { coverEdgeColor, coverPalette } from '@/services/cover-palette';
+import { coverDominantColor, coverPalette } from '@/services/cover-palette';
 import { measureSpineRatios } from '@/services/spine-ratio';
 import { STATUS_LABEL } from '@/features/book/labels';
 import { bindingFields, READ_STATUSES, rebindInput, type ReadStatus, type SizeMm } from '@/domain/library';
@@ -117,11 +117,11 @@ export default function AddBook() {
   // 추천 장정 계산: 썸네일은 색 추출에만 쓰고(화면에 그리지 않는다) 결과 장정만 저장한다
   const prepareBinding = async () => {
     const palette: PaletteEntry[] | null = draft.coverSource === 'api' ? await coverPalette(draft.coverUri) : null;
-    if (draft.coverSource === 'api') await measureSpineRatios([draft.coverUri]); // 책등 사진 비율: 처음 놓을 때부터 실제 두께로
-    // 책 색은 표지 왼쪽 가장자리 색. 못 읽었으면 예전 방식으로 두고 판 번호를 낮춰 다음 시작 때 다시 맞춘다(cover-edge-backfill)
-    const coverEdge = draft.coverSource === 'api' ? await coverEdgeColor(draft.coverUri) : null;
-    const built = buildBookArt(rebindInput({ isbn13: draft.isbn.replace(/[^\dXx]/g, '') || undefined, title: draft.title.trim(), authors: [], publisher: draft.publisher, publishedAt: draft.publishedAt, pageCount: num(draft.pages), size, category: draft.category, seriesTitle: draft.seriesTitle }, { palette: palette ?? undefined, coverEdge: coverEdge ?? undefined }), new Date().toISOString());
-    const a = draft.coverSource === 'api' && !coverEdge ? { ...built, version: 1 } : built;
+    if (draft.coverSource === 'api') await measureSpineRatios([draft.coverUri]); // 책등 사진 비율: 처음 놓을 때부터 실제 두께로(그림은 쓰지 않는다)
+    // 책 색은 표지에서 가장 넓게 차지하는 색. 못 읽었으면 예전 방식으로 두고 판 번호를 낮춰 다음 시작 때 다시 맞춘다(cover-color-backfill)
+    const coverColor = draft.coverSource === 'api' ? await coverDominantColor(draft.coverUri) : null;
+    const built = buildBookArt(rebindInput({ isbn13: draft.isbn.replace(/[^\dXx]/g, '') || undefined, title: draft.title.trim(), authors: [], publisher: draft.publisher, publishedAt: draft.publishedAt, pageCount: num(draft.pages), size, category: draft.category, seriesTitle: draft.seriesTitle }, { palette: palette ?? undefined, coverColor: coverColor ?? undefined }), new Date().toISOString());
+    const a = draft.coverSource === 'api' && !coverColor ? { ...built, version: 1 } : built;
     const bd: BindingDraft = { ...bindingFields(a), seed: 0, source: 'default' };
     setArt(a);
     setBinding(bd);

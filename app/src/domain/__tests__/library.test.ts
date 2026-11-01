@@ -6,8 +6,8 @@ import { bookLightRef, bookTone } from '../binding-material';
 import { linearOf } from '../light-model';
 import { ARTWORK_INK } from '../cover-artworks';
 import { ensureShelves, pruneEmptyShelves } from '../layout-engine';
-import { applyStatus, completions, defaultBinding, emptyLibrary, finishedYear, monthPeriod, pendingCoverEdges, periodStats, roundsOf, toShelfBook, withCoverEdges, yearPeriod, type Library, type Session } from '../library';
-import { buildBookArt, edgeColorOf, REBIND_VERSION } from '../rebinding';
+import { applyStatus, completions, defaultBinding, emptyLibrary, finishedYear, monthPeriod, pendingCoverColors, periodStats, roundsOf, toShelfBook, withCoverColors, yearPeriod, type Library, type Session } from '../library';
+import { buildBookArt, dominantColorOf, REBIND_VERSION } from '../rebinding';
 import { TITLE_LIGHT } from '../color';
 
 function withBook(id = 'bk1'): Library {
@@ -110,23 +110,14 @@ describe('책장용 책 모양', () => {
     expect(toShelfBook(lib, 'bk1')!.coverArtUri).toBeUndefined();
   });
 
-  it('책등 그림은 YES24 책등, 기본 정면 그림을 골랐거나 색을 직접 바꾼 책은 책 색 + 제목', () => {
+  it('정면은 실제 표지, 책등은 사진을 쓰지 않고 책 색 + 제목(책등 사진은 두께를 재는 데만)', () => {
     const lib = withBook();
     const eId = lib.books.bk1.editionId;
-    const bdId = lib.books.bk1.bindingId!;
-    expect(toShelfBook(lib, 'bk1')!.spineArtUri).toBeUndefined(); // 표지 없는 책
     lib.editions[eId] = { ...lib.editions[eId], coverUri: 'https://image.yes24.com/goods/13137546/L', coverSource: 'api' };
-    expect(toShelfBook(lib, 'bk1')!.spineArtUri).toBeUndefined(); // 아직 안 잰 책: 늘어난 사진을 그리지 않는다
     rememberSpineRatio('https://image.yes24.com/goods/13137546/L', 36 / 400);
-    expect(toShelfBook(lib, 'bk1')!.spineArtUri).toBe('https://image.yes24.com/goods/13137546/SIDE/XL');
-    const orig = lib.bindings[bdId];
-    lib.bindings[bdId] = { ...orig, source: 'custom', spineColor: '#123456' };
-    expect(toShelfBook(lib, 'bk1')!.spineArtUri).toBeUndefined();
-    lib.bindings[bdId] = { ...orig, coverArtId: 'autumn-field' };
-    expect(toShelfBook(lib, 'bk1')!.spineArtUri).toBeUndefined();
-    lib.bindings[bdId] = orig;
-    lib.editions[eId] = { ...lib.editions[eId], coverUri: 'file:///photo.jpg', coverSource: 'photo' };
-    expect(toShelfBook(lib, 'bk1')!.spineArtUri).toBeUndefined(); // 내가 찍은 사진에는 책등이 없다
+    const b = toShelfBook(lib, 'bk1')!;
+    expect(b.coverArtUri).toBe('https://image.yes24.com/goods/13137546/L');
+    expect(b.spineArtUri).toBeUndefined();
   });
 
   it('사진을 입힌 책은 빛 기준 색이 책 색과 상관없는 중간 회색 + 그림 표지(검정·순백 표지 색에서 사진 색이 왜곡되지 않게)', () => {
@@ -143,20 +134,20 @@ describe('책장용 책 모양', () => {
     }
   });
 
-  it('실제 크기: 제공된 mm를 선반 축척 그대로, 두께는 책등 사진 비율(없으면 쪽수), 책등 사진은 늘어나지 않는다', () => {
+  it('실제 크기: 제공된 mm를 선반 축척 그대로, 두께는 책등 사진 비율(없으면 쪽수), 최소 두께 아래로 내려가지 않는다', () => {
     const lib = withBook();
     const eId = lib.books.bk1.editionId;
-    lib.editions[eId] = { ...lib.editions[eId], size: { widthMm: 153, heightMm: 224 }, pageCount: 216, coverUri: 'https://image.yes24.com/goods/77/L', coverSource: 'api' };
+    lib.editions[eId] = { ...lib.editions[eId], size: { widthMm: 153, heightMm: 224 }, pageCount: 500, coverUri: 'https://image.yes24.com/goods/77/L', coverSource: 'api' };
     const byPages = toShelfBook(lib, 'bk1')!.dims!;
     expect(byPages.height).toBeCloseTo(mm(224), 6);
     expect(byPages.coverWidth).toBeCloseTo(mm(153), 6);
-    expect(byPages.thickness).toBeCloseTo(mm(216 * 0.06 + 1.5), 6);
-    rememberSpineRatio('https://image.yes24.com/goods/77/L', 36 / 400);
+    expect(byPages.thickness).toBeCloseTo(mm(500 * 0.06 + 1.5), 6);
+    rememberSpineRatio('https://image.yes24.com/goods/77/L', 0.15);
     const d = toShelfBook(lib, 'bk1')!.dims!;
-    expect(d.thickness! / d.height!).toBeCloseTo(36 / 400, 6); // 면 비율 = 사진 비율
-    rememberSpineRatio('https://image.yes24.com/goods/77/L', 0); // 책등 사진 없음
-    expect(toShelfBook(lib, 'bk1')!.dims!.thickness).toBeCloseTo(mm(216 * 0.06 + 1.5), 6);
-    // 아주 얇은 책도 최소 두께(잘 보이고 누를 수 있게)
+    expect(d.thickness! / d.height!).toBeCloseTo(0.15, 6); // 재 둔 실제 두께
+    rememberSpineRatio('https://image.yes24.com/goods/77/L', 0); // 책등 사진 없음: 쪽수
+    expect(toShelfBook(lib, 'bk1')!.dims!.thickness).toBeCloseTo(mm(500 * 0.06 + 1.5), 6);
+    // 얇은 책은 최소 두께(제목이 읽히고 누를 수 있게)
     expect(realDimensions({ widthMm: 130, heightMm: 200, pages: 40 }).thickness).toBe(REAL_SPINE_MIN);
     expect(realDimensions({ widthMm: 130, heightMm: 200, pages: 40 }, 0.02).thickness).toBe(REAL_SPINE_MIN);
     // 잘못 온 판형(20×260mm)은 흔한 판형으로
@@ -170,32 +161,34 @@ describe('책장용 책 모양', () => {
     expect(isSpineImage(0, 0)).toBe(false);
   });
 
-  it('표지 가장자리 색: 아직 안 맞춘 검색 표지만 대상, 기본 장정만 바꾸고 고친 장정은 두며, 맞춘 뒤에는 다시 하지 않는다', () => {
+  it('표지 색: 아직 안 맞춘 검색 표지만 대상, 기본 장정만 바꾸고 고친 장정은 두며, 맞춘 뒤에는 다시 하지 않는다', () => {
     const lib = withBook();
     const eId = lib.books.bk1.editionId;
     const bdId = lib.books.bk1.bindingId!;
-    expect(pendingCoverEdges(lib)).toEqual([]); // 표지 없는 책
-    lib.editions[eId] = { ...lib.editions[eId], coverUri: 'file:///photo.jpg', coverSource: 'photo', art: { ...buildBookArt({ title: 'x' }), version: 1 } };
-    expect(pendingCoverEdges(lib)).toEqual([]); // 내가 찍은 사진
+    expect(pendingCoverColors(lib)).toEqual([]); // 표지 없는 책
+    lib.editions[eId] = { ...lib.editions[eId], coverUri: 'file:///photo.jpg', coverSource: 'photo', art: { ...buildBookArt({ title: 'x' }), version: 2 } };
+    expect(pendingCoverColors(lib)).toEqual([]); // 내가 찍은 사진
     lib.editions[eId] = { ...lib.editions[eId], coverUri: 'https://image.yes24.com/goods/1/L', coverSource: 'api' };
-    expect(pendingCoverEdges(lib)).toEqual([{ editionId: eId, coverUri: 'https://image.yes24.com/goods/1/L' }]);
+    expect(pendingCoverColors(lib)).toEqual([{ editionId: eId, coverUri: 'https://image.yes24.com/goods/1/L' }]);
     const motif = lib.editions[eId].art!.motifId;
     const custom = { ...lib, bindings: { ...lib.bindings, [bdId]: { ...lib.bindings[bdId], source: 'custom' as const, spineColor: '#123456' } } };
-    expect(withCoverEdges(custom, [{ editionId: eId, color: '#101010' }], 't').bindings[bdId].spineColor).toBe('#123456');
-    const done = withCoverEdges(lib, [{ editionId: eId, color: '#101010' }], 't');
+    expect(withCoverColors(custom, [{ editionId: eId, color: '#101010' }], 't').bindings[bdId].spineColor).toBe('#123456');
+    const done = withCoverColors(lib, [{ editionId: eId, color: '#101010' }], 't');
     expect(done.bindings[bdId].spineColor).toBe('#101010');
     expect(done.bindings[bdId].inkColor).toBe(TITLE_LIGHT); // 어두운 책등에는 밝은 제목
     expect(done.editions[eId].art).toMatchObject({ baseColor: '#101010', motifId: motif, version: REBIND_VERSION });
     expect(toShelfBook(done, 'bk1')!.themeColor).toBe('#101010');
-    expect(pendingCoverEdges(done)).toEqual([]);
+    expect(pendingCoverColors(done)).toEqual([]);
   });
 
-  it('새 책: 표지 가장자리 색이 있으면 길들이지 않고 그대로 책 색, 가장 넓은 색을 고른다', () => {
-    expect(buildBookArt({ title: 'x', coverEdge: '#0A0A0A', seriesTitle: '시리즈' }).baseColor).toBe('#0A0A0A');
-    const px = [...Array(30).fill([10, 10, 10, 255]).flat(), ...Array(10).fill([240, 240, 240, 255]).flat()];
-    expect(edgeColorOf(px)).toBe('#0a0a0a');
-    expect(edgeColorOf([])).toBeNull();
-    expect(edgeColorOf(Array(40).fill([255, 255, 255, 255]).flat())).toBe('#ededed'); // 순백은 종이 흰색까지만(벽에 묻히지 않게)
+  it('새 책: 표지 색이 있으면 길들이지 않고 그대로 책 색, 표지에서 가장 넓게 차지하는 색을 고른다', () => {
+    expect(buildBookArt({ title: 'x', coverColor: '#0A0A0A', seriesTitle: '시리즈' }).baseColor).toBe('#0A0A0A');
+    const fill = (n: number, c: number[]) => Array(n).fill([...c, 255]).flat();
+    expect(dominantColorOf([...fill(30, [10, 10, 10]), ...fill(10, [240, 200, 30])])).toBe('#0a0a0a');
+    // 흰 바탕 넓은 표지에 작은 색 띠: 넓은 쪽(중간값·평균으로 섞이지 않는다)
+    expect(dominantColorOf([...fill(10, [240, 180, 40]), ...fill(25, [120, 30, 30]), ...fill(5, [20, 20, 20])])).toBe('#781e1e');
+    expect(dominantColorOf([])).toBeNull();
+    expect(dominantColorOf(fill(40, [255, 255, 255]))).toBe('#ededed'); // 순백은 종이 흰색까지만(벽에 묻히지 않게)
   });
 
   it('coverAtSize: YES24 표지 주소만 크기를 바꾸고 다른 주소는 그대로', () => {
