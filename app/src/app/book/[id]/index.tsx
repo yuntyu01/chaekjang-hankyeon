@@ -275,8 +275,9 @@ const st = StyleSheet.create({
   pageRow: { flexDirection: 'row', alignItems: 'baseline', justifyContent: 'space-between', marginTop: space.s, minHeight: space.touch },
   page: { fontFamily: fonts.ui, fontSize: 32, lineHeight: 40, color: colors.ink, includeFontPadding: false, fontVariant: ['tabular-nums'] },
   pageTotal: { fontFamily: fonts.ui, fontSize: 18, color: colors.inkSoft },
-  bar: { height: 4, borderRadius: 2, backgroundColor: colors.track, marginTop: space.s, overflow: 'hidden' },
-  barFill: { height: 4, borderRadius: 2, backgroundColor: colors.accent },
+  // 쪽수 진행 막대: 8 두께(2026-11-01 사용자 '좀 더 두껍게'), 끝은 둥글게
+  bar: { height: 8, borderRadius: 4, backgroundColor: colors.line, marginTop: space.m, overflow: 'hidden' },
+  barFill: { height: 8, borderRadius: 4, backgroundColor: colors.accent },
   pageInput: { alignSelf: 'stretch', textAlign: 'center', marginTop: space.s },
   note: { ...type.body, marginTop: space.xs },
   rateArea: { marginTop: space.l, gap: space.xs },
