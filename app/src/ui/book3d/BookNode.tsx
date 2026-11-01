@@ -21,6 +21,7 @@ import { LIGHT_ON, RENDER, TL, tl } from '@/ui/perf';
 import { BookLight, seedOf, TabLight, type BookKey, type TabFrame } from '@/ui/SceneLight';
 import { SHOW } from '@/ui/shelf/shadow-debug';
 
+import { bookLightRef } from '@/domain/binding-material';
 import { useBookArt, tabsOf, toneOf, type BookArt, type Shared } from './art';
 import { BackFace, PageFace, type Surround } from './BookFaces';
 import { faceMatrix, HIDDEN_MATRIX, silhouette, type Affine } from './face-geometry';
@@ -176,7 +177,7 @@ export function BookNode({ book, dims, state, cam, px, shared, keyShadow, order,
   if (!art) return null;
   // 몸체 색 하나: 판 두 장·책등·판 끝·책등 띠가 모두 같은 책 색이다
   const tone = toneOf(book);
-  const albedo = linearOf(tone);
+  const { albedo, picture } = bookLightRef(book, linearOf);
   const sur: Surround = { env, atlas, id: book.id, boxes, self };
   return (
     <Group zIndex={z} clip={clip} opacity={opacity}>
@@ -202,7 +203,7 @@ export function BookNode({ book, dims, state, cam, px, shared, keyShadow, order,
             </>
           )}
           {/* 빛: 책 윤곽 안을 화소마다 광선으로(보이는 면·속지 구멍을 셰이더가 찾는다). 받는 창빛 그림자도 그 빛 계산 안에서 */}
-          {SHOW.body && LIGHT_ON.face ? <BookLight dims={dims} state={state} cam={cam} px={px} outline={outline} albedo={albedo} material={book.art.material} env={env} atlas={atlas} id={book.id} keyShadow={keyShadow} picture={!!book.cover?.artworkId && !book.art.vectorCover} /> : null}
+          {SHOW.body && LIGHT_ON.face ? <BookLight dims={dims} state={state} cam={cam} px={px} outline={outline} albedo={albedo} material={book.art.material} env={env} atlas={atlas} id={book.id} keyShadow={keyShadow} picture={picture} /> : null}
           {/* 윤곽 밖을 지운다: 반전 채움 경로를 dstOut으로(윤곽 밖은 다 지우고, 가장자리 화소는 덮인 만큼만 남는다).
               dstIn 경로는 경로가 덮는 화소에만 적용돼, 둥근 윤곽 밖으로 나온 사각형 면(책등 그림)의 귀퉁이가 직각으로 남았다(2026-11-01) */}
           <Path path={outline} fillType="inverseWinding" color="black" blendMode="dstOut" />

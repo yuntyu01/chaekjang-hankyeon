@@ -6,7 +6,8 @@ import { contrast, rgbHex, TITLE_DARK, TITLE_LIGHT } from './color';
 import { MOTIF_SLOTS, type MotifSlotId } from './motif-slots';
 import type { HeightClass, ThicknessClass } from './types';
 
-export const REBIND_VERSION = 1;
+// 2: 실제 표지가 있는 책의 기본 색 = 표지 왼쪽 가장자리 색 그대로(2026-11-01 사용자 '책등 색도 표지 색으로'). 1은 시작할 때 한 번 다시 계산한다(cover-edge-backfill)
+export const REBIND_VERSION = 2;
 
 // 팔레트 범위(지시서 2): 채도 25~55%, 명도 35~80%
 export const SAT_RANGE = [0.25, 0.55] as const;
@@ -33,6 +34,7 @@ export type RebindInput = {
   seriesTitle?: string;
   palette?: PaletteEntry[]; // 썸네일 상위 색(extractPalette). 없으면 themeColor
   themeColor?: string; // 서버가 뽑아 준 주조색(팔레트가 없을 때)
+  coverEdge?: string; // 실제 표지 왼쪽 가장자리 색(edgeColorOf). 있으면 팔레트로 길들이지 않고 그대로 책 색으로 쓴다(시리즈 색보다 앞선다)
 };
 
 export type BookArtParams = {
@@ -267,8 +269,9 @@ export function layoutArt(v: LayoutVariant): { titleTop?: number; motifScale?: n
 export function buildBookArt(input: RebindInput, now = ''): BookArtParams {
   const seed = input.isbn || input.title;
   const series = input.seriesTitle?.trim() || undefined;
+  const edge = input.coverEdge && /^#[\da-f]{6}$/i.test(input.coverEdge) ? input.coverEdge : undefined;
   const source = series ? seriesBase(series, seed) : pickSourceColor(input.palette, input.themeColor, seed);
-  const { base, ink } = inkFor(tameToPalette(source));
+  const { base, ink } = edge ? { base: edge, ink: tonesFor(edge).inkColor } : inkFor(tameToPalette(source));
   const height = input.heightMm ?? 188;
   const pages = input.pageCount ?? 250;
   return {
@@ -303,6 +306,16 @@ export function applyOverride(art: BookArtParams, o: ArtOverride | undefined): B
 
 // ---------- 썸네일 색 추출(median cut) ----------
 // rgba: 픽셀 RGBA 바이트 배열. 상위 n색과 비중을 돌려준다. 투명 픽셀은 건너뛴다.
+// 표지 왼쪽 가장자리 띠의 픽셀에서 가장 넓은 색 하나(책등과 맞닿는 쪽이라 책등 색으로 쓴다).
+// 표지 그림의 흰 바탕은 화면 순백(#FFFFFF)이지만 실제 종이는 그만큼 희지 않다: 그대로 칠하면 음영이 잘려 흰 벽에 묻히므로 종이 흰색까지만
+const PAPER_WHITE_L = 0.93;
+export function edgeColorOf(rgba: ArrayLike<number>): string | null {
+  const hex = extractPalette(rgba, 3)[0]?.hex;
+  if (!hex) return null;
+  const c = hexToHsl(hex);
+  return c.l > PAPER_WHITE_L ? hslToHex({ ...c, l: PAPER_WHITE_L }) : hex;
+}
+
 export function extractPalette(rgba: ArrayLike<number>, n = 3): PaletteEntry[] {
   type Px = [number, number, number];
   const px: Px[] = [];

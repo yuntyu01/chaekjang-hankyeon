@@ -24,8 +24,7 @@ import {
   type ReadStatus,
   type Round,
   type SessionInput,
-  type SessionPatch,
-} from '@/domain/library';
+  type SessionPatch, withCoverEdges } from '@/domain/library';
 
 type State = { lib: Library; loaded: boolean; error: string | null };
 
@@ -171,6 +170,11 @@ export const libraryStore = {
     const old = b.bindingId ? state.lib.bindings[b.bindingId] : undefined;
     const bd: Binding = old ? { ...old, ...patch, updatedAt: t } : { id: newId('bd'), myBookId, status: 'ready', createdAt: t, updatedAt: t, ...patch };
     commit({ ...state.lib, bindings: { ...state.lib.bindings, [bd.id]: bd }, books: { ...state.lib.books, [myBookId]: { ...b, bindingId: bd.id, updatedAt: t } } });
+  },
+
+  // 표지 왼쪽 가장자리 색을 판본·기본 장정에 넣는다(여러 권을 한 번에: 책장이 한 번만 다시 그려진다)
+  applyCoverEdges(edges: { editionId: string; color: string }[]) {
+    if (edges.length) commit(withCoverEdges(state.lib, edges, now()));
   },
 
   // 손대지 않은 예시 책을 서재에서 뺀다(domain/home-reference checkSampleBooks가 고른 것만). 동기화에는 삭제로 올라가

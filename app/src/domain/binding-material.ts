@@ -62,3 +62,12 @@ export function bindingSurfaceTone(color: string) {
 export function bookTone(b: Book) {
   return bindingSurfaceTone(jacketColor(b.cover?.edge ?? b.body?.face ?? b.themeColor));
 }
+
+// 면 전체에 곱할 빛 비율의 기준 색과 그림 표지 여부(BookLight). 실제 표지·책등 사진을 입힌 책은 픽셀마다 색이 달라 책 색 하나를 기준으로 삼지 않는다:
+// 책 색이 표지 가장자리 색이라 검정에 가까우면 비율이 몇 배로 튀어 주황이 노랗게 날아가고, 순백이면 톤 곡선 끝이라 음영이 사라진다(2026-11-01 실측).
+// 톤 곡선 직선 구간의 중간 회색을 기준으로 삼고, 반사광은 그림 표지처럼 따로 더한다
+const PICTURE_ALBEDO: [number, number, number] = [0.5, 0.5, 0.5];
+export function bookLightRef(book: Book, linearOf: (hex: string) => [number, number, number]): { albedo: [number, number, number]; picture: boolean } {
+  if (book.coverArtUri || book.spineArtUri) return { albedo: PICTURE_ALBEDO, picture: true };
+  return { albedo: linearOf(bookTone(book)), picture: !!book.cover?.artworkId && !book.art.vectorCover };
+}

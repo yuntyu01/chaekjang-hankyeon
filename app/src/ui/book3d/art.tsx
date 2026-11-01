@@ -26,6 +26,7 @@ import { TL, tl } from '@/ui/perf';
 import { ORIGINAL_ART, ReferenceGlyph, ReferenceMotif, ReferencePrint, drawOriginalGlyph, hasOriginalGlyph, hasReferenceMotif, referencePrint } from './ReferencePrint';
 import { createArtCache } from './art-cache';
 import { bookArtKey } from './art-key';
+import { isSpineImage } from '@/domain/cover-url';
 
 // 책 제목 글꼴: 함렛 SemiBold(부드러운 명조). 2026-10-31 사용자가 고운바탕·나눔스퀘어라운드·주아·함렛을 책장에 넣어 비교해 함렛을 골랐다.
 // 같은 날 책장 시안 지시로 Medium(획 약 84%)으로 낮췄다가, 사용자가 보여 준 더 생기 있는 화면(획 면적 +18~40%)을 보고 '제목 글자도' → SemiBold로 되돌림.
@@ -506,7 +507,12 @@ export function useBookArt(book: Book, s: number, dims: { T: number; H: number; 
   const madeSpineUri = badSpine === book.spineArtUri ? null : book.spineArtUri ?? null;
   const madeCover = useImage(madeCoverUri, () => setBadCover(book.coverArtUri ?? null));
   const madeSpine = useImage(madeSpineUri, () => setBadSpine(book.spineArtUri ?? null));
-  const ready = shared.regular && shared.original && (!needMotif || motif) && (!needCover || coverImg) && (!madeCoverUri || madeCover) && (!madeSpineUri || madeSpine);
+  // 책등이 없는 책은 '이미지 준비중' 그림이 온다: 책등에 늘려 그리지 않고 코드로 그리는 책등(책 색 + 제목)으로
+  const fakeSpine = !!madeSpine && !!madeSpineUri && !isSpineImage(madeSpine.width(), madeSpine.height());
+  useEffect(() => {
+    if (fakeSpine) setBadSpine(book.spineArtUri ?? null);
+  }, [fakeSpine, book.spineArtUri]);
+  const ready = shared.regular && shared.original && (!needMotif || motif) && (!needCover || coverImg) && (!madeCoverUri || madeCover) && (!madeSpineUri || madeSpine) && !fakeSpine;
   // 장정(책 색·모티프)·저자가 바뀌면 다시 기록한다(같은 책 id라도)
   const key = bookArtKey(book, s, dims, cover, madeCoverUri, madeSpineUri);
   const [art, setArt] = useState<{ key: string; art: BookArt } | null>(() => {

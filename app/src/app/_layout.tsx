@@ -10,6 +10,7 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { RecoveryDialog } from '@/features/reading/ActiveReading';
 import { MiniTimer } from '@/features/reading/MiniTimer';
 import { bootStores } from '@/store/boot';
+import { backfillCoverEdges } from '@/services/cover-edge-backfill';
 import { bootMark } from '@/ui/boot-trace';
 import { startProfile } from '@/ui/profile';
 import { BookArtProvider } from '@/ui/book3d/art';
@@ -52,6 +53,8 @@ export default function RootLayout() {
       if (!active) return;
       bootMark('stores-ready');
       setBooted(true);
+      // 첫 화면을 그린 뒤 뒤에서(첫 화면이 늦어지지 않게)
+      setTimeout(() => { void backfillCoverEdges().catch((e: unknown) => console.warn('표지 색 맞추기 실패(다음 시작 때 다시)', String(e))); }, 3000);
     }).catch((e) => {
       // 화면에는 짧은 안내만, 원인은 기기 로그로(배포 번들에서도 남는다)
       console.warn('boot failed', String((e as Error)?.stack ?? e));

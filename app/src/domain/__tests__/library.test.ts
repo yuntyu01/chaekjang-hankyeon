@@ -1,9 +1,12 @@
 // 내 서재 규칙: 읽기 상태와 회차(재독은 새 회차, 지난 기록은 그대로), 통계 기준(완독 권수·재독), 책장용 책 모양.
-import { coverAtSize } from '../cover-url';
-import { bookTone } from '../binding-material';
+import { coverAtSize, isSpineImage } from '../cover-url';
+import { bookLightRef, bookTone } from '../binding-material';
+import { linearOf } from '../light-model';
 import { ARTWORK_INK } from '../cover-artworks';
 import { ensureShelves, pruneEmptyShelves } from '../layout-engine';
-import { applyStatus, completions, defaultBinding, emptyLibrary, finishedYear, monthPeriod, periodStats, roundsOf, toShelfBook, yearPeriod, type Library, type Session } from '../library';
+import { applyStatus, completions, defaultBinding, emptyLibrary, finishedYear, monthPeriod, pendingCoverEdges, periodStats, roundsOf, toShelfBook, withCoverEdges, yearPeriod, type Library, type Session } from '../library';
+import { buildBookArt, edgeColorOf, REBIND_VERSION } from '../rebinding';
+import { TITLE_LIGHT } from '../color';
 
 function withBook(id = 'bk1'): Library {
   const lib = emptyLibrary();
@@ -103,6 +106,72 @@ describe('책장용 책 모양', () => {
     const bdId = lib.books.bk1.bindingId!;
     lib.bindings[bdId] = { ...lib.bindings[bdId], coverArtId: 'autumn-field' };
     expect(toShelfBook(lib, 'bk1')!.coverArtUri).toBeUndefined();
+  });
+
+  it('책등 그림은 YES24 책등, 기본 정면 그림을 골랐거나 색을 직접 바꾼 책은 책 색 + 제목', () => {
+    const lib = withBook();
+    const eId = lib.books.bk1.editionId;
+    const bdId = lib.books.bk1.bindingId!;
+    expect(toShelfBook(lib, 'bk1')!.spineArtUri).toBeUndefined(); // 표지 없는 책
+    lib.editions[eId] = { ...lib.editions[eId], coverUri: 'https://image.yes24.com/goods/13137546/L', coverSource: 'api' };
+    expect(toShelfBook(lib, 'bk1')!.spineArtUri).toBe('https://image.yes24.com/goods/13137546/SIDE/XL');
+    const orig = lib.bindings[bdId];
+    lib.bindings[bdId] = { ...orig, source: 'custom', spineColor: '#123456' };
+    expect(toShelfBook(lib, 'bk1')!.spineArtUri).toBeUndefined();
+    lib.bindings[bdId] = { ...orig, coverArtId: 'autumn-field' };
+    expect(toShelfBook(lib, 'bk1')!.spineArtUri).toBeUndefined();
+    lib.bindings[bdId] = orig;
+    lib.editions[eId] = { ...lib.editions[eId], coverUri: 'file:///photo.jpg', coverSource: 'photo' };
+    expect(toShelfBook(lib, 'bk1')!.spineArtUri).toBeUndefined(); // 내가 찍은 사진에는 책등이 없다
+  });
+
+  it('사진을 입힌 책은 빛 기준 색이 책 색과 상관없는 중간 회색 + 그림 표지(검정·순백 표지 색에서 사진 색이 왜곡되지 않게)', () => {
+    const lib = withBook();
+    const eId = lib.books.bk1.editionId;
+    const bdId = lib.books.bk1.bindingId!;
+    const plain = bookLightRef(toShelfBook(lib, 'bk1')!, linearOf);
+    expect(plain.picture).toBe(false);
+    expect(plain.albedo).toEqual(linearOf(bookTone(toShelfBook(lib, 'bk1')!)));
+    lib.editions[eId] = { ...lib.editions[eId], coverUri: 'https://image.yes24.com/goods/1/L', coverSource: 'api' };
+    for (const color of ['#0e0c08', '#ffffff']) {
+      lib.bindings[bdId] = { ...lib.bindings[bdId], spineColor: color };
+      expect(bookLightRef(toShelfBook(lib, 'bk1')!, linearOf)).toEqual({ albedo: [0.5, 0.5, 0.5], picture: true });
+    }
+  });
+
+  it('책등 그림 판별: 좁고 긴 그림만 책등, 이미지 준비중(280×400)은 아니다', () => {
+    expect(isSpineImage(36, 400)).toBe(true);
+    expect(isSpineImage(64, 400)).toBe(true);
+    expect(isSpineImage(280, 400)).toBe(false);
+    expect(isSpineImage(0, 0)).toBe(false);
+  });
+
+  it('표지 가장자리 색: 아직 안 맞춘 검색 표지만 대상, 기본 장정만 바꾸고 고친 장정은 두며, 맞춘 뒤에는 다시 하지 않는다', () => {
+    const lib = withBook();
+    const eId = lib.books.bk1.editionId;
+    const bdId = lib.books.bk1.bindingId!;
+    expect(pendingCoverEdges(lib)).toEqual([]); // 표지 없는 책
+    lib.editions[eId] = { ...lib.editions[eId], coverUri: 'file:///photo.jpg', coverSource: 'photo', art: { ...buildBookArt({ title: 'x' }), version: 1 } };
+    expect(pendingCoverEdges(lib)).toEqual([]); // 내가 찍은 사진
+    lib.editions[eId] = { ...lib.editions[eId], coverUri: 'https://image.yes24.com/goods/1/L', coverSource: 'api' };
+    expect(pendingCoverEdges(lib)).toEqual([{ editionId: eId, coverUri: 'https://image.yes24.com/goods/1/L' }]);
+    const motif = lib.editions[eId].art!.motifId;
+    const custom = { ...lib, bindings: { ...lib.bindings, [bdId]: { ...lib.bindings[bdId], source: 'custom' as const, spineColor: '#123456' } } };
+    expect(withCoverEdges(custom, [{ editionId: eId, color: '#101010' }], 't').bindings[bdId].spineColor).toBe('#123456');
+    const done = withCoverEdges(lib, [{ editionId: eId, color: '#101010' }], 't');
+    expect(done.bindings[bdId].spineColor).toBe('#101010');
+    expect(done.bindings[bdId].inkColor).toBe(TITLE_LIGHT); // 어두운 책등에는 밝은 제목
+    expect(done.editions[eId].art).toMatchObject({ baseColor: '#101010', motifId: motif, version: REBIND_VERSION });
+    expect(toShelfBook(done, 'bk1')!.themeColor).toBe('#101010');
+    expect(pendingCoverEdges(done)).toEqual([]);
+  });
+
+  it('새 책: 표지 가장자리 색이 있으면 길들이지 않고 그대로 책 색, 가장 넓은 색을 고른다', () => {
+    expect(buildBookArt({ title: 'x', coverEdge: '#0A0A0A', seriesTitle: '시리즈' }).baseColor).toBe('#0A0A0A');
+    const px = [...Array(30).fill([10, 10, 10, 255]).flat(), ...Array(10).fill([240, 240, 240, 255]).flat()];
+    expect(edgeColorOf(px)).toBe('#0a0a0a');
+    expect(edgeColorOf([])).toBeNull();
+    expect(edgeColorOf(Array(40).fill([255, 255, 255, 255]).flat())).toBe('#ededed'); // 순백은 종이 흰색까지만(벽에 묻히지 않게)
   });
 
   it('coverAtSize: YES24 표지 주소만 크기를 바꾸고 다른 주소는 그대로', () => {
