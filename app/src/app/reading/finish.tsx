@@ -13,7 +13,7 @@ import { ambient } from '@/services/ambient';
 import { saveFinishedReading } from '@/store/finish-reading';
 import { useLibrary } from '@/store/library-store';
 import { readingStore, useReading } from '@/store/reading-store';
-import { Btn, Empty, Field, Muted, Row, Screen, SelectField } from '@/ui/kit';
+import { Btn, Empty, Field, H2, ListGroup, ListItem, Muted, Row, Screen, SelectField, TextLink } from '@/ui/kit';
 import { colors, fonts, shape, tidySpace as space, tidyType as type } from '@/ui/screenTheme';
 import { serverBase } from '@/services/sync';
 
@@ -48,19 +48,28 @@ export default function Finish() {
     setStartPage(pending.startPage ? String(pending.startPage) : '');
   }, [pending]);
 
-  if (saved)
+  // 저장 뒤(2026-11-01 토스 결과 화면처럼): 이번 기록 요약 → 이어서 할 수 있는 일(줄 목록) → 아래 '확인' 하나. 버튼을 세로로 쌓지 않는다
+  if (saved) {
+    const ss = lib.sessions[saved.sessionId];
+    const sb = saved.bookId ? lib.books[saved.bookId] : undefined;
+    const se = sb ? lib.editions[sb.editionId] : undefined;
+    const pagesText = ss && ss.startPage !== undefined && ss.pagesRead !== undefined && ss.pagesRead >= ss.startPage ? `${ss.startPage}→${ss.pagesRead}쪽(${ss.pagesRead - ss.startPage}쪽)` : ss?.pagesRead ? `${ss.pagesRead}쪽까지` : null;
     return (
-      <Screen tidy title="저장했어요" back={false}>
-        <Text style={[type.body, { marginTop: space.m }]}>독서 기록을 저장했어요.</Text>
-        <View style={{ gap: space.s, marginTop: space.xl }}>
-          {saved.bookId ? <Btn label="이 책에 갈피 남기기" onPress={() => router.replace({ pathname: '/bookmark/new', params: { book: saved.bookId, session: saved.sessionId } })} /> : null}
-          {saved.bookId && serverBase ? <Btn label="커뮤니티에 공유하기" kind="secondary" onPress={() => router.push({ pathname: '/community/share', params: { session: saved.sessionId } })} /> : null}
-          {saved.bookId ? <Btn label="책 정보 보기" kind="secondary" onPress={() => router.replace(`/book/${saved.bookId}`)} /> : null}
-          <Btn label="내 기록 보기" kind="secondary" onPress={() => router.replace('/stats')} />
-          <Btn label="닫기" kind="ghost" onPress={() => router.dismissTo('/read')} />
+      <Screen tidy title="저장했어요" back={false} footer={<Btn label="확인" size="l" onPress={() => router.dismissTo('/read')} />}>
+        <View style={st.savedSummary} accessible>
+          <Text style={type.rowStrong} numberOfLines={2}>{se?.title ?? '책 없이 읽은 시간'}</Text>
+          <Text style={[type.sub, { marginTop: 4 }]}>{[ss ? (ss.durationMs < 60000 ? formatDurationPrecise(ss.durationMs) : formatDuration(ss.durationMs)) : null, pagesText].filter(Boolean).join(' · ')}</Text>
         </View>
+        <H2 first>이어서 할 수 있어요</H2>
+        <ListGroup>
+          {saved.bookId ? <ListItem label="이 책에 갈피 남기기" sub="이번 기록과 연결돼요" chevron onPress={() => router.replace({ pathname: '/bookmark/new', params: { book: saved.bookId, session: saved.sessionId } })} /> : null}
+          {saved.bookId && serverBase ? <ListItem label="커뮤니티에 공유하기" sub="고른 것만 공개돼요" chevron onPress={() => router.push({ pathname: '/community/share', params: { session: saved.sessionId } })} /> : null}
+          {saved.bookId ? <ListItem label="책 정보 보기" chevron onPress={() => router.replace(`/book/${saved.bookId}`)} /> : null}
+          <ListItem label="내 기록 보기" chevron onPress={() => router.replace('/stats')} />
+        </ListGroup>
       </Screen>
     );
+  }
   if (!pending)
     return (
       <Screen tidy title="독서 기록">
@@ -130,7 +139,7 @@ export default function Finish() {
         </>
       ) : null}
       <Field label="짧은 메모 (선택)" value={memo} onChangeText={setMemo} placeholder="나만 보는 메모예요" multiline submitBehavior="blurAndSubmit" returnKeyType="done" style={{ minHeight: 80 }} />
-      <Btn label="버리기" kind="ghost" onPress={discard} />
+      <TextLink label="이 기록 버리기" tone="soft" onPress={discard} style={{ marginTop: space.s }} />
       <BookPicker
         lib={lib}
         visible={picking}
@@ -146,6 +155,7 @@ export default function Finish() {
 }
 
 const st = StyleSheet.create({
+  savedSummary: { paddingVertical: space.l, borderBottomWidth: shape.hairline, borderBottomColor: colors.line },
   summary: { alignItems: 'center', paddingVertical: space.xl, marginTop: space.s, marginBottom: space.xl, borderBottomWidth: shape.hairline, borderBottomColor: colors.line },
   time: { fontFamily: fonts.ui, fontSize: 36, lineHeight: 44, color: colors.ink, marginTop: space.s, includeFontPadding: false, fontVariant: ['tabular-nums'] },
 });

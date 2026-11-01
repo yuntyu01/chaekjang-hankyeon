@@ -208,7 +208,7 @@ export default function BookDetailScreen() {
               {marks.length > 5 ? <Btn label={`갈피 ${marks.length}개 모두 보기`} kind="ghost" onPress={() => router.push({ pathname: '/bookmarks', params: { book: id } })} /> : null}
             </View>
           ) : (
-            <Empty title="아직 남긴 갈피가 없어요" action="첫 갈피 남기기" onAction={() => router.push({ pathname: '/bookmark/new', params: { book: id } })} />
+            <Empty title="아직 남긴 갈피가 없어요" action="첫 갈피 남기기" actionKind="secondary" onAction={() => router.push({ pathname: '/bookmark/new', params: { book: id } })} />
           )}
         </View>
       ) : null}

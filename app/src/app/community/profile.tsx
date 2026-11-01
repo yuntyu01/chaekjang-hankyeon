@@ -7,7 +7,7 @@ import { Alert, Text } from 'react-native';
 import { explainWriteError } from '@/features/community/actions';
 import { Unavailable } from '@/features/community/Unavailable';
 import { community, communityAvailability, errorMessage, type Availability, type MyProfile } from '@/services/community';
-import { Btn, Empty, Field, ListGroup, ListItem, Loading, Notice, Screen } from '@/ui/kit';
+import { Btn, Empty, Field, ListGroup, ListItem, Loading, Screen } from '@/ui/kit';
 import { space, tidyType } from '@/ui/screenTheme';
 
 export default function MyPublicProfile() {
@@ -81,7 +81,7 @@ export default function MyPublicProfile() {
       title="공개 프로필"
       tidy
       footer={<Btn label={me.profile ? '저장' : '공개 프로필 만들기'} size="l" disabled={!changed || !nick.trim() || !!nickError} busy={saving} onPress={() => void save()} />}>
-      <Notice style={{ marginTop: space.tight }}>공개 닉네임은 게시물·후기·댓글에 보여요. 로그인한 계정 이름이나 내 서재 기록은 공개되지 않아요.</Notice>
+      <Text style={[tidyType.sub, { marginBottom: space.group }]}>공개 닉네임은 게시물·후기·댓글에 보여요. 로그인한 계정 이름이나 내 서재 기록은 공개되지 않아요.</Text>
       <Field label="공개 닉네임" value={nick} onChangeText={setNick} maxLength={20} placeholder="2~20자" error={nickError} autoCorrect={false} />
       <Field label="소개 (선택)" value={bio} onChangeText={setBio} maxLength={200} multiline placeholder="어떤 책을 즐겨 읽는지 한두 줄로" />
       {me.profile ? (

@@ -1,6 +1,7 @@
 // 내 기록: 월/연도 선택 → 완독한 책 수·기록된 독서 시간·남긴 갈피 수, 기간에 읽은 책, 날짜별 독서 기록.
 // 모두 실제 저장 데이터로 계산한다. 완독·재독 기준은 domain/library periodStats와 같다(책 상세도 같은 기준).
 // 책을 고르면(책 상세에서 들어오거나 '이 책만') 요약·읽은 책·날짜별 기록 모두 그 책만. 책 없는 독서 시간은 전체에서만 센다.
+// 2026-11-01 토스식: 큰 제목, 월/연도 반반 탭, 큰 숫자 세 개(상자 없이 위아래 얇은 선), 설명은 한 줄, 날짜 묶음 이름은 굵게.
 import { router, useLocalSearchParams } from 'expo-router';
 import { ChevronLeft, ChevronRight } from '@/ui/icons';
 import { useMemo, useState } from 'react';
@@ -11,8 +12,17 @@ import { hm } from '@/features/book/labels';
 import { formatDuration, formatDurationPrecise, monthPeriod, periodStats, sessionDay, yearPeriod } from '@/domain/library';
 import { useLibrary } from '@/store/library-store';
 import { usePlacementStore } from '@/store/placement-store';
-import { Chip, Empty, H2, IconButton, ListGroup, Muted, Row, Screen } from '@/ui/kit';
-import { colors, icon, press, shape, space, type } from '@/ui/screenTheme';
+import { Chip, Empty, H2, IconButton, ListGroup, Muted, Row, Screen, Tabs } from '@/ui/kit';
+import { colors, icon, press, shape, tidySpace as space, tidyType as type } from '@/ui/screenTheme';
+
+const MODES = [{ id: 'month', label: '월' }, { id: 'year', label: '연도' }] as const;
+const WEEK = ['일', '월', '화', '수', '목', '금', '토'];
+// '2026-11-01' → '11월 1일 (일)'
+function dayLabel(day: string) {
+  const [yy, mm, dd] = day.split('-').map(Number);
+  const w = new Date(yy, mm - 1, dd).getDay();
+  return `${mm}월 ${dd}일 (${WEEK[w]})`;
+}
 
 export default function Stats() {
   const params = useLocalSearchParams<{ book?: string }>();
@@ -51,13 +61,14 @@ export default function Stats() {
   };
   const title = (id?: string) => (id ? lib.editions[lib.books[id]?.editionId]?.title : undefined);
   return (
-    <Screen title="내 기록">
-      <Row style={{ marginTop: space.item }}>
-        <Chip label="월" on={mode === 'month'} onPress={() => setMode('month')} />
-        <Chip label="연도" on={mode === 'year'} onPress={() => setMode('year')} />
-        {book ? <Chip label={`${title(book) ?? '책'}만 · 전체 보기`} on onPress={() => setBook(undefined)} /> : null}
-      </Row>
-      <Row style={{ marginTop: space.group, justifyContent: 'space-between', flexWrap: 'nowrap' }}>
+    <Screen tidy title="내 기록">
+      <Tabs fill items={MODES} value={mode} onChange={setMode} style={{ marginHorizontal: -space.page }} />
+      {book ? (
+        <Row style={{ marginTop: space.l }}>
+          <Chip label={`${title(book) ?? '책'}만 보는 중 · 전체 보기`} on onPress={() => setBook(undefined)} />
+        </Row>
+      ) : null}
+      <Row style={{ marginTop: space.l, justifyContent: 'space-between', flexWrap: 'nowrap' }}>
         <IconButton label={mode === 'month' ? '이전 달' : '이전 해'} onPress={() => shift(-1)}>
           <ChevronLeft size={icon.size} color={colors.ink} strokeWidth={icon.stroke} />
         </IconButton>
@@ -75,13 +86,13 @@ export default function Stats() {
         ].map((c, i) => (
           <View key={c.k} style={[st.cell, i > 0 && st.cellLine]} accessible accessibilityLabel={`${c.k} ${c.v}${c.sub ? `, ${c.sub}` : ''}`}>
             <Text style={type.sub}>{c.k}</Text>
-            <Text style={[type.number, { marginTop: 6 }]}>{c.v}</Text>
+            <Text style={[type.number, { marginTop: 6 }]} adjustsFontSizeToFit numberOfLines={1}>{c.v}</Text>
             {c.sub ? <Text style={[type.caption, { marginTop: 2 }]}>{c.sub}</Text> : null}
           </View>
         ))}
       </View>
-      <Text style={[type.caption, { marginTop: space.item }]}>
-        완독: 이 기간에 완독일이 있는 책 수(같은 책을 다시 완독해도 1권, 회차·재독은 따로 표시). 독서 시간: 저장한 독서 기록의 실제 시간(일시정지 제외){book ? '' : ', 책 없이 잰 시간 포함'}.
+      <Text style={[type.caption, { marginTop: space.m }]} accessibilityHint="완독은 이 기간에 완독일이 있는 책 수예요. 같은 책을 다시 완독해도 1권으로 세고 회차·재독은 따로 보여요.">
+        같은 책은 1권으로 세요 · 일시정지 시간은 빼요{book ? '' : ' · 책 없이 잰 시간 포함'}
       </Text>
 
       <H2>이 기간에 읽은 책</H2>
@@ -102,13 +113,13 @@ export default function Stats() {
         <View style={{ gap: space.group }}>
           {byDay.map((d) => (
             <View key={d.day}>
-              <Text style={type.caption}>{d.day.replace(/-/g, '.')}</Text>
+              <Text style={[type.label, { color: colors.inkSoft }]}>{dayLabel(d.day)}</Text>
               <ListGroup>
                 {d.items.map((s) => (
                   <Pressable key={s.id} onPress={() => router.push(`/session/${s.id}`)} style={({ pressed }) => [st.session, pressed && press]} accessibilityRole="button" accessibilityLabel={`${title(s.myBookId) ?? '책 없음'}, ${formatDuration(s.durationMs)}, 기록 수정`}>
                     <View style={{ flex: 1 }}>
                       <Row style={{ justifyContent: 'space-between', flexWrap: 'nowrap' }}>
-                        <Text style={[type.row, { flex: 1 }]} numberOfLines={1}>
+                        <Text style={[type.rowStrong, { flex: 1 }]} numberOfLines={1}>
                           {title(s.myBookId) ?? '책 없음'}
                         </Text>
                         <Text style={type.row}>{s.durationMs < 60000 ? formatDurationPrecise(s.durationMs) : formatDuration(s.durationMs)}</Text>
@@ -132,8 +143,8 @@ export default function Stats() {
 }
 
 const st = StyleSheet.create({
-  summary: { flexDirection: 'row', marginTop: space.group, paddingVertical: space.group, borderTopWidth: shape.hairline, borderBottomWidth: shape.hairline, borderColor: colors.line },
+  summary: { flexDirection: 'row', marginTop: space.l, paddingVertical: space.xl, borderTopWidth: shape.hairline, borderBottomWidth: shape.hairline, borderColor: colors.line },
   cell: { flex: 1, paddingHorizontal: 12 },
   cellLine: { borderLeftWidth: shape.hairline, borderLeftColor: colors.line },
-  session: { flexDirection: 'row', alignItems: 'center', paddingVertical: 14 },
+  session: { flexDirection: 'row', alignItems: 'center', paddingVertical: 16 },
 });
