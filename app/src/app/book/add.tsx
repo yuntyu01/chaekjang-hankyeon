@@ -18,6 +18,7 @@ import { placeWithChoice } from '@/features/book/place-books';
 import { placementStore } from '@/store/placement-store';
 import { uiBus } from '@/store/ui-bus';
 import { LibraryCover } from '@/ui/BookVisual';
+import { ChevronDown, ChevronUp } from '@/ui/icons';
 import { Btn, Chip, Empty, Field, H2, Loading, Muted, Notice, RealCover, Row, Screen, SearchField, TextLink } from '@/ui/kit';
 import { colors, fonts, icon, press, tidySpace as space, tidyType as type } from '@/ui/screenTheme';
 
@@ -61,6 +62,7 @@ export default function AddBook() {
   const [addedId, setAddedId] = useState<string | null>(null);
   const [placed, setPlaced] = useState<'shelf' | 'kept' | null>(null);
   const [saving, setSaving] = useState(false);
+  const [more, setMore] = useState(false); // 책 확인 '추가 정보'(출판사·ISBN·판형·읽기 상태) 펼침
 
   const size: SizeMm | undefined = num(draft.width) && num(draft.height) ? { widthMm: Math.min(num(draft.width)!, num(draft.height)!), heightMm: Math.max(num(draft.width)!, num(draft.height)!) } : undefined;
 
@@ -217,54 +219,61 @@ export default function AddBook() {
             />
           </View>
         }>
-        {notice ? <Notice style={{ marginTop: space.m, marginBottom: space.xl }}>{notice}</Notice> : null}
-        <Row style={{ alignItems: 'flex-start', flexWrap: 'nowrap', marginTop: notice ? 0 : space.m }} gap={space.l}>
-          <RealCover uri={draft.coverUri} title={draft.title || '표지'} color={colors.input} width={96} />
-          <View style={{ flex: 1, gap: space.s }}>
-            <Muted>{draft.coverUri ? (draft.coverSource === 'photo' ? '내가 찍은 사진' : `${draft.sourceName ?? '도서 정보'} 표지`) : '표지가 없어요. 사진을 등록할 수 있어요.'}</Muted>
-            {draft.link ? <TextLink label={`${draft.sourceName ?? '판매처'}에서 보기`} tone="soft" onPress={() => void Linking.openURL(draft.link!)} style={{ alignSelf: 'flex-start', marginVertical: -10 }} /> : null}
-            <Btn
-              label={draft.coverUri ? '사진으로 바꾸기' : '표지 사진 등록'}
-              kind="secondary"
-              size="s"
-              style={{ alignSelf: 'flex-start' }}
-              onPress={async () => {
-                const r = await pickPhoto('library');
-                if (r.ok) setDraft({ ...draft, coverUri: r.uri, coverSource: 'photo' });
-                else if (r.reason === 'denied') setNotice(deniedMessage('library'));
-              }}
-            />
+        {notice ? <Notice style={{ marginTop: space.m, marginBottom: space.l }}>{notice}</Notice> : null}
+        {/* 2026-11-01 사용자 시안: 표지 가운데 + '표지 바꾸기', 아래 제공처 한 줄. 입력은 제목(필수)·저자·전체 쪽수만 펼쳐 두고 나머지는 '추가 정보'에 접는다 */}
+        <View style={st.coverArea}>
+          <View style={st.cover}><RealCover uri={draft.coverUri} title={draft.title || '표지'} color={colors.input} width={120} /></View>
+          <Btn
+            label={draft.coverUri ? '표지 바꾸기' : '표지 사진 등록'}
+            kind="ghost"
+            size="s"
+            style={st.coverButton}
+            onPress={async () => {
+              const r = await pickPhoto('library');
+              if (r.ok) setDraft({ ...draft, coverUri: r.uri, coverSource: 'photo' });
+              else if (r.reason === 'denied') setNotice(deniedMessage('library'));
+            }}
+          />
+          <View style={st.sourceRow}>
+            <Text style={type.caption}>{draft.coverUri ? (draft.coverSource === 'photo' ? '내가 찍은 사진' : `${draft.sourceName ?? '도서 정보'} 제공`) : '표지가 없어요'}</Text>
+            {draft.link && draft.coverSource !== 'photo' ? (
+              <Pressable onPress={() => void Linking.openURL(draft.link!)} hitSlop={8} accessibilityRole="link" accessibilityLabel={`${draft.sourceName ?? '판매처'}에서 원문 보기`} style={({ pressed }) => pressed && press}>
+                <Text style={type.caption}>{' · '}<Text style={st.sourceLink}>원문 보기</Text></Text>
+              </Pressable>
+            ) : null}
           </View>
-        </Row>
-        {/* 기본 정보(제목 필수) / 추가 서지정보(모두 선택): 구역 이름과 간격으로 나눈다 */}
-        <H2>기본 정보</H2>
+        </View>
         <Field label="제목 (필수)" value={draft.title} onChangeText={(t) => setDraft({ ...draft, title: t })} placeholder="책 제목" />
         <Field label="저자 (선택)" value={draft.authors} onChangeText={(t) => setDraft({ ...draft, authors: t })} placeholder="여러 명은 쉼표로" />
-        <H2>추가 서지정보 (선택)</H2>
-        <Field label="출판사" value={draft.publisher} onChangeText={(t) => setDraft({ ...draft, publisher: t })} />
-        <Row style={{ flexWrap: 'nowrap' }} gap={space.m}>
+        <Field label="전체 쪽수 (선택)" value={draft.pages} onChangeText={(t) => setDraft({ ...draft, pages: t })} placeholder="쪽수 입력" keyboardType="number-pad" />
+        <Pressable onPress={() => setMore(!more)} accessibilityRole="button" accessibilityState={{ expanded: more }} style={({ pressed }) => [st.moreRow, pressed && press]}>
           <View style={{ flex: 1 }}>
+            <Text style={type.section}>추가 정보</Text>
+            <Text style={[type.caption, { marginTop: 2 }]}>출판사 · ISBN · 판형 · 읽기 상태</Text>
+          </View>
+          {more ? <ChevronUp size={icon.size} color={colors.inkSoft} strokeWidth={icon.stroke} /> : <ChevronDown size={icon.size} color={colors.inkSoft} strokeWidth={icon.stroke} />}
+        </Pressable>
+        {more ? (
+          <View style={{ marginTop: space.s }}>
+            <Field label="출판사" value={draft.publisher} onChangeText={(t) => setDraft({ ...draft, publisher: t })} />
             <Field label="ISBN" value={draft.isbn} onChangeText={(t) => setDraft({ ...draft, isbn: t })} keyboardType="number-pad" />
+            <Row style={{ flexWrap: 'nowrap' }} gap={space.m}>
+              <View style={{ flex: 1 }}>
+                <Field label="판형 가로(mm)" value={draft.width} onChangeText={(t) => setDraft({ ...draft, width: t })} keyboardType="number-pad" />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Field label="판형 세로(mm)" value={draft.height} onChangeText={(t) => setDraft({ ...draft, height: t })} keyboardType="number-pad" />
+              </View>
+            </Row>
+            <Muted>쪽수·판형을 모르면 비워 두세요. 책장에는 흔한 크기로 보이고, 상세에는 ‘확인 전’으로 표시돼요.</Muted>
+            <H2>읽기 상태</H2>
+            <Row>
+              {READ_STATUSES.map((st2) => (
+                <Chip key={st2} label={STATUS_LABEL[st2]} on={draft.status === st2} onPress={() => setDraft({ ...draft, status: st2 })} />
+              ))}
+            </Row>
           </View>
-          <View style={{ flex: 1 }}>
-            <Field label="쪽수" value={draft.pages} onChangeText={(t) => setDraft({ ...draft, pages: t })} keyboardType="number-pad" />
-          </View>
-        </Row>
-        <Row style={{ flexWrap: 'nowrap' }} gap={space.m}>
-          <View style={{ flex: 1 }}>
-            <Field label="판형 가로(mm)" value={draft.width} onChangeText={(t) => setDraft({ ...draft, width: t })} keyboardType="number-pad" />
-          </View>
-          <View style={{ flex: 1 }}>
-            <Field label="판형 세로(mm)" value={draft.height} onChangeText={(t) => setDraft({ ...draft, height: t })} keyboardType="number-pad" />
-          </View>
-        </Row>
-        <Muted>쪽수·판형을 모르면 비워 두세요. 책장에는 흔한 크기로 보이고, 상세에는 ‘확인 전’으로 표시돼요.</Muted>
-        <H2>읽기 상태</H2>
-        <Row>
-          {READ_STATUSES.map((st) => (
-            <Chip key={st} label={STATUS_LABEL[st]} on={draft.status === st} onPress={() => setDraft({ ...draft, status: st })} />
-          ))}
-        </Row>
+        ) : null}
       </Screen>
     );
 
@@ -435,6 +444,12 @@ const st = StyleSheet.create({
   manualStrong: { fontFamily: fonts.uiBold, color: colors.accent },
   // 표지 사진 그림자는 옅게(갈색 기 없이)
   cover: { borderRadius: 3, boxShadow: [{ offsetX: 0, offsetY: 2, blurRadius: 4, color: 'rgba(0,0,0,0.10)' }] },
+  // 책 확인: 표지 가운데, 그 아래 회색 '표지 바꾸기'와 제공처 한 줄
+  coverArea: { alignItems: 'center', marginTop: space.s, marginBottom: space.l },
+  coverButton: { marginTop: space.l, backgroundColor: colors.surface, paddingHorizontal: space.xl },
+  sourceRow: { flexDirection: 'row', alignItems: 'center', marginTop: space.s },
+  sourceLink: { textDecorationLine: 'underline', color: colors.inkSoft },
+  moreRow: { flexDirection: 'row', alignItems: 'center', minHeight: 64, marginTop: space.xl, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.line, paddingTop: space.l },
   add: { minHeight: 36, paddingHorizontal: 14, borderRadius: 8, backgroundColor: colors.accentSoft, alignItems: 'center', justifyContent: 'center' }, // 오른쪽 같은 자리의 작은 '추가'
   doneBlock: { flexDirection: 'row', gap: space.l, alignItems: 'flex-start', marginTop: space.s },
   doneResult: { marginTop: space.m },
