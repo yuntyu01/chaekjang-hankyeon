@@ -2,7 +2,7 @@
 // 상태: 확인 중 → 쓸 수 없음(이유) / 불러오는 중 / 오류(다시 시도) / 비어 있음 / 목록(아래로 내리면 더 불러오기, 당겨서 새로 고침).
 // 처음에 게시물이 없으면 비어 있다고 그대로 보여 준다(가짜 사용자·게시물로 채우지 않는다).
 import { router, useFocusEffect } from 'expo-router';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
 import { ActivityIndicator, FlatList, RefreshControl, Text, View } from 'react-native';
 
 import { explainWriteError } from '@/features/community/actions';
@@ -11,7 +11,7 @@ import { Unavailable } from '@/features/community/Unavailable';
 import { community, communityAvailability, errorMessage, type Availability, type Post } from '@/services/community';
 import { MINI_TIMER_SPACE } from '@/store/mini-timer-store';
 import { useReading } from '@/store/reading-store';
-import { UserRound } from '@/ui/icons';
+import { PenLine, UserRound } from '@/ui/icons';
 import { Divider, Empty, IconButton, Loading, Screen, Tabs, TextLink, ui } from '@/ui/kit';
 import { colors, icon, space, tidyType } from '@/ui/screenTheme';
 import { navigation } from '@/ui/theme';
@@ -108,12 +108,20 @@ export default function CommunityTab() {
     }
   };
 
-  const right = <IconButton label="내 공개 프로필" onPress={() => router.push('/community/profile')}><UserRound size={icon.size} color={colors.ink} strokeWidth={icon.stroke} /></IconButton>;
+  // 머리줄 오른쪽: 기록 공유하기(글쓰기) · 내 공개 프로필
+  const right = (
+    <View style={{ flexDirection: 'row', gap: 4 }}>
+      <IconButton label="독서 기록 공유하기" onPress={() => router.push('/community/compose')}><PenLine size={icon.size} color={colors.ink} strokeWidth={icon.stroke} /></IconButton>
+      <IconButton label="내 공개 프로필" onPress={() => router.push('/community/profile')}><UserRound size={icon.size} color={colors.ink} strokeWidth={icon.stroke} /></IconButton>
+    </View>
+  );
+  const pad = (node: ReactNode) => <View style={{ paddingHorizontal: ui.pad }}>{node}</View>;
   if (!avail) return <Screen title="커뮤니티" back={false} scroll={false} tidy><Loading /></Screen>;
   if (!avail.ok) return <Screen title="커뮤니티" back={false} scroll={false} tidy><Unavailable a={avail} onRetry={recheck} /></Screen>;
   return (
     <Screen title="커뮤니티" back={false} scroll={false} tidy right={right}>
-      <Tabs items={SCOPES} value={scope} onChange={(s) => { if (s !== scope) { setItems([]); setNext(null); setPhase('loading'); setScope(s); } }} style={{ marginTop: 4, marginHorizontal: -6 }} />
+      {/* 스레드·토스증권처럼 화면 끝까지 반반 나눈 탭, 글은 상자 없이 화면 폭 그대로 + 사이 얇은 선 */}
+      <Tabs fill items={SCOPES} value={scope} onChange={(s) => { if (s !== scope) { setItems([]); setNext(null); setPhase('loading'); setScope(s); } }} style={{ marginHorizontal: -ui.pad }} />
       {phase === 'loading' ? <Loading /> : phase === 'error' ? (
         <Empty title="피드를 불러오지 못했어요" body={error} action="다시 시도" actionKind="secondary" onAction={() => { setPhase('loading'); void load(scope, 'first'); }} />
       ) : (
@@ -121,7 +129,7 @@ export default function CommunityTab() {
           data={items}
           keyExtractor={(p) => String(p.id)}
           style={{ marginHorizontal: -ui.pad }}
-          contentContainerStyle={{ paddingHorizontal: ui.pad, paddingBottom: navigation.height + 40 + (active ? MINI_TIMER_SPACE : 0), flexGrow: 1 }}
+          contentContainerStyle={{ paddingBottom: navigation.height + 40 + (active ? MINI_TIMER_SPACE : 0), flexGrow: 1 }}
           ItemSeparatorComponent={Divider}
           showsVerticalScrollIndicator={false}
           refreshControl={<RefreshControl refreshing={refreshing} onRefresh={refresh} colors={[colors.accent]} tintColor={colors.accent} />}
@@ -129,8 +137,8 @@ export default function CommunityTab() {
           onEndReached={() => void loadMore()}
           ListEmptyComponent={
             scope === 'following'
-              ? <Empty title="팔로우한 사람의 기록이 없어요" body="발견에서 마음에 드는 독자를 찾아 팔로우해 보세요." action="발견 보기" actionKind="secondary" onAction={() => { setItems([]); setPhase('loading'); setScope('discover'); }} />
-              : <Empty title="아직 올라온 독서 기록이 없어요" body="독서를 마치고 기록을 저장하면 고른 내용만 골라 공유할 수 있어요." action="읽으러 가기" actionKind="secondary" onAction={() => router.navigate('/read')} />
+              ? pad(<Empty title="팔로우한 사람의 기록이 없어요" body="발견에서 마음에 드는 독자를 찾아 팔로우해 보세요." action="발견 보기" actionKind="secondary" onAction={() => { setItems([]); setPhase('loading'); setScope('discover'); }} />)
+              : pad(<Empty title="아직 올라온 독서 기록이 없어요" body="내 독서 기록 가운데 하나를 골라 첫 글을 남겨 보세요." action="기록 공유하기" actionKind="secondary" onAction={() => router.push('/community/compose')} />)
           }
           ListFooterComponent={
             moreState === 'loading' ? <ActivityIndicator color={colors.accent} style={{ marginVertical: space.group }} />

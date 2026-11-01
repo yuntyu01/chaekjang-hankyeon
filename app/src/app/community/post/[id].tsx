@@ -7,10 +7,11 @@ import { Alert, Pressable, StyleSheet, Text, TextInput, View } from 'react-nativ
 import { newId } from '@/domain/library';
 import { explainWriteError } from '@/features/community/actions';
 import { ReportSheet, type ReportTarget } from '@/features/community/ReportSheet';
+import { Avatar } from '@/features/community/Avatar';
 import { ago, PostCard } from '@/features/community/PostCard';
 import { community, errorMessage, isNotFound, type Comment, type Post } from '@/services/community';
 import { MoreHorizontal } from '@/ui/icons';
-import { Btn, Divider, Empty, IconButton, ListGroup, ListItem, Loading, Screen, Sheet, TextLink } from '@/ui/kit';
+import { Btn, Divider, Empty, ListGroup, ListItem, Loading, Screen, Sheet, TextLink } from '@/ui/kit';
 import { colors, fonts, icon, press, space, tidyType } from '@/ui/screenTheme';
 
 export default function PostScreen() {
@@ -70,7 +71,6 @@ export default function PostScreen() {
     { text: '차단', style: 'destructive', onPress: () => void community.block(post.userId, true).then(() => router.back()).catch((e: unknown) => explainWriteError(e, '차단하지 못했어요')) },
   ]);
 
-  const right = post ? <IconButton label="더보기" onPress={() => setMenu(true)}><MoreHorizontal size={icon.size} color={colors.ink} strokeWidth={icon.stroke} /></IconButton> : undefined;
   if (phase === 'loading') return <Screen title="독서 기록" tidy compact><Loading /></Screen>;
   if (phase === 'gone') return <Screen title="독서 기록" tidy compact><Empty title="볼 수 없는 게시물이에요" body="지워졌거나 숨겨진 게시물이에요." /></Screen>;
   if (phase === 'error' || !post) return <Screen title="독서 기록" tidy compact><Empty title="불러오지 못했어요" body={error} action="다시 시도" actionKind="secondary" onAction={() => { setPhase('loading'); void load(); }} /></Screen>;
@@ -79,30 +79,39 @@ export default function PostScreen() {
       title="독서 기록"
       tidy
       compact
-      right={right}
       footer={
         <View style={st.compose}>
           <TextInput value={text} onChangeText={setText} placeholder="댓글 남기기" placeholderTextColor={colors.inkFaint} style={st.input} multiline maxLength={500} accessibilityLabel="댓글" />
           <Btn label="올리기" size="s" onPress={() => void send()} disabled={!text.trim()} busy={sending} />
         </View>
       }>
-      <PostCard post={post} full onAuthor={() => router.push(`/community/user/${post.userId}`)} onLike={() => void like()} />
+      {/* 스레드처럼: 글은 화면 폭 그대로, 더보기(⋯)는 작성자 줄에. 댓글은 프로필 동그라미 + 이름·시간 + 글 */}
+      <View style={{ marginHorizontal: -space.page }}>
+        <PostCard post={post} full onAuthor={() => router.push(`/community/user/${post.userId}`)} onLike={() => void like()} onMore={() => setMenu(true)} />
+      </View>
       {/* 다른 사람의 책을 내 서재에: 기존 새 책 추가(검색·같은 ISBN 확인)를 그대로 쓴다. ISBN이 있으면 ISBN으로 찾는다 */}
-      {!post.mine ? <TextLink label="이 책 내 서재에 추가" tone="soft" onPress={() => router.push({ pathname: '/book/add', params: { q: post.isbn13 ?? post.bookTitle } })} style={{ alignSelf: 'flex-start', marginBottom: space.tight }} /> : null}
-      <Divider />
+      {!post.mine ? <TextLink label="이 책 내 서재에 추가" onPress={() => router.push({ pathname: '/book/add', params: { q: post.isbn13 ?? post.bookTitle } })} style={{ alignSelf: 'flex-start', marginLeft: 56, marginTop: -8, marginBottom: space.tight }} /> : null}
+      <Divider style={{ marginHorizontal: -space.page }} />
       <Text style={[tidyType.section, { marginTop: space.group, marginBottom: space.tight }]}>댓글 {comments.length}</Text>
       {comments.length ? (
-        <ListGroup>
-          {comments.map((c) => (
-            <Pressable key={c.id} onLongPress={() => commentMenu(c)} style={({ pressed }) => [st.comment, pressed && press]} accessibilityHint="길게 누르면 지우기·신고">
-              <View style={st.commentHead}>
-                <Pressable onPress={() => router.push(`/community/user/${c.userId}`)} hitSlop={6}><Text style={st.nick}>{c.nickname}</Text></Pressable>
-                <Text style={tidyType.caption}>{ago(c.createdAt)}</Text>
-              </View>
-              <Text style={tidyType.body}>{c.body}</Text>
+        comments.map((c) => (
+          <Pressable key={c.id} onLongPress={() => commentMenu(c)} style={({ pressed }) => [st.comment, pressed && press]} accessibilityHint="길게 누르면 지우기·신고">
+            <Pressable onPress={() => router.push(`/community/user/${c.userId}`)} hitSlop={4} accessibilityLabel={`${c.nickname} 프로필`}>
+              <Avatar name={c.nickname} id={c.userId} size={32} />
             </Pressable>
-          ))}
-        </ListGroup>
+            <View style={{ flex: 1, minWidth: 0 }}>
+              <View style={st.commentHead}>
+                <Pressable onPress={() => router.push(`/community/user/${c.userId}`)} hitSlop={6} style={{ flexShrink: 1 }}><Text style={st.nick} numberOfLines={1}>{c.nickname}</Text></Pressable>
+                <Text style={tidyType.caption}>{ago(c.createdAt)}</Text>
+                <View style={{ flex: 1 }} />
+                <Pressable onPress={() => commentMenu(c)} hitSlop={10} accessibilityRole="button" accessibilityLabel={`${c.nickname}님의 댓글 더보기`} style={({ pressed }) => pressed && press}>
+                  <MoreHorizontal size={icon.small} color={colors.inkSoft} strokeWidth={icon.stroke} />
+                </Pressable>
+              </View>
+              <Text style={[tidyType.body, { marginTop: 2 }]}>{c.body}</Text>
+            </View>
+          </Pressable>
+        ))
       ) : <Text style={[tidyType.sub, { paddingVertical: space.item }]}>첫 댓글을 남겨 보세요.</Text>}
       <Sheet visible={menu} onClose={() => setMenu(false)}>
         <ListGroup>
@@ -119,7 +128,7 @@ export default function PostScreen() {
 const st = StyleSheet.create({
   compose: { flexDirection: 'row', alignItems: 'flex-end', gap: 8 },
   input: { flex: 1, minHeight: 40, maxHeight: 120, borderRadius: 10, backgroundColor: colors.input, paddingHorizontal: 12, paddingVertical: 9, fontFamily: fonts.ui, fontSize: 16, color: colors.ink },
-  comment: { paddingVertical: 14 },
-  commentHead: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 4 },
-  nick: { fontFamily: fonts.uiBold, fontSize: 14, color: colors.ink },
+  comment: { flexDirection: 'row', gap: 10, paddingVertical: 12 },
+  commentHead: { flexDirection: 'row', alignItems: 'center', gap: 6, minHeight: 22 },
+  nick: { fontFamily: fonts.uiBold, fontSize: 15, color: colors.ink },
 });

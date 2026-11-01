@@ -695,18 +695,19 @@ export function ListItem({
 }
 
 // 고르게 나눈 탭(서랍 시안): 칸마다 같은 폭, 고른 칸은 갈색 굵은 글자 + 짧은 갈색 밑줄. 탭 아래 구분선은 없다.
-export function Tabs<T extends string>({ items, value, onChange, style }: { items: readonly { id: T; label: string }[]; value: T; onChange: (id: T) => void; style?: StyleProp<ViewStyle> }) {
+// fill: 칸을 똑같이 나눠 화면 끝까지(커뮤니티 '발견 | 팔로잉', 프로필 '독서 기록 | 평가' — 스레드·토스증권처럼). 고른 칸은 굵은 본문색 + 칸 폭 밑줄, 아래 얇은 선
+export function Tabs<T extends string>({ items, value, onChange, style, fill }: { items: readonly { id: T; label: string }[]; value: T; onChange: (id: T) => void; style?: StyleProp<ViewStyle>; fill?: boolean }) {
   const tidyTabs = useTidy();
   return (
-    <View style={[s.tabs, style]} accessibilityRole="tablist">
+    <View style={[s.tabs, fill && s.tabsFill, style]} accessibilityRole="tablist">
       {items.map((it) => {
         const on = it.id === value;
         return (
-          <Pressable key={it.id} onPress={() => onChange(it.id)} hitSlop={{ left: 4, right: 4 }} style={s.tab} accessibilityRole="tab" accessibilityState={{ selected: on }}>
-            <Text style={[s.tabText, tidyTabs && ts.tabText, on && s.tabTextOn]} numberOfLines={1}>
+          <Pressable key={it.id} onPress={() => onChange(it.id)} hitSlop={{ left: 4, right: 4 }} style={[s.tab, fill && s.tabFill]} accessibilityRole="tab" accessibilityState={{ selected: on }}>
+            <Text style={[s.tabText, tidyTabs && ts.tabText, on && s.tabTextOn, fill && s.tabTextFill, fill && on && { color: colors.ink }]} numberOfLines={1}>
               {it.label}
             </Text>
-            <View style={[s.tabBar, !on && { backgroundColor: 'transparent' }]} />
+            <View style={[s.tabBar, fill && s.tabBarFill, !on && { backgroundColor: 'transparent' }]} />
           </Pressable>
         );
       })}
@@ -865,6 +866,10 @@ export const s = StyleSheet.create({
   tabText: { ...type.row, fontSize: 14, lineHeight: 20, color: colors.inkSoft },
   tabTextOn: { fontFamily: type.button.fontFamily, color: colors.ink },
   tabBar: { width: 32, height: 3, borderRadius: 2, backgroundColor: colors.accent, marginTop: 8 },
+  tabsFill: { justifyContent: 'flex-start', borderBottomWidth: shape.hairline, borderBottomColor: colors.line },
+  tabFill: { flex: 1, paddingHorizontal: 0, paddingTop: 10 },
+  tabTextFill: { fontFamily: fonts.uiBold, fontSize: 16, lineHeight: 22 },
+  tabBarFill: { width: '100%', height: 2, borderRadius: 0, backgroundColor: colors.ink, marginTop: 10 },
   searchInput: { ...type.input, flex: 1, paddingVertical: 12 },
   clear: { width: 22, height: 22, borderRadius: 11, backgroundColor: colors.inkFaint, alignItems: 'center', justifyContent: 'center' },
   chip: { minHeight: 38, paddingVertical: 8, borderRadius: shape.pill, borderWidth: shape.border, borderColor: colors.input, backgroundColor: colors.input, paddingHorizontal: 15, flexDirection: 'row', alignItems: 'center', gap: 6 },

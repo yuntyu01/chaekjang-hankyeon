@@ -73,7 +73,9 @@ export default function ShareDraft() {
       ) : null}
       <Field label="한 줄 남기기 (선택)" value={choice.body} onChangeText={(v) => set({ body: v })} maxLength={1000} multiline placeholder="공개로 보여질 글이에요" />
       <Text style={[tidyType.section, { marginTop: space.section }]}>미리보기</Text>
-      <PostCard post={preview} full />
+      <View style={{ marginHorizontal: -space.page }}>
+        <PostCard post={preview} full />
+      </View>
     </Screen>
   );
 }
