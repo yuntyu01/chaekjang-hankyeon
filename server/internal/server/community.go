@@ -441,6 +441,7 @@ type postOut struct {
 	ISBN       *string   `json:"isbn13,omitempty"`
 	BookTitle  string    `json:"bookTitle"`
 	BookAuthor *string   `json:"bookAuthor,omitempty"`
+	CoverURL   *string   `json:"coverUrl,omitempty"`
 	DurationMs *int64    `json:"durationMs,omitempty"`
 	PagesRead  *int      `json:"pagesRead,omitempty"`
 	Quote      *string   `json:"quote,omitempty"`
@@ -455,7 +456,7 @@ type postOut struct {
 
 // where의 매개변수는 $2부터(빈 자리는 args로). before > 0이면 그 id보다 앞(오래된) 것만
 func (s *Server) listPosts(ctx context.Context, viewer int64, where string, args []any, before int64, limit int) ([]postOut, error) {
-	q := `SELECT p.id, p.user_id, pp.nickname, p.isbn13, p.book_title, p.book_author, p.duration_ms, p.pages_read, p.quote, p.quote_page, p.body,
+	q := `SELECT p.id, p.user_id, pp.nickname, p.isbn13, p.book_title, p.book_author, p.cover_url, p.duration_ms, p.pages_read, p.quote, p.quote_page, p.body,
 	  (SELECT count(*) FROM community_likes l WHERE l.post_id=p.id),
 	  EXISTS(SELECT 1 FROM community_likes l WHERE l.post_id=p.id AND l.user_id=$1),
 	  (SELECT count(*) FROM community_comments c WHERE c.post_id=p.id AND c.deleted_at IS NULL AND c.hidden_at IS NULL AND ` + visible("c.user_id") + `),
@@ -474,7 +475,7 @@ func (s *Server) listPosts(ctx context.Context, viewer int64, where string, args
 	}
 	return pgx.CollectRows(rows, func(row pgx.CollectableRow) (postOut, error) {
 		var o postOut
-		err := row.Scan(&o.ID, &o.UserID, &o.Nickname, &o.ISBN, &o.BookTitle, &o.BookAuthor, &o.DurationMs, &o.PagesRead, &o.Quote, &o.QuotePage, &o.Body, &o.Likes, &o.Liked, &o.Comments, &o.Mine, &o.CreatedAt)
+		err := row.Scan(&o.ID, &o.UserID, &o.Nickname, &o.ISBN, &o.BookTitle, &o.BookAuthor, &o.CoverURL, &o.DurationMs, &o.PagesRead, &o.Quote, &o.QuotePage, &o.Body, &o.Likes, &o.Liked, &o.Comments, &o.Mine, &o.CreatedAt)
 		return o, err
 	})
 }
@@ -537,6 +538,7 @@ func (s *Server) createPost(w http.ResponseWriter, r *http.Request) error {
 		ISBN       *string `json:"isbn13"`
 		BookTitle  string  `json:"bookTitle"`
 		BookAuthor *string `json:"bookAuthor"`
+		CoverURL   *string `json:"coverUrl"`
 		DurationMs *int64  `json:"durationMs"`
 		PagesRead  *int    `json:"pagesRead"`
 		Quote      *string `json:"quote"`
@@ -566,6 +568,11 @@ func (s *Server) createPost(w http.ResponseWriter, r *http.Request) error {
 	if err != nil {
 		return err
 	}
+	// 표지 썸네일: 공개 표지 주소(https, 500자 이하)만. 아니면 비운다(게시는 막지 않는다 — 예전 앱·사진 표지)
+	cover, _ := trimmed(in.CoverURL, 500)
+	if cover != nil && !strings.HasPrefix(*cover, "https://") {
+		cover = nil
+	}
 	body, err := trimmed(in.Body, 1000)
 	if err != nil {
 		return err
@@ -585,9 +592,9 @@ func (s *Server) createPost(w http.ResponseWriter, r *http.Request) error {
 	}
 	var id int64
 	// 같은 client_id(재시도·중복 요청)는 처음 것 하나
-	err = s.DB.QueryRow(ctx, `INSERT INTO community_posts(user_id,client_id,isbn13,book_title,book_author,duration_ms,pages_read,quote,quote_page,body)
-	  VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) ON CONFLICT(user_id,client_id) DO UPDATE SET client_id=EXCLUDED.client_id RETURNING id`,
-		user, cid, isbn, title, author, pos64(in.DurationMs), pos(in.PagesRead), quote, pos(in.QuotePage), body).Scan(&id)
+	err = s.DB.QueryRow(ctx, `INSERT INTO community_posts(user_id,client_id,isbn13,book_title,book_author,duration_ms,pages_read,quote,quote_page,body,cover_url)
+	  VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) ON CONFLICT(user_id,client_id) DO UPDATE SET client_id=EXCLUDED.client_id RETURNING id`,
+		user, cid, isbn, title, author, pos64(in.DurationMs), pos(in.PagesRead), quote, pos(in.QuotePage), body, cover).Scan(&id)
 	if err != nil {
 		return err
 	}

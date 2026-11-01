@@ -5,7 +5,8 @@ import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { formatDurationPrecise } from '@/domain/library';
 import type { Post } from '@/services/community';
 import { Avatar } from '@/features/community/Avatar';
-import { BookOpen, Heart, MessageCircle, MoreHorizontal } from '@/ui/icons';
+import { Heart, MessageCircle, MoreHorizontal } from '@/ui/icons';
+import { RealCover } from '@/ui/kit';
 import { colors, fonts, icon, press, space } from '@/ui/screenTheme';
 
 export function ago(iso: string, now = Date.now()) {
@@ -24,6 +25,14 @@ export function ago(iso: string, now = Date.now()) {
 export function mergePosts(prev: Post[], page: Post[]) {
   const seen = new Set(prev.map((p) => p.id));
   return [...prev, ...page.filter((p) => !seen.has(p.id))];
+}
+
+// 표지가 없을 때의 색: 제목으로 고정한 차분한 책등 색(같은 책은 늘 같은 색)
+const COVER_COLORS = ['#7F95A8', '#8E9A78', '#B98270', '#6E879E', '#A0906F', '#9A7F8F', '#6F8F86', '#A8826A'];
+function coverColor(title: string) {
+  let h = 0;
+  for (const ch of title) h = (h * 31 + ch.charCodeAt(0)) >>> 0;
+  return COVER_COLORS[h % COVER_COLORS.length];
 }
 
 export function postFacts(p: Pick<Post, 'durationMs' | 'pagesRead'>) {
@@ -62,7 +71,8 @@ export function PostCard({ post, onOpen, onAuthor, onLike, onMore, full }: { pos
           </View>
         ) : null}
         <View style={st.book} accessible accessibilityLabel={`책 ${post.bookTitle}${bookMeta ? `, ${bookMeta}` : ''}`}>
-          <BookOpen size={icon.small} color={colors.inkSoft} strokeWidth={icon.stroke} />
+          {/* 실제 책 표지 썸네일(제공처 공개 표지). 없으면 제목을 쓴 색 표지 */}
+          <RealCover uri={post.coverUrl} title={post.bookTitle} color={coverColor(post.bookTitle)} width={36} ratio={0.7} />
           <View style={{ flex: 1, minWidth: 0 }}>
             <Text style={st.bookTitle} numberOfLines={1}>{post.bookTitle}</Text>
             {bookMeta ? <Text style={st.meta} numberOfLines={1}>{bookMeta}</Text> : null}
@@ -94,7 +104,7 @@ const st = StyleSheet.create({
   quote: { marginTop: 10, paddingVertical: 2, paddingLeft: 12, borderLeftWidth: 3, borderLeftColor: colors.track },
   quoteText: { fontFamily: fonts.serif, fontSize: 15, lineHeight: 24, color: colors.ink },
   // 책 첨부: 회색으로 채우지 않고 얇은 테두리만(스레드의 링크 미리보기·토스증권의 종목 줄 자리)
-  book: { flexDirection: 'row', alignItems: 'center', gap: 10, marginTop: 12, paddingVertical: 10, paddingHorizontal: 12, borderRadius: 12, borderWidth: 1, borderColor: colors.line },
+  book: { flexDirection: 'row', alignItems: 'center', gap: 12, marginTop: 12, paddingVertical: 10, paddingHorizontal: 12, borderRadius: 12, borderWidth: 1, borderColor: colors.line },
   bookTitle: { fontFamily: fonts.uiBold, fontSize: 15, lineHeight: 21, color: colors.ink },
   meta: { fontFamily: fonts.ui, fontSize: 13, lineHeight: 18, color: colors.inkSoft },
   foot: { flexDirection: 'row', gap: 20, marginTop: 10 },

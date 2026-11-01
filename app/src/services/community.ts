@@ -14,6 +14,7 @@ export type Post = {
   isbn13?: string;
   bookTitle: string;
   bookAuthor?: string;
+  coverUrl?: string; // 도서 정보 제공처의 공개 표지(https). 사용자 사진 표지는 올리지 않는다
   durationMs?: number;
   pagesRead?: number;
   quote?: string;
@@ -36,6 +37,7 @@ export type PostDraft = {
   isbn13?: string;
   bookTitle: string;
   bookAuthor?: string;
+  coverUrl?: string;
   durationMs?: number;
   pagesRead?: number;
   quote?: string;

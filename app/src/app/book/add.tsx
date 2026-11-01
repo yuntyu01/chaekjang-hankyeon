@@ -2,7 +2,6 @@
 // 저장한 뒤 다시 묻지 않는다. 자리가 모자랄 때만 새 선반 추가 / 보관만 하기를 고른다(place-books). 보관만 한 책도 전체 책에 있다.
 // 검색 결과·표지·쪽수가 없어도 직접 입력과 기본 장정으로 끝낼 수 있다. 추정 크기를 확인된 정보처럼 저장하지 않는다.
 import { router, useLocalSearchParams } from 'expo-router';
-import { Camera, PenLine, Plus } from '@/ui/icons';
 import { useEffect, useRef, useState } from 'react';
 import { Alert, Linking, Pressable, StyleSheet, Text, View } from 'react-native';
 
@@ -12,7 +11,6 @@ import { coverPalette } from '@/services/cover-palette';
 import { STATUS_LABEL } from '@/features/book/labels';
 import { bindingFields, READ_STATUSES, rebindInput, type ReadStatus, type SizeMm } from '@/domain/library';
 import { candidateDetails, searchBooks, type BookCandidate } from '@/services/book-search';
-import { photoIdentify } from '@/services/connectors';
 import { deniedMessage, pickPhoto } from '@/services/photos';
 import { keepImage } from '@/store/files';
 import { libraryStore } from '@/store/library-store';
@@ -20,8 +18,8 @@ import { placeWithChoice } from '@/features/book/place-books';
 import { placementStore } from '@/store/placement-store';
 import { uiBus } from '@/store/ui-bus';
 import { LibraryCover } from '@/ui/BookVisual';
-import { Btn, Chip, Empty, Field, H2, IconAction, Loading, Muted, Notice, RealCover, Row, Screen, SearchField, TextLink } from '@/ui/kit';
-import { colors, icon, press, tidySpace as space, tidyType as type } from '@/ui/screenTheme';
+import { Btn, Chip, Empty, Field, H2, Loading, Muted, Notice, RealCover, Row, Screen, SearchField, TextLink } from '@/ui/kit';
+import { colors, fonts, icon, press, tidySpace as space, tidyType as type } from '@/ui/screenTheme';
 
 type Step = 'find' | 'confirm' | 'binding' | 'done';
 
@@ -94,17 +92,6 @@ export default function AddBook() {
       link: c.link,
       productId: c.productId,
     }, c.pageCount && c.size ? null : `${c.sourceName} 판본 기록에 ${[c.pageCount ? null : '쪽수', c.size ? null : '판형'].filter(Boolean).join('·')} 정보가 없어요. 알면 적고, 모르면 비워 두세요(장정은 흔한 크기로 만들고 ‘확인 전’으로 표시해요).`);
-  };
-
-  const fromPhoto = async (from: 'camera' | 'library') => {
-    const r = await pickPhoto(from);
-    if (!r.ok) {
-      if (r.reason === 'denied') setNotice(deniedMessage(from));
-      else if (r.reason === 'error') setNotice(`사진을 가져오지 못했어요. ${r.message ?? ''}`);
-      return;
-    }
-    // 사진은 책을 찾고 장정 참고용으로 쓴다(읽었다는 인증이 아니다). 인식이 연결되지 않은 지금은 실제 표지로만 쓴다.
-    toConfirm({ ...blank('photo'), coverUri: r.uri, coverSource: 'photo' }, photoIdentify.available ? null : photoIdentify.reason ?? null);
   };
 
   // 같은 ISBN이 이미 서재에 있으면: 기존 책 보기 / 별도 소장본으로 추가(같은 책을 한 권 더 가진 경우). 다시 읽기는 재등록이 아니라 기존 책에서
@@ -185,7 +172,7 @@ export default function AddBook() {
     }
   };
 
-  if (step === 'find') return <FindStep initial={params.q} notice={notice} onPick={fromCandidate} onPhoto={fromPhoto} onManual={(q) => toConfirm({ ...blank('manual'), title: q })} />;
+  if (step === 'find') return <FindStep initial={params.q} notice={notice} onPick={fromCandidate} onManual={(q) => toConfirm({ ...blank('manual'), title: q })} />;
 
   if (step === 'confirm')
     return (
@@ -338,7 +325,9 @@ export default function AddBook() {
   );
 }
 
-function FindStep({ initial, notice, onPick, onPhoto, onManual }: { initial?: string; notice: string | null; onPick: (c: BookCandidate) => void; onPhoto: (from: 'camera' | 'library') => void; onManual: (q: string) => void }) {
+// 책 추가 첫 화면(2026-11-01 사용자): 검색창 → 결과 → 추가가 전부. 사진으로 책 찾기는 이번 범위에서 뺐고(사진은 갈피 문장에 집중),
+// 직접 입력은 결과 아래·결과 없음·검색 실패 때의 작은 '직접 등록' 글자 행동으로만 둔다. 결과 사이에는 선 없이 여백만, 누르면 옅은 바탕
+function FindStep({ initial, notice, onPick, onManual }: { initial?: string; notice: string | null; onPick: (c: BookCandidate) => void; onManual: (q: string) => void }) {
   const [q, setQ] = useState(initial ?? '');
   const [items, setItems] = useState<BookCandidate[] | null>(null);
   const [provider, setProvider] = useState<string | undefined>(undefined);
@@ -387,11 +376,6 @@ function FindStep({ initial, notice, onPick, onPhoto, onManual }: { initial?: st
         accessibilityLabel="제목이나 저자로 찾기"
         style={{ marginTop: space.item }}
       />
-      <View style={st.findMethods}>
-        {/* 사진 인식은 아직 없다: 사진은 표지로만 쓰고 제목은 직접 적는다(동작에 맞는 이름) */}
-        <IconAction label={photoIdentify.available ? '사진으로 찾기' : '표지 사진으로 추가'} onPress={() => Alert.alert(photoIdentify.available ? '사진으로 찾기' : '표지 사진으로 추가', photoIdentify.available ? '표지 사진을 선택해 주세요.' : '사진은 표지로 쓰고, 제목은 다음 화면에서 적어요.', [{ text: '사진 찍기', onPress: () => onPhoto('camera') }, { text: '사진 고르기', onPress: () => onPhoto('library') }, { text: '취소', style: 'cancel' }])} icon={<Camera size={icon.size + 2} color={colors.inkSoft} strokeWidth={icon.stroke} />} />
-        <IconAction label="직접 입력" onPress={() => onManual(q)} icon={<PenLine size={icon.size + 2} color={colors.inkSoft} strokeWidth={icon.stroke} />} />
-      </View>
       {notice ? <Muted style={{ marginTop: space.s }}>{notice}</Muted> : null}
 
       {/* 상태: 찾는 중(결과가 아직 없을 때) · 오류(다시 시도) · 결과 없음(직접 입력) · 결과 */}
@@ -402,40 +386,56 @@ function FindStep({ initial, notice, onPick, onPhoto, onManual }: { initial?: st
             {err}
           </Notice>
           <Btn label="다시 시도" kind="secondary" size="s" onPress={() => run()} />
+          <ManualLink onPress={() => onManual(q)} />
         </View>
       ) : null}
       {items && !items.length && !busy ? (
-        <Empty title={`‘${q.trim()}’에 맞는 책이 없어요`} body="제목이나 저자 이름을 짧게 줄여 찾거나, 직접 입력으로 추가할 수 있어요." action="직접 입력" actionKind="secondary" onAction={() => onManual(q)} />
+        <Empty title={`‘${q.trim()}’에 맞는 책이 없어요`} body="제목이나 저자 이름을 짧게 줄여 찾거나, 직접 등록할 수 있어요." action="직접 등록" actionKind="secondary" onAction={() => onManual(q)} />
       ) : null}
       {items?.length ? (
         <View style={{ marginTop: space.xl }}>
           {/* 결과 머리: 구역 이름처럼 작게(출처 표시는 YES24 약관) */}
-          <Text style={type.section}>{`검색 결과 ${items.length}권${provider ? ` · ${provider} 제공` : ''}`}</Text>
-          {/* 전체 책 목록과 같은 줄 짜임: 표지 64 · 사이 16 · 제목 Medium 17 · 저자 Regular 15, 오른쪽 '+'(누르는 자리는 줄 전체) */}
-          <View style={{ marginTop: space.xs }}>
+          <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'baseline' }}>
+            <Text style={type.sub}>{`검색 결과 ${items.length}권`}</Text>
+            {provider ? <Text style={type.caption}>{`${provider} 제공`}</Text> : null}
+          </View>
+          {/* 표지·제목·저자를 한 묶음으로, 오른쪽 같은 자리에 '추가'. 줄 사이 선 없이 여백만, 누르는 동안 옅은 바탕(화면 끝까지) */}
+          <View style={{ marginTop: space.s, marginHorizontal: -space.page }}>
             {items.map((c) => (
-              <Pressable key={c.key} onPress={() => onPick(c)} style={({ pressed }) => [st.result, pressed && press]} accessibilityRole="button" accessibilityLabel={`${c.title}, ${c.authors.join(', ')}, 추가`}>
-                <View style={st.cover}><RealCover uri={c.coverUrl} title={c.title} color={colors.input} width={64} ratio={0.72} /></View>
-                <View style={{ flex: 1, gap: space.xs }}>
-                  <Text style={type.rowStrong} numberOfLines={3}>{c.title}</Text>
+              <Pressable key={c.key} onPress={() => onPick(c)} style={({ pressed }) => [st.result, pressed && { backgroundColor: colors.surface }]} accessibilityRole="button" accessibilityLabel={`${c.title}, ${c.authors.join(', ')}, 추가`}>
+                <View style={st.cover}><RealCover uri={c.coverUrl} title={c.title} color={colors.input} width={56} ratio={0.72} /></View>
+                <View style={{ flex: 1, minWidth: 0, gap: 4 }}>
+                  <Text style={type.rowStrong} numberOfLines={2}>{c.title}</Text>
                   {c.authors.length ? <Text style={type.sub} numberOfLines={1}>{c.authors.join(', ')}</Text> : null}
                 </View>
-                <View style={st.add}><Plus size={24} color={colors.inkSoft} strokeWidth={icon.stroke} /></View>
+                <View style={st.add} pointerEvents="none"><Text style={st.addText}>추가</Text></View>
               </Pressable>
             ))}
           </View>
+          <ManualLink onPress={() => onManual(q)} />
         </View>
       ) : null}
     </Screen>
   );
 }
 
+// 검색으로 못 찾았을 때만 쓰는 보조 경로
+function ManualLink({ onPress }: { onPress: () => void }) {
+  return (
+    <Pressable onPress={onPress} hitSlop={8} accessibilityRole="button" accessibilityLabel="원하는 책이 없나요? 직접 등록" style={({ pressed }) => [st.manual, pressed && press]}>
+      <Text style={type.sub}>원하는 책이 없나요? <Text style={st.manualStrong}>직접 등록</Text></Text>
+    </Pressable>
+  );
+}
+
 const st = StyleSheet.create({
-  findMethods: { flexDirection: 'row', alignItems: 'center', marginTop: space.s },
-  result: { flexDirection: 'row', alignItems: 'center', gap: space.l, paddingVertical: space.m },
+  result: { flexDirection: 'row', alignItems: 'center', gap: space.l, paddingVertical: space.m, paddingHorizontal: space.page },
+  addText: { fontFamily: fonts.uiBold, fontSize: 15, lineHeight: 20, color: colors.accent },
+  manual: { alignSelf: 'center', minHeight: space.touch, justifyContent: 'center', marginTop: space.l },
+  manualStrong: { fontFamily: fonts.uiBold, color: colors.accent },
   // 표지 사진 그림자는 옅게(갈색 기 없이)
   cover: { borderRadius: 3, boxShadow: [{ offsetX: 0, offsetY: 2, blurRadius: 4, color: 'rgba(0,0,0,0.10)' }] },
-  add: { width: space.touch, height: space.touch, alignItems: 'center', justifyContent: 'center', marginRight: -space.s },
+  add: { minHeight: 36, paddingHorizontal: 14, borderRadius: 8, backgroundColor: colors.accentSoft, alignItems: 'center', justifyContent: 'center' }, // 오른쪽 같은 자리의 작은 '추가'
   doneBlock: { flexDirection: 'row', gap: space.l, alignItems: 'flex-start', marginTop: space.s },
   doneResult: { marginTop: space.m },
 });

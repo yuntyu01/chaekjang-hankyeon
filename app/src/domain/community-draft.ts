@@ -3,13 +3,14 @@
 // - 분량은 시작 쪽과 도달한 쪽이 둘 다 있을 때만(확인된 분량). 하나만 있으면 보내지 않는다(지어내지 않는다)
 // - 갈피 문장은 사진 갈피(글자 없음)는 고를 수 없다. 이 기록에서 남긴 갈피가 먼저, 그다음 같은 책의 최근 갈피
 // - clientId는 기록 id: 같은 기록을 두 번 올려도(재시도·중복 누름) 서버에서 하나가 된다
-import type { Bookmark, Library, Session } from './library';
+import type { Bookmark, Edition, Library, Session } from './library';
 
 export type ShareSource = {
   session: Session;
   bookTitle?: string;
   bookAuthor?: string;
   isbn13?: string;
+  coverUrl?: string; // 도서 정보 제공처 표지(https)일 때만. 내가 찍은 표지 사진은 공개하지 않는다
   durationMs: number;
   pagesRead?: number; // 확인된 분량(쪽)
   quotes: Bookmark[];
@@ -22,12 +23,20 @@ export type SharePayload = {
   isbn13?: string;
   bookTitle: string;
   bookAuthor?: string;
+  coverUrl?: string;
   durationMs?: number;
   pagesRead?: number;
   quote?: string;
   quotePage?: number;
   body?: string;
 };
+
+// 공개 표지 주소: 도서 정보 제공처 표지(api)만, http는 https로. 사용자가 찍은 표지(photo)·기기 파일은 보내지 않는다
+export function publicCover(ed?: Pick<Edition, 'coverUri' | 'coverSource'>): string | undefined {
+  if (!ed?.coverUri || ed.coverSource !== 'api') return undefined;
+  const u = ed.coverUri.replace(/^http:\/\//, 'https://');
+  return /^https:\/\//.test(u) && u.length <= 500 ? u : undefined;
+}
 
 export function sessionPages(s: Pick<Session, 'startPage' | 'pagesRead'>): number | undefined {
   if (s.startPage === undefined || s.pagesRead === undefined) return undefined;
@@ -51,6 +60,7 @@ export function shareSourceOf(lib: Library, sessionId: string): ShareSource | nu
     bookTitle: ed?.title,
     bookAuthor: ed?.authors.length ? ed.authors.join(', ') : undefined,
     isbn13: ed?.isbn13 && /^\d{13}$/.test(ed.isbn13) ? ed.isbn13 : undefined,
+    coverUrl: publicCover(ed),
     durationMs: session.durationMs,
     pagesRead: sessionPages(session),
     quotes,
@@ -76,6 +86,7 @@ export function sharePayload(src: ShareSource, c: ShareChoice): SharePayload | n
     isbn13: src.isbn13,
     bookTitle: src.bookTitle,
     bookAuthor: src.bookAuthor,
+    coverUrl: src.coverUrl,
     durationMs: c.duration && src.durationMs > 0 ? src.durationMs : undefined,
     pagesRead: c.pages ? src.pagesRead : undefined,
     quote: quote ? quote.text.trim().slice(0, MAX_QUOTE) : undefined,

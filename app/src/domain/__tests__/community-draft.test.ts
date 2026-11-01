@@ -52,3 +52,17 @@ it('도달 쪽만 있으면 분량을 켜지 않고, 책 없는 기록은 게시
   expect(sharePayload(src2, defaultChoice(src2))).toBeNull();
   expect(shareSourceOf(l, 'none')).toBeNull();
 });
+
+it('공유 표지는 도서 정보 제공처 표지만(https로), 내가 찍은 표지 사진은 보내지 않는다', () => {
+  const { publicCover } = require('../community-draft') as typeof import('../community-draft');
+  expect(publicCover({ coverUri: 'https://image.yes24.com/goods/1/XL', coverSource: 'api' })).toBe('https://image.yes24.com/goods/1/XL');
+  expect(publicCover({ coverUri: 'http://books.google.com/x.jpg', coverSource: 'api' })).toBe('https://books.google.com/x.jpg');
+  expect(publicCover({ coverUri: 'file:///data/user/0/images/a.jpg', coverSource: 'photo' })).toBeUndefined();
+  expect(publicCover({ coverUri: 'file:///x.jpg', coverSource: 'api' })).toBeUndefined();
+  expect(publicCover(undefined)).toBeUndefined();
+  const l = lib();
+  l.editions.e1 = { ...l.editions.e1, coverUri: 'https://image.yes24.com/goods/1/XL', coverSource: 'api' };
+  expect(sharePayload(shareSourceOf(l, 's1')!, { duration: true, pages: true, body: '' })!.coverUrl).toBe('https://image.yes24.com/goods/1/XL');
+  l.editions.e1 = { ...l.editions.e1, coverUri: 'file:///mine.jpg', coverSource: 'photo' };
+  expect(sharePayload(shareSourceOf(l, 's1')!, { duration: true, pages: true, body: '' })!.coverUrl).toBeUndefined();
+});

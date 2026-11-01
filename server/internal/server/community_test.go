@@ -209,6 +209,18 @@ func TestCommunity(t *testing.T) {
 	}
 
 	// 지운 게시물은 목록·상세·글쓴이 게시 수에서 빠진다
+	// 표지 썸네일: https 공개 주소만 남고, 다른 형식은 비운다(게시는 된다)
+	_, pc := call("POST", "/community/posts", a.token, map[string]any{"clientId": "cover-ok", "bookTitle": "데미안", "coverUrl": "https://image.yes24.com/goods/1/XL"})
+	if pc["coverUrl"] != "https://image.yes24.com/goods/1/XL" {
+		t.Fatalf("cover url %v", pc)
+	}
+	_, pb := call("POST", "/community/posts", a.token, map[string]any{"clientId": "cover-bad", "bookTitle": "데미안", "coverUrl": "file:///data/photo.jpg"})
+	if _, has := pb["coverUrl"]; has || pb["id"] == nil {
+		t.Fatalf("bad cover url %v", pb)
+	}
+	for _, pp := range []map[string]any{pc, pb} {
+		call("DELETE", fmt.Sprintf("/community/posts/%d", int64(pp["id"].(float64))), a.token, nil)
+	}
 	_, p3 := call("POST", "/community/posts", a.token, map[string]any{"clientId": "session-2", "bookTitle": "모순"})
 	pid3 := int64(p3["id"].(float64))
 	if code, _ := call("DELETE", fmt.Sprintf("/community/posts/%d", pid3), a.token, nil); code != 200 {
