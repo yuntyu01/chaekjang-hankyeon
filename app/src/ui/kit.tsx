@@ -1,7 +1,7 @@
 // 공통 화면 부품. 색·글꼴·간격은 ui/screenTheme 토큰만 쓴다(설정 시안 기준: 아이보리 바탕, 짙은 갈색 글자, 둥근 고딕, 얇은 구분선).
 // 설정·목록은 카드 대신 여백과 구분선으로 나누고, 입력창처럼 구분이 필요한 곳만 표면색을 깐다.
 import { router } from 'expo-router';
-import { Check, ChevronLeft, ChevronRight, Search, Star, X } from '@/ui/icons';
+import { Check, ChevronDown, ChevronLeft, ChevronRight, Search, Star, X } from '@/ui/icons';
 import { Children, createContext, Fragment, isValidElement, useContext, useEffect, useRef, useState, type ReactNode } from 'react';
 import {
   ActivityIndicator,
@@ -728,6 +728,38 @@ export function Tabs<T extends string>({ items, value, onChange, style, fill }: 
   );
 }
 
+// 전환 칸(2026-11-01 사용자 시안 '내 기록 | 독자 후기', '전체 갈피 | 아껴둔', 서재 읽기 상태): 옅은 회색 칸 안에서 고른 칸만 흰 바탕 + 굵은 본문색.
+// 같은 화면의 내용을 바꿔 보는 데만 쓴다(화면 이동·실행 버튼이 아니다). 칸 폭은 똑같이 나눈다
+export function Segmented<T extends string>({ items, value, onChange, style }: { items: readonly { id: T; label: string }[]; value: T; onChange: (id: T) => void; style?: StyleProp<ViewStyle> }) {
+  return (
+    <View style={[s.seg, style]} accessibilityRole="tablist">
+      {items.map((it) => {
+        const on = it.id === value;
+        return (
+          <Pressable key={it.id} onPress={() => onChange(it.id)} accessibilityRole="tab" accessibilityState={{ selected: on }} style={[s.segItem, on && s.segItemOn]}>
+            <Text style={[s.segText, on && s.segTextOn]} numberOfLines={1}>
+              {it.label}
+            </Text>
+          </Pressable>
+        );
+      })}
+    </View>
+  );
+}
+
+// 거르기 단추(모든 책 ▾ · 모든 유형 ▾ · 최근 추가순 ▾): 눌러 시트에서 고른다. 기본값이 아니면(걸러진 상태) 본문색 굵게
+export function FilterButton({ label, active, onPress, icon: lead }: { label: string; active?: boolean; onPress: () => void; icon?: ReactNode }) {
+  return (
+    <Pressable onPress={onPress} hitSlop={{ top: 6, bottom: 6 }} accessibilityRole="button" accessibilityLabel={`${label}, 바꾸기`} style={({ pressed }) => [s.filter, active && s.filterOn, pressed && { backgroundColor: colors.line }]}>
+      {lead}
+      <Text style={[s.filterText, active && s.filterTextOn]} numberOfLines={1}>
+        {label}
+      </Text>
+      <ChevronDown size={16} color={active ? colors.ink : colors.inkSoft} strokeWidth={icon.stroke} />
+    </Pressable>
+  );
+}
+
 // 목록 묶음: 줄 사이에만 얇은 구분선(마지막 줄 아래는 없음). 회색 상자에 넣지 않고 화면 폭 그대로 쓴다(2026-11-01 토스식)
 export function ListGroup({ children, style }: { children: ReactNode; style?: StyleProp<ViewStyle> }) {
   const items = Children.toArray(children).filter(isValidElement);
@@ -877,6 +909,17 @@ export const s = StyleSheet.create({
   // 칸 폭을 똑같이 나누면 두 글자('완독'·'보류')와 세 글자('읽는 중') 탭 사이가 들쭉날쭉해 보였다(사용자 의견 2026-10-26):
   // 글자 폭대로 두고 탭 사이 간격을 같게 벌린다. 양 끝 탭의 글자는 화면 좌우 여백에 맞는다(부르는 쪽이 -6으로 당긴다)
   tabs: { flexDirection: 'row', justifyContent: 'space-between' },
+  // 전환 칸: 옅은 회색 칸(높이 44) 안에 고른 칸만 흰 바탕·옅은 그림자
+  seg: { flexDirection: 'row', padding: 3, borderRadius: 14, backgroundColor: colors.surface },
+  segItem: { flex: 1, minHeight: 40, borderRadius: 11, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 4 },
+  segItemOn: { backgroundColor: colors.raised, ...shape.floatShadow, shadowOpacity: 0.08, elevation: 1 },
+  segText: { fontFamily: fonts.ui, fontSize: 15, lineHeight: 20, color: colors.inkSoft, includeFontPadding: false },
+  segTextOn: { fontFamily: fonts.uiBold, color: colors.ink },
+  // 거르기 단추: 옅은 회색 알약(칩과 같은 채움), 글자 15
+  filter: { flexDirection: 'row', alignItems: 'center', gap: 4, minHeight: 36, paddingLeft: 14, paddingRight: 10, borderRadius: 18, backgroundColor: colors.surface, maxWidth: 220 },
+  filterOn: { backgroundColor: colors.accentSoft },
+  filterText: { fontFamily: fonts.ui, fontSize: 15, lineHeight: 20, color: colors.inkSoft, includeFontPadding: false, flexShrink: 1 },
+  filterTextOn: { fontFamily: fonts.uiBold, color: colors.ink },
   tab: { alignItems: 'center', paddingTop: 4, paddingHorizontal: 6, minHeight: space.touch },
   tabText: { ...type.row, fontSize: 14, lineHeight: 20, color: colors.inkSoft },
   tabTextOn: { fontFamily: type.button.fontFamily, color: colors.ink },

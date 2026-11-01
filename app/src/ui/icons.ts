@@ -35,3 +35,6 @@ export { default as RefreshCw } from 'lucide-react-native/icons/refresh-cw';
 export { default as Folder } from 'lucide-react-native/icons/folder';
 export { default as Heart } from 'lucide-react-native/icons/heart';
 export { default as MessageCircle } from 'lucide-react-native/icons/message-circle';
+export { default as LayoutGrid } from 'lucide-react-native/icons/layout-grid';
+export { default as ListIcon } from 'lucide-react-native/icons/list';
+export { default as ArrowUpDown } from 'lucide-react-native/icons/arrow-up-down';
