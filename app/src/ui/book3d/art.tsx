@@ -5,9 +5,10 @@
 // - 표지 면: 표지 그림(달·풍경 등) + 제목(시안처럼 제목만. 저자는 표지에 쓰지 않는다)
 // - 갈피: 머리 뒤에서 나오는 끈(원점 = 아래 가운데)
 import { ColorType, AlphaType, Group, Image as SkiaImage, PaintStyle, StrokeJoin, ImageSVG, Path, Picture, Rect, Skia, Text, drawAsPicture, useImage, useTypeface, type SkFont, type SkImage, type SkPath, type SkPicture, type SkTypeface } from '@shopify/react-native-skia';
+import { FilterMode, MipmapMode } from '@shopify/react-native-skia';
 import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
 
-import { LEGACY_TITLE_INKS, modernInk, rgbHex, tabColors, TITLE_LIGHT, titleInk } from '@/domain/color';
+import { displayInk, modernInk, rgbHex, tabColors, TITLE_LIGHT, titleInk } from '@/domain/color';
 import { COVER_ARTWORKS } from '@/domain/cover-artworks';
 import { COVER_LINE_H, COVER_SPACE, COVER_TRACK, coverTitleLayout, LYING_TRACK, lyingTitleLayout, SPINE_SPACE, spineTitleLayout } from '@/domain/title-layout';
 import type { Book, CoverArt } from '@/domain/types';
@@ -120,7 +121,7 @@ export type BookArt = {
 // 책 재질 색(장정·표지 가장자리). 모든 화면의 책이 이 색 하나를 쓴다
 const faceOf = (b: Book) => jacketColor(b.cover?.edge ?? b.body?.face ?? b.themeColor);
 // 장정에 저장된 글자색이 예전 자동 색이면 지금 규칙(흰색·회색빛 검정)으로 다시 고른다. 사용자가 고른 다른 색은 그대로
-export const inkOf = (b: Book) => (b.art.inkColor && !LEGACY_TITLE_INKS.includes(b.art.inkColor.toUpperCase()) ? b.art.inkColor : titleInk(faceOf(b)));
+export const inkOf = (b: Book) => displayInk(b.art.inkColor, faceOf(b));
 
 // 제목 획 두께: 글꼴 굵기 위에 글자 크기의 일부만큼 같은 색 윤곽을 더 그릴 몫(0이면 덧그리지 않는다. 윤곽 두께 0은 Skia에서 1px 선이라 아예 뺀다).
 // 예전에는 고운바탕 Regular에 0.022(앞표지 0.024, 어두운 바탕의 밝은 글자 0.016)를 더했다(2026-10-09 사용자: 글씨가 너무 얇다).
@@ -387,6 +388,8 @@ const TITLE_LIFT = 0.06;
 const SPINE_MOTIF = false;
 // 표지 장식 무늬(≈ 물결·잎 등 모티프)도 그리지 않는다(2026-11-01 사용자 '물결표 같은 거 그런 거 다 없애'). 저장된 motif 값은 그대로 둔다
 const COVER_MOTIF = false;
+// 표지·책등 사진을 크게 줄여 그릴 때 글자가 깨지지 않게(밉맵)
+const PHOTO_SAMPLING = { filter: FilterMode.Linear, mipmap: MipmapMode.Linear };
 
 async function buildArt(book: Book, s: number, dims: { T: number; H: number; W: number }, shared: Shared, motif: SkImage | null, coverImg: SkImage | null, made: MadeArt): Promise<BookArt> {
   const regular = shared.regular!;
@@ -407,7 +410,7 @@ async function buildArt(book: Book, s: number, dims: { T: number; H: number; W: 
   const textEnd = book.art.titleTop !== undefined ? 0.79 : !SPINE_MOTIF || book.art.motif === 'none' ? 0.88 : Math.max(0.50, (motifY + (compactMotif ? motifH * 0.28 : 0) - 4 * s) / h);
   const binding = referenceBinding(face);
   const spine = await record(made.spine
-    ? <Group clip={bookFacePath(w, h, s)}><SkiaImage image={made.spine} x={0} y={0} width={w} height={h} fit="fill" /></Group>
+    ? <Group clip={bookFacePath(w, h, s)}><SkiaImage image={made.spine} x={0} y={0} width={w} height={h} fit="fill" sampling={PHOTO_SAMPLING} /></Group>
     : binding ? <ReferenceBinding material={binding} w={w} h={h} s={s} /> : <SpineFaceArt w={w} h={h} face={face} s={s} />, w, h);
   const motifGlyph = !SPINE_MOTIF ? null : hasReferenceMotif(book.art.motif) ? <ReferenceMotif image={shared.original!} id={book.art.motif} color={book.art.accentColor ?? (ink === TITLE_LIGHT ? '#F4DCA3' : '#8B9C7C')} /> : spineMotif ? <ImageSVG svg={spineMotif} x={0} y={0} width={24} height={60} /> : null;
   const print = referencePrint(book.title);
@@ -470,7 +473,7 @@ async function buildArt(book: Book, s: number, dims: { T: number; H: number; W: 
   const originalCover = !made.cover && !!coverImg && !!cover.sourceRect;
   const retainTitle = originalCover && book.title.replace(/\s/g, '') === cover.printedTitle?.replace(/\s/g, '');
   const coverPic = await record(
-    made.cover ? <Group clip={bookFacePath(cw, h, s)}><SkiaImage image={made.cover} x={0} y={0} width={cw} height={h} fit="cover" /></Group> :
+    made.cover ? <Group clip={bookFacePath(cw, h, s)}><SkiaImage image={made.cover} x={0} y={0} width={cw} height={h} fit="cover" sampling={PHOTO_SAMPLING} /></Group> :
     <Group>
       {originalCover ? <ReferenceCover image={coverImg!} cover={cover} w={cw} h={h} s={s} retainTitle={retainTitle} /> : <CoverFaceArt w={cw} h={h} s={s} face={toneOf(book)} image={coverImg} motif={COVER_MOTIF && book.body ? motif : null} focusY={cover.artworkId ? cover.focusY : undefined} />}
       {coverMotif}

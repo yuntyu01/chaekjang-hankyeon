@@ -1,4 +1,4 @@
-import { contrast, modernInk, shade, titleInk, TITLE_DARK, TITLE_LIGHT, TITLE_MIN_CONTRAST } from '../color';
+import { contrast, displayInk, modernInk, shade, titleInk, TITLE_DARK, TITLE_LIGHT, TITLE_MIN_CONTRAST } from '../color';
 import { BOOK_COLORS } from '../rebinding';
 import { SPINE_PALETTE } from '../library';
 import { coverTitleLayout, layoutVerticalTitle, LYING_START, lyingTitleLayout, spineTitleLayout, titleOpacity, TITLE_SWAP } from '../title-layout';
@@ -27,16 +27,24 @@ describe('색', () => {
     for (const bg of ['#1F3557', '#3D5F57', '#1D426B', '#893E41', '#BE5D47', '#244A70']) expect(titleInk(bg)).toBe(TITLE_LIGHT);
     // 고른 색은 늘 충분히 대비된다(중간 밝기 붉은 책등 포함)
     for (const bg of ['#FBEDDD', '#B5C7D7', '#E39E8A', '#BE5D47', '#3D5F57', '#1D426B']) expect(contrast(titleInk(bg), bg)).toBeGreaterThan(3.5);
+    for (const bg of ['#CE886F', '#819AB1', '#8FA08A', '#9FA568', '#475A78', '#F3B497']) expect(contrast(titleInk(bg), bg)).toBeGreaterThanOrEqual(TITLE_MIN_CONTRAST);
     expect(shade('#808080', -0.5)).toBe('#404040');
   });
   it('시안 책장의 글자색: 어두운·중간 밝기의 진한 책등은 밝은 글자, 연한 책은 짙은 남색 먹', () => {
     // 사람의 마음이란·데미안·고요한 우연
     for (const bg of ['#475A78', '#647361', '#8F5654']) expect(titleInk(bg)).toBe(TITLE_LIGHT);
-    // 문장 수집·여행의 이유: 시안은 밝은 글자지만 2.5:1이라 대비를 지키려 먹색(2026-10-31 지시)
-    for (const bg of ['#CE886F', '#819AB1']) expect(titleInk(bg)).toBe(TITLE_DARK);
+    // 문장 수집·여행의 이유: 시안처럼 흰 글자(2026-11-01 사용자 '될 수 있으면 흰색'. 10-31에는 먹색이었다)
+    for (const bg of ['#CE886F', '#819AB1']) expect(titleInk(bg)).toBe(TITLE_LIGHT);
+    // 연한 올리브(10-31 사용자 '흐리다')는 회색빛 검정
+    expect(titleInk('#9FA568')).toBe(TITLE_DARK);
     // 모순·어린 왕자·작은 것들의 기쁨·너라는 계절·찰나의 마음, 느린 하루(연한 하늘색: 그림자 참고 그림도 짙은 먹)
     for (const bg of ['#FDF0E0', '#FBD392', '#FDECD4', '#F0BDA0', '#F3B497', '#8DA5B9']) expect(titleInk(bg)).toBe(TITLE_DARK);
-    // 2026-11-01 사용자 '글씨는 될 수 있으면 흰색, 검정은 회색빛 검정': 고르는 쪽은 그대로, 색만 흰색·회색빛 검정
+    // 저장된 자동 글자색은 지금 규칙으로 다시 고른다(저장값 때문에 흰 글자가 될 책이 어두운 글자로 남지 않게), 시안 지정 색은 그대로
+    expect(displayInk(TITLE_DARK, '#819AB1')).toBe(TITLE_LIGHT);
+    expect(displayInk('#2F3944', '#819AB1')).toBe(TITLE_LIGHT);
+    expect(displayInk(undefined, '#FBEDDD')).toBe(TITLE_DARK);
+    expect(displayInk('#123456', '#819AB1')).toBe('#123456');
+    // 2026-11-01 사용자 '검정은 완전 검정 말고 회색빛 검정'
     expect(TITLE_DARK).toBe('#3A3B3D');
     expect(TITLE_LIGHT).toBe('#FFFFFF');
   });
