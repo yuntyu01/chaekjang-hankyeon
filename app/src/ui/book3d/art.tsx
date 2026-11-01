@@ -384,6 +384,8 @@ type MadeArt = { cover: SkImage | null; spine: SkImage | null };
 const TITLE_LIFT = 0.06;
 // 책등 장식(꽃·별·달 같은 작은 그림)은 일단 그리지 않는다. 다시 켜려면 true.
 const SPINE_MOTIF = false;
+// 표지 장식 무늬(≈ 물결·잎 등 모티프)도 그리지 않는다(2026-11-01 사용자 '물결표 같은 거 그런 거 다 없애'). 저장된 motif 값은 그대로 둔다
+const COVER_MOTIF = false;
 
 async function buildArt(book: Book, s: number, dims: { T: number; H: number; W: number }, shared: Shared, motif: SkImage | null, coverImg: SkImage | null, made: MadeArt): Promise<BookArt> {
   const regular = shared.regular!;
@@ -458,7 +460,7 @@ async function buildArt(book: Book, s: number, dims: { T: number; H: number; W: 
   });
   // 표지 장식(그림이 없는 책): 모티프는 표지에만 둔다(책등에는 제목만)
   let coverMotif: ReactNode = null;
-  if (!coverImg && !book.body && !book.art.plainCover && book.art.motif !== 'none') {
+  if (COVER_MOTIF && !coverImg && !book.body && !book.art.plainCover && book.art.motif !== 'none') {
     const svg = Skia.SVG.MakeFromString(motifSvg(book.art.motif, book.art.accentColor ?? ink));
     const mH = h * (vector ? 0.46 : 0.4);
     const mw = Math.min(cw * (vector ? 0.5 : 0.4), (mH * 24) / 60);
@@ -469,7 +471,7 @@ async function buildArt(book: Book, s: number, dims: { T: number; H: number; W: 
   const coverPic = await record(
     made.cover ? <Group clip={bookFacePath(cw, h, s)}><SkiaImage image={made.cover} x={0} y={0} width={cw} height={h} fit="cover" /></Group> :
     <Group>
-      {originalCover ? <ReferenceCover image={coverImg!} cover={cover} w={cw} h={h} s={s} retainTitle={retainTitle} /> : <CoverFaceArt w={cw} h={h} s={s} face={toneOf(book)} image={coverImg} motif={book.body ? motif : null} focusY={cover.artworkId ? cover.focusY : undefined} />}
+      {originalCover ? <ReferenceCover image={coverImg!} cover={cover} w={cw} h={h} s={s} retainTitle={retainTitle} /> : <CoverFaceArt w={cw} h={h} s={s} face={toneOf(book)} image={coverImg} motif={COVER_MOTIF && book.body ? motif : null} focusY={cover.artworkId ? cover.focusY : undefined} />}
       {coverMotif}
       {book.art.plainCover || retainTitle ? null : lineEls}
     </Group>,
@@ -490,7 +492,7 @@ async function buildArt(book: Book, s: number, dims: { T: number; H: number; W: 
 // shared는 캔버스 밖에서 읽어 넘긴다(Skia 캔버스 안은 별도 렌더러라 React 컨텍스트가 닿지 않는다)
 export function useBookArt(book: Book, s: number, dims: { T: number; H: number; W: number }, shared: Shared): BookArt | null {
   // 기존 비트맵 모티프는 표지용. 책등의 작은 장식은 벡터로 기록한다.
-  const needMotif = !!book.body?.motif && !book.cover?.image;
+  const needMotif = COVER_MOTIF && !!book.body?.motif && !book.cover?.image;
   const vector = !!book.art.vectorCover;
   const cover = jacketFor(book);
   const needCover = !!cover.image && !book.art.plainCover && !vector;

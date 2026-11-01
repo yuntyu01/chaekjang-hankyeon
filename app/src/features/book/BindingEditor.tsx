@@ -1,16 +1,15 @@
 // 재장정 미리보기·편집(책 추가 확인 화면과 책 상세가 함께 쓴다). 2026-10-10 시안: 책 미리보기 → 그림·색상·재질 탭 → 그 탭의 옵션.
 // 책장과 같은 3D 책 렌더러로 같은 책의 책등·정면을 함께 그리고 고른 장정이 바로 반영된다(실제 도서 표지 사진은 쓰지 않는다).
-// - 그림: 기본 정면 장정 6종(3열) + '그림 없음'(단색 정면, 그때만 정면 무늬를 고른다). 그림을 골라도 책 색은 그대로
+// - 그림: 기본 정면 장정 6종(3열) + '그림 없음'(단색 정면). 장식 무늬는 고르지 않는다(2026-11-01 사용자 '물결표 같은 거 다 없애'). 그림을 골라도 책 색은 그대로
 // - 색상: 이 책 추천 색 + 모든 색. 고른 색에 테두리와 체크
 // - 재질: 무광 종이·천·코팅지 + 책등 글자 배치
 // 탭을 바꿔도 고르던 값은 그대로다(값은 부모가 가진다). 저장하면 사용자 오버라이드(source 'custom')가 된다.
-import { useEffect, useMemo, useRef, useState } from 'react';
-import { FlatList, Image, Pressable, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
+import { useMemo, useState } from 'react';
+import { Image, Pressable, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 import Svg, { Circle, Defs, LinearGradient, Path, Rect, Stop } from 'react-native-svg';
 
 import { artworkCover, COVER_ARTWORKS } from '@/domain/cover-artworks';
 import { ESTIMATED_PAGES, ESTIMATED_SIZE, type Binding, type SizeMm } from '@/domain/library';
-import { MOTIF_SLOTS } from '@/domain/motif-slots';
 import { BOOK_COLORS, LAYOUT_VARIANTS, layoutArt, suggestColors, tonesFor, type LayoutVariant } from '@/domain/rebinding';
 import { BINDING_MATERIALS, type BindingMaterial, type Book } from '@/domain/types';
 import { noRibbon, RotatableBook, StandaloneBook } from '@/ui/book3d/StandaloneBook';
@@ -42,9 +41,6 @@ export function previewBook(p: { title: string; author?: string; size?: SizeMm; 
   };
 }
 
-// 단색 정면 무늬 후보: 없음 + 모티프 슬롯 30개(그림 없음일 때만 정면에 그려진다)
-const MOTIF_PAGES: { id: string; name: string }[] = [{ id: 'none', name: '없음' }, ...MOTIF_SLOTS.map((m) => ({ id: m.id, name: m.name }))];
-const GAP = 10;
 type Tab = 'art' | 'color' | 'material';
 const TABS: { id: Tab; label: string }[] = [
   { id: 'art', label: '그림' },
@@ -77,7 +73,7 @@ export function BindingEditor({ title, author, size, pages, value, recommended, 
         ))}
       </View>
 
-      {tab === 'art' ? <ArtPane showingCurrent={!!current} title={title} author={author} size={size} pages={pages} value={value} custom={custom} onChange={onChange} /> : null}
+      {tab === 'art' ? <ArtPane showingCurrent={!!current} value={value} custom={custom} onChange={onChange} /> : null}
       {tab === 'color' ? <ColorPane value={value} recommended={recommended} custom={custom} onChange={onChange} /> : null}
       {tab === 'material' ? <MaterialPane title={title} author={author} size={size} pages={pages} value={value} custom={custom} onChange={onChange} /> : null}
     </View>
@@ -86,8 +82,8 @@ export function BindingEditor({ title, author, size, pages, value, recommended, 
 
 type PaneProps = { value: BindingDraft; custom: (patch: Partial<BindingDraft>) => BindingDraft; onChange: (v: BindingDraft) => void };
 
-// 그림: 6종 3열. 고른 그림만 얇은 테두리 + 작은 체크. 아래에 '그림 없음'(단색 정면)과 그때 쓰는 정면 무늬
-function ArtPane({ title, author, size, pages, value, custom, onChange, showingCurrent }: PaneProps & { title: string; author?: string; size?: SizeMm; pages?: number; showingCurrent?: boolean }) {
+// 그림: 6종 3열. 고른 그림만 얇은 테두리 + 작은 체크. 아래에 '그림 없음'(단색 정면)
+function ArtPane({ value, custom, onChange, showingCurrent }: PaneProps & { showingCurrent?: boolean }) {
   // 책장 모습 그대로 보여 주는 중이면(시안 예시 표지 등) 아무것도 고르지 않은 상태로 둔다
   const none = !value.coverArtId && !showingCurrent;
   return (
@@ -115,65 +111,6 @@ function ArtPane({ title, author, size, pages, value, custom, onChange, showingC
         <Text style={[st.noneText, none && st.nameOn]}>그림 없음 · 단색 정면</Text>
         {none ? <Check size={16} color={INK} strokeWidth={2.2} /> : null}
       </Pressable>
-      {none ? <MotifPicker title={title} author={author} size={size} pages={pages} value={value} custom={custom} onChange={onChange} /> : null}
-    </View>
-  );
-}
-
-// 단색 정면 무늬(예전 '장정 디자인'): 옆으로 넘겨 고른다
-function MotifPicker({ title, author, size, pages, value, custom, onChange }: PaneProps & { title: string; author?: string; size?: SizeMm; pages?: number }) {
-  const [w, setW] = useState(0);
-  const list = useRef<FlatList>(null);
-  const index = Math.max(0, MOTIF_PAGES.findIndex((m) => m.id === value.motif));
-  const itemW = w > 0 ? (w - GAP * 2) / 3.15 : 0; // 한 화면에 3개 + 다음 것이 살짝 보이게
-  const step = itemW + GAP;
-  const lastIndex = useRef(index);
-  useEffect(() => {
-    if (step > 0 && lastIndex.current !== index) {
-      lastIndex.current = index;
-      list.current?.scrollToOffset({ offset: Math.max(0, index * step - step), animated: true });
-    }
-  }, [index, step]);
-  return (
-    <View>
-      <Text style={st.h}>정면 무늬 <Text style={st.hint}>{MOTIF_PAGES[index].name}</Text></Text>
-      <View onLayout={(e) => setW(e.nativeEvent.layout.width)} style={{ marginHorizontal: -2 }}>
-        {w > 0 ? (
-          <FlatList
-            ref={list}
-            data={MOTIF_PAGES}
-            extraData={value}
-            keyExtractor={(m) => m.id}
-            horizontal
-            removeClippedSubviews={false}
-            showsHorizontalScrollIndicator={false}
-            initialScrollIndex={Math.max(0, index - 1)}
-            getItemLayout={(_, i) => ({ length: step, offset: step * i, index: i })}
-            initialNumToRender={4}
-            windowSize={5}
-            maxToRenderPerBatch={3}
-            snapToInterval={step}
-            decelerationRate="fast"
-            contentContainerStyle={{ paddingHorizontal: 2 }}
-            renderItem={({ item }) => {
-              const on = item.id === value.motif;
-              return (
-                <Pressable
-                  onPress={() => onChange(custom({ motif: item.id }))}
-                  accessibilityRole="button"
-                  accessibilityLabel={`정면 무늬 ${item.name}`}
-                  accessibilityState={{ selected: on }}
-                  style={[st.design, { width: itemW, marginRight: GAP }, on && st.designOn]}>
-                  <View pointerEvents="none" style={{ height: itemW * 1.3, alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }}>
-                    <StandaloneBook book={previewBook({ title, author, size, pages, binding: { ...value, motif: item.id } })} pose="front" scale={itemW / 125} />
-                  </View>
-                  <Text style={[st.designName, on && st.nameOn]}>{item.name}</Text>
-                </Pressable>
-              );
-            }}
-          />
-        ) : null}
-      </View>
     </View>
   );
 }
@@ -280,11 +217,7 @@ const st = StyleSheet.create({
   noneRowOn: { borderColor: INK },
   noneSwatch: { width: 22, height: 30, borderRadius: 4, borderWidth: StyleSheet.hairlineWidth * 2, borderColor: 'rgba(0,0,0,0.12)' },
   noneText: { ...type.sub, flex: 1 },
-  design: { borderRadius: shape.input, borderWidth: 1.5, borderColor: 'transparent', backgroundColor: colors.surface, paddingBottom: 8, alignItems: 'center' },
-  designOn: { borderColor: INK, backgroundColor: colors.accentSoft },
-  designName: { ...type.caption, marginTop: 2 },
   h: { ...tidyType.section, marginTop: space.section, marginBottom: space.item }, // 구역 제목 18(2026-11-01 일반 화면 기준)
-  hint: { ...type.caption },
   swatches: { flexDirection: 'row', flexWrap: 'wrap', gap: 12 },
   swatchCell: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center' },
   swatch: { width: 40, height: 40, borderRadius: 20, borderWidth: 1, borderColor: 'rgba(0,0,0,0.08)', alignItems: 'center', justifyContent: 'center' },
