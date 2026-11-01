@@ -8,6 +8,7 @@ import { Alert, Linking, Pressable, StyleSheet, Text, View } from 'react-native'
 import { BindingEditor, type BindingDraft } from '@/features/book/BindingEditor';
 import { buildBookArt, type BookArtParams, type PaletteEntry } from '@/domain/rebinding';
 import { coverEdgeColor, coverPalette } from '@/services/cover-palette';
+import { measureSpineRatios } from '@/services/spine-ratio';
 import { STATUS_LABEL } from '@/features/book/labels';
 import { bindingFields, READ_STATUSES, rebindInput, type ReadStatus, type SizeMm } from '@/domain/library';
 import { candidateDetails, searchBooks, type BookCandidate } from '@/services/book-search';
@@ -19,7 +20,7 @@ import { placementStore } from '@/store/placement-store';
 import { uiBus } from '@/store/ui-bus';
 import { LibraryCover } from '@/ui/BookVisual';
 import { ChevronDown, ChevronUp } from '@/ui/icons';
-import { Btn, Chip, Empty, Field, H2, Loading, Muted, Notice, RealCover, Row, Screen, SearchField, TextLink } from '@/ui/kit';
+import { Btn, Chip, Empty, Field, H2, Loading, Muted, Notice, RealCover, Row, Screen, SearchField, Sheet, TextLink } from '@/ui/kit';
 import { colors, fonts, icon, press, tidySpace as space, tidyType as type } from '@/ui/screenTheme';
 
 type Step = 'find' | 'confirm' | 'binding' | 'done';
@@ -116,6 +117,7 @@ export default function AddBook() {
   // 추천 장정 계산: 썸네일은 색 추출에만 쓰고(화면에 그리지 않는다) 결과 장정만 저장한다
   const prepareBinding = async () => {
     const palette: PaletteEntry[] | null = draft.coverSource === 'api' ? await coverPalette(draft.coverUri) : null;
+    if (draft.coverSource === 'api') await measureSpineRatios([draft.coverUri]); // 책등 사진 비율: 처음 놓을 때부터 실제 두께로
     // 책 색은 표지 왼쪽 가장자리 색. 못 읽었으면 예전 방식으로 두고 판 번호를 낮춰 다음 시작 때 다시 맞춘다(cover-edge-backfill)
     const coverEdge = draft.coverSource === 'api' ? await coverEdgeColor(draft.coverUri) : null;
     const built = buildBookArt(rebindInput({ isbn13: draft.isbn.replace(/[^\dXx]/g, '') || undefined, title: draft.title.trim(), authors: [], publisher: draft.publisher, publishedAt: draft.publishedAt, pageCount: num(draft.pages), size, category: draft.category, seriesTitle: draft.seriesTitle }, { palette: palette ?? undefined, coverEdge: coverEdge ?? undefined }), new Date().toISOString());
@@ -179,7 +181,53 @@ export default function AddBook() {
 
   if (step === 'find') return <FindStep initial={params.q} notice={notice} onPick={fromCandidate} onManual={(q) => toConfirm({ ...blank('manual'), title: q })} />;
 
-  if (step === 'confirm')
+  // 추가 완료(결과만 알린다. 다시 묻지 않는다): 표지 옆에 제목·결과(전시 책장에 놓음 / 전체 책에만 보관).
+  // 다른 화면으로 넘어가지 않고 밑에서 올라오는 시트로(2026-11-01 사용자). 닫으면 책 추가를 부른 화면으로(이미 추가했으니 확인 화면에 머물지 않는다)
+  const doneLib = libraryStore.get().lib;
+  const closeDone = () => {
+    if (params.returnTo === 'pick' && addedId) uiBus.offerPickedBook(addedId);
+    if (router.canGoBack()) router.back();
+    else router.replace('/');
+  };
+  const doneSheet = (
+    <Sheet visible={step === 'done'} onClose={closeDone} title="추가했어요">
+      <View style={st.doneBlock}>
+        {addedId && doneLib.books[addedId] ? <LibraryCover lib={doneLib} id={addedId} width={64} /> : null}
+        <View style={{ flex: 1, minWidth: 0 }}>
+          <Text style={type.rowStrong} numberOfLines={3}>{draft.title}</Text>
+          {draft.authors ? <Text style={[type.sub, { marginTop: 2 }]} numberOfLines={1}>{draft.authors}</Text> : null}
+          {placed !== null ? (
+            <View style={st.doneResult}>
+              <Text style={[type.button, { color: colors.accent }]}>{placed === 'shelf' ? '전시 책장에 놓았어요' : '전체 책에만 보관했어요'}</Text>
+              <Text style={[type.caption, { marginTop: 2 }]}>{placed === 'shelf' ? '꾸미기에서 자리와 자세를 바꿀 수 있어요.' : '책장에는 아직 없어요. 전체 책에서 언제든 놓을 수 있어요.'}</Text>
+            </View>
+          ) : null}
+        </View>
+      </View>
+      {placed !== null && params.returnTo === 'pick' && addedId ? (
+        <Btn label="이 책으로 계속 쓰기" onPress={closeDone} style={{ marginTop: space.xl }} />
+      ) : null}
+      {placed === null ? null : (
+        <View style={{ gap: space.s, marginTop: space.xl }}>
+          {params.returnTo === 'pick' ? null : placed === 'shelf' ? (
+            <Btn
+              label="책장에서 보기"
+              onPress={() => {
+                uiBus.focusBook(addedId!);
+                router.dismissTo('/');
+              }}
+            />
+          ) : (
+            <Btn label="전체 책 보기" onPress={() => router.replace({ pathname: '/books', params: { filter: 'off' } })} />
+          )}
+          <Btn label="책 정보 보기" kind="secondary" onPress={() => router.replace(`/book/${addedId}`)} />
+          <Btn label="한 권 더 추가" kind="ghost" onPress={() => router.replace('/book/add')} />
+        </View>
+      )}
+    </Sheet>
+  );
+
+  if (step === 'confirm' || step === 'done')
     return (
       <Screen
         tidy
@@ -277,6 +325,7 @@ export default function AddBook() {
             </Row>
           </View>
         ) : null}
+        {doneSheet}
       </Screen>
     );
 
@@ -295,46 +344,7 @@ export default function AddBook() {
       </Screen>
     );
 
-  // 추가 완료(결과만 알린다. 다시 묻지 않는다). 2026-11: 장정 미리보기·제목·실제 결과(전시 책장에 놓음 / 전체 책에만 보관)를 한 요약으로.
-  // 회색 상자 없이 표지 옆에 제목·결과를 나란히(토스 결과 화면처럼 결과 문장이 주인공)
-  const doneLib = libraryStore.get().lib;
-  return (
-    <Screen tidy title="추가했어요" back={false}>
-      <View style={st.doneBlock}>
-        {addedId && doneLib.books[addedId] ? <LibraryCover lib={doneLib} id={addedId} width={64} /> : null}
-        <View style={{ flex: 1, minWidth: 0 }}>
-          <Text style={type.rowStrong} numberOfLines={3}>{draft.title}</Text>
-          {draft.authors ? <Text style={[type.sub, { marginTop: 2 }]} numberOfLines={1}>{draft.authors}</Text> : null}
-          {placed !== null ? (
-            <View style={st.doneResult}>
-              <Text style={[type.button, { color: colors.accent }]}>{placed === 'shelf' ? '전시 책장에 놓았어요' : '전체 책에만 보관했어요'}</Text>
-              <Text style={[type.caption, { marginTop: 2 }]}>{placed === 'shelf' ? '꾸미기에서 자리와 자세를 바꿀 수 있어요.' : '책장에는 아직 없어요. 전체 책에서 언제든 놓을 수 있어요.'}</Text>
-            </View>
-          ) : null}
-        </View>
-      </View>
-      {placed !== null && params.returnTo === 'pick' && addedId ? (
-        <Btn label="이 책으로 계속 쓰기" onPress={() => { uiBus.offerPickedBook(addedId); router.back(); }} style={{ marginTop: space.xl }} />
-      ) : null}
-      {placed === null ? null : (
-        <View style={{ gap: space.s, marginTop: space.xl }}>
-          {params.returnTo === 'pick' ? null : placed === 'shelf' ? (
-            <Btn
-              label="책장에서 보기"
-              onPress={() => {
-                uiBus.focusBook(addedId!);
-                router.dismissTo('/');
-              }}
-            />
-          ) : (
-            <Btn label="전체 책 보기" onPress={() => router.replace({ pathname: '/books', params: { filter: 'off' } })} />
-          )}
-          <Btn label="책 정보 보기" kind="secondary" onPress={() => router.replace(`/book/${addedId}`)} />
-          <Btn label="한 권 더 추가" kind="ghost" onPress={() => router.replace('/book/add')} />
-        </View>
-      )}
-    </Screen>
-  );
+  return null;
 }
 
 // 책 추가 첫 화면(2026-11-01 사용자): 검색창 → 결과 → 추가가 전부. 사진으로 책 찾기는 이번 범위에서 뺐고(사진은 갈피 문장에 집중),
@@ -454,6 +464,6 @@ const st = StyleSheet.create({
   sourceLink: { textDecorationLine: 'underline', color: colors.inkSoft },
   moreRow: { flexDirection: 'row', alignItems: 'center', minHeight: 64, marginTop: space.xl, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.line, paddingTop: space.l },
   add: { minHeight: 36, paddingHorizontal: 14, borderRadius: 8, backgroundColor: colors.accentSoft, alignItems: 'center', justifyContent: 'center' }, // 오른쪽 같은 자리의 작은 '추가'
-  doneBlock: { flexDirection: 'row', gap: space.l, alignItems: 'flex-start', marginTop: space.s },
+  doneBlock: { flexDirection: 'row', gap: space.l, alignItems: 'flex-start' },
   doneResult: { marginTop: space.m },
 });
