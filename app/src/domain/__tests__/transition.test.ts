@@ -1,7 +1,7 @@
 // 전환 경로: 모든 진행률 t에서(접촉 근처는 촘촘히) 겹치지 않고, 끝은 정확히 목표, 바닥 아래로 내려가지 않는다.
 import { corners, facing, fromPlaced, gap, lowest, xRange, type Book3 } from '../book3';
 import { boxSize } from '../box';
-import { CAMERA, SHELF_FRONT } from '../geometry';
+import { CAMERA, SHELF_DEPTH, SHELF_FRONT } from '../geometry';
 import { moveBook, moveToDrawer, placementOf, rotateStep, setPose, setTilt, type BookMap, type Result } from '../layout-engine';
 import { SAMPLE_BOOKS, SAMPLE_LAYOUT } from '../onboarding-sample';
 import { bodiesOf, PLANK_BOUNDS, withLeans } from '../shelf-scene';
@@ -372,16 +372,24 @@ describe('앞으로 빼서 옮기는 대체 경로: 막힌 경우에도 부딪�
   })();
 
   it('막혀도 대신 경로가 있다(pull): 시작·끝 자세가 맞고 바닥 아래로 내려가지 않는다', () => {
-    for (const r of [endC, b03, b12]) {
+    for (const r of [b03, b12]) {
       expect(r.plan.strategy).toBe('pull');
       expectEnds(r);
     }
   });
 
-  // 선반 끝 책 C(오른쪽 끝 306~366)를 표지로: 빼낸 채 가운데 정렬로 돌며 가로 폭이 커져 판 오른쪽 끝(371.7)보다 나가지만,
-  // 판 앞 끝보다 앞(허공)이라 판 끝 범위와 상관없다.
-  it('선반 끝 책(C)도 표지로 돌 수 있다: 빼낸 채 도는 동안은 판 끝 검사에 걸리지 않는다', () => {
+  // 선반 끝 책 C(오른쪽 끝 306~366)를 표지로: 돌기 시작할 때 대각선이 책 폭보다 길어 뒷벽에 몇 mm 닿는다. 예전에는 이것 때문에
+  // 제자리 후보가 모두 막혀 선반 앞으로 크게 빼냈다 넣었다(움직임이 요란). 2026-11-01부터 도는 상자는 벽에 닿은 만큼 앞으로 밀려 나와
+  // (손으로 돌릴 때처럼 벽을 따라) 제자리에서 돈다. 도는 내내 벽 안·판 끝 안이고 아무것도 뚫지 않는다.
+  it('선반 끝 책(C)을 표지로: 빼내지 않고 벽을 따라 제자리에서 돈다', () => {
+    expect(endC.plan.strategy).not.toBe('pull');
+    expectEnds(endC);
     expect(firstOverlap(endC.plan.tracks, PLANK_BOUNDS)).toBeNull();
+    const tr = endC.plan.tracks.find((t) => t.id === 'C')!;
+    for (let k = 0; k <= 48; k++) {
+      const back = Math.max(...corners(bookAt(tr, k / 48)).map((c) => c.z));
+      expect(back).toBeLessThanOrEqual(SHELF_DEPTH + 1e-6);
+    }
   });
 
   // b03을 표지로(벽 쪽 z 98~121): 목표 자리 앞(z 0~31)에 표지 책 b04가 가로로 겹쳐 선다. b04를 먼저 잠깐 빼 두고(먼 차선),

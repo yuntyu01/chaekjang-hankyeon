@@ -20,7 +20,9 @@ import { ANIM, TL, tl, tlOn, tlu } from '@/ui/perf';
 import { awayAt, easeOf, outsideRow, presentSV, type AwayEntry, type Aways, type Motion, type Tracks } from './scene';
 
 export const MOTION_MS = 230; // 기울이기·밀림·끌기 미리보기
-export const POSE_MS = 420; // 자세 바꾸기(표지로·눕히기)
+export const POSE_MS = 420; // 넘어지는 경로의 기준 시간(받침을 잃은 책: 중력이라 늘이지 않는다)
+// 손으로 자세 바꾸기(표지로·눕히기, 넘어지는 책 없음): 조각마다 천천히 출발·멈추고 돌기가 그 약 55%라 무게 있게(2026-11-01 사용자 '경박하다')
+export const HAND_POSE_MS = 640;
 export const PULL_MS = 560; // 앞으로 빼서 옮기기(다른 줄로, 막혀서 돌아가기)
 
 // ---------- JS 쪽 사본 ----------
@@ -514,13 +516,16 @@ export function planInto(m: Motion, shelfId: string, next: Book3[], target: stri
   const animate = plan.strategy !== 'still' || dropping;
   const pull = plan.strategy === 'pull' || (!!arrive && next.some((b) => arrive![b.id]));
   const posing = /al|pull|fall/.test(plan.strategy);
-  // 넘어지는 책이 차례로 넘어지면(도미노) 경로가 그만큼 길다(plan.len)
-  const dur = (pull ? PULL_MS : posing ? POSE_MS : MOTION_MS) * (plan.len ?? 1) * ANIM.slow;
   // 넘어지는 책(받침을 잃음, 놓은 각이 넘어짐 한계 아래)은 점점 빨라지다 닿는 순간 멈춘다. 받침을 잃고 눕는 책이 있는 경로는
   // planTransition이 이미 그렇게 짜서 검사했다(plan.fall). 그 밖의 경로는 남은 계획 시간으로 다시 검사한다(gravityPlan).
   // 서랍으로 떨어지는 책이 있으면 넘어지는 조각이 없어도 고른 시계로 돌린다: 감속 시계면 그 책이 천천히 서 있다가 한두 프레임에 눕는다
-  const fall = !animate || away ? null : plan.fall ? plan : !pull ? gravityPlan(plan, PLANK_BOUNDS, { budgetMs: Math.max(0, deadline - Date.now()), ceil, always: dropping }) : null;
+  // 자세 바꾸기도 고른 시계로 돌리고 조각마다 천천히 출발·멈춘다(2026-11-01 사용자 '무빙이 경박하다'): 줄 시계 하나에 가감속을 걸면
+  // 시간표 가운데의 돌기(0.25~0.8)가 전체의 3분의 1 남짓에 몰려 휙 돌았다
+  const fall = !animate || away ? null : plan.fall ? plan : !pull ? gravityPlan(plan, PLANK_BOUNDS, { budgetMs: Math.max(0, deadline - Date.now()), ceil, always: dropping || posing }) : null;
   if (fall && TL.on) tl(`plan ${shelfId} fall`);
+  // 중력으로 넘어지는 조각이 있으면 넘어지는 기준 시간 그대로(손으로 바꾸는 자세만 느긋하게). 넘어지는 책이 차례로 넘어지면(도미노) 경로가 그만큼 길다(plan.len)
+  const gravity = !!fall && fall.tracks.some((tr) => tr.segs.some((sg) => sg.e === 1 || sg.e === 3));
+  const dur = (pull ? PULL_MS : posing ? (gravity ? POSE_MS : HAND_POSE_MS) : MOTION_MS) * (plan.len ?? 1) * ANIM.slow;
   // 떨어지는 책은 DROP_MS 동안 넘어지고 옅어진다. 고른 시계면 줄 시계를 그만큼 늘리고 다른 책 경로는 앞부분에 둔다(실제 빠르기 그대로)
   const rowDur = !dropping ? dur : Math.max(dur, (fall ? DROP_MS : POSE_MS) * ANIM.slow);
   const tracks = fall && rowDur > dur ? squeezed(fall.tracks, dur / rowDur) : (fall ?? plan).tracks;

@@ -68,14 +68,16 @@ export function extent(dims: Book3['dims'], roll: number, yaw: number, spin = 0,
   let x1 = -Infinity;
   let y0 = Infinity;
   let z0 = Infinity;
+  let z1 = -Infinity;
   for (let i = 0; i < 8; i++) {
     const p = rot(roll, yaw, cornerLocal(dims, i), spin, pitch);
     if (p.x < x0) x0 = p.x;
     if (p.x > x1) x1 = p.x;
     if (p.y < y0) y0 = p.y;
     if (p.z < z0) z0 = p.z;
+    if (p.z > z1) z1 = p.z;
   }
-  return { x0, x1, y0, z0 };
+  return { x0, x1, y0, z0, z1 };
 }
 
 // 경로 조각들로 푼 자세(이어 주기 전). bookAt이 부르므로 먼저 둔다(워클릿은 만들어질 때 부르는 함수를 붙잡는다).
@@ -97,6 +99,12 @@ export function segPose(tr: Track, t: number): Book3 {
   if (s.kind === 1) {
     const e = extent(tr.dims, roll, yaw, spin, pitch);
     const ax = s.x0 + (s.x1 - s.x0) * u;
+    // 돌며 깊이 폭이 커지면(대각선이 책 폭보다 길다: 책등→표지로 돌기 시작할 때 1~2mm) 뒷벽에 닿은 만큼 앞으로 밀려 나온다.
+    // 손으로 돌릴 때처럼 벽을 따라 미끄러지고, 다 돌면 다시 목표 깊이로(2026-11-01: 이 몇 mm 때문에 제자리 경로가 막혀
+    // 책을 선반 앞으로 크게 빼냈다 넣는 경로로 바뀌어 움직임이 요란했다)
+    const zf = s.z0 + (s.z1 - s.z0) * u;
+    const over = zf + (e.z1 - e.z0) - SHELF_DEPTH;
+    const front = over > 0 ? zf - over : zf;
     return {
       id: tr.id,
       dims: tr.dims,
@@ -104,7 +112,7 @@ export function segPose(tr: Track, t: number): Book3 {
       yaw,
       spin,
       pitch,
-      t: { x: ax - (e.x0 + (e.x1 - e.x0) * s.al), y: s.b0 + (s.b1 - s.b0) * u - e.y0, z: s.z0 + (s.z1 - s.z0) * u - e.z0 },
+      t: { x: ax - (e.x0 + (e.x1 - e.x0) * s.al), y: s.b0 + (s.b1 - s.b0) * u - e.y0, z: front - e.z0 },
     };
   }
   const w = { x: s.w0.x + (s.w1.x - s.w0.x) * u, y: s.w0.y + (s.w1.y - s.w0.y) * u, z: s.w0.z + (s.w1.z - s.w0.z) * u };
