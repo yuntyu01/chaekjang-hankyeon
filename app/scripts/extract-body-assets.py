@@ -281,9 +281,6 @@ def main():
         "export type BodyArt = { face: string; motif: number; motifTop: number; motifBottom: number; motifCx: number; scene: boolean };",
         "export type CoverArt = { image: number; titleTop: number; ink: string; edge: string };",
         "",
-        "export const BRUSH_DETAIL = require('../../assets/body/brush-detail.png');",
-        f"export const BRUSH_TILE_PX = {tile[1]}; // 원본 px(시안 941px 폭 기준)",
-        "",
         "export const BODY_ART: Record<string, BodyArt> = {",
     ]
     for bid, m in bodies.items():
@@ -291,9 +288,6 @@ def main():
             f"  {bid}: {{ face: '{m['face']}', motif: require('../../assets/body/motif/{bid}.png'), motifTop: {m['motifTop']}, "
             f"motifBottom: {m['motifBottom']}, motifCx: {m['motifCx']}, scene: {str(m['scene']).lower()} }},"
         )
-    lines += ["};", "", "export const COVER_ART: Record<string, CoverArt> = {"]
-    for bid, c in covers.items():
-        lines.append(f"  {bid}: {{ image: require('../../assets/body/cover/{bid}.png'), titleTop: {c['titleTop']}, ink: '{c['ink']}', edge: '{c['edge']}' }},")
     lines += ["};", ""]
     with open(TS, "w") as f:
         f.write("\n".join(lines))

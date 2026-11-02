@@ -1,4 +1,4 @@
-import { GowunBatang_400Regular, GowunBatang_700Bold, useFonts } from '@expo-google-fonts/gowun-batang';
+import { useFonts } from 'expo-font';
 import { Stack } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import { StatusBar } from 'expo-status-bar';
@@ -34,7 +34,7 @@ bootMark('js-layout-module');
 void SplashScreen.preventAutoHideAsync();
 
 export default function RootLayout() {
-  const [loaded, error] = useFonts({ GowunBatang_400Regular, GowunBatang_700Bold, PretendardRegular, PretendardMedium, PretendardSemiBold, PretendardBold, ReadingSerif, ReadingSerifMedium, ReadingSerifSemiBold });
+  const [loaded, error] = useFonts({ PretendardRegular, PretendardMedium, PretendardSemiBold, PretendardBold, ReadingSerif, ReadingSerifMedium, ReadingSerifSemiBold });
   const [booted, setBooted] = useState(false);
   const [bootError, setBootError] = useState(false);
   const [bootAttempt, setBootAttempt] = useState(0);

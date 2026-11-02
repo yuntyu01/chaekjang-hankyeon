@@ -33,10 +33,3 @@ export const PaperSurface = memo(function PaperSurface({ color = '#FCF5EC', radi
     <Image source={require('../../assets/bookshelf/paper-background.png')} resizeMode="cover" style={[StyleSheet.absoluteFill, { opacity: pigmented ? 0.035 : Math.min(0.28, grain * 3) }]} />
   </View>;
 });
-
-export const ButtonShading = memo(function ButtonShading({ radius = 14 }: { radius?: number }) {
-  const id = useId().replace(/:/g, '');
-  return <View pointerEvents="none" style={[StyleSheet.absoluteFill, { borderRadius: radius, overflow: 'hidden' }]}>
-    <Svg width="100%" height="100%"><Defs><LinearGradient id={id} x1="0" y1="0" x2="100%" y2="100%"><Stop offset="0" stopColor="#573F4C" stopOpacity="0.09" /><Stop offset="0.45" stopColor="#FFFFFF" stopOpacity="0.012" /><Stop offset="1" stopColor="#E1C9AC" stopOpacity={radius > 25 ? 0.065 : 0.16} /></LinearGradient></Defs><Rect width="100%" height="100%" fill={`url(#${id})`} /></Svg>
-  </View>;
-});

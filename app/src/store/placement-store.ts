@@ -3,10 +3,9 @@
 import { useSyncExternalStore } from 'react';
 import { readLayout, saveLayout } from '@/db/local-db';
 
-import { addShelf, applySwapTarget, bookXs, findSwapTarget, firstFitCandidates, fitToShelf, keepGaps, leanUntouchedFront, moveToDrawer, pruneEmptyShelves, setDepth, validate } from '@/domain/layout-engine';
+import { addShelf, firstFitCandidates, fitToShelf, keepGaps, leanUntouchedFront, moveToDrawer, pruneEmptyShelves, validate } from '@/domain/layout-engine';
 import { ensureShelves, migrate, normalize, type BookMap } from '@/domain/layout-schema';
 import { ensureLeanGaps, resolveLeans, withLeans, type FallDirections, type LeanResolution } from '@/domain/shelf-scene';
-import { SHELF_DEPTH, SHELF_FRONT } from '@/domain/geometry';
 import { MOCKUP_BOOKS, MOCKUP_LAYOUT } from '@/domain/mockup-sample';
 import { REAL_BEFORE, REAL_BOOKS, REAL_FRONT_BEFORE, REAL_FRONT_BOOKS, REAL_FRONT_LAYOUT, REAL_LAYOUT, REAL_SIDE_BOOKS, REAL_SIDE_LAYOUT } from '@/domain/real-sample';
 import { SAMPLE_BOOKS, SAMPLE_LAYOUT } from '@/domain/onboarding-sample';
@@ -281,21 +280,7 @@ export const placementStore = {
     void persist(next);
   },
 
-  // 개발용: 3번째 선반에 눕힌 책 한 권(나미야)만 두고 그 선반의 다른 책은 서랍으로(투영·돌리기 확인용)
-  resetPilot() {
-    const keep = SAMPLE_LAYOUT.placements.find((p) => p.bookId === 'b12')!;
-    const others = SAMPLE_LAYOUT.placements.filter((p) => p.shelfId === keep.shelfId && p.bookId !== 'b12');
-    const next = withLeans(
-      normalize({
-        ...SAMPLE_LAYOUT,
-        placements: [...SAMPLE_LAYOUT.placements.filter((p) => p.shelfId !== keep.shelfId), { ...keep, stackId: undefined, stackOrder: undefined, pos: 110 }],
-        drawer: [...SAMPLE_LAYOUT.drawer, ...others.map((p) => p.bookId)],
-      }),
-      state.books,
-    );
-    set({ undo: state.layout, layout: next, ...noFalls() });
-    void persist(next);
-  },
+
 
   clearNotice() {
     set({ notice: null });
@@ -303,26 +288,6 @@ export const placementStore = {
 
   clearFell() {
     set({ fell: null });
-  },
-
-  // 개발용: 3번째 선반에 두 권만. 뒤쪽 벽 앞에 표지 전시(우리가 빛의 속도로), 앞쪽 선반 앞 끝에 세운 책(쇼코의 미소)이 표지 일부를 가린다.
-  resetOcclusionPilot() {
-    const keep = ['b16', 'b14'];
-    let l = normalize({
-      ...SAMPLE_LAYOUT,
-      placements: SAMPLE_LAYOUT.placements
-        .filter((p) => p.shelfId !== 'shelf-3' || keep.includes(p.bookId))
-        .map((p) => (p.bookId === 'b16' ? { ...p, pos: 140, depth: undefined } : p.bookId === 'b14' ? { ...p, pos: 30, depth: undefined } : p)),
-      drawer: [...SAMPLE_LAYOUT.drawer, ...SAMPLE_LAYOUT.placements.filter((p) => p.shelfId === 'shelf-3' && !keep.includes(p.bookId)).map((p) => p.bookId)],
-    });
-    const step = (r: ReturnType<typeof setDepth>) => (r.ok ? r.layout : l);
-    l = step(setDepth(l, state.books, 'b16', SHELF_DEPTH));
-    l = step(setDepth(l, state.books, 'b14', -SHELF_FRONT + 2));
-    const x16 = bookXs(l, state.books).get('b16')!;
-    l = step(applySwapTarget(l, state.books, 'b14', findSwapTarget(l, state.books, 'b14', x16 + 24)));
-    const next = withLeans(l, state.books);
-    set({ undo: state.layout, layout: next, ...noFalls() });
-    void persist(next);
   },
 
   // 개발용: 3번째 선반 가운데에 표지 전시 책 한 권(우리가 빛의 속도로)만, 벽에서 떨어져 선 상태

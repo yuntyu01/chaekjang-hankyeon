@@ -11,7 +11,6 @@ export const SCENES: { id: SceneId; name: string; sound: string; source: number 
   { id: 'rain', name: '밤의 창가', sound: '빗소리', source: require('../../assets/sounds/rain.wav') },
   { id: 'fire', name: '벽난로', sound: '장작 타는 소리', source: require('../../assets/sounds/fire.wav') },
 ];
-export const TEMP_ASSETS = false; // 최종 음원·장면이 들어오면 false
 
 type State = { scene: SceneId | null; playing: boolean; error: string | null };
 let state: State = { scene: null, playing: false, error: null };

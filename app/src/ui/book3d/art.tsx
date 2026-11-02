@@ -4,7 +4,7 @@
 //   둘 다 책등 면 그림 좌표에 고정되어 몸체와 함께 돈다(글자를 따로 돌리지 않는다). 어느 쪽을 보일지는 자세가 정한다(BookNode).
 // - 표지 면: 표지 그림(달·풍경 등) + 제목(시안처럼 제목만. 저자는 표지에 쓰지 않는다)
 // - 갈피: 머리 뒤에서 나오는 끈(원점 = 아래 가운데)
-import { ColorMatrix, ColorType, AlphaType, Group, Image as SkiaImage, PaintStyle, StrokeJoin, ImageSVG, Path, Picture, Rect, Skia, Text, drawAsPicture, useImage, useTypeface, type SkFont, type SkImage, type SkPath, type SkPicture, type SkTypeface } from '@shopify/react-native-skia';
+import { ColorMatrix, ColorType, AlphaType, Group, Image as SkiaImage, PaintStyle, StrokeJoin, Path, Picture, Rect, Skia, Text, drawAsPicture, useImage, useTypeface, type SkFont, type SkImage, type SkPath, type SkPicture, type SkTypeface } from '@shopify/react-native-skia';
 import { FilterMode, MipmapMode } from '@shopify/react-native-skia';
 import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
 
@@ -13,7 +13,6 @@ import { COVER_ARTWORKS } from '@/domain/cover-artworks';
 import { whiteMat } from '@/domain/cover-url';
 import { COVER_LINE_H, COVER_SPACE, COVER_TRACK, coverTitleLayout, LYING_TRACK, lyingTitleLayout, SPINE_SPACE, spineTitleLayout } from '@/domain/title-layout';
 import type { Book, CoverArt } from '@/domain/types';
-import { motifSvg } from '@/ui/art/motifs';
 import { bootMark } from '@/ui/boot-trace';
 import { GROOVE, rigOf, TAB_R } from '@/domain/book-parts';
 import { jacketColor, jacketFor, LANDSCAPES } from '@/domain/book-design';
@@ -26,10 +25,11 @@ import { PHOTO_SATURATION } from '@/scene-config/lighting';
 import { useLibrary } from '@/store/library-store';
 import { placementStore } from '@/store/placement-store';
 import { TL, tl } from '@/ui/perf';
-import { ORIGINAL_ART, ReferenceGlyph, ReferenceMotif, ReferencePrint, drawOriginalGlyph, hasOriginalGlyph, hasReferenceMotif, referencePrint } from './ReferencePrint';
 import { createArtCache } from './art-cache';
 import { bookArtKey } from './art-key';
 import { useCoverImage } from './use-cover-image';
+
+const ORIGINAL_ART = require('../../../assets/reference/bookshelf-original.png');
 
 // 책 제목 글꼴: 함렛 SemiBold(부드러운 명조). 2026-10-31 사용자가 고운바탕·나눔스퀘어라운드·주아·함렛을 책장에 넣어 비교해 함렛을 골랐다.
 // 같은 날 책장 시안 지시로 Medium(획 약 84%)으로 낮췄다가, 사용자가 보여 준 더 생기 있는 화면(획 면적 +18~40%)을 보고 '제목 글자도' → SemiBold로 되돌림.
@@ -132,8 +132,7 @@ export const TITLE_WEIGHT = 0;
 export const TITLE_WEIGHT_LIGHT = 0;
 export const COVER_WEIGHT = 0;
 const weightFor = (ink: string) => (ink === TITLE_LIGHT ? TITLE_WEIGHT_LIGHT : TITLE_WEIGHT);
-function Glyph({ x, y, text, font, color, weight, original }: { x: number; y: number; text: string; font: SkFont; color: string; weight: number; original: SkImage }) {
-  if (hasOriginalGlyph(text)) return <ReferenceGlyph image={original} text={text} font={font} x={x} y={y} color={color} />;
+function Glyph({ x, y, text, font, color, weight }: { x: number; y: number; text: string; font: SkFont; color: string; weight: number }) {
   return (
     <>
       <Text x={x} y={y} text={text} font={font} color={color} />
@@ -157,7 +156,7 @@ function inkPaints(ink: string, fs: number) {
 }
 
 // 세운 책등 제목(세로 조판): 글자를 바로 세워 열로 쌓는다. 책등 폭 가운데. 쉼표·마침표는 앞 글자 오른쪽 아래.
-function verticalTitlePicture(title: string, dims: { T: number; H: number }, s: number, regular: SkTypeface, ink: string, original: SkImage, titleTop?: number, textEnd = 0.79) {
+function verticalTitlePicture(title: string, dims: { T: number; H: number }, s: number, regular: SkTypeface, ink: string, titleTop?: number, textEnd = 0.79) {
   const w = dims.T * s;
   const h = dims.H * s;
   // 제목 아래에 작은 꽃·잎 장식이 들어갈 공간을 둔다.
@@ -193,7 +192,7 @@ function verticalTitlePicture(title: string, dims: { T: number; H: number }, s: 
       const gx = cx - adv / 2;
       const ink0 = font.measureText(cell.ch);
       const cy = y + ch / 2;
-      if (!drawOriginalGlyph(c,original,cell.ch,font,gx,cy+gy,ink)) for (const p of paints) c.drawText(cell.ch,gx,cy+gy,p,font);
+      for (const p of paints) c.drawText(cell.ch,gx,cy+gy,p,font);
       if (cell.punct) for (const p of paints) c.drawText(cell.punct,gx+ink0.x+ink0.width-fs*0.05,cy+fs*0.5,p,font);
       // 쉼표·마침표 뒤는 조금 더 띄운다(시안 '아무튼, 독서': 쉼표와 띄어쓰기를 합쳐 글자 높이의 약 0.84배)
       y += ch + (cell.punct ? fs * 0.36 : 0);
@@ -204,10 +203,10 @@ function verticalTitlePicture(title: string, dims: { T: number; H: number }, s: 
 
 // 눕힌 책등 제목(가로 한 줄): 책등 면 그림 좌표에서 머리(위) → 꼬리(아래) 방향으로 쓰고, 글자 위쪽은 앞표지 쪽(그림 오른쪽)을 향한다.
 // 눕힘(roll −90)에서 머리가 왼쪽·앞표지가 위라 화면에서 왼쪽 → 오른쪽으로 바로 읽힌다. 두께 방향 가운데.
-function lyingTitlePicture(title: string, dims: { T: number; H: number }, s: number, regular: SkTypeface, ink: string, original: SkImage, hasMotif: boolean) {
+function lyingTitlePicture(title: string, dims: { T: number; H: number }, s: number, regular: SkTypeface, ink: string) {
   const w = dims.T * s;
   const h = dims.H * s;
-  const t = lyingTitleLayout(title, dims.H, dims.T, hasMotif ? 0.20 : undefined);
+  const t = lyingTitleLayout(title, dims.H, dims.T);
   const fs = t.fontSize * s;
   const font = Skia.Font(regular, fs);
   const fm = font.getMetrics();
@@ -224,7 +223,7 @@ function lyingTitlePicture(title: string, dims: { T: number; H: number }, s: num
       x += fs * 0.32;
       continue;
     }
-    if (!drawOriginalGlyph(c,original,ch,font,x,gy,ink)) for (const p of paints) c.drawText(ch,x,gy,p,font);
+    for (const p of paints) c.drawText(ch,x,gy,p,font);
     x += font.measureText(ch).width + fs * LYING_TRACK;
   }
   c.restore();
@@ -308,9 +307,6 @@ function tabPath(t: Tab, s: number, into: ReturnType<typeof Skia.PathBuilder.Mak
   return one;
 }
 function PaperTab({ t, s }: { t: Tab; s: number }) {
-  const w = t.width * s;
-  const hidden = TAB_HIDDEN * s;
-  const top = -t.out * s;
   // 종이 색만 칠한다: 결(반사율·미세 높이)과 밝기는 빛 셰이더가 무광 종이 재질로(BookNode Ribbons, SceneLight TabLight)
   return <Path path={tabPath(t, s, Skia.PathBuilder.Make())} color={t.color} />;
 }
@@ -386,10 +382,6 @@ type MadeArt = { cover: SkImage | null; spine: SkImage | null };
 // 시안에서 잰 책등 제목 위치(titleTop)는 책등 그림을 머리 위로 늘려 그리던 때의 값이다. 물리 모드는 책등을 늘리지 않아
 // 제목이 그만큼(책등 높이의 약 6%) 내려가 보였다(시안 '흰' 0.23 → 앱 0.29). 그만큼 올린다
 const TITLE_LIFT = 0.06;
-// 책등 장식(꽃·별·달 같은 작은 그림)은 일단 그리지 않는다. 다시 켜려면 true.
-const SPINE_MOTIF = false;
-// 표지 장식 무늬(≈ 물결·잎 등 모티프)도 그리지 않는다(2026-11-01 사용자 '물결표 같은 거 그런 거 다 없애'). 저장된 motif 값은 그대로 둔다
-const COVER_MOTIF = false;
 // 표지·책등 사진을 크게 줄여 그릴 때 글자가 깨지지 않게(밉맵)
 const PHOTO_SAMPLING = { filter: FilterMode.Linear, mipmap: MipmapMode.Linear };
 // 실제 표지 사진을 면에 꽉 채운다(비율이 다르면 넘치는 쪽을 가운데로 자른다). 그림 바깥의 흰 여백은 표지가 아니라서 뺀다(cover-url whiteMat)
@@ -403,44 +395,20 @@ function PhotoCover({ image, w, h }: { image: SkImage; w: number; h: number }) {
   return <SkiaImage image={image} x={w / 2 - (m.l + (1 - m.l - m.r) / 2) * iw * k} y={h / 2 - (m.t + (1 - m.t - m.b) / 2) * ih * k} width={iw * k} height={ih * k} fit="fill" sampling={PHOTO_SAMPLING}><ColorMatrix matrix={PHOTO_MATRIX} /></SkiaImage>;
 }
 
-async function buildArt(book: Book, s: number, dims: { T: number; H: number; W: number }, shared: Shared, motif: SkImage | null, coverImg: SkImage | null, made: MadeArt): Promise<BookArt> {
+async function buildArt(book: Book, s: number, dims: { T: number; H: number; W: number }, shared: Shared, coverImg: SkImage | null, made: MadeArt): Promise<BookArt> {
   const regular = shared.regular!;
   const face = faceOf(book);
   const ink = inkOf(book);
   // 책등: 공통 바탕 + 자세별 제목과 장식. 눕힐 때 장식도 바로 선다.
   const w = dims.T * s;
   const h = dims.H * s;
-  const spineMotif = !SPINE_MOTIF || book.art.motif === 'none' ? null : Skia.SVG.MakeFromString(motifSvg(book.art.motif, book.art.accentColor ?? (ink === TITLE_LIGHT ? '#F4DCA3' : '#8B9C7C')));
-  const compactMotif = ['moon', 'crescent', 'star', 'star-solid', 'asterisk', 'cloud', 'wave', 'book'].includes(book.art.motif);
-  const motifCap = ({ asterisk: 12.5, 'star-solid': 12.5, cloud: 15.5, book: 15 } as Record<string, number>)[book.art.motif] ?? (compactMotif ? 17 : 14);
-  const motifW = Math.min(w * (compactMotif ? 0.58 : 0.45), motifCap * s) * (book.art.motifScale ?? 1);
-  const motifH = motifW * 2.5;
-  const motifCenter = ({ 'star-solid': 0.71, cloud: 0.785, wave: 0.875, book: 0.87 } as Record<string, number>)[book.art.motif] ?? 0.835;
-  const motifY = compactMotif ? h * motifCenter - motifH / 2 : h * (book.art.motifBottom ?? 0.90) - motifH;
-  // 실제 사용자 제목은 길이가 달라진다. 장식의 윗끝보다 먼저 조판을
-  // 끝내서 마지막 글자와 잎·꽃이 겹치지 않도록 공간을 먼저 확보한다.
-  const textEnd = book.art.titleTop !== undefined ? 0.79 : !SPINE_MOTIF || book.art.motif === 'none' ? 0.88 : Math.max(0.50, (motifY + (compactMotif ? motifH * 0.28 : 0) - 4 * s) / h);
+  const textEnd = book.art.titleTop !== undefined ? 0.79 : 0.88;
   const binding = referenceBinding(face);
   const spine = await record(made.spine
-    ? <Group clip={bookFacePath(w, h, s)}><SkiaImage image={made.spine} x={0} y={0} width={w} height={h} fit="fill" sampling={PHOTO_SAMPLING} /></Group>
+    ? <Group clip={bookFacePath(w, h, s)}><SkiaImage image={made.spine} x={0} y={0} width={w} height={h} fit="fill" sampling={PHOTO_SAMPLING}><ColorMatrix matrix={PHOTO_MATRIX} /></SkiaImage></Group>
     : binding ? <ReferenceBinding material={binding} w={w} h={h} s={s} /> : <SpineFaceArt w={w} h={h} face={face} s={s} />, w, h);
-  const motifGlyph = !SPINE_MOTIF ? null : hasReferenceMotif(book.art.motif) ? <ReferenceMotif image={shared.original!} id={book.art.motif} color={book.art.accentColor ?? (ink === TITLE_LIGHT ? '#F4DCA3' : '#8B9C7C')} /> : spineMotif ? <ImageSVG svg={spineMotif} x={0} y={0} width={24} height={60} /> : null;
-  const print = referencePrint(book.title);
-  const printV = print?.pose === 'spine' ? print : undefined;
-  const printH = print?.pose === 'horizontal' ? print : undefined;
-  const accent = book.art.accentColor ?? (ink === TITLE_LIGHT ? '#F4DCA3' : '#8B9C7C');
-  const titleV = made.spine ? await record(<Group />, w, h) : await record(<Group>
-    {printV ? <ReferencePrint image={shared.original!} template={printV} w={w} h={h} ink={ink} accent={accent} decoration={SPINE_MOTIF && printV.motif === book.art.motif} /> : <Picture picture={verticalTitlePicture(book.title, dims, s, regular, ink, shared.original!, book.art.titleTop === undefined ? undefined : Math.max(0.12, book.art.titleTop - TITLE_LIFT), textEnd)} />}
-    {!SPINE_MOTIF || printV?.motif === book.art.motif ? null : <Group transform={[{ translateX: (w - motifW) / 2 }, { translateY: motifY }, { scale: motifW / 24 }]}>{motifGlyph}</Group>}
-  </Group>, w, h);
-  // Counter-rotate the small illustration so it stays upright on a lying spine.
-  const lyingMotifW = Math.min(12.5 * s, w * 0.39) * (book.art.motifScale ?? 1);
-  const titleH = made.spine ? await record(<Group />, w, h) : await record(<Group>
-    {printH ? <ReferencePrint image={shared.original!} template={printH} w={w} h={h} ink={ink} accent={accent} decoration={SPINE_MOTIF && printH.motif === book.art.motif} /> : <Picture picture={lyingTitlePicture(book.title, dims, s, regular, ink, shared.original!, !!spineMotif)} />}
-    {!SPINE_MOTIF || printH?.motif === book.art.motif ? null : <Group transform={[{ translateX: w / 2 }, { translateY: h * 0.89 }, { rotate: Math.PI / 2 }]}>
-      <Group transform={[{ translateX: -lyingMotifW / 2 }, { translateY: -lyingMotifW * 1.25 }, { scale: lyingMotifW / 24 }]}>{motifGlyph}</Group>
-    </Group>}
-  </Group>, w, h);
+  const titleV = made.spine ? await record(<Group />, w, h) : await record(<Picture picture={verticalTitlePicture(book.title, dims, s, regular, ink, book.art.titleTop === undefined ? undefined : Math.max(0.12, book.art.titleTop - TITLE_LIFT), textEnd)} />, w, h);
+  const titleH = made.spine ? await record(<Group />, w, h) : await record(<Picture picture={lyingTitlePicture(book.title, dims, s, regular, ink)} />, w, h);
   // 표지(앞표지 그림 + 제목). 시안 표지에는 저자가 없다.
   const cw = dims.W * s;
   const vector = !!book.art.vectorCover && !made.cover;
@@ -469,26 +437,17 @@ async function buildArt(book: Book, s: number, dims: { T: number; H: number; W: 
     let x = cx0 - total / 2;
     const base = top + i * lh + lh / 2 - (cm.ascent + cm.descent) / 2;
     return chars.map((c, j) => {
-      const el = <Glyph key={`${i}-${j}`} x={x} y={base} text={c} font={cfont} color={cink} weight={cfs * COVER_WEIGHT} original={shared.original!} />;
+      const el = <Glyph key={`${i}-${j}`} x={x} y={base} text={c} font={cfont} color={cink} weight={cfs * COVER_WEIGHT} />;
       x += ws[j] + spacing;
       return el;
     });
   });
-  // 표지 장식(그림이 없는 책): 모티프는 표지에만 둔다(책등에는 제목만)
-  let coverMotif: ReactNode = null;
-  if (COVER_MOTIF && !coverImg && !book.body && !book.art.plainCover && book.art.motif !== 'none') {
-    const svg = Skia.SVG.MakeFromString(motifSvg(book.art.motif, book.art.accentColor ?? ink));
-    const mH = h * (vector ? 0.46 : 0.4);
-    const mw = Math.min(cw * (vector ? 0.5 : 0.4), (mH * 24) / 60);
-    if (svg) coverMotif = <ImageSVG svg={svg} x={cw / 2 - mw / 2} y={h * 0.9 - (mw * 60) / 24} width={mw} height={(mw * 60) / 24} />;
-  }
   const originalCover = !made.cover && !!coverImg && !!cover.sourceRect;
   const retainTitle = originalCover && book.title.replace(/\s/g, '') === cover.printedTitle?.replace(/\s/g, '');
   const coverPic = await record(
     made.cover ? <Group clip={bookFacePath(cw, h, s)}><PhotoCover image={made.cover} w={cw} h={h} /></Group> :
     <Group>
-      {originalCover ? <ReferenceCover image={coverImg!} cover={cover} w={cw} h={h} s={s} retainTitle={retainTitle} /> : <CoverFaceArt w={cw} h={h} s={s} face={toneOf(book)} image={coverImg} motif={COVER_MOTIF && book.body ? motif : null} focusY={cover.artworkId ? cover.focusY : undefined} />}
-      {coverMotif}
+      {originalCover ? <ReferenceCover image={coverImg!} cover={cover} w={cw} h={h} s={s} retainTitle={retainTitle} /> : <CoverFaceArt w={cw} h={h} s={s} face={toneOf(book)} image={coverImg} focusY={cover.artworkId ? cover.focusY : undefined} />}
       {book.art.plainCover || retainTitle ? null : lineEls}
     </Group>,
     cw,
@@ -507,12 +466,9 @@ async function buildArt(book: Book, s: number, dims: { T: number; H: number; W: 
 // 책 한 권의 기록된 그림(없으면 null → 다음 렌더에서 채워진다)
 // shared는 캔버스 밖에서 읽어 넘긴다(Skia 캔버스 안은 별도 렌더러라 React 컨텍스트가 닿지 않는다)
 export function useBookArt(book: Book, s: number, dims: { T: number; H: number; W: number }, shared: Shared): BookArt | null {
-  // 기존 비트맵 모티프는 표지용. 책등의 작은 장식은 벡터로 기록한다.
-  const needMotif = COVER_MOTIF && !!book.body?.motif && !book.cover?.image;
   const vector = !!book.art.vectorCover;
   const cover = jacketFor(book);
   const needCover = !!cover.image && !book.art.plainCover && !vector;
-  const motif = useImage(needMotif ? (book.body?.motif ?? null) : null);
   const customCoverImg = useImage(book.art.plainCover || vector || cover.sourceRect || cover.artworkId ? null : cover.image);
   const coverImg = book.art.plainCover || vector ? null : cover.sourceRect ? shared.original : cover.artworkId ? shared.artworks[cover.artworkId] ?? null : customCoverImg;
   // 실제 표지·책등 그림(주소). 책은 네트워크를 기다리지 않는다: 기기에 있으면 그것으로, 없거나 못 받으면 코드로 그리는 장정으로 그리고 받는 대로 바꾼다(services/cover-cache)
@@ -520,7 +476,7 @@ export function useBookArt(book: Book, s: number, dims: { T: number; H: number; 
   const madeSpineUri = book.spineArtUri ?? null;
   const { image: madeCover, pending: coverPending } = useCoverImage(madeCoverUri);
   const { image: madeSpine, pending: spinePending } = useCoverImage(madeSpineUri);
-  const ready = shared.regular && shared.original && (!needMotif || motif) && (!needCover || coverImg) && !coverPending && !spinePending;
+  const ready = shared.regular && shared.original && (!needCover || coverImg) && !coverPending && !spinePending;
   // 장정(책 색·모티프)·저자가 바뀌면 다시 기록한다(같은 책 id라도)
   const key = bookArtKey(book, s, dims, cover, madeCover ? madeCoverUri : null, madeSpine ? madeSpineUri : null);
   const [art, setArt] = useState<{ key: string; art: BookArt } | null>(() => {
@@ -529,7 +485,7 @@ export function useBookArt(book: Book, s: number, dims: { T: number; H: number; 
   });
   useEffect(() => {
     if (!ready) {
-      if (TL.on) tl(`art-wait ${book.id} motif=${!needMotif || !!motif} cover=${!needCover || !!coverImg} made=${!coverPending && !spinePending}`);
+      if (TL.on) tl(`art-wait ${book.id} cover=${!needCover || !!coverImg} made=${!coverPending && !spinePending}`);
       return;
     }
     const p = artCache.load(key, () => {
@@ -539,7 +495,7 @@ export function useBookArt(book: Book, s: number, dims: { T: number; H: number; 
       const task = queue.then(async () => {
         const t0 = Date.now();
         if (TL.on) tl(`art-start ${book.id}`);
-        const a = await buildArt(book, s, dims, shared, motif, coverImg, { cover: madeCover, spine: madeSpine });
+        const a = await buildArt(book, s, dims, shared, coverImg, { cover: madeCover, spine: madeSpine });
         artMs += Date.now() - t0;
         if (TL.on) tl(`art-end ${book.id} ${Date.now() - t0}ms`);
         builtArt++;

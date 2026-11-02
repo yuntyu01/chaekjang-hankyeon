@@ -10,7 +10,6 @@
     "test": "jest"
   },
   "dependencies": {
-    "@expo-google-fonts/gowun-batang": "^0.4.1",
     "@shopify/react-native-skia": "2.6.2",
     "expo": "~57.0.25",
     "expo-audio": "~57.0.5",

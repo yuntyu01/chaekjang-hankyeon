@@ -33,19 +33,6 @@ export function jacketColor(color: string) {
   return LEGACY_COLORS[color.toUpperCase()] ?? color;
 }
 
-// Binding belongs to the jacket material, so changing its tiny decoration does
-// not suddenly open the paper head. The reference's green/light blue bindings
-// close over the pages; the dark blue and burgundy bindings expose more paper.
-export function jacketHeadReveal(book: Book) {
-  const color = jacketColor(book.cover?.edge ?? book.body?.face ?? book.themeColor);
-  if (color.toUpperCase() === '#4B6080') return 0.88;
-  const n = parseInt(color.replace('#',''),16), r=(n>>16)&255, g=(n>>8)&255, b=n&255;
-  if (g>r*1.04 && g>b*.97) return r<140 ? 0.02 : 0.24;
-  if (b>r*1.08 && b>g*1.04) return r>135 ? 0.02 : r<100 ? 0.28 : 0.65;
-  if (r>g*1.25 && r>b*1.25) return g<110 ? 0.65 : 0.02;
-  return r>230 && g>225 ? 0.30 : 0.18;
-}
-
 export function landscapeFor(color: string): CoverArt {
   const hex = color.replace('#', '');
   const n = parseInt(hex.length === 3 ? hex.replace(/./g, (c) => c + c) : hex, 16);

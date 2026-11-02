@@ -132,7 +132,7 @@ function files(dir: string): string[] {
   return fs.readdirSync(dir, { withFileTypes: true }).flatMap((d) => (d.isDirectory() ? (d.name === '__tests__' ? [] : files(path.join(dir, d.name))) : d.name.endsWith('.tsx') ? [path.join(dir, d.name)] : []));
 }
 // 내용 그림(갈피 종이 카드·사진 판·표지 그림)과 개발용 화면은 따로 된 재질 색을 쓴다
-const CONTENT = /(BookmarkCard|BookmarkPaper|BookmarkTape|PhotoPlate|dev-[a-z]+|features[\\/]home[\\/]BookDetail)\.tsx$/;
+const CONTENT = /(BookmarkCard|BookmarkPaper|BookmarkTape|PhotoPlate|dev-[a-z]+)\.tsx$/;
 const screens = [...files(path.join(SRC, 'app')), ...files(path.join(SRC, 'features')), path.join(SRC, 'ui', 'kit.tsx')].filter((f) => !CONTENT.test(f));
 
 describe('화면 코드가 공통 기준을 쓴다', () => {
@@ -210,7 +210,7 @@ describe('정돈 변형(tidy)', () => {
   });
   it('책장·책 고르기 시트·갈피 화면·하단 탭은 켜지 않는다', () => {
     // 2026-11: 갈피 작성(app/bookmark/new.tsx)은 사진·문장 인식 흐름으로 새로 만들며 공통 기준을 쓴다(지시 0-3·7-2). 갈피 카드·목록·상세는 그대로 뺀다
-    const off = ['app/(tabs)/bookmarks.tsx', 'app/(tabs)/_layout.tsx', 'app/bookmark/[id].tsx', 'features/home/HomeScreen.tsx', 'features/home/BookSheet.tsx', 'features/home/BookDetail.tsx', 'features/bookmark/BookmarkCard.tsx', 'features/bookmark/BookmarkEmpty.tsx', 'features/reading/Scene.tsx'];
+    const off = ['app/(tabs)/bookmarks.tsx', 'app/(tabs)/_layout.tsx', 'app/bookmark/[id].tsx', 'features/home/HomeScreen.tsx', 'features/home/BookSheet.tsx', 'features/bookmark/BookmarkCard.tsx', 'features/bookmark/BookmarkEmpty.tsx', 'features/reading/Scene.tsx'];
     for (const f of off) if (fs.existsSync(path.join(SRC, f))) expect(read(f)).not.toMatch(/<Tidy|Screen[^>]*\btidy\b|tidyType|tidySpace/);
   });
 });

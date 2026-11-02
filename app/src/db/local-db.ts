@@ -279,29 +279,6 @@ export function db() {
   return dbPromise;
 }
 
-export async function upsertCatalog(books: CatalogBook[]) {
-  const d = await db();
-  const now = new Date().toISOString();
-  for (const b of books) {
-    await d.runAsync(
-      'INSERT INTO catalog_books (isbn13, data, updated_at) VALUES (?, ?, ?) ON CONFLICT(isbn13) DO UPDATE SET data = excluded.data, updated_at = excluded.updated_at',
-      b.isbn13,
-      JSON.stringify(b),
-      now,
-    );
-  }
-}
-
-export async function upsertUserBook(u: UserBook) {
-  const d = await db();
-  await d.runAsync(
-    'INSERT INTO user_books (isbn13, data, updated_at) VALUES (?, ?, ?) ON CONFLICT(isbn13) DO UPDATE SET data = excluded.data, updated_at = excluded.updated_at',
-    u.isbn13,
-    JSON.stringify(u),
-    u.updatedAt,
-  );
-}
-
 // 내 책(user_books)과 그 책의 카탈로그 정보를 함께 읽는다.
 export async function loadLibrary(): Promise<{ catalog: CatalogBook; user: UserBook }[]> {
   const d = await db();

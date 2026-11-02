@@ -72,7 +72,6 @@ function toBook(m: Meta): Book {
 }
 
 export const SAMPLE_BOOKS: Book[] = META.map(toBook);
-export const SAMPLE_PUBLISHERS: Record<string, string> = Object.fromEntries(META.map((m) => [m.id, m.publisher]));
 
 const place = (
   bookId: string,

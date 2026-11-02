@@ -4,9 +4,6 @@
 export type BodyArt = { face: string; motif: number; motifTop: number; motifBottom: number; motifCx: number; scene: boolean };
 export type CoverArt = { image: number; titleTop: number; ink: string; edge: string };
 
-export const BRUSH_DETAIL = require('../../assets/body/brush-detail.png');
-export const BRUSH_TILE_PX = 256; // 원본 px(시안 941px 폭 기준)
-
 export const BODY_ART: Record<string, BodyArt> = {
   b01: { face: '#FBEDDD', motif: require('../../assets/body/motif/b01.png'), motifTop: 0.4987, motifBottom: 0.8483, motifCx: 0.5383, scene: false },
   b02: { face: '#3D5F57', motif: require('../../assets/body/motif/b02.png'), motifTop: 0.5, motifBottom: 0.9479, motifCx: 0.5342, scene: false },
@@ -25,8 +22,3 @@ export const BODY_ART: Record<string, BodyArt> = {
   b13: { face: '#F7E8D5', motif: require('../../assets/body/motif/b13.png'), motifTop: 0.2, motifBottom: 0.8, motifCx: 0.5, scene: false },
 };
 
-export const COVER_ART: Record<string, CoverArt> = {
-  b04: { image: require('../../assets/body/cover/b04.png'), titleTop: 0.2479, ink: '#69859D', edge: '#1E4260' },
-  b07: { image: require('../../assets/body/cover/b07.png'), titleTop: 0.2283, ink: '#58605F', edge: '#435650' },
-  b16: { image: require('../../assets/body/cover/b16.png'), titleTop: 0.0696, ink: '#80726E', edge: '#DDAFAF' },
-};

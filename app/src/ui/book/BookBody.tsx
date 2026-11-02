@@ -38,14 +38,13 @@ export function SpineFaceArt({ w, h, face }: { w: number; h: number; face: strin
 // 표지 그림 왼쪽(제본 쪽)을 면 밖으로 미는 비율(아래 CoverFaceArt 설명)
 const COVER_ART_TRIM = 0.015;
 
-// 표지 면(제목 제외). 표지 그림(달·풍경 등)은 그대로 두고, 그림이 없으면 책 색 + 모티프. 질감은 덧씌우지 않는다.
+// 표지 면(제목 제외). 표지 그림(달·풍경 등)은 그대로 두고, 그림이 없으면 책 색. 질감은 덧씌우지 않는다.
 export function CoverFaceArt({
   w: fw,
   h,
   s,
   face,
   image,
-  motif,
   focusY,
 }: {
   w: number;
@@ -53,17 +52,10 @@ export function CoverFaceArt({
   s: number;
   face: string;
   image: SkImageType | null;
-  motif: SkImageType | null;
   // 기본 정면 장정 그림(cover-artworks): 늘이지 않고 면을 채우되(가로세로 비 그대로), 위아래가 잘리면 위에서 이 몫만큼 자른다.
   // 그림 자체에는 테두리·제본 그늘이 없어 시안 그림처럼 왼쪽을 밀지 않는다
   focusY?: number;
 }) {
-  let mh = h * 0.38;
-  let mw = motif ? (mh * motif.width()) / motif.height() : 0;
-  if (mw > fw * 0.5) {
-    mh = (mh * fw * 0.5) / mw;
-    mw = fw * 0.5;
-  }
   return (
     <Group clip={bookFacePath(fw, h, s)}>
       <Rect x={0} y={0} width={fw} height={h} color={face} />
@@ -74,7 +66,6 @@ export function CoverFaceArt({
             코드가 그리므로 그림을 1.5% 왼쪽으로 밀어 그 줄을 면 밖으로 보낸다 */}
         {image && focusY !== undefined ? <FocusedImage image={image} w={fw} h={h} focusY={focusY} /> : null}
         {image && focusY === undefined ? <SkImage image={image} x={-fw * COVER_ART_TRIM} y={0} width={fw * (1 + COVER_ART_TRIM)} height={h} fit="cover" /> : null}
-        {!image && motif ? <SkImage image={motif} x={fw / 2 - mw / 2} y={h * 0.9 - mh} width={mw} height={mh} fit="contain" /> : null}
       </Group>
       {/* The live 3D shader supplies the binding depression and edge light. */}
     </Group>

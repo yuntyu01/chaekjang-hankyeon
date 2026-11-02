@@ -229,10 +229,6 @@ const st = StyleSheet.create({
   swatch: { width: 40, height: 40, borderRadius: 20, borderWidth: 1, borderColor: 'rgba(0,0,0,0.08)', alignItems: 'center', justifyContent: 'center' },
   swatchOn: { borderWidth: 2.5, borderColor: INK },
   reset: { alignSelf: 'flex-start', marginTop: space.group },
-  chip: { minHeight: 44, minWidth: 64, paddingHorizontal: 16, borderRadius: 22, borderWidth: shape.border, borderColor: colors.input, backgroundColor: colors.input, alignItems: 'center', justifyContent: 'center' },
-  chipOn: { backgroundColor: INK, borderColor: INK },
-  chipText: { ...type.sub, fontSize: 15, color: colors.ink },
-  chipTextOn: { color: colors.onAccent },
 });
 
 // 재질 견본: 책 렌더러의 결은 아주 은은해서 작은 칸에서는 셋이 똑같아 보인다. 견본은 결을 과장해 차이가 보이게 그린다

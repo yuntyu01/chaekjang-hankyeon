@@ -191,10 +191,6 @@ export function Muted({ children, style, numberOfLines }: { children: ReactNode;
   );
 }
 
-export function Body({ children, style }: { children: ReactNode; style?: StyleProp<TextStyle> }) {
-  return <Text style={[useTidy() ? tidyType.body : type.body, style]}>{children}</Text>;
-}
-
 export function Btn({
   label,
   onPress,
@@ -295,17 +291,6 @@ export function IconButton({ label, onPress, children, circle, style }: { label:
   return (
     <Pressable onPress={onPress} hitSlop={6} accessibilityRole="button" accessibilityLabel={label} style={({ pressed }) => [s.iconButton, pressed && press, style]}>
       {circle ? <View style={s.iconCircle}>{children}</View> : children}
-    </Pressable>
-  );
-}
-
-// 아이콘 + 글자 행동: 한 줄에 나란히 나눠 놓는 보조 행동(책 추가 '사진으로 찾기·직접 입력').
-// 부르는 쪽이 Row 안에 넣으면 칸을 똑같이 나눠 가진다. 아이콘은 부르는 쪽이 icon.size~large로 넘긴다
-export function IconAction({ label, icon: iconNode, onPress, style }: { label: string; icon: ReactNode; onPress: () => void; style?: StyleProp<ViewStyle> }) {
-  return (
-    <Pressable onPress={onPress} accessibilityRole="button" accessibilityLabel={label} style={({ pressed }) => [s.iconAction, pressed && press, style]}>
-      {iconNode}
-      <Text style={s.iconActionText} numberOfLines={1}>{label}</Text>
     </Pressable>
   );
 }
@@ -486,23 +471,6 @@ export function Choice({ label, sub, selected, onPress, children, style, compact
 
 export function Row({ children, style, gap = 8 }: { children: ReactNode; style?: StyleProp<ViewStyle>; gap?: number }) {
   return <View style={[{ flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap }, style]}>{children}</View>;
-}
-
-// 카드: 정말 한 덩어리로 묶여야 하는 것(안내 상자·요약)에만. 목록은 ListGroup을 쓴다.
-export function Card({ children, style, onPress, stripe }: { children: ReactNode; style?: StyleProp<ViewStyle>; onPress?: () => void; stripe?: string }) {
-  const inner = (
-    <>
-      {stripe ? <View style={[s.stripe, { backgroundColor: stripe }]} /> : null}
-      {children}
-    </>
-  );
-  return onPress ? (
-    <Pressable onPress={onPress} style={({ pressed }) => [s.card, stripe && { paddingLeft: 20 }, style, pressed && { backgroundColor: colors.surface }]} accessibilityRole="button">
-      {inner}
-    </Pressable>
-  ) : (
-    <View style={[s.card, stripe && { paddingLeft: 20 }, style]}>{inner}</View>
-  );
 }
 
 // 안내 상자: 확인이 필요한 알림(판본 정보 없음 등). 표면색 바탕, 테두리 없음
@@ -893,8 +861,6 @@ export const s = StyleSheet.create({
   iconCircle: { width: 36, height: 36, borderRadius: 18, borderWidth: shape.border, borderColor: colors.border, alignItems: 'center', justifyContent: 'center' },
   link: { minHeight: space.touch, alignItems: 'center', justifyContent: 'center', alignSelf: 'center' },
   linkText: { ...type.sub, fontFamily: fonts.uiBold }, // 밑줄 없이 굵은 갈색(이어서 할 일)·회색(조심스러운 일). 2026-11-01 토스처럼 밑줄을 뺐다
-  iconAction: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 10, minHeight: 52, paddingHorizontal: 8 },
-  iconActionText: { ...type.row, fontSize: 16, color: colors.inkSoft, flexShrink: 1 },
   textActions: { flexDirection: 'row', alignItems: 'center' },
   textAction: { flex: 1, minHeight: 48, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 8 },
   textActionText: { ...type.sub, color: colors.ink, textAlign: 'center' }, // 보조 행동: 15 Regular, 본문색
@@ -942,9 +908,7 @@ export const s = StyleSheet.create({
   chipOn: { backgroundColor: colors.accent, borderColor: colors.accent },
   chipText: { ...type.sub, color: colors.ink, fontSize: 15 },
   dot: { width: 10, height: 10, borderRadius: 5 },
-  card: { backgroundColor: colors.raised, borderRadius: shape.button, borderWidth: shape.hairline, borderColor: colors.line, padding: 18, overflow: 'hidden' },
   notice: { backgroundColor: colors.surface, borderRadius: shape.input, paddingVertical: 14, paddingHorizontal: 16 },
-  stripe: { position: 'absolute', left: 0, top: 0, bottom: 0, width: 4 },
   item: { minHeight: space.row, flexDirection: 'row', alignItems: 'center' },
   itemIcon: { width: 32, alignItems: 'flex-start' },
   itemValue: { ...type.sub, fontSize: 15, flexShrink: 1, textAlign: 'right', marginLeft: 12, maxWidth: '55%' },

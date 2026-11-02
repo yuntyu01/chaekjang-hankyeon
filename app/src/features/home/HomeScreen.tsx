@@ -58,9 +58,9 @@ import { flushApply, lastPlan, PULL_MS, WAIT_MAX } from '@/ui/shelf/planner';
 import { liveSV, pickAt, plankFrontBand, rowPx, TRANSIT_ROW, warmSV, type Pick, type SceneGeo } from '@/ui/shelf/scene';
 import { HANDLE_HIT, handlePoint, HeaderWall, SHELF_CAST_EXTENT, ShelfScene, type DropHint, type SceneRowProps } from '@/ui/shelf/ShelfScene';
 import { ANIM, frameStats, logChunks, MENU_FLAGS, PERF_DETAIL, PERF_ENABLED, PERF_LEVELS, PUSH_DEBUG, setLightOff, setPerfLevel, TL, tl, tlEv, tlOn, tlu, TRANSIT_DEBUG, setShelfMode, setShelfView, SHELF_MODES, SHELF_VIEWS, type PerfLevel, type ShelfMode } from '@/ui/perf';
-import { colors, fonts, motion, navigation } from '@/ui/theme';
+import { colors, motion, navigation } from '@/ui/theme';
 // 책장 밖 UI(메뉴 시트·알림·빈 책장 안내)는 화면 공통 토큰을 쓴다(책장 장면·머리글은 theme.ts 그대로)
-import { colors as ui, fonts as uiFonts, headerType, icon, press, shape, space, tabHeader, type } from '@/ui/screenTheme';
+import { colors as ui, headerType, icon, press, shape, space, tabHeader, type } from '@/ui/screenTheme';
 import { Btn, TextLink } from '@/ui/kit';
 
 import { BookSheet } from './BookSheet';
@@ -1403,19 +1403,6 @@ const styles = StyleSheet.create({
   header: { flexDirection: 'row', alignItems: 'flex-start' }, // 탭 첫 화면 머리줄과 같은 정렬(제목 위 기준)
   actions: { flexDirection: 'row', alignItems: 'center' },
   headerIcon: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center' },
-  badge: {
-    position: 'absolute',
-    top: -2,
-    right: -2,
-    minWidth: 18,
-    height: 18,
-    borderRadius: 9,
-    paddingHorizontal: 4,
-    backgroundColor: ui.accent,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  badgeText: { fontFamily: uiFonts.uiBold, fontSize: 11, color: ui.onAccent },
   toast: {
     position: 'absolute',
     left: 16,
