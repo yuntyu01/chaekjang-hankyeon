@@ -200,8 +200,8 @@ func (s *Server) Handler() http.Handler {
 	return m
 }
 func (s *Server) health(w http.ResponseWriter, r *http.Request) error {
-	// community: 이 서버에 공개 데이터 API가 있다(앱은 이것으로 커뮤니티 탭을 켠다. 예전 서버에는 없다)
-	writeJSON(w, 200, map[string]any{"ok": true, "books": bookSource(), "llmKeys": s.LLM.Available(), "community": true})
+	// community: 커뮤니티를 열어 두었다(앱은 이것으로 커뮤니티 화면을 켠다. 닫혀 있거나 예전 서버면 없음)
+	writeJSON(w, 200, map[string]any{"ok": true, "books": bookSource(), "llmKeys": s.LLM.Available(), "community": communityEnabled()})
 	return nil
 }
 func New(db *pgxpool.Pool) *Server {

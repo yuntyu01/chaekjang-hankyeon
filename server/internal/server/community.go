@@ -28,7 +28,19 @@ var (
 	nickTaken    = apiError{409, "nickname_taken", "이미 쓰는 닉네임이에요"}
 )
 
+// 커뮤니티 스위치(COMMUNITY_ENABLED=1): 처음 출시는 닫아 두고 사람이 모이면 재배포만으로 연다(앱 업데이트 없이). 닫혀 있으면 API가 아예 없다. 표의 글은 지우지 않아 다시 열면 그대로 보인다
+func communityEnabled() bool {
+	switch strings.ToLower(strings.TrimSpace(os.Getenv("COMMUNITY_ENABLED"))) {
+	case "1", "true", "on", "yes":
+		return true
+	}
+	return false
+}
+
 func (s *Server) routeCommunity(m *http.ServeMux) {
+	if !communityEnabled() {
+		return
+	}
 	m.HandleFunc("GET /community/profile", wrap(s.myProfile))
 	m.HandleFunc("PUT /community/profile", wrap(s.putProfile))
 	m.HandleFunc("GET /community/users/{id}", wrap(s.publicUser))

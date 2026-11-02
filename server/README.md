@@ -22,6 +22,10 @@ Docker 이미지: `docker build -t chaekjang-go server`. 운영에서는 사진�
 - V8(`normalized_layout`): 책장 배치 JSON(`shelf_layouts.layout`)을 `shelves`·`shelf_placements` 표로 옮기고, `books`의 키·두께 분류와 기본 모티프 열을 지운다(판형·쪽수·ISBN으로 계산). 되돌릴 수 없으니 운영 DB는 백업한 뒤 재배포한다.
 - 알 수 없는 이력을 가진 기존 스키마에는 적용하지 않는다. 실제 데이터 전환 전에 백업과 별도 환경에서의 검증이 필요하다.
 
+## 커뮤니티 스위치
+
+커뮤니티 API는 `COMMUNITY_ENABLED=1`일 때만 등록된다(운영자 `/admin/reports` 포함). 비우면 `/healthz`의 `community`가 false이고 앱은 커뮤니티 화면을 숨긴다. 표의 글은 지우지 않으므로 값을 켜고 재배포하면 앱 업데이트 없이 그대로 열린다. 계정 삭제는 스위치와 상관없이 커뮤니티 데이터까지 지운다.
+
 ## 검증과 남은 작업
 
 `go test ./...`로 일반 시험을 실행하고, **전용 테스트 DB**를 준비한 뒤 `TEST_DATABASE_URL=postgres://... go test ./...`로 PostgreSQL 통합 시험을 실행한다. Flyway V7 DB를 V8로 올리는 시험은 빈 DB를 하나 더 만들어 `TEST_EMPTY_DATABASE_URL`로 넘긴다. 이 시험은 계정과 데이터를 생성하므로 실제 데이터베이스를 지정하지 않는다.

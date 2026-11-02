@@ -29,6 +29,7 @@ func TestCommunity(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Setenv("ADMIN_TOKEN", "admin-secret")
+	t.Setenv("COMMUNITY_ENABLED", "1")
 	h := New(db).Handler()
 	call := func(method, path, token string, body any, header ...string) (int, map[string]any) {
 		var buf bytes.Buffer
@@ -240,4 +241,31 @@ func TestCommunity(t *testing.T) {
 		t.Fatalf("private pull leaked %v", pull)
 	}
 	_ = http.StatusOK
+}
+
+// 커뮤니티 스위치: 닫혀 있으면 앱이 화면을 숨기고 API도 없다. 켜면 재배포만으로 열린다(DB 없이 시험)
+func TestCommunitySwitch(t *testing.T) {
+	get := func(h http.Handler, path string) (int, map[string]any) {
+		rec := httptest.NewRecorder()
+		h.ServeHTTP(rec, httptest.NewRequest("GET", path, nil))
+		var out map[string]any
+		_ = json.Unmarshal(rec.Body.Bytes(), &out)
+		return rec.Code, out
+	}
+	t.Setenv("COMMUNITY_ENABLED", "")
+	off := New(nil).Handler()
+	if code, body := get(off, "/healthz"); code != 200 || body["community"] != false {
+		t.Fatalf("닫힘 healthz: %d %v", code, body)
+	}
+	if code, _ := get(off, "/community/profile"); code != 404 {
+		t.Fatalf("닫혀 있으면 API가 없어야 한다: %d", code)
+	}
+	t.Setenv("COMMUNITY_ENABLED", "1")
+	on := New(nil).Handler()
+	if code, body := get(on, "/healthz"); code != 200 || body["community"] != true {
+		t.Fatalf("열림 healthz: %d %v", code, body)
+	}
+	if code, _ := get(on, "/community/profile"); code == 404 {
+		t.Fatalf("열리면 API가 있어야 한다: %d", code)
+	}
 }
