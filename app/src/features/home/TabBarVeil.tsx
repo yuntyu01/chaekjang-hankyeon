@@ -6,7 +6,7 @@ import Animated, { useAnimatedReaction, useAnimatedStyle, useSharedValue, withTi
 import Svg, { Defs, LinearGradient, Rect, Stop } from 'react-native-svg';
 
 // 화면에 그려진 벽 아래쪽 색(기기 캡처로 잼). colors.wall보다 빛을 받아 조금 밝다
-const WALL = '#FDFAF6';
+const WALL = '#FEFEFE';
 const FADE = 20;
 
 type Props = {

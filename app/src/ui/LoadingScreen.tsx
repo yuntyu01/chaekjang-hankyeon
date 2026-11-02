@@ -90,6 +90,6 @@ function Dots({ step, w, h }: { step: number; w: number; h: number }) {
 }
 
 const styles = StyleSheet.create({
-  screen: { ...StyleSheet.absoluteFill, backgroundColor: '#FCF8F1', zIndex: 10 },
+  screen: { ...StyleSheet.absoluteFill, backgroundColor: '#FFFFFF', zIndex: 10 },
   image: { width: '100%', height: '100%' },
 });

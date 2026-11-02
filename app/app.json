@@ -7,7 +7,7 @@
     "icon": "./assets/icon/icon.png",
     "scheme": "chaekjang",
     "userInterfaceStyle": "light",
-    "backgroundColor": "#FCF8F1",
+    "backgroundColor": "#FFFFFF",
     "ios": {
       "bundleIdentifier": "com.chaekjang.app",
       "supportsTablet": true
@@ -27,7 +27,7 @@
       [
         "expo-splash-screen",
         {
-          "backgroundColor": "#FCF8F1"
+          "backgroundColor": "#FFFFFF"
         }
       ],
       "expo-sharing",
