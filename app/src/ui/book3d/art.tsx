@@ -28,6 +28,7 @@ import { TL, tl } from '@/ui/perf';
 import { ORIGINAL_ART, ReferenceGlyph, ReferenceMotif, ReferencePrint, drawOriginalGlyph, hasOriginalGlyph, hasReferenceMotif, referencePrint } from './ReferencePrint';
 import { createArtCache } from './art-cache';
 import { bookArtKey } from './art-key';
+import { useCoverImage } from './use-cover-image';
 
 // 책 제목 글꼴: 함렛 SemiBold(부드러운 명조). 2026-10-31 사용자가 고운바탕·나눔스퀘어라운드·주아·함렛을 책장에 넣어 비교해 함렛을 골랐다.
 // 같은 날 책장 시안 지시로 Medium(획 약 84%)으로 낮췄다가, 사용자가 보여 준 더 생기 있는 화면(획 면적 +18~40%)을 보고 '제목 글자도' → SemiBold로 되돌림.
@@ -511,23 +512,21 @@ export function useBookArt(book: Book, s: number, dims: { T: number; H: number; 
   const motif = useImage(needMotif ? (book.body?.motif ?? null) : null);
   const customCoverImg = useImage(book.art.plainCover || vector || cover.sourceRect || cover.artworkId ? null : cover.image);
   const coverImg = book.art.plainCover || vector ? null : cover.sourceRect ? shared.original : cover.artworkId ? shared.artworks[cover.artworkId] ?? null : customCoverImg;
-  // 서버가 만든 표지·책등 그림(주소). 못 읽으면 코드로 그리는 장정으로 돌아간다.
-  const [badCover, setBadCover] = useState<string | null>(null);
-  const [badSpine, setBadSpine] = useState<string | null>(null);
-  const madeCoverUri = badCover === book.coverArtUri ? null : book.coverArtUri ?? null;
-  const madeSpineUri = badSpine === book.spineArtUri ? null : book.spineArtUri ?? null;
-  const madeCover = useImage(madeCoverUri, () => setBadCover(book.coverArtUri ?? null));
-  const madeSpine = useImage(madeSpineUri, () => setBadSpine(book.spineArtUri ?? null));
-  const ready = shared.regular && shared.original && (!needMotif || motif) && (!needCover || coverImg) && (!madeCoverUri || madeCover) && (!madeSpineUri || madeSpine);
+  // 실제 표지·책등 그림(주소). 책은 네트워크를 기다리지 않는다: 기기에 있으면 그것으로, 없거나 못 받으면 코드로 그리는 장정으로 그리고 받는 대로 바꾼다(services/cover-cache)
+  const madeCoverUri = book.coverArtUri ?? null;
+  const madeSpineUri = book.spineArtUri ?? null;
+  const { image: madeCover, pending: coverPending } = useCoverImage(madeCoverUri);
+  const { image: madeSpine, pending: spinePending } = useCoverImage(madeSpineUri);
+  const ready = shared.regular && shared.original && (!needMotif || motif) && (!needCover || coverImg) && !coverPending && !spinePending;
   // 장정(책 색·모티프)·저자가 바뀌면 다시 기록한다(같은 책 id라도)
-  const key = bookArtKey(book, s, dims, cover, madeCoverUri, madeSpineUri);
+  const key = bookArtKey(book, s, dims, cover, madeCover ? madeCoverUri : null, madeSpine ? madeSpineUri : null);
   const [art, setArt] = useState<{ key: string; art: BookArt } | null>(() => {
     const hit = artCache.peek(key);
     return hit ? { key, art: hit } : null;
   });
   useEffect(() => {
     if (!ready) {
-      if (TL.on) tl(`art-wait ${book.id} motif=${!needMotif || !!motif} cover=${!needCover || !!coverImg} made=${!madeCoverUri || !!madeCover}`);
+      if (TL.on) tl(`art-wait ${book.id} motif=${!needMotif || !!motif} cover=${!needCover || !!coverImg} made=${!coverPending && !spinePending}`);
       return;
     }
     const p = artCache.load(key, () => {
@@ -537,7 +536,7 @@ export function useBookArt(book: Book, s: number, dims: { T: number; H: number; 
       const task = queue.then(async () => {
         const t0 = Date.now();
         if (TL.on) tl(`art-start ${book.id}`);
-        const a = await buildArt(book, s, dims, shared, motif, coverImg, { cover: madeCoverUri ? madeCover : null, spine: madeSpineUri ? madeSpine : null });
+        const a = await buildArt(book, s, dims, shared, motif, coverImg, { cover: madeCover, spine: madeSpine });
         artMs += Date.now() - t0;
         if (TL.on) tl(`art-end ${book.id} ${Date.now() - t0}ms`);
         builtArt++;

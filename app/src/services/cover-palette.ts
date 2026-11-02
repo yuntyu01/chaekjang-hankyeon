@@ -4,6 +4,7 @@ import { AlphaType, ColorType, Skia } from '@shopify/react-native-skia';
 
 import { isSpineImage, spineOfCover } from '@/domain/cover-url';
 import { dominantColorOf, extractPalette, type PaletteEntry } from '@/domain/rebinding';
+import { withTimeout } from '@/services/cover-cache';
 
 const W = 24;
 const H = 36;
@@ -11,8 +12,8 @@ const H = 36;
 export async function coverPalette(url: string | undefined): Promise<PaletteEntry[] | null> {
   if (!url || !/^(https?:|file:|data:)/.test(url)) return null;
   try {
-    const data = await Skia.Data.fromURI(url);
-    const img = Skia.Image.MakeImageFromEncoded(data);
+    const data = await withTimeout(Skia.Data.fromURI(url));
+    const img = data && Skia.Image.MakeImageFromEncoded(data);
     if (!img) return null;
     const surface = Skia.Surface.MakeOffscreen(W, H);
     if (!surface) return null;
@@ -33,8 +34,8 @@ const COLOR_H = 72;
 export async function coverDominantColor(url: string | undefined): Promise<string | null> {
   if (!url || !/^(https?:|file:|data:)/.test(url)) return null;
   try {
-    const data = await Skia.Data.fromURI(url);
-    const img = Skia.Image.MakeImageFromEncoded(data);
+    const data = await withTimeout(Skia.Data.fromURI(url));
+    const img = data && Skia.Image.MakeImageFromEncoded(data);
     if (!img) return null;
     const surface = Skia.Surface.MakeOffscreen(COLOR_W, COLOR_H);
     if (!surface) return null;
@@ -52,7 +53,8 @@ export async function coverSpineRatio(coverUri: string): Promise<number | null> 
   const url = spineOfCover(coverUri, 'L');
   if (!url) return 0;
   try {
-    const img = Skia.Image.MakeImageFromEncoded(await Skia.Data.fromURI(url));
+    const data = await withTimeout(Skia.Data.fromURI(url));
+    const img = data && Skia.Image.MakeImageFromEncoded(data);
     if (!img) return null;
     return isSpineImage(img.width(), img.height()) ? img.width() / img.height() : 0;
   } catch {
