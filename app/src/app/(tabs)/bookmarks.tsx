@@ -58,7 +58,7 @@ export default function BookmarksTab() {
       <IconButton label="갈피 추가" onPress={() => router.push({ pathname: '/bookmark/new', params: { ...(book ? { book } : {}), ...(kind === 'photo' ? { mode: 'photo' } : {}) } })}><Plus size={icon.size} color={colors.ink} strokeWidth={icon.stroke} /></IconButton>
     </View>}>
     {searching ? <SearchField accessibilityLabel="갈피 검색어" value={q} onChangeText={setQ} autoFocus placeholder="문장·메모에서 찾기" style={{ marginTop: space.tight, marginBottom: space.item }} /> : null}
-    <Segmented items={VIEW} value={view} onChange={setView} style={{ marginTop: 4 }} />
+    <Segmented items={VIEW} value={view} onChange={setView} style={{ marginTop: 8 }} />
     <View style={st.filters}>
       <FilterButton label={bookTitle ?? '모든 책'} active={!!book} onPress={() => setSheet('book')} />
       <FilterButton label={KIND_LABEL[kind]} active={kind !== 'all'} onPress={() => setSheet('kind')} />
@@ -99,7 +99,7 @@ function BookChoice({ label, sub, on, onPress, cover }: { label: string; sub: st
 }
 
 const st = StyleSheet.create({
-  filters: { flexDirection: 'row', gap: space.tight, marginTop: space.item, marginBottom: space.item },
+  filters: { flexDirection: 'row', gap: 8, marginTop: 16, marginBottom: 12 },
   choice: { flexDirection: 'row', alignItems: 'center', gap: 14, minHeight: 64, paddingVertical: 8 },
   cover: { width: 40, alignItems: 'center' },
 });

@@ -178,14 +178,14 @@ describe('화면 코드가 공통 기준을 쓴다', () => {
 // 2026-10-31 일반 UI 정돈 변형: 대상 화면에만 켜고(전역 토큰은 그대로), 간격은 제한된 단계, 굵기는 역할대로
 describe('정돈 변형(tidy)', () => {
   const read = (rel: string) => fs.readFileSync(path.join(SRC, rel), 'utf8');
-  it('간격은 4·8·12·16·24·32 단계만(목록 줄 높이·누르는 자리는 따로)', () => {
+  it('간격은 4·8·12·16·28·40 단계만(목록 줄 높이·누르는 자리는 따로, 2026-11-01 구역 사이를 넓혔다)', () => {
     const { row, touch, ...rest } = tidySpace;
     expect(row).toBe(56);
     expect(touch).toBe(44);
-    for (const v of Object.values(rest)) expect([4, 8, 12, 16, 24, 32]).toContain(v);
+    for (const v of Object.values(rest)) expect([4, 8, 12, 16, 24, 28, 40]).toContain(v);
   });
   it('버튼 높이·모서리 한 벌', () => {
-    expect(tidyButton).toEqual({ l: 56, m: 48, s: 40 });
+    expect(tidyButton).toEqual({ l: 60, m: 54, s: 44 }); // 2026-11-01 사용자 '버튼은 글자만 키우지 말고 높이·안쪽 여백도'
     expect([tidyShape.button, tidyShape.input, tidyShape.chip, tidyShape.sheet, tidyShape.dialog]).toEqual([10, 10, 8, 20, 16]);
   });
   // 2026-11-01 '제목 키워'(토스식 위계): 큰 제목 Bold 24, 시트·묶음·구역 제목·책 제목·버튼 SemiBold, 입력칸 이름 Medium, 본문·보조 Regular

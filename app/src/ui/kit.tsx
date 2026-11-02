@@ -66,9 +66,11 @@ export function Screen({
   bottomPad = 0,
   tidy: tidyProp,
   compact,
+  inline,
 }: {
   tidy?: boolean; // 이 화면과 그 안의 부품을 정돈 변형으로(Tidy로 감싼다)
   compact?: boolean; // 정돈 변형에서 큰 제목 대신 머리줄 가운데 작은 제목(책 정보처럼 내용 첫머리가 주인공인 화면)
+  inline?: boolean; // 정돈 변형에서 큰 제목을 머리줄 뒤로 단추 옆에(내 기록처럼 내용을 위로 올리는 화면)
   title?: string;
   titleNote?: string; // 제목 옆 회색 꼬리글(서랍 시안의 '· 4권')
   subtitle?: string;
@@ -90,7 +92,7 @@ export function Screen({
   useEffect(() => () => miniTimerStore.setBottom(null), []);
   // 정돈 변형(2026-11-01 토스식 위계): 뒤로가 있는 화면은 머리줄에 뒤로·행동만 두고, 제목은 내용 맨 위 왼쪽에 크게(24 Bold).
   // 스크롤 화면이면 제목도 내용과 함께 올라간다
-  const large = t && back && !compact && !!title;
+  const large = t && back && !compact && !inline && !!title;
   const largeTitle = large ? (
     <View style={ts.largeTitle}>
       <Text style={tidyType.title} accessibilityRole="header">
@@ -117,7 +119,7 @@ export function Screen({
         <View style={s.header}>
           {/* 제목은 화면 가운데(양옆 버튼 폭과 상관없이) */}
           <View pointerEvents="none" style={s.titleCenter}>
-            {large ? null : <>
+            {large || inline ? null : <>
             <Text style={t ? tidyType.navTitle : tt.title} numberOfLines={1} accessibilityRole="header">
               {title ?? ''}
               {titleNote ? <Text style={s.titleNote}>{`  ${titleNote}`}</Text> : null}
@@ -128,6 +130,7 @@ export function Screen({
           <Pressable onPress={() => (router.canGoBack() ? router.back() : router.replace('/'))} hitSlop={8} accessibilityRole="button" accessibilityLabel="뒤로" style={s.back}>
             <ChevronLeft size={28} color={colors.title} strokeWidth={icon.stroke} />
           </Pressable>
+          {inline ? <Text style={[tidyType.title, { flex: 1, marginLeft: 4 }]} numberOfLines={1} accessibilityRole="header">{title}</Text> : null}
           <View style={s.right}>{right}</View>
         </View>
       ) : (
@@ -916,14 +919,14 @@ export const s = StyleSheet.create({
   tabs: { flexDirection: 'row', justifyContent: 'space-between' },
   // 전환 칸: 옅은 회색 칸(높이 44) 안에 고른 칸만 흰 바탕·옅은 그림자
   seg: { flexDirection: 'row', padding: 3, borderRadius: 14, backgroundColor: colors.surface },
-  segItem: { flex: 1, minHeight: 40, borderRadius: 11, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 4 },
+  segItem: { flex: 1, minHeight: 44, borderRadius: 11, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 4 },
   segItemOn: { backgroundColor: colors.raised, ...shape.floatShadow, shadowOpacity: 0.08, elevation: 1 },
-  segText: { fontFamily: fonts.ui, fontSize: 15, lineHeight: 20, color: colors.inkSoft, includeFontPadding: false },
+  segText: { fontFamily: fonts.ui, fontSize: 16, lineHeight: 22, color: colors.inkSoft, includeFontPadding: false },
   segTextOn: { fontFamily: fonts.uiBold, color: colors.ink },
   // 거르기 단추: 옅은 회색 알약(칩과 같은 채움), 글자 15
-  filter: { flexDirection: 'row', alignItems: 'center', gap: 4, minHeight: 36, paddingLeft: 14, paddingRight: 10, borderRadius: 18, backgroundColor: colors.surface, maxWidth: 220 },
+  filter: { flexDirection: 'row', alignItems: 'center', gap: 4, minHeight: 40, paddingLeft: 16, paddingRight: 12, borderRadius: 20, backgroundColor: colors.surface, maxWidth: 220 },
   filterOn: { backgroundColor: colors.accentSoft },
-  filterText: { fontFamily: fonts.ui, fontSize: 15, lineHeight: 20, color: colors.inkSoft, includeFontPadding: false, flexShrink: 1 },
+  filterText: { fontFamily: fonts.ui, fontSize: 16, lineHeight: 22, color: colors.inkSoft, includeFontPadding: false, flexShrink: 1 },
   filterTextOn: { fontFamily: fonts.uiBold, color: colors.ink },
   tab: { alignItems: 'center', paddingTop: 4, paddingHorizontal: 6, minHeight: space.touch },
   tabText: { ...type.row, fontSize: 14, lineHeight: 20, color: colors.inkSoft },
@@ -962,26 +965,26 @@ export const s = StyleSheet.create({
 
 // 정돈 변형 덮어쓰기(Tidy 안에서만). 간격 4·8·12·16·24·32, 조작 요소 모서리 10, 칩 8, 시트 20
 const ts = StyleSheet.create({
-  largeTitle: { paddingTop: 4, paddingBottom: 16 },
+  largeTitle: { paddingTop: 4, paddingBottom: 24 },
   footer: { paddingHorizontal: tidySpace.page }, // 버튼 좌우 끝을 본문(입력칸·목록)과 같은 24에 맞춘다
-  btn: { borderRadius: tidyShape.button, paddingHorizontal: 16, paddingVertical: 12, alignItems: 'center', justifyContent: 'center', backgroundColor: 'transparent' },
-  btnSmall: { paddingVertical: 8, paddingHorizontal: 12 },
+  btn: { borderRadius: tidyShape.button, paddingHorizontal: 20, paddingVertical: 14, alignItems: 'center', justifyContent: 'center', backgroundColor: 'transparent' },
+  btnSmall: { paddingVertical: 10, paddingHorizontal: 16 },
   btnInner: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8 },
   btnText: { ...tidyType.button, flexShrink: 1, textAlign: 'center' },
-  btnTextSmall: { ...tidyType.button, fontSize: 15, lineHeight: 20, flexShrink: 1, textAlign: 'center' },
+  btnTextSmall: { ...tidyType.button, fontSize: 16, lineHeight: 22, flexShrink: 1, textAlign: 'center' },
   linkText: { ...tidyType.sub, fontFamily: fonts.uiBold },
   field: { marginBottom: tidySpace.xl },
   labelRow: { marginBottom: tidySpace.s },
   labelTag: { ...tidyType.caption },
-  input: { minHeight: 52, borderRadius: tidyShape.input, paddingVertical: 14 },
+  input: { minHeight: 56, borderRadius: tidyShape.input, paddingVertical: 16 },
   help: { ...tidyType.caption },
-  search: { minHeight: 48, borderRadius: tidyShape.input },
-  chip: { minHeight: 36, paddingVertical: 6, paddingHorizontal: 12, borderRadius: tidyShape.chip },
-  chipText: { ...tidyType.sub, color: colors.ink, fontSize: 15, lineHeight: 20 },
+  search: { minHeight: 52, borderRadius: tidyShape.input },
+  chip: { minHeight: 40, paddingVertical: 8, paddingHorizontal: 14, borderRadius: tidyShape.chip },
+  chipText: { ...tidyType.sub, color: colors.ink },
   notice: { borderRadius: tidyShape.input, paddingVertical: 12, paddingHorizontal: 16 },
   empty: { alignItems: 'stretch', paddingVertical: 48, paddingHorizontal: 8 },
   itemValue: { ...tidyType.sub, flexShrink: 1, textAlign: 'right', marginLeft: 12, maxWidth: '55%' },
-  tabText: { ...tidyType.row, color: colors.inkSoft, fontSize: 15, lineHeight: 20 },
+  tabText: { ...tidyType.row, color: colors.inkSoft, fontSize: 16, lineHeight: 22 },
   sheet: { borderTopLeftRadius: tidyShape.sheet, borderTopRightRadius: tidyShape.sheet, paddingTop: 8 },
   handle: { marginBottom: 16 },
 });

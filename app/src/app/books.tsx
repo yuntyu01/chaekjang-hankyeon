@@ -20,7 +20,7 @@ import { Btn, Chip, Empty, FilterButton, IconButton, ListGroup, ListItem, Muted,
 import { colors, icon, press, tidySpace as space, tidyType as type } from '@/ui/screenTheme';
 
 const TABS = [{ id: 'all', label: '전체' }, ...READ_STATUSES.map((st) => ({ id: st, label: STATUS_LABEL[st] }))] as const satisfies readonly { id: ReadStatus | 'all'; label: string }[];
-const SORT_LABEL: Record<AllBooksSort, string> = { recent: '최근 추가순', title: '제목순' };
+const SORT_LABEL: Record<AllBooksSort, string> = { recent: '최근순', title: '제목순' };
 const COLS = 3;
 const GAP = 14; // 격자 칸 사이(가로)
 // 보기 방식은 앱을 켜 둔 동안 기억한다(다시 들어와도 고른 보기 그대로)
@@ -105,13 +105,13 @@ export default function AllBooks() {
         accessibilityState={selecting && !onShelf ? { selected: on } : undefined}
         accessibilityLabel={[book.title, book.author, sub].filter(Boolean).join(', ')}
         style={({ pressed }) => [{ width: cellW }, selecting && onShelf && s.dim, pressed && press]}>
-        <View style={[s.coverBox, { height: cellW * 1.52 }]} pointerEvents="none">
+        {/* 표지 칸은 길쭉한 판형(세계문학 132×225mm, 비율 1.7)까지 담는다. 낮으면 책이 위로 넘쳐 머리줄에 붙는다 */}
+        <View style={[s.coverBox, { height: cellW * 1.72 }]} pointerEvents="none">
           <BookVisual book={book} width={cellW} />
         </View>
         <Text style={s.cellTitle} numberOfLines={1}>
           {book.title}
         </Text>
-        {sub ? <Text style={s.cellSub} numberOfLines={1}>{sub}</Text> : null}
         {selecting && !onShelf ? <View style={s.cellMark}><PickMark on={on} /></View> : null}
       </Pressable>
     );
@@ -203,8 +203,7 @@ const s = StyleSheet.create({
   tools: { flexDirection: 'row', alignItems: 'center', gap: space.s, marginTop: space.m },
   gridRow: { gap: GAP, marginBottom: space.xl },
   coverBox: { justifyContent: 'flex-end', alignItems: 'center' },
-  cellTitle: { ...type.row, fontSize: 14, lineHeight: 19, color: colors.ink, marginTop: space.s },
-  cellSub: { ...type.caption, fontSize: 12.5, lineHeight: 17, marginTop: 1 },
+  cellTitle: { ...type.row, fontSize: 15, lineHeight: 21, color: colors.ink, marginTop: space.s },
   cellMark: { position: 'absolute', top: 6, right: 6 },
   check: { width: 24, height: 24, borderRadius: 12, borderWidth: 1.5, borderColor: colors.inkFaint, backgroundColor: colors.raised, alignItems: 'center', justifyContent: 'center', marginRight: space.xs },
   checkOn: { backgroundColor: colors.accent, borderColor: colors.accent },

@@ -28,7 +28,7 @@ export default function SettingsScreen() {
     <Screen tidy title="설정">
       <H2 first>독서 환경</H2>
       <ListGroup>
-        <ListItem label="진동" sub="책을 집거나 놓을 때 짧은 진동" right={<Toggle label="진동" value={s.haptics} onValueChange={(v) => settingsStore.set({ haptics: v })} />} />
+        <ListItem label="진동" right={<Toggle label="진동" value={s.haptics} onValueChange={(v) => settingsStore.set({ haptics: v })} />} />
         <ListItem label="효과음" sub="책장 효과음 · 준비 중이에요" right={<Toggle label="효과음" value={s.sound} onValueChange={(v) => settingsStore.set({ sound: v })} />} />
         <ListItem label="움직임 줄이기" value={MOTION.find((m) => m.id === s.reduceMotion)?.short} onPress={() => setMotion(true)} />
       </ListGroup>
@@ -37,7 +37,7 @@ export default function SettingsScreen() {
       <H2 first>내 기록</H2>
       <ListGroup>
         <ListItem label="백업 및 복원" sub={backupSub} chevron onPress={() => router.push('/backup')} />
-        {syncStatus.available ? <ListItem label="커뮤니티 공개 프로필" sub="공개 닉네임·차단한 사용자" chevron onPress={() => router.push('/community/profile')} /> : null}
+        {syncStatus.available ? <ListItem label="커뮤니티 공개 프로필" chevron onPress={() => router.push('/community/profile')} /> : null}
       </ListGroup>
 
       <SectionBand />

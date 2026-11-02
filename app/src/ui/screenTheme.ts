@@ -102,31 +102,32 @@ export const press = { opacity: 0.55 };
 // ui/kit 부품은 <Tidy>(또는 Screen tidy) 안에서만 이 값으로 그린다.
 // 글꼴: Pretendard 그대로(R 400·M 500·SB 600 파일). 프로젝트에 '살짝 둥근 고딕'이 R·M·SB로 갖춰진 것이 없다(나눔스퀘어라운드는 B·EB뿐).
 // 굵기 기준: 화면 제목 SemiBold, 시트·묶음 제목·책 제목·주요 버튼·입력칸 이름 Medium, 본문·저자·상태·설명·보조 행동 Regular.
-// 간격은 4·8·12·16·24·32 단계만, 모서리는 조작 요소 10·칩 8·시트 20·확인창 16.
+// 간격은 4·8·12·16·28·40 단계만, 모서리는 조작 요소 10·칩 8·시트 20·확인창 16.
 export const tidyType = {
   // 2026-11-01 토스(TDS) 기준으로 위계를 다시 세웠다: 큰 제목 24 Bold(TDS 24 '조금 큰 제목') · 시트·묶음 제목 20(TDS 20 '작은 제목') ·
   // 구역 제목 18 · 본문 17(TDS '일반 본문') · 보조 15('작은 본문') · 작은 메타 14. 크기 차이로 무엇이 주인공인지 보이게 한다
-  title: text(fonts.uiTitle, 24, 32, colors.title), // 화면 큰 제목(왼쪽 정렬, 내용 맨 위)
-  navTitle: text(fonts.uiBold, 17, 24, colors.title), // 머리줄 가운데 작은 제목(책 정보처럼 내용이 바로 주인공인 화면)
-  heading: text(fonts.uiBold, 20, 28, colors.ink), // 시트 제목·빈 화면 제목·묶음 제목
-  section: text(fonts.uiBold, 18, 26, colors.ink), // 구역 제목(H2)
-  row: text(fonts.ui, 17, 24, colors.ink), // 목록·메뉴 한 줄
-  rowStrong: text(fonts.uiBold, 17, 24, colors.ink), // 책 제목(목록)
-  body: text(fonts.ui, 16, 25, colors.ink), // 여러 줄 문단
-  sub: text(fonts.ui, 15, 22, colors.inkSoft), // 저자·설명·값
-  caption: text(fonts.ui, 14, 20, colors.inkSoft), // 읽기 상태·날짜
-  button: text(fonts.uiBold, 16, 22, colors.ink), // 버튼 글자(작은 버튼은 15)
+  // 2026-11-01 사용자 '큰 글자·넉넉한 버튼·구역 사이 여백'(정보 밀도 낮추기): 한 단계씩 키웠다
+  title: text(fonts.uiTitle, 26, 34, colors.title), // 화면 큰 제목(왼쪽 정렬, 내용 맨 위)
+  navTitle: text(fonts.uiBold, 18, 25, colors.title), // 머리줄 가운데 작은 제목(책 정보처럼 내용이 바로 주인공인 화면)
+  heading: text(fonts.uiBold, 21, 29, colors.ink), // 시트 제목·빈 화면 제목·묶음 제목
+  section: text(fonts.uiBold, 19, 27, colors.ink), // 구역 제목(H2)
+  row: text(fonts.ui, 18, 26, colors.ink), // 목록·메뉴 한 줄
+  rowStrong: text(fonts.uiBold, 18, 26, colors.ink), // 책 제목(목록)
+  body: text(fonts.ui, 17, 27, colors.ink), // 여러 줄 문단
+  sub: text(fonts.ui, 16, 23, colors.inkSoft), // 저자·설명·값
+  caption: text(fonts.ui, 15, 21, colors.inkSoft), // 읽기 상태·날짜
+  button: text(fonts.uiBold, 17, 24, colors.ink), // 버튼 글자(작은 버튼은 16)
   input: type.input,
-  label: text(fonts.uiMedium, 15, 21, colors.ink), // 입력칸 이름
-  number: { ...text(fonts.uiTitle, 24, 30, colors.ink), fontVariant: ['tabular-nums'] } as TextStyle,
+  label: text(fonts.uiMedium, 16, 22, colors.ink), // 입력칸 이름
+  number: { ...text(fonts.uiTitle, 26, 32, colors.ink), fontVariant: ['tabular-nums'] } as TextStyle,
 };
 // 탭 첫 화면 머리줄(책장·갈피·커뮤니티 공통, 2026-11-01 '제목 위치 통일'): 위 16·좌우 24·최소 높이 60, 제목 24 Bold·아래 보조 15
-export const tabHeader = { paddingTop: 16, paddingBottom: 8, paddingHorizontal: 24, minHeight: 60 };
+export const tabHeader = { paddingTop: 16, paddingBottom: 12, paddingHorizontal: 24, minHeight: 64 };
 export const headerType = { title: tidyType.title, sub: tidyType.sub };
-export const tidySpace = { ...space, group: 24, tight: 8, xs: 4, s: 8, m: 12, l: 16, xl: 24, xxl: 32 };
+export const tidySpace = { ...space, section: 40, group: 28, tight: 8, xs: 4, s: 8, m: 12, l: 16, xl: 28, xxl: 40 };
 export const tidyShape = { ...shape, button: 10, input: 10, chip: 8, sheet: 20, dialog: 16, cover: 4 };
 // 버튼 높이: 화면의 단 하나뿐인 주요 행동 l, 보통 m, 줄 안의 작은 행동 s
-export const tidyButton = { l: 56, m: 48, s: 40 };
+export const tidyButton = { l: 60, m: 54, s: 44 };
 
 // 어두운 장면 위 UI(독서 타이머 머리줄 등): 밝은 글자, 바탕 대비를 위한 옅은 그늘
 export const night = {
