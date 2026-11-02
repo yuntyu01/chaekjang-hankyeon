@@ -137,17 +137,17 @@ describe('책장용 책 모양', () => {
   it('실제 크기: 제공된 mm를 선반 축척 그대로, 두께는 책등 사진 비율(없으면 쪽수), 최소 두께 아래로 내려가지 않는다', () => {
     const lib = withBook();
     const eId = lib.books.bk1.editionId;
-    lib.editions[eId] = { ...lib.editions[eId], size: { widthMm: 153, heightMm: 224 }, pageCount: 500, coverUri: 'https://image.yes24.com/goods/77/L', coverSource: 'api' };
+    lib.editions[eId] = { ...lib.editions[eId], size: { widthMm: 153, heightMm: 224 }, pageCount: 800, coverUri: 'https://image.yes24.com/goods/77/L', coverSource: 'api' };
     const byPages = toShelfBook(lib, 'bk1')!.dims!;
     expect(byPages.height).toBeCloseTo(mm(224), 6);
     expect(byPages.coverWidth).toBeCloseTo(mm(153), 6);
-    expect(byPages.thickness).toBeCloseTo(mm(500 * 0.06 + 1.5), 6);
-    rememberSpineRatio('https://image.yes24.com/goods/77/L', 0.15);
+    expect(byPages.thickness).toBeCloseTo(mm(800 * 0.06 + 1.5), 6);
+    rememberSpineRatio('https://image.yes24.com/goods/77/L', 0.2);
     const d = toShelfBook(lib, 'bk1')!.dims!;
-    expect(d.thickness! / d.height!).toBeCloseTo(0.15, 6); // 재 둔 실제 두께
+    expect(d.thickness! / d.height!).toBeCloseTo(0.2, 6); // 재 둔 실제 두께
     rememberSpineRatio('https://image.yes24.com/goods/77/L', 0); // 책등 사진 없음: 쪽수
-    expect(toShelfBook(lib, 'bk1')!.dims!.thickness).toBeCloseTo(mm(500 * 0.06 + 1.5), 6);
-    // 얇은 책은 최소 두께(제목이 읽히고 누를 수 있게)
+    expect(toShelfBook(lib, 'bk1')!.dims!.thickness).toBeCloseTo(mm(800 * 0.06 + 1.5), 6);
+    // 얇은 책은 최소 두께(제목이 예시 책과 같은 글자 크기로 들어가게)
     expect(realDimensions({ widthMm: 130, heightMm: 200, pages: 40 }).thickness).toBe(REAL_SPINE_MIN);
     expect(realDimensions({ widthMm: 130, heightMm: 200, pages: 40 }, 0.02).thickness).toBe(REAL_SPINE_MIN);
     // 잘못 온 판형(20×260mm)은 흔한 판형으로
@@ -189,6 +189,11 @@ describe('책장용 책 모양', () => {
     expect(dominantColorOf([...fill(10, [240, 180, 40]), ...fill(25, [120, 30, 30]), ...fill(5, [20, 20, 20])])).toBe('#781e1e');
     expect(dominantColorOf([])).toBeNull();
     expect(dominantColorOf(fill(40, [255, 255, 255]))).toBe('#ededed'); // 순백은 종이 흰색까지만(벽에 묻히지 않게)
+    // 옅은 색기는 낮춰도 진해지지 않는다(채널 차이가 늘지 않음: 민트색이 되지 않게)
+    const tinted = dominantColorOf(fill(40, [248, 255, 248]))!;
+    const ch = [1, 3, 5].map((i) => parseInt(tinted.slice(i, i + 2), 16));
+    expect(Math.max(...ch)).toBe(237);
+    expect(Math.max(...ch) - Math.min(...ch)).toBeLessThanOrEqual(7);
   });
 
   it('coverAtSize: YES24 표지 주소만 크기를 바꾸고 다른 주소는 그대로', () => {

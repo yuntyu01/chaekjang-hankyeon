@@ -307,8 +307,9 @@ export function applyOverride(art: BookArtParams, o: ArtOverride | undefined): B
 // ---------- 썸네일 색 추출(median cut) ----------
 // rgba: 픽셀 RGBA 바이트 배열. 상위 n색과 비중을 돌려준다. 투명 픽셀은 건너뛴다.
 // 표지에서 가장 넓게 차지하는 색(2026-11-01 사용자 '제일 비중을 많이 차지하는 색상을 책등으로'): 비슷한 색끼리(채널마다 8단계) 묶어 픽셀 수를 세고,
-// 가장 많은 묶음의 평균색. 표지 그림의 흰 바탕은 화면 순백이지만 실제 종이는 그만큼 희지 않다: 그대로 칠하면 음영이 잘려 흰 벽에 묻히므로 종이 흰색까지만
-const PAPER_WHITE_L = 0.93;
+// 가장 많은 묶음의 평균색. 표지 그림의 흰 바탕은 화면 순백이지만 실제 종이는 그만큼 희지 않다: 그대로 칠하면 음영이 잘려 흰 벽에 묻히므로 종이 흰색까지만.
+// 세 채널을 같은 비율로 낮춘다: HSL 명도만 낮추면 옅은 색기(JPEG의 거의 흰색)가 채도 그대로 진해져 민트색이 되고 벽까지 번진다(2026-11-01 실측)
+const PAPER_WHITE = 237;
 export function dominantColorOf(rgba: ArrayLike<number>): string | null {
   const bins = new Map<number, { n: number; r: number; g: number; b: number }>();
   for (let i = 0; i + 3 < rgba.length; i += 4) {
@@ -324,9 +325,9 @@ export function dominantColorOf(rgba: ArrayLike<number>): string | null {
   let top: { n: number; r: number; g: number; b: number } | null = null;
   for (const bin of bins.values()) if (!top || bin.n > top.n) top = bin;
   if (!top) return null;
-  const hex = rgbHex(top.r / top.n, top.g / top.n, top.b / top.n);
-  const c = hexToHsl(hex);
-  return c.l > PAPER_WHITE_L ? hslToHex({ ...c, l: PAPER_WHITE_L }) : hex;
+  const [r, g, b] = [top.r / top.n, top.g / top.n, top.b / top.n];
+  const k = Math.min(1, PAPER_WHITE / Math.max(r, g, b));
+  return rgbHex(r * k, g * k, b * k);
 }
 
 export function extractPalette(rgba: ArrayLike<number>, n = 3): PaletteEntry[] {
