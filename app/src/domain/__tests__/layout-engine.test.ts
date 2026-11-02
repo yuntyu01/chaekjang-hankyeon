@@ -1,4 +1,5 @@
-import { SHELF_FRONT, SHELF_USABLE_WIDTH, singleFootprint } from '../geometry';
+import { wallReach } from '../front-pose';
+import { frontDims, SHELF_DEPTH, SHELF_FRONT, SHELF_USABLE_WIDTH, singleFootprint } from '../geometry';
 import {
   addBook,
   addShelf,
@@ -213,9 +214,11 @@ describe('형태·기울기', () => {
       const bs = bodiesOf(l, books, 'shelf-1');
       for (let i = 0; i < bs.length; i++) for (let j = i + 1; j < bs.length; j++) expect(gap(bs[i], bs[j])).toBeGreaterThan(-0.3);
     }
-    // 처음 표지로 바꾼 책은 뒤쪽(벽 앞)에 선다
+    // 처음 표지로 바꾼 책은 벽에 기댄다(바닥은 벽 앞, 머리는 벽에 닿는다)
     const first = ok(setPose(SAMPLE_LAYOUT, books, 'b01', 'front'));
-    expect(placementOf(first, 'b01')!.depth!).toBeGreaterThan(80);
+    const placed = placementOf(first, 'b01')!;
+    expect(placed.pitch!).toBeGreaterThan(0);
+    expect(wallReach(frontDims(books.b01), { depth: placed.depth!, pitch: placed.pitch!, spin: 0 })).toBeCloseTo(SHELF_DEPTH, 3);
   });
 
   it('눕힌 책 그룹 가운데에 가져가면(세운 책도) 쌓기, 옆이면 나란히', () => {

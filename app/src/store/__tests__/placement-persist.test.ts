@@ -19,7 +19,7 @@ jest.mock('expo-sqlite/kv-store', () => ({
   },
 }));
 
-import { bookXs, depthRange, detach, findDropTarget, frontRelease, frontSpin, frontStateOf, frontTilt, itemWidth, moveBook, placementOf, setDepth, setTilt, shelfItems, type BookMap, type Result } from '@/domain/layout-engine';
+import { leanUntouchedFront, bookXs, depthRange, detach, findDropTarget, frontRelease, frontSpin, frontStateOf, frontTilt, itemWidth, moveBook, placementOf, setDepth, setTilt, shelfItems, type BookMap, type Result } from '@/domain/layout-engine';
 import { SAMPLE_BOOKS, SAMPLE_LAYOUT } from '@/domain/test-fixtures/interaction-books';
 import { computeShelf, withLeans } from '@/domain/shelf-scene';
 import type { ShelfLayout } from '@/domain/types';
@@ -47,7 +47,7 @@ function poses(l: ShelfLayout) {
 describe('저장 후 다시 실행', () => {
   it('예시 세 줄 배치에서 여러 조작을 확정한 뒤 다시 불러오면 같은 배치·자세다', async () => {
     await placementStore.load(books); // 빈 저장소: 첫 실행
-    commit(withLeans(SAMPLE_LAYOUT, books));
+    commit(withLeans(leanUntouchedFront(SAMPLE_LAYOUT, books), books)); // 표지 책은 저장본을 열 때 벽에 기댄다
 
     // 다른 줄로: 아몬드(둘째 줄) → 첫째 줄 두 책 경계(양쪽 이웃을 나눠 비키는 자리)
     {

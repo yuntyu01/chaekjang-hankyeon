@@ -2,13 +2,12 @@
 // 메모리에만 쓰고 저장하지 않는다(placementStore.setDemo). 표지는 그릴 때 YES24에서 받으므로 인터넷이 필요하다. 앱 배포본의 예시 책장은 이것을 쓰지 않는다.
 // real: 예시 책장과 같은 줄(표지 세 권 + 책등), real-front: 모든 책을 표지로 세운 책장, real-side: 돌려 세워 장정·옆모습이 보이는 책장. -before는 바꾸기 전 모습(비교 사진용).
 // 책 색은 표지에서 가장 넓게 차지하는 색(rebinding dominantColorOf로 뽑아 둔 값).
-import { frontExtent } from './front-pose';
+import { frontExtent, wallLeanPose } from './front-pose';
 import { frontDims, SHELF_DEPTH, WALL_GAP } from './geometry';
 import { realDimensions } from './jacket-proportions';
 import { emptyLibrary, type Edition, type Library, type ReadStatus } from './library';
 import { SAMPLE_LAYOUT } from './onboarding-sample';
 import { heightClassOf, thicknessClassOf } from './rebinding';
-import { tipAngle } from './statics';
 import type { Book, BookPlacement, ShelfLayout } from './types';
 
 // id, 제목, 저자, 출판사, YES24 상품 번호, 폭·높이 mm, 쪽수, 책등 사진 폭/높이, 책 색
@@ -55,13 +54,8 @@ function toBook([id, title, author, publisher, goods, widthMm, heightMm, pages, 
 
 const ALL = ROWS.map(toBook);
 const byId = (id: string) => ALL.find((b) => b.id === id)!;
-// 표지 책의 자세. 곧게 세워 기본 깊이에 두면 벽에서 12cm쯤 떨어져 그림자가 책 뒤로 숨고 붕 떠 보인다(2026-11-02 사용자): 실제 표지 전시처럼 벽에 기대게 한다.
-// 기대는 각은 그 책이 넘어지지 않는 각(넘어짐 한계 + 3°, statics), 바닥은 머리가 벽에 닿는 자리. spin: 좌우 돌리기(+ 책등이 보임, - 책배 속지가 보임)
-function leaning(id: string, spin = 0): Pick<BookPlacement, 'depth' | 'pitch' | 'spin'> {
-  const d = frontDims(byId(id));
-  const pitch = tipAngle(d.T, d.H) + 3;
-  return { depth: SHELF_DEPTH - frontExtent(d, pitch, spin).z1, pitch, spin: spin || undefined };
-}
+// 표지 책의 자세: 벽에 기댄다(앱 기본 자세와 같다, front-pose wallLeanPose)
+const leaning = (id: string, spin = 0): Pick<BookPlacement, 'depth' | 'pitch' | 'spin'> => wallLeanPose(frontDims(byId(id)), SHELF_DEPTH, spin);
 // 크게 돌린 책(옆모습): 곧게 서서 벽 가까이. 책이 벽을 뚫지 않는 만큼만 앞으로
 function turned(id: string, spin: number): Pick<BookPlacement, 'depth' | 'spin'> {
   return { depth: SHELF_DEPTH - frontExtent(frontDims(byId(id)), 0, spin).z1 - WALL_GAP, spin };

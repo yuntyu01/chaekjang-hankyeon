@@ -52,6 +52,13 @@ export function pitchForWall(dims: Dims, depth: number, spin: number, wall: numb
   return hi;
 }
 
+// 표지 책의 기본 자세(2026-11-02 사용자): 곧게 세워 기본 깊이에 두면 벽에서 12cm쯤 떨어져 그림자가 책 뒤로 숨고 붕 떠 보인다. 실제 표지 전시처럼 벽에 기댄다.
+// 기대는 각은 그 책이 넘어지지 않는 각(넘어짐 한계 + 3°), 바닥은 머리가 벽에 닿는 자리. spin: 좌우 돌리기(+ 책등이 보임, - 책배 속지가 보임)
+export function wallLeanPose(dims: Dims, wall: number, spin = 0): { depth: number; pitch: number; spin?: number } {
+  const pitch = Math.round((tipAngle(dims.T, dims.H) + 3) * 100) / 100;
+  return { depth: wall - frontExtent(dims, pitch, spin).z1, pitch, spin: spin || undefined };
+}
+
 // 머리 젖히기 한 걸음: 벽에 닿기 전에는 바닥 고정, 닿은 뒤 더 젖히면 윗부분은 벽에 대고 바닥을 앞으로,
 // 벽에 닿은 채 세우면 바닥을 뒤로(벽 접촉 유지). 벽에서 떨어져 있으면 바닥 고정으로 세운다.
 export function tiltStep(dims: Dims, cur: FrontState, pitch: number, wall: number): FrontState {

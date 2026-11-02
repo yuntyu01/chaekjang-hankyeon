@@ -3,7 +3,7 @@
 import { useSyncExternalStore } from 'react';
 import { readLayout, saveLayout } from '@/db/local-db';
 
-import { addShelf, applySwapTarget, bookXs, findSwapTarget, firstFitCandidates, fitToShelf, keepGaps, moveToDrawer, pruneEmptyShelves, setDepth, validate } from '@/domain/layout-engine';
+import { addShelf, applySwapTarget, bookXs, findSwapTarget, firstFitCandidates, fitToShelf, keepGaps, leanUntouchedFront, moveToDrawer, pruneEmptyShelves, setDepth, validate } from '@/domain/layout-engine';
 import { ensureShelves, migrate, normalize, type BookMap } from '@/domain/layout-schema';
 import { ensureLeanGaps, resolveLeans, withLeans, type FallDirections, type LeanResolution } from '@/domain/shelf-scene';
 import { SHELF_DEPTH, SHELF_FRONT } from '@/domain/geometry';
@@ -74,11 +74,12 @@ export function repair(saved: ShelfLayout | ShelfLayoutV1, bookMap: BookMap): Sh
 
 // 복원 + 지금 선반 경계(좌우 끝·깊이 0~230mm)에 맞추기. 맞지 않던 책만 최소로 옮기고 서랍으로 간 책을 알려 준다.
 export function restore(saved: ShelfLayout | ShelfLayoutV1, bookMap: BookMap) {
-  const base = repair(saved, bookMap);
+  const repaired = repair(saved, bookMap);
+  const base = leanUntouchedFront(repaired, bookMap);
   const fit = fitToShelf(base, bookMap);
   // 예전 규칙으로 버티지 못하는 각에 기대 있던 책은 틈을 맞춰 다시 기댄다(domain/statics.ts)
   const lean = ensureLeanGaps(fit.layout, bookMap);
-  return { layout: withLeans(lean.layout, bookMap), moved: fit.moved, changed: fit.changed || lean.changed };
+  return { layout: withLeans(lean.layout, bookMap), moved: fit.moved, changed: base !== repaired || fit.changed || lean.changed };
 }
 
 // 저장 중 표시는 따로 알리지 않는다(확정마다 홈 전체가 두 번 더 그려졌다). 실패했을 때와 다시 성공했을 때만 알린다.
