@@ -8,7 +8,7 @@ import type { Library } from '@/domain/library';
 import { checkSampleBooks, referenceHomeBooks, type HomeReferenceProfile } from '@/domain/home-reference';
 
 import { libraryStore } from './library-store';
-import { EMPTY_LAYOUT, placementStore } from './placement-store';
+import { demoKindOf, EMPTY_LAYOUT, placementStore } from './placement-store';
 import { installReferenceHome } from './home-reference-install';
 import { loadSpineRatios } from './spine-ratio-store';
 import { spineRatioOf } from '@/domain/cover-url';
@@ -21,7 +21,7 @@ import { bootMark } from '@/ui/boot-trace';
 import { PERF_ENABLED } from '@/ui/perf';
 
 // 측정 번들: 예시 18권 책장으로 시작(저장하지 않는 메모리 전용). ?demoboot=1 로 켜고 0으로 끈다.
-// ?demoboot=mockup 은 같은 자리·치수에 시안 책장의 제목·색·표지 그림을 입힌 비교 책장
+// ?demoboot=mockup 은 같은 자리·치수에 시안 책장의 제목·색·표지 그림을 입힌 비교 책장, real·real-front는 실제 책 비교 책장
 export const DEMO_BOOT_KEY = 'perf-demo-boot';
 // 예시 책 분리 결과(뺀 것·보존한 것과 이유). 보고·점검용
 export const SAMPLE_REPORT_KEY = 'sample-books:report';
@@ -103,7 +103,8 @@ export function bootStores() {
     bootMark('layout-loaded');
     if (PERF_ENABLED) {
       const demo = await Storage.getItem(DEMO_BOOT_KEY);
-      if (demo === '1' || demo === 'mockup') placementStore.setDemo(true, demo === 'mockup' ? 'mockup' : 'sample');
+      const kind = demoKindOf(demo);
+      if (kind) placementStore.setDemo(true, kind);
     }
     // 독서 복구가 끝나기 전 새 타이머를 시작하면 불러온 값이 새 기록을 덮을 수 있다.
     await Promise.all([readingStore.load().then(() => bootMark('reading-loaded')), settingsStore.load(), viewStore.load()]);

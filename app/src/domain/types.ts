@@ -46,6 +46,8 @@ export type BookArt = {
 // 장정 재질: 무광 종이 · 천 · 코팅지(모두 유전체, 표면 거칠기와 결·미세 높이만 다르다: scene-config/lighting materials)
 export type BindingMaterial = 'paper' | 'cloth' | 'coated';
 export const BINDING_MATERIALS: BindingMaterial[] = ['paper', 'cloth', 'coated'];
+// 빛 계산이 아는 책 표면: 사용자가 고르는 장정 재질 + 실제 표지 사진 책의 무광 인쇄지(binding-material bookLightRef가 정한다, 저장하지 않는다)
+export type BookSurface = BindingMaterial | 'print';
 
 // 이미지 자산: 앱 번들(require 결과 숫자) 또는 원격 URI
 export type ImageSource = number | { uri: string };

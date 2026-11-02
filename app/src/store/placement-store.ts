@@ -8,8 +8,9 @@ import { ensureShelves, migrate, normalize, type BookMap } from '@/domain/layout
 import { ensureLeanGaps, resolveLeans, withLeans, type FallDirections, type LeanResolution } from '@/domain/shelf-scene';
 import { SHELF_DEPTH, SHELF_FRONT } from '@/domain/geometry';
 import { MOCKUP_BOOKS, MOCKUP_LAYOUT } from '@/domain/mockup-sample';
+import { REAL_BEFORE, REAL_BOOKS, REAL_FRONT_BEFORE, REAL_FRONT_BOOKS, REAL_FRONT_LAYOUT, REAL_LAYOUT, REAL_SIDE_BOOKS, REAL_SIDE_LAYOUT } from '@/domain/real-sample';
 import { SAMPLE_BOOKS, SAMPLE_LAYOUT } from '@/domain/onboarding-sample';
-import type { BookPlacement, ShelfLayout, ShelfLayoutV1 } from '@/domain/types';
+import type { Book, BookPlacement, ShelfLayout, ShelfLayoutV1 } from '@/domain/types';
 
 export type SaveStatus = 'idle' | 'saving' | 'error' | 'read-error';
 
@@ -32,7 +33,18 @@ export const EMPTY_LAYOUT: ShelfLayout = ensureShelves({ version: 2, shelves: []
 const noFalls = () => ({ fell: null, fellIds: [] as string[], fallDirections: {} as FallDirections });
 let state: State = { books: {}, layout: EMPTY_LAYOUT, undo: null, save: 'idle', loaded: false, notice: null, ...noFalls(), demo: false };
 let userSnapshot: { books: BookMap; layout: ShelfLayout } | null = null;
-export type DemoKind = 'sample' | 'mockup';
+export type DemoKind = 'sample' | 'mockup' | 'real' | 'real-front' | 'real-side' | 'real-before' | 'real-front-before';
+const DEMO_SHELVES: Record<DemoKind, [Book[], ShelfLayout]> = {
+  sample: [SAMPLE_BOOKS, SAMPLE_LAYOUT],
+  mockup: [MOCKUP_BOOKS, MOCKUP_LAYOUT],
+  real: [REAL_BOOKS, REAL_LAYOUT],
+  'real-front': [REAL_FRONT_BOOKS, REAL_FRONT_LAYOUT],
+  'real-side': [REAL_SIDE_BOOKS, REAL_SIDE_LAYOUT],
+  'real-before': REAL_BEFORE,
+  'real-front-before': REAL_FRONT_BEFORE,
+};
+// 측정 번들 ?demoboot= 값: '1'은 예시 책장, 나머지는 이름 그대로. 그 밖의 값은 끈다(null)
+export const demoKindOf = (v: string | null | undefined): DemoKind | null => (v === '1' ? 'sample' : v && v !== 'sample' && v in DEMO_SHELVES ? (v as DemoKind) : null);
 let demoKind: DemoKind = 'sample';
 const listeners = new Set<() => void>();
 
@@ -208,13 +220,13 @@ export const placementStore = {
   },
 
   // 측정 번들 전용: 예시 18권 책장(메모리에만). 끄면 내 책장으로 돌아간다.
-  // kind 'mockup': 같은 자리·치수에 시안 책장의 제목·색·표지 그림을 입힌 비교 책장(domain/mockup-sample).
+  // kind 'mockup': 같은 자리·치수에 시안 책장의 제목·색·표지 그림을 입힌 비교 책장(domain/mockup-sample). 'real'·'real-front': 실제 책 비교 책장(domain/real-sample).
   setDemo(on: boolean, kind: DemoKind = 'sample') {
     if (on === state.demo && (!on || kind === demoKind)) return;
     if (on) {
       if (!state.demo) userSnapshot = { books: state.books, layout: state.layout };
       demoKind = kind;
-      const [list, layout] = kind === 'mockup' ? [MOCKUP_BOOKS, MOCKUP_LAYOUT] : [SAMPLE_BOOKS, SAMPLE_LAYOUT];
+      const [list, layout] = DEMO_SHELVES[kind];
       const books = Object.fromEntries(list.map((b) => [b.id, b]));
       set({ demo: true, books, layout: withLeans(layout, books), undo: null, ...noFalls() });
     } else {

@@ -1,7 +1,7 @@
 // 빛 모델(domain/light-model): 해석적인 하늘 가림(램버트 윤곽 적분 + 앞 가리개는 뒤에 보일 것과의 차이)이
 // 같은 장면을 광선으로 직접 적분한 값(몬테카를로)과 맞는지, 그리고 반사·창빛 가림의 기본 성질.
 import type { Book3, Vec3 } from '../book3';
-import { ALBEDO, diskBlocked, gridKeyFree, ggxKey, KEY_C, lum, RAD, ROUGH, skyIrradiance, SREF, bookAlbedo, bookEref, boxOf, tone, toneInv, toneTarget, TONE, darkening, DESIGN, EREF, envBRDF, faceAlbedo, lightWithLoss, FAR, irradiance, L_ELEV, L_UNIT, linearOf, plankKeyBlocked, polyVF, sceneLight, skyLossAt, skyRadiance, solveGrid, traceRadiance, withCovers, type Box, type C3, type Env, type Grid } from '../light-model';
+import { ALBEDO, bakedLossAt, contactShade, diskBlocked, gridKeyFree, ggxKey, KEY_C, lum, RAD, ROUGH, skyIrradiance, SREF, bookAlbedo, bookEref, boxOf, tone, toneInv, toneTarget, TONE, darkening, DESIGN, EREF, envBRDF, faceAlbedo, lightWithLoss, FAR, irradiance, L_ELEV, L_UNIT, linearOf, plankKeyBlocked, polyVF, sceneLight, skyLossAt, skyRadiance, solveGrid, traceRadiance, withCovers, type Box, type C3, type Env, type Grid } from '../light-model';
 import { SHELF_DEPTH, SHELF_FRONT, SHELF_THICK, SHELF_X0, SHELF_X1 } from '../geometry';
 import palette from '@/scene-config/reference-bindings.generated.json';
 import { ALBEDO_MAX, light } from '@/scene-config/lighting';
@@ -597,5 +597,36 @@ describe('빛 격자 창빛: 판과 책 가림의 합집합', () => {
     // 따로 곱한 값(판 활꼴 × 책 방향 몫)은 합집합보다 눈에 띄게 밝다
     const bookOnly = dense(P, { floor: -FAR, ceil: FAR }, { lo: { x: 150, y: 0, z: 0 }, hi: { x: 200, y: 148, z: 100 } }).union;
     expect((1 - exact.plank) * (1 - bookOnly) - (1 - exact.union)).toBeGreaterThan(0.1);
+  });
+});
+
+describe('접촉 그늘', () => {
+  const box = boxOf({ id: 'a', dims: { T: 30, H: 160, W: 110 }, roll: 0, yaw: 0, t: { x: 100, y: 0, z: 0 } }, [0.5, 0.5, 0.5]);
+  const up = { x: 0, y: 1, z: 0 };
+  const front = { x: 0, y: 0, z: -1 };
+  it('책 밑동 바로 앞이 가장 짙고 좁게 사라진다', () => {
+    const at = (z: number) => contactShade({ x: 115, y: 0, z }, up, [box]);
+    expect(at(0)).toBeCloseTo(0.5);
+    expect(at(-3)).toBeGreaterThan(at(-10));
+    expect(at(-10)).toBeGreaterThan(at(-30));
+    expect(at(-30)).toBeLessThan(0.06);
+    expect(at(-120)).toBeLessThan(0.005);
+  });
+  it('받치는 면만: 벽·표지 같은 수직 면은 어두워지지 않는다(벽에 테두리가 생기지 않게)', () => {
+    expect(contactShade({ x: 115, y: 60, z: 122 }, front, [box])).toBe(0);
+  });
+  it('자기 상자, 면 위로 솟지 않은 책은 세지 않는다', () => {
+    expect(contactShade({ x: 115, y: 0, z: 0 }, up, [box], 0)).toBe(0);
+    expect(contactShade({ x: 115, y: 170, z: 50 }, up, [box])).toBe(0); // 책 머리보다 위에 있는 윗면
+    expect(contactShade({ x: 115, y: 0, z: 0 }, up, [])).toBe(0);
+  });
+  it('그릴 때의 가림: 하늘 가림 + 접촉 몫의 받는 빛, 그려진 뒤 받는 빛이 그 몫만큼 준다', () => {
+    const P = { x: 115, y: 0, z: -3 };
+    const plain = skyLossAt(P, up, null, [box]);
+    const baked = bakedLossAt(P, up, null, [box]);
+    expect(baked[1]).toBeGreaterThan(plain[1]);
+    const lit = (loss: number[]) => lightWithLoss(P, up, null, null, loss as [number, number, number], false).r[1];
+    const f = contactShade(P, up, [box]);
+    expect(lit(baked) / lit(plain)).toBeLessThan(1 - f * 0.8);
   });
 });

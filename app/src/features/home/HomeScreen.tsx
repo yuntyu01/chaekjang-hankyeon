@@ -28,6 +28,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { scheduleOnRN, scheduleOnUI } from 'react-native-worklets';
 
 import { camAt, VIEW_PITCH_MAX, VIEW_PITCH_MIN } from '@/domain/camera';
+import { withSharpCover } from '@/domain/cover-url';
 import { DESIGN_WIDTH, PLANK_INSET, SHELF_FRONT, SHELF_THICK, VIEW_DEG_PER_DP, viewSettle } from '@/domain/geometry';
 import { useViewStore, viewStore } from '@/store/view-store';
 import {
@@ -48,7 +49,7 @@ import { uiBus } from '@/store/ui-bus';
 import { DEMO_BOOT_KEY } from '@/store/boot';
 import Storage from 'expo-sqlite/kv-store';
 import { bootMark, watchResponsive } from '@/ui/boot-trace';
-import { placementStore, usePlacementStore } from '@/store/placement-store';
+import { demoKindOf, placementStore, usePlacementStore } from '@/store/placement-store';
 import { useShelfShared } from '@/ui/book3d/art';
 import { useHomeSnapshot } from '@/ui/home-snapshot';
 import { CONTENT_TOP, computeRows, LAYOUT, rowAffine, toContent, useShelfMetrics, type RowGeom } from '@/ui/shelf/metrics';
@@ -603,16 +604,19 @@ export function HomeScreen() {
   const { sv, lv, sh, lt, cam: camDebug, pitch: pitchParam, slow, transit, geom, pushdbg, mark } = useLocalSearchParams<{ sv?: string; lv?: string; sh?: string; lt?: string; cam?: string; pitch?: string; slow?: string; transit?: string; geom?: string; pushdbg?: string; mark?: string }>();
   // 측정 번들: ?mark=b11,b12 처럼 고른 책을 한 가지 색(자홍, 둘째는 청록)으로만 그린다. 화면 녹화에서 그 책이 프레임마다 몇 군데에
   // 얼마나 보이는지 세어 빈 프레임·두 권 보임을 찾는다(장면에 넘기는 그림용 사본만 바꾼다. 배치 계산·저장은 그대로).
+  // 표지로 세운 책은 실제 표지를 큰 그림으로 받는다(장면에 넘기는 사본만)
+  const frontIds = layout.placements.filter((p) => p.pose === 'front').map((p) => p.bookId).join('|');
   const sceneBooks = useMemo(() => {
-    if (!PERF_ENABLED || !mark) return books;
     const out = { ...books };
+    if (frontIds) for (const id of frontIds.split('|')) if (out[id]) out[id] = withSharpCover(out[id]);
+    if (!PERF_ENABLED || !mark) return out;
     mark.split(',').forEach((id, i) => {
       const b = books[id];
       const c = i === 0 ? '#FF00FF' : '#00FFFF';
       if (b) out[id] = { ...b, themeColor: c, body: undefined, quotes: 0, art: { ...b.art, inkColor: c, ribbon: c } };
     });
     return out;
-  }, [books, mark]);
+  }, [books, frontIds, mark]);
   // 측정 번들: ?geom=1 로 형상 보기(3D 상자 모서리·받침·계산상 선반)를 켜고 끈다(캡처 스크립트용)
   useEffect(() => {
     if (PERF_ENABLED && geom !== undefined) setDebugGeom(geom === '1');
@@ -651,8 +655,9 @@ export function HomeScreen() {
   if (PERF_ENABLED && menutl !== undefined) MENU_FLAGS.translucent = menutl === '1';
   useEffect(() => {
     if (!PERF_ENABLED || demoboot === undefined) return;
-    void Storage.setItem(DEMO_BOOT_KEY, demoboot === '1' || demoboot === 'mockup' ? demoboot : '0');
-    placementStore.setDemo(demoboot === '1' || demoboot === 'mockup', demoboot === 'mockup' ? 'mockup' : 'sample');
+    const kind = demoKindOf(demoboot);
+    void Storage.setItem(DEMO_BOOT_KEY, kind ? demoboot : '0');
+    placementStore.setDemo(!!kind, kind ?? 'sample');
   }, [demoboot]);
   useEffect(() => {
     if (!PERF_ENABLED || lt === undefined) return;
@@ -1251,7 +1256,7 @@ export function HomeScreen() {
             <View style={styles.emptyCard}>
               <Text style={styles.emptyTitle}>{ko.empty.title}</Text>
               <Text style={styles.emptyBody}>{layout.drawer.length ? `${ko.empty.body}\n책장에 없는 책이 ${layout.drawer.length}권 있어요.` : ko.empty.body}</Text>
-              <Btn label={ko.add} onPress={() => router.push('/book/add')} icon={<Plus size={icon.small} color={ui.onAccent} strokeWidth={icon.stroke} />} style={styles.emptyBtn} />
+              <Btn label={ko.add} onPress={() => router.push('/book/add')} icon={<Plus size={icon.small} color={ui.ink} strokeWidth={icon.stroke} />} style={styles.emptyBtn} />
               {layout.drawer.length ? <TextLink label="전체 책에서 고르기" tone="soft" onPress={() => router.push({ pathname: '/books', params: { filter: 'off' } })} style={{ marginTop: 4 }} /> : null}
             </View>
           </View>

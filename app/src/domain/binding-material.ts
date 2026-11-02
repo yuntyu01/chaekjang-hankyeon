@@ -3,7 +3,7 @@
 import profiles from '@/scene-config/reference-bindings.generated.json';
 
 import { jacketColor } from './book-design';
-import type { Book } from './types';
+import type { Book, BookSurface } from './types';
 
 export type Binding = { colors: string[]; positions: number[]; horizontal: boolean };
 const customBindings = new Map<string, Binding>();
@@ -67,7 +67,8 @@ export function bookTone(b: Book) {
 // 책 색이 표지 가장자리 색이라 검정에 가까우면 비율이 몇 배로 튀어 주황이 노랗게 날아가고, 순백이면 톤 곡선 끝이라 음영이 사라진다(2026-11-01 실측).
 // 톤 곡선 직선 구간의 중간 회색을 기준으로 삼고, 반사광은 그림 표지처럼 따로 더한다
 const PICTURE_ALBEDO: [number, number, number] = [0.5, 0.5, 0.5];
-export function bookLightRef(book: Book, linearOf: (hex: string) => [number, number, number]): { albedo: [number, number, number]; picture: boolean } {
-  if (book.coverArtUri || book.spineArtUri) return { albedo: PICTURE_ALBEDO, picture: true };
-  return { albedo: linearOf(bookTone(book)), picture: !!book.cover?.artworkId && !book.art.vectorCover };
+// material: 그 책의 표면. 실제 표지 사진을 입힌 책은 고른 재질이 없으면 무광 인쇄지(print)
+export function bookLightRef(book: Book, linearOf: (hex: string) => [number, number, number]): { albedo: [number, number, number]; picture: boolean; material?: BookSurface } {
+  if (book.coverArtUri || book.spineArtUri) return { albedo: PICTURE_ALBEDO, picture: true, material: book.art.material ?? 'print' };
+  return { albedo: linearOf(bookTone(book)), picture: !!book.cover?.artworkId && !book.art.vectorCover, material: book.art.material };
 }

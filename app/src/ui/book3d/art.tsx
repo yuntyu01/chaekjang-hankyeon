@@ -10,6 +10,7 @@ import { createContext, useContext, useEffect, useMemo, useState, type ReactNode
 
 import { displayInk, modernInk, rgbHex, tabColors, TITLE_LIGHT, titleInk } from '@/domain/color';
 import { COVER_ARTWORKS } from '@/domain/cover-artworks';
+import { whiteMat } from '@/domain/cover-url';
 import { COVER_LINE_H, COVER_SPACE, COVER_TRACK, coverTitleLayout, LYING_TRACK, lyingTitleLayout, SPINE_SPACE, spineTitleLayout } from '@/domain/title-layout';
 import type { Book, CoverArt } from '@/domain/types';
 import { motifSvg } from '@/ui/art/motifs';
@@ -389,6 +390,14 @@ const SPINE_MOTIF = false;
 const COVER_MOTIF = false;
 // 표지·책등 사진을 크게 줄여 그릴 때 글자가 깨지지 않게(밉맵)
 const PHOTO_SAMPLING = { filter: FilterMode.Linear, mipmap: MipmapMode.Linear };
+// 실제 표지 사진을 면에 꽉 채운다(비율이 다르면 넘치는 쪽을 가운데로 자른다). 그림 바깥의 흰 여백은 표지가 아니라서 뺀다(cover-url whiteMat)
+function PhotoCover({ image, w, h }: { image: SkImage; w: number; h: number }) {
+  const iw = image.width();
+  const ih = image.height();
+  const m = whiteMat(iw, ih, (x, y, width, height) => image.readPixels(x, y, { width, height, colorType: ColorType.RGBA_8888, alphaType: AlphaType.Unpremul })) ?? { l: 0, t: 0, r: 0, b: 0 };
+  const k = Math.max(w / (iw * (1 - m.l - m.r)), h / (ih * (1 - m.t - m.b)));
+  return <SkiaImage image={image} x={w / 2 - (m.l + (1 - m.l - m.r) / 2) * iw * k} y={h / 2 - (m.t + (1 - m.t - m.b) / 2) * ih * k} width={iw * k} height={ih * k} fit="fill" sampling={PHOTO_SAMPLING} />;
+}
 
 async function buildArt(book: Book, s: number, dims: { T: number; H: number; W: number }, shared: Shared, motif: SkImage | null, coverImg: SkImage | null, made: MadeArt): Promise<BookArt> {
   const regular = shared.regular!;
@@ -472,7 +481,7 @@ async function buildArt(book: Book, s: number, dims: { T: number; H: number; W: 
   const originalCover = !made.cover && !!coverImg && !!cover.sourceRect;
   const retainTitle = originalCover && book.title.replace(/\s/g, '') === cover.printedTitle?.replace(/\s/g, '');
   const coverPic = await record(
-    made.cover ? <Group clip={bookFacePath(cw, h, s)}><SkiaImage image={made.cover} x={0} y={0} width={cw} height={h} fit="cover" sampling={PHOTO_SAMPLING} /></Group> :
+    made.cover ? <Group clip={bookFacePath(cw, h, s)}><PhotoCover image={made.cover} w={cw} h={h} /></Group> :
     <Group>
       {originalCover ? <ReferenceCover image={coverImg!} cover={cover} w={cw} h={h} s={s} retainTitle={retainTitle} /> : <CoverFaceArt w={cw} h={h} s={s} face={toneOf(book)} image={coverImg} motif={COVER_MOTIF && book.body ? motif : null} focusY={cover.artworkId ? cover.focusY : undefined} />}
       {coverMotif}

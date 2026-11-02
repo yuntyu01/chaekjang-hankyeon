@@ -14,10 +14,10 @@ import { useDerivedValue, type SharedValue } from 'react-native-reanimated';
 import { faceNormal, rot, toWorld, type Book3, type Cam, type FaceId, type Vec3 } from '@/domain/book3';
 import { lightPanel, rigOf } from '@/domain/book-parts';
 import { camAt, VIEW_PITCH_MAX, VIEW_PITCH_MIN, type Affine } from '@/domain/camera';
-import { bookEref, bookSref, ENV_NX, ENV_NY, FAR, GRID_N, GRID_PASSES, SREF, type BoxBuf, type C3, type Env } from '@/domain/light-model';
+import { bookEref, bookSref, ENV_NX, ENV_NY, FAR, GRID_N, GRID_PASSES, SPEC_K, SREF, type BoxBuf, type C3, type Env } from '@/domain/light-model';
 import type { Recv3 } from '@/domain/received3';
 import { MAT_UNIFORMS, type MatUniforms } from '@/domain/surface-pattern';
-import type { BindingMaterial } from '@/domain/types';
+import type { BookSurface } from '@/domain/types';
 import type { MaterialName } from '@/ui/lighting';
 import { faceVisible } from '@/ui/book3d/face-geometry';
 
@@ -396,12 +396,12 @@ export function bookItems(id: string, b: Book3, env: Env | null, bx: BoxBuf, sel
 // albedo: 장정 색(선형 RGB, 속지는 셰이더 상수), material: 장정 재질(없으면 무광 종이), atlas·id: 이 책이 있는 줄의 구운 하늘 가림(면 key = faceKey(id, 면)), env: 둘레,
 // keyShadow: 이 책 면이 받는 창빛 그림자(bookKeyImage), picture: 그림 표지 책(반사광을 더하기 겹으로 따로)
 export function BookLight({ dims: d, state, cam, px, outline, albedo, material = 'paper', env, atlas, id, keyShadow, picture = false }: {
-  dims: Book3['dims']; state: RO<Book3>; cam: RO<Cam>; px: Affine; outline: RO<SkPath>; albedo: C3; material?: BindingMaterial;
+  dims: Book3['dims']; state: RO<Book3>; cam: RO<Cam>; px: Affine; outline: RO<SkPath>; albedo: C3; material?: BookSurface;
   env?: RO<Env | null>; atlas?: RO<Atlas>; id: string; keyShadow?: RO<BookKey>; picture?: boolean;
 }) {
   const { bd, sp, sq } = rigOf(d);
   const pg = MAT_UNIFORMS.pages;
-  const mat = { ...matOf(MAT_UNIFORMS[material], seedOf(id)), erefB: bookEref(material), srefB: bookSref(material), srefP: SREF.paper, pR: pg.mRough, pB: pg.mBump, pG: pg.mGrain, pS: pg.mGsize };
+  const mat = { ...matOf(MAT_UNIFORMS[material], seedOf(id)), erefB: bookEref(material), srefB: bookSref(material), specK: SPEC_K[material], srefP: SREF.paper, pR: pg.mRough, pB: pg.mBump, pG: pg.mGrain, pS: pg.mGsize };
   // 면마다 아틀라스 칸(구운 값이 없으면 0): 굽기가 바뀔 때만
   const sample = useDerivedValue<Sample>(() => {
     const a = atlas ? atlas.value : NO_ATLAS;

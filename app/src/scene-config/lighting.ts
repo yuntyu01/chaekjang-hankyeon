@@ -36,6 +36,11 @@ export const light = {
   occlusion: 0.3,
 };
 
+// 접촉 그늘(2026-11-02 사용자 '책이 선반에 놓여 있는 느낌, 좁고 짧은 그림자'): 빛이 앞에서 와 책 앞 판은 책 앞면이 되비친 빛으로 채워져 그늘이 지지 않고(에뮬 실측 1단계 차이),
+// 책이 붕 떠 보였다. 실제로는 책 밑 둥근 모서리·바닥 틈이 어둡게 가린다: 받치는 면(윗면) 위의 점에서 책 밑동을 높이 heightMm의 어두운 띠로 보고 그 띠가 가리는 몫
+// ½(1 − d/√(d² + h²))(수직 띠의 형태 계수, d: 책까지 거리)만큼 받는 빛을 줄인다. 높이는 화면에서 3~4화소로 보이게 고른 값(보기 선택, 실제 모서리 반지름 4mm보다 크다)
+export const contact = { heightMm: 18 };
+
 // 카메라(보기 선택, 물리 값이 아니다). exposure: 노출(EV), 기준(재질이 대표 자리에서 시안 색으로 보이는 노출)보다 밝게 +, 어둡게 −.
 // 화면 색은 노출 뒤 필름형 톤 곡선(light-model tone): 화면 밝기가 shoulder를 넘으면 1로 부드럽게 다가가고(하이라이트를 누른다),
 // toe 아래는 검정 쪽 기울기를 1 − toeK로 눌러 아주 어두운 곳이 조금 더 깊다. 어깨는 약하게(위 15%만): 더 내리면 시안의 거의 흰 장정 색이
@@ -57,7 +62,8 @@ export const camera = { exposure: 0, shoulder: 0.85, toe: 0.18, toeK: 0.15 };
 export const F0 = 0.04;
 export type Bump = { size: [number, number]; slope: number; weave?: boolean };
 export type Grain = { kind: 'fiber' | 'weave' | 'sheets' | 'wood' | 'none'; size: [number, number]; contrast: [number, number] };
-export type SurfaceMaterial = { roughness: number; bump: Bump | null; grain: Grain };
+// specular: 표면 반사 몫의 배수(없으면 1, 보통 유전체 F0). 반사광은 모든 색에 똑같이 더해져 검은 부분을 띄운다
+export type SurfaceMaterial = { roughness: number; bump: Bump | null; grain: Grain; specular?: number };
 const NONE: Grain = { kind: 'none', size: [1, 1], contrast: [0, 0] };
 export const materials = {
   // 무광 종이(코팅 없는 종이, 거의 완전 확산면): 장정 기본·갈피 종이. 섬유 뭉침(약 1.5mm)의 아주 얕은 굴곡.
@@ -70,6 +76,10 @@ export const materials = {
   cloth: { roughness: 0.75, bump: { size: [0.5, 0.5], slope: 0.3, weave: true }, grain: { kind: 'weave', size: [0.5, 1.5], contrast: [0.02, 0.045] } },
   // 코팅지: 표지에 흔한 무광 코팅 막(종이보다 매끈해 비스듬한 반사·창빛 하이라이트가 더 크다. 유광 막(r 0.2~0.3)이면 창이 비친다)
   coated: { roughness: 0.7, bump: null, grain: NONE },
+  // 실물 표지(무광 인쇄지): 실제 표지 사진을 입힌 책의 기본 재질. 2026-11-02 사용자 '원래 색·그림·글씨를 유지, 가까이 봤을 때 느껴지는 정도의 미세한 종이결,
+  // 무광은 표면 반사를 억제하는 쪽으로, 색이 탁해지지 않게'. 결은 무광 종이(코팅 없는 장정, 1.5mm·4%)보다 곱고 옅어 인쇄된 그림·글씨를 흐리지 않는다.
+  // 반사 몫은 저반사 무광 막(F0 약 0.014, 굴절률 약 1.27): 보통 F0이면 표지 검정(8비트 7)이 15까지 떠서 탁해 보였다(에뮬 실측, 2026-11-02)
+  print: { roughness: 0.95, bump: { size: [1, 1], slope: 0.01 }, grain: { kind: 'fiber', size: [1, 3], contrast: [0.02, 0.008] }, specular: 0.35 },
   // 속지 단면: 낱장(약 0.1mm) 가장자리가 쌓인 면이라 두께 방향으로 촘촘한 굴곡(재단면이라 종이 면보다 거칠다).
   // 낱장 하나는 화면에서 화소보다 훨씬 가늘어 보이지 않으므로, 결은 몇 장씩 끝이 어긋난 묶음(약 1mm)과 접장 틈(1.6mm마다)으로 보인다
   // (2026-10-10 사용자: 흰 속지가 너무 매끄러워 벽돌 같다, 페이지 티가 나게)

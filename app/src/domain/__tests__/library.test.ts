@@ -130,7 +130,7 @@ describe('책장용 책 모양', () => {
     lib.editions[eId] = { ...lib.editions[eId], coverUri: 'https://image.yes24.com/goods/1/L', coverSource: 'api' };
     for (const color of ['#0e0c08', '#ffffff']) {
       lib.bindings[bdId] = { ...lib.bindings[bdId], spineColor: color };
-      expect(bookLightRef(toShelfBook(lib, 'bk1')!, linearOf)).toEqual({ albedo: [0.5, 0.5, 0.5], picture: true });
+      expect(bookLightRef(toShelfBook(lib, 'bk1')!, linearOf)).toEqual({ albedo: [0.5, 0.5, 0.5], picture: true, material: 'print' });
     }
   });
 

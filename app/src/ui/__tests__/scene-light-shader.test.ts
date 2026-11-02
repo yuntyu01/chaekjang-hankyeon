@@ -3,7 +3,7 @@
  */
 // 빛 셰이더(SkSL)가 컴파일되고, 같은 점에서 JS 빛 모델(domain/light-model)과 같은 값을 내는지(CanvasKit으로 실제로 그려 읽는다).
 import type { Book3, Vec3 } from '@/domain/book3';
-import { boxOf, DESIGN, ENV_NX, ENV_NY, EREF, FAR, GRID_N, GRID_PASSES, KEY_C, KEY_DIRS, lightWithLoss, skyIrradiance, ROUGH, linearOf, packBoxes, skyLossAt, solveGrid, toEye, toneDodge, toneMul, toneSpec, GAMMA, withCovers, type BoxBuf, type C3, type Env } from '@/domain/light-model';
+import { bakedLossAt, boxOf, DESIGN, ENV_NX, ENV_NY, EREF, FAR, GRID_N, GRID_PASSES, KEY_C, KEY_DIRS, lightWithLoss, skyIrradiance, ROUGH, linearOf, packBoxes, skyLossAt, solveGrid, toEye, toneDodge, toneMul, toneSpec, GAMMA, withCovers, type BoxBuf, type C3, type Env } from '@/domain/light-model';
 import { MAT_UNIFORMS, matSample, type MatUniforms } from '@/domain/surface-pattern';
 import { SHELF_DEPTH, SHELF_X0, SHELF_X1 } from '@/domain/geometry';
 import { bakeSource, bookSource, GRID_SCALE, gridSource, litSource, lossDecode, lossEncode, lossStep, LOSS_RN, LOSS_RP, planeFrame } from '../scene-light-sksl';
@@ -192,7 +192,7 @@ describe('빛 셰이더 = JS 빛 모델', () => {
     // 색 있는 장정(채널마다 다른 되비침)
     const list = withCovers(books.map((b, i) => boxOf(b, i % 2 ? [0.5, 0.08, 0.05] : [0.05, 0.12, 0.42])));
     const bx = packBoxes(list, books.map((b) => b.id));
-    const js = skyLossAt(P, n, env, list);
+    const js = bakedLossAt(P, n, env, list);
     const gpu = shaderLoss(P, n, env, bx);
     // 채널마다 그림 값 한 단계 안
     withinStep(gpu, js, n);
@@ -258,7 +258,9 @@ describe('빛 격자 셰이더 = JS', () => {
     ['틈 안 표지', { x: 122, y: 60, z: 20 }, { x: 1, y: 0, z: 0 }, 1],
   ] as [string, Vec3, Vec3, number][])('격자를 읽는 굽기 = JS, %s', (_, P, n, self) => {
     const { G, img } = solvedGrid();
-    const js = skyLossAt(P, n, row, list, G, self);
+    // 그림에 담는 범위를 넘는 가림(접촉 그늘을 곱한 깊은 틈)은 범위 끝으로 담긴다: 셰이더가 읽는 값과 같게 담았다 읽어 비교한다
+    const sky = skyIrradiance(n);
+    const js = bakedLossAt(P, n, row, list, G, self).map((L, c) => lossDecode(lossEncode(L, sky[c]), sky[c])) as C3;
     withinStep(shaderLoss(P, n, row, bx, img, self), js, n, 3);
   });
 });
@@ -276,7 +278,7 @@ describe('판 끝 가까이·너머 벽(판은 그린 곳에서 끝난다)', () 
     ['위 판 바로 아래 벽(판이 위쪽 하늘을 가린다)', { x: 60, y: 200 - 9, z: SHELF_DEPTH }],
     ['위 판 아래 25DU 벽', { x: 60, y: 200 - 25, z: SHELF_DEPTH }],
   ] as [string, Vec3][])('%s: 셰이더 = JS', (_, P) => {
-    withinStep(shaderLoss(P, n, row, bx), skyLossAt(P, n, row, list), n);
+    withinStep(shaderLoss(P, n, row, bx), bakedLossAt(P, n, row, list), n);
   });
   it('판 속 벽 점(판 끝 둥근 모서리·안티에일리어싱으로 드러나는 화소)은 판 끝 바로 너머 벽으로 굽는다', () => {
     const inside = shaderLoss({ x: SHELF_X0 + 2, y: -6, z: SHELF_DEPTH }, n, row, bx);
@@ -404,7 +406,7 @@ describe('책 광선 셰이더 = 광선 기하 + JS 빛', () => {
         kRect: kx > 0 ? [0, 0, 1, 1, ...new Array(20).fill(0)] : new Array(24).fill(0),
         cam4: CAM4, pxa: pxaOf(Q), bO: [bO.x, bO.y, bO.z], bX: [1, 0, 0], bY: [0, 1, 0], bZ: [0, 0, 1],
         dims: [d.T, d.H, d.W], rig: [bd, sp, sq], rect: new Array(24).fill(0), rect2: new Array(24).fill(0), mixT: 1, keyOn: 1, albedo: tone,
-        env: [1, row.floor, row.ceil], erefB: EREF.book, srefB: [0, 0, 0], srefP: [0, 0, 0], ...PLAIN, pR: PLAIN.mR, pB: PLAIN.mB, pG: PLAIN.mG, pS: PLAIN.mS,
+        env: [1, row.floor, row.ceil], erefB: EREF.book, srefB: [0, 0, 0], specK: 1, srefP: [0, 0, 0], ...PLAIN, pR: PLAIN.mR, pB: PLAIN.mB, pG: PLAIN.mG, pS: PLAIN.mS,
       },
       true,
       [CK.Shader.MakeColor(CK.Color4f(0, 0, 0, kx), CK.ColorSpace.SRGB), black()],

@@ -12,7 +12,7 @@ import { useDerivedValue, type SharedValue } from 'react-native-reanimated';
 import { corners, depthKey, faceCorners, facing, rot, toWorld, type Book3, type Cam } from '@/domain/book3';
 import { EDGE_R } from '@/domain/book-parts';
 import { project } from '@/domain/camera';
-import { linearOf, NO_BOXES, othersOf, skyLossAt } from '@/domain/light-model';
+import { bakedLossAt, linearOf, NO_BOXES, othersOf } from '@/domain/light-model';
 import { RIBBON_Z } from '@/domain/ribbon-design';
 import { titleOpacity } from '@/domain/title-layout';
 import type { Book } from '@/domain/types';
@@ -96,7 +96,7 @@ function Ribbons({ art, book, state, cam, px, sur }: { art: BookArt; book: Book;
     const half = art.ribbonsOut / 2;
     const c = { x: root.x + up.x * half, y: root.y + up.y * half, z: root.z + up.z * half };
     const env = sur.env ? sur.env.value : null;
-    return { root, c, n, env, loss: skyLossAt(c, n, env, othersOf(sur.boxes ? sur.boxes.value : NO_BOXES, sur.self ? sur.self.value : -1)) };
+    return { root, c, n, env, loss: bakedLossAt(c, n, env, othersOf(sur.boxes ? sur.boxes.value : NO_BOXES, sur.self ? sur.self.value : -1)) };
   });
   const g = useDerivedValue(() => {
     const { root, n, env, loss } = at.value;
@@ -177,7 +177,7 @@ export function BookNode({ book, dims, state, cam, px, shared, keyShadow, order,
   if (!art) return null;
   // 몸체 색 하나: 판 두 장·책등·판 끝·책등 띠가 모두 같은 책 색이다
   const tone = toneOf(book);
-  const { albedo, picture } = bookLightRef(book, linearOf);
+  const { albedo, picture, material } = bookLightRef(book, linearOf);
   const sur: Surround = { env, atlas, id: book.id, boxes, self };
   return (
     <Group zIndex={z} clip={clip} opacity={opacity}>
@@ -203,7 +203,7 @@ export function BookNode({ book, dims, state, cam, px, shared, keyShadow, order,
             </>
           )}
           {/* 빛: 책 윤곽 안을 화소마다 광선으로(보이는 면·속지 구멍을 셰이더가 찾는다). 받는 창빛 그림자도 그 빛 계산 안에서 */}
-          {SHOW.body && LIGHT_ON.face ? <BookLight dims={dims} state={state} cam={cam} px={px} outline={outline} albedo={albedo} material={book.art.material} env={env} atlas={atlas} id={book.id} keyShadow={keyShadow} picture={picture} /> : null}
+          {SHOW.body && LIGHT_ON.face ? <BookLight dims={dims} state={state} cam={cam} px={px} outline={outline} albedo={albedo} material={material} env={env} atlas={atlas} id={book.id} keyShadow={keyShadow} picture={picture} /> : null}
           {/* 윤곽 밖을 지운다: 반전 채움 경로를 dstOut으로(윤곽 밖은 다 지우고, 가장자리 화소는 덮인 만큼만 남는다).
               dstIn 경로는 경로가 덮는 화소에만 적용돼, 둥근 윤곽 밖으로 나온 사각형 면(책등 그림)의 귀퉁이가 직각으로 남았다(2026-11-01) */}
           <Path path={outline} fillType="inverseWinding" color="black" blendMode="dstOut" />

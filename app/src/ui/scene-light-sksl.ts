@@ -5,7 +5,7 @@
 //   lit: 구운 그림(tex)을 읽고 나머지(하늘·창빛 직접 몫, 둥근 모서리 법선, 반사광)를 화소마다. 곱하기·컬러 닷지 두 가지로 컴파일한다.
 import { EDGE_R, GROOVE, PLANK_EDGE_R, SPINE_CURVE } from '@/domain/book-parts';
 import { SHELF_DEPTH, SHELF_FRONT, SHELF_THICK, SHELF_X0, SHELF_X1 } from '@/domain/geometry';
-import { ALBEDO, BOX_MAX, BOX_VEC, DESIGN, ENV_COLS, ENV_NY, CAM, EREF, EXPOSURE, FAR, GAMMA, GRID_N, KEY_BANDS, KEY_C, KEY_DIRS, L_ELEV, L_UNIT, RAD, SKY_C, TONE, TOUCH, type C3 } from '@/domain/light-model';
+import { ALBEDO, BOX_MAX, BOX_VEC, CONTACT_H, DESIGN, ENV_COLS, ENV_NY, CAM, EREF, EXPOSURE, FAR, GAMMA, GRID_N, KEY_BANDS, KEY_C, KEY_DIRS, L_ELEV, L_UNIT, RAD, SKY_C, TONE, TOUCH, type C3 } from '@/domain/light-model';
 import type { Affine, Cam, Vec3 } from '@/domain/camera';
 import { F0, light } from '@/ui/lighting';
 
@@ -719,12 +719,35 @@ ${boxUniforms()}
 ${gridCode()}
 ${envCode(true)}
 ${boxCode()}
+  // 접촉 그늘(light-model contactShade): 윗면 위 점에서 가장 가까운 책 밑동이 가리는 몫
+  float contactShade(float3 P, float3 n, float self) {
+    if (n.y <= 0.0) return 0.0;
+    float m = 0.0;
+    for (int i = 0; i < ${BOX_MAX}; i++) {
+      if (float(i) >= nBox) break;
+      if (abs(float(i) - self) > 0.5) {
+        float3 o = P - box[i * ${BOX_VEC}].xyz;
+        float4 A = box[i * ${BOX_VEC} + 1];
+        float4 B = box[i * ${BOX_VEC} + 2];
+        float4 C = box[i * ${BOX_VEC} + 3];
+        float d = length(max(abs(float3(dot(o, A.xyz), dot(o, B.xyz), dot(o, C.xyz))) - float3(A.w, B.w, C.w), float3(0.0)));
+        float up = abs(dot(A.xyz, n)) * A.w + abs(dot(B.xyz, n)) * B.w + abs(dot(C.xyz, n)) * C.w - dot(o, n);
+        if (up > 0.0) {
+          float u = min(1.0, up / ${f(CONTACT_H)});
+          m = max(m, 0.5 * (1.0 - d / sqrt(d * d + ${f(CONTACT_H * CONTACT_H)})) * u * u * (3.0 - 2.0 * u));
+        }
+      }
+    }
+    return m * n.y;
+  }
   half4 main(float2 p) {
     float2 pc = clamp(p, float2(0.5), max(float2(0.5), cells - float2(0.5)));
     float3 P = wallOutside(O + pc.x * Ux + pc.y * Vy, tN);
     // 둘레 먼저(구간 밝기를 채운다), 그다음 책 상자
     float3 L = envLoss(P, tN);
     L += boxesLoss(P, tN, selfIdx, -1.0, -1.0);
+    // 접촉 그늘 몫만큼의 받는 빛(가림은 그릴 때 OCC를 곱하므로 나눠 담는다)
+    L += contactShade(P, tN, selfIdx) * (skyIrr(tN) + KEYC * (DIFF * max(0.0, dot(tN, LU)))) / OCC;
     float3 g = lossEnc(L, skyIrr(tN));
     // 디더: 칸마다 다른 −½~½ 단계(8비트로 담을 때 띠 대신 고른 잡음)
     float3 q = fract(float3(floor(p).x, floor(p).y, floor(p).x) * 0.1031);
@@ -1022,7 +1045,8 @@ function shadeCode(mode: 0 | 1 | 2 | 3, split = false) {
   // rough: 표면 거칠기(재질, 그리지 못한 미세 높이 몫 포함), alb: 반사율 결(배수, 평균 1),
   // kx: 책이 창빛 원반을 가리는 몫(위 판이 가리고 남은 빛에서, 벽 그림자 그림),
   // sref: 그 재질이 대표 자리에서 받는 반사광(장면 밝기, light-model SREF): 재질 색 a는 반사광까지 넣은 '보이는 색'이라 확산 몫은 toneInv(a) − sref
-  half4 shade(float3 P, float3 n, float3 nf, float3 v, float3 lossIn, float3 a, float3 eref, float rough, float alb, float kx, float3 sref) {
+  // kS: 재질의 표면 반사 몫 배수(materials specular)
+  half4 shade(float3 P, float3 n, float3 nf, float3 v, float3 lossIn, float3 a, float3 eref, float rough, float alb, float kx, float3 sref, float kS) {
     float3 loss = lossIn * OCC;
     float kb = 1.0 - (1.0 - plankKey(P)) * (1.0 - kx);
     // 가림(loss)은 면 법선 nf에서 구운 값: 둥근 모서리·구멍 벽처럼 법선이 기운 곳은 면이 받는 빛의 비율로(light-model lightWithLoss)
@@ -1036,14 +1060,14 @@ function shadeCode(mode: 0 | 1 | 2 | 3, split = false) {
     float3 E = e0 * max(float3(0.0), e0f - lossB) / max(e0f, float3(1e-4));
     // 반사광도 둘레가 가린 만큼 가려진다(거친 면은 반사 방향이 넓어 하늘이 보이는 몫 = 확산 몫과 같다): 좁은 틈 안은 반사광도 없다
     float3 vis = clamp((sky - lossB) / max(sky, float3(1e-4)), 0.0, 1.0);
-    float ks = envBRDF(max(0.0, dot(n, v)), rough);
+    float ks = envBRDF(max(0.0, dot(n, v)), rough) * kS;
     float3 r = E * (1.0 - ks) * alb / eref;
     // 화면 색 = tone(노출 × ((toneInv(a) − sref) × r + 반사광))(light-model toneTarget). 곱하기·닷지 두 겹으로 그 색이 되게:
     // 곱하기가 화면 색을 base까지 내리고 닷지가 target까지 올린다. base는 확산 몫(반사광 없이)이되, 8비트 화면 버퍼에서 닷지가 올릴 수 있게
     // target의 1/4보다 낮추지 않는다(확산 몫이 0인 채널은 곱하기에서 0이 되면 닷지가 반사광을 더하지 못한다)
     float3 am = max(a, float3(1e-4));
     float3 sa = max(float3(0.0), float3(toneInv(am.x), toneInv(am.y), toneInv(am.z)) - sref) * r * EXPO;
-    float3 spec = (ks * envHit(P, reflect(-v, n)).yzw * vis + KEYC * (ggxKey(n, v, rough) * DIFF * (1.0 - kb))) / ECAM;
+    float3 spec = (ks * envHit(P, reflect(-v, n)).yzw * vis + KEYC * (ggxKey(n, v, rough) * kS * DIFF * (1.0 - kb))) / ECAM;
     float3 st = sa + spec * EXPO;
     float3 t0 = float3(toneF(sa.x), toneF(sa.y), toneF(sa.z));
     float3 target = float3(toneF(st.x), toneF(st.y), toneF(st.z));
@@ -1121,7 +1145,7 @@ ${shadeCode(mode)}
     n = normalize(n - ms.x * Au - ms.y * Av);
     float3 loss = liveEnv > 0.5 ? envLoss(P, tN) : lossDec(float3(tex.eval(p).rgb), skyIrr(tN));
     if (liveEnv < 0.5 && mixT < 1.0) loss = mix(lossDec(float3(tex2.eval(p).rgb), skyIrr(tN)), loss, mixT);
-    half4 g = shade(P, n, tN, normalize(float3(cam4.x, cam4.y, cam4.z - cam4.w) - P), loss, albedo, eref, ms.w, ms.z, float(keyTex.eval(float2(dot(P, kU), dot(P, kV)) + kO).a), sref);
+    half4 g = shade(P, n, tN, normalize(float3(cam4.x, cam4.y, cam4.z - cam4.w) - P), loss, albedo, eref, ms.w, ms.z, float(keyTex.eval(float2(dot(P, kU), dot(P, kV)) + kO).a), sref, 1.0);
     ${mode === 2 ? 'return half4(half3(min(base * float3(g.rgb), float3(1.0))), 1.0);' : 'return g;'}
   }
 `;
@@ -1155,6 +1179,7 @@ export function bookSource(dodge: boolean | 'spec', split = false) {
   uniform float3 erefB;     // 장정 재질의 대표 자리 빛·반사광(light-model bookEref·bookSref), 속지 단면의 대표 자리 반사광
   uniform float3 srefB;
   uniform float3 srefP;
+  uniform float specK;     // 장정 재질의 표면 반사 몫 배수(materials specular)
   uniform float2 mR;        // 장정 재질(domain/surface-pattern matUniforms): 거칠기·기울기 RMS, 미세 높이, 결, 결 크기, 책마다 무늬 자리 어긋남
   uniform float4 mB;
   uniform float4 mG;
@@ -1319,7 +1344,7 @@ ${shadeCode(dodge === 'spec' ? 3 : dodge ? 1 : 0, split)}
     float4 K = float4(0.0);
     for (int i = 0; i < 6; i++) { if (i == fi) K = kRect[i]; }
     float kx = K.w > 0.5 ? float(keyTex.eval(K.xy + float2(u, v) * K.z).a) : 0.0;
-    return shade(P, nw3, normalize(toRow(nl)), view, loss, a, page ? EREF_PAPER : erefB, ms.w, ms.z, kx, page ? srefP : srefB);
+    return shade(P, nw3, normalize(toRow(nl)), view, loss, a, page ? EREF_PAPER : erefB, ms.w, ms.z, kx, page ? srefP : srefB, page ? 1.0 : specK);
   }
 `;
 }
@@ -1356,7 +1381,7 @@ ${shadeCode(dodge ? 1 : 0)}
     float4 ms = matSample(float2(l.x, -l.y) + mSeed, float2(fp, fp), mR, mB, mG, mS);
     float3 n = normalize(nrm - ms.x * axR - ms.y * axU);
     float3 view = cam4.w > 0.0 ? normalize(float3(cam4.x, cam4.y, cam4.z - cam4.w) - P) : float3(0.0, 0.0, -1.0);
-    return shade(P, n, nrm, view, loss, albedo, eref, ms.w, ms.z, 0.0, sref);
+    return shade(P, n, nrm, view, loss, albedo, eref, ms.w, ms.z, 0.0, sref, 1.0);
   }
 `;
 }
