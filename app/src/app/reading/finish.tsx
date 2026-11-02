@@ -15,7 +15,7 @@ import { useLibrary } from '@/store/library-store';
 import { readingStore, useReading } from '@/store/reading-store';
 import { Btn, Empty, Field, H2, ListGroup, ListItem, Muted, Row, Screen, SelectField, TextLink } from '@/ui/kit';
 import { colors, fonts, shape, tidySpace as space, tidyType as type } from '@/ui/screenTheme';
-import { serverBase } from '@/services/sync';
+import { useCommunityOpen } from '@/features/community/useCommunityOpen';
 
 const page = (v?: string) => {
   const n = Number((v ?? '').replace(/[^\d]/g, ''));
@@ -24,6 +24,7 @@ const page = (v?: string) => {
 
 export default function Finish() {
   const { pending, error: readingError } = useReading();
+  const communityOpen = useCommunityOpen();
   const { lib } = useLibrary();
   const [picking, setPicking] = useState(false);
   const notes = pending?.notes;
@@ -63,7 +64,7 @@ export default function Finish() {
         <H2 first>이어서 할 수 있어요</H2>
         <ListGroup>
           {saved.bookId ? <ListItem label="이 책에 갈피 남기기" sub="이번 기록과 연결돼요" chevron onPress={() => router.replace({ pathname: '/bookmark/new', params: { book: saved.bookId, session: saved.sessionId } })} /> : null}
-          {saved.bookId && serverBase ? <ListItem label="커뮤니티에 공유하기" sub="고른 것만 공개돼요" chevron onPress={() => router.push({ pathname: '/community/share', params: { session: saved.sessionId } })} /> : null}
+          {saved.bookId && communityOpen ? <ListItem label="커뮤니티에 공유하기" sub="고른 것만 공개돼요" chevron onPress={() => router.push({ pathname: '/community/share', params: { session: saved.sessionId } })} /> : null}
           {saved.bookId ? <ListItem label="책 정보 보기" chevron onPress={() => router.replace(`/book/${saved.bookId}`)} /> : null}
           <ListItem label="내 기록 보기" chevron onPress={() => router.replace('/stats')} />
         </ListGroup>

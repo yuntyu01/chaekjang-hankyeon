@@ -2,6 +2,7 @@ import { Tabs } from 'expo-router';
 import { StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { useCommunityOpen } from '@/features/community/useCommunityOpen';
 import { ko } from '@/i18n/ko';
 import { BookmarkTabIcon, CommunityTabIcon, ReadTabIcon, ShelfIcon } from '@/ui/TabIcons';
 import { tabBarStyle } from '@/ui/tabBar';
@@ -14,6 +15,7 @@ const ICON = navigation.iconSize + 2; // 글자가 없어 아이콘만으로 알
 
 export default function TabsLayout() {
   const insets = useSafeAreaInsets();
+  const communityOpen = useCommunityOpen(); // 닫혀 있으면 탭을 숨긴다(서버 스위치)
   // 책장 밖 화면의 탭 바: 종이 바탕 + 위 구분선, 아이콘 위로 8 더 띄워 구분선이 아이콘에 붙지 않게(2026-11-01 '하단바 테두리 좀 더 높게')
   const paperBar = { ...tabBarStyle(insets.bottom), height: navigation.height + insets.bottom + 8, paddingTop: 8, backgroundColor: ui.bg, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: ui.line };
   return (
@@ -58,6 +60,7 @@ export default function TabsLayout() {
       <Tabs.Screen
         name="community"
         options={{
+          ...(communityOpen ? {} : { href: null }),
           tabBarStyle: paperBar,
           title: ko.tabs.community,
           tabBarAccessibilityLabel: ko.tabs.community,

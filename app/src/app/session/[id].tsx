@@ -7,7 +7,7 @@ import { Alert, View } from 'react-native';
 import { BookPicker } from '@/features/bookmark/BookPicker';
 import { formatDurationPrecise } from '@/domain/library';
 import { sessionEditPatch, sessionFormOf, validDay, validTime } from '@/domain/session-edit';
-import { serverBase } from '@/services/sync';
+import { useCommunityOpen } from '@/features/community/useCommunityOpen';
 import { libraryStore, useLibrary } from '@/store/library-store';
 import { Btn, Empty, Field, ListGroup, ListItem, Muted, Row, Screen, SelectField } from '@/ui/kit';
 import { space } from '@/ui/screenTheme';
@@ -15,6 +15,7 @@ import { space } from '@/ui/screenTheme';
 export default function EditSession() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const { lib } = useLibrary();
+  const communityOpen = useCommunityOpen();
   const s = lib.sessions[id];
   const [initial] = useState(() => (s ? sessionFormOf(s) : null));
   const [picking, setPicking] = useState(false);
@@ -57,7 +58,7 @@ export default function EditSession() {
       <Field label="메모 (선택)" value={memo} onChangeText={setMemo} />
       {/* 기록으로 할 일은 줄 목록으로(버튼을 쌓지 않는다). 저장은 아래 고정 버튼 하나 */}
       <ListGroup style={{ marginTop: space.tight }}>
-        {s.myBookId && serverBase ? <ListItem label="커뮤니티에 공유하기" sub="고른 것만 공개돼요" chevron onPress={() => router.push({ pathname: '/community/share', params: { session: id } })} /> : null}
+        {s.myBookId && communityOpen ? <ListItem label="커뮤니티에 공유하기" sub="고른 것만 공개돼요" chevron onPress={() => router.push({ pathname: '/community/share', params: { session: id } })} /> : null}
         <ListItem
           label="이 기록 삭제"
           danger

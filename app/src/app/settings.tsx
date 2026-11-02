@@ -6,6 +6,7 @@ import { useState, useSyncExternalStore } from 'react';
 import { Linking, Text, View } from 'react-native';
 
 import { settingsStore, useSettings } from '@/store/settings-store';
+import { useCommunityOpen } from '@/features/community/useCommunityOpen';
 import { syncStatus } from '@/services/sync';
 import { Check } from '@/ui/icons';
 import { BrandFooter, Btn, H2, ListGroup, ListItem, Screen, SectionBand, Sheet, Toggle } from '@/ui/kit';
@@ -19,6 +20,7 @@ const MOTION = [
 ] as const;
 
 export default function SettingsScreen() {
+  const communityOpen = useCommunityOpen();
   const s = useSettings();
   const st = useSyncExternalStore(syncStatus.subscribe, syncStatus.get);
   const [motion, setMotion] = useState(false);
@@ -37,7 +39,7 @@ export default function SettingsScreen() {
       <H2 first>내 기록</H2>
       <ListGroup>
         <ListItem label="백업 및 복원" sub={backupSub} chevron onPress={() => router.push('/backup')} />
-        {syncStatus.available ? <ListItem label="커뮤니티 공개 프로필" chevron onPress={() => router.push('/community/profile')} /> : null}
+        {communityOpen && syncStatus.available ? <ListItem label="커뮤니티 공개 프로필" chevron onPress={() => router.push('/community/profile')} /> : null}
       </ListGroup>
 
       <SectionBand />
