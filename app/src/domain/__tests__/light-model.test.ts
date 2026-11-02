@@ -6,7 +6,7 @@ import { SHELF_DEPTH, SHELF_FRONT, SHELF_THICK, SHELF_X0, SHELF_X1 } from '../ge
 import palette from '@/scene-config/reference-bindings.generated.json';
 import { ALBEDO_MAX, light } from '@/scene-config/lighting';
 import { camAt, VIEW_PITCH_MIN } from '../camera';
-import { grainPeak, MAT_UNIFORMS } from '../surface-pattern';
+import { albedoPeak, MAT_UNIFORMS } from '../surface-pattern';
 
 // 재현되는 난수
 function rng(seed: number) {
@@ -306,7 +306,7 @@ describe('카메라 톤 곡선', () => {
 
 describe('재질 반사율 맞추기(역렌더링)', () => {
   it('노출 기준: 반사율은 모두(시안 장정 색 × 장정 재질 포함) 그 화면 색 이하이고 결의 가장 밝은 점까지 실제 흰 재질 반사율(ALBEDO_MAX) 이하, 이득은 그중 가장 작은 값', () => {
-    const peak = (m: keyof typeof MAT_UNIFORMS) => grainPeak(MAT_UNIFORMS[m]);
+    const peak = (m: keyof typeof MAT_UNIFORMS) => albedoPeak(MAT_UNIFORMS[m]); // 짧은 섬유는 이득에 넣지 않는다(반사율 1 아래인지는 surface-pattern 시험)
     const all: [C3, C3, number][] = [
       [ALBEDO.wall, DESIGN.wall, peak('paint')],
       [ALBEDO.plank, DESIGN.plank, peak('wood')],
@@ -614,6 +614,10 @@ describe('접촉 그늘', () => {
   });
   it('받치는 면만: 벽·표지 같은 수직 면은 어두워지지 않는다(벽에 테두리가 생기지 않게)', () => {
     expect(contactShade({ x: 115, y: 60, z: 122 }, front, [box])).toBe(0);
+  });
+  it('벽에 기댄 표지처럼 기운 면도 받치는 면이 아니다', () => {
+    const r = (14 * Math.PI) / 180;
+    expect(contactShade({ x: 115, y: 60, z: 122 }, { x: 0, y: Math.sin(r), z: -Math.cos(r) }, [box])).toBe(0);
   });
   it('자기 상자, 면 위로 솟지 않은 책은 세지 않는다', () => {
     expect(contactShade({ x: 115, y: 0, z: 0 }, up, [box], 0)).toBe(0);

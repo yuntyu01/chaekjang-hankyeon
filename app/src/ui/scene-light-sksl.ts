@@ -6,7 +6,7 @@
 import { EDGE_R, GROOVE, PLANK_EDGE_R, SEAM_R, SPINE_CURVE } from '@/domain/book-parts';
 import { FIBER_L, FIBER_W } from '@/domain/surface-pattern';
 import { SHELF_DEPTH, SHELF_FRONT, SHELF_THICK, SHELF_X0, SHELF_X1 } from '@/domain/geometry';
-import { ALBEDO, BOX_MAX, BOX_VEC, CONTACT_H, DESIGN, ENV_COLS, ENV_NY, CAM, EREF, EXPOSURE, FAR, GAMMA, GRID_N, KEY_BANDS, KEY_C, KEY_DIRS, L_ELEV, L_UNIT, RAD, SKY_C, TONE, TOUCH, type C3 } from '@/domain/light-model';
+import { ALBEDO, BOX_MAX, BOX_VEC, CONTACT_H, CONTACT_MIN_NY, DESIGN, ENV_COLS, ENV_NY, CAM, EREF, EXPOSURE, FAR, GAMMA, GRID_N, KEY_BANDS, KEY_C, KEY_DIRS, L_ELEV, L_UNIT, RAD, SKY_C, TONE, TOUCH, type C3 } from '@/domain/light-model';
 import type { Affine, Cam, Vec3 } from '@/domain/camera';
 import { F0, light } from '@/ui/lighting';
 
@@ -723,7 +723,7 @@ ${envCode(true)}
 ${boxCode()}
   // 접촉 그늘(light-model contactShade): 윗면 위 점에서 가장 가까운 책 밑동이 가리는 몫
   float contactShade(float3 P, float3 n, float self) {
-    if (n.y <= 0.0) return 0.0;
+    if (n.y <= ${f(CONTACT_MIN_NY)}) return 0.0;
     float m = 0.0;
     for (int i = 0; i < ${BOX_MAX}; i++) {
       if (float(i) >= nBox) break;

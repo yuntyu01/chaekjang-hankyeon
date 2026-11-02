@@ -91,7 +91,8 @@ function Ribbons({ art, book, state, cam, px, sur }: { art: BookArt; book: Book;
     const b = state.value;
     const d = b.dims;
     const root = toWorld(b, { x: d.T * 0.55, y: d.H, z: d.W * RIBBON_Z });
-    const n = rot(b.roll, b.yaw, { x: 0, y: 0, z: -1 }, b.spin ?? 0, b.pitch ?? 0);
+    // 탭 그림은 보는 쪽을 향해 그린다(아래 matrix): 빛도 그 방향으로 받는다. 책 방향을 쓰면 표지 책의 탭이 옆을 향한 면이 되어 15%쯤 어두웠다
+    const n = { x: 0, y: 0, z: -1 };
     const up = rot(b.roll, b.yaw, { x: 0, y: 1, z: 0 }, b.spin ?? 0, b.pitch ?? 0);
     const half = art.ribbonsOut / 2;
     const c = { x: root.x + up.x * half, y: root.y + up.y * half, z: root.z + up.z * half };

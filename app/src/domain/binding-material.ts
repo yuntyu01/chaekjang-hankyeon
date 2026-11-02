@@ -63,7 +63,7 @@ export function bindingSurfaceTone(color: string) {
 // 책 몸체(판·책등·판 끝)의 재질 색: 장정 색에서 뽑은 재질 띠의 가운데 색
 export function bookTone(b: Book) {
   const tone = bindingSurfaceTone(jacketColor(b.cover?.edge ?? b.body?.face ?? b.themeColor));
-  return b.coverArtUri ? hex(saturated(rgb(tone), PHOTO_SATURATION)) : tone;
+  return b.coverArtUri || b.spineArtUri ? hex(saturated(rgb(tone), PHOTO_SATURATION)) : tone;
 }
 
 // 채도 행렬(휘도는 그대로 두고 회색 쪽으로): 입력 r·g·b의 행 3개. 표지 사진(art PhotoCover)과 책등 색이 같은 식을 쓴다

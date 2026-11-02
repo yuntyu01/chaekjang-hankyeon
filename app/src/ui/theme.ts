@@ -21,7 +21,7 @@ export const colors = {
   homeTitle: '#191F28', // 홈 머리글 '나의 책장'·더하기(화면 UI 본문과 같은 색. 2026-11-01 토스 grey900)
   homeSummary: '#646F7E', // 홈 머리글 연도·'전체 책'(화면 UI 보조 글자와 같은 색)
   circle: '#D8CFC4',
-  tabActive: '#191F28',
+  tabActive: '#171717', // 2026-11-03 사용자 시안(#151515 근처)
   tabInactive: '#808080', // 2026-11-03 사용자 시안에서 잰 중립 회색
   danger: '#A5483A',
   dropOk: 'rgba(60, 70, 60, 0.12)',
@@ -29,27 +29,14 @@ export const colors = {
 };
 
 export const fonts = {
-  serif: 'GowunBatang_400Regular',
   // 갈피 카드 본문: 시안과 같은 본명조(Noto Serif KR, app/_layout에서 ReadingSerif로 등록)
   reading: 'ReadingSerif',
-  serifBold: 'GowunBatang_700Bold',
-  // 책 제목: 시안의 명조는 획이 굵어 Bold를 쓴다
-  bookTitle: 'GowunBatang_700Bold',
   // 메뉴·숫자는 시스템 고딕(안드로이드 Noto Sans CJK, iOS Apple SD Gothic Neo)
   sans: undefined as string | undefined,
 };
 
 // 하단 탭 바: 2026-10-26 12dp 내림(height 78→66, bottomAir 22→10). shelfReserve는 책장 줄 배치 계산용으로 예전 높이를 유지한다(시안에 맞춘 배치가 바뀌지 않게)
 export const navigation = { height: 66, bottomAir: 10, iconSize: 25, shelfReserve: 78 };
-
-// 글자 크기. 제목은 명조(serif), 메뉴·숫자는 고딕. 숫자는 "16권"처럼 단위와 함께 작게.
-export const typeScale = {
-  screenTitle: { fontFamily: fonts.serif, fontSize: 32, lineHeight: 42 },
-  sheetTitle: { fontFamily: fonts.serif, fontSize: 21, lineHeight: 30 },
-  body: { fontSize: 14 },
-  meta: { fontSize: 13.5 },
-  caption: { fontSize: 12.5 },
-};
 
 // 그림자 토큰. 빛은 화면 좌상단, 외부 그림자는 화면 좌표 기준 오른쪽 아래.
 export const motion = {

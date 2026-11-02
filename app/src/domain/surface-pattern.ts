@@ -113,6 +113,12 @@ export function grainPeak(M: MatUniforms) {
   return 1;
 }
 
+// 결 최대 중 면 전체의 밝기에 드는 몫(뭉침·얼룩만). 짧은 섬유는 몇 화소짜리 가는 줄이라 그 자리의 반사율만 잠깐 올린다:
+// 카메라 이득(light-model setAlbedo)은 이 값으로 정하고, 섬유까지 더한 grainPeak는 반사율 1을 넘지 않는지만 본다. 섬유 세기로 이득을 정하면 결을 올릴 때마다 벽·판·책의 반사율이 줄고 어두운 책이 떴다(2026-11-03)
+export function albedoPeak(M: MatUniforms) {
+  return M.mGrain[0] === GRAIN_KIND.fiber ? grainPeak(M) - M.mGrain[3] : grainPeak(M);
+}
+
 // 한 점의 재질 표본: 미세 높이의 기울기(면 u·v 방향, 법선을 n − su·U − sv·V로 기울인다), 반사율 배수 f, 거칠기 r(그리지 못한 높이 몫 포함).
 // 셰이더 materialCode matSample과 같은 식
 export function matSample(u: number, v: number, fu: number, fv: number, M: MatUniforms) {

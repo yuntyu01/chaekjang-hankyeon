@@ -23,7 +23,7 @@ import { camAt, VIEW_PITCH_MIN, type Cam, type Vec3 } from './camera';
 import { mm, SHELF_DEPTH, SHELF_FRONT, SHELF_THICK, SHELF_X0, SHELF_X1 } from './geometry';
 import type { BookSurface } from './types';
 import { CALIBRATION, CALIBRATION_INPUTS } from './light-calibration.generated';
-import { grainPeak, MAT_UNIFORMS } from './surface-pattern';
+import { albedoPeak, MAT_UNIFORMS } from './surface-pattern';
 
 // 화면 감마(합성·색 → 반사율 모두 같은 값)
 export const GAMMA = 2.2;
@@ -103,10 +103,6 @@ function grey(v: number): C3 {
 function cmul(a: C3, b: C3): C3 {
   'worklet';
   return [a[0] * b[0], a[1] * b[1], a[2] * b[2]];
-}
-function cscale(c: C3, k: number): C3 {
-  'worklet';
-  return [c[0] * k, c[1] * k, c[2] * k];
 }
 function cmix(a: C3, b: C3, t: number): C3 {
   'worklet';
@@ -1079,9 +1075,10 @@ export function toEye(cam: Cam, p: Vec3): Vec3 {
 
 // 접촉 그늘(scene-config contact): 윗면(n.y > 0) 위 점에서 가장 가까운 책 밑동이 가리는 몫(0~0.5). 점의 면 위로 솟지 않은 책(같은 평면의 이웃)은 가리지 않는다
 export const CONTACT_H = mm(contact.heightMm);
+export const CONTACT_MIN_NY = 0.9;
 export function contactShade(p: Vec3, n: Vec3, boxes: Box[], self = -1) {
   'worklet';
-  if (n.y <= 0) return 0;
+  if (n.y <= CONTACT_MIN_NY) return 0; // 받치는 면(거의 수평)만. 벽에 기댄 표지처럼 기운 면은 책을 받치지 않는다
   let f = 0;
   for (let i = 0; i < boxes.length; i++) {
     if (i === self) continue;
@@ -1450,7 +1447,7 @@ const BOOK_MATS = ['paper', 'cloth', 'coated'] as const;
 const BOOK_SURFACES = [...BOOK_MATS, 'print'] as const;
 function setAlbedo() {
   const cam = EREF.wall;
-  const peak = (name: keyof typeof materials) => grainPeak(MAT_UNIFORMS[name]);
+  const peak = (name: keyof typeof materials) => albedoPeak(MAT_UNIFORMS[name]);
   const all: [C3, C3, C3, number][] = [
     [DESIGN.wall, EREF.wall, SPEC0.wall, peak('paint')],
     [DESIGN.plank, EREF.plank, SPEC0.plank, peak('wood')],
