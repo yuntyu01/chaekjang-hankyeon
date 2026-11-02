@@ -216,9 +216,11 @@ export function Btn({
   style?: StyleProp<ViewStyle>;
 }) {
   const t = useTidy();
+  // 주요·보조 버튼은 흰 바탕 + 옅은 회색 테두리 + 먹색 글자(2026-11-02 사용자 '애매한 갈색 박스 말고 테두리 회색으로 감싼 거로')
   const primary = kind === 'primary';
+  const outlined = primary || kind === 'secondary';
   const off = !!disabled || !!busy;
-  const ink = primary ? (disabled ? colors.disabledInk : colors.onAccent) : kind === 'danger' ? colors.danger : colors.ink;
+  const ink = primary && disabled ? colors.disabledInk : kind === 'danger' ? colors.danger : colors.ink;
   if (t)
     // 정돈 변형: 높이 56·48·40 고정, 단색, 불러오는 중에도 크기가 그대로(글자 자리를 지키고 가운데에 돌림표)
     return (
@@ -233,14 +235,12 @@ export function Btn({
           ts.btn,
           { minHeight: tidyButton[size] },
           size === 's' && ts.btnSmall,
-          primary && { backgroundColor: colors.accent },
-          primary && pressed && { backgroundColor: colors.accentPressed },
-          primary && disabled && { backgroundColor: colors.disabled },
-          // 보조 버튼은 옅은 갈색 바탕 + 갈색 글자(토스의 옅은 파랑 바탕 + 파랑 글자 자리). 삭제는 회색 바탕 + 붉은 글자
-          kind === 'secondary' && { backgroundColor: colors.accentSoft },
+          outlined && ts.btnOutlined,
+          outlined && pressed && { backgroundColor: colors.input },
+          // 삭제는 회색 바탕 + 붉은 글자
           kind === 'danger' && { backgroundColor: colors.input },
           !primary && disabled && { opacity: 0.45 },
-          !primary && pressed && { backgroundColor: kind === 'secondary' ? colors.accentSoftPressed : colors.line },
+          !outlined && pressed && { backgroundColor: colors.line },
           style,
         ]}>
         <View style={[ts.btnInner, busy && { opacity: 0 }]}>
@@ -264,13 +264,12 @@ export function Btn({
         s.btn,
         size === 's' && s.btnSmall,
         size === 'l' && s.btnLarge,
-        primary && { backgroundColor: colors.accent, borderColor: colors.accent },
-        primary && pressed && { backgroundColor: colors.accentPressed, borderColor: colors.accentPressed },
-        primary && disabled && { backgroundColor: colors.disabled, borderColor: colors.disabled },
+        outlined && s.btnOutlined,
+        outlined && pressed && { backgroundColor: colors.input },
         kind === 'ghost' && { borderColor: 'transparent', backgroundColor: 'transparent' },
-        (kind === 'secondary' || kind === 'danger') && { backgroundColor: colors.input, borderColor: colors.input },
+        kind === 'danger' && { backgroundColor: colors.input, borderColor: colors.input },
         !primary && disabled && { opacity: 0.45 },
-        !primary && pressed && { backgroundColor: colors.line, borderColor: colors.line },
+        !outlined && pressed && { backgroundColor: colors.line, borderColor: colors.line },
         style,
       ]}>
       {busy ? <ActivityIndicator color={ink} size="small" /> : iconNode}
@@ -888,6 +887,7 @@ export const s = StyleSheet.create({
   muted: { ...type.sub },
   btn: { minHeight: 46, borderRadius: shape.button, borderWidth: shape.border, borderColor: colors.border, paddingHorizontal: 18, paddingVertical: 12, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, backgroundColor: 'transparent' },
   btnSmall: { minHeight: 40, paddingVertical: 8, paddingHorizontal: 14, borderRadius: shape.input },
+  btnOutlined: { backgroundColor: colors.raised, borderColor: colors.border },
   btnLarge: { minHeight: 56, paddingVertical: 14 },
   iconButton: { width: space.touch, height: space.touch, alignItems: 'center', justifyContent: 'center' },
   iconCircle: { width: 36, height: 36, borderRadius: 18, borderWidth: shape.border, borderColor: colors.border, alignItems: 'center', justifyContent: 'center' },
@@ -969,6 +969,7 @@ const ts = StyleSheet.create({
   footer: { paddingHorizontal: tidySpace.page }, // 버튼 좌우 끝을 본문(입력칸·목록)과 같은 24에 맞춘다
   btn: { borderRadius: tidyShape.button, paddingHorizontal: 20, paddingVertical: 14, alignItems: 'center', justifyContent: 'center', backgroundColor: 'transparent' },
   btnSmall: { paddingVertical: 10, paddingHorizontal: 16 },
+  btnOutlined: { backgroundColor: colors.raised, borderWidth: shape.border, borderColor: colors.border },
   btnInner: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8 },
   btnText: { ...tidyType.button, flexShrink: 1, textAlign: 'center' },
   btnTextSmall: { ...tidyType.button, fontSize: 16, lineHeight: 22, flexShrink: 1, textAlign: 'center' },

@@ -111,6 +111,6 @@ const styles = StyleSheet.create({
   error: { ...StyleSheet.absoluteFill, alignItems: 'center', justifyContent: 'center', padding: 24, backgroundColor: colors.bg },
   errorTitle: { fontFamily: 'System', fontSize: 20, color: screenColors.ink, textAlign: 'center' },
   errorBody: { fontFamily: 'System', fontSize: 15, lineHeight: 23, color: screenColors.inkSoft, textAlign: 'center', marginTop: 12 },
-  retry: { marginTop: 24, paddingHorizontal: 28, paddingVertical: 13, borderRadius: 12, backgroundColor: screenColors.accent },
-  retryText: { fontFamily: 'System', color: screenColors.onAccent, fontSize: 16 },
+  retry: { marginTop: 24, paddingHorizontal: 28, paddingVertical: 13, borderRadius: 12, borderWidth: 1, borderColor: screenColors.border, backgroundColor: screenColors.raised },
+  retryText: { fontFamily: 'System', color: screenColors.ink, fontSize: 16 },
 });
