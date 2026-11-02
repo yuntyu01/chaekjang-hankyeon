@@ -62,6 +62,8 @@ export default function BookmarksTab() {
     <View style={st.filters}>
       <FilterButton label={bookTitle ?? '모든 책'} active={!!book} onPress={() => setSheet('book')} />
       <FilterButton label={KIND_LABEL[kind]} active={kind !== 'all'} onPress={() => setSheet('kind')} />
+      {/* 책을 고르면 그 책의 갈피를 보드로 볼 수 있다 */}
+      {book ? <FilterButton label="보드로 보기" active={false} onPress={() => router.push(`/bookmark/board/${book}`)} /> : null}
     </View>
     <FlatList data={list} keyExtractor={(m) => m.id} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled" initialNumToRender={4} windowSize={5} style={{ marginHorizontal: -ui.pad }} contentContainerStyle={{ paddingHorizontal: ui.pad, paddingBottom: navigation.height + 40 + (active ? MINI_TIMER_SPACE : 0) }}
       // 갈피는 있지만 검색·거르기 결과만 없을 때: 조작부는 그대로 두고 안내만

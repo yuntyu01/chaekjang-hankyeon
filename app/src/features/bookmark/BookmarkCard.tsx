@@ -26,7 +26,7 @@ export function WordWrap({ text, style, maxLines }: { text: string; style: Style
   return <Text style={style} numberOfLines={maxLines} textBreakStrategy="highQuality">{text}</Text>;
 }
 
-function paperTone(color: string) {
+export function paperTone(color: string) {
   const c = /^#([\da-f]{6})$/i.exec(color)?.[1];
   if (!c) return { paper: '#D0DEE8', tape: '#BCCFDF', ink: '#6896B5' };
   const [r, g, b] = [0, 2, 4].map((i) => parseInt(c.slice(i, i + 2), 16));

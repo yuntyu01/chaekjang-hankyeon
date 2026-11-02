@@ -213,6 +213,7 @@ export default function BookDetailScreen() {
                   </Pressable>
                 ))}
               </ListGroup>
+              <Btn label="갈피 보드로 보기" kind="secondary" onPress={() => router.push(`/bookmark/board/${id}`)} style={{ marginTop: space.m }} />
               {marks.length > 5 ? <Btn label={`갈피 ${marks.length}개 모두 보기`} kind="ghost" onPress={() => router.push({ pathname: '/bookmarks', params: { book: id } })} /> : null}
             </View>
           ) : (

@@ -1,0 +1,74 @@
+import { BOARD_MAX_SCALE, BOARD_MIN_SCALE, boardBounds, boardCardSize, boardClamp, boardFit, boardFreeSpot, boardRotOf, boardSpots } from '../bookmark-board';
+
+const at = (n: number) => `2026-10-${String(n).padStart(2, '0')}T00:00:00.000Z`;
+const mk = (n: number, more: object = {}) => ({ id: `m${n}`, text: '천천히 읽어야 보이는 문장이 있다.', createdAt: at(n), ...more });
+const overlap = (a: { x: number; y: number; w: number; h: number }, b: { x: number; y: number; w: number; h: number }) => Math.abs(a.x - b.x) < (a.w + b.w) / 2 && Math.abs(a.y - b.y) < (a.h + b.h) / 2;
+
+describe('갈피 보드 자동 배치', () => {
+  it('자동으로 놓인 갈피끼리 겹치지 않고 빠지지 않는다', () => {
+    const spots = boardSpots(Array.from({ length: 30 }, (_, i) => mk(i + 1, i % 3 === 0 ? { text: '긴 문장 '.repeat(30) } : {})));
+    expect(spots).toHaveLength(30);
+    for (let i = 0; i < spots.length; i++) for (let j = i + 1; j < spots.length; j++) expect(overlap(spots[i], spots[j])).toBe(false);
+  });
+  it('갈피가 늘어도 이미 놓인 갈피는 움직이지 않는다', () => {
+    const a = boardSpots([mk(1), mk(2), mk(3)]);
+    const b = boardSpots([mk(1), mk(2), mk(3), mk(4), mk(5)]);
+    for (const s of a) expect(b.find((o) => o.id === s.id)).toEqual(s);
+  });
+  it('한 장을 손으로 옮겨도 다른 갈피는 그 자리에 있다', () => {
+    const a = boardSpots([mk(1), mk(2), mk(3), mk(4)]);
+    const b = boardSpots([mk(1), mk(2, { boardX: 900, boardY: 900, boardRot: 1 }), mk(3), mk(4)]);
+    for (const id of ['m1', 'm3', 'm4']) expect(b.find((o) => o.id === id)).toEqual(a.find((o) => o.id === id));
+    expect(b.find((o) => o.id === 'm2')).toMatchObject({ x: 900, y: 900, rot: 1, placed: true });
+  });
+  it('새 갈피는 손으로 옮겨 둔 갈피를 덮지 않는다', () => {
+    const first = boardSpots([mk(1)])[0];
+    const spots = boardSpots([mk(1, { boardX: first.x + 250, boardY: first.y + 200 }), mk(2), mk(3)]);
+    const moved = spots.find((s) => s.id === 'm1')!;
+    for (const s of spots) if (s.id !== 'm1') expect(overlap(s, moved)).toBe(false);
+  });
+  it('기울기는 갈피마다 정해져 있고 크지 않다', () => {
+    expect(boardRotOf('abc')).toBe(boardRotOf('abc'));
+    for (let i = 0; i < 50; i++) expect(Math.abs(boardRotOf(`b${i}`))).toBeLessThanOrEqual(3.2);
+  });
+  it('사진 갈피는 인화지 크기, 긴 글은 줄 수 한도까지만 커진다', () => {
+    expect(boardCardSize({ text: '', photoUri: 'x', photoRatio: 1.5 }).h).toBeLessThan(boardCardSize({ text: '', photoUri: 'x', photoRatio: 0.9 }).h);
+    expect(boardCardSize({ text: '가'.repeat(900) }).h).toBe(boardCardSize({ text: '가'.repeat(2000) }).h);
+  });
+});
+
+describe('갈피 보드 보기', () => {
+  const spots = boardSpots(Array.from({ length: 12 }, (_, i) => mk(i + 1)));
+  const VW = 390;
+  const VH = 620;
+  it('전체 보기: 모든 갈피가 화면 안에 들어오고 원래 크기보다 키우지 않는다', () => {
+    const v = boardFit(spots, VW, VH);
+    const b = boardBounds(spots);
+    expect(v.s).toBeLessThanOrEqual(1);
+    expect(b.x0 * v.s + v.x).toBeGreaterThanOrEqual(0);
+    expect(b.x1 * v.s + v.x).toBeLessThanOrEqual(VW);
+    expect(b.y1 * v.s + v.y).toBeLessThanOrEqual(VH);
+    expect(boardFit([spots[0]], VW, VH).s).toBe(1);
+  });
+  it('이동·확대 한도: 배율은 범위 안, 갈피가 화면에서 사라지지 않는다', () => {
+    const b = boardBounds(spots);
+    expect(boardClamp({ x: 0, y: 0, s: 99 }, b, VW, VH).s).toBe(BOARD_MAX_SCALE);
+    expect(boardClamp({ x: 0, y: 0, s: 0.01 }, b, VW, VH).s).toBe(BOARD_MIN_SCALE);
+    const far = boardClamp({ x: 99999, y: 99999, s: 1 }, b, VW, VH);
+    expect(far.x + b.x0).toBeLessThanOrEqual(VW);
+    expect(far.y + b.y0).toBeLessThanOrEqual(VH);
+    const back = boardClamp({ x: -99999, y: -99999, s: 1 }, b, VW, VH);
+    expect(back.x + b.x1).toBeGreaterThanOrEqual(0);
+  });
+  it('빈 자리: 지금 보이는 곳에서 다른 갈피와 겹치지 않는 곳', () => {
+    const v = boardFit(spots.slice(0, 2), VW, VH);
+    const size = { w: 216, h: 130 };
+    const p = boardFreeSpot(spots.slice(0, 2), v, VW, VH, size);
+    for (const s of spots.slice(0, 2)) expect(overlap({ ...p, ...size }, s)).toBe(false);
+  });
+  it('빈 곳이 없으면 가운데', () => {
+    const v = { x: 0, y: 0, s: 1 };
+    const wall = [{ x: 195, y: 310, w: 2000, h: 2000 }];
+    expect(boardFreeSpot(wall, v, VW, VH, { w: 216, h: 130 })).toEqual({ x: 195, y: 310 });
+  });
+});

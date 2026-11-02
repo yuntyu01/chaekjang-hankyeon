@@ -1,7 +1,8 @@
 import { frontExtent } from '../front-pose';
+import { emptyLibrary } from '../library';
 import { frontDims, SHELF_DEPTH, SHELF_FRONT, SHELF_USABLE_WIDTH } from '../geometry';
 import { SAMPLE_LAYOUT } from '../onboarding-sample';
-import { realReadingLibrary, REAL_BEFORE, REAL_BOOKS, REAL_FRONT_BEFORE, REAL_FRONT_BOOKS, REAL_FRONT_LAYOUT, REAL_LAYOUT, REAL_SIDE_BOOKS, REAL_SIDE_LAYOUT } from '../real-sample';
+import { realBoardSeed, realReadingLibrary, REAL_BEFORE, REAL_BOOKS, REAL_FRONT_BEFORE, REAL_FRONT_BOOKS, REAL_FRONT_LAYOUT, REAL_LAYOUT, REAL_SIDE_BOOKS, REAL_SIDE_LAYOUT } from '../real-sample';
 import { computeShelf, resolveLeans } from '../shelf-scene';
 import { leanHolds } from '../statics';
 import type { Book, ShelfLayout } from '../types';
@@ -60,6 +61,26 @@ describe('실물 비교 책장(측정 전용)', () => {
       expect(new Date(v.startedAt).getMonth()).toBe(9);
     }
     expect(realReadingLibrary(2026, 10).sessions).toEqual(lib.sessions);
+  });
+  it('보드 사진용: 책이 없으면 넣고, 갈피는 한 번만 넣는다', () => {
+    let lib = emptyLibrary();
+    const store = {
+      get: () => ({ lib }),
+      addBook: () => {
+        lib = { ...lib, books: { ...lib.books, b1: { id: 'b1', editionId: 'e', status: 'reading', createdAt: '', updatedAt: '' } } };
+        return 'b1';
+      },
+      addBookmark: (m: { myBookId: string; text: string }) => {
+        const id = `m${Object.keys(lib.bookmarks).length}`;
+        lib = { ...lib, bookmarks: { ...lib.bookmarks, [id]: { id, ...m, createdAt: '', updatedAt: '' } } };
+        return id;
+      },
+    };
+    expect(realBoardSeed(store, 'demo')).toBe('b1');
+    const n = Object.keys(lib.bookmarks).length;
+    expect(n).toBeGreaterThan(5);
+    expect(realBoardSeed(store, 'b1')).toBe('b1');
+    expect(Object.keys(lib.bookmarks)).toHaveLength(n);
   });
   it('demoboot 값은 아는 이름만 켠다', () => {
     expect(demoKindOf('1')).toBe('sample');

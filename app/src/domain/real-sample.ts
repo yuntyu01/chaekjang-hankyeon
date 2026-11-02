@@ -5,7 +5,7 @@
 import { frontExtent } from './front-pose';
 import { frontDims, SHELF_DEPTH, WALL_GAP } from './geometry';
 import { realDimensions } from './jacket-proportions';
-import { emptyLibrary, type Library } from './library';
+import { emptyLibrary, type Edition, type Library, type ReadStatus } from './library';
 import { SAMPLE_LAYOUT } from './onboarding-sample';
 import { heightClassOf, thicknessClassOf } from './rebinding';
 import { tipAngle } from './statics';
@@ -141,4 +141,19 @@ export function realReadingLibrary(y: number, m: number): Library {
     }
   }
   return lib;
+}
+
+// 갈피 보드 사진·옮기기 확인용: 측정 앱의 시험 서재에 실제 책 한 권과 갈피를 넣는다(실제 저장 경로로, 한 번만). 표지 그림을 사진 갈피로 쓴다
+const BOARD_QUOTES: [string, number][] = [['새는 알에서 나오려고 투쟁한다. 알은 세계이다.', 123], ['내 안에서 솟아 나오려는 것, 바로 그것을 나는 살아 보려 했다.', 9], ['천천히 읽어야 보이는 문장이 있다.', 40], ['누구에게나 자기 자신에게로 가는 길이 있다.', 62], ['우리는 서로를 이해할 수 있다. 그러나 해석할 수 있는 것은 자기 자신뿐이다.', 8], ['운명은 다른 곳에서 오지 않는다.', 201]];
+type BoardStore = { get(): { lib: Library }; addBook(input: NewBookInput): string; addBookmark(input: { myBookId: string; text: string; page?: number; photoUri?: string; photoRatio?: number }): string };
+type NewBookInput = { edition: Omit<Edition, 'id' | 'createdAt' | 'updatedAt'>; status: ReadStatus; binding: { spineColor: string; motif: 'none'; source: 'default'; seed: number } };
+export function realBoardSeed(store: BoardStore, bookId: string) {
+  const { lib } = store.get();
+  const known = lib.books[bookId] ? bookId : Object.keys(lib.books)[0];
+  const demian = byId('b02');
+  const target = known ?? store.addBook({ edition: { title: demian.title, authors: [demian.author!], coverUri: demian.coverArtUri, coverSource: 'api', source: 'search', size: { widthMm: 132, heightMm: 225 }, pageCount: 239 }, status: 'reading', binding: { spineColor: demian.themeColor, motif: 'none', source: 'default', seed: 1 } });
+  if (Object.values(store.get().lib.bookmarks).some((m) => m.myBookId === target)) return target;
+  BOARD_QUOTES.forEach(([text, page]) => store.addBookmark({ myBookId: target, text, page }));
+  store.addBookmark({ myBookId: target, text: '', page: 62, photoUri: 'https://image.yes24.com/goods/176787/XL', photoRatio: 1.25 });
+  return target;
 }
