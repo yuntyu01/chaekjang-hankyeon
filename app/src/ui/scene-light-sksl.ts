@@ -4,6 +4,7 @@
 //   bake: 하늘 가림(둘레·책 상자가 가린 하늘, 시점과 상관없다)을 면 좌표 그림에 굽는다. 무거운 몫은 모두 여기(책이 멈췄을 때만 돈다).
 //   lit: 구운 그림(tex)을 읽고 나머지(하늘·창빛 직접 몫, 둥근 모서리 법선, 반사광)를 화소마다. 곱하기·컬러 닷지 두 가지로 컴파일한다.
 import { EDGE_R, GROOVE, PLANK_EDGE_R, SEAM_R, SPINE_CURVE } from '@/domain/book-parts';
+import { FIBER_L, FIBER_W } from '@/domain/surface-pattern';
 import { SHELF_DEPTH, SHELF_FRONT, SHELF_THICK, SHELF_X0, SHELF_X1 } from '@/domain/geometry';
 import { ALBEDO, BOX_MAX, BOX_VEC, CONTACT_H, DESIGN, ENV_COLS, ENV_NY, CAM, EREF, EXPOSURE, FAR, GAMMA, GRID_N, KEY_BANDS, KEY_C, KEY_DIRS, L_ELEV, L_UNIT, RAD, SKY_C, TONE, TOUCH, type C3 } from '@/domain/light-model';
 import type { Affine, Cam, Vec3 } from '@/domain/camera';
@@ -923,6 +924,8 @@ function materialCode() {
     return float3(a + (b - a) * w.x + (c - a) * w.y + k * w.x * w.y, dw.x * (b - a + k * w.y), dw.y * (c - a + k * w.x));
   }
   float seenOf(float size, float fp) { return smoothstep(0.0, 1.0, clamp((size / max(fp, 1e-9) - 2.0) / 2.0, 0.0, 1.0)); }
+  const float FIBW = ${f(FIBER_W)};
+  const float FIBL = ${f(FIBER_L)};
   float pulseInt(float x, float q) { return floor(x) * q + clamp(fract(x) - (1.0 - q), 0.0, q); }
   float pulseCover(float x, float q, float w) {
     if (w < 1e-6) return fract(x) >= 1.0 - q ? 1.0 : 0.0;
@@ -955,6 +958,13 @@ function materialCode() {
     float s2 = mS.y;
     if (mG.x > 0.5 && mG.x < 1.5) {
       f += mG.y * vnoise(float2(u, v) / s1).x * seenOf(s1, fm) + mG.z * vnoise(float2(u / s2 + 17.0, v / s2 + 31.0)).x * seenOf(s2, fm);
+      // 짧은 섬유(surface-pattern fiberPattern·fiberSeen과 같은 식)
+      float fs = smoothstep(0.0, 1.0, clamp((FIBW / max(fm, 1e-9) - 0.1) / 0.25, 0.0, 1.0));
+      if (mG.w > 0.0 && fs > 0.0) {
+        float na = vnoise(float2((0.94 * u + 0.34 * v) / FIBL + 5.0, (-0.34 * u + 0.94 * v) / FIBW + 9.0)).x;
+        float nb = vnoise(float2((0.82 * u - 0.57 * v) / FIBL + 41.0, (0.57 * u + 0.82 * v) / FIBW + 23.0)).x;
+        f += mG.w * 0.5 * (na * abs(na) + nb * abs(nb)) * fs;
+      }
     } else if (mG.x > 1.5 && mG.x < 2.5) {
       float k = 2.0 * PI / s1;
       f += mG.y * cos(k * u) * cos(k * v) * seenOf(s1 * 0.5, fm) + mG.z * vnoise(float2(u / s2 + 17.0, v / s2 + 31.0)).x * seenOf(s2, fm);

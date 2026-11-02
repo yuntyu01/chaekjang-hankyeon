@@ -4,7 +4,7 @@
 //   둘 다 책등 면 그림 좌표에 고정되어 몸체와 함께 돈다(글자를 따로 돌리지 않는다). 어느 쪽을 보일지는 자세가 정한다(BookNode).
 // - 표지 면: 표지 그림(달·풍경 등) + 제목(시안처럼 제목만. 저자는 표지에 쓰지 않는다)
 // - 갈피: 머리 뒤에서 나오는 끈(원점 = 아래 가운데)
-import { ColorType, AlphaType, Group, Image as SkiaImage, PaintStyle, StrokeJoin, ImageSVG, Path, Picture, Rect, Skia, Text, drawAsPicture, useImage, useTypeface, type SkFont, type SkImage, type SkPath, type SkPicture, type SkTypeface } from '@shopify/react-native-skia';
+import { ColorMatrix, ColorType, AlphaType, Group, Image as SkiaImage, PaintStyle, StrokeJoin, ImageSVG, Path, Picture, Rect, Skia, Text, drawAsPicture, useImage, useTypeface, type SkFont, type SkImage, type SkPath, type SkPicture, type SkTypeface } from '@shopify/react-native-skia';
 import { FilterMode, MipmapMode } from '@shopify/react-native-skia';
 import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
 
@@ -21,7 +21,8 @@ import { hasRibbon, ribbonDesign } from '@/domain/ribbon-design';
 import { bookFacePath, CoverFaceArt, PAGE_BASE, SpineFaceArt } from '@/ui/book/BookBody';
 import { ReferenceCover } from './ReferenceCover';
 import { ReferenceBinding } from './ReferenceBinding';
-import { bookTone, referenceBinding } from '@/domain/binding-material';
+import { bookTone, referenceBinding, saturationMatrix } from '@/domain/binding-material';
+import { PHOTO_SATURATION } from '@/scene-config/lighting';
 import { useLibrary } from '@/store/library-store';
 import { placementStore } from '@/store/placement-store';
 import { TL, tl } from '@/ui/perf';
@@ -392,12 +393,14 @@ const COVER_MOTIF = false;
 // 표지·책등 사진을 크게 줄여 그릴 때 글자가 깨지지 않게(밉맵)
 const PHOTO_SAMPLING = { filter: FilterMode.Linear, mipmap: MipmapMode.Linear };
 // 실제 표지 사진을 면에 꽉 채운다(비율이 다르면 넘치는 쪽을 가운데로 자른다). 그림 바깥의 흰 여백은 표지가 아니라서 뺀다(cover-url whiteMat)
+// 표지 사진의 채도 행렬(Skia 4×5: 색 0~1)
+const PHOTO_MATRIX = [...saturationMatrix(PHOTO_SATURATION).flatMap((row) => [...row, 0, 0]), 0, 0, 0, 1, 0];
 function PhotoCover({ image, w, h }: { image: SkImage; w: number; h: number }) {
   const iw = image.width();
   const ih = image.height();
   const m = whiteMat(iw, ih, (x, y, width, height) => image.readPixels(x, y, { width, height, colorType: ColorType.RGBA_8888, alphaType: AlphaType.Unpremul })) ?? { l: 0, t: 0, r: 0, b: 0 };
   const k = Math.max(w / (iw * (1 - m.l - m.r)), h / (ih * (1 - m.t - m.b)));
-  return <SkiaImage image={image} x={w / 2 - (m.l + (1 - m.l - m.r) / 2) * iw * k} y={h / 2 - (m.t + (1 - m.t - m.b) / 2) * ih * k} width={iw * k} height={ih * k} fit="fill" sampling={PHOTO_SAMPLING} />;
+  return <SkiaImage image={image} x={w / 2 - (m.l + (1 - m.l - m.r) / 2) * iw * k} y={h / 2 - (m.t + (1 - m.t - m.b) / 2) * ih * k} width={iw * k} height={ih * k} fit="fill" sampling={PHOTO_SAMPLING}><ColorMatrix matrix={PHOTO_MATRIX} /></SkiaImage>;
 }
 
 async function buildArt(book: Book, s: number, dims: { T: number; H: number; W: number }, shared: Shared, motif: SkImage | null, coverImg: SkImage | null, made: MadeArt): Promise<BookArt> {

@@ -1,7 +1,7 @@
 // 재질 무늬(scene-config/lighting materials의 결·미세 높이)를 셰이더 입력으로 묶고, 셰이더(scene-light-sksl materialCode)와 같은 식을 JS로도 둔다
 // (테스트·통계: 결의 평균이 1인지, 미세 높이의 기울기 RMS가 재질 값인지, 화소보다 작은 무늬가 평균으로 줄어드는지).
 // 면 좌표 (u, v)는 DU, 화소가 덮는 면 길이 fu·fv도 DU.
-import { materials, type SurfaceMaterial } from '@/scene-config/lighting';
+import { FIBER, materials, type SurfaceMaterial } from '@/scene-config/lighting';
 
 import { mm } from './geometry';
 
@@ -48,7 +48,7 @@ export const VN_GRAD_RMS = (() => {
 })();
 
 export const GRAIN_KIND = { none: 0, fiber: 1, weave: 2, sheets: 3, wood: 4 } as const;
-// 셰이더 입력: mRough = (거칠기 r, 기울기 RMS), mBump = (1/크기 u, 1/크기 v, 진폭, 천 올이면 1), mGrain = (종류, 세기 1, 세기 2, 접장 틈 폭), mGsize = (크기 1, 크기 2)
+// 셰이더 입력: mRough = (거칠기 r, 기울기 RMS), mBump = (1/크기 u, 1/크기 v, 진폭, 천 올이면 1), mGrain = (종류, 세기 1, 세기 2, 접장 틈 폭 또는 섬유 세기), mGsize = (크기 1, 크기 2)
 // 접장 사이 틈 폭(속지 sheets): 낱장 1.5장(0.1mm × 1.5)
 export const SHEET_GAP = mm(0.15);
 // 미세 높이 진폭: 값 잡음은 높이 H(DU)로 E|∇h|² = H²·g²·(1/su² + 1/sv²)이 slope²이 되게, 천 올(h = H·sin(ku)·sin(kv))은 기울기 진폭 H·k = √2·slope
@@ -66,7 +66,7 @@ export function matUniforms(m: SurfaceMaterial): MatUniforms {
   return {
     mRough: [m.roughness, b ? b.slope : 0],
     mBump: bump,
-    mGrain: [GRAIN_KIND[g.kind], g.contrast[0], g.contrast[1], g.kind === 'sheets' ? SHEET_GAP : 0],
+    mGrain: [GRAIN_KIND[g.kind], g.contrast[0], g.contrast[1], g.kind === 'sheets' ? SHEET_GAP : g.kind === 'fiber' ? (g.fine ?? 0) : 0],
     mGsize: [mm(g.size[0]), mm(g.size[1])],
   };
 }
@@ -76,6 +76,20 @@ export const MAT_UNIFORMS = Object.fromEntries(Object.entries(materials).map(([k
 export function seenOf(size: number, fp: number) {
   const x = Math.min(1, Math.max(0, (size / Math.max(fp, 1e-9) - 2) / 2));
   return x * x * (3 - 2 * x);
+}
+// 짧은 섬유: 폭이 기기 픽셀 하나쯤이다. 셰이더의 화소 길이 fp는 그림 좌표(dp) 한 칸이라 기기 픽셀의 2~3배다(1080폭 기기에서 1dp = 2.6픽셀 ≈ 1.2mm).
+// 그래서 다른 무늬의 seenOf는 2mm 아래를 모두 지운다(2026-11-02 실측: 1.5mm 결도 안 보였다). 섬유는 폭/fp가 0.1 아래면 0, 0.35 위면 1로 따로 줄인다. 면이 눕혀져 가늘어지면 사라져 모아레가 생기지 않는다
+export const FIBER_W = mm(FIBER.width);
+export const FIBER_L = mm(FIBER.length);
+export function fiberSeen(fp: number) {
+  const x = Math.min(1, Math.max(0, (FIBER_W / Math.max(fp, 1e-9) - 0.1) / 0.25));
+  return x * x * (3 - 2 * x);
+}
+// 섬유 무늬(−1~1, 평균 0): 길쭉한 잡음 두 겹을 서로 다른 방향으로 엇갈린다. n·|n|로 값이 큰 곳만 남겨 가는 줄처럼 보인다
+export function fiberPattern(u: number, v: number) {
+  const a = vnoise((0.94 * u + 0.34 * v) / FIBER_L + 5, (-0.34 * u + 0.94 * v) / FIBER_W + 9)[0];
+  const b = vnoise((0.82 * u - 0.57 * v) / FIBER_L + 41, (0.57 * u + 0.82 * v) / FIBER_W + 23)[0];
+  return 0.5 * (a * Math.abs(a) + b * Math.abs(b));
 }
 // 주기 pulse(한 주기 1 중 끝쪽 q 폭이 1인 띠)의 0~x 적분
 function pulseInt(x: number, q: number) {
@@ -92,7 +106,8 @@ export function pulseCover(x: number, q: number, w: number) {
 export function grainPeak(M: MatUniforms) {
   const [kind, c1, c2, gap] = M.mGrain;
   const [, s2] = M.mGsize;
-  if (kind === GRAIN_KIND.fiber || kind === GRAIN_KIND.weave) return 1 + c1 + c2;
+  if (kind === GRAIN_KIND.fiber) return 1 + c1 + c2 + gap;
+  if (kind === GRAIN_KIND.weave) return 1 + c1 + c2;
   if (kind === GRAIN_KIND.sheets) return 1 + c1 + (c2 * gap) / s2;
   if (kind === GRAIN_KIND.wood) return 1 + c1 * 0.25 + c2;
   return 1;
@@ -127,6 +142,7 @@ export function matSample(u: number, v: number, fu: number, fv: number, M: MatUn
   let f = 1;
   if (kind === GRAIN_KIND.fiber) {
     f += c1 * vnoise(u / s1, v / s1)[0] * seenOf(s1, fm) + c2 * vnoise(u / s2 + 17, v / s2 + 31)[0] * seenOf(s2, fm);
+    if (gap > 0) f += gap * fiberPattern(u, v) * fiberSeen(fm);
   } else if (kind === GRAIN_KIND.weave) {
     const k = (2 * Math.PI) / s1;
     f += c1 * Math.cos(k * u) * Math.cos(k * v) * seenOf(s1 / 2, fm) + c2 * vnoise(u / s2 + 17, v / s2 + 31)[0] * seenOf(s2, fm);

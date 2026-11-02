@@ -2,6 +2,8 @@
 // 빛은 그릴 때 빛 모델이 계산한다.
 import profiles from '@/scene-config/reference-bindings.generated.json';
 
+import { PHOTO_SATURATION } from '@/scene-config/lighting';
+
 import { jacketColor } from './book-design';
 import type { Book, BookSurface } from './types';
 
@@ -60,7 +62,17 @@ export function bindingSurfaceTone(color: string) {
 
 // 책 몸체(판·책등·판 끝)의 재질 색: 장정 색에서 뽑은 재질 띠의 가운데 색
 export function bookTone(b: Book) {
-  return bindingSurfaceTone(jacketColor(b.cover?.edge ?? b.body?.face ?? b.themeColor));
+  const tone = bindingSurfaceTone(jacketColor(b.cover?.edge ?? b.body?.face ?? b.themeColor));
+  return b.coverArtUri ? hex(saturated(rgb(tone), PHOTO_SATURATION)) : tone;
+}
+
+// 채도 행렬(휘도는 그대로 두고 회색 쪽으로): 입력 r·g·b의 행 3개. 표지 사진(art PhotoCover)과 책등 색이 같은 식을 쓴다
+const LUMA = [0.2126, 0.7152, 0.0722];
+export function saturationMatrix(s: number): number[][] {
+  return [0, 1, 2].map((row) => LUMA.map((l, col) => l * (1 - s) + (row === col ? s : 0)));
+}
+export function saturated(c: number[], s: number): number[] {
+  return saturationMatrix(s).map((m) => m[0] * c[0] + m[1] * c[1] + m[2] * c[2]);
 }
 
 // 면 전체에 곱할 빛 비율의 기준 색과 그림 표지 여부(BookLight). 실제 표지·책등 사진을 입힌 책은 픽셀마다 색이 달라 책 색 하나를 기준으로 삼지 않는다:

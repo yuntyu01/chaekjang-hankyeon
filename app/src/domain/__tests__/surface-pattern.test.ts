@@ -4,7 +4,7 @@ import palette from '@/scene-config/reference-bindings.generated.json';
 import { materials } from '@/scene-config/lighting';
 
 import { bookAlbedo, ROUGH } from '../light-model';
-import { GRAIN_KIND, grainPeak, MAT_UNIFORMS, matSample, VN_GRAD_RMS } from '../surface-pattern';
+import { FIBER_W, fiberSeen, GRAIN_KIND, grainPeak, MAT_UNIFORMS, matSample, VN_GRAD_RMS } from '../surface-pattern';
 
 const NAMES = Object.keys(materials) as (keyof typeof materials)[];
 // 고르게 흩은 표본 점(R2 저불일치 수열: 두 축이 서로 묶이지 않는다)
@@ -54,6 +54,24 @@ describe('재질 무늬', () => {
     let top = 0;
     for (let i = 0; i < 4000; i++) top = Math.max(top, matSample(i * 0.137, i * 0.291, 0, 0, MAT_UNIFORMS[name]).f);
     expect(top).toBeLessThanOrEqual(grainPeak(MAT_UNIFORMS[name]) + 1e-9);
+  });
+
+  it.each(['paper', 'print'] as const)('%s: 짧은 섬유가 화소 하나 크기로 보이고, 면이 눕혀져 화소보다 가늘어지면 사라진다', (name) => {
+    const M = MAT_UNIFORMS[name];
+    const fineOnly = { ...M, mGrain: [M.mGrain[0], 0, 0, M.mGrain[3]] };
+    const std = (fp: number) => {
+      const pts = points(8000, 400);
+      const fs = pts.map(([u, v]) => matSample(u, v, fp, fp, fineOnly).f);
+      const mean = fs.reduce((s, x) => s + x, 0) / fs.length;
+      return Math.sqrt(fs.reduce((s, x) => s + (x - mean) ** 2, 0) / fs.length);
+    };
+    // 정면으로 놓인 책: fp는 1dp(1080폭 기기에서 약 1.23mm, 섬유 폭의 2.2배)라도 섬유가 다 보인다
+    const faceOn = FIBER_W * 2.2;
+    expect(fiberSeen(faceOn)).toBe(1);
+    expect(std(faceOn)).toBeGreaterThan(0.02);
+    // 면이 많이 눕혀지면 사라진다
+    expect(fiberSeen(FIBER_W * 10)).toBe(0);
+    expect(std(FIBER_W * 10)).toBeCloseTo(0, 9);
   });
 
   it('결을 곱해도 반사율은 1을 넘지 않는다(장정 재질 × 가장 밝은 시안 장정 색)', () => {

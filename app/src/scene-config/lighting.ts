@@ -19,7 +19,8 @@
 //   왼쪽 10°·위 12°면 대각선이 세로에서 40°라 왼쪽 끝 판 아래가 비고 오른쪽 끝은 판 너머로 번졌다(2026-10-10 사용자: 선반 양끝 문제).
 //   위 17°로 높여 26°로 세웠다(판 그림자도 길어져 그림자 참고의 긴 꼬리에 가깝다). 왼쪽을 더 줄이면 책 그림자가 책 옆으로 덜 드러난다
 //   (그림자 참고는 책 그림자만 오른쪽으로 밀고 판 그림자는 바로 아래로 그려 물리로는 함께 나오지 않는다)
-// - 빛 색: 창빛은 흰빛, 방 빛은 살짝 따뜻하다([1.14, 1, 0.84])
+// - 빛 색: 창빛·방 빛 모두 흰빛. 2026-11-03 사용자 '그림자가 불쾌하게 진다': 방 빛이 따뜻하던([1.14, 1, 0.84], 크림 벽 시절) 때는 흰 창빛이 가려진 곳에
+//   따뜻한 방 빛만 남아 흰 벽 그림자가 노란 올리브색(판 아래 #DEDCD1, R−B 13~28)으로 떴다. 그늘의 따뜻한 기운은 판에서 튄 빛(색 번짐)으로만 남는다
 // 세기는 상대값이다. 재질 색(시안 색)은 그 재질이 대표 자리에서 보이는 색으로 보고 반사율을 거꾸로 구한다
 // (light-model calibrate). 카메라(노출·화이트 밸런스)는 줄 가운데 벽에 맞춘다.
 import { sceneColors } from './palette';
@@ -30,7 +31,7 @@ export const light = {
   ambient: 0.62,
   skyTilt: { x: 0, y: 0.25, z: -0.12 },
   diffuse: 0.2,
-  skyColor: [1.14, 1, 0.84] as [number, number, number],
+  skyColor: [1, 1, 1] as [number, number, number],
   keyColor: [1, 1, 1] as [number, number, number],
   // 방 빛 하늘 가림 세기(물리 1). 모든 곳에 같은 비율로 쓴다
   occlusion: 0.3,
@@ -40,6 +41,10 @@ export const light = {
 // 책이 붕 떠 보였다. 실제로는 책 밑 둥근 모서리·바닥 틈이 어둡게 가린다: 받치는 면(윗면) 위의 점에서 책 밑동을 높이 heightMm의 어두운 띠로 보고 그 띠가 가리는 몫
 // ½(1 − d/√(d² + h²))(수직 띠의 형태 계수, d: 책까지 거리)만큼 받는 빛을 줄인다. 높이는 화면에서 3~4화소로 보이게 고른 값(보기 선택, 실제 모서리 반지름 4mm보다 크다)
 export const contact = { heightMm: 18 };
+
+// 책장에 그리는 실제 표지 사진의 채도(1 = 원본, 2026-11-03 사용자 '실사 책들 채도를 좀 낮추면'). 인터넷 표지 그림은 화면용이라 실제 무광 인쇄지보다 쨍해서 흰 벽에서 튄다.
+// 책등 색도 같은 값을 쓴다(표지 사진에서 뽑은 색이라 어긋나지 않게). 목록·시트의 썸네일은 원본 그대로
+export const PHOTO_SATURATION = 0.85;
 
 // 카메라(보기 선택, 물리 값이 아니다). exposure: 노출(EV), 기준(재질이 대표 자리에서 시안 색으로 보이는 노출)보다 밝게 +, 어둡게 −.
 // 화면 색은 노출 뒤 필름형 톤 곡선(light-model tone): 화면 밝기가 shoulder를 넘으면 1로 부드럽게 다가가고(하이라이트를 누른다),
@@ -61,7 +66,9 @@ export const camera = { exposure: 0, shoulder: 0.85, toe: 0.18, toeK: 0.15 };
 // 무늬도 화소 2개보다 작아지면 그 화소의 평균(1)으로 줄인다(가는 선은 화소 안 넓이 비로). 세기는 가장 밝은 장정 색에 곱해도 반사율이 1을 넘지 않게
 export const F0 = 0.04;
 export type Bump = { size: [number, number]; slope: number; weave?: boolean };
-export type Grain = { kind: 'fiber' | 'weave' | 'sheets' | 'wood' | 'none'; size: [number, number]; contrast: [number, number] };
+// fine: (fiber만) 짧은 섬유의 세기. 폭 FIBER.width·길이 FIBER.length로 두 방향으로 엇갈린다
+export type Grain = { kind: 'fiber' | 'weave' | 'sheets' | 'wood' | 'none'; size: [number, number]; contrast: [number, number]; fine?: number };
+export const FIBER = { width: 0.55, length: 2.2 };
 // specular: 표면 반사 몫의 배수(없으면 1, 보통 유전체 F0). 반사광은 모든 색에 똑같이 더해져 검은 부분을 띄운다
 export type SurfaceMaterial = { roughness: number; bump: Bump | null; grain: Grain; specular?: number };
 const NONE: Grain = { kind: 'none', size: [1, 1], contrast: [0, 0] };
@@ -70,7 +77,7 @@ export const materials = {
   // 결(반사율): 표지 종이의 섬유 뭉침(지합, 1~5mm 구름 무늬)은 반사율이 몇 % 다르다. 2026-10-31 사용자 '잔결이 좀 보이게':
   // 0.6mm(화면 1.3px, 안 보임)·1% 세기 → 1.5mm(약 3px)·4%, 4mm·2%. 에뮬 측정(12px 흐림을 뺀 책등 밝기 표준편차): 0.24 → 0.45단계.
   // 사용자가 보여 준 사진은 약 1.5단계라 옅었다 → 2026-11-02 사용자 '종이재질 넣어줘': 세기를 사진 쪽으로 3배(12%, 6%)
-  paper: { roughness: 0.9, bump: { size: [1.5, 1.5], slope: 0.02 }, grain: { kind: 'fiber', size: [1.5, 4], contrast: [0.12, 0.06] } },
+  paper: { roughness: 0.9, bump: { size: [1.5, 1.5], slope: 0.02 }, grain: { kind: 'fiber', size: [1.5, 4], contrast: [0.12, 0.06], fine: 0.26 } },
   // 장정 천: 올(약 0.5mm 주기)이 높낮이를 만든다. 홈 화면에선 화소보다 작아 거칠기로 들어간다.
   // 두 번째 결은 실 굵기·물들기 차이(마디, 1~2mm): 2mm·0.8% → 1.5mm·4.5%(2026-10-31 사용자 '잔결이 좀 보이게', 종이와 같은 까닭)
   cloth: { roughness: 0.75, bump: { size: [0.5, 0.5], slope: 0.3, weave: true }, grain: { kind: 'weave', size: [0.5, 1.5], contrast: [0.02, 0.045] } },
@@ -80,7 +87,8 @@ export const materials = {
   // 무광은 표면 반사를 억제하는 쪽으로, 색이 탁해지지 않게'. 결은 무광 종이(코팅 없는 장정, 1.5mm·4%)보다 곱고 옅어 인쇄된 그림·글씨를 흐리지 않는다.
   // 반사 몫은 저반사 무광 막(F0 약 0.014, 굴절률 약 1.27): 보통 F0이면 표지 검정(8비트 7)이 15까지 떠서 탁해 보였다(에뮬 실측, 2026-11-02)
   // 2026-11-02 사용자 '종이재질 넣어줘': 1mm는 화소 2개 아래라 지워지고 세기도 옅어 안 보였다 → 1.5mm·6%, 4mm·3%(종이의 절반: 글씨·그림은 흐리지 않게)
-  print: { roughness: 0.95, bump: { size: [1, 1], slope: 0.01 }, grain: { kind: 'fiber', size: [1.5, 4], contrast: [0.06, 0.03] }, specular: 0.35 },
+  // 같은 날 사용자 '전체적으로 무광 종이결을 강하게, 갈피 스티커 느낌으로': 스티커는 짧은 섬유가 1픽셀 대역에 있는데 책에는 구름 얼룩뿐이었다 → 섬유(fine)를 넣고 얼룩도 올렸다
+  print: { roughness: 0.95, bump: { size: [1, 1], slope: 0.01 }, grain: { kind: 'fiber', size: [1.5, 4], contrast: [0.1, 0.05], fine: 0.2 }, specular: 0.35 },
   // 속지 단면: 낱장(약 0.1mm) 가장자리가 쌓인 면이라 두께 방향으로 촘촘한 굴곡(재단면이라 종이 면보다 거칠다).
   // 낱장 하나는 화면에서 화소보다 훨씬 가늘어 보이지 않으므로, 결은 몇 장씩 끝이 어긋난 묶음(약 1mm)과 접장 틈(1.6mm마다)으로 보인다
   // (2026-10-10 사용자: 흰 속지가 너무 매끄러워 벽돌 같다, 페이지 티가 나게)
@@ -95,7 +103,8 @@ export const materials = {
 export type MaterialName = keyof typeof materials;
 
 // 장면 면의 재질 색(반사율은 선형 RGB, light-model linearOf): 선반 판(시안 판 앞면), 벽(화면 바탕), 책 속지(시안 책 머리의 속지 약 (253, 243, 226))
-export const surfaces = { plank: '#F2DCC1', wall: sceneColors.wall, paper: '#FBF2E2' };
+// paper: 책 속지(머리·꼬리·책배 종이). 2026-11-03 사용자 '페이지 쪽은 흰색, 너무 밝은 흰색 말고': 살구빛 크림 #FBF2E2 → 은은한 미색
+export const surfaces = { plank: '#F2DCC1', wall: sceneColors.wall, paper: '#F1EEE6' };
 // 반사율 상한(물리): 실제 흰 재질(흰 종이·크림색 벽 페인트)의 반사율은 0.7~0.85다. 맞추기(light-model setAlbedo)는 어느 재질의 반사율도
 // 이 값을 넘지 않게 카메라 이득을 정한다. 1에 가깝게 두면 벽·판·책 사이에서 여러 번 튄 빛이 너무 세서 그늘이 크림 벽·연어색 책의 색으로
 // 짙게 물든다(판 아래 R이 G보다 8%, 연어색 책 옆 17% 넘쳤다). 범위의 아래쪽 0.7: 0.8이면 그늘 붉은기(Lab a*)가 3~4.4로 그림자 참고 그림(1.2~2.1)의 두 배
