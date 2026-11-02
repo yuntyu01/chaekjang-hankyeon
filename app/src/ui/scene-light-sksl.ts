@@ -3,7 +3,7 @@
 // 두 가지:
 //   bake: 하늘 가림(둘레·책 상자가 가린 하늘, 시점과 상관없다)을 면 좌표 그림에 굽는다. 무거운 몫은 모두 여기(책이 멈췄을 때만 돈다).
 //   lit: 구운 그림(tex)을 읽고 나머지(하늘·창빛 직접 몫, 둥근 모서리 법선, 반사광)를 화소마다. 곱하기·컬러 닷지 두 가지로 컴파일한다.
-import { EDGE_R, GROOVE, PLANK_EDGE_R, SPINE_CURVE } from '@/domain/book-parts';
+import { EDGE_R, GROOVE, PLANK_EDGE_R, SEAM_R, SPINE_CURVE } from '@/domain/book-parts';
 import { SHELF_DEPTH, SHELF_FRONT, SHELF_THICK, SHELF_X0, SHELF_X1 } from '@/domain/geometry';
 import { ALBEDO, BOX_MAX, BOX_VEC, CONTACT_H, DESIGN, ENV_COLS, ENV_NY, CAM, EREF, EXPOSURE, FAR, GAMMA, GRID_N, KEY_BANDS, KEY_C, KEY_DIRS, L_ELEV, L_UNIT, RAD, SKY_C, TONE, TOUCH, type C3 } from '@/domain/light-model';
 import type { Affine, Cam, Vec3 } from '@/domain/camera';
@@ -116,6 +116,7 @@ function header() {
   const float3 PAPER = ${c3(ALBEDO.paper)};
   const float3 PAPER_COLOR = ${c3(DESIGN.paper)};
   const float EDGER = ${f(EDGE_R)};
+  const float SEAMR = ${f(SEAM_R)};
   const float PLANKR = ${f(PLANK_EDGE_R)};
   const float IG = ${f(1 / GAMMA)};
   const float LOSS_G0 = ${f(LOSS_G0)};
@@ -1262,18 +1263,17 @@ ${shadeCode(dodge === 'spec' ? 3 : dodge ? 1 : 0, split)}
     float3 Av = vl;
     if (fi < 3) {
       // 책 면: 둥근 모서리(반지름 EDGER, 면이 좁으면 그 절반), 책등 곡면, 표지·뒤표지 제본 홈
-      float rx = min(pw / 2.0, EDGER);
       float ry = min(ph / 2.0, EDGER);
-      // 세로 변 양쪽 면이 둘 다 뚜렷이 보이면(돌린 표지 책의 책등·표지처럼) 그 변은 화면 한가운데의 모서리라, 면마다 둥글게 밝히면
-      // 한 면이 둥근 카드처럼 따로 떠 보였다(2026-10-10 사용자: 모서리가 깨진다). 두 면 중 덜 보이는 쪽이 뚜렷할수록 그 변의 둥글기를 줄인다
-      // (세운 책의 옆면처럼 한쪽이 원근으로 살짝 보이는 정도는 그대로)
+      // 세로 변 양쪽 면이 둘 다 보이면(돌린 표지 책의 책등·표지처럼) 그 변은 윤곽이 아니라 두 면을 잇는 둥근 모서리다. 윤곽처럼 면마다 끝까지 굴리면
+      // 두 면의 법선이 어긋나 한 면이 둥근 카드처럼 따로 떠 보였고(2026-10-10 사용자: 모서리가 깨진다), 둥글기를 빼면 날카로운 선이 남았다(2026-11-02 사용자: 좀 둥글게).
+      // 그래서 두 면의 법선이 가운데(45°, 면 기울기 1)에서 만나게 해 빛이 끊기지 않고 이어지게 한다. 세운 책의 옆면처럼 한쪽이 원근으로 살짝 보이는 변은 윤곽과 같다
       float3 dn = dl / length(dl);
       float fown = -dot(nl, dn);
       float f0 = min(fown, fi == 0 ? dn.x : (fi == 1 ? dn.z : -dn.z));
       float f1 = min(fown, fi == 0 ? -dn.x : (fi == 1 ? -dn.z : dn.z));
-      float k0 = 1.0 - smoothstep(0.2, 0.4, f0);
-      float k1 = 1.0 - smoothstep(0.2, 0.4, f1);
-      float tx = arc(pw - u, rx) * k1 - arc(u, rx) * k0;
+      float k0 = 1.0 - smoothstep(0.06, 0.18, f0);
+      float k1 = 1.0 - smoothstep(0.06, 0.18, f1);
+      float tx = arc(pw - u, min(pw / 2.0, mix(SEAMR, EDGER, k1))) * mix(0.7071, 1.0, k1) - arc(u, min(pw / 2.0, mix(SEAMR, EDGER, k0))) * mix(0.7071, 1.0, k0);
       float ty = arc(ph - v, ry) - arc(v, ry);
       // 모서리 사분원 밖(두 변의 기울기 합이 1을 넘는 곳)은 둥근 상자라면 없는 자리라 법선이 면에 눕는다(창빛을 정면으로 받아 흰 세모가 됐다).
       // 바깥 모서리는 둥근 윤곽이 잘라 내지만, 두 면이 만나는 모서리(돌린 표지 책의 책등·표지 위 끝)에서는 보였다: 둥근 변의 끝 기울기로 묶는다
@@ -1286,6 +1286,8 @@ ${shadeCode(dodge === 'spec' ? 3 : dodge ? 1 : 0, split)}
         float hd = ((fi == 1 ? u : pw - u) - GRV.x) / GRV.y;
         sx += (fi == 1 ? 1.0 : -1.0) * GRV.z * hd * exp(-hd * hd);
       }
+      // 만나는 변에서 기울기 1을 넘으면(둥근 책등의 곡면이 더해지는 자리) 옆 면 법선을 지나쳐 빛이 다시 끊긴다
+      sx = clamp(sx, -mix(1.0, 20.0, k0), mix(1.0, 20.0, k1));
       n = normalize(sx * ul + (ty / nz) * vl + nl);
     } else {
       // 종이 단면 면: 열린 칸(판·책등 띠 안쪽) 안이면 광선을 속지 쪽으로 이어 속지 면(깊이 sq) 또는 판 안쪽 벽에
