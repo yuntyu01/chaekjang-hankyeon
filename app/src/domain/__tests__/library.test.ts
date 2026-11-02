@@ -1,7 +1,7 @@
 // 내 서재 규칙: 읽기 상태와 회차(재독은 새 회차, 지난 기록은 그대로), 통계 기준(완독 권수·재독), 책장용 책 모양.
 import { coverAtSize, isSpineImage, rememberSpineRatio } from '../cover-url';
 import { mm } from '../geometry';
-import { REAL_SPINE_MIN, realDimensions } from '../jacket-proportions';
+import { dimsFittedAt, illustratedDimensions, REAL_SPINE_MIN, realDimensions } from '../jacket-proportions';
 import { bookLightRef, bookTone } from '../binding-material';
 import { linearOf } from '../light-model';
 import { ARTWORK_INK } from '../cover-artworks';
@@ -150,6 +150,12 @@ describe('책장용 책 모양', () => {
     // 얇은 책은 최소 두께(제목이 예시 책과 같은 글자 크기로 들어가게)
     expect(realDimensions({ widthMm: 130, heightMm: 200, pages: 40 }).thickness).toBe(REAL_SPINE_MIN);
     expect(realDimensions({ widthMm: 130, heightMm: 200, pages: 40 }, 0.02).thickness).toBe(REAL_SPINE_MIN);
+    // 저장한 배치를 맞춘 때의 크기: 그때의 최소 두께로 잰다('1'은 최소 10이던 첫 판, 없으면 표시용 치수)
+    const small = { widthMm: 130, heightMm: 200, pages: 40 };
+    expect(dimsFittedAt(small, undefined, '1').thickness).toBe(10);
+    expect(dimsFittedAt(small, undefined, '16').thickness).toBe(16);
+    expect(dimsFittedAt(small, 0.3, '1').thickness).toBeCloseTo(mm(200) * 0.3, 6); // 최소보다 두꺼운 책은 그대로
+    expect(dimsFittedAt(small, undefined, null)).toEqual(illustratedDimensions(small));
     // 잘못 온 판형(20×260mm)은 흔한 판형으로
     expect(realDimensions({ widthMm: 20, heightMm: 260, pages: 200 }).coverWidth).toBeCloseTo(mm(128), 6);
   });

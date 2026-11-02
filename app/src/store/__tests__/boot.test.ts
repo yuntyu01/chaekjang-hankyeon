@@ -67,3 +67,20 @@ it('서재와 배치를 함께 복원할 때 예전 배치로 다시 저장하�
   listener();
   expect(mockSyncBooks).toHaveBeenCalledTimes(1);
 });
+
+it('저장한 배치의 최소 두께가 지금과 같으면 다시 맞추지 않고, 다르면 옛 크기를 넘겨 맞춘 뒤 표시를 고친다', async () => {
+  const { REAL_SPINE_MIN } = require('@/domain/jacket-proportions') as typeof import('@/domain/jacket-proportions');
+  const getItem = mockStorage.getItem as jest.Mock;
+  mockLibraryState.error = null;
+  for (const [saved, fits] of [[String(REAL_SPINE_MIN), false], ['1', true], [null, true]] as const) {
+    jest.resetModules();
+    mockStorage.setItem.mockClear();
+    getItem.mockImplementation(async (key: string) => (key === 'real-size-layout-v1' ? saved : null));
+    const { bootStores } = require('../boot') as typeof import('../boot');
+    await bootStores();
+    expect(mockLoadPlacement).toHaveBeenLastCalledWith(expect.anything(), fits ? expect.any(Object) : undefined);
+    if (fits) expect(mockStorage.setItem).toHaveBeenCalledWith('real-size-layout-v1', String(REAL_SPINE_MIN));
+    else expect(mockStorage.setItem).not.toHaveBeenCalledWith('real-size-layout-v1', expect.anything());
+  }
+  getItem.mockImplementation(async () => null);
+});

@@ -11,7 +11,8 @@ import { libraryStore } from './library-store';
 import { EMPTY_LAYOUT, placementStore } from './placement-store';
 import { installReferenceHome } from './home-reference-install';
 import { loadSpineRatios } from './spine-ratio-store';
-import { illustratedDimensions } from '@/domain/jacket-proportions';
+import { spineRatioOf } from '@/domain/cover-url';
+import { dimsFittedAt, REAL_SPINE_MIN } from '@/domain/jacket-proportions';
 import { readingStore } from './reading-store';
 import { initSync } from '@/services/sync';
 import { settingsStore } from './settings-store';
@@ -87,13 +88,18 @@ export function bootStores() {
       console.warn('예시 책 분리 실패(다음 시작 때 다시)', error);
     }
     let lib = libraryStore.get().lib;
-    // 내 책은 실제 크기로 그린다(2026-11-01). 예전 표시 크기로 저장한 배치를 처음 한 번 틈을 지키며 새 크기로 맞춘다
+    // 내 책은 실제 크기로 그린다(2026-11-01). 저장한 배치의 크기가 지금과 다르면(처음이거나 최소 두께가 바뀌었으면) 한 번 틈을 지키며 새 크기로 맞춘다.
+    // 표시를 안 보고 그냥 열면 두꺼워진 책에 밀려 사용자가 둔 틈이 사라진 채 저장된다(2026-11-02 시험으로 확인)
     await loadSpineRatios();
-    const firstRealSize = !(await Storage.getItem(REAL_SIZE_KEY));
+    const fitted = await Storage.getItem(REAL_SIZE_KEY);
+    const fittedNow = String(REAL_SPINE_MIN);
     const shelf = shelfBooks(lib);
-    const before = firstRealSize ? Object.fromEntries(Object.entries(shelf).map(([id, b]) => [id, lib.books[id] && b.physical ? { ...b, dims: illustratedDimensions(b.physical) } : b])) : undefined;
+    const before = fitted === fittedNow ? undefined : Object.fromEntries(Object.entries(shelf).map(([id, b]) => {
+      const mine = lib.books[id];
+      return [id, mine && b.physical ? { ...b, dims: dimsFittedAt(b.physical, spineRatioOf(lib.editions[mine.editionId]?.coverUri) || undefined, fitted) } : b];
+    }));
     await placementStore.load(shelf, before);
-    if (firstRealSize) await Storage.setItem(REAL_SIZE_KEY, '1');
+    if (fitted !== fittedNow) await Storage.setItem(REAL_SIZE_KEY, fittedNow);
     bootMark('layout-loaded');
     if (PERF_ENABLED) {
       const demo = await Storage.getItem(DEMO_BOOT_KEY);

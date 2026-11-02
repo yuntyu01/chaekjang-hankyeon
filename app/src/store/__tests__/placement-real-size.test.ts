@@ -52,3 +52,15 @@ it('책등 비율을 나중에 재서 두께가 바뀌면 옆 책이 따라온�
   expect(xs.get('B')).toBeCloseTo(6, 3);
   expect(xs.get('C')).toBeCloseTo(28, 3);
 });
+
+it('최소 두께가 커져 책이 두꺼워지면 둔 틈(5)을 지키며 옆 책을 민다', async () => {
+  const thin: BookMap = { A: book('A', 10), B: book('B', 10), C: book('C', 10) };
+  const thick: BookMap = { A: book('A', 28), B: book('B', 28), C: book('C', 28) };
+  const layout: ShelfLayout = { version: 2, shelves: [{ id: 's', order: 0 }], placements: [place('A', 0, 0), place('B', 1, 10), place('C', 2, 25)], drawer: [] };
+  await saveLayout(JSON.stringify(layout), '2026-11-02T00:00:00Z');
+  await placementStore.load(thick, thin);
+  const xs = bookXs(placementStore.get().layout, thick);
+  expect(xs.get('B')).toBeCloseTo(28, 1); // A에 붙어 있던 책은 그대로 붙어 있다
+  expect(xs.get('C')).toBeCloseTo(61, 1); // B와 C 사이 틈 5는 남는다
+  expect(placementStore.get().layout.drawer).toEqual([]);
+});

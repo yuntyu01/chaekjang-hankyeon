@@ -22,10 +22,17 @@ export function illustratedDimensions(p: Physical): Dims {
 // 최소 두께 28DU(2026-11-01 사용자 '최소 크기는 위 예시 책 크기의 글씨가 여유롭게 들어오게'): 책등 제목이 예시 책과 같은 글자 크기(11DU, 폭의 약 42%)로 들어간다.
 export const REAL_SPINE_MIN = 28;
 const saneSize = (w: number, h: number) => w >= 70 && h >= 90 && w / h >= 0.45 && w / h <= 1.3;
-export function realDimensions(p: Physical, spineRatio?: number): Dims {
+export function realDimensions(p: Physical, spineRatio?: number, minSpine = REAL_SPINE_MIN): Dims {
   const [w, h] = saneSize(p.widthMm, p.heightMm) ? [p.widthMm, p.heightMm] : [128, 188];
   const height = mm(h);
-  return { height, coverWidth: mm(w), thickness: Math.max(REAL_SPINE_MIN, spineRatio ? height * spineRatio : mm(thicknessMm(p.pages))) };
+  return { height, coverWidth: mm(w), thickness: Math.max(minSpine, spineRatio ? height * spineRatio : mm(thicknessMm(p.pages))) };
+}
+
+// 저장된 배치를 맞췄을 때의 책 크기(시작할 때 틈을 지키며 지금 크기로 옮기는 기준). fitted: 그때의 최소 두께를 적어 둔 값.
+// 없으면 실제 크기 이전의 표시용 치수, '1'은 최소 두께 10이던 첫 판의 표시
+export function dimsFittedAt(p: Physical, spineRatio: number | undefined, fitted: string | null): Dims {
+  if (!fitted) return illustratedDimensions(p);
+  return realDimensions(p, spineRatio, Number(fitted) > 1 ? Number(fitted) : 10);
 }
 
 // Measured jacket templates, converted from the 853px reference to 390DU.
