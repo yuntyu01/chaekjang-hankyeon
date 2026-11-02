@@ -212,10 +212,12 @@ const MIGRATIONS: Migration[] = [
   },
   // v5(2026-11, 서버 V9와 같은 열): 독서 시작 쪽, 갈피의 독서 기록 연결·아껴둔 때, 판본 제공처 상품 번호·링크. 모두 선택 값(예전 기록은 비어 있다)
   addV5Columns,
+  // v6(2026-11, 서버 V13과 같은 열): 갈피 보드 자리. 모두 선택 값(없으면 자동으로 놓는다). 같은 함수가 없는 열만 더한다
+  addV5Columns,
 ];
 
-// v5 열(없을 때만 더한다). v3 → v4 이주도 지금 열 목록으로 기록을 옮기므로 표를 만든 직후 먼저 부른다
-const V5_COLUMNS: [string, string, string][] = [['sessions', 'start_page', 'INTEGER'], ['bookmarks', 'session_id', 'TEXT'], ['bookmarks', 'saved_at', 'TEXT'], ['editions', 'product_id', 'TEXT'], ['editions', 'link', 'TEXT']];
+// v5 이후 더한 열(없을 때만 더한다). v3 → v4 이주도 지금 열 목록으로 기록을 옮기므로 표를 만든 직후 먼저 부른다
+const V5_COLUMNS: [string, string, string][] = [['sessions', 'start_page', 'INTEGER'], ['bookmarks', 'session_id', 'TEXT'], ['bookmarks', 'saved_at', 'TEXT'], ['editions', 'product_id', 'TEXT'], ['editions', 'link', 'TEXT'], ['bookmarks', 'board_x', 'REAL'], ['bookmarks', 'board_y', 'REAL'], ['bookmarks', 'board_rot', 'REAL']];
 async function addV5Columns(d: SQLite.SQLiteDatabase) {
   for (const [t, c, kind] of V5_COLUMNS) {
     const cols = (await d.getAllAsync<{ name: string }>(`PRAGMA table_info(${t})`)).map((x) => x.name);
@@ -324,7 +326,7 @@ const COLUMNS: Record<LibKind, string[]> = {
   bindings: ['id', 'my_book_id', 'spine_color', 'motif', 'ink_color', 'accent_color', 'layout', 'material', 'cover_art_uri', 'cover_art_id', 'spine_art_uri', 'source', 'status', 'seed', 'created_at', 'updated_at'],
   rounds: ['id', 'my_book_id', 'idx', 'started_on', 'finished_on', 'paused', 'created_at', 'updated_at'],
   sessions: ['id', 'my_book_id', 'round_id', 'started_at', 'ended_at', 'duration_ms', 'start_page', 'pages_read', 'memo', 'created_at', 'updated_at'],
-  bookmarks: ['id', 'my_book_id', 'body', 'page', 'memo', 'photo_uri', 'photo_ratio', 'session_id', 'saved_at', 'created_at', 'updated_at'],
+  bookmarks: ['id', 'my_book_id', 'body', 'page', 'memo', 'photo_uri', 'photo_ratio', 'session_id', 'saved_at', 'board_x', 'board_y', 'board_rot', 'created_at', 'updated_at'],
 };
 const UPSERT: Record<LibKind, string> = Object.fromEntries(
   LIB_KINDS.map((k) => [k, `INSERT INTO ${TABLE[k]} (${COLUMNS[k].join(', ')}) VALUES (${COLUMNS[k].map(() => '?').join(', ')}) ON CONFLICT(id) DO UPDATE SET ${COLUMNS[k].slice(1).map((c) => `${c} = excluded.${c}`).join(', ')}`]),
@@ -359,7 +361,7 @@ function values(kind: LibKind, item: Item): Value[] {
     }
     case 'bookmarks': {
       const m = item as Bookmark;
-      return [m.id, m.myBookId ?? '', m.text ?? '', opt(m.page), opt(m.memo), opt(m.photoUri), opt(m.photoRatio), opt(m.sessionId), opt(m.savedAt), m.createdAt ?? fallback, m.updatedAt ?? fallback];
+      return [m.id, m.myBookId ?? '', m.text ?? '', opt(m.page), opt(m.memo), opt(m.photoUri), opt(m.photoRatio), opt(m.sessionId), opt(m.savedAt), opt(m.boardX), opt(m.boardY), opt(m.boardRot), m.createdAt ?? fallback, m.updatedAt ?? fallback];
     }
   }
 }
@@ -464,6 +466,9 @@ function bookmark(r: Row): Bookmark {
   put(m, 'photoRatio', r.photo_ratio);
   put(m, 'sessionId', r.session_id);
   put(m, 'savedAt', r.saved_at);
+  put(m, 'boardX', r.board_x);
+  put(m, 'boardY', r.board_y);
+  put(m, 'boardRot', r.board_rot);
   return m;
 }
 

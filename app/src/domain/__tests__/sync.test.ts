@@ -108,3 +108,25 @@ describe('받은 변경 병합', () => {
     expect(back.bookmarks.bm1).toMatchObject({ text: '', photoUri: `${DIR}page_x1.jpg`, photoRatio: 1.32 });
   });
 });
+
+describe('갈피 보드 자리 동기화', () => {
+  const mark = { id: 'bm9', myBookId: 'bk1', text: '문장', boardX: 120.5, boardY: 80, boardRot: -2.5, createdAt: T1, updatedAt: T1 };
+  const lib0 = (): Library => ({ ...emptyLibrary(), bookmarks: { bm9: mark } });
+  const wire = { id: 'bm9', myBookId: 'bk1', text: '바뀜', createdAt: T1, updatedAt: T2 };
+  const pullOf = (b: object) => ({ rev: 1, more: false, editions: [], books: [], bindings: [], rounds: [], sessions: [], bookmarks: [b] }) as unknown as PullBody;
+  it('올릴 때 자리를 함께 보낸다', () => {
+    expect(buildPush(lib0(), { [dirtyKey('bookmarks', 'bm9')]: { at: T1 } } as never, DIR).body.bookmarks![0]).toMatchObject({ boardX: 120.5, boardY: 80, boardRot: -2.5 });
+  });
+  it('받은 자리를 그대로 쓴다', () => {
+    const { lib } = mergeRemote(lib0(), pullOf({ ...wire, boardX: 10, boardY: 20, boardRot: 1 }), DIR);
+    expect(lib.bookmarks.bm9).toMatchObject({ text: '바뀜', boardX: 10, boardY: 20, boardRot: 1 });
+  });
+  it('자리 칸이 없는 옛 서버 응답은 기기의 자리를 지우지 않는다', () => {
+    const { lib } = mergeRemote(lib0(), pullOf(wire), DIR);
+    expect(lib.bookmarks.bm9).toMatchObject({ text: '바뀜', boardX: 120.5, boardY: 80, boardRot: -2.5 });
+  });
+  it('자리가 비었다고 온 새 서버 값(null)은 비운다', () => {
+    const { lib } = mergeRemote(lib0(), pullOf({ ...wire, boardX: null, boardY: null, boardRot: null }), DIR);
+    expect(lib.bookmarks.bm9.boardX).toBeUndefined();
+  });
+});

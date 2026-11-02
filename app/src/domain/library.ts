@@ -89,6 +89,10 @@ export type Bookmark = {
   photoRatio?: number; // 사진 가로/세로(카드에서 비율 유지)
   sessionId?: string; // 이 갈피를 남긴 독서 기록(선택). 기록이 지워지면 연결만 비운다(갈피는 그대로)
   savedAt?: string; // '아껴둔' 갈피로 표시한 때(백업·동기화에 포함)
+  // 갈피 보드 자리(보드 좌표 중심 dp, 기울기 도). 손으로 옮기거나 보드에서 새로 남긴 갈피만 값이 있고, 없으면 자동으로 놓는다(domain/bookmark-board)
+  boardX?: number;
+  boardY?: number;
+  boardRot?: number;
   createdAt: string;
   updatedAt: string;
 };

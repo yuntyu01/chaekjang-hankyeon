@@ -199,13 +199,13 @@ export const libraryStore = {
     commit(lib);
   },
 
-  addBookmark(input: Pick<Bookmark, 'myBookId' | 'text' | 'page' | 'memo' | 'photoUri' | 'photoRatio' | 'sessionId'>) {
+  addBookmark(input: Pick<Bookmark, 'myBookId' | 'text' | 'page' | 'memo' | 'photoUri' | 'photoRatio' | 'sessionId' | 'boardX' | 'boardY' | 'boardRot'>) {
     const t = now();
     const m: Bookmark = { id: newId('bm'), createdAt: t, updatedAt: t, ...input };
     commit({ ...state.lib, bookmarks: { ...state.lib.bookmarks, [m.id]: m } });
     return m.id;
   },
-  updateBookmark(id: string, patch: Partial<Pick<Bookmark, 'text' | 'page' | 'memo' | 'myBookId' | 'photoUri' | 'photoRatio' | 'sessionId' | 'savedAt'>>) {
+  updateBookmark(id: string, patch: Partial<Pick<Bookmark, 'text' | 'page' | 'memo' | 'myBookId' | 'photoUri' | 'photoRatio' | 'sessionId' | 'savedAt' | 'boardX' | 'boardY' | 'boardRot'>>) {
     const m = state.lib.bookmarks[id];
     if (!m) return;
     commit({ ...state.lib, bookmarks: { ...state.lib.bookmarks, [id]: { ...m, ...patch, updatedAt: now() } } });
