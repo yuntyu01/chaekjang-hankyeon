@@ -26,7 +26,7 @@ type Props = {
 };
 
 // 시안(폭 393dp 기준) 실측: 표지 폭 약 80, 손잡이 → 표지 약 32, 표지 → 버튼 약 30, 버튼 높이 약 44, 버튼 → 보조 행동 글자 약 24
-const COVER_W = 80;
+const COVER_W = 104;
 
 export function BookSheet({ book, status, sample, bottomInset, reduceMotion, onClose, onDetail, onRead, onBookmark, onTop }: Props) {
   // 사진을 못 읽으면 이 시트에서만 장정으로 바꿔 보인다(저장된 표지 정보는 지우거나 바꾸지 않는다)

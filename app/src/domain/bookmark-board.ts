@@ -83,10 +83,12 @@ export function boardBounds(spots: BoardRect[]) {
 }
 
 // 전체 보기: 모든 갈피가 화면 안에 들어오는 배율·자리(원래 크기보다 키우지는 않는다)
-export function boardFit(spots: BoardRect[], vw: number, vh: number, pad = 28): BoardView {
+// bottom: 화면 아래를 덮는 버튼 줄 높이(그 자리에는 갈피를 두지 않는다)
+export function boardFit(spots: BoardRect[], vw: number, vh: number, bottom = 0, pad = 28): BoardView {
   const b = boardBounds(spots);
-  const s = Math.max(BOARD_MIN_SCALE, Math.min(1, (vw - pad * 2) / Math.max(1, b.x1 - b.x0), (vh - pad * 2) / Math.max(1, b.y1 - b.y0)));
-  return { s, x: (vw - s * (b.x0 + b.x1)) / 2, y: Math.max(pad, (vh - s * (b.y0 + b.y1)) / 2) };
+  const h = Math.max(1, vh - bottom);
+  const s = Math.max(BOARD_MIN_SCALE, Math.min(1, (vw - pad * 2) / Math.max(1, b.x1 - b.x0), (h - pad * 2) / Math.max(1, b.y1 - b.y0)));
+  return { s, x: (vw - s * (b.x0 + b.x1)) / 2, y: Math.max(pad, (h - s * (b.y0 + b.y1)) / 2) };
 }
 
 // 보드가 화면 밖으로 사라지지 않게: 갈피가 있는 범위가 화면에 keep만큼은 걸쳐 있도록

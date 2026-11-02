@@ -50,6 +50,19 @@ describe('갈피 보드 보기', () => {
     expect(b.y1 * v.s + v.y).toBeLessThanOrEqual(VH);
     expect(boardFit([spots[0]], VW, VH).s).toBe(1);
   });
+  it('전체 보기: 아래 버튼 줄이 덮는 자리에는 갈피를 두지 않는다', () => {
+    const b = boardBounds(spots);
+    const BAR = 94;
+    const v = boardFit(spots, VW, VH, BAR);
+    expect(b.y1 * v.s + v.y).toBeLessThanOrEqual(VH - BAR);
+    expect(b.y0 * v.s + v.y).toBeGreaterThanOrEqual(0);
+    // 카드 몇 장뿐이면 크기를 줄이지 않고 남은 자리 가운데에
+    const few = spots.slice(0, 1);
+    const w = boardFit(few, VW, VH, BAR);
+    const fb = boardBounds(few);
+    expect(w.s).toBe(1);
+    expect(fb.y1 + w.y).toBeLessThanOrEqual(VH - BAR);
+  });
   it('이동·확대 한도: 배율은 범위 안, 갈피가 화면에서 사라지지 않는다', () => {
     const b = boardBounds(spots);
     expect(boardClamp({ x: 0, y: 0, s: 99 }, b, VW, VH).s).toBe(BOARD_MAX_SCALE);

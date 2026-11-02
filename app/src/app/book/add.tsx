@@ -192,7 +192,7 @@ export default function AddBook() {
   const doneSheet = (
     <Sheet visible={step === 'done'} onClose={closeDone} title="추가했어요">
       <View style={st.doneBlock}>
-        {addedId && doneLib.books[addedId] ? <LibraryCover lib={doneLib} id={addedId} width={64} /> : null}
+        {addedId && doneLib.books[addedId] ? <LibraryCover lib={doneLib} id={addedId} width={88} /> : null}
         <View style={{ flex: 1, minWidth: 0 }}>
           <Text style={type.rowStrong} numberOfLines={3}>{draft.title}</Text>
           {draft.authors ? <Text style={[type.sub, { marginTop: 2 }]} numberOfLines={1}>{draft.authors}</Text> : null}

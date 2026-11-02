@@ -18,9 +18,8 @@ import { libraryStore, useLibrary } from '@/store/library-store';
 import { LinkedCover } from '@/ui/BookVisual';
 import { ChevronLeft, Plus } from '@/ui/icons';
 import { Btn, Empty, IconButton } from '@/ui/kit';
-import { PaperSurface } from '@/ui/PaperSurface';
 import { PERF_ENABLED } from '@/ui/perf';
-import { colors, fonts, icon, tidySpace as space, tidyType as type } from '@/ui/screenTheme';
+import { colors, fonts, icon, tidyButton, tidySpace as space, tidyType as type } from '@/ui/screenTheme';
 
 // 카드를 얹는 층의 크기와 원점: 음수 자리까지 터치가 닿도록 넓은 층의 가운데를 보드 원점으로 쓴다
 const ORIGIN = 3000;
@@ -32,6 +31,7 @@ export default function BookmarkBoard() {
   const { book: id, demo } = useLocalSearchParams<{ book: string; demo?: string }>();
   const { lib } = useLibrary();
   const insets = useSafeAreaInsets();
+  const bottomBar = insets.bottom + 16 + tidyButton.s; // 아래 '전체 보기·+ 갈피' 줄이 덮는 높이
   // 측정 번들: ?demo=1 은 시험 서재에 실제 책 갈피를 넣는다(보드 사진·옮기기 저장 확인용)
   const seeded = useRef(false);
   useEffect(() => {
@@ -79,7 +79,7 @@ export default function BookmarkBoard() {
       } catch {
         v = null;
       }
-      place(v ?? boardFit(spots, vp.w, vp.h), false);
+      place(v ?? boardFit(spots, vp.w, vp.h, bottomBar), false);
       setShown(true);
     });
   }, [vp, spots, id, bounds, place]);
@@ -116,7 +116,7 @@ export default function BookmarkBoard() {
   const layer = useAnimatedStyle(() => ({ transform: [{ translateX: x.value - ORIGIN * s.value }, { translateY: y.value - ORIGIN * s.value }, { scale: s.value }] }));
 
   const fit = () => {
-    const v = boardFit(spots, vp.w, vp.h);
+    const v = boardFit(spots, vp.w, vp.h, bottomBar);
     place(v, true);
     saveView(v.x, v.y, v.s);
   };
@@ -138,7 +138,6 @@ export default function BookmarkBoard() {
   }
   return (
     <View style={st.root}>
-      <PaperSurface color="#F8F6F2" radius={0} shaded={false} />
       <View style={[st.head, { paddingTop: insets.top + 4 }]}>
         <View style={st.titleRow}>
           <IconButton label="뒤로" onPress={() => router.back()}><ChevronLeft size={icon.size} color={colors.ink} strokeWidth={icon.stroke} /></IconButton>

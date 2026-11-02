@@ -41,7 +41,8 @@ function DayCell({ lib, day, row, cell, selected, today, onSelect }: { lib: Libr
       accessibilityState={{ selected, disabled: !row }}
       style={({ pressed }) => [{ width: cell }, pressed && press]}>
       <View style={st.numRow}>
-        <View style={[st.num, selected && st.numOn]}>
+        {/* collapsable: 바탕색이 나중에 붙을 때 안드로이드가 뷰를 새로 만들며 둥근 모서리를 잃어 네모로 그렸다(2026-11-02 에뮬) */}
+        <View collapsable={false} style={[st.num, selected && st.numOn]}>
           <Text style={[st.numText, today && st.numToday, selected && st.numTextOn]}>{n}</Text>
         </View>
       </View>
