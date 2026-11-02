@@ -1,5 +1,5 @@
 import type { Session } from '@/domain/library';
-import { dayTitle, hasPause, monthBars, tickLabel, timeRange, xLabels, yearBars, yTicks } from '../chart-data';
+import { booksByDay, calendarWeeks, dayTitle, hasPause, monthBars, tickLabel, timeRange, xLabels, yearBars, yTicks } from '../chart-data';
 
 const at = (d: string, h: number, min: number) => new Date(`${d}T${String(h).padStart(2, '0')}:${String(min).padStart(2, '0')}:00`).toISOString();
 const sess = (d: string, minutes: number) => ({ id: d + minutes, startedAt: at(d, 9, 0), endedAt: at(d, 10, 0), durationMs: minutes * 60000 }) as unknown as Session;
@@ -40,5 +40,24 @@ describe('내 기록 그래프 자료', () => {
   it('일시정지가 있었던 기록만 실제 독서 표시', () => {
     expect(hasPause({ startedAt: at('2026-10-31', 21, 10), endedAt: at('2026-10-31', 22, 0), durationMs: 42 * 60000 })).toBe(true);
     expect(hasPause({ startedAt: at('2026-10-31', 8, 20), endedAt: at('2026-10-31', 8, 48), durationMs: 28 * 60000 })).toBe(false);
+  });
+});
+
+describe('달력', () => {
+  it('일요일에 시작하고 주마다 7칸, 그달 날짜가 빠짐없다', () => {
+    const w = calendarWeeks(2026, 11); // 2026-11-01은 일요일
+    expect(w[0][0]).toBe('2026-11-01');
+    expect(w.every((r) => r.length === 7)).toBe(true);
+    expect(w.flat().filter(Boolean)).toHaveLength(30);
+    const oct = calendarWeeks(2026, 10); // 2026-10-01은 목요일
+    expect(oct[0].slice(0, 5)).toEqual([null, null, null, null, '2026-10-01']);
+    expect(oct.at(-1)!.filter(Boolean).at(-1)).toBe('2026-10-31');
+  });
+  const ses = (id: string, startedAt: string, durationMs: number, myBookId?: string) => ({ id, myBookId, startedAt, endedAt: startedAt, durationMs, createdAt: startedAt, updatedAt: startedAt });
+  it('그날 읽은 책을 오래 읽은 순서로, 같은 책은 한 번만, 책 없는 시간은 따로 적는다', () => {
+    const at = (h: number) => new Date(2026, 9, 5, h).toISOString();
+    const m = booksByDay([ses('a', at(9), 60000, 'x'), ses('b', at(10), 300000, 'y'), ses('c', at(11), 300000, 'x'), ses('d', at(12), 1000)]);
+    expect(m.get('2026-10-05')).toEqual({ books: ['x', 'y'], loose: true, ms: 661000 });
+    expect(m.size).toBe(1);
   });
 });

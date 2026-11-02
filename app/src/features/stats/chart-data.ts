@@ -26,6 +26,32 @@ export function yearBars(sessions: Session[], y: number): Bar[] {
   return bars;
 }
 
+// 달력(일요일 시작): 주마다 7칸, 그달이 아닌 칸은 null
+export function calendarWeeks(y: number, m: number): (string | null)[][] {
+  const days = new Date(y, m, 0).getDate();
+  const cells: (string | null)[] = Array.from({ length: new Date(y, m - 1, 1).getDay() }, () => null);
+  for (let d = 1; d <= days; d++) cells.push(`${y}-${pad(m)}-${pad(d)}`);
+  while (cells.length % 7) cells.push(null);
+  return Array.from({ length: cells.length / 7 }, (_, i) => cells.slice(i * 7, i * 7 + 7));
+}
+
+// 날마다 그날 읽은 책(오래 읽은 책이 앞). 책 없이 읽은 시간은 책으로 세지 않고 있었는지만 적는다
+export type DayBooks = { books: string[]; loose: boolean; ms: number };
+export function booksByDay(sessions: Session[]): Map<string, DayBooks> {
+  const acc = new Map<string, { per: Map<string, number>; loose: boolean; ms: number }>();
+  for (const s of sessions) {
+    const day = sessionDay(s);
+    const row = acc.get(day) ?? { per: new Map<string, number>(), loose: false, ms: 0 };
+    row.ms += s.durationMs;
+    if (s.myBookId) row.per.set(s.myBookId, (row.per.get(s.myBookId) ?? 0) + s.durationMs);
+    else row.loose = true;
+    acc.set(day, row);
+  }
+  const out = new Map<string, DayBooks>();
+  for (const [day, r] of acc) out.set(day, { books: [...r.per.entries()].sort((a, b) => b[1] - a[1]).map(([id]) => id), loose: r.loose, ms: r.ms });
+  return out;
+}
+
 // 세로 눈금(분): 최댓값 아래로 두 칸(1·2배). 막대가 맨 위 눈금을 조금 넘어도 된다(70분 → 30·60분)
 const NICE = [1, 2, 5, 10, 15, 30, 60, 120, 180, 300, 600, 1200, 1800, 3000, 6000];
 export function yTicks(maxMs: number): number[] {

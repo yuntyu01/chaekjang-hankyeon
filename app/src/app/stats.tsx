@@ -1,4 +1,4 @@
-// 내 기록(2026-11-01 사용자 시안): 월/연도 전환 칸 → 기간·책 고르기 → 읽은 시간 크게 → 날·달별 막대그래프 → 고른 날의 독서 기록(표지·시간대·실제 독서 시간).
+// 내 기록(2026-11-01 사용자 시안): 달력/월/연도 전환 칸 → 기간·책 고르기 → 읽은 시간 크게 → 날마다 읽은 책 표지를 겹친 달력(2026-11-02) 또는 날·달별 막대그래프 → 고른 날의 독서 기록(표지·시간대·실제 독서 시간).
 // 모두 실제 저장 데이터로 계산한다. 완독·재독 기준은 domain/library periodStats와 같다(책 상세도 같은 기준).
 // 책을 고르면(책 상세에서 들어오거나 '모든 책 ▾') 전부 그 책만. 책 없는 독서 시간은 모든 책에서만 센다.
 import { router, useLocalSearchParams } from 'expo-router';
@@ -6,32 +6,41 @@ import { Check, ChevronLeft, ChevronRight } from '@/ui/icons';
 import { useMemo, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
-import { dayTitle, hasPause, monthBars, timeRange, yearBars } from '@/features/stats/chart-data';
+import { booksByDay, dayTitle, hasPause, monthBars, timeRange, yearBars } from '@/features/stats/chart-data';
+import { ReadingCalendar } from '@/features/stats/ReadingCalendar';
 import { ReadingChart } from '@/features/stats/ReadingChart';
 import { formatDuration, formatDurationPrecise, monthPeriod, periodStats, sessionDay, yearPeriod } from '@/domain/library';
+import { realReadingLibrary } from '@/domain/real-sample';
 import { useLibrary } from '@/store/library-store';
+import { PERF_ENABLED } from '@/ui/perf';
 import { LinkedCover } from '@/ui/BookVisual';
 import { Empty, FilterButton, IconButton, ListGroup, ListItem, Muted, RealCover, Screen, Segmented, Sheet } from '@/ui/kit';
 import { colors, fonts, icon, press, tidySpace as space, tidyType as type } from '@/ui/screenTheme';
 
-const MODES = [{ id: 'month', label: '월' }, { id: 'year', label: '연도' }] as const;
+// 달력·월은 같은 달(달력은 날마다 읽은 책 표지, 월은 막대), 연도는 달마다 막대
+const MODES = [{ id: 'calendar', label: '달력' }, { id: 'month', label: '월' }, { id: 'year', label: '연도' }] as const;
 const COVER_W = 52;
 const shortMs = (ms: number) => (ms < 60000 ? formatDurationPrecise(ms) : formatDuration(ms));
 
 export default function Stats() {
-  const params = useLocalSearchParams<{ book?: string }>();
-  const { lib } = useLibrary();
+  const params = useLocalSearchParams<{ book?: string; demo?: string }>();
+  const { lib: myLib } = useLibrary();
   const now = new Date();
-  const [mode, setMode] = useState<'month' | 'year'>('month');
+  // 측정 번들: ?demo=1 은 실제 책 비교 서재의 지난달 기록(달력 사진용, domain/real-sample)
+  const demo = PERF_ENABLED && params.demo === '1';
+  const lib = useMemo(() => (demo ? realReadingLibrary(now.getFullYear(), now.getMonth() || 12) : myLib), [demo, myLib]); // eslint-disable-line react-hooks/exhaustive-deps
+  const [mode, setMode] = useState<'calendar' | 'month' | 'year'>('calendar');
+  const monthly = mode !== 'year';
   const [y, setY] = useState(now.getFullYear());
-  const [m, setM] = useState(now.getMonth() + 1);
+  const [m, setM] = useState(demo ? now.getMonth() || 12 : now.getMonth() + 1);
   const [book, setBook] = useState<string | undefined>(params.book);
   const [picked, setPicked] = useState<string | null>(null);
   const [bookSheet, setBookSheet] = useState(false);
-  const period = mode === 'month' ? monthPeriod(y, m) : yearPeriod(y);
+  const period = monthly ? monthPeriod(y, m) : yearPeriod(y);
   const st0 = useMemo(() => periodStats(lib, period, book && lib.books[book] ? book : undefined), [lib, period.from, period.to, book]); // eslint-disable-line react-hooks/exhaustive-deps
   const sessions = st0.sessions;
-  const bars = useMemo(() => (mode === 'month' ? monthBars(sessions, y, m) : yearBars(sessions, y)), [mode, sessions, y, m]);
+  const bars = useMemo(() => (monthly ? monthBars(sessions, y, m) : yearBars(sessions, y)), [monthly, sessions, y, m]);
+  const days = useMemo(() => booksByDay(sessions), [sessions]);
   // 고른 막대: 누른 곳, 없으면 기록이 있는 가장 최근 칸(기간·책을 바꾸면 자연히 이쪽으로)
   const lastKey = [...bars].reverse().find((b) => b.ms > 0)?.key ?? null;
   const selected = picked && bars.some((b) => b.key === picked && b.ms > 0) ? picked : lastKey;
@@ -66,8 +75,10 @@ export default function Stats() {
     setY(yy);
   };
   const title = (id?: string) => (id ? lib.editions[lib.books[id]?.editionId]?.title : undefined);
-  const thisPeriod = mode === 'month' ? y === now.getFullYear() && m === now.getMonth() + 1 : y === now.getFullYear();
-  const heroLabel = thisPeriod ? (mode === 'month' ? '이번 달 읽은 시간' : '올해 읽은 시간') : mode === 'month' ? `${m}월에 읽은 시간` : `${y}년에 읽은 시간`;
+  const thisPeriod = monthly ? y === now.getFullYear() && m === now.getMonth() + 1 : y === now.getFullYear();
+  const heroLabel = thisPeriod ? (monthly ? '이번 달 읽은 시간' : '올해 읽은 시간') : monthly ? `${m}월에 읽은 시간` : `${y}년에 읽은 시간`;
+  const pad2 = (v: number) => String(v).padStart(2, '0');
+  const today = `${now.getFullYear()}-${pad2(now.getMonth() + 1)}-${pad2(now.getDate())}`;
   const cover = (id?: string) => (id && lib.books[id] ? <LinkedCover lib={lib} id={id} width={COVER_W} /> : <RealCover title="책 없음" color={colors.input} width={COVER_W} ratio={0.7} />);
   const pickBook = (id: string | undefined) => {
     setBook(id);
@@ -79,11 +90,11 @@ export default function Stats() {
       <Segmented items={MODES} value={mode} onChange={(v) => { setMode(v); setPicked(null); }} style={{ marginTop: space.s }} />
       <View style={st.periodRow}>
         <View style={st.period}>
-          <IconButton label={mode === 'month' ? '이전 달' : '이전 해'} onPress={() => { shift(-1); setPicked(null); }}>
+          <IconButton label={monthly ? '이전 달' : '이전 해'} onPress={() => { shift(-1); setPicked(null); }}>
             <ChevronLeft size={icon.size} color={colors.ink} strokeWidth={icon.stroke} />
           </IconButton>
-          <Text style={st.periodText} accessibilityRole="header">{mode === 'month' ? `${y}년 ${m}월` : `${y}년`}</Text>
-          <IconButton label={mode === 'month' ? '다음 달' : '다음 해'} onPress={() => { shift(1); setPicked(null); }}>
+          <Text style={st.periodText} accessibilityRole="header">{monthly ? `${y}년 ${m}월` : `${y}년`}</Text>
+          <IconButton label={monthly ? '다음 달' : '다음 해'} onPress={() => { shift(1); setPicked(null); }}>
             <ChevronRight size={icon.size} color={colors.ink} strokeWidth={icon.stroke} />
           </IconButton>
         </View>
@@ -103,14 +114,14 @@ export default function Stats() {
         <Empty title="아직 독서 기록이 없어요" body="읽기 탭에서 타이머를 시작해 보세요." action="읽기 시작" onAction={() => router.push('/read')} />
       ) : (
         <>
-          <ReadingChart bars={bars} selected={selected} unit={mode === 'month' ? '일' : '월'} onSelect={setPicked} />
+          {mode === 'calendar' ? <ReadingCalendar lib={lib} y={y} m={m} days={days} selected={selected} today={today} onSelect={setPicked} /> : <ReadingChart bars={bars} selected={selected} unit={monthly ? '일' : '월'} onSelect={setPicked} />}
           {selected ? (
             <View style={{ marginTop: space.xl }}>
               <View style={st.dayHead}>
-                <Text style={type.section} accessibilityRole="header">{mode === 'month' ? dayTitle(selected) : `${y}년 ${Number(selected.slice(5))}월`}</Text>
+                <Text style={type.section} accessibilityRole="header">{monthly ? dayTitle(selected) : `${y}년 ${Number(selected.slice(5))}월`}</Text>
                 <Text style={type.sub}>{formatDuration(selMs)}</Text>
               </View>
-              {mode === 'month'
+              {monthly
                 ? selSessions.map((s) => (
                     <Pressable key={s.id} onPress={() => router.push(`/session/${s.id}`)} style={({ pressed }) => [st.row, pressed && press]} accessibilityRole="button" accessibilityLabel={`${title(s.myBookId) ?? '책 없음'}, ${timeRange(s.startedAt, s.endedAt)}, ${shortMs(s.durationMs)}`}>
                       <View style={st.cover} pointerEvents="none">{cover(s.myBookId)}</View>
