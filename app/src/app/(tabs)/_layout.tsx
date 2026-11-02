@@ -4,14 +4,14 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useCommunityOpen } from '@/features/community/useCommunityOpen';
 import { ko } from '@/i18n/ko';
-import { BookmarkTabIcon, CommunityTabIcon, ReadTabIcon, ShelfIcon } from '@/ui/TabIcons';
+import { BookmarkTabIcon, CommunityTabIcon, ReadTabIcon, RecordTabIcon, ShelfIcon } from '@/ui/TabIcons';
 import { tabBarStyle } from '@/ui/tabBar';
 import { colors, navigation } from '@/ui/theme';
 import { colors as ui } from '@/ui/screenTheme';
 
-// 하단 탭: 책장 · 갈피 · 읽기 · 커뮤니티(2026-11). 둥근 선 아이콘(2026-11-01 사용자 '인스타처럼 둥글게'): 고르지 않은 탭은 속이 빈 회색,
+// 하단 탭: 책장 · 갈피 · 읽기 · 기록(2026-11-03 사용자 '기록은 따로 탭'), 서버가 열면 커뮤니티까지(2026-11). 둥근 선 아이콘(2026-11-01 사용자 '인스타처럼 둥글게'): 고르지 않은 탭은 속이 빈 회색,
 // 고른 탭은 진한 색으로 속이 찬 모양(사용자 '눌린 바탕 말고 아이콘 속이 차게'). 글자 없이 아이콘만(조금 키운 27). 아이콘은 책장 장면과 같은 종이 위에 뜬다.
-const ICON = navigation.iconSize + 2; // 글자가 없어 아이콘만으로 알아보게 조금 크게
+const ICON = 36; // 2026-11-03 사용자 시안 크기: 칸 36, 아이콘 키 약 31
 
 export default function TabsLayout() {
   const insets = useSafeAreaInsets();
@@ -26,6 +26,7 @@ export default function TabsLayout() {
         tabBarShowLabel: false,
         tabBarActiveTintColor: colors.tabActive,
         tabBarInactiveTintColor: colors.tabInactive,
+        tabBarIconStyle: { width: 48, height: ICON },
         tabBarStyle: tabBarStyle(insets.bottom),
         sceneStyle: { backgroundColor: 'transparent' },
       }}>
@@ -34,7 +35,7 @@ export default function TabsLayout() {
         options={{
           title: ko.tabs.shelf,
           tabBarAccessibilityLabel: ko.tabs.shelf,
-          tabBarIcon: ({ color, focused }) => <ShelfIcon color={String(color)} bg={ui.bg} size={ICON} filled={focused} />,
+          tabBarIcon: ({ color, focused }) => <ShelfIcon color={String(color)} size={ICON} filled={focused} />,
         }}
       />
       <Tabs.Screen
@@ -55,6 +56,15 @@ export default function TabsLayout() {
           title: ko.tabs.read,
           tabBarAccessibilityLabel: ko.tabs.read,
           tabBarIcon: ({ color, focused }) => <ReadTabIcon color={String(color)} bg={colors.bg} size={ICON} filled={focused} />,
+        }}
+      />
+      <Tabs.Screen
+        name="stats"
+        options={{
+          tabBarStyle: paperBar,
+          title: ko.tabs.stats,
+          tabBarAccessibilityLabel: ko.tabs.stats,
+          tabBarIcon: ({ color, focused }) => <RecordTabIcon color={String(color)} bg={ui.bg} size={ICON} filled={focused} />,
         }}
       />
       <Tabs.Screen

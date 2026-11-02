@@ -5,7 +5,7 @@
 // 놓을 곳이 없으면 책은 제자리에 있고 안내만 뜬다(따로 떠 있는 끌기 그림 없음). 화면 가장자리에서 자동 스크롤.
 import { router, useFocusEffect, useLocalSearchParams, useNavigation } from 'expo-router';
 import * as Haptics from 'expo-haptics';
-import { BookMarked, ChartNoAxesColumn, Eraser, Paintbrush, Plus, Search, Settings } from '@/ui/icons';
+import { BookMarked, Eraser, Paintbrush, Plus, Search, Settings } from '@/ui/icons';
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { Modal, PixelRatio, Pressable, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
@@ -1331,9 +1331,6 @@ export function HomeScreen() {
           </Pressable>
           <Pressable accessibilityRole="button" style={styles.menuItem} onPress={() => { setShelfMenuOpen(false); router.push('/books'); }}>
             <BookMarked size={icon.size} color={ui.ink} strokeWidth={icon.stroke} /><Text style={styles.menuText}>{ko.allBooks.title}{layout.drawer.length ? ` · 책장에 없는 책 ${layout.drawer.length}권` : ''}</Text>
-          </Pressable>
-          <Pressable accessibilityRole="button" style={styles.menuItem} onPress={() => { setShelfMenuOpen(false); router.push('/stats'); }}>
-            <ChartNoAxesColumn size={icon.size} color={ui.ink} strokeWidth={icon.stroke} /><Text style={styles.menuText}>{ko.menu.stats}</Text>
           </Pressable>
           <Pressable accessibilityRole="button" style={styles.menuItem} onPress={() => { setShelfMenuOpen(false); router.push('/settings'); }}>
             <Settings size={icon.size} color={ui.ink} strokeWidth={icon.stroke} /><Text style={styles.menuText}>{ko.menu.settings}</Text>

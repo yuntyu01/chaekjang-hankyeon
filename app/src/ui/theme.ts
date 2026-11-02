@@ -22,7 +22,7 @@ export const colors = {
   homeSummary: '#646F7E', // 홈 머리글 연도·'전체 책'(화면 UI 보조 글자와 같은 색)
   circle: '#D8CFC4',
   tabActive: '#191F28',
-  tabInactive: '#8B95A1', // TDS grey500
+  tabInactive: '#808080', // 2026-11-03 사용자 시안에서 잰 중립 회색
   danger: '#A5483A',
   dropOk: 'rgba(60, 70, 60, 0.12)',
   dropBad: 'rgba(165, 72, 58, 0.16)',

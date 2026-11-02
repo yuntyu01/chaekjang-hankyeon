@@ -6,6 +6,9 @@ import { Check, ChevronLeft, ChevronRight } from '@/ui/icons';
 import { useMemo, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
+import { MINI_TIMER_SPACE } from '@/store/mini-timer-store';
+import { useReading } from '@/store/reading-store';
+import { navigation } from '@/ui/theme';
 import { booksByDay, dayTitle, hasPause, monthBars, timeRange, yearBars } from '@/features/stats/chart-data';
 import { ReadingCalendar } from '@/features/stats/ReadingCalendar';
 import { ReadingChart } from '@/features/stats/ReadingChart';
@@ -22,8 +25,10 @@ const MODES = [{ id: 'calendar', label: '달력' }, { id: 'month', label: '월' 
 const COVER_W = 52;
 const shortMs = (ms: number) => (ms < 60000 ? formatDurationPrecise(ms) : formatDuration(ms));
 
-export default function Stats() {
-  const params = useLocalSearchParams<{ book?: string; demo?: string }>();
+// tab: 하단 '기록' 탭(뒤로 없음, 탭 바만큼 아래를 비운다). 책 정보에서 들어오면 initialBook으로 그 책만 보이고 뒤로 돌아간다(book/[id]/stats)
+export function StatsScreen({ tab, initialBook }: { tab?: boolean; initialBook?: string }) {
+  const params = useLocalSearchParams<{ demo?: string }>();
+  const { active } = useReading();
   const { lib: myLib } = useLibrary();
   const now = new Date();
   // 측정 번들: ?demo=1 은 실제 책 비교 서재의 지난달 기록(달력 사진용, domain/real-sample)
@@ -33,7 +38,7 @@ export default function Stats() {
   const monthly = mode !== 'year';
   const [y, setY] = useState(now.getFullYear());
   const [m, setM] = useState(demo ? now.getMonth() || 12 : now.getMonth() + 1);
-  const [book, setBook] = useState<string | undefined>(params.book);
+  const [book, setBook] = useState<string | undefined>(initialBook);
   const [picked, setPicked] = useState<string | null>(null);
   const [bookSheet, setBookSheet] = useState(false);
   const period = monthly ? monthPeriod(y, m) : yearPeriod(y);
@@ -86,7 +91,7 @@ export default function Stats() {
     setBookSheet(false);
   };
   return (
-    <Screen tidy inline title="내 기록">
+    <Screen tidy {...(tab ? { back: false } : { inline: true })} title="내 기록">
       <Segmented items={MODES} value={mode} onChange={(v) => { setMode(v); setPicked(null); }} style={{ marginTop: space.s }} />
       <View style={st.periodRow}>
         <View style={st.period}>
@@ -171,6 +176,7 @@ export default function Stats() {
           ))}
         </ScrollView>
       </Sheet>
+      {tab ? <View style={{ height: navigation.height + 24 + (active ? MINI_TIMER_SPACE : 0) }} /> : null}
     </Screen>
   );
 }

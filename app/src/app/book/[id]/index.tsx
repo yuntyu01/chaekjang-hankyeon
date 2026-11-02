@@ -118,7 +118,7 @@ export default function BookDetailScreen() {
         ) : null}
         {pageEdit ? <TextInput accessibilityLabel="읽은 쪽수" autoFocus defaultValue={b.currentPage ? String(b.currentPage) : ''} placeholder="읽은 쪽수" placeholderTextColor={colors.inkFaint} keyboardType="number-pad" returnKeyType="done" onEndEditing={(ev) => { const n = Number(ev.nativeEvent.text); libraryStore.updateBook(id, { currentPage: Number.isFinite(n) && n > 0 ? Math.round(n) : undefined }); setPageEdit(false); }} style={[kit.input, st.pageInput]} /> : null}
         <View style={st.stats}>
-          <Pressable onPress={() => router.push({ pathname: '/stats', params: { book: id } })} accessibilityRole="button" style={({ pressed }) => [st.statCell, pressed && press]}>
+          <Pressable onPress={() => router.push(`/book/${id}/stats`)} accessibilityRole="button" style={({ pressed }) => [st.statCell, pressed && press]}>
             <Text style={st.statLabel}>독서 기록</Text><Text style={st.statValue}>{sessions}회</Text>
           </Pressable>
           <View style={st.statDivider} />
@@ -166,7 +166,7 @@ export default function BookDetailScreen() {
           <ListGroup>
             <ListItem label="누적 독서 시간" value={formatDuration(readMs)} />
             <ListItem label="완독" value={done ? `${done}회${done > 1 ? ` (재독 ${done - 1}회)` : ''}` : '아직'} />
-            <ListItem label="독서 기록" value={`${sessions}회`} onPress={sessions ? () => router.push({ pathname: '/stats', params: { book: id } }) : undefined} />
+            <ListItem label="독서 기록" value={`${sessions}회`} onPress={sessions ? () => router.push(`/book/${id}/stats`) : undefined} />
           </ListGroup>
 
           {rounds.length ? (
