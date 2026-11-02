@@ -6,14 +6,15 @@ import Svg, { Path, Rect } from 'react-native-svg';
 const W = 2; // 선 굵기(24 칸 기준 2, 인스타 하단 바와 같은 무게)
 const round = { strokeLinecap: 'round', strokeLinejoin: 'round' } as const;
 
-// 책장: 책 세 권(하나는 기울어짐)
-export function ShelfIcon({ color, size = 26, filled }: { color: string; size?: number; filled?: boolean }) {
+// 책장: 벽을 함께 쓰는 책 두 권에 한 권이 기대 있는 한 덩어리(2026-11-01 사용자: 따로 놀지 않게 이어지게, 다만 높이만 다른 세 칸과 바닥 줄은 막대그래프 같다고 함).
+// 찬 모양은 두 권 사이를 바탕색 선으로 나눈다
+export function ShelfIcon({ color, size = 26, filled, bg }: { color: string; size?: number; filled?: boolean; bg: string }) {
   const fill = filled ? color : 'none';
   return (
-    <Svg width={size} height={size} viewBox="0.8 -0.7 26 26">
-      <Rect x={3.2} y={6.2} width={5} height={15.8} rx={1.8} fill={fill} stroke={color} strokeWidth={W} {...round} />
-      <Rect x={10.4} y={4.2} width={5} height={17.8} rx={1.8} fill={fill} stroke={color} strokeWidth={W} {...round} />
-      <Path d="M17.4 7.6 L21.2 6.7 L24.4 20.6 L20.6 21.5 Z" fill={fill} stroke={color} strokeWidth={W} {...round} />
+    <Svg width={size} height={size} viewBox="0 0 24 24">
+      <Rect x={2.6} y={3.8} width={10.8} height={16.8} rx={2.4} fill={fill} stroke={color} strokeWidth={W} {...round} />
+      <Path d="M8 4.6 V19.8" fill="none" stroke={filled ? bg : color} strokeWidth={filled ? 1.5 : W} {...round} />
+      <Rect x={17.3} y={4.6} width={4.9} height={16} rx={2} transform="rotate(-15 19.75 20.6)" fill={fill} stroke={color} strokeWidth={W} {...round} />
     </Svg>
   );
 }
@@ -27,14 +28,13 @@ export function BookmarkTabIcon({ color, size = 26, filled }: { color: string; s
   );
 }
 
-// 읽기: 펼친 책
+// 읽기: 펼친 책. 바깥 모서리를 크게 굴리고 책장 끝은 곡선으로 이어(2026-11-01 사용자 '모서리들이 너무 각지네'). 찬 모양은 가운데를 바탕색 선으로 나눈다
 export function ReadTabIcon({ color, size = 26, filled, bg }: { color: string; size?: number; filled?: boolean; bg: string }) {
   const fill = filled ? color : 'none';
   return (
-    <Svg width={size * 1.2} height={size * 1.05} viewBox="0 -0.7 26 26" preserveAspectRatio="none">
-      <Path d="M13 7.2 C10.6 5.4 7.2 4.8 3.6 5.4 V20.4 C7.2 19.8 10.6 20.4 13 22.2 Z" fill={fill} stroke={color} strokeWidth={W} {...round} />
-      <Path d="M13 7.2 C15.4 5.4 18.8 4.8 22.4 5.4 V20.4 C18.8 19.8 15.4 20.4 13 22.2 Z" fill={fill} stroke={color} strokeWidth={W} {...round} />
-      {filled ? <Path d="M13 8.4 V20.8" stroke={bg} strokeWidth={1.4} strokeLinecap="round" /> : null}
+    <Svg width={size} height={size} viewBox="0 0 24 24">
+      <Path d="M12 7.2 C10.2 5.4 7.6 4.7 4.8 4.8 A2.3 2.3 0 0 0 2.6 7.1 V16.6 A2.3 2.3 0 0 0 4.9 18.9 C7.6 18.9 10.2 19.5 12 21 C13.8 19.5 16.4 18.9 19.1 18.9 A2.3 2.3 0 0 0 21.4 16.6 V7.1 A2.3 2.3 0 0 0 19.2 4.8 C16.4 4.7 13.8 5.4 12 7.2 Z" fill={fill} stroke={color} strokeWidth={W} {...round} />
+      <Path d="M12 7.6 V20.4" fill="none" stroke={filled ? bg : color} strokeWidth={filled ? 1.4 : W} {...round} />
     </Svg>
   );
 }
