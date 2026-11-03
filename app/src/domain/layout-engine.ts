@@ -24,7 +24,7 @@ import {
 } from './geometry';
 import { collisionRangeX, corners, frontBook3, fromPlaced, gap, lowest, xRange, type Book3 } from './book3';
 import { boxSize, type Placed } from './box';
-import { frontFall2, frontLean, frontLeaner2, frontSupport2, pitchForWall, releasedPitch, spinStep, tiltStep, wallLeanPose, type FrontState } from './front-pose';
+import { frontExtent, frontFall2, frontLean, frontLeaner2, frontSupport2, pitchForWall, releasedPitch, spinStep, tiltStep, WALL_TOUCH, wallLeanPose, wallReach, type FrontState } from './front-pose';
 import { leanContact } from './lean';
 import { LEAN_MENU_MAX, menuLeanAngle, penetration2, wallLeanRest } from './statics';
 import { stackBoxes, stackSupported } from './support';
@@ -651,6 +651,28 @@ export function leanUntouchedFront(layout: ShelfLayout, books: BookMap): ShelfLa
     if (!book || p.pose !== 'front' || p.stackId || p.depth !== undefined || p.pitch || p.spin || p.wallLean) return p;
     changed = true;
     return { ...p, ...wallLeanPose(frontDims(book), SHELF_DEPTH) };
+  });
+  return changed ? { ...layout, placements } : layout;
+}
+
+// 책 크기가 바뀌었을 때(실제 크기 정보가 들어옴 등) 벽에 기대 있던 표지 책을 새 크기로 다시 기댄다.
+// 깊이·각을 그대로 두면 두꺼워진 책의 머리가 벽을 뚫고 얇아진 책은 벽에서 뜬 채 기운다. 벽에 닿아 있지 않던 책은 사용자가 둔 자세라 그대로 둔다
+export function refitFrontToWall(layout: ShelfLayout, before: BookMap, books: BookMap): ShelfLayout {
+  let changed = false;
+  const placements = layout.placements.map((p) => {
+    const oldBook = before[p.bookId];
+    const book = books[p.bookId];
+    if (!oldBook || !book || oldBook === book || p.pose !== 'front' || !p.pitch || p.depth === undefined) return p;
+    const a = frontDims(oldBook);
+    const d = frontDims(book);
+    if (a.T === d.T && a.H === d.H && a.W === d.W) return p;
+    const spin = p.spin ?? 0;
+    if (wallReach(a, { depth: p.depth, pitch: p.pitch, spin }) < SHELF_DEPTH - WALL_TOUCH) return p;
+    changed = true;
+    // 각은 두되, 새 크기로는 넘어짐 한계 아래면(두꺼워진 책) 기본 자세의 각으로 올린다
+    const lean = wallLeanPose(d, SHELF_DEPTH, spin);
+    const pitch = Math.max(p.pitch, lean.pitch);
+    return { ...p, pitch, depth: SHELF_DEPTH - frontExtent(d, pitch, spin).z1 };
   });
   return changed ? { ...layout, placements } : layout;
 }

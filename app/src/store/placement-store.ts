@@ -3,7 +3,7 @@
 import { useSyncExternalStore } from 'react';
 import { readLayout, saveLayout } from '@/db/local-db';
 
-import { addShelf, firstFitCandidates, fitToShelf, keepGaps, leanUntouchedFront, moveToDrawer, pruneEmptyShelves, validate } from '@/domain/layout-engine';
+import { addShelf, firstFitCandidates, fitToShelf, keepGaps, leanUntouchedFront, moveToDrawer, refitFrontToWall, pruneEmptyShelves, validate } from '@/domain/layout-engine';
 import { ensureShelves, migrate, normalize, type BookMap } from '@/domain/layout-schema';
 import { ensureLeanGaps, resolveLeans, withLeans, type FallDirections, type LeanResolution } from '@/domain/shelf-scene';
 import { MOCKUP_BOOKS, MOCKUP_LAYOUT } from '@/domain/mockup-sample';
@@ -132,7 +132,7 @@ export const placementStore = {
           // 예전 예시 책(b01~b18)만 있던 저장본은 내 책이 아니므로 배치에서 빠진다(repair가 모르는 책을 버린다)
           const r = restore(saved, books);
           if (before) {
-            const fit = fitToShelf(keepGaps(r.layout, before, books), books);
+            const fit = fitToShelf(refitFrontToWall(keepGaps(r.layout, before, books), before, books), books);
             const layout = withLeans(fit.layout, books);
             set({ layout, loaded: true, save: 'idle', notice: r.moved.length + fit.moved.length || null });
             void persist(layout);

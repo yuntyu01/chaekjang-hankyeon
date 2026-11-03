@@ -1,6 +1,6 @@
 // 표지 책의 기본 자세: 벽에 기댄다. 사용자가 둔 자세는 건드리지 않는다
 import { frontDims, SHELF_DEPTH } from '../geometry';
-import { frontStateOf, leanUntouchedFront, placementOf, setPose } from '../layout-engine';
+import { frontStateOf, leanUntouchedFront, placementOf, refitFrontToWall, setPose } from '../layout-engine';
 import { unsupported, wallLeanPose, wallReach, WALL_TOUCH } from '../front-pose';
 import { tipAngle } from '../statics';
 import { SAMPLE_BOOKS, SAMPLE_LAYOUT } from '../onboarding-sample';
@@ -49,4 +49,24 @@ it('처음 표지로 세우면 벽에 기대고, 손으로 둔 상태값도 그 
   expect(p.pose).toBe('front');
   expect(p.pitch).toBeGreaterThan(0);
   expect(frontStateOf(r.layout, books, firstSpine.bookId)?.state.pitch).toBe(p.pitch);
+});
+
+describe('책 크기가 바뀌면 다시 기댄다', () => {
+  const book = books[firstFront.bookId];
+  const dims = frontDims(book);
+  const pose = wallLeanPose(dims, SHELF_DEPTH);
+  const layout: ShelfLayout = { version: 2, shelves: [{ id: 's', order: 0 }], drawer: [], placements: [{ bookId: book.id, shelfId: 's', order: 0, pose: 'front', tilt: 0, ...pose }] };
+  const resized = (t: number) => ({ ...books, [book.id]: { ...book, dims: { ...dims, T: t } } }) as BookMap;
+  it.each([[dims.T * 2, '두꺼워짐'], [dims.T * 0.6, '얇아짐']])('두께 %d(%s): 머리가 다시 벽에 닿는다', (t) => {
+    const next = refitFrontToWall(layout, books, resized(t));
+    const p = placementOf(next, book.id)!;
+    const d = frontDims(resized(t)[book.id]);
+    expect(wallReach(d, { depth: p.depth!, pitch: p.pitch!, spin: 0 })).toBeCloseTo(SHELF_DEPTH, 6);
+    expect(p.pitch!).toBeGreaterThan(tipAngle(d.T, d.H));
+  });
+  it('크기가 그대로이거나 벽에서 떨어져 있던 책은 그대로', () => {
+    expect(refitFrontToWall(layout, books, { ...books, [book.id]: { ...book } })).toBe(layout);
+    const away = { ...layout, placements: [{ ...layout.placements[0], depth: pose.depth - 30 }] };
+    expect(refitFrontToWall(away, books, resized(dims.T * 2))).toBe(away);
+  });
 });
