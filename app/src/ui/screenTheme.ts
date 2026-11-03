@@ -1,6 +1,6 @@
 import { StyleSheet, type TextStyle } from 'react-native';
 
-import { colors as shelfColors, fonts as shelfFonts } from './theme';
+import { colors as shelfColors } from './theme';
 
 // 화면 UI 공통 기준. 바탕·갈색은 2026-10-26 갈피 수정 시안에서 뽑은 값(부드러운 흰 바탕, 옅은 아이보리 입력칸, 차분한 갈색), 글꼴·간격은 설정 시안.
 // 2026-10-31 책장 시안 지시: UI 글자에서 갈색 기를 뺐다(주요 #303030, 보조 #757575 기준, 구분선 #E5E5E5). 갈색은 큰 버튼 바탕·선택 표시에만.
@@ -39,7 +39,10 @@ export const colors = {
 // 굵기는 글꼴 파일로 고른다(fontWeight를 함께 주면 안드로이드가 가짜 굵게를 덧입힌다).
 // 갈피 문장·책 표지 같은 내용 글꼴은 명조(reading/serif)를 따로 쓴다.
 export const fonts = {
-  ...shelfFonts,
+  // 갈피 카드 본문: 시안과 같은 본명조(Noto Serif KR, app/_layout에서 ReadingSerif로 등록)
+  reading: 'ReadingSerif',
+  // 메뉴·숫자는 시스템 고딕(안드로이드 Noto Sans CJK, iOS Apple SD Gothic Neo)
+  sans: undefined as string | undefined,
   ui: 'PretendardRegular',
   uiMedium: 'PretendardMedium',
   uiBold: 'PretendardSemiBold', // 시안의 굵은 글자는 Bold보다 한 단계 가벼운 SemiBold

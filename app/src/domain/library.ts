@@ -15,6 +15,10 @@ import { realDimensions } from './jacket-proportions';
 import { buildBookArt, heightClassOf, layoutArt, REBIND_VERSION, thicknessClassOf, tonesFor, type BookArtParams, type LayoutVariant, type RebindInput } from './rebinding';
 import type { BindingMaterial, Book } from './types';
 
+// 서재 표 종류(기기 DB·동기화가 같이 쓴다)
+export const LIB_KINDS = ['editions', 'books', 'rounds', 'sessions', 'bookmarks', 'bindings'] as const;
+export type LibKind = (typeof LIB_KINDS)[number];
+
 export type ReadStatus = 'want' | 'reading' | 'read' | 'paused';
 export const READ_STATUSES: ReadStatus[] = ['want', 'reading', 'read', 'paused'];
 

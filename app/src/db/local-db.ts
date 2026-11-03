@@ -12,14 +12,13 @@ import * as SQLite from 'expo-sqlite';
 import Storage from 'expo-sqlite/kv-store';
 
 import type { CatalogBook, UserBook } from '@/domain/catalog';
-import { emptyLibrary, type Binding, type Bookmark, type Edition, type Library, type MyBook, type Round, type Session } from '@/domain/library';
+import { emptyLibrary, LIB_KINDS, type Binding, type Bookmark, type Edition, type LibKind, type Library, type MyBook, type Round, type Session } from '@/domain/library';
 import { migrate } from '@/domain/layout-schema';
 import { heightClassOf, thicknessClassOf, type LayoutVariant } from '@/domain/rebinding';
 import type { BindingMaterial, BookPlacement, Pose, ShelfLayout, ShelfLayoutV1, Tilt } from '@/domain/types';
 
 // 서재 종류(= Library의 키)와 표 이름
-export const LIB_KINDS = ['editions', 'books', 'rounds', 'sessions', 'bookmarks', 'bindings'] as const;
-export type LibKind = (typeof LIB_KINDS)[number];
+export { LIB_KINDS, type LibKind };
 const TABLE: Record<LibKind, string> = { editions: 'editions', books: 'my_books', rounds: 'rounds', sessions: 'sessions', bookmarks: 'bookmarks', bindings: 'bindings' };
 
 type Value = SQLite.SQLiteBindValue;

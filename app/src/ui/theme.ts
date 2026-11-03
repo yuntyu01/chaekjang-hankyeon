@@ -28,13 +28,6 @@ export const colors = {
   dropBad: 'rgba(165, 72, 58, 0.16)',
 };
 
-export const fonts = {
-  // 갈피 카드 본문: 시안과 같은 본명조(Noto Serif KR, app/_layout에서 ReadingSerif로 등록)
-  reading: 'ReadingSerif',
-  // 메뉴·숫자는 시스템 고딕(안드로이드 Noto Sans CJK, iOS Apple SD Gothic Neo)
-  sans: undefined as string | undefined,
-};
-
 // 하단 탭 바: 2026-10-26 12dp 내림(height 78→66, bottomAir 22→10). shelfReserve는 책장 줄 배치 계산용으로 예전 높이를 유지한다(시안에 맞춘 배치가 바뀌지 않게)
 export const navigation = { height: 66, bottomAir: 10, iconSize: 25, shelfReserve: 78 };
 

@@ -2,7 +2,7 @@
 // - 충돌: updatedAt이 더 새로운 쪽이 이긴다(같으면 이 기기 것을 유지). 서버도 같은 규칙이다.
 // - 삭제: 지우면 삭제 표시(tombstone)를 올려 다른 기기에서도 지운다.
 // - 사진: 파일 이름(앱 보관 폴더 안)을 그대로 파일 id로 쓴다 → 다른 기기에서 받으면 같은 이름으로 저장된다.
-import { LIB_KINDS, type LibKind } from '@/db/local-db';
+import { LIB_KINDS, type LibKind } from './library';
 import { isCoverArtworkId } from './cover-artworks';
 import type { Binding, Bookmark, Edition, Library, MyBook, Round, Session } from './library';
 import { heightClassOf, thicknessClassOf, type LayoutVariant } from './rebinding';
