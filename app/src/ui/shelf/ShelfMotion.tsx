@@ -8,6 +8,7 @@ import { BlurMask, BlurStyle, Group, Path, Skia, type SkImage, type SkPath, type
 import { memo, useLayoutEffect, useMemo } from 'react';
 import { useAnimatedReaction, useDerivedValue, useSharedValue, withDelay, withTiming, type SharedValue } from 'react-native-reanimated';
 
+import { sameBakeInput } from '@/domain/bake-input';
 import { corners, fromPlaced, lowest, type Book3, type Vec3 } from '@/domain/book3';
 import { camAt, project, toPx, VIEW_PITCH_MAX, VIEW_PITCH_MIN, type Affine, type Cam } from '@/domain/camera';
 import { SHELF_DEPTH, SHELF_FRONT, SHELF_THICK, SHELF_X0, SHELF_X1 } from '@/domain/geometry';
@@ -122,18 +123,19 @@ export function useTargetPoses(m: Motion, ids: string[]): Readonly<SharedValue<P
 // 도착 자세는 간격이 지나면 마지막 것으로 한 번 굽는다. build: 자세 모음·상자 목록 → 굽기(워클릿, 구울 것이 없으면 NO_ATLAS)
 export const FADE_MS = 200;
 const BAKE_GAP_MS = 200;
-export function useFadingAtlas(poses: Readonly<SharedValue<Poses>>, boxes: Readonly<SharedValue<BoxBuf>>, build: (ps: Poses, bx: BoxBuf) => Atlas): Readonly<SharedValue<Atlas>> {
+// inputs: 자세·상자 말고 build가 읽는 값을 담은 글자(bake-input)
+export function useFadingAtlas(poses: Readonly<SharedValue<Poses>>, boxes: Readonly<SharedValue<BoxBuf>>, inputs: string, build: (ps: Poses, bx: BoxBuf) => Atlas): Readonly<SharedValue<Atlas>> {
   const baked = useSharedValue<Atlas>(NO_ATLAS);
   const prev = useSharedValue<Atlas | null>(null);
   const fade = useSharedValue(1);
   const wake = useSharedValue(0);
   // armed: 걸어 둔 깨우기가 끝나면 될 wake 값(걸어 둔 것이 없으면 null)
-  const last = useSharedValue({ at: -1e9, ps: null as Poses | null, bx: null as BoxBuf | null, armed: null as number | null });
+  const last = useSharedValue({ at: -1e9, ps: null as Poses | null, bx: null as BoxBuf | null, inputs: null as string | null, armed: null as number | null });
   useAnimatedReaction(
-    () => ({ ps: poses.value, bx: boxes.value, w: wake.value }),
+    () => ({ ps: poses.value, bx: boxes.value, inputs, w: wake.value }),
     (cur) => {
       const l = last.value;
-      if (cur.ps === l.ps && cur.bx === l.bx) return;
+      if (sameBakeInput(cur, l)) return;
       const now = globalThis.performance ? globalThis.performance.now() : Date.now();
       if (now - l.at < BAKE_GAP_MS) {
         // 깨우기를 걸어 둔 채 기다리는 중이면 그대로. 깨었는데 아직 간격 안이면(깨우기 시계와 이 시계가 조금 달라 일찍 깬다) 다시 건다:
@@ -145,7 +147,7 @@ export function useFadingAtlas(poses: Readonly<SharedValue<Poses>>, boxes: Reado
         }
         return;
       }
-      last.value = { at: now, ps: cur.ps, bx: cur.bx, armed: null };
+      last.value = { at: now, ps: cur.ps, bx: cur.bx, inputs: cur.inputs, armed: null };
       const old = baked.value;
       const next = build(cur.ps, cur.bx);
       baked.value = next;
@@ -428,12 +430,18 @@ const NO_PATH = Skia.PathBuilder.Make().detach();
 // 공간 밖(다른 줄로 옮겨 가는 중 판 너머에 있는 책)은 판이 가려 이 줄 안을 가리지 않는다. 반사율은 책 몸체 재질 색에서.
 // 나란히 선 책·쌓인 책은 서로 마주 보는 면을 가린다(덮개, light-model withCovers). 다른 줄 책은 판이 다 가린다
 export function useRowBoxes(poses: Readonly<SharedValue<Poses>>, ids: string[], books: Record<string, Book>, env: Env): Readonly<SharedValue<BoxBuf>> {
-  const albedos = useMemo(() => Object.fromEntries(ids.map((id) => [id, books[id] ? bookAlbedo(bookTone(books[id]), books[id].art.material) : ([0, 0, 0] as C3)])), [ids, books]);
+  // 값으로 묶는다: 책 객체가 새로 생겨도(갈피 수 등) 색이 같으면 그대로라 매퍼가 다시 돌지 않는다
+  const idsKey = ids.join('|');
+  const albedoKey = ids.map((id) => (books[id] ? `${bookTone(books[id])}/${books[id].art.material ?? ''}` : '')).join('|');
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const stableIds = useMemo(() => ids, [idsKey]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const albedos = useMemo(() => Object.fromEntries(ids.map((id) => [id, books[id] ? bookAlbedo(bookTone(books[id]), books[id].art.material) : ([0, 0, 0] as C3)])), [idsKey, albedoKey]);
   return useDerivedValue(() => {
     const own: Box[] = [];
     const used: string[] = [];
     const ps = poses.value;
-    for (const id of ids) {
+    for (const id of stableIds) {
       const b = ps[id];
       if (!b) continue;
       let lo = Infinity;

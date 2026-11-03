@@ -34,18 +34,8 @@ export function vnoise(x: number, y: number): [number, number, number] {
   const k = a - b - c + d;
   return [a + (b - a) * wx + (c - a) * wy + k * wx * wy, dwx * (b - a + k * wy), dwy * (c - a + k * wx)];
 }
-// 값 잡음 기울기 한 성분의 RMS: 미세 높이 진폭을 재질의 기울기 RMS에 맞출 때 나눈다(격자 칸 256개를 칸마다 8×8 점으로)
-export const VN_GRAD_RMS = (() => {
-  let s = 0;
-  let n = 0;
-  for (let i = 0; i < 128; i++)
-    for (let j = 0; j < 128; j++) {
-      const g = vnoise(i / 8 + 0.0625, j / 8 + 0.0625);
-      s += g[1] * g[1] + g[2] * g[2];
-      n += 2;
-    }
-  return Math.sqrt(s / n);
-})();
+// 값 잡음 기울기 한 성분의 RMS: 미세 높이 진폭을 재질의 기울기 RMS에 맞출 때 나눈다(격자 칸 256개를 칸마다 8×8 점으로 잰 값. 앱을 켤 때마다 다시 재지 않는다, 맞는지는 시험)
+export const VN_GRAD_RMS = 0.7564737144031012;
 
 export const GRAIN_KIND = { none: 0, fiber: 1, weave: 2, sheets: 3, wood: 4 } as const;
 // 셰이더 입력: mRough = (거칠기 r, 기울기 RMS), mBump = (1/크기 u, 1/크기 v, 진폭, 천 올이면 1), mGrain = (종류, 세기 1, 세기 2, 접장 틈 폭 또는 섬유 세기), mGsize = (크기 1, 크기 2)

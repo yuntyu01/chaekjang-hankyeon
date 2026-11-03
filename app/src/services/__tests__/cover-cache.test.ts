@@ -3,7 +3,7 @@ const mockFiles = new Map<string, number>();
 const mockDownload = jest.fn();
 jest.mock('expo-file-system/legacy', () => ({
   cacheDirectory: 'file:///cache/',
-  getInfoAsync: jest.fn(async (p: string) => (mockFiles.has(p) ? { exists: true, size: mockFiles.get(p) } : { exists: false })),
+  getInfoAsync: jest.fn(async (p: string) => (mockFiles.has(p) ? { exists: true, size: mockFiles.get(p), modificationTime: mockFiles.get(p) } : { exists: false })),
   makeDirectoryAsync: jest.fn(async () => undefined),
   downloadAsync: (uri: string, to: string) => mockDownload(uri, to),
   moveAsync: jest.fn(async ({ from, to }: { from: string; to: string }) => {
@@ -11,10 +11,11 @@ jest.mock('expo-file-system/legacy', () => ({
     mockFiles.delete(from);
   }),
   deleteAsync: jest.fn(async (p: string) => void mockFiles.delete(p)),
+  readDirectoryAsync: jest.fn(async () => [...mockFiles.keys()].map((p: string) => p.slice(p.lastIndexOf('/') + 1))),
 }));
 import { AppState } from 'react-native';
 
-import { COVER_DIR, COVER_RETRY_MS, coverFileName, isRemoteImage, watchCover, withTimeout, type CoverState } from '../cover-cache';
+import { COVER_DIR, COVER_RETRY_MS, coverFileName, isRemoteImage, pruneCoverCache, watchCover, withTimeout, type CoverState } from '../cover-cache';
 
 const URL = 'https://image.yes24.com/goods/1/L';
 const FILE = `${COVER_DIR}${coverFileName(URL)}`;
@@ -180,4 +181,37 @@ it('주소 구분과 파일 이름', () => {
   expect(isRemoteImage('file:///a.jpg')).toBe(false);
   expect(coverFileName(URL)).toBe(coverFileName(URL));
   expect(coverFileName(URL)).not.toBe(coverFileName(`${URL}x`));
+});
+
+it('정리: 조각 파일은 지우고, 상한을 넘으면 오래된 것부터 지운다', async () => {
+  jest.useRealTimers();
+  mockFiles.set(`${COVER_DIR}old.img`, 100); // 크기를 시각으로도 쓴다(작을수록 오래됨)
+  mockFiles.set(`${COVER_DIR}new.img`, 200);
+  mockFiles.set(`${COVER_DIR}x.img.abc.part`, 50);
+  await pruneCoverCache(250);
+  expect(mockFiles.has(`${COVER_DIR}x.img.abc.part`)).toBe(false);
+  expect(mockFiles.has(`${COVER_DIR}old.img`)).toBe(false);
+  expect(mockFiles.has(`${COVER_DIR}new.img`)).toBe(true);
+});
+
+it('정리: 지금 받고 있는 조각은 지우지 않아 그 표지가 그대로 들어온다', async () => {
+  let finish: (v: { status: number; uri: string }) => void = () => undefined;
+  mockDownload.mockImplementation((_: string, to: string) => {
+    mockFiles.set(to, 100);
+    return new Promise((resolve) => {
+      finish = (v) => resolve(v);
+    });
+  });
+  const { last, stop } = start(URL);
+  await flush();
+  const part = [...mockFiles.keys()].find((p) => p.endsWith('.part'))!;
+  jest.useRealTimers();
+  await pruneCoverCache();
+  expect(mockFiles.has(part)).toBe(true);
+  finish({ status: 200, uri: part });
+  await new Promise((r) => setTimeout(r, 0));
+  await flush();
+  expect(mockFiles.has(FILE)).toBe(true);
+  expect(last()).toEqual({ image: `image:${FILE}`, pending: false });
+  stop();
 });

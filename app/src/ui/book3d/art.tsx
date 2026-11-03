@@ -4,7 +4,7 @@
 //   둘 다 책등 면 그림 좌표에 고정되어 몸체와 함께 돈다(글자를 따로 돌리지 않는다). 어느 쪽을 보일지는 자세가 정한다(BookNode).
 // - 표지 면: 표지 그림(달·풍경 등) + 제목(시안처럼 제목만. 저자는 표지에 쓰지 않는다)
 // - 갈피: 머리 뒤에서 나오는 끈(원점 = 아래 가운데)
-import { ColorMatrix, ColorType, AlphaType, Group, Image as SkiaImage, PaintStyle, StrokeJoin, Path, Picture, Rect, Skia, Text, drawAsPicture, useImage, useTypeface, type SkFont, type SkImage, type SkPath, type SkPicture, type SkTypeface } from '@shopify/react-native-skia';
+import { ColorMatrix, ColorType, AlphaType, Group, Image as SkiaImage, PaintStyle, StrokeJoin, Path, Picture, Skia, Text, drawAsPicture, useImage, useTypeface, type SkFont, type SkImage, type SkPath, type SkPicture, type SkTypeface } from '@shopify/react-native-skia';
 import { FilterMode, MipmapMode } from '@shopify/react-native-skia';
 import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
 
@@ -14,10 +14,10 @@ import { whiteMat } from '@/domain/cover-url';
 import { COVER_LINE_H, COVER_SPACE, COVER_TRACK, coverTitleLayout, LYING_TRACK, lyingTitleLayout, SPINE_SPACE, spineTitleLayout } from '@/domain/title-layout';
 import type { Book, CoverArt } from '@/domain/types';
 import { bootMark } from '@/ui/boot-trace';
-import { GROOVE, rigOf, TAB_R } from '@/domain/book-parts';
+import { GROOVE, TAB_R } from '@/domain/book-parts';
 import { jacketColor, jacketFor, LANDSCAPES } from '@/domain/book-design';
 import { hasRibbon, ribbonDesign } from '@/domain/ribbon-design';
-import { bookFacePath, CoverFaceArt, PAGE_BASE, SpineFaceArt } from '@/ui/book/BookBody';
+import { bookFacePath, CoverFaceArt, SpineFaceArt } from '@/ui/book/BookBody';
 import { ReferenceCover } from './ReferenceCover';
 import { ReferenceBinding } from './ReferenceBinding';
 import { bookTone, referenceBinding, saturationMatrix } from '@/domain/binding-material';
@@ -115,8 +115,6 @@ export type BookArt = {
   ribbons: SkPicture | null;
   ribbonsShape: SkPath | null;
   ribbonsOut: number;
-  pageEnd: SkPicture; // 머리·꼬리 속지 면(두께 × 책등 띠 뒤 ~ 책배 판 끝 안쪽)
-  pageFore: SkPicture; // 책배 속지 면(두께 × 머리·꼬리 판 끝 안쪽)
 };
 
 // 책 몸체 색 하나: 표지판·책등·판 끝이 모두 같은 색이다(같은 책의 판 두 장과 책등). 표지 그림이 있는 책은 그 판 색(가장자리 색)을 쓴다.
@@ -327,12 +325,6 @@ function ribbonShapeOf(book: Book, s: number) {
   return { path: all.detach(), out: Math.max(...tabs.map((t) => t.out)) };
 }
 
-// 속지 면(판 사이, 판 끝보다 안쪽). w×h DU를 배율 s로 종이 색만 칠한다: 낱장·접장 결(반사율·미세 높이)과 밝기·판 쪽 그늘은
-// 빛 셰이더가 속지 단면 재질(ui/lighting materials.pages)로 계산한다(책 좌표에 붙어 세우기·눕히기·돌리기에도 같은 자리)
-function PageArt({ w, h, s }: { w: number; h: number; s: number }) {
-  return <Rect x={0} y={0} width={w * s} height={h * s} color={PAGE_BASE} />;
-}
-
 async function record(el: ReactNode, w: number, h: number) {
   return drawAsPicture(<Group>{el}</Group>, Skia.XYWHRect(-w, -h, w * 3, h * 3));
 }
@@ -455,12 +447,7 @@ async function buildArt(book: Book, s: number, dims: { T: number; H: number; W: 
   );
   const ribbons = hasRibbon(book) ? await record(<Ribbons book={book} s={s} />, 40 * s, 30 * s) : null;
   const rs = hasRibbon(book) ? ribbonShapeOf(book, s) : null;
-  // 속지 면(book-parts와 같은 치수): 머리·꼬리는 책등 띠 쪽에도 그늘, 책배는 판 쪽만
-  const rig = rigOf(dims);
-  const pw = dims.T - 2 * rig.bd;
-  const pageEnd = await record(<PageArt w={pw} h={dims.W - rig.sq - rig.sp} s={s} />, pw * s, (dims.W - rig.sq - rig.sp) * s);
-  const pageFore = await record(<PageArt w={pw} h={dims.H - 2 * rig.sq} s={s} />, pw * s, (dims.H - 2 * rig.sq) * s);
-  return { spine, titleV, titleH, cover: coverPic, ribbons, ribbonsShape: rs?.path ?? null, ribbonsOut: rs?.out ?? 0, pageEnd, pageFore };
+  return { spine, titleV, titleH, cover: coverPic, ribbons, ribbonsShape: rs?.path ?? null, ribbonsOut: rs?.out ?? 0 };
 }
 
 // 책 한 권의 기록된 그림(없으면 null → 다음 렌더에서 채워진다)

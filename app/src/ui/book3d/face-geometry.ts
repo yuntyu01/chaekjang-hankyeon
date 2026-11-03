@@ -69,8 +69,8 @@ export function faceVisible(cam: Cam, b: Book3, f: FaceId) {
 }
 
 // 종이 단면 면(머리·꼬리·책배) 하나의 화면 모양: 열린 칸, 속지 조각 행렬, 판·책등 테두리, 안쪽 벽(캔버스 px, pageFace 벽 순서, 안 보이면 빈 배열)
-export type PageGeom = { ok: boolean; opening: Point[]; pageM: number[]; rims: Point[][]; walls: Point[][] };
-export const EMPTY_PAGE: PageGeom = { ok: false, opening: [], pageM: HIDDEN_MATRIX, rims: [], walls: [] };
+export type PageGeom = { ok: boolean; opening: Point[]; rims: Point[][]; walls: Point[][] };
+export const EMPTY_PAGE: PageGeom = { ok: false, opening: [], rims: [], walls: [] };
 
 export function pageGeom(cam: Cam, b: Book3, f: 'head' | 'tail' | 'fore', px: Affine): PageGeom {
   'worklet';
@@ -87,7 +87,7 @@ export function pageGeom(cam: Cam, b: Book3, f: 'head' | 'tail' | 'fore', px: Af
     const k = viewAt(cam, toWorld(b, w.pts[0]));
     walls.push((n.x * k.kx + n.y * k.ky - n.z) / Math.hypot(k.kx, k.ky, 1) > 0.002 ? w.pts.map(P) : []);
   }
-  return { ok: true, opening: pf.opening.map(P), pageM: panelMatrix(b, pf.page, cam, px), rims: pf.rims.map((r) => r.map(P)), walls };
+  return { ok: true, opening: pf.opening.map(P), rims: pf.rims.map((r) => r.map(P)), walls };
 }
 
 // 볼록 다각형을 r만큼 안으로 줄인 모양: 변마다 안쪽으로 r 민 반평면들의 교집합(변이 짧으면 그 변은 사라진다).

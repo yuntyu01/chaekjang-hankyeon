@@ -165,7 +165,7 @@ const RowLayers = memo(function RowLayers({ r, st, mo, order, px, upx, books, ca
   const boardOn = SHOW.shelfBoard && SHOW.shelfShade && LIGHT_ON.plank;
   const booksOn = RENDER.books && LIGHT_ON.face;
   const bakeKey = useRetainedImageKey(`atlas:${r.shelfId}`);
-  const atlas = useFadingAtlas(target, boxes, (ps: Record<string, Book3 | null>, bx: BoxBuf) => {
+  const atlas = useFadingAtlas(target, boxes, `${space}|${top}|${last}|${wallOn}|${boardOn}|${booksOn}`, (ps: Record<string, Book3 | null>, bx: BoxBuf) => {
     'worklet';
     // 아직 자세가 없다(마운트 직후)
     if (ids.length && !ids.some((id) => ps[id])) return NO_ATLAS;
@@ -539,7 +539,7 @@ function HeaderWallRow({ row, mo, books, m, width, height, cam }: { row: SceneRo
     return [Math.min(...ys) - BAKE_MARGIN, Math.max(...ys) + BAKE_MARGIN];
   }, [px, height]);
   const area = useMemo(() => wallArea(y0, y1), [y0, y1]);
-  const atlas = useFadingAtlas(target, boxes, (ps: Record<string, Book3 | null>, bx: BoxBuf) => {
+  const atlas = useFadingAtlas(target, boxes, `${space}|${y0}|${y1}`, (ps: Record<string, Book3 | null>, bx: BoxBuf) => {
     'worklet';
     if (ids.length && !ids.some((id) => ps[id])) return NO_ATLAS;
     return bakeAtlas([areaItem(WALL_KEY, area, env, bx)], bakeKey);

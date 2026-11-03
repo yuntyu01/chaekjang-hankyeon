@@ -4,7 +4,7 @@ import palette from '@/scene-config/reference-bindings.generated.json';
 import { materials } from '@/scene-config/lighting';
 
 import { bookAlbedo, ROUGH } from '../light-model';
-import { FIBER_W, fiberSeen, GRAIN_KIND, grainPeak, MAT_UNIFORMS, matSample, VN_GRAD_RMS } from '../surface-pattern';
+import { FIBER_W, fiberSeen, GRAIN_KIND, grainPeak, MAT_UNIFORMS, matSample, VN_GRAD_RMS, vnoise } from '../surface-pattern';
 
 const NAMES = Object.keys(materials) as (keyof typeof materials)[];
 // 고르게 흩은 표본 점(R2 저불일치 수열: 두 축이 서로 묶이지 않는다)
@@ -18,6 +18,16 @@ describe('재질 무늬', () => {
   it('값 잡음 기울기 RMS는 0보다 크고 유한하다', () => {
     expect(VN_GRAD_RMS).toBeGreaterThan(0.3);
     expect(VN_GRAD_RMS).toBeLessThan(3);
+    // 상수가 잡음 식과 맞는지(격자 칸 256개를 칸마다 8×8 점으로)
+    let s = 0;
+    let n = 0;
+    for (let i = 0; i < 128; i++)
+      for (let j = 0; j < 128; j++) {
+        const g = vnoise(i / 8 + 0.0625, j / 8 + 0.0625);
+        s += g[1] * g[1] + g[2] * g[2];
+        n += 2;
+      }
+    expect(VN_GRAD_RMS).toBeCloseTo(Math.sqrt(s / n), 10);
   });
 
   it.each(NAMES)('%s: 결의 평균은 1(화소가 작을 때도, 클 때도)', (name) => {

@@ -187,9 +187,9 @@ export function BookNode({ book, dims, state, cam, px, shared, keyShadow, order,
         <Group layer>
           <Path path={outline} color={tone} />
           {/* 안쪽: 머리·꼬리·책배(판 끝보다 들어간 속지 + 테두리) */}
-          <PageFace f="head" state={state} cam={cam} px={px} art={art} tone={tone} />
-          <PageFace f="tail" state={state} cam={cam} px={px} art={art} tone={tone} />
-          <PageFace f="fore" state={state} cam={cam} px={px} art={art} tone={tone} />
+          <PageFace f="head" state={state} cam={cam} px={px} tone={tone} />
+          <PageFace f="tail" state={state} cam={cam} px={px} tone={tone} />
+          <PageFace f="fore" state={state} cam={cam} px={px} tone={tone} />
           {/* 바깥: 뒤표지 판, 책등·앞표지 그림 */}
           <BackFace dims={dims} state={state} cam={cam} px={px} tone={tone} />
           {RENDER.art ? (

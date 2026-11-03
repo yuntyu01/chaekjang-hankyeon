@@ -58,9 +58,6 @@ describe('책 몸체 구조', () => {
       const pageAt = (z: number) => screen(cam, standing, { x: dims.T / 2, y: dims.H - sq, z }).y;
       expect(pageAt(hiddenTo - 1)).toBeGreaterThan(spineTop); // 화면 아래(= 책등 면 뒤)
       expect(pageAt(Math.min(dims.W - sq, hiddenTo + 1))).toBeLessThan(spineTop);
-      // 속지 조각 행렬의 원점 = 들어간 평면의 앞 왼쪽 모서리(원근 카메라의 행렬은 동차라 마지막 성분으로 나눈다)
-      expect(g.pageM[2] / g.pageM[8]).toBeCloseTo(screen(cam, standing, { x: rigOf(dims).bd, y: dims.H - sq, z: sp }).x, 6);
-      expect(g.pageM[5] / g.pageM[8]).toBeCloseTo(screen(cam, standing, { x: rigOf(dims).bd, y: dims.H - sq, z: sp }).y, 6);
     }
     // 더 내려다보면(8°) 숨는 깊이가 짧다
     const kyAt = (deg: number) => viewAt(camAt(deg), toWorld(standing, { x: dims.T / 2, y: dims.H, z: 0 })).ky;

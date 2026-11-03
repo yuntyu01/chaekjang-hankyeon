@@ -2,38 +2,52 @@ import { memo, useId, useMemo } from 'react';
 import { StyleSheet, View } from 'react-native';
 import Svg, { Defs, LinearGradient, Path, Pattern, Rect, Stop } from 'react-native-svg';
 
+// 씨앗별 섬유 경로(스크롤로 카드가 다시 올라와도 다시 만들지 않는다)
+const GRAIN_MAX = 64;
+type Grain = { fine: string; broad: string; pulp: string; cloud: string };
+const grains = new Map<string, Grain>();
+function grainOf(seed: string): Grain {
+  const hit = grains.get(seed);
+  if (hit) return hit;
+  const made = makeGrain(seed);
+  if (grains.size >= GRAIN_MAX) grains.delete(grains.keys().next().value as string);
+  grains.set(seed, made);
+  return made;
+}
+function makeGrain(seed: string): Grain {
+  let state = 4129;
+  for (const c of seed) state = (Math.imul(state, 31) + c.charCodeAt(0)) >>> 0;
+  const random = () => { state = (Math.imul(state, 1664525) + 1013904223) >>> 0; return state / 4294967296; };
+  let fine = '', broad = '', pulp = '', cloud = '';
+  for (let i = 0; i < 290; i++) {
+    const x = random() * 64, y = random() * 64;
+    const dx = 0.35 + random() * 1.6, dy = (random() - 0.5) * 1.4;
+    fine += `M${x.toFixed(2)} ${y.toFixed(2)}q${(dx * 0.48).toFixed(2)} ${(dy - 0.32).toFixed(2)} ${dx.toFixed(2)} ${dy.toFixed(2)}`;
+  }
+  for (let i = 0; i < 92; i++) {
+    const x = random() * 91, y = random() * 91;
+    broad += `M${x.toFixed(2)} ${y.toFixed(2)}q1.1 -.7 ${(1.7 + random() * 2.4).toFixed(2)} ${((random() - 0.5) * 1.8).toFixed(2)}`;
+  }
+  for (let i = 0; i < 150; i++) {
+    const x = random() * 137, y = random() * 137;
+    const w = .7 + random() * 2.1, h = .35 + random() * .9;
+    pulp += `M${x.toFixed(2)} ${y.toFixed(2)}q${(w * .4).toFixed(2)} ${(-h).toFixed(2)} ${w.toFixed(2)} 0q${(-w * .35).toFixed(2)} ${(h * .8).toFixed(2)} ${(-w).toFixed(2)} 0Z`;
+  }
+  for (let i = 0; i < 26; i++) {
+    const x = random() * 137, y = random() * 137;
+    const w = 3 + random() * 5, h = 1.5 + random() * 3;
+    cloud += `M${x.toFixed(2)} ${y.toFixed(2)}q${(w * .45).toFixed(2)} ${(-h).toFixed(2)} ${w.toFixed(2)} 0q${(-w * .25).toFixed(2)} ${(h * .85).toFixed(2)} ${(-w).toFixed(2)} 0Z`;
+  }
+  return { fine, broad, pulp, cloud };
+}
+
 // Fibres stay fixed to each sheet. Incommensurate repeats keep the fine grain,
 // longer fibres and pressed pulp from forming a visible tile at reading size.
 export const BookmarkPaper = memo(function BookmarkPaper({ color, radius, seed, tape = false, colored = false }: {
   color: string; radius: number; seed: string; tape?: boolean; colored?: boolean;
 }) {
   const id = useId().replace(/[^a-zA-Z0-9]/g, '');
-  const grain = useMemo(() => {
-    let state = 4129;
-    for (const c of seed) state = (Math.imul(state, 31) + c.charCodeAt(0)) >>> 0;
-    const random = () => { state = (Math.imul(state, 1664525) + 1013904223) >>> 0; return state / 4294967296; };
-    let fine = '', broad = '', pulp = '', cloud = '';
-    for (let i = 0; i < 290; i++) {
-      const x = random() * 64, y = random() * 64;
-      const dx = 0.35 + random() * 1.6, dy = (random() - 0.5) * 1.4;
-      fine += `M${x.toFixed(2)} ${y.toFixed(2)}q${(dx * 0.48).toFixed(2)} ${(dy - 0.32).toFixed(2)} ${dx.toFixed(2)} ${dy.toFixed(2)}`;
-    }
-    for (let i = 0; i < 92; i++) {
-      const x = random() * 91, y = random() * 91;
-      broad += `M${x.toFixed(2)} ${y.toFixed(2)}q1.1 -.7 ${(1.7 + random() * 2.4).toFixed(2)} ${((random() - 0.5) * 1.8).toFixed(2)}`;
-    }
-    for (let i = 0; i < 150; i++) {
-      const x = random() * 137, y = random() * 137;
-      const w = .7 + random() * 2.1, h = .35 + random() * .9;
-      pulp += `M${x.toFixed(2)} ${y.toFixed(2)}q${(w * .4).toFixed(2)} ${(-h).toFixed(2)} ${w.toFixed(2)} 0q${(-w * .35).toFixed(2)} ${(h * .8).toFixed(2)} ${(-w).toFixed(2)} 0Z`;
-    }
-    for (let i = 0; i < 26; i++) {
-      const x = random() * 137, y = random() * 137;
-      const w = 3 + random() * 5, h = 1.5 + random() * 3;
-      cloud += `M${x.toFixed(2)} ${y.toFixed(2)}q${(w * .45).toFixed(2)} ${(-h).toFixed(2)} ${w.toFixed(2)} 0q${(-w * .25).toFixed(2)} ${(h * .85).toFixed(2)} ${(-w).toFixed(2)} 0Z`;
-    }
-    return { fine, broad, pulp, cloud };
-  }, [seed]);
+  const grain = useMemo(() => grainOf(seed), [seed]);
   return <View pointerEvents="none" style={[StyleSheet.absoluteFill, { borderRadius: radius, overflow: 'hidden' }]}>
     <Svg width="100%" height="100%">
       <Defs>

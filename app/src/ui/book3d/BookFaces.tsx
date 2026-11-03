@@ -4,7 +4,7 @@
 // - 판 면(뒤표지): 판 색(결은 빛 셰이더가 장정 재질로).
 // 여기는 재질(색·무늬)만 칠한다. 밝기는 책 한 권에 한 번(ui/SceneLight BookLight: 셰이더가 화소마다 광선으로 보이는 면을 찾고
 // 종이 단면 면은 테두리·속지·안쪽 벽을 가른다).
-import { Group, Path, Picture, Rect, Skia, type SkPath } from '@shopify/react-native-skia';
+import { Group, Path, Rect, Skia, type SkPath } from '@shopify/react-native-skia';
 import { useDerivedValue, type SharedValue } from 'react-native-reanimated';
 
 import type { Book3, Cam } from '@/domain/book3';
@@ -15,7 +15,6 @@ import type { BoxBuf, Env } from '@/domain/light-model';
 import { bookFacePath, PAGE_BASE } from '@/ui/book/BookBody';
 import type { Atlas } from '@/ui/SceneLight';
 
-import type { BookArt } from './art';
 import { faceMatrix, faceVisible, HIDDEN_MATRIX, pageGeom, roundedPolygon, type Affine } from './face-geometry';
 
 type RO<T> = Readonly<SharedValue<T>>;
@@ -36,23 +35,16 @@ function polysPath(list: Point[][]): SkPath {
 export type Surround = { env?: RO<Env | null>; atlas?: RO<Atlas>; id?: string; boxes?: RO<BoxBuf>; self?: RO<number> };
 
 // 종이 단면 면 하나의 재질: 판 테두리(책 색) + 속지(종이 색) + 판 안쪽 벽(책 색). 빛은 책 한 권에 한 번(SceneLight BookLight)
-export function PageFace({ f, state, cam, px, art, tone }: { f: 'head' | 'tail' | 'fore'; state: RO<Book3>; cam: RO<Cam>; px: Affine; art: BookArt; tone: string }) {
+export function PageFace({ f, state, cam, px, tone }: { f: 'head' | 'tail' | 'fore'; state: RO<Book3>; cam: RO<Cam>; px: Affine; tone: string }) {
   const g = useDerivedValue(() => pageGeom(cam.value, state.value, f, px));
   const opening = useDerivedValue(() => polysPath(g.value.ok ? [hull(g.value.opening)] : []));
   const cap = useDerivedValue(() => polysPath(g.value.ok ? [roundedPolygon(hull(g.value.rims.flat()), EDGE_R * px.s)] : []));
-  const m = useDerivedValue(() => g.value.pageM);
   // 안쪽 벽(책배 둘, 머리·꼬리 셋): 보이는 것만(pageGeom)
   const walls = useDerivedValue(() => polysPath(g.value.ok ? g.value.walls.filter((w) => w.length) : []));
-  const pic = f === 'fore' ? art.pageFore : art.pageEnd;
   return (
     <Group clip={cap}>
       <Path path={cap} color={tone} />
       <Path path={opening} color={PAGE_BASE} />
-      <Group clip={opening}>
-        <Group matrix={m}>
-          <Picture picture={pic} />
-        </Group>
-      </Group>
       <Path path={walls} color={tone} />
     </Group>
   );

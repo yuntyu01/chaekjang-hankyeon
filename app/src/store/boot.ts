@@ -14,6 +14,7 @@ import { loadSpineRatios } from './spine-ratio-store';
 import { spineRatioOf } from '@/domain/cover-url';
 import { dimsFittedAt, REAL_SPINE_MIN } from '@/domain/jacket-proportions';
 import { readingStore } from './reading-store';
+import { pruneCoverCache } from '@/services/cover-cache';
 import { initSync } from '@/services/sync';
 import { settingsStore } from './settings-store';
 import { viewStore } from './view-store';
@@ -116,6 +117,7 @@ export function bootStores() {
       if (libraryStore.isReplacingWithLayout()) return;
       placementStore.syncBooks(shelfBooks(next));
     });
+    void pruneCoverCache(); // 기다리지 않는다
     // 서버 동기화(서버 주소가 있을 때만): 서재·배치가 모두 불러와진 뒤 연결한다
     initSync({ reloadLayout: () => placementStore.load(shelfBooks(libraryStore.get().lib)) });
     bootMark('settings-loaded');

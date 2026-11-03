@@ -8,20 +8,23 @@ import { retainSceneMotions } from './scene-motion-cache';
 
 // 선반별 프레임(3D 상자)을 캐시해서 바뀐 선반만 다시 그린다. 보기 각과 상관없다.
 export function useShelfScenes(layout: ShelfLayout, books: Parameters<typeof computeShelf>[1]) {
-  const cache = useRef(new Map<string, { sig: string; books: typeof books; frames: BookFrame[] }>());
+  const cache = useRef(new Map<string, { sig: string; rowBooks: unknown[]; frames: BookFrame[] }>());
   const next = useMemo(() => {
     const out = new Map<string, BookFrame[]>();
-    const entries = new Map<string, { sig: string; books: typeof books; frames: BookFrame[] }>();
+    const entries = new Map<string, { sig: string; rowBooks: unknown[]; frames: BookFrame[] }>();
     for (const s of layout.shelves) {
-      const sig = JSON.stringify(layout.placements.filter((p) => p.shelfId === s.id));
+      const onShelf = layout.placements.filter((p) => p.shelfId === s.id);
+      const sig = JSON.stringify(onShelf);
+      // 다른 줄 책이나 그 줄에 없는 책이 바뀐 것은 이 줄과 상관없다(서재가 바뀌어도 내용이 같은 책은 같은 객체다, store/boot shelfBooks)
+      const rowBooks = onShelf.map((p) => books[p.bookId]);
       const hit = cache.current.get(s.id);
-      if (hit && hit.sig === sig && hit.books === books) {
+      if (hit && hit.sig === sig && hit.rowBooks.length === rowBooks.length && hit.rowBooks.every((b, i) => b === rowBooks[i])) {
         out.set(s.id, hit.frames);
         entries.set(s.id, hit);
         continue;
       }
       const frames = computeShelf(layout, books, s.id).frames;
-      entries.set(s.id, { sig, books, frames });
+      entries.set(s.id, { sig, rowBooks, frames });
       out.set(s.id, frames);
     }
     return { out, entries };

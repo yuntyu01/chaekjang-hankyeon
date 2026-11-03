@@ -945,9 +945,12 @@ function materialCode() {
         sv = mB.z * sin(k * u) * cos(k * v) * seen;
       } else {
         seen = seenOf(1.0 / mB.x, fp.x) * seenOf(1.0 / mB.y, fp.y);
-        float3 g = vnoise(float2(u * mB.x, v * mB.y));
-        su = mB.z * g.y * mB.x * seen;
-        sv = mB.z * g.z * mB.y * seen;
+        // 보이지 않는 무늬(seen 0)는 잡음을 계산하지 않는다: 화소마다 도는 일이라 값이 같으면 비용만 줄인다
+        if (seen > 0.0) {
+          float3 g = vnoise(float2(u * mB.x, v * mB.y));
+          su = mB.z * g.y * mB.x * seen;
+          sv = mB.z * g.z * mB.y * seen;
+        }
       }
     }
     float a = mR.x * mR.x;
@@ -957,7 +960,10 @@ function materialCode() {
     float s1 = mS.x;
     float s2 = mS.y;
     if (mG.x > 0.5 && mG.x < 1.5) {
-      f += mG.y * vnoise(float2(u, v) / s1).x * seenOf(s1, fm) + mG.z * vnoise(float2(u / s2 + 17.0, v / s2 + 31.0)).x * seenOf(s2, fm);
+      float g1 = seenOf(s1, fm);
+      float g2 = seenOf(s2, fm);
+      if (g1 > 0.0) f += mG.y * vnoise(float2(u, v) / s1).x * g1;
+      if (g2 > 0.0) f += mG.z * vnoise(float2(u / s2 + 17.0, v / s2 + 31.0)).x * g2;
       // 짧은 섬유(surface-pattern fiberPattern·fiberSeen과 같은 식)
       float fs = smoothstep(0.0, 1.0, clamp((FIBW / max(fm, 1e-9) - 0.1) / 0.25, 0.0, 1.0));
       if (mG.w > 0.0 && fs > 0.0) {

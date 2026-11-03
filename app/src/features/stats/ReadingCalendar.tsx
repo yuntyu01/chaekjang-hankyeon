@@ -1,6 +1,6 @@
 // 내 기록 달력(2026-11-02 사용자가 보여 준 사진): 날짜마다 그날 읽은 책 표지를 겹쳐 놓는다. 오래 읽은 책이 맨 앞, 나머지는 왼쪽 아래로 조금씩 밀려 보인다.
 // 표지는 실제 표지 사진(작은 그림 M), 없거나 못 읽으면 책 색 종이. 책 없이 읽은 날은 빈 종이 한 장. 기록이 있는 날을 누르면 그 날을 고른다.
-import { useState } from 'react';
+import { memo, useState } from 'react';
 import { Image, Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { coverAtSize } from '@/domain/cover-url';
@@ -25,7 +25,7 @@ function Paper({ uri, color, w, h }: { uri?: string; color: string; w: number; h
   );
 }
 
-function DayCell({ lib, day, row, cell, selected, today, onSelect }: { lib: Library; day: string; row?: DayBooks; cell: number; selected: boolean; today: boolean; onSelect: (day: string) => void }) {
+const DayCell = memo(function DayCell({ lib, day, row, cell, selected, today, onSelect }: { lib: Library; day: string; row?: DayBooks; cell: number; selected: boolean; today: boolean; onSelect: (day: string) => void }) {
   const n = Number(day.slice(8));
   const w = Math.max(16, cell - (MAX_LAYERS - 1) * STEP_X - SIDE);
   const h = Math.round(w * COVER_RATIO);
@@ -67,7 +67,7 @@ function DayCell({ lib, day, row, cell, selected, today, onSelect }: { lib: Libr
       </View>
     </Pressable>
   );
-}
+});
 
 export function ReadingCalendar({ lib, y, m, days, selected, today, onSelect }: { lib: Library; y: number; m: number; days: Map<string, DayBooks>; selected: string | null; today: string; onSelect: (day: string) => void }) {
   const [width, setWidth] = useState(0);

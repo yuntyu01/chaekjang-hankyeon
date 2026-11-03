@@ -53,10 +53,13 @@ async function existing(file: string) {
 
 type Fetched = { file: string | null; retry: boolean };
 const running = new Map<string, Promise<Fetched>>();
+// 지금 받고 있는 조각 파일: 정리(pruneCoverCache)가 지우면 옮기기에 실패해 그 표지가 다시 받을 때까지 안 보인다
+const receiving = new Set<string>();
 
 async function fetchOnce(uri: string): Promise<Fetched> {
   const file = fileOf(uri);
   const part = `${file}.${Date.now().toString(36)}.part`;
+  receiving.add(part);
   try {
     await FS.makeDirectoryAsync(COVER_DIR, { intermediates: true }).catch(() => undefined);
     const res = await withTimeout(FS.downloadAsync(uri, part), DOWNLOAD_MS);
@@ -70,6 +73,8 @@ async function fetchOnce(uri: string): Promise<Fetched> {
   } catch {
     await FS.deleteAsync(part, { idempotent: true }).catch(() => undefined);
     return { file: null, retry: true };
+  } finally {
+    receiving.delete(part);
   }
 }
 
@@ -109,6 +114,33 @@ function retryLater(fn: () => void) {
     waiting.delete(fn);
     if (!waiting.size) disarm();
   };
+}
+
+// 받아 둔 표지 정리(앱을 켠 뒤 한 번): 강제 종료로 남은 조각 파일을 지우고, 상한을 넘으면 오래된 것부터 지운다
+export const COVER_CACHE_MAX_BYTES = 150 * 1024 * 1024;
+export async function pruneCoverCache(maxBytes = COVER_CACHE_MAX_BYTES) {
+  try {
+    const names = await FS.readDirectoryAsync(COVER_DIR);
+    const files: { path: string; size: number; at: number }[] = [];
+    for (const name of names) {
+      const path = `${COVER_DIR}${name}`;
+      if (name.endsWith('.part')) {
+        if (!receiving.has(path)) await FS.deleteAsync(path, { idempotent: true }).catch(() => undefined);
+        continue;
+      }
+      const info = await FS.getInfoAsync(path);
+      if (info.exists) files.push({ path, size: info.size ?? 0, at: info.modificationTime ?? 0 });
+    }
+    let total = files.reduce((sum, f) => sum + f.size, 0);
+    files.sort((a, b) => a.at - b.at);
+    for (const f of files) {
+      if (total <= maxBytes) break;
+      await FS.deleteAsync(f.path, { idempotent: true }).catch(() => undefined);
+      total -= f.size;
+    }
+  } catch {
+    // 폴더가 아직 없거나 읽지 못하면 다음에 다시 한다
+  }
 }
 
 export type CoverState<T> = { image: T | null; pending: boolean };
