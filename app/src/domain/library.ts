@@ -8,7 +8,8 @@
 // - Session(독서 세션): 연결 책·회차, 시작·종료 시각, 실제 독서 시간(일시정지 제외)
 // - Bookmark(갈피): 연결 책, 문장, 쪽수, 메모, 날짜
 // - Binding(재장정 자산): 책등 색, 모티프, 그림 파일, 생성 상태(기본 장정 / AI)
-import { coverAtSize, spineRatioOf } from './cover-url';
+import { isNeutralColor } from './color';
+import { coverAccentOf, coverAtSize, spineRatioOf } from './cover-url';
 import { artworkCover, type CoverArtworkId } from './cover-artworks';
 import { realDimensions } from './jacket-proportions';
 import { buildBookArt, heightClassOf, layoutArt, REBIND_VERSION, thicknessClassOf, tonesFor, type BookArtParams, type LayoutVariant, type RebindInput } from './rebinding';
@@ -143,7 +144,6 @@ export const today = (d = new Date()) => {
 
 // 책장에 잘 어울리는 차분한 책등 색(시안 책들에서 고른 톤)
 export const SPINE_PALETTE = ['#3D5F57', '#1D426B', '#BE5D47', '#893E41', '#B5C7D7', '#F8C69F', '#E39E8A', '#4E6B60', '#F7E8D5', '#FAEDDE', '#6B5B7A', '#C9A46A'];
-export const PAPER_TAB = '#F1E7D4';
 
 // 추천 장정(재장정): buildBookArt 결과를 Binding 값으로. 같은 입력이면 같은 장정(다시 열어도 바뀌지 않는다).
 export function bindingFields(art: BookArtParams): Pick<Binding, 'spineColor' | 'motif' | 'inkColor' | 'accentColor' | 'layout'> {
@@ -414,7 +414,7 @@ export function toShelfBook(lib: Library, myBookId: string): Book | null {
     physical: { widthMm: size.widthMm, heightMm: size.heightMm, pages },
     dims: realDimensions({ widthMm: size.widthMm, heightMm: size.heightMm, pages }, ratio || undefined),
     // 갈피가 있으면 책 위로 작은 종이 탭(최대 두 장, art.tsx Ribbons)
-    art: { motif: bd?.motif ?? e.art?.motifId ?? 'none', inkColor: bd?.inkColor, accentColor: bd?.accentColor, material: bd?.material, vectorCover: !art, ...layoutArt(bd?.layout ?? e.art?.layoutVariant ?? 'spine_a'), ribbon: marks ? PAPER_TAB : undefined },
+    art: { ribbon: coverAccentOf(e.coverUri) || (isNeutralColor(themeColor) ? undefined : themeColor), motif: bd?.motif ?? e.art?.motifId ?? 'none', inkColor: bd?.inkColor, accentColor: bd?.accentColor, material: bd?.material, vectorCover: !art, ...layoutArt(bd?.layout ?? e.art?.layoutVariant ?? 'spine_a') },
     cover: art,
     startedAt: r?.startedAt,
     finishedAt: b.status === 'read' ? r?.finishedAt : undefined,
@@ -450,7 +450,7 @@ export function withCoverColors(lib: Library, colors: { editionId: string; color
 const shelfBookMemo = new Map<string, { deps: unknown[]; book: Book | null }>();
 export function memoShelfBook(lib: Library, myBookId: string): Book | null {
   const b = lib.books[myBookId];
-  const deps = [b, b && lib.editions[b.editionId], b?.bindingId ? lib.bindings[b.bindingId] : undefined, currentRound(lib, myBookId), bookmarksOf(lib, myBookId).length, spineRatioOf(b && lib.editions[b.editionId]?.coverUri)];
+  const deps = [b, b && lib.editions[b.editionId], b?.bindingId ? lib.bindings[b.bindingId] : undefined, currentRound(lib, myBookId), bookmarksOf(lib, myBookId).length, spineRatioOf(b && lib.editions[b.editionId]?.coverUri), coverAccentOf(b && lib.editions[b.editionId]?.coverUri)];
   const hit = shelfBookMemo.get(myBookId);
   if (hit && hit.deps.every((d, i) => d === deps[i])) return hit.book;
   const book = toShelfBook(lib, myBookId);

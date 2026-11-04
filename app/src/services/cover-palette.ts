@@ -3,7 +3,7 @@
 import { AlphaType, ColorType, Skia } from '@shopify/react-native-skia';
 
 import { isSpineImage, spineOfCover } from '@/domain/cover-url';
-import { dominantColorOf, edgeColorOf, extractPalette, type PaletteEntry } from '@/domain/rebinding';
+import { accentColorOf, dominantColorOf, edgeColorOf, extractPalette, type PaletteEntry } from '@/domain/rebinding';
 import { withTimeout } from '@/services/cover-cache';
 
 const W = 24;
@@ -36,6 +36,24 @@ const EDGE_X0 = 0.04;
 const EDGE_W = 0.04;
 const EDGE_PX_W = 4;
 const EDGE_PX_H = 144;
+// 갈피 색: 뽑은 색, 고를 색이 없으면 null, 표지를 못 읽었으면 undefined(다음에 다시)
+export async function coverAccentColor(url: string | undefined): Promise<string | null | undefined> {
+  if (!url) return undefined;
+  try {
+    const data = await withTimeout(Skia.Data.fromURI(url));
+    const img = data && Skia.Image.MakeImageFromEncoded(data);
+    if (!img) return undefined;
+    const surface = Skia.Surface.MakeOffscreen(COLOR_W, COLOR_H);
+    if (!surface) return undefined;
+    surface.getCanvas().drawImageRect(img, Skia.XYWHRect(0, 0, img.width(), img.height()), Skia.XYWHRect(0, 0, COLOR_W, COLOR_H), Skia.Paint());
+    surface.flush();
+    const px = surface.makeImageSnapshot().readPixels(0, 0, { width: COLOR_W, height: COLOR_H, colorType: ColorType.RGBA_8888, alphaType: AlphaType.Unpremul });
+    return px ? accentColorOf(px as ArrayLike<number>) : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 export async function coverDominantColor(url: string | undefined): Promise<string | null> {
   if (!url || !/^(https?:|file:|data:)/.test(url)) return null;
   try {

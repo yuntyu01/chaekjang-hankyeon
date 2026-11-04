@@ -31,7 +31,7 @@ export function cardData(lib: Library, m: Bookmark): BookmarkCardData | null {
     page: m.page,
     date: ymd(m.createdAt),
     memo: m.memo,
-    color: (b.bindingId && lib.bindings[b.bindingId]?.spineColor) || '#8A8378',
+    color: memoShelfBook(lib, b.id)?.art.ribbon,
     coverUri: e.coverUri,
     book: memoShelfBook(lib, b.id) ?? undefined,
     photoUri: m.photoUri,

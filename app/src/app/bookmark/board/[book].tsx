@@ -11,7 +11,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { scheduleOnRN } from 'react-native-worklets';
 
 import { boardBounds, boardCardSize, boardClamp, boardFit, boardFreeSpot, boardSpots, boardViewKey, BOARD_MAX_SCALE, BOARD_MIN_SCALE, type BoardSpot, type BoardView } from '@/domain/bookmark-board';
-import { bookmarksOf, type Bookmark } from '@/domain/library';
+import { bookmarksOf, memoShelfBook, type Bookmark } from '@/domain/library';
 import { realBoardSeed } from '@/domain/real-sample';
 import { BoardCard } from '@/features/bookmark/BoardCard';
 import { libraryStore, useLibrary } from '@/store/library-store';
@@ -45,7 +45,7 @@ export default function BookmarkBoard() {
   const marks = useMemo(() => (b ? bookmarksOf(lib, id) : []), [lib, id, b]);
   const spots = useMemo(() => boardSpots(marks), [marks]);
   const bounds = useMemo(() => boardBounds(spots), [spots]);
-  const color = (b?.bindingId && lib.bindings[b.bindingId]?.spineColor) || '#8A8378';
+  const color = b ? memoShelfBook(lib, b.id)?.art.ribbon : undefined;
 
   const [vp, setVp] = useState({ w: 0, h: 0 });
   const x = useSharedValue(0);
@@ -174,7 +174,7 @@ export default function BookmarkBoard() {
   );
 }
 
-function BoardItem({ mark, spot, color, scale }: { mark: Bookmark; spot: BoardSpot; color: string; scale: SharedValue<number> }) {
+function BoardItem({ mark, spot, color, scale }: { mark: Bookmark; spot: BoardSpot; color?: string; scale: SharedValue<number> }) {
   const dx = useSharedValue(0);
   const dy = useSharedValue(0);
   const lift = useSharedValue(0);

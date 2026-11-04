@@ -4,12 +4,13 @@ import { Image, StyleSheet, Text, View } from 'react-native';
 import { BOARD_CARD_W, BOARD_MAX_LINES } from '@/domain/bookmark-board';
 import type { Bookmark } from '@/domain/library';
 import { colors, fonts } from '@/ui/theme';
-import { CARD_PAPER, paperTone } from './BookmarkCard';
+import { paperColors } from '@/domain/color';
+import { CARD_PAPER } from './BookmarkCard';
 import { BookmarkPaper } from './BookmarkPaper';
 import { BookmarkTape } from './BookmarkTape';
 
-export function BoardCard({ mark, color, minHeight }: { mark: Bookmark; color: string; minHeight: number }) {
-  const tone = paperTone(color);
+export function BoardCard({ mark, color, minHeight }: { mark: Bookmark; color?: string; minHeight: number }) {
+  const tone = paperColors(color, mark.myBookId);
   const page = mark.page ? `p. ${mark.page}` : null;
   if (mark.photoUri) {
     const r = Math.max(0.9, Math.min(1.5, mark.photoRatio && mark.photoRatio > 0 ? mark.photoRatio : 1.3));

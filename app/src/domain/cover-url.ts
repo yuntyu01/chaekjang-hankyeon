@@ -84,3 +84,19 @@ export function loadSpineRatioEntries(entries: [string, number][]) {
 }
 export const needsSpineRatio = (coverUri: string | undefined) => !!goodsOf(coverUri) && spineRatioOf(coverUri) === undefined;
 
+// 표지에서 뽑은 갈피 색(rebinding accentColorOf): ''는 고를 색이 없는 표지, 없음(undefined)은 아직 못 쟀다. 공개 그림에서 다시 잴 수 있어 기기에만 둔다(store/cover-accent-store)
+const coverAccents = new Map<string, string>();
+export function coverAccentOf(coverUri: string | undefined): string | undefined {
+  const g = goodsOf(coverUri);
+  return g ? coverAccents.get(g) : undefined;
+}
+export function rememberCoverAccent(coverUri: string | undefined, accent: string) {
+  const g = goodsOf(coverUri);
+  if (g) coverAccents.set(g, accent);
+}
+export const coverAccentEntries = () => [...coverAccents.entries()];
+export function loadCoverAccentEntries(entries: [string, string][]) {
+  for (const [k, v] of entries) coverAccents.set(k, v);
+}
+export const needsCoverAccent = (coverUri: string | undefined) => !!goodsOf(coverUri) && coverAccentOf(coverUri) === undefined;
+

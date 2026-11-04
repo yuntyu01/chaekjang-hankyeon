@@ -8,7 +8,7 @@ import { ColorMatrix, ColorType, AlphaType, Group, Image as SkiaImage, PaintStyl
 import { FilterMode, MipmapMode } from '@shopify/react-native-skia';
 import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
 
-import { displayInk, modernInk, rgbHex, tabColors, TITLE_LIGHT, titleInk } from '@/domain/color';
+import { displayInk, isNeutralColor, modernInk, rgbHex, tabColors, TITLE_LIGHT, titleInk } from '@/domain/color';
 import { COVER_ARTWORKS } from '@/domain/cover-artworks';
 import { whiteMat } from '@/domain/cover-url';
 import { COVER_LINE_H, COVER_SPACE, COVER_TRACK, coverTitleLayout, LYING_TRACK, lyingTitleLayout, SPINE_SPACE, spineTitleLayout } from '@/domain/title-layout';
@@ -257,7 +257,7 @@ export const toneOf = (b: Book) => bookTone(b);
 
 export const SPINE_FACE = 0.94; // 세운 책등 제목 크기를 정할 때 쓰는 폭(책등 폭의 94%. 글자는 책등 가운데)
 
-// 갈피(종이 탭): 갈피가 하나면 한 장, 둘 이상이면 두 장이 머리 위로 나란히 나온다(ribbon-design). 색은 책 색 계열(tabColors).
+// 갈피(종이 탭): 갈피가 하나면 한 장, 둘 이상이면 두 장이 머리 위로 나란히 나온다(ribbon-design). 색은 표지에서 뽑은 갈피 색(art.ribbon, domain/color tabColors), 없으면 무채색이 아닌 책 색.
 // 원점 = 책 머리 가운데, 위가 음수. 뿌리는 머리 면 속지 사이로 조금 묻힌다(TAB_HIDDEN). 종이 탭은 속지 사이에 끼워져
 // 뿌리를 축으로 조금씩 기운다(±TAB_TILT_MAX°, 책마다·장마다). 그림은 재질(색·한지 결)만, 밝기는 그릴 때 빛 모델이 칠한다(BookNode Ribbons).
 const TAB_HIDDEN = 1.2;
@@ -272,7 +272,8 @@ function rng(seed: number) {
 }
 export function tabsOf(book: Book): Tab[] {
   const design = ribbonDesign(book);
-  const [c1, c2] = tabColors(toneOf(book), book.art.ribbon);
+  const tone = toneOf(book);
+  const [c1, c2] = tabColors(book.art.ribbon ?? (isNeutralColor(tone) ? undefined : tone), book.id);
   const tall = Math.max(...design.tabs.map((t) => t.out));
   let seed = 0;
   for (const ch of book.id) seed = (seed * 31 + ch.charCodeAt(0)) >>> 0;

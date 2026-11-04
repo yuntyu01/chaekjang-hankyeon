@@ -84,17 +84,31 @@ function fromHsl([h, s, l]: number[]) {
   };
   return [f(h + 1 / 3) * 255, f(h) * 255, f(h - 1 / 3) * 255];
 }
-// ---------- 갈피(종이 탭) 색: 책 색 계열(2026-10-07 사용자 참고 사진) ----------
-// 짙은·중간 색 책은 같은 색을 종이처럼 밝힌 두 장(한 장은 조금, 한 장은 더), 밝고 진한 색 책(살구 등)은 같은 색을 조금 짙게,
-// 거의 흰 책(크림)은 정해 둔 갈피 색(accent)이나 따뜻한 귤색. 첫째 색 = 길쭉한 장, 둘째 = 짧은 장
-// 흰색을 섞지 않고 같은 색상(hue)에서 밝기만 옮긴다(흰색을 섞으면 탁해진다): 첫째는 책 색에 가깝게 조금 더 선명하게, 둘째는 밝게
-const hsl = (h: number, s: number, l: number) => toHex(fromHsl([h, Math.min(1, s), Math.max(0, Math.min(0.93, l))]));
-export function tabColors(tone: string, accent?: string): [string, string] {
-  const [h, s, l] = toHsl(parse(tone));
-  if (l > 0.84 && s < 0.6) {
-    const [ah, as, al] = toHsl(parse(accent ?? '#E7AE72'));
-    return [hsl(ah, as, al), hsl(ah, as * 0.95, al + 0.12)];
-  }
-  if (l > 0.7) return [hsl(h, s * 1.1, l - 0.1), hsl(h, s, l - 0.03)];
-  return [hsl(h, s * 1.15, l + 0.07), hsl(h, s * 1.1, l + 0.22)];
+// ---------- 갈피 색: 책장 갈피 탭·갈피 카드 뒤 종이·테이프가 같은 색 하나에서 나온다(2026-11-05 사용자 '책등색처럼 많은 비율 색상으로', '책장 갈피도 마찬가지로') ----------
+// 색 하나 = 표지에서 흰색·검정·회색을 뺀 가장 넓은 색(rebinding accentColorOf). 표지 19권 중 14권은 가장 넓은 색이 무채색이라 그대로 쓰면 흰 종이에 묻히거나 검은 갈피가 된다.
+// 고를 색이 없는 표지는 차분한 세 색 중 책마다 하나. 같은 색상(hue)에서 밝기·채도만 옮긴다(벽에 묻히거나 형광처럼 튀지 않게)
+const clampTo = (v: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, v));
+const hsl = (h: number, s: number, l: number) => toHex(fromHsl([h, Math.min(1, s), clampTo(l, 0, 0.93)]));
+const ACCENT_FALLBACK = ['#C9A27E', '#8FA695', '#9A97BD'];
+export function isNeutralColor(hex: string) {
+  const [, s, l] = toHsl(parse(hex));
+  return l > 0.86 || l < 0.14 || s < 0.14;
+}
+function accentHsl(accent: string | undefined, key: string) {
+  let k = 0;
+  for (let i = 0; i < key.length; i++) k = (Math.imul(k, 31) + key.charCodeAt(i)) >>> 0;
+  return toHsl(parse(accent && /^#[\da-f]{6}$/i.test(accent) ? accent : ACCENT_FALLBACK[k % ACCENT_FALLBACK.length]));
+}
+// 책장 갈피 탭: 첫째 = 길쭉한 장, 둘째 = 짧은 장(더 밝게)
+export function tabColors(accent: string | undefined, key: string): [string, string] {
+  const [h, s, l] = accentHsl(accent, key);
+  const sat = clampTo(s, 0.28, 0.62);
+  const base = clampTo(l, 0.42, 0.72);
+  return [hsl(h, sat, base), hsl(h, sat, base + 0.12)];
+}
+// 갈피 카드: 뒤 종이와 테이프(앞 종이는 흰색이라 옅어도 갈린다)
+export function paperColors(accent: string | undefined, key: string) {
+  const [h, s] = accentHsl(accent, key);
+  const sat = clampTo(s, 0.28, 0.55);
+  return { paper: hsl(h, sat, 0.86), tape: hsl(h, sat, 0.8) };
 }

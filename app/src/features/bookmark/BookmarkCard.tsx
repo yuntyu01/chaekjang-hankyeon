@@ -1,4 +1,5 @@
 import { Pressable, StyleSheet, Text, View, type StyleProp, type TextStyle } from 'react-native';
+import { paperColors } from '@/domain/color';
 import type { Book } from '@/domain/types';
 import { BookVisual } from '@/ui/BookVisual';
 import { RealCover } from '@/ui/kit';
@@ -8,11 +9,10 @@ import { BookmarkPaper } from './BookmarkPaper';
 import { BookmarkTape } from './BookmarkTape';
 import { PhotoPlate } from './PhotoPlate';
 
-// 갈피 종이: 화면 바탕(흰색)과 같은 계열. 앞 종이는 흰색(옅은 선·그림자로 구분),
-// 책 색에 따른 색 종이·테이프는 원래 색을 흰 바탕 쪽으로 섞어 연하게(종이 45%, 테이프 35%).
+// 갈피 종이: 앞 종이는 흰색(옅은 선·그림자로 구분). 뒤 종이·테이프는 표지에서 뽑은 갈피 색을 옅게(domain/color paperColors, 책장 갈피 탭과 같은 색 하나)
 export const CARD_PAPER = '#FFFFFF';
 export const PAGE_BG = colors.bg;
-export type BookmarkCardData = { text: string; title: string; author?: string; page?: number; date: string; memo?: string; color: string; coverUri?: string; book?: Book; photoUri?: string; photoRatio?: number };
+export type BookmarkCardData = { text: string; title: string; author?: string; page?: number; date: string; memo?: string; color?: string; coverUri?: string; book?: Book; photoUri?: string; photoRatio?: number };
 
 export function quoteType(text: string) {
   const n = text.replace(/\s+/g, '').length;
@@ -26,20 +26,11 @@ export function WordWrap({ text, style, maxLines }: { text: string; style: Style
   return <Text style={style} numberOfLines={maxLines} textBreakStrategy="highQuality">{text}</Text>;
 }
 
-export function paperTone(color: string) {
-  const c = /^#([\da-f]{6})$/i.exec(color)?.[1];
-  if (!c) return { paper: '#D0DEE8', tape: '#BCCFDF' };
-  const [r, g, b] = [0, 2, 4].map((i) => parseInt(c.slice(i, i + 2), 16));
-  if (g > r && g > b) return { paper: '#D9DFD0', tape: '#C4CCB9' };
-  if (b > r || b > g) return { paper: '#D0DEE8', tape: '#BCCFDF' };
-  return { paper: '#F5DCCF', tape: '#F2D6C7' };
-}
-
 export function BookmarkCard({ data, showMemo, width, seed, compact = false, rasterizeBook = false, onCoverReady, onPhotoReady, onOpen, saved = false, onToggleSaved }: { data: BookmarkCardData; showMemo: boolean; width: number; seed: string; compact?: boolean; rasterizeBook?: boolean; onCoverReady?: () => void; onPhotoReady?: () => void; onOpen?: () => void; saved?: boolean; onToggleSaved?: () => void }) {
   const qt = compact ? { size: 25, lh: 38 } : quoteType(data.text);
   const cardW = compact ? width - 4 : width * 0.857;
   const coverW = compact ? 40 : 56; // 표지는 하단의 작은 출처처럼(목록 40×56dp, 2026-11-01)
-  const tone = paperTone(data.color);
+  const tone = paperColors(data.color, data.book?.id ?? data.title);
   const photo = !!data.photoUri;
   const date = compact ? data.date.replace(/^\d{4}[.\-/](\d{1,2})[.\-/](\d{1,2}).*$/, (_, m, d) => `${Number(m)}월 ${Number(d)}일`) : data.date;
   const padBottom = compact ? 20 : 34;
@@ -72,7 +63,7 @@ export function BookmarkCard({ data, showMemo, width, seed, compact = false, ras
         {/* 표지·제목·저자는 가깝게 한 묶음. 인용문만 명조이고 책 정보는 화면 위쪽과 같은 고딕, 책 이름만 조금 진하게 */}
         <View style={st.srcRow}>
           {/* 연결된 책은 실물 표지(도서 이미지·내가 찍은 사진, 2026-11-01 사용자 '연결된 거 전부 실물로'). 사진이 없는 책만 책장과 같은 장정 그림 */}
-          <View style={st.cover}>{data.coverUri || !data.book ? <RealCover uri={data.coverUri} title={data.title} color={data.color} width={coverW} ratio={COVER_RATIO} onReady={onCoverReady} /> : <BookVisual book={data.book} width={coverW} rasterize={rasterizeBook} onReady={onCoverReady} />}</View>
+          <View style={st.cover}>{data.coverUri || !data.book ? <RealCover uri={data.coverUri} title={data.title} color={data.book?.themeColor ?? data.color ?? colors.input} width={coverW} ratio={COVER_RATIO} onReady={onCoverReady} /> : <BookVisual book={data.book} width={coverW} rasterize={rasterizeBook} onReady={onCoverReady} />}</View>
           <View style={{ flex: 1, minWidth: 0, gap: 2, paddingRight: compact && onToggleSaved ? 40 : 0 }}>
             <Text style={st.srcTitle} numberOfLines={compact ? 1 : 2}>{data.title}</Text>
             <Text style={st.meta} numberOfLines={1}>{[data.author, date].filter(Boolean).join(' · ')}</Text>

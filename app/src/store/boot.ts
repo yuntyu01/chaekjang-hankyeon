@@ -11,6 +11,7 @@ import { libraryStore } from './library-store';
 import { demoKindOf, EMPTY_LAYOUT, placementStore } from './placement-store';
 import { installReferenceHome } from './home-reference-install';
 import { loadSpineRatios } from './spine-ratio-store';
+import { loadCoverAccents } from './cover-accent-store';
 import { spineRatioOf } from '@/domain/cover-url';
 import { dimsFittedAt, REAL_SPINE_MIN } from '@/domain/jacket-proportions';
 import { readingStore } from './reading-store';
@@ -92,6 +93,7 @@ export function bootStores() {
     // 내 책은 실제 크기로 그린다(2026-11-01). 저장한 배치의 크기가 지금과 다르면(처음이거나 최소 두께가 바뀌었으면) 한 번 틈을 지키며 새 크기로 맞춘다.
     // 표시를 안 보고 그냥 열면 두꺼워진 책에 밀려 사용자가 둔 틈이 사라진 채 저장된다(2026-11-02 시험으로 확인)
     await loadSpineRatios();
+    await loadCoverAccents();
     const fitted = await Storage.getItem(REAL_SIZE_KEY);
     const fittedNow = String(REAL_SPINE_MIN);
     const shelf = shelfBooks(lib);

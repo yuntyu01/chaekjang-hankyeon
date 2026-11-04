@@ -2,7 +2,7 @@
 // - 같은 입력 → 같은 출력(시간·무작위 없음. generatedAt은 호출자가 넘긴다).
 // - 썸네일은 색 추출에만 쓴다. 화면에 그리지 않고, 결과 색은 앱 팔레트 범위로 보정한다.
 // - 렌더러(ui/book3d/art.tsx)는 이 결과를 Book.art(색·모티프·조판 변형)로 받아 벡터로 그린다.
-import { contrast, rgbHex, TITLE_DARK, TITLE_LIGHT } from './color';
+import { contrast, isNeutralColor, rgbHex, TITLE_DARK, TITLE_LIGHT } from './color';
 import { MOTIF_SLOTS, type MotifSlotId } from './motif-slots';
 import type { HeightClass, ThicknessClass } from './types';
 
@@ -310,7 +310,7 @@ export function applyOverride(art: BookArtParams, o: ArtOverride | undefined): B
 // 가장 많은 묶음의 평균색. 표지 그림의 흰 바탕은 화면 순백이지만 실제 종이는 그만큼 희지 않다: 그대로 칠하면 음영이 잘려 흰 벽에 묻히므로 종이 흰색까지만.
 // 세 채널을 같은 비율로 낮춘다: HSL 명도만 낮추면 옅은 색기(JPEG의 거의 흰색)가 채도 그대로 진해져 민트색이 되고 벽까지 번진다(2026-11-01 실측)
 const PAPER_WHITE = 237;
-function topColor(rgba: ArrayLike<number>): { hex: string; share: number } | null {
+function colorBins(rgba: ArrayLike<number>) {
   const bins = new Map<number, { n: number; r: number; g: number; b: number }>();
   let total = 0;
   for (let i = 0; i + 3 < rgba.length; i += 4) {
@@ -324,8 +324,12 @@ function topColor(rgba: ArrayLike<number>): { hex: string; share: number } | nul
     bins.set(key, bin);
     total++;
   }
-  let top: { n: number; r: number; g: number; b: number } | null = null;
-  for (const bin of bins.values()) if (!top || bin.n > top.n) top = bin;
+  return { bins: [...bins.values()], total };
+}
+function topColor(rgba: ArrayLike<number>): { hex: string; share: number } | null {
+  const { bins, total } = colorBins(rgba);
+  let top: (typeof bins)[number] | null = null;
+  for (const bin of bins) if (!top || bin.n > top.n) top = bin;
   if (!top) return null;
   const [r, g, b] = [top.r / top.n, top.g / top.n, top.b / top.n];
   const k = Math.min(1, PAPER_WHITE / Math.max(r, g, b));
@@ -333,6 +337,17 @@ function topColor(rgba: ArrayLike<number>): { hex: string; share: number } | nul
 }
 export function dominantColorOf(rgba: ArrayLike<number>): string | null {
   return topColor(rgba)?.hex ?? null;
+}
+// 갈피 색(domain/color tabColors·paperColors): 넓은 순서로 흰색·검정·회색이 아닌 첫 색. 아주 작은 점(3% 미만)은 표지의 색이라 보기 어렵다. 없으면 null
+export const ACCENT_MIN_SHARE = 0.03;
+export function accentColorOf(rgba: ArrayLike<number>): string | null {
+  const { bins, total } = colorBins(rgba);
+  for (const bin of bins.sort((a, b) => b.n - a.n)) {
+    if (bin.n / total < ACCENT_MIN_SHARE) return null;
+    const hex = rgbHex(bin.r / bin.n, bin.g / bin.n, bin.b / bin.n);
+    if (!isNeutralColor(hex)) return hex;
+  }
+  return null;
 }
 // 표지에서 책등과 맞닿는 좁은 띠의 색: 한 색이 띠의 70% 이상일 때만 그 색(2026-11-03 사용자 제안: '구의 증명'처럼 왼쪽 띠가 전부 민트면 책등도 민트).
 // 여러 색이 섞인 띠(왼쪽 위만 어두운 사진 등)는 null이라 표지 전체의 주조색을 쓴다. 예시 19권에서 눈에 띄게 바뀌는 책은 '구의 증명'뿐이다
