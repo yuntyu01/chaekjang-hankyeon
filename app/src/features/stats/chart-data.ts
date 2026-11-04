@@ -47,19 +47,44 @@ export function hourBars(sessions: Session[]): number[] {
   }
   return out;
 }
-// 가장 많이 읽은 시간(기록이 없으면 null, 같으면 이른 시간)
-export function peakHour(hours: number[]): number | null {
-  let peak: number | null = null;
-  hours.forEach((ms, h) => {
-    if (ms > 0 && (peak === null || ms > hours[peak])) peak = h;
-  });
-  return peak;
-}
 // 0 → '밤 12시', 9 → '오전 9시', 12 → '낮 12시', 21 → '오후 9시'
 export function hourLabel(h: number) {
   if (h === 0) return '밤 12시';
   if (h === 12) return '낮 12시';
   return h < 12 ? `오전 ${h}시` : `오후 ${h - 12}시`;
+}
+
+// 요일별 읽은 시간(일~토, 시작한 날 기준)
+export const WEEKDAYS = ['일', '월', '화', '수', '목', '금', '토'];
+export function weekdayBars(sessions: Session[]): number[] {
+  const out = Array.from({ length: 7 }, () => 0);
+  for (const s of sessions) out[new Date(s.startedAt).getDay()] += s.durationMs;
+  return out;
+}
+
+// 한 번에 읽는 길이: 기록 수를 길이 칸에 나눈다. 평균과 가장 긴 기록
+export const LENGTH_BINS = [
+  { key: 'm10', name: '10분 미만', short: '~10분', max: 10 },
+  { key: 'm30', name: '10~30분', short: '~30분', max: 30 },
+  { key: 'm60', name: '30분~1시간', short: '~1시간', max: 60 },
+  { key: 'm120', name: '1~2시간', short: '~2시간', max: 120 },
+  { key: 'more', name: '2시간 이상', short: '2시간+', max: Infinity },
+];
+export function lengthBins(sessions: Session[]): number[] {
+  const out = LENGTH_BINS.map(() => 0);
+  for (const s of sessions) out[LENGTH_BINS.findIndex((b) => s.durationMs / 60000 < b.max)]++;
+  return out;
+}
+export function sessionSummary(sessions: Session[]) {
+  const total = sessions.reduce((a, s) => a + s.durationMs, 0);
+  return { averageMs: sessions.length ? total / sessions.length : 0, longestMs: sessions.reduce((a, s) => Math.max(a, s.durationMs), 0), count: sessions.length };
+}
+
+// 많이 읽은 책(책 없는 기록은 빼고 오래 읽은 순)
+export function topBooks(sessions: Session[], limit: number) {
+  const per = new Map<string, number>();
+  for (const s of sessions) if (s.myBookId) per.set(s.myBookId, (per.get(s.myBookId) ?? 0) + s.durationMs);
+  return [...per.entries()].sort((a, b) => b[1] - a[1]).slice(0, limit).map(([id, ms]) => ({ id, ms }));
 }
 
 // 달력(일요일 시작): 주마다 7칸, 그달이 아닌 칸은 null

@@ -1,5 +1,5 @@
 import type { Session } from '@/domain/library';
-import { booksByDay, calendarWeeks, dayTitle, hasPause, hourBars, hourLabel, monthBars, peakHour, tickLabel, timeRange, xLabels, yearBars, yTicks } from '../chart-data';
+import { booksByDay, calendarWeeks, dayTitle, hasPause, hourBars, hourLabel, lengthBins, monthBars, sessionSummary, tickLabel, topBooks, weekdayBars, timeRange, xLabels, yearBars, yTicks } from '../chart-data';
 
 const at = (d: string, h: number, min: number) => new Date(`${d}T${String(h).padStart(2, '0')}:${String(min).padStart(2, '0')}:00`).toISOString();
 const sess = (d: string, minutes: number) => ({ id: d + minutes, startedAt: at(d, 9, 0), endedAt: at(d, 10, 0), durationMs: minutes * 60000 }) as unknown as Session;
@@ -86,10 +86,17 @@ describe('읽은 시간대', () => {
   it('시작과 끝이 같으면 시작 칸에 넣는다', () => {
     expect(min(hourBars([session(at(7), at(7), 5)]), 7)).toBe(5);
   });
-  it('가장 많이 읽은 시간과 글자', () => {
-    expect(peakHour(Array.from({ length: 24 }, () => 0))).toBeNull();
-    const h = hourBars([session(at(21), at(21, 50), 50), session(at(9), at(9, 20), 20)]);
-    expect(peakHour(h)).toBe(21);
+  it('시간 글자', () => {
     expect([0, 9, 12, 21].map(hourLabel)).toEqual(['밤 12시', '오전 9시', '낮 12시', '오후 9시']);
+  });
+  it('요일별, 길이 칸, 평균·최장, 많이 읽은 책', () => {
+    const list = [session(at(9), at(9, 5), 5), session(at(10), at(10, 40), 40), { ...session(at(11), at(13), 120), myBookId: 'a' }, { ...session(at(14), at(14, 10), 10), myBookId: 'b' }, { ...session(at(15), at(15, 20), 20), myBookId: 'a' }] as Session[];
+    expect(lengthBins(list)).toEqual([1, 2, 1, 0, 1]);
+    const week = weekdayBars(list);
+    expect(week[new Date(at(9)).getDay()]).toBe(195 * 60000);
+    expect(week.reduce((a, b) => a + b, 0)).toBe(195 * 60000);
+    expect(sessionSummary(list)).toEqual({ averageMs: 39 * 60000, longestMs: 120 * 60000, count: 5 });
+    expect(sessionSummary([])).toEqual({ averageMs: 0, longestMs: 0, count: 0 });
+    expect(topBooks(list, 1)).toEqual([{ id: 'a', ms: 140 * 60000 }]);
   });
 });

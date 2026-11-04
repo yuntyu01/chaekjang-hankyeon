@@ -5,7 +5,7 @@
 import { frontExtent, wallLeanPose } from './front-pose';
 import { frontDims, SHELF_DEPTH, WALL_GAP } from './geometry';
 import { realDimensions } from './jacket-proportions';
-import { emptyLibrary, type Edition, type Library, type ReadStatus } from './library';
+import { emptyLibrary, type Edition, type Library, type ReadStatus, type Session } from './library';
 import { SAMPLE_LAYOUT } from './onboarding-sample';
 import { heightClassOf, thicknessClassOf } from './rebinding';
 import type { Book, BookPlacement, ShelfLayout } from './types';
@@ -142,6 +142,24 @@ export function realReadingLibrary(y: number, m: number): Library {
     }
   }
   return lib;
+}
+
+// 화면 사진용(측정 번들 ?seedlib=1): 실제 저장 경로로 비교 책장의 책과 지난달·이번 달 기록, 갈피를 넣는다(이미 책이 있으면 건너뛴다)
+type SeedStore = BoardStore & { addSession(input: Pick<Session, 'myBookId' | 'startedAt' | 'endedAt' | 'durationMs'>): string };
+export function realLibrarySeed(store: SeedStore, now: Date) {
+  if (Object.keys(store.get().lib.books).length) return;
+  const ids = new Map<string, string>();
+  for (const b of ALL) ids.set(b.id, store.addBook({ edition: { title: b.title, authors: b.author ? [b.author] : [], coverUri: b.coverArtUri, coverSource: 'api', source: 'search' }, status: 'reading', binding: { spineColor: b.themeColor, motif: 'none', source: 'default', seed: 1 } }));
+  const prev = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+  for (const [y, m] of [[prev.getFullYear(), prev.getMonth() + 1], [now.getFullYear(), now.getMonth() + 1]]) {
+    for (const s of Object.values(realReadingLibrary(y, m).sessions)) {
+      if (new Date(s.startedAt).getTime() > now.getTime()) continue;
+      store.addSession({ myBookId: s.myBookId ? ids.get(s.myBookId) : undefined, startedAt: s.startedAt, endedAt: s.endedAt, durationMs: s.durationMs });
+    }
+  }
+  const first = ids.get(ALL[0].id)!;
+  BOARD_QUOTES.slice(0, 3).forEach(([text, page]) => store.addBookmark({ myBookId: first, text, page }));
+  store.addBookmark({ myBookId: ids.get(ALL[1].id)!, text: BOARD_QUOTES[3][0], page: BOARD_QUOTES[3][1] });
 }
 
 // 갈피 보드 사진·옮기기 확인용: 측정 앱의 시험 서재에 실제 책 한 권과 갈피를 넣는다(실제 저장 경로로, 한 번만). 표지 그림을 사진 갈피로 쓴다
