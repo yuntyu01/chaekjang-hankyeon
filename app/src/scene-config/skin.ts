@@ -62,7 +62,7 @@ export const FRAME_ON = SKIN.frame !== null;
 // - cornerMm: 뒷벽 네 꼭지점 둥글기(2026-11-04 사용자 '안쪽 꼭지점 모서리가 더 곡선이어야'). 판 윗면의 뒤쪽 꼭지점도 같은 값
 // - frameGrey: 측정 번들에서 틀 색을 바꿔 볼 때(0이면 스킨 색)
 // - warm: 구멍 안(뒷벽·틀)을 따뜻하게 하는 정도(화면 단계, 빨강 − 파랑). 시안 약 6. 빛 계산은 그대로이고 보이는 색만 바뀐다
-export const LOOK = { dist: 3300, eyeY: 150, thickMm: 19, jointMm: 8, jointK: 0.22, rimMm: 3, frameGrey: 0, warm: 5, coveMm: 7, cornerMm: 6, sideMm: 26, sideK: 0.6, plankSpec: 2, cornerK: 0.22, softMm: 3, rimCorner: 3 };
+export const LOOK = { dist: 3300, eyeY: 150, thickMm: 19, jointMm: 8, jointK: 0.22, rimMm: 3, frameGrey: 0, warm: 5, coveMm: 7, cornerMm: 9, sideMm: 26, sideK: 0.6, plankSpec: 2, cornerK: 0.22, softMm: 3, rimCorner: 4 };
 // 측정 번들 전용: 딥링크 ?look=거리,눈높이,판 두께,그늘 높이,그늘 세기,테 반지름,틀 회색,따뜻함,곡면 반지름,꼭지점 둥글기,옆면 범위,옆면 세기,판 윤기,꼭지점 그늘 을 저장하면 다음 실행부터 적용, ?look=off로 지운다(useHomePerf). 배포본은 이 값을 읽지 않는다
 export const PERF_LOOK_KEY = 'perf-look';
 {

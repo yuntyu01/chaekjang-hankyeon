@@ -9,7 +9,7 @@
 //   다른 줄로 옮기는 경로는 도착 줄 캔버스에 책이 올라간 뒤에 움직이기 시작한다(planner: 멈춘 사이에 경로가 지나가 버리지 않게).
 // 자세만 바뀔 때는 캔버스 안 React가 다시 돌지 않는다(줄 구조가 바뀔 때만). 줄마다 RN 쪽에는 경로 계획·접근성 칸·안내·손잡이만 둔다.
 // 구성 비교(2026-10-01 측정): 세 줄을 캔버스 하나에 그리면 시점 전환은 비슷하고 끌기 프레임이 약 2배 느렸다(끄는 줄만 바뀌어도 전부 다시 그림).
-import { Canvas, Group, Path, Rect, Skia } from '@shopify/react-native-skia';
+import { Blur, Canvas, Group, Paint, Path, Rect, Skia } from '@shopify/react-native-skia';
 import { memo, useLayoutEffect, useMemo } from 'react';
 import { PixelRatio, StyleSheet, Text, View } from 'react-native';
 import { GestureDetector, type PanGesture } from 'react-native-gesture-handler';
@@ -17,6 +17,7 @@ import Animated, { ReduceMotion, useAnimatedReaction, useAnimatedStyle, useDeriv
 import { scheduleOnUI } from 'react-native-worklets';
 
 import { fromPlaced, toWorld, type Book3 } from '@/domain/book3';
+import { lockedPreview } from '@/domain/locked-preview';
 import { BASE_CAM, camAt, kyOf, toPx, VIEW_PITCH_MAX, VIEW_PITCH_MIN, type Affine, type Cam } from '@/domain/camera';
 import { SHELF, SHELF_DEPTH, SHELF_FRONT, SHELF_THICK } from '@/domain/geometry';
 import { FAR, NO_BOXES, type Env } from '@/domain/light-model';
@@ -42,6 +43,15 @@ import { bodyOf, camWithDy, eyeDyAt, frontOccluders, liveSV, locate, lowered, ou
 import { GlowOf, makeStruct, occludersOf, RowBooks, structKeyOf, useFadingAtlas, useFloorKey, useFrontKey, useRowBoxes, useShadePoses, useTargetPoses, useWallKey, Z_WALL, type CamSV, type Ghost, type RowStruct } from './ShelfMotion';
 import { FRAME_ON } from '@/scene-config/skin';
 import { FLAT_Z, frameParts, FRONT_AREA, FRONT_KEY, plankOutlinePath, rowEnv, SHELF_CAST_EXTENT, ShelfBoard, ShelfFlatWall, ShelfFrame, ShelfWall, TOP_AREA, TOP_KEY, UNDER_ENV, wallArea } from './ShelfPlank';
+
+// 잠긴 칸의 책 흐림(책만 한 겹으로 모아 흐린다, 벽·판 위에 그린다)
+const FROST_Z = 1e6;
+const FROST_BLUR = 9;
+const FROST_LAYER = (
+  <Paint opacity={0.82}>
+    <Blur blur={FROST_BLUR} />
+  </Paint>
+);
 
 // 줄 아틀라스에서 벽 띠의 자리
 const WALL_KEY = 'wall';
@@ -124,7 +134,7 @@ export function ShelfScene(p: Props) {
       {/* 줄 캔버스들이 다시 기록되기 전에(형제 순서상 먼저 도는 효과) 옮겨 가는 책을 이동 캔버스에 넘긴다 */}
       <TransitMark items={p.leaving} />
       {p.lockedRows.map((row, i) => (
-        <LockedRowCanvas key={row.shelfId} row={row} upper={i > 0 ? p.lockedRows[i - 1] : (p.rows.at(-1)?.row ?? null)} last={i === p.lockedRows.length - 1} m={p.m} width={p.width} cam={p.cam} shared={p.shared} debug={p.debug} />
+        <LockedRowCanvas key={row.shelfId} index={i} row={row} upper={i > 0 ? p.lockedRows[i - 1] : (p.rows.at(-1)?.row ?? null)} last={i === p.lockedRows.length - 1} m={p.m} width={p.width} cam={p.cam} shared={p.shared} debug={p.debug} />
       ))}
       {p.rows.map((r, i) => {
         const mo = motionOf(p.motions, r.shelfId);
@@ -148,7 +158,7 @@ const sameRowDraw = (a: SceneRowProps, b: SceneRowProps) =>
 
 // 한 줄의 그림(캔버스 안): 벽 + 벽 그림자 + 판 + 판 위 그림자 + 책(그 줄의 분리축 순서로 zIndex).
 // upx: 위 줄 변환(맨 윗줄은 null). 이 줄 벽은 위 판의 뒤 윗모서리(위 줄 판 윤곽이 시작하는 곳)까지 칠한다.
-const RowLayers = memo(function RowLayers({ r, st, mo, order, px, upx, books, cam, shared, debug, last = false }: { r: SceneRowProps; st: RowStruct; mo: Motion; order: Readonly<SharedValue<Record<string, number>>>; px: Affine; upx: Affine | null; books: Record<string, Book>; cam: CamSV; shared: Shared; debug: boolean; last?: boolean }) {
+const RowLayers = memo(function RowLayers({ r, st, mo, order, px, upx, books, cam, shared, debug, last = false, frosted = false }: { frosted?: boolean; r: SceneRowProps; st: RowStruct; mo: Motion; order: Readonly<SharedValue<Record<string, number>>>; px: Affine; upx: Affine | null; books: Record<string, Book>; cam: CamSV; shared: Shared; debug: boolean; last?: boolean }) {
   const plankZ = useDerivedValue(() => (order.value[`plank:${r.shelfId}`] ?? 0) * 10);
   const space = r.row.space;
   const top = !upx;
@@ -206,7 +216,8 @@ const RowLayers = memo(function RowLayers({ r, st, mo, order, px, upx, books, ca
       {SHOW.shelf && FRAME_ON ? <ShelfFlatWall cam={cam} px={px} topY={top ? wallY1 : space + SHELF_THICK / 2} bottomY={last ? -SHELF_THICK - SHELF_CAST_EXTENT : -SHELF_THICK} openTop={roofed ? space : null} openBottom={last ? -SHELF_THICK : null} ceilY={space} zIndex={Z_WALL + 2} /> : null}
       {SHOW.shelf && last ? <ShelfWall cam={cam} px={px} y0={-SHELF_THICK - SHELF_CAST_EXTENT} y1={-SHELF_THICK} z={FLAT_Z} env={UNDER_ENV} atlas={atlas} akey={UNDER_KEY} zIndex={Z_WALL + 3} /> : null}
       {SHOW.shelfBoard ? <ShelfBoard px={px} cam={cam} zIndex={plankZ} env={env} atlas={atlas} keyShadow={floorKey} frontShadow={frontKey} /> : null}
-      {RENDER.books ? <RowBooks m={mo} shelfId={r.shelfId} st={st} books={books} glowId={r.glowId} dragId={r.dragId} cam={cam} px={px} space={space} ceil={ceil} shared={shared} order={order} poses={poses} env={envSV} atlas={atlas} boxes={boxes} debug={debug} /> : null}
+      {RENDER.books && frosted ? <Group zIndex={FROST_Z} layer={FROST_LAYER}><RowBooks m={mo} shelfId={r.shelfId} st={st} books={books} glowId={r.glowId} dragId={r.dragId} cam={cam} px={px} space={space} ceil={ceil} shared={shared} order={order} poses={poses} env={envSV} atlas={atlas} boxes={boxes} debug={debug} /></Group> : null}
+      {RENDER.books && !frosted ? <RowBooks m={mo} shelfId={r.shelfId} st={st} books={books} glowId={r.glowId} dragId={r.dragId} cam={cam} px={px} space={space} ceil={ceil} shared={shared} order={order} poses={poses} env={envSV} atlas={atlas} boxes={boxes} debug={debug} /> : null}
     </>
   );
 });
@@ -218,7 +229,7 @@ const HEAD_DU = SHELF_FRONT * BASE_CAM.ky + SHELF_DEPTH * kyOf(VIEW_PITCH_MAX) +
 
 
 const RowCanvas = memo(
-  function RowCanvas({ r, upper, mo, books, m, width, cam, shared, debug, last = false }: { r: SceneRowProps; upper: RowGeom | null; mo: Motion; books: Record<string, Book>; m: ShelfMetrics; width: number; cam: CamSV; shared: Shared; debug: boolean; last?: boolean }) {
+  function RowCanvas({ r, upper, mo, books, m, width, cam, shared, debug, last = false, frosted = false }: { frosted?: boolean; r: SceneRowProps; upper: RowGeom | null; mo: Motion; books: Record<string, Book>; m: ShelfMetrics; width: number; cam: CamSV; shared: Shared; debug: boolean; last?: boolean }) {
     // 캔버스 위쪽 끝은 물리 픽셀에 맞춘다: 레이아웃은 뷰 위치를 픽셀로 반올림하는데 그림의 변환은 y0 그대로라, 맞추지 않으면 이 줄 그림이
     // 이동 캔버스(맨 위 0)와 반 픽셀까지 어긋나 같은 책을 넘겨줄 때 글자·그림 가장자리가 흔들린다
     const y0 = PixelRatio.roundToNearestPixel(Math.max(0, r.row.top - HEAD_DU * m.scale));
@@ -243,7 +254,7 @@ const RowCanvas = memo(
     return (
       <Canvas style={{ position: 'absolute', left: 0, top: y0, width, height }} pointerEvents="none">
         <Group clip={clip} invertClip>
-          <RowLayers r={r} st={st} mo={mo} order={order} px={px} upx={upx}  books={books} cam={cam} shared={shared} debug={debug} last={last} />
+          <RowLayers r={r} st={st} mo={mo} order={order} px={px} upx={upx}  books={books} cam={cam} shared={shared} debug={debug} last={last} frosted={frosted} />
         </Group>
       </Canvas>
     );
@@ -252,12 +263,12 @@ const RowCanvas = memo(
     sameRowDraw(a.r, b.r) && a.last === b.last && a.upper?.space === b.upper?.space && a.upper?.baseline === b.upper?.baseline && a.upper?.shelfId === b.upper?.shelfId && a.mo === b.mo && a.books === b.books && a.m === b.m && a.width === b.width && a.cam === b.cam && a.shared === b.shared && a.debug === b.debug,
 );
 
-// 잠긴 칸: 책이 없는 보통 줄(같은 벽·틀·판·빛). 움직일 책이 없어 줄 계획(RowOverlay)은 없다
-const NO_BOOKS: Record<string, Book> = {};
-function LockedRowCanvas({ row, upper, last, m, width, cam, shared, debug }: { row: RowGeom; upper: RowGeom | null; last: boolean; m: ShelfMetrics; width: number; cam: CamSV; shared: Shared; debug: boolean }) {
-  const mo = useMemo(() => makeMotion([]), []);
-  const r = useMemo<SceneRowProps>(() => ({ shelfId: row.shelfId, row, frames: [], dragId: null, glowId: null, hint: null }), [row]);
-  return <RowCanvas r={r} upper={upper} mo={mo} books={NO_BOOKS} m={m} width={width} cam={cam} shared={shared} debug={debug} last={last} />;
+// 잠긴 칸: 보통 줄과 같은 벽·틀·판·빛에 예시 책을 세우고 책만 흐리게 한다(벽의 책 그림자는 또렷하게 남아 안에 책이 있는 것처럼 보인다). 책이 움직이지 않아 줄 계획(RowOverlay)은 없다
+function LockedRowCanvas({ index, row, upper, last, m, width, cam, shared, debug }: { index: number; row: RowGeom; upper: RowGeom | null; last: boolean; m: ShelfMetrics; width: number; cam: CamSV; shared: Shared; debug: boolean }) {
+  const preview = lockedPreview(index);
+  const mo = useMemo(() => makeMotion(preview.frames.map((f) => fromPlaced(f.box))), [preview]);
+  const r = useMemo<SceneRowProps>(() => ({ shelfId: row.shelfId, row, frames: preview.frames, dragId: null, glowId: null, hint: null }), [row, preview]);
+  return <RowCanvas r={r} upper={upper} mo={mo} books={preview.books} m={m} width={width} cam={cam} shared={shared} debug={debug} last={last} frosted />;
 }
 
 // ---------- 이동 캔버스 ----------

@@ -982,7 +982,7 @@ export function HomeScreen() {
             </View>
           </GestureDetector>
           <View pointerEvents="box-none" style={[StyleSheet.absoluteFill, { top: headerH }]}>
-            <LockedShelves rows={lockedRows} m={m} width={winW} disabled={editing} onPress={() => setLockSheetOpen(true)} />
+            <LockedShelves rows={lockedRows} width={winW} disabled={editing} onPress={() => setLockSheetOpen(true)} />
           </View>
         </Animated.ScrollView>
         </GestureDetector>
