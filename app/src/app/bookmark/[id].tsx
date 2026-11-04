@@ -17,6 +17,7 @@ import { deniedMessage, pickPhoto } from '@/services/photos';
 import { keepImage } from '@/store/files';
 import { libraryStore, useLibrary } from '@/store/library-store';
 import { ChevronLeft, MoreHorizontal, PenLine, Share } from '@/ui/icons';
+import { RibbonColorSheet } from '@/features/bookmark/RibbonColorSheet';
 import { Btn, Chip, Empty, Field, IconButton, ListGroup, ListItem, Muted, Row, Screen, Sheet } from '@/ui/kit';
 import { colors, fonts, icon, shape, space, type } from '@/ui/theme';
 
@@ -51,6 +52,7 @@ export default function BookmarkDetail() {
   const [index, setIndex] = useState(() => Math.max(0, list.findIndex((m) => m.id === id)));
   const cur = list[index] ?? first;
   const [menu, setMenu] = useState(false);
+  const [colorOpen, setColorOpen] = useState(false);
   const [editing, setEditing] = useState<Bookmark | null>(null);
   const [share, setShare] = useState<{ withMemo: boolean; data: BookmarkCardData; seed: string } | null>(null);
   const [busy, setBusy] = useState(false);
@@ -174,10 +176,12 @@ export default function BookmarkDetail() {
         </View>
       ) : null}
 
+      <RibbonColorSheet bookId={cur.myBookId} visible={colorOpen} onClose={() => setColorOpen(false)} />
       <Sheet visible={menu} onClose={() => setMenu(false)}>
         <ListGroup>
           <ListItem label="수정" chevron={false} onPress={() => { setMenu(false); setEditing(cur); }} />
           {cur.memo ? <ListItem label="메모 포함해 공유" chevron={false} onPress={() => { setMenu(false); void shoot(true); }} /> : null}
+          <ListItem label="갈피 색 바꾸기" chevron={false} onPress={() => { setMenu(false); setColorOpen(true); }} />
           <ListItem label="연결된 책 열기" chevron={false} onPress={() => { setMenu(false); router.push(`/book/${cur.myBookId}`); }} />
           <ListItem
             label="삭제"

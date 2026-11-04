@@ -90,6 +90,8 @@ function fromHsl([h, s, l]: number[]) {
 const clampTo = (v: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, v));
 const hsl = (h: number, s: number, l: number) => toHex(fromHsl([h, Math.min(1, s), clampTo(l, 0, 0.93)]));
 const ACCENT_FALLBACK = ['#C9A27E', '#8FA695', '#9A97BD'];
+// 갈피 색 고르기의 기본 색(표지 색 말고 직접 고를 때)
+export const RIBBON_PALETTE = ['#C9A27E', '#D98A7C', '#E3A857', '#C9B458', '#8FA695', '#5B8C7A', '#7D9CC0', '#5276B4', '#9A97BD', '#B57BA6', '#A0695F', '#8A6F5C'];
 export function isNeutralColor(hex: string) {
   const [, s, l] = toHsl(parse(hex));
   return l > 0.86 || l < 0.14 || s < 0.14;

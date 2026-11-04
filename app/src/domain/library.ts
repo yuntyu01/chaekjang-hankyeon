@@ -52,6 +52,7 @@ export type MyBook = {
   status: ReadStatus;
   rating?: number; // 1~5, 선택
   note?: string; // 한 줄 감상, 선택
+  ribbonColor?: string; // 사용자가 고른 갈피 색(책장 갈피·뒤 종이·테이프). 없으면 표지에서 뽑은 색(2026-11-05)
   currentPage?: number; // 선택
   bindingId?: string;
   createdAt: string;
@@ -414,7 +415,7 @@ export function toShelfBook(lib: Library, myBookId: string): Book | null {
     physical: { widthMm: size.widthMm, heightMm: size.heightMm, pages },
     dims: realDimensions({ widthMm: size.widthMm, heightMm: size.heightMm, pages }, ratio || undefined),
     // 갈피가 있으면 책 위로 작은 종이 탭(최대 두 장, art.tsx Ribbons)
-    art: { ribbon: coverAccentOf(e.coverUri) || (isNeutralColor(themeColor) ? undefined : themeColor), motif: bd?.motif ?? e.art?.motifId ?? 'none', inkColor: bd?.inkColor, accentColor: bd?.accentColor, material: bd?.material, vectorCover: !art, ...layoutArt(bd?.layout ?? e.art?.layoutVariant ?? 'spine_a') },
+    art: { ribbon: b.ribbonColor || coverAccentOf(e.coverUri) || (isNeutralColor(themeColor) ? undefined : themeColor), motif: bd?.motif ?? e.art?.motifId ?? 'none', inkColor: bd?.inkColor, accentColor: bd?.accentColor, material: bd?.material, vectorCover: !art, ...layoutArt(bd?.layout ?? e.art?.layoutVariant ?? 'spine_a') },
     cover: art,
     startedAt: r?.startedAt,
     finishedAt: b.status === 'read' ? r?.finishedAt : undefined,

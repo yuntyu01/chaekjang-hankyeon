@@ -20,7 +20,7 @@ export type WireEdition = Wire & {
   art?: { baseColor: string; inkColor?: string | null; accentColor?: string | null; motifId?: string | null; layoutVariant?: string | null; version?: number | null; generatedAt?: string | null } | null;
   createdAt?: string;
 };
-export type WireBook = Wire & { editionId?: string; status?: string; rating?: number | null; note?: string | null; currentPage?: number | null; bindingId?: string | null; createdAt?: string };
+export type WireBook = Wire & { editionId?: string; status?: string; rating?: number | null; note?: string | null; ribbonColor?: string | null; currentPage?: number | null; bindingId?: string | null; createdAt?: string };
 export type WireBinding = Wire & {
   myBookId?: string; spineColor?: string; inkColor?: string | null; accentColor?: string | null; motif?: string; layout?: string | null; material?: string | null; coverArtId?: string | null; source?: string; status?: string;
   seed?: number | null; coverArtFileId?: string | null; spineArtFileId?: string | null; createdAt?: string;
@@ -64,7 +64,7 @@ export function editionToWire(e: Edition, imageDir: string): WireEdition {
     createdAt: e.createdAt, updatedAt: e.updatedAt,
   };
 }
-export const bookToWire = (b: MyBook): WireBook => ({ id: b.id, editionId: b.editionId, status: b.status, rating: b.rating, note: b.note, currentPage: b.currentPage, bindingId: b.bindingId, createdAt: b.createdAt, updatedAt: b.updatedAt });
+export const bookToWire = (b: MyBook): WireBook => ({ id: b.id, editionId: b.editionId, status: b.status, rating: b.rating, note: b.note, ribbonColor: b.ribbonColor, currentPage: b.currentPage, bindingId: b.bindingId, createdAt: b.createdAt, updatedAt: b.updatedAt });
 export const bindingToWire = (b: Binding, imageDir: string): WireBinding => ({
   id: b.id, myBookId: b.myBookId, spineColor: b.spineColor, inkColor: b.inkColor, accentColor: b.accentColor, motif: b.motif, layout: b.layout, material: b.material, coverArtId: b.coverArtId, source: b.source, status: b.status,
   seed: b.seed, coverArtFileId: fileIdOf(b.coverArtUri, imageDir), spineArtFileId: fileIdOf(b.spineArtUri, imageDir), createdAt: b.createdAt, updatedAt: b.updatedAt,
@@ -122,7 +122,7 @@ export const editionFromWire = (w: WireEdition, imageDir: string): Edition => ({
     : undefined,
   createdAt: w.createdAt ?? w.updatedAt, updatedAt: w.updatedAt,
 });
-export const bookFromWire = (w: WireBook): MyBook => ({ id: w.id, editionId: w.editionId ?? '', status: (w.status as MyBook['status']) ?? 'want', rating: nz(w.rating), note: nz(w.note), currentPage: nz(w.currentPage), bindingId: nz(w.bindingId), createdAt: w.createdAt ?? w.updatedAt, updatedAt: w.updatedAt });
+export const bookFromWire = (w: WireBook): MyBook => ({ id: w.id, editionId: w.editionId ?? '', status: (w.status as MyBook['status']) ?? 'want', rating: nz(w.rating), note: nz(w.note), ribbonColor: nz(w.ribbonColor), currentPage: nz(w.currentPage), bindingId: nz(w.bindingId), createdAt: w.createdAt ?? w.updatedAt, updatedAt: w.updatedAt });
 export const bindingFromWire = (w: WireBinding, imageDir: string): Binding => ({
   id: w.id, myBookId: w.myBookId ?? '', spineColor: w.spineColor ?? '#8A8378', inkColor: nz(w.inkColor), accentColor: nz(w.accentColor), motif: w.motif ?? 'none', layout: nz(w.layout) as LayoutVariant | undefined,
   material: bindingMaterialOf(w.material),

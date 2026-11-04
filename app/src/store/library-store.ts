@@ -118,7 +118,7 @@ export const libraryStore = {
     commit({ ...state.lib, editions: { ...state.lib.editions, [editionId]: { ...e, ...patch, updatedAt: now() } } });
   },
 
-  updateBook(id: string, patch: Partial<Pick<MyBook, 'rating' | 'note' | 'currentPage'>>) {
+  updateBook(id: string, patch: Partial<Pick<MyBook, 'rating' | 'note' | 'currentPage' | 'ribbonColor'>>) {
     const b = state.lib.books[id];
     if (!b) return;
     commit({ ...state.lib, books: { ...state.lib.books, [id]: { ...b, ...patch, updatedAt: now() } } });

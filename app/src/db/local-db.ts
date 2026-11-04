@@ -222,10 +222,12 @@ const MIGRATIONS: Migration[] = [
    DROP INDEX IF EXISTS sessions_book_idx;
    DROP INDEX IF EXISTS sessions_started_idx;
    DROP INDEX IF EXISTS bookmarks_book_idx;`,
+  // v8(2026-11-05, 서버 V15와 같은 열): 사용자가 고른 갈피 색. 선택 값(없으면 표지에서 뽑은 색)
+  addV5Columns,
 ];
 
 // v5 이후 더한 열(없을 때만 더한다). v3 → v4 이주도 지금 열 목록으로 기록을 옮기므로 표를 만든 직후 먼저 부른다
-const V5_COLUMNS: [string, string, string][] = [['sessions', 'start_page', 'INTEGER'], ['bookmarks', 'session_id', 'TEXT'], ['bookmarks', 'saved_at', 'TEXT'], ['editions', 'product_id', 'TEXT'], ['editions', 'link', 'TEXT'], ['bookmarks', 'board_x', 'REAL'], ['bookmarks', 'board_y', 'REAL'], ['bookmarks', 'board_rot', 'REAL']];
+const V5_COLUMNS: [string, string, string][] = [['my_books', 'ribbon_color', 'TEXT'], ['sessions', 'start_page', 'INTEGER'], ['bookmarks', 'session_id', 'TEXT'], ['bookmarks', 'saved_at', 'TEXT'], ['editions', 'product_id', 'TEXT'], ['editions', 'link', 'TEXT'], ['bookmarks', 'board_x', 'REAL'], ['bookmarks', 'board_y', 'REAL'], ['bookmarks', 'board_rot', 'REAL']];
 async function addV5Columns(d: SQLite.SQLiteDatabase) {
   for (const [t, c, kind] of V5_COLUMNS) {
     const cols = (await d.getAllAsync<{ name: string }>(`PRAGMA table_info(${t})`)).map((x) => x.name);
@@ -298,7 +300,7 @@ function put<T extends object>(o: T, key: keyof T, v: Value) {
 const COLUMNS: Record<LibKind, string[]> = {
   editions: ['id', 'isbn13', 'title', 'publisher', 'published_at', 'page_count', 'width_mm', 'height_mm', 'cover_uri', 'cover_source', 'category', 'series_title', 'source', 'source_name',
     'product_id', 'link', 'art_base_color', 'art_ink_color', 'art_accent_color', 'art_motif_id', 'art_layout', 'art_version', 'art_generated_at', 'created_at', 'updated_at'],
-  books: ['id', 'edition_id', 'status', 'rating', 'note', 'current_page', 'binding_id', 'created_at', 'updated_at'],
+  books: ['id', 'edition_id', 'status', 'rating', 'note', 'ribbon_color', 'current_page', 'binding_id', 'created_at', 'updated_at'],
   bindings: ['id', 'my_book_id', 'spine_color', 'motif', 'ink_color', 'accent_color', 'layout', 'material', 'cover_art_uri', 'cover_art_id', 'spine_art_uri', 'source', 'status', 'seed', 'created_at', 'updated_at'],
   rounds: ['id', 'my_book_id', 'idx', 'started_on', 'finished_on', 'paused', 'created_at', 'updated_at'],
   sessions: ['id', 'my_book_id', 'round_id', 'started_at', 'ended_at', 'duration_ms', 'start_page', 'pages_read', 'memo', 'created_at', 'updated_at'],
@@ -320,7 +322,7 @@ function values(kind: LibKind, item: Item): Value[] {
     }
     case 'books': {
       const b = item as MyBook;
-      return [b.id, b.editionId ?? '', b.status ?? 'want', opt(b.rating), opt(b.note), opt(b.currentPage), opt(b.bindingId), b.createdAt ?? fallback, b.updatedAt ?? fallback];
+      return [b.id, b.editionId ?? '', b.status ?? 'want', opt(b.rating), opt(b.note), opt(b.ribbonColor), opt(b.currentPage), opt(b.bindingId), b.createdAt ?? fallback, b.updatedAt ?? fallback];
     }
     case 'bindings': {
       const b = item as Binding;
@@ -396,6 +398,7 @@ function myBook(r: Row): MyBook {
   const b: MyBook = { id: str(r.id), editionId: str(r.edition_id), status: str(r.status) as MyBook['status'], createdAt: str(r.created_at), updatedAt: str(r.updated_at) };
   put(b, 'rating', r.rating);
   put(b, 'note', r.note);
+  put(b, 'ribbonColor', r.ribbon_color);
   put(b, 'currentPage', r.current_page);
   put(b, 'bindingId', r.binding_id);
   return b;
