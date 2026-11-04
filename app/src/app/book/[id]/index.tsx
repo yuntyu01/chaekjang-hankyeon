@@ -10,7 +10,7 @@ import { STATUS_LABEL, ymd } from '@/features/book/labels';
 import { placeWithChoice } from '@/features/book/place-books';
 import { ko } from '@/i18n/ko';
 import { placementOf } from '@/domain/layout-engine';
-import { bookmarksOf, bookReadMs, completions, formatDuration, READ_STATUSES, roundsOf } from '@/domain/library';
+import { bookmarksOf, bookReadMs, completions, formatDuration, isDay, READ_STATUSES, roundsOf } from '@/domain/library';
 import { useLibrary, libraryStore } from '@/store/library-store';
 import { placementStore, usePlacementStore } from '@/store/placement-store';
 import { uiBus } from '@/store/ui-bus';
@@ -18,7 +18,6 @@ import { Btn, Chip, Empty, Field, H2, IconButton, ListGroup, ListItem, Muted, Ro
 import { colors, fonts, icon, press, shape, space, type } from '@/ui/theme';
 import { BookVisual, LibraryCover } from '@/ui/BookVisual';
 
-const DATE = /^\d{4}-\d{2}-\d{2}$/;
 const VIEW_TABS = [{ id: 'mine', label: '내 기록' }, { id: 'readers', label: '독자 후기' }] as const;
 
 export default function BookDetailScreen() {
@@ -244,7 +243,9 @@ export default function BookDetailScreen() {
 function RoundCard({ idx, startedAt, finishedAt, paused, onSave }: { idx: number; startedAt?: string; finishedAt?: string; paused?: boolean; onSave: (p: { startedAt?: string; finishedAt?: string }) => void }) {
   const [s, setS] = useState(startedAt ?? '');
   const [f, setF] = useState(finishedAt ?? '');
-  const bad = (v: string) => !!v && !DATE.test(v);
+  // 달력에 있는 날짜만, 완독일은 시작일 이후만 저장한다(잘못된 값이 올라가면 서버가 거부해 동기화가 통째로 막힌다)
+  const bad = (v: string) => !!v && !isDay(v);
+  const reversed = !!s && !!f && !bad(s) && !bad(f) && f < s;
   return (
     <View style={st.round}>
       <Text style={type.rowStrong}>
@@ -253,10 +254,10 @@ function RoundCard({ idx, startedAt, finishedAt, paused, onSave }: { idx: number
       </Text>
       <Row style={{ marginTop: space.m, flexWrap: 'nowrap', alignItems: 'flex-start' }} gap={space.m}>
         <View style={{ flex: 1 }}>
-          <Field label="시작일" value={s} onChangeText={setS} placeholder="YYYY-MM-DD" onEndEditing={() => !bad(s) && onSave({ startedAt: s || undefined })} error={bad(s) ? 'YYYY-MM-DD로 적어 주세요' : undefined} keyboardType="numbers-and-punctuation" />
+          <Field label="시작일" value={s} onChangeText={setS} placeholder="YYYY-MM-DD" onEndEditing={() => !bad(s) && !reversed && onSave({ startedAt: s || undefined })} error={bad(s) ? '있는 날짜를 YYYY-MM-DD로 적어 주세요' : undefined} keyboardType="numbers-and-punctuation" />
         </View>
         <View style={{ flex: 1 }}>
-          <Field label="완독일" value={f} onChangeText={setF} placeholder={finishedAt ? 'YYYY-MM-DD' : '완독하면'} editable={!!finishedAt} onEndEditing={() => !bad(f) && f && onSave({ finishedAt: f })} error={bad(f) ? 'YYYY-MM-DD로 적어 주세요' : undefined} keyboardType="numbers-and-punctuation" />
+          <Field label="완독일" value={f} onChangeText={setF} placeholder={finishedAt ? 'YYYY-MM-DD' : '완독하면'} editable={!!finishedAt} onEndEditing={() => !bad(f) && !reversed && f && onSave({ finishedAt: f })} error={bad(f) ? '있는 날짜를 YYYY-MM-DD로 적어 주세요' : reversed ? '시작일 이후로 적어 주세요' : undefined} keyboardType="numbers-and-punctuation" />
         </View>
       </Row>
     </View>

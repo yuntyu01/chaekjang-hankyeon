@@ -37,21 +37,6 @@ export const MOTIF_SLOTS = [
 
 export type MotifSlotId = (typeof MOTIF_SLOTS)[number]['id'];
 
-const byId = new Map<string, (typeof MOTIF_SLOTS)[number]>(MOTIF_SLOTS.map((m) => [m.id, m]));
 
-export function isMotifSlot(id: string): id is MotifSlotId {
-  return byId.has(id);
-}
 
-const DEV_MOTIFS: readonly string[] = ['sprig', 'leaf', 'cotton', 'moon', 'star', 'wave', 'flower', 'pine', 'bud'];
 
-export function devMotifFor(id: string): MotifId {
-  return byId.get(id)?.devFallback ?? (DEV_MOTIFS.includes(id) ? (id as MotifId) : 'sprig');
-}
-
-// ISBN으로 기본 모티프를 고르게 흩뿌린다(서버 default_motif_id가 없을 때).
-export function defaultMotifFor(isbn13: string): MotifSlotId {
-  let h = 0;
-  for (const ch of isbn13) h = (h * 31 + ch.charCodeAt(0)) >>> 0;
-  return MOTIF_SLOTS[h % MOTIF_SLOTS.length].id;
-}

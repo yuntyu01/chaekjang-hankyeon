@@ -2,7 +2,7 @@
 // 설정·목록은 카드 대신 여백과 구분선으로 나누고, 입력창처럼 구분이 필요한 곳만 표면색을 깐다.
 import { router } from 'expo-router';
 import { Check, ChevronDown, ChevronLeft, ChevronRight, Search, Star, X } from '@/ui/icons';
-import { Children, createContext, Fragment, isValidElement, useContext, useEffect, useRef, useState, type ReactNode } from 'react';
+import { Fragment, useEffect, useRef, useState, type ReactNode } from 'react';
 import {
   ActivityIndicator,
   Animated,

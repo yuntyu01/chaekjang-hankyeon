@@ -126,5 +126,3 @@ export function lightPanel(d: Dims, f: FaceId): Panel {
   if (f === 'fore') return { O: v3(0, d.H, d.W), U: v3(d.T, 0, 0), V: v3(0, -d.H, 0), w: d.T, h: d.H };
   return { O: v3(0, f === 'head' ? d.H : 0, 0), U: v3(d.T, 0, 0), V: v3(0, 0, d.W), w: d.T, h: d.W };
 }
-export const PAGE_FACES: ('head' | 'tail' | 'fore')[] = ['head', 'tail', 'fore'];
-export const isPageFace = (f: FaceId): f is 'head' | 'tail' | 'fore' => f === 'head' || f === 'tail' || f === 'fore';

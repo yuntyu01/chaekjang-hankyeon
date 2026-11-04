@@ -6,7 +6,7 @@ import { bookLightRef, bookTone } from '../binding-material';
 import { linearOf } from '../light-model';
 import { ARTWORK_INK } from '../cover-artworks';
 import { ensureShelves, pruneEmptyShelves } from '../layout-engine';
-import { applyStatus, completions, defaultBinding, emptyLibrary, finishedYear, monthPeriod, pendingCoverColors, periodStats, roundsOf, toShelfBook, withCoverColors, yearPeriod, type Library, type Session } from '../library';
+import { applyStatus, completions, defaultBinding, emptyLibrary, finishedYear, isDay, monthPeriod, pendingCoverColors, periodStats, roundsOf, toShelfBook, withCoverColors, yearPeriod, type Library, type Session } from '../library';
 import { buildBookArt, dominantColorOf, REBIND_VERSION } from '../rebinding';
 import { TITLE_LIGHT } from '../color';
 
@@ -254,5 +254,16 @@ describe('선반 수', () => {
     expect(pruned.shelves).toHaveLength(3);
     expect(pruned.placements[0].shelfId).toBe('s5');
     expect(pruneEmptyShelves(empty).shelves).toHaveLength(3);
+  });
+});
+
+describe('달력에 있는 날짜', () => {
+  it('있는 날만 통과한다', () => {
+    expect(isDay('2026-11-04')).toBe(true);
+    expect(isDay('2024-02-29')).toBe(true);
+    expect(isDay('2026-02-29')).toBe(false);
+    expect(isDay('2026-13-45')).toBe(false);
+    expect(isDay('2026-1-4')).toBe(false);
+    expect(isDay('')).toBe(false);
   });
 });

@@ -17,7 +17,6 @@ const DRIFT = (Math.abs(LIGHT0.x) / LIGHT0.z) * (SHELF_FRONT + SHELF_DEPTH);
 export const REACH_L = LIGHT0.x > 0 ? DRIFT : 0;
 export const REACH_R = LIGHT0.x < 0 ? DRIFT : 0;
 // 그림자를 받는 보이는 면은 많아야 둘(빛 쪽과 카메라 쪽을 함께 향하는 앞·윗면)
-export const RECV_SLOTS = 2;
 
 // 한 가리개의 그림자: 순서가 있는 볼록 다각형, 흐림 시그마(px), 광원 원반 중 가려지는 몫.
 // 같은 거리 구간이어도 가리개별 흐림·투명도를 유지한다.

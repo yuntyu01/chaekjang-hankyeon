@@ -224,4 +224,3 @@ export function silhouette(cam: Cam, b: Book3, px: Affine, radius?: number): Poi
   return roundedPolygon(pts, r * px.s);
 }
 
-export const seedOf = (id: string, f: string) => [...id].reduce((h, c) => h + c.charCodeAt(0), 0) * 0.37 + f.length;

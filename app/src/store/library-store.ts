@@ -4,13 +4,11 @@ import { useSyncExternalStore } from 'react';
 
 import type { Merge } from '@/domain/sync';
 import { withoutBooks } from '@/domain/home-reference';
-import { applyLocalChanges, applyRemoteChanges, loadLib, loadLibrary, replaceLib, type LibKind, type LocalChange } from '@/db/local-db';
+import { applyLocalChanges, applyRemoteChanges, loadLib, replaceLib, type LibKind, type LocalChange } from '@/db/local-db';
 import {
   addSessionTo,
   applyStatus,
   bookmarksOf,
-  defaultBinding,
-  rebindInput,
   emptyLibrary,
   newId,
   rereadRound,
@@ -93,26 +91,7 @@ export const libraryStore = {
 
   async load() {
     try {
-      let lib = await loadLib();
-      // 이전 구조(user_books + catalog_books)에 내 책이 있으면 한 번 옮긴다(같은 ISBN 판본이 이미 있으면 건너뜀)
-      const legacy = await loadLibrary().catch(() => []);
-      let migrated = 0;
-      for (const { catalog: c, user: u } of legacy) {
-        if (Object.values(lib.editions).some((e) => e.isbn13 === c.isbn13)) continue;
-        const t = u.createdAt || now();
-        const e: Edition = { id: newId('ed'), isbn13: c.isbn13, title: c.title, authors: c.authors, publisher: c.publisher, publishedAt: c.publishedAt, pageCount: c.pageCount, coverUri: c.coverUrl, coverSource: c.coverUrl ? 'api' : undefined, source: 'search', createdAt: t, updatedAt: t };
-        const b: MyBook = { id: newId('bk'), editionId: e.id, status: u.status === 'read' ? 'read' : u.status === 'reading' ? 'reading' : 'want', note: u.note, createdAt: t, updatedAt: t };
-        const bd = defaultBinding(b.id, c.title, 0, t, rebindInput({ isbn13: c.isbn13, title: c.title, authors: c.authors, pageCount: c.pageCount, publishedAt: c.publishedAt }, { themeColor: c.themeColor }));
-        if (u.customThemeColor) bd.spineColor = u.customThemeColor;
-        b.bindingId = bd.id;
-        lib = { ...lib, editions: { ...lib.editions, [e.id]: e }, books: { ...lib.books, [b.id]: b }, bindings: { ...lib.bindings, [bd.id]: bd } };
-        if (u.startedAt || u.finishedAt) {
-          const r: Round = { id: newId('rd'), myBookId: b.id, index: 1, startedAt: u.startedAt, finishedAt: u.status === 'read' ? u.finishedAt : undefined, createdAt: t, updatedAt: t };
-          lib = { ...lib, rounds: { ...lib.rounds, [r.id]: r } };
-        }
-        migrated++;
-      }
-      if (migrated) await replaceLib(lib, true);
+      const lib = await loadLib();
       set({ lib, loaded: true, error: null });
     } catch (e) {
       console.warn('library load failed', String((e as Error)?.stack ?? e));

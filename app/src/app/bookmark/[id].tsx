@@ -270,5 +270,5 @@ const st = StyleSheet.create({
   barBtn: { flexDirection: 'row', alignItems: 'center', gap: 6, minHeight: space.touch, paddingHorizontal: 2 },
   barText: { ...type.sub, color: colors.ink },
   // 공유 이미지 아래 이름표(내보내는 그림이라 예전 명조 그대로)
-  shareBrand: { fontFamily: fonts.serifMedium, fontSize: 15, color: '#68524A', includeFontPadding: false }, // 내용 색
+  shareBrand: { fontFamily: fonts.serif, fontSize: 15, color: '#68524A', includeFontPadding: false }, // 내용 색
 });

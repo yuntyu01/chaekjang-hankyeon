@@ -2,7 +2,7 @@
 // 스킨은 시작할 때 정해지는 값이다(카메라·빛 맞추기·그림 재료가 모두 여기서 나온다). 고른 값은 시작 설정에 저장한다(scene-config/skin SKIN_KEY).
 import { reloadAppAsync } from 'expo';
 import { useState } from 'react';
-import { StyleSheet, Text, View } from 'react-native';
+import { StyleSheet, View } from 'react-native';
 
 import { FRAME_SKINS, PLANK_SKINS, SKIN_CHOICE, SKIN_KEY, skinToString, WALL_SKINS, type SkinChoice } from '@/scene-config/skin';
 import { writeBootSetting } from '@/scene-config/boot-store';

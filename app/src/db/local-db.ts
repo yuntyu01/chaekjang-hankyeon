@@ -11,7 +11,6 @@
 import * as SQLite from 'expo-sqlite';
 import Storage from 'expo-sqlite/kv-store';
 
-import type { CatalogBook, UserBook } from '@/domain/catalog';
 import { emptyLibrary, LIB_KINDS, type Binding, type Bookmark, type Edition, type LibKind, type Library, type MyBook, type Round, type Session } from '@/domain/library';
 import { migrate } from '@/domain/layout-schema';
 import { heightClassOf, thicknessClassOf, type LayoutVariant } from '@/domain/rebinding';
@@ -213,6 +212,16 @@ const MIGRATIONS: Migration[] = [
   addV5Columns,
   // v6(2026-11, 서버 V13과 같은 열): 갈피 보드 자리. 모두 선택 값(없으면 자동으로 놓는다). 같은 함수가 없는 열만 더한다
   addV5Columns,
+  // v7(2026-11-04): 옛 JSON 표를 없앤다(옮긴 책이 지워도 다음 실행에 되살아났다). 읽기는 전부 표 전체를 메모리로 읽으므로 쓰지 않는 색인도 지운다(외래키 CASCADE용 shelf_placements 색인은 남긴다)
+  `DROP TABLE IF EXISTS user_books;
+   DROP TABLE IF EXISTS catalog_books;
+   DROP INDEX IF EXISTS editions_isbn_idx;
+   DROP INDEX IF EXISTS my_books_edition_idx;
+   DROP INDEX IF EXISTS bindings_book_idx;
+   DROP INDEX IF EXISTS rounds_book_idx;
+   DROP INDEX IF EXISTS sessions_book_idx;
+   DROP INDEX IF EXISTS sessions_started_idx;
+   DROP INDEX IF EXISTS bookmarks_book_idx;`,
 ];
 
 // v5 이후 더한 열(없을 때만 더한다). v3 → v4 이주도 지금 열 목록으로 기록을 옮기므로 표를 만든 직후 먼저 부른다
@@ -276,15 +285,6 @@ export function db() {
     return d;
   })().catch((error) => { dbPromise = null; layoutCache = null; throw error; });
   return dbPromise;
-}
-
-// 내 책(user_books)과 그 책의 카탈로그 정보를 함께 읽는다.
-export async function loadLibrary(): Promise<{ catalog: CatalogBook; user: UserBook }[]> {
-  const d = await db();
-  const rows = await d.getAllAsync<{ c: string; u: string }>(
-    'SELECT c.data AS c, u.data AS u FROM user_books u JOIN catalog_books c ON c.isbn13 = u.isbn13',
-  );
-  return rows.map((r) => ({ catalog: JSON.parse(r.c) as CatalogBook, user: JSON.parse(r.u) as UserBook }));
 }
 
 // ---------- 서재 항목 ↔ 줄 ----------

@@ -114,7 +114,7 @@ it('v3(JSON 줄·배치 JSON) 저장본을 v4 표로 옮긴다: 서재·대기 �
   expect(snapshot.lib).toEqual(lib);
   expect(snapshot.dirty).toEqual({ 'books:m1': { deleted: false, at, revision: 5 } });
   expect(snapshot.layout).toEqual({ json: JSON.stringify({ version: 2, shelves: [{ id: 's1', order: 0 }], placements: [{ ...full, bookId: 'm1' }], drawer: [] }), at, dirty: true, revision: 5 });
-  expect(await mockDb.getFirstAsync('PRAGMA user_version')).toEqual({ user_version: 6 });
+  expect(await mockDb.getFirstAsync('PRAGMA user_version')).toEqual({ user_version: 7 });
   expect(await mockDb.getAllAsync("SELECT name FROM sqlite_master WHERE type='table' AND name LIKE 'v3_%'")).toEqual([]);
   expect(await mockDb.getAllAsync('SELECT position, name FROM edition_authors ORDER BY position')).toEqual([{ position: 0, name: '가' }, { position: 1, name: '나' }]);
 });
@@ -145,7 +145,7 @@ it('2026-10-17 앱(로컬 main 1165c16, 이미 정규화한 v3) 저장본도 지
   expect(JSON.parse(snapshot.layout.json!)).toEqual({ version: 2, shelves: [{ id: 's1', order: 0 }, { id: 's2', order: 1 }], placements: [{ bookId: 'm1', shelfId: 's1', order: 0, pose: 'spine', tilt: 0, pos: 40.5, lean: { angle: -4, on: 'm3' }, depth: 12 }], drawer: ['m2'] });
   expect(snapshot.layout).toMatchObject({ at, dirty: true });
   expect(snapshot.dirty).toEqual({ 'books:m1': { deleted: false, at, revision: 1 } });
-  expect(await mockDb.getFirstAsync('PRAGMA user_version')).toEqual({ user_version: 6 });
+  expect(await mockDb.getFirstAsync('PRAGMA user_version')).toEqual({ user_version: 7 });
   expect(await mockDb.getAllAsync("SELECT name FROM sqlite_master WHERE type='table' AND (name LIKE 'old_%' OR name = 'sync_dirty')")).toEqual([]);
   // 다시 켜도(kv 옮기기는 이미 끝난 것으로) 배치 표를 지우지 않는다
   restart();

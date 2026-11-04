@@ -135,8 +135,26 @@ async function pushBatch(token: string, body: PushBody) {
   if (result?.skipped?.length) await Storage.setItem(REV_KEY, '0');
 }
 
+// 기기에서 지워져 올릴 수 없는 사진은 연결을 뺀다(서버 외래키에 걸려 동기화가 통째로 막히지 않게)
+async function dropMissingFiles(body: PushBody) {
+  const done = new Set<string>(JSON.parse((await Storage.getItem(FILES_KEY)) ?? '[]'));
+  const gone = new Set<string>();
+  for (const id of filesIn(body)) {
+    if (done.has(id)) continue;
+    if (!(await FS.getInfoAsync(`${IMAGE_DIR}${id}`)).exists) gone.add(id);
+  }
+  if (!gone.size) return;
+  const clear = <T extends object>(list: T[] | undefined, keys: (keyof T)[]) => {
+    for (const x of list ?? []) for (const k of keys) if (gone.has(x[k] as string)) delete x[k];
+  };
+  clear(body.bookmarks, ['photoFileId']);
+  clear(body.editions, ['coverFileId']);
+  clear(body.bindings, ['coverArtFileId', 'spineArtFileId']);
+}
+
 async function pushOnce(token: string, snapshot: SyncSnapshot) {
   const { body, count } = buildPush(snapshot.lib, snapshot.dirty, IMAGE_DIR);
+  await dropMissingFiles(body);
   if (count !== Object.keys(snapshot.dirty).length) throw new Error('올릴 서재 기록을 찾지 못했어요');
   const saved = snapshot.layout;
   const layout = saved.dirty && saved.json ? { layoutJson: saved.json, version: 2, updatedAt: saved.at ?? new Date().toISOString() } : undefined;

@@ -12,7 +12,6 @@ export const WALL_TOUCH = 0.3; // 이만큼(DU) 안이면 벽에 닿은 것으�
 
 export type FrontState = { depth: number; pitch: number; spin: number };
 
-export { frontBook3 };
 
 // 축(qx = 0, depth = 0) 기준 상자의 범위
 export function frontExtent(dims: Dims, pitch = 0, spin = 0) {

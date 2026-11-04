@@ -49,7 +49,6 @@ export const fonts = {
   uiBold: 'PretendardSemiBold', // 시안의 굵은 글자는 Bold보다 한 단계 가벼운 SemiBold
   uiTitle: 'PretendardBold', // 일반 화면의 큰 제목만(2026-11-01 '제목 키워', 토스식 위계)
   serif: 'ReadingSerif',
-  serifMedium: 'ReadingSerifMedium',
 };
 
 const text = (fontFamily: string, fontSize: number, lineHeight: number, color: string): TextStyle => ({ fontFamily, fontSize, lineHeight, color, includeFontPadding: false });

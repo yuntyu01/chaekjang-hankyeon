@@ -129,6 +129,12 @@ export function HomeScreen() {
   const [shelfMenuOpen, setShelfMenuOpen] = useState(false);
   const [toast, setToast] = useState<Toast>(null);
   const [lockSheetOpen, setLockSheetOpen] = useState(false);
+  // 잠긴 칸은 시작 때 보이는 줄을 다 그린 뒤에 그린다(시작 시간에 넣지 않는다)
+  const [lockedReady, setLockedReady] = useState(false);
+  useEffect(() => {
+    const id = setTimeout(() => setLockedReady(true), 1500);
+    return () => clearTimeout(id);
+  }, []);
   const { holds, holdsRef, holdRows, releaseLater } = useRowHolds(() => dragRef.current?.members ?? []);
 
   const scrollRef = useAnimatedRef<Animated.ScrollView>();
@@ -963,6 +969,7 @@ export function HomeScreen() {
               <ShelfScene
                 rows={sceneRows}
                 lockedRows={lockedRows}
+                lockedReady={lockedReady}
                 motions={motions}
                 geo={geoSV}
                 books={sceneBooks}

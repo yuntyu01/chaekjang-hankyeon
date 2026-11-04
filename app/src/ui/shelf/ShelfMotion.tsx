@@ -10,7 +10,7 @@ import { useAnimatedReaction, useDerivedValue, useSharedValue, withDelay, withTi
 
 import { sameBakeInput } from '@/domain/bake-input';
 import { corners, fromPlaced, lowest, type Book3, type Vec3 } from '@/domain/book3';
-import { camAt, project, toPx, VIEW_PITCH_MAX, VIEW_PITCH_MIN, type Affine, type Cam } from '@/domain/camera';
+import { camAt, toPx, VIEW_PITCH_MAX, VIEW_PITCH_MIN, type Affine, type Cam } from '@/domain/camera';
 import { SHELF_DEPTH, SHELF_FRONT, SHELF_THICK, SHELF_X0, SHELF_X1 } from '@/domain/geometry';
 import { shelfFaces } from '@/domain/shelf-geom';
 import { aheadOfPlank, BOX_EDGES, bookCast, castsIn, frontCast, underCeil, wallParts, type BookCast } from '@/domain/cast-shadow';
@@ -673,4 +673,3 @@ export function benchProjection(rows: BenchRow[], s: number, n: number) {
   return { books: prep.length, shadow3d: r2(t3d), faces: r2(tGeom / n), cast: r2(tCast / n) };
 }
 
-export { project };

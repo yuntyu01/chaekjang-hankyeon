@@ -63,18 +63,6 @@ export function pruneEmptyShelves(layout: ShelfLayout, min = HOME_SHELF_COUNT): 
   return normalize({ ...layout, shelves });
 }
 
-// Keep three shelves. Books on removed shelves are preserved in the drawer.
-export function threeShelfLayout(layout: ShelfLayout): ShelfLayout {
-  const shelves = sortedShelves(layout).slice(0, HOME_SHELF_COUNT);
-  for (let n = 1; shelves.length < HOME_SHELF_COUNT; n++) {
-    const id = `shelf-${n}`;
-    if (!shelves.some((s) => s.id === id)) shelves.push({ id, order: shelves.length });
-  }
-  const kept = new Set(shelves.map((s) => s.id));
-  const overflow = layout.placements.filter((p) => !kept.has(p.shelfId)).map((p) => p.bookId);
-  return normalize({ ...layout, shelves, placements: layout.placements.filter((p) => kept.has(p.shelfId)), drawer: [...layout.drawer, ...overflow] });
-}
-
 export function isHorizontalItem(item: ShelfItem, layout: ShelfLayout) {
   return item.bookIds.every((id) => placementOf(layout, id)?.pose === 'horizontal');
 }

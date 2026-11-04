@@ -4,7 +4,6 @@
 // 선반은 그대로 보이게 바탕을 어둡게 덮지 않는다. 바깥(선반)을 누르거나 뒤로 가기로 닫는다. 배치 조작은 꾹 눌러 꾸미기에서.
 import { useEffect, useState } from 'react';
 import { Image, Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
-import Animated, { SlideInDown, SlideOutDown } from 'react-native-reanimated';
 
 import type { Book } from '@/domain/types';
 import { ko } from '@/i18n/ko';
@@ -45,12 +44,10 @@ export function BookSheet({ book, status, sample, bottomInset, reduceMotion, onC
   const ratio = size?.heightMm && size.widthMm ? size.heightMm / size.widthMm : 188 / 128;
 
   return (
-    <Modal visible transparent statusBarTranslucent navigationBarTranslucent animationType="none" onRequestClose={onClose}>
+    <Modal visible transparent statusBarTranslucent navigationBarTranslucent animationType={reduceMotion ? 'none' : 'slide'} onRequestClose={onClose}>
       {/* 바탕은 덮지 않는다(시안): 선반을 누르면 닫힌다 */}
       <Pressable style={StyleSheet.absoluteFill} onPress={onClose} accessibilityLabel="닫기" onLayout={(e) => setScreenH(e.nativeEvent.layout.height)} />
-      <Animated.View
-        entering={reduceMotion ? undefined : SlideInDown.duration(220)}
-        exiting={reduceMotion ? undefined : SlideOutDown.duration(160)}
+      <View
         onLayout={(e) => setSheetH(e.nativeEvent.layout.height)}
         style={[styles.sheet, { paddingBottom: bottomInset + 14 }]}
         accessibilityViewIsModal
@@ -88,7 +85,7 @@ export function BookSheet({ book, status, sample, bottomInset, reduceMotion, onC
             />
           )}
         </ScrollView>
-      </Animated.View>
+      </View>
     </Modal>
   );
 }

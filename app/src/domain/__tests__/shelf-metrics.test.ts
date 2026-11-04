@@ -1,7 +1,7 @@
 import { computeRows, lockedRowsAfter, makeMetrics, LAYOUT, RIBBON_OUT, ROW_CLEARANCE, rowAt, toContent, toScene } from '@/ui/shelf/metrics';
 import { BASE_CAM, project } from '../camera';
 import { bookHeight, SHELF_FRONT, SHELF_THICK } from '../geometry';
-import { addShelf, moveToShelf, setPose, threeShelfLayout, validate, type BookMap } from '../layout-engine';
+import { addShelf, moveToShelf, setPose, type BookMap } from '../layout-engine';
 import { lockedShelfCount, SHELF_SLOTS } from '../layout-rules';
 import { SAMPLE_BOOKS, SAMPLE_LAYOUT } from '../test-fixtures/interaction-books';
 import { computeShelf, frameBBox } from '../shelf-scene';
@@ -72,20 +72,9 @@ it('키 큰 책을 옮겨도 빈 선반이 생겨도 모든 줄 간격은 같다
     expect(row.height).toBeCloseTo(rows[0].height, 9);
   }
   // 빈 책장도 줄 간격은 같고 최소 높이는 지킨다
-  const empty = computeRows(threeShelfLayout({ ...SAMPLE_LAYOUT, placements: [], drawer: SAMPLE_LAYOUT.placements.map((p) => p.bookId) }), books, m.scale, 800, 70);
+  const empty = computeRows({ ...SAMPLE_LAYOUT, placements: [], drawer: SAMPLE_LAYOUT.placements.map((p) => p.bookId) }, books, m.scale, 800, 70);
   expect(new Set(empty.map((r) => r.space)).size).toBe(1);
   expect(empty[0].space).toBeGreaterThan(100);
-});
-
-it('기존 4번째 선반을 정리하면서 책을 서랍에 보존하고 3개를 유지한다', () => {
-  const result = moveToShelf(addShelf(SAMPLE_LAYOUT, 'extra'), books, 'b06', 'extra');
-  if (!result.ok) throw new Error(result.reason);
-  const next = threeShelfLayout(result.layout);
-  expect(next.shelves).toHaveLength(3);
-  expect(next.drawer).toContain('b06');
-  expect(validate(next, books, Object.keys(books))).toEqual([]);
-  expect(threeShelfLayout(next)).toEqual(next);
-  expect(threeShelfLayout({ ...SAMPLE_LAYOUT, shelves: [] }).shelves).toHaveLength(3);
 });
 
 it.each([280, 390, 520, 768])('폭 %i에서 실제로 그린 책 위치가 올바른 줄의 터치 좌표로 복원된다', (width) => {

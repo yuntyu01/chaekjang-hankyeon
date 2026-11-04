@@ -38,7 +38,7 @@ import {
 // Public compatibility: persistence-only consumers can import layout-schema directly.
 export {
   ensureShelves, isHorizontalItem, migrate, normalize, placementOf, pruneEmptyShelves,
-  shelfItems, sortedShelves, threeShelfLayout, type BookMap, type ShelfItem,
+  shelfItems, sortedShelves, type BookMap, type ShelfItem,
 } from './layout-schema';
 
 export type FailReason =

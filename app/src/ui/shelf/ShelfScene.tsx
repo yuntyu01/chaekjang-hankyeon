@@ -73,7 +73,8 @@ export type SceneRowProps = {
 
 type Props = {
   rows: SceneRowProps[];
-  lockedRows: RowGeom[]; // 아직 열지 않은 칸: 책 없는 보통 줄로 그린다(흐린 책·자물쇠는 HomeScreen LockedShelves)
+  lockedRows: RowGeom[]; // 아직 열지 않은 칸(흐린 예시 책, 자물쇠는 HomeScreen LockedShelves)
+  lockedReady: boolean; // 시작 때 보이는 줄을 먼저 굽고 잠긴 칸은 그 뒤에 그린다
   motions: SceneMotion[];
   geo: Readonly<SharedValue<SceneGeo>>;
   books: Record<string, Book>;
@@ -133,7 +134,7 @@ export function ShelfScene(p: Props) {
     <>
       {/* 줄 캔버스들이 다시 기록되기 전에(형제 순서상 먼저 도는 효과) 옮겨 가는 책을 이동 캔버스에 넘긴다 */}
       <TransitMark items={p.leaving} />
-      {p.lockedRows.map((row, i) => (
+      {p.lockedReady && p.lockedRows.map((row, i) => (
         <LockedRowCanvas key={row.shelfId} index={i} row={row} upper={i > 0 ? p.lockedRows[i - 1] : (p.rows.at(-1)?.row ?? null)} last={i === p.lockedRows.length - 1} m={p.m} width={p.width} cam={p.cam} shared={p.shared} debug={p.debug} />
       ))}
       {p.rows.map((r, i) => {

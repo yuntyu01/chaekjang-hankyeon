@@ -10,7 +10,6 @@
 // - Binding(재장정 자산): 책등 색, 모티프, 그림 파일, 생성 상태(기본 장정 / AI)
 import { coverAtSize, spineRatioOf } from './cover-url';
 import { artworkCover, type CoverArtworkId } from './cover-artworks';
-import { formatMm } from './catalog';
 import { realDimensions } from './jacket-proportions';
 import { buildBookArt, heightClassOf, layoutArt, REBIND_VERSION, thicknessClassOf, tonesFor, type BookArtParams, type LayoutVariant, type RebindInput } from './rebinding';
 import type { BindingMaterial, Book } from './types';
@@ -341,6 +340,14 @@ export function periodStats(lib: Library, p: Period, bookId?: string) {
   return { completedBooks, completedCount: completedBooks.length, completedRounds: finished.length, rereads, readMs, sessions, bookmarkCount: bookmarks.length, booksRead: [...touched] };
 }
 
+// 달력에 있는 날짜인지(YYYY-MM-DD). 서버 DATE 열이 거부하는 값(2026-13-45)이 저장되면 동기화가 통째로 막힌다
+export function isDay(v: string) {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(v);
+  if (!m) return false;
+  const d = new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
+  return d.getFullYear() === Number(m[1]) && d.getMonth() === Number(m[2]) - 1 && d.getDate() === Number(m[3]);
+}
+
 export const bookReadMs = (lib: Library, myBookId: string) => Object.values(lib.sessions).reduce((a, s) => a + (s.myBookId === myBookId ? s.durationMs : 0), 0);
 export const bookmarksOf = (lib: Library, myBookId: string) =>
   (groupBy(bookmarkIndex, lib.bookmarks, (a, b) => b.createdAt.localeCompare(a.createdAt)).get(myBookId) ?? []).slice();
@@ -451,4 +458,3 @@ export function memoShelfBook(lib: Library, myBookId: string): Book | null {
   return book;
 }
 
-export { formatMm };
