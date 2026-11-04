@@ -124,7 +124,7 @@ func TestIntegration(t *testing.T) {
 	}
 
 	extended := map[string]any{
-		"bindings": []any{map[string]any{"id": "binding1", "myBookId": "book1", "spineColor": "#abcdef", "motif": "leaf", "material": "cloth", "coverArtId": "cover1", "source": "custom", "status": "ready", "seed": 12, "updatedAt": at}},
+		"bindings": []any{map[string]any{"id": "binding1", "myBookId": "book1", "spineColor": "#abcdef", "motif": "leaf", "material": "linen", "coverArtId": "cover1", "source": "custom", "status": "ready", "seed": 12, "updatedAt": at}},
 		"rounds":   []any{map[string]any{"id": "round1", "myBookId": "book1", "index": 1, "startedAt": "2026-10-01", "paused": false, "updatedAt": at}},
 		"sessions": []any{map[string]any{"id": "session1", "myBookId": "book1", "roundId": "round1", "startedAt": at, "endedAt": "2026-10-01T12:01:00Z", "durationMs": 60000, "startPage": 1, "pagesRead": 3, "updatedAt": at}},
 	}
@@ -140,7 +140,7 @@ func TestIntegration(t *testing.T) {
 			t.Fatalf("authors: %v", authors)
 		}
 		binding := out["bindings"].([]any)[0].(map[string]any)
-		if binding["material"] != "cloth" || binding["coverArtId"] != "cover1" {
+		if binding["material"] != "linen" || binding["coverArtId"] != "cover1" {
 			t.Fatalf("binding %+v", binding)
 		}
 		round := out["rounds"].([]any)[0].(map[string]any)
