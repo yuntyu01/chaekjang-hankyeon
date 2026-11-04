@@ -1,4 +1,4 @@
-// 탭 아이콘(2026-11-03 사용자 시안 '하단바 이렇게'): 고르지 않은 탭은 속이 빈 중립 회색 윤곽선, 고른 탭은 진한 색으로 속이 찬 같은 모양.
+// 탭 아이콘(2026-11-03 사용자 시안 '하단바 이렇게'): 고르지 않은 탭은 속이 빈 중립 회색 윤곽선, 고른 탭은 진한 색으로 속이 찬 같은 모양. 책장 탭만 늘 속이 찬다.
 // 모양·굵기는 시안에서 잰 값이다: 키 24칸에 선 굵기 2.4(키의 10%), 끝·꺾임은 둥글게. 칸(28)은 아이콘보다 조금 크고 아래·위 여백이 같아 탭끼리 줄이 맞는다.
 // 속이 찬 모양에서 안쪽 선(펼친 책 가운데·달력 머리줄)은 탭 바 바탕색(bg)으로 뚫는다.
 import Svg, { Circle, Path, Rect } from 'react-native-svg';
@@ -10,12 +10,9 @@ const round = { strokeLinecap: 'round', strokeLinejoin: 'round' } as const;
 // cy: 그린 모양의 세로 가운데. 모양이 칸 가운데에 오도록 칸을 잡아 아이콘마다 키가 달라도 세로 가운데가 맞는다(2026-11-04 사용자 '높이 중앙정렬')
 const box = (size: number, w: number, cy: number, k = 1) => ({ width: (size * w * k) / BOX, height: size, viewBox: `0 ${cy - BOX / k / 2} ${w} ${BOX / k}` });
 
-// 책장: 책 세 권, 세 번째는 앞 책에 기대 있다(시안 약 18°). 윤곽선은 면 안쪽으로 그려 겉 크기가 찬 모양과 같다
-export function ShelfIcon({ color, size = 26, filled }: { color: string; size?: number; filled?: boolean }) {
-  const inset = filled ? 0 : W / 2;
-  const line = filled ? {} : { stroke: color, strokeWidth: W, ...round };
-  const fill = filled ? color : 'none';
-  const bar = (x: number, w: number) => ({ x: x + inset, y: 1.1 + inset, width: w - 2 * inset, height: 24.9 - 2 * inset, rx: Math.max(0.6, 2 - inset * 0.6), fill, ...line });
+// 책장: 책 세 권, 세 번째는 앞 책에 기대 있다(시안 약 18°). 고르지 않아도 속이 찬 모양이고 색으로만 나눈다(2026-11-05 사용자 '꽉 찬 회색')
+export function ShelfIcon({ color, size = 26 }: { color: string; size?: number }) {
+  const bar = (x: number, w: number) => ({ x, y: 1.1, width: w, height: 24.9, rx: 2, fill: color });
   return (
     <Svg {...box(size, 33, 13.5)}>
       <Rect {...bar(0.6, 7.8)} />

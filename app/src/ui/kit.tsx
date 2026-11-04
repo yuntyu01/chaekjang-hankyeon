@@ -104,7 +104,7 @@ export function Screen({
   const body = scroll ? (
     <ScrollView contentContainerStyle={{ paddingHorizontal: pad, paddingBottom: space.section + bottomPad + timerPad + (footer ? 0 : insets.bottom) }} keyboardShouldPersistTaps="handled">
       {/* 탭 첫 화면 제목도 내용과 함께 올라간다(2026-11-04 사용자 '상단 라인은 고정이 아니야') */}
-      {!back ? <View style={{ marginHorizontal: -pad }}>{tabHead}</View> : null}
+      {!back && title ? <View style={{ marginHorizontal: -pad }}>{tabHead}</View> : null}
       {largeTitle}
       {children}
     </ScrollView>
@@ -671,7 +671,17 @@ export function Segmented<T extends string>({ items, value, onChange, style }: {
 }
 
 // 거르기 단추(모든 책 ▾ · 모든 유형 ▾ · 최근 추가순 ▾): 눌러 시트에서 고른다. 기본값이 아니면(걸러진 상태) 고른 칩처럼 짙은 바탕에 흰 글자
-export function FilterButton({ label, active, onPress, icon: lead }: { label: string; active?: boolean; onPress: () => void; icon?: ReactNode }) {
+// plain: 바탕 없이 글자와 화살표만(내 기록 요약 줄, 2026-11-05 사용자 시안). 걸러진 상태는 굵은 글자로 나눈다
+export function FilterButton({ label, active, plain, onPress, icon: lead }: { label: string; active?: boolean; plain?: boolean; onPress: () => void; icon?: ReactNode }) {
+  if (plain)
+    return (
+      <Pressable onPress={onPress} hitSlop={8} accessibilityRole="button" accessibilityLabel={`${label}, 바꾸기`} style={({ pressed }) => [s.filterPlain, pressed && press]}>
+        <Text style={[s.filterText, active && { fontFamily: fonts.uiBold }]} numberOfLines={1}>
+          {label}
+        </Text>
+        <ChevronDown size={16} color={colors.ink} strokeWidth={icon.stroke} />
+      </Pressable>
+    );
   return (
     <Pressable onPress={onPress} hitSlop={{ top: 6, bottom: 6 }} accessibilityRole="button" accessibilityLabel={`${label}, 바꾸기`} style={({ pressed }) => [s.filter, active && s.filterOn, pressed && { backgroundColor: colors.line }]}>
       {lead}
@@ -829,7 +839,7 @@ export const s = StyleSheet.create({
   headerLeft: { ...tabHeader, flexDirection: 'row', alignItems: 'flex-start' },
   titleCenter: { position: 'absolute', left: 64, right: 64, top: 4, bottom: 0, alignItems: 'center', justifyContent: 'center' },
   back: { width: space.touch, height: space.touch, alignItems: 'center', justifyContent: 'center', marginLeft: 8 },
-  headerField: { flex: 1, marginLeft: 2 },
+  headerField: { flex: 1, marginLeft: 2, marginRight: space.s },
   right: { flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-end', minWidth: space.touch, marginRight: 10 },
   footer: { paddingHorizontal: space.page, paddingTop: 12, backgroundColor: colors.bg },
   footerFade: { position: 'absolute', left: 0, right: 0, top: -FOOTER_FADE }, // 시안: 버튼은 입력칸보다 좌우로 조금 넓다(19~20)
@@ -870,6 +880,7 @@ export const s = StyleSheet.create({
   segText: { fontFamily: fonts.ui, fontSize: 16, lineHeight: 22, color: colors.inkSoft, includeFontPadding: false },
   segTextOn: { fontFamily: fonts.uiBold, color: colors.ink },
   // 거르기 단추: 옅은 회색 알약(칩과 같은 채움), 글자 15
+  filterPlain: { flexDirection: 'row', alignItems: 'center', gap: 4, minHeight: 32, maxWidth: 220, flexShrink: 1 },
   filter: { flexDirection: 'row', alignItems: 'center', gap: 4, minHeight: 40, paddingLeft: 16, paddingRight: 12, borderRadius: 20, backgroundColor: colors.surface, maxWidth: 220 },
   filterOn: { backgroundColor: colors.chipOn },
   filterText: { fontFamily: fonts.ui, fontSize: 16, lineHeight: 22, color: colors.ink, includeFontPadding: false, flexShrink: 1 },
@@ -894,7 +905,7 @@ export const s = StyleSheet.create({
   itemValue: { ...type.sub, fontSize: 15, flexShrink: 1, textAlign: 'right', marginLeft: 12, maxWidth: '55%' },
   divider: { height: shape.hairline, backgroundColor: colors.line },
   track: { width: TRACK_W, height: TRACK_H, borderRadius: TRACK_H / 2, padding: 3, justifyContent: 'center' },
-  knob: { width: KNOB, height: KNOB, borderRadius: KNOB / 2, backgroundColor: colors.raised, shadowColor: '#3B2A24', shadowOpacity: 0.18, shadowRadius: 2, shadowOffset: { width: 0, height: 1 }, elevation: 2 },
+  knob: { width: KNOB, height: KNOB, borderRadius: KNOB / 2, backgroundColor: colors.white, shadowColor: '#3B2A24', shadowOpacity: 0.18, shadowRadius: 2, shadowOffset: { width: 0, height: 1 }, elevation: 2 },
   sheetWrap: { flex: 1, justifyContent: 'flex-end' },
   sheet: { flexShrink: 1, backgroundColor: colors.raised, borderTopLeftRadius: shape.sheet, borderTopRightRadius: shape.sheet, paddingHorizontal: space.page, paddingTop: 8 },
   grip: { alignSelf: 'stretch', marginTop: -10, paddingTop: 10 },
@@ -904,7 +915,7 @@ export const s = StyleSheet.create({
   groupTitle: { paddingBottom: 4 },
   slider: { height: 44, justifyContent: 'center', flex: 1 },
   sliderTrack: { position: 'absolute', height: 6, borderRadius: 3, backgroundColor: colors.track, top: 19 },
-  sliderKnob: { position: 'absolute', top: 10, width: 24, height: 24, borderRadius: 12, backgroundColor: colors.bg, borderWidth: 2, ...shape.floatShadow },
+  sliderKnob: { position: 'absolute', top: 10, width: 24, height: 24, borderRadius: 12, backgroundColor: colors.white, borderWidth: 2, ...shape.floatShadow },
   sheetClose: { width: space.touch, height: space.touch, marginRight: -10, alignItems: 'center', justifyContent: 'center' },
   dialogWrap: { flex: 1, backgroundColor: colors.scrim, justifyContent: 'center', padding: space.page },
   dialog: { backgroundColor: colors.raised, borderRadius: shape.dialog, padding: space.page },

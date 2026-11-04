@@ -33,7 +33,7 @@ export default function TabsLayout() {
         options={{
           title: ko.tabs.shelf,
           tabBarAccessibilityLabel: ko.tabs.shelf,
-          tabBarIcon: ({ color, focused }) => <ShelfIcon color={String(color)} size={ICON} filled={focused} />,
+          tabBarIcon: ({ color }) => <ShelfIcon color={String(color)} size={ICON} />,
         }}
       />
       <Tabs.Screen

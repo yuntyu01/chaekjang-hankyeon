@@ -29,6 +29,9 @@ export function ReadingChart({ bars, selected, unit, onSelect }: { bars: Bar[]; 
   // 말풍선은 막대 위 가운데, 양 끝에서는 그래프 안쪽에 붙인다(꼬리는 늘 막대 위)
   const tipSide = sel < 0 ? {} : cx(sel) + tipW / 2 > w ? { right: 0 } : { left: Math.max(0, cx(sel) - tipW / 2) };
   const barTop = sel >= 0 ? base - barH(bars[sel].ms) : 0;
+  const tipLeft = sel < 0 ? 0 : 'right' in tipSide ? w - tipW : (tipSide.left ?? 0);
+  const under = bars.filter((b, i) => b.ms > 0 && cx(i) + barW / 2 >= tipLeft && cx(i) - barW / 2 <= tipLeft + tipW);
+  const tipBase = sel >= 0 ? Math.min(barTop, ...under.map((b) => base - barH(b.ms))) : 0; // 말풍선 아래 막대 중 가장 높은 끝
   return (
     <View onLayout={(e) => setW(e.nativeEvent.layout.width)} style={{ height: base + LABEL_H }}>
       {w > 0 ? (
@@ -66,10 +69,11 @@ export function ReadingChart({ bars, selected, unit, onSelect }: { bars: Bar[]; 
           ))}
           {sel >= 0 ? (
             <>
-              <View onLayout={(e) => setTipW(e.nativeEvent.layout.width)} style={[st.tip, tipSide, { top: barTop - 42, opacity: tipW ? 1 : 0 }]} pointerEvents="none">
+              {tipBase < barTop ? <View style={[st.tipStem, { left: cx(sel) - 0.5, top: tipBase - 12, height: barTop - tipBase + 12 }]} pointerEvents="none" /> : null}
+              <View onLayout={(e) => setTipW(e.nativeEvent.layout.width)} style={[st.tip, tipSide, { top: tipBase - 42, opacity: tipW ? 1 : 0 }]} pointerEvents="none">
                 <Text style={st.tipText}>{bars[sel].label}{unit} · <Text style={st.tipStrong}>{formatDuration(bars[sel].ms)}</Text></Text>
               </View>
-              <View style={[st.tipArrow, { left: cx(sel) - 5, top: barTop - 17 }]} pointerEvents="none" />
+              <View style={[st.tipArrow, { left: cx(sel) - 5, top: tipBase - 17 }]} pointerEvents="none" />
             </>
           ) : null}
         </>
@@ -84,5 +88,6 @@ const st = StyleSheet.create({
   tip: { position: 'absolute', height: 30, paddingHorizontal: 10, borderRadius: 8, justifyContent: 'center', backgroundColor: colors.accent },
   tipText: { fontFamily: fonts.ui, fontSize: 14, lineHeight: 20, color: colors.onAccent, includeFontPadding: false },
   tipStrong: { fontFamily: fonts.uiBold },
+  tipStem: { position: 'absolute', width: 1, backgroundColor: colors.accent },
   tipArrow: { position: 'absolute', width: 10, height: 10, transform: [{ rotate: '45deg' }], backgroundColor: colors.accent },
 });

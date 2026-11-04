@@ -1,4 +1,5 @@
 // 내 기록: 맨 위 '캘린더 | 기록'(2026-11-04 사용자). 캘린더는 한 달 달력과 고른 날의 독서 기록, 기록은 월·연도 기간의 그래프(날·달별, 읽은 시간대, 요일, 한 번에 읽는 길이)와 많이 읽은 책.
+// 순서(2026-11-05 사용자 시안): 탭 → 가운데 큰 연월 → 달력·그래프 → '이번 달 독서'와 '모든 책' → 큰 시간 → 읽은 날·독서 횟수 한 줄. 탭 화면에는 '내 기록' 제목을 두지 않고, 기록이 없어도 달력과 0분만 보여 준다.
 // 모두 실제 저장 데이터로 계산한다. 완독·재독 기준은 domain/library periodStats와 같다(책 상세도 같은 기준).
 // 책을 고르면(책 상세에서 들어오거나 '모든 책 ▾') 전부 그 책만. 책 없는 독서 시간은 모든 책에서만 센다.
 import { router, useLocalSearchParams } from 'expo-router';
@@ -18,7 +19,7 @@ import { realReadingLibrary } from '@/domain/real-sample';
 import { useLibrary } from '@/store/library-store';
 import { PERF_ENABLED } from '@/ui/perf';
 import { LinkedCover } from '@/ui/BookVisual';
-import { Chip, Empty, FilterButton, IconButton, ListGroup, ListItem, RealCover, Screen, SectionBand, Segmented, Sheet } from '@/ui/kit';
+import { Chip, FilterButton, IconButton, ListGroup, ListItem, RealCover, Screen, SectionBand, Segmented, Sheet } from '@/ui/kit';
 import { colors, fonts, icon, press, space, type } from '@/ui/theme';
 
 const TABS = [{ id: 'calendar', label: '캘린더' }, { id: 'records', label: '기록' }] as const;
@@ -87,7 +88,7 @@ export function StatsScreen({ tab, initialBook }: { tab?: boolean; initialBook?:
   };
   const title = (id?: string) => (id ? lib.editions[lib.books[id]?.editionId]?.title : undefined);
   const thisPeriod = monthly ? y === now.getFullYear() && m === now.getMonth() + 1 : y === now.getFullYear();
-  const heroLabel = thisPeriod ? (monthly ? '이번 달 읽은 시간' : '올해 읽은 시간') : monthly ? `${m}월에 읽은 시간` : `${y}년에 읽은 시간`;
+  const periodName = thisPeriod ? (monthly ? '이번 달' : '올해') : monthly ? `${m}월` : `${y}년`;
   const pad2 = (v: number) => String(v).padStart(2, '0');
   const today = `${now.getFullYear()}-${pad2(now.getMonth() + 1)}-${pad2(now.getDate())}`;
   const cover = (id?: string) => (id && lib.books[id] ? <LinkedCover lib={lib} id={id} width={COVER_W} /> : <RealCover title="책 없음" color={colors.input} width={COVER_W} ratio={0.7} />);
@@ -97,28 +98,16 @@ export function StatsScreen({ tab, initialBook }: { tab?: boolean; initialBook?:
     setBookSheet(false);
   };
   return (
-    <Screen {...(tab ? { back: false } : { inline: true })} title="내 기록">
-      <Segmented items={TABS} value={view} onChange={(v) => { setView(v); setPicked(null); }} />
-      <View style={st.periodRow}>
-        <View style={st.period}>
-          <IconButton label={monthly ? '이전 달' : '이전 해'} onPress={() => { shift(-1); setPicked(null); }}>
-            <ChevronLeft size={icon.size} color={colors.ink} strokeWidth={icon.stroke} />
-          </IconButton>
-          <Text style={st.periodText} accessibilityRole="header">{monthly ? `${y}년 ${m}월` : `${y}년`}</Text>
-          <IconButton label={monthly ? '다음 달' : '다음 해'} onPress={() => { shift(1); setPicked(null); }}>
-            <ChevronRight size={icon.size} color={colors.ink} strokeWidth={icon.stroke} />
-          </IconButton>
-        </View>
-        <FilterButton label={title(book) ?? '모든 책'} active={!!book} onPress={() => setBookSheet(true)} />
-      </View>
-
-      <View style={st.hero} accessible accessibilityLabel={`${heroLabel} ${formatDuration(st0.readMs)}, ${activeDays}일 읽었어요, 독서 ${sessions.length}회, 일시정지 제외`}>
-        <Text style={type.sub}>{heroLabel}</Text>
-        <View style={st.heroRow}>
-          <Text style={st.heroValue}>{formatDuration(st0.readMs)}</Text>
-          <Text style={type.caption}>일시정지 제외</Text>
-        </View>
-        <Text style={[type.sub, { marginTop: space.xs }]}>{activeDays}일 읽었어요 · 독서 {sessions.length}회</Text>
+    <Screen {...(tab ? { back: false } : { inline: true, title: '내 기록' })}>
+      <Segmented items={TABS} value={view} onChange={(v) => { setView(v); setPicked(null); }} style={tab ? st.segTop : undefined} />
+      <View style={st.period}>
+        <IconButton label={monthly ? '이전 달' : '이전 해'} onPress={() => { shift(-1); setPicked(null); }}>
+          <ChevronLeft size={icon.size} color={colors.ink} strokeWidth={icon.stroke} />
+        </IconButton>
+        <Text style={st.periodText} accessibilityRole="header">{monthly ? `${y}년 ${m}월` : `${y}년`}</Text>
+        <IconButton label={monthly ? '다음 달' : '다음 해'} onPress={() => { shift(1); setPicked(null); }}>
+          <ChevronRight size={icon.size} color={colors.ink} strokeWidth={icon.stroke} />
+        </IconButton>
       </View>
 
       {view === 'records' ? (
@@ -129,13 +118,21 @@ export function StatsScreen({ tab, initialBook }: { tab?: boolean; initialBook?:
       ) : null}
       {/* 달력·막대는 책을 읽지 않았어도 늘 보인다(2026-11-03 사용자) */}
       {view === 'calendar' ? <ReadingCalendar lib={lib} y={y} m={m} days={days} selected={selected} today={today} onSelect={setPicked} /> : <ReadingChart bars={bars} selected={selected} unit={monthly ? '일' : '월'} onSelect={setPicked} />}
+
+      {/* 기간 요약: 책을 바꾸면 위 달력·그래프와 아래 숫자가 함께 바뀐다 */}
+      <View style={st.summaryHead}>
+        <Text style={[type.row, { flexShrink: 1 }]} accessibilityRole="header" numberOfLines={1}>{periodName} 독서</Text>
+        <FilterButton plain label={title(book) ?? '모든 책'} active={!!book} onPress={() => setBookSheet(true)} />
+      </View>
+      <View accessible accessibilityLabel={`${periodName} 독서 ${formatDuration(st0.readMs)}, 일시정지 제외, 읽은 날 ${activeDays}일, 독서 ${sessions.length}회`}>
+        <Text style={st.heroValue}>{formatDuration(st0.readMs)}</Text>
+        <Text style={[type.sub, { marginTop: space.xs }]}>읽은 날 {activeDays}일 · 독서 {sessions.length}회</Text>
+      </View>
       {view === 'records' ? (
         <>
-          <SectionBand />
           <View style={st.numbers}>
             <StatNumber label="한 번 평균" value={summary.count ? shortMs(summary.averageMs) : '-'} />
             <StatNumber label="가장 길게" value={summary.count ? shortMs(summary.longestMs) : '-'} />
-            <StatNumber label="읽은 날" value={`${activeDays}일`} />
           </View>
           <SectionBand />
           <MiniBars
@@ -184,9 +181,7 @@ export function StatsScreen({ tab, initialBook }: { tab?: boolean; initialBook?:
           </ListGroup>
         </>
       ) : null}
-      {view === 'records' ? null : !Object.keys(lib.sessions).length ? (
-        <Empty title="아직 독서 기록이 없어요" body="읽기 탭에서 타이머를 시작해 보세요." action="읽기 시작" onAction={() => router.push('/read')} />
-      ) : (
+      {view === 'records' ? null : (
         <>
           {selected ? (
             <>
@@ -256,16 +251,16 @@ function StatNumber({ label, value }: { label: string; value: string }) {
 }
 
 const st = StyleSheet.create({
-  periodKind: { flexDirection: 'row', gap: space.s, marginTop: space.xs, marginBottom: space.l },
-  numbers: { flexDirection: 'row', gap: space.m },
+  segTop: { marginTop: space.s },
+  periodKind: { flexDirection: 'row', justifyContent: 'center', gap: space.s, marginBottom: space.l },
+  summaryHead: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: space.m, marginTop: space.l, marginBottom: space.s },
+  heroValue: { fontFamily: fonts.uiTitle, fontSize: 36, lineHeight: 44, color: colors.ink, fontVariant: ['tabular-nums'], includeFontPadding: false },
+  numbers: { flexDirection: 'row', gap: space.m, marginTop: space.l },
   number: { flex: 1, gap: space.xs },
   numberValue: { fontFamily: fonts.uiBold, fontSize: 20, lineHeight: 28, color: colors.ink, fontVariant: ['tabular-nums'], includeFontPadding: false },
-  periodRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: space.m },
-  period: { flexDirection: 'row', alignItems: 'center', marginLeft: -10 },
-  periodText: { fontFamily: fonts.uiBold, fontSize: 19, lineHeight: 26, color: colors.ink, fontVariant: ['tabular-nums'], includeFontPadding: false },
-  hero: { marginTop: space.xl, marginBottom: space.s },
-  heroRow: { flexDirection: 'row', alignItems: 'flex-end', justifyContent: 'space-between', marginTop: space.xs, gap: space.m },
-  heroValue: { flexShrink: 1, fontFamily: fonts.uiTitle, fontSize: 40, lineHeight: 50, color: colors.ink, fontVariant: ['tabular-nums'], includeFontPadding: false },
+  period: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: space.l, marginTop: space.xl, marginBottom: space.l },
+  // 폭을 잡아 둔다: '9월'·'11월'을 오가도 양옆 화살표가 움직이지 않게(시안: 화살표는 글자에서 조금 떨어져 있다)
+  periodText: { ...type.title, minWidth: 168, textAlign: 'center', fontVariant: ['tabular-nums'] },
   dayHead: { flexDirection: 'row', alignItems: 'baseline', justifyContent: 'space-between', marginBottom: space.s, gap: space.m },
   row: { flexDirection: 'row', alignItems: 'center', gap: space.l, paddingVertical: space.m },
   cover: { width: COVER_W, alignItems: 'center' },
