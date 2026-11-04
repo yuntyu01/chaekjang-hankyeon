@@ -14,7 +14,7 @@ import { useReading } from '@/store/reading-store';
 import { PenLine, UserRound } from '@/ui/icons';
 import { Divider, Empty, IconButton, Loading, Screen, Tabs, TextLink, ui } from '@/ui/kit';
 import { colors, icon, space, type } from '@/ui/theme';
-import { navigation } from '@/ui/theme';
+import { TAB_CONTENT_PAD } from '@/ui/tabBar';
 
 type Scope = 'discover' | 'following';
 const SCOPES = [{ id: 'discover', label: '발견' }, { id: 'following', label: '팔로잉' }] as const;
@@ -119,7 +119,7 @@ export default function CommunityTab() {
   if (!avail) return <Screen title="커뮤니티" back={false} scroll={false}><Loading /></Screen>;
   if (!avail.ok) return <Screen title="커뮤니티" back={false} scroll={false}><Unavailable a={avail} onRetry={recheck} /></Screen>;
   return (
-    <Screen title="커뮤니티" back={false} scroll={false} right={right}>
+    <Screen title="커뮤니티" back={false} scroll={false} tabFade right={right}>
       {/* 스레드·토스증권처럼 화면 끝까지 반반 나눈 탭, 글은 상자 없이 화면 폭 그대로 + 사이 얇은 선 */}
       <Tabs fill items={SCOPES} value={scope} onChange={(s) => { if (s !== scope) { setItems([]); setNext(null); setPhase('loading'); setScope(s); } }} style={{ marginHorizontal: -ui.pad }} />
       {phase === 'loading' ? <Loading /> : phase === 'error' ? (
@@ -129,7 +129,7 @@ export default function CommunityTab() {
           data={items}
           keyExtractor={(p) => String(p.id)}
           style={{ marginHorizontal: -ui.pad }}
-          contentContainerStyle={{ paddingBottom: navigation.height + 40 + (active ? MINI_TIMER_SPACE : 0), flexGrow: 1 }}
+          contentContainerStyle={{ paddingBottom: TAB_CONTENT_PAD + (active ? MINI_TIMER_SPACE : 0), flexGrow: 1 }}
           ItemSeparatorComponent={Divider}
           showsVerticalScrollIndicator={false}
           refreshControl={<RefreshControl refreshing={refreshing} onRefresh={refresh} colors={[colors.accent]} tintColor={colors.accent} />}

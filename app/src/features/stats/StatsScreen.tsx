@@ -9,7 +9,7 @@ import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import { MINI_TIMER_SPACE } from '@/store/mini-timer-store';
 import { useReading } from '@/store/reading-store';
-import { navigation } from '@/ui/theme';
+import { TAB_CONTENT_PAD } from '@/ui/tabBar';
 import { booksByDay, dayTitle, hasPause, hourBars, hourLabel, LENGTH_BINS, lengthBins, monthBars, sessionSummary, timeRange, topBooks, WEEKDAYS, weekdayBars, yearBars } from '@/features/stats/chart-data';
 import { ReadingCalendar } from '@/features/stats/ReadingCalendar';
 import { ReadingChart } from '@/features/stats/ReadingChart';
@@ -98,7 +98,7 @@ export function StatsScreen({ tab, initialBook }: { tab?: boolean; initialBook?:
     setBookSheet(false);
   };
   return (
-    <Screen {...(tab ? { back: false } : { inline: true, title: '내 기록' })}>
+    <Screen {...(tab ? { back: false, tabFade: true } : { inline: true, title: '내 기록' })}>
       <Segmented items={TABS} value={view} onChange={(v) => { setView(v); setPicked(null); }} style={tab ? st.segTop : undefined} />
       <View style={st.period}>
         <IconButton label={monthly ? '이전 달' : '이전 해'} onPress={() => { shift(-1); setPicked(null); }}>
@@ -236,7 +236,7 @@ export function StatsScreen({ tab, initialBook }: { tab?: boolean; initialBook?:
           ))}
         </ScrollView>
       </Sheet>
-      {tab ? <View style={{ height: navigation.height + 24 + (active ? MINI_TIMER_SPACE : 0) }} /> : null}
+      {tab ? <View style={{ height: TAB_CONTENT_PAD - space.section + (active ? MINI_TIMER_SPACE : 0) }} /> : null}
     </Screen>
   );
 }

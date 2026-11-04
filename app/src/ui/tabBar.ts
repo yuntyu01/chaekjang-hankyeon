@@ -20,7 +20,12 @@ const barHeight = TAB_BAR_KIND === 'pill' ? PILL.height : navigation.height;
 const ITEM_PAD = 5;
 export const tabItemStyle = { height: barHeight, justifyContent: 'flex-start' as const, paddingTop: (barHeight - TAB_ICON) / 2 - ITEM_PAD, paddingBottom: 0 };
 
-// 화면 아래 끝에서 하단바 위 끝까지(홈 화면 덮개가 쓴다)
+// 하단바 위로 배경색이 옅어지는 높이(ui/TabBarFade)
+export const TAB_FADE = 72;
+// 탭 화면 목록 끝 여백: 마지막 내용이 덮개의 진한 쪽에 묻히지 않게
+export const TAB_CONTENT_PAD = navigation.height + TAB_FADE;
+
+// 화면 아래 끝에서 하단바 위 끝까지(덮개가 쓴다)
 export function tabBarBlock(bottom: number) {
   return TAB_BAR_KIND === 'pill' ? bottom + PILL.gap + PILL.height : bottom + navigation.height;
 }

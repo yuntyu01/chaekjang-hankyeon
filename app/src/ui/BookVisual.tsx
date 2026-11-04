@@ -11,6 +11,14 @@ import { RealCover } from '@/ui/kit';
 import { colors } from '@/ui/theme';
 import { BOOK_PAD, frameCam, noRibbon, StandaloneBook } from '@/ui/book3d/StandaloneBook';
 
+// 폭 width로 그렸을 때 표지 자리(캔버스 여백 edge 안쪽의 폭·높이). 격자에서 고름 표시를 표지 모서리에 맞춘다
+export function coverRect(book: Book, width: number) {
+  const frame = standaloneFrame(noRibbon(book), 'front');
+  const bbox = frameBBox(frame, frameCam(frame));
+  const scale = width / (bbox.width + BOOK_PAD * 2);
+  return { edge: BOOK_PAD * scale, w: bbox.width * scale, h: bbox.height * scale };
+}
+
 // Every screen uses the same saved book model and renderer as the bookshelf.
 export const BookVisual = memo(function BookVisual({ book, width, rasterize = false, onReady }: { book: Book; width: number; rasterize?: boolean; onReady?: () => void }) {
   // The protruding ribbon is a bookshelf count indicator, not part of a saved cover.

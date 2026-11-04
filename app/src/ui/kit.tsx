@@ -1,7 +1,8 @@
 // 공통 화면 부품. 색·글꼴·간격은 ui/screenTheme 토큰만 쓴다(설정 시안 기준: 아이보리 바탕, 짙은 갈색 글자, 둥근 고딕, 얇은 구분선).
 // 설정·목록은 카드 대신 여백과 구분선으로 나누고, 입력창처럼 구분이 필요한 곳만 표면색을 깐다.
 import { router } from 'expo-router';
-import { Check, ChevronDown, ChevronLeft, ChevronRight, Search, Star, X } from '@/ui/icons';
+import { Check, ChevronDown, ChevronLeft, ChevronRight, Search, SlidersHorizontal, Star, X } from '@/ui/icons';
+import { TabBarFade } from '@/ui/TabBarFade';
 import { Fragment, useEffect, useRef, useState, type ReactNode } from 'react';
 import {
   ActivityIndicator,
@@ -44,6 +45,8 @@ export const ui = {
 // 화면 틀: 위 안전 영역 + 머리줄(뒤로·가운데 제목·오른쪽 행동) + 스크롤 본문 + 아래 고정 버튼(footer).
 // 뒤로가 없는 화면(탭 첫 화면·완료 화면)은 제목을 왼쪽에 둔다. 키보드가 열리면 아래 고정 버튼이 키보드 위로 올라온다.
 export function Screen({
+  tabFade,
+  left,
   headerField,
   title,
   titleNote,
@@ -57,6 +60,8 @@ export function Screen({
   compact,
   inline,
 }: {
+  tabFade?: boolean; // 하단바가 떠 있는 탭 화면: 하단바 쪽을 배경색으로 서서히 덮는다(ui/TabBarFade)
+  left?: ReactNode; // 머리줄 왼쪽을 뒤로 대신 다른 것으로(고르는 중의 '취소', 2026-11-05 사용자 시안)
   headerField?: ReactNode; // 검색이 주인공인 화면: 제목 대신 뒤로 옆에 검색창(2026-11-04 사용자 토스 시안 '뒤로가기 옆에')
   compact?: boolean; // 정돈 변형에서 큰 제목 대신 머리줄 가운데 작은 제목(책 정보처럼 내용 첫머리가 주인공인 화면)
   inline?: boolean; // 정돈 변형에서 큰 제목을 머리줄 뒤로 단추 옆에(내 기록처럼 내용을 위로 올리는 화면)
@@ -128,9 +133,11 @@ export function Screen({
             {subtitle ? <Text style={[type.caption, { marginTop: 4 }]} numberOfLines={1}>{subtitle}</Text> : null}
             </>}
           </View>
-          <Pressable onPress={() => (router.canGoBack() ? router.back() : router.replace('/'))} hitSlop={8} accessibilityRole="button" accessibilityLabel="뒤로" style={s.back}>
-            <ChevronLeft size={28} color={colors.ink} strokeWidth={icon.stroke} />
-          </Pressable>
+          {left ? <View style={s.left}>{left}</View> : (
+            <Pressable onPress={() => (router.canGoBack() ? router.back() : router.replace('/'))} hitSlop={8} accessibilityRole="button" accessibilityLabel="뒤로" style={s.back}>
+              <ChevronLeft size={28} color={colors.ink} strokeWidth={icon.stroke} />
+            </Pressable>
+          )}
           {inline ? <Text style={[type.title, { flex: 1, marginLeft: 4 }]} numberOfLines={1} accessibilityRole="header">{title}{titleNote ? <Text style={[s.titleNote, { fontFamily: fonts.ui }]}>{`  ${titleNote}`}</Text> : null}</Text> : null}
           {headerField ? <View style={s.headerField}>{headerField}</View> : null}
           {right || !headerField ? <View style={s.right}>{right}</View> : <View style={{ width: space.page }} />}
@@ -159,6 +166,7 @@ export function Screen({
           </View>
         ) : null}
       </KeyboardAvoidingView>
+      {tabFade ? <TabBarFade /> : null}
     </View>
   );
   return screen;
@@ -639,7 +647,7 @@ export function Tabs<T extends string>({ items, value, onChange, style, fill }: 
       {items.map((it) => {
         const on = it.id === value;
         return (
-          <Pressable key={it.id} onPress={() => onChange(it.id)} hitSlop={{ left: 4, right: 4 }} style={[s.tab, fill && s.tabFill]} accessibilityRole="tab" accessibilityState={{ selected: on }}>
+          <Pressable key={it.id} onPress={() => onChange(it.id)} hitSlop={{ left: 8, right: 8 }} style={[s.tab, fill && s.tabFill]} accessibilityRole="tab" accessibilityState={{ selected: on }}>
             <Text style={[s.tabText, on && s.tabTextOn, fill && s.tabTextFill, fill && on && { color: colors.ink }]} numberOfLines={1}>
               {it.label}
             </Text>
@@ -667,6 +675,16 @@ export function Segmented<T extends string>({ items, value, onChange, style }: {
         );
       })}
     </View>
+  );
+}
+
+// 필터 아이콘(2026-11-05 사용자 시안 '자잘한 필터는 필터 칸에'): 누르면 필터 시트. 걸러진 상태면 테마색 점
+export function FilterIcon({ active, onPress }: { active?: boolean; onPress: () => void }) {
+  return (
+    <IconButton label={active ? '필터, 걸러진 상태' : '필터'} onPress={onPress}>
+      <SlidersHorizontal size={icon.size} color={colors.ink} strokeWidth={icon.stroke} />
+      {active ? <View style={s.filterDot} /> : null}
+    </IconButton>
   );
 }
 
@@ -839,6 +857,7 @@ export const s = StyleSheet.create({
   headerLeft: { ...tabHeader, flexDirection: 'row', alignItems: 'flex-start' },
   titleCenter: { position: 'absolute', left: 64, right: 64, top: 4, bottom: 0, alignItems: 'center', justifyContent: 'center' },
   back: { width: space.touch, height: space.touch, alignItems: 'center', justifyContent: 'center', marginLeft: 8 },
+  left: { minHeight: space.touch, justifyContent: 'center', marginLeft: space.page },
   headerField: { flex: 1, marginLeft: 2, marginRight: space.s },
   right: { flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-end', minWidth: space.touch, marginRight: 10 },
   footer: { paddingHorizontal: space.page, paddingTop: 12, backgroundColor: colors.bg },
@@ -885,10 +904,12 @@ export const s = StyleSheet.create({
   filterOn: { backgroundColor: colors.chipOn },
   filterText: { fontFamily: fonts.ui, fontSize: 16, lineHeight: 22, color: colors.ink, includeFontPadding: false, flexShrink: 1 },
   filterTextOn: { fontFamily: fonts.uiBold, color: colors.onAccent },
-  tab: { alignItems: 'center', paddingTop: 4, paddingHorizontal: 6, minHeight: space.touch },
-  tabText: { ...type.row, fontSize: 16, lineHeight: 22, color: colors.inkSoft },
+  filterDot: { position: 'absolute', top: 9, right: 7, width: 7, height: 7, borderRadius: 3.5, backgroundColor: colors.accent },
+  // 밑줄 탭(2026-11-05 사용자 시안, 구조만 시안이고 색은 우리 것): 고른 칸은 굵은 본문색 + 글자 폭만큼 테마색 밑줄
+  tab: { alignItems: 'stretch', paddingTop: 4, minHeight: space.touch },
+  tabText: { ...type.row, fontSize: 17, lineHeight: 24, color: colors.inkSoft, textAlign: 'center' },
   tabTextOn: { fontFamily: type.button.fontFamily, color: colors.ink },
-  tabBar: { width: 32, height: 3, borderRadius: 2, backgroundColor: colors.ink, marginTop: 8 },
+  tabBar: { height: 3, borderRadius: 2, backgroundColor: colors.accent, marginTop: 7 },
   tabsFill: { justifyContent: 'flex-start', borderBottomWidth: shape.hairline, borderBottomColor: colors.line },
   tabFill: { flex: 1, paddingHorizontal: 0, paddingTop: 10 },
   tabTextFill: { fontFamily: fonts.uiBold, fontSize: 16, lineHeight: 22 },

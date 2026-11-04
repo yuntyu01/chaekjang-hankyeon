@@ -29,4 +29,4 @@ export { default as Heart } from 'lucide-react-native/icons/heart';
 export { default as MessageCircle } from 'lucide-react-native/icons/message-circle';
 export { default as LayoutGrid } from 'lucide-react-native/icons/layout-grid';
 export { default as ListIcon } from 'lucide-react-native/icons/list';
-export { default as ArrowUpDown } from 'lucide-react-native/icons/arrow-up-down';
+export { default as SlidersHorizontal } from 'lucide-react-native/icons/sliders-horizontal';

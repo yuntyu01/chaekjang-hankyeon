@@ -68,11 +68,11 @@ import { STATUS_LABEL } from '@/features/book/labels';
 import { libraryStore, useLibrary } from '@/store/library-store';
 import { miniTimerStore } from '@/store/mini-timer-store';
 import { surfaces } from '@/ui/lighting';
-import { tabBarBlock, tabBarStyle } from '@/ui/tabBar';
+import { TAB_FADE, tabBarBlock, tabBarStyle } from '@/ui/tabBar';
+import { TabBarFade } from '@/ui/TabBarFade';
 
 import { DecoratePanel } from './DecoratePanel';
 import { HeaderVeil } from './HeaderVeil';
-import { TabBarVeil } from './TabBarVeil';
 import { useShelfEditCommands } from './useShelfEditCommands';
 import { useShelfInteraction } from './useShelfInteraction';
 import { useShelfDragPreview } from './useShelfDragPreview';
@@ -210,7 +210,7 @@ export function HomeScreen() {
   const lockedRows = useMemo(() => lockedRowsAfter(rows, lockedShelfCount(shownShelves.length), m.scale), [rows, shownShelves.length, m.scale]);
   // 콘텐츠 끝: 마지막 칸 아래 그림자 + 끝까지 올렸을 때 마지막 판이 하단바 위로 나오는 여백
   const lastDrawn = lockedRows.at(-1) ?? rows.at(-1);
-  const contentEnd = (lastDrawn ? lastDrawn.top + lastDrawn.height : CONTENT_TOP) + Math.max((SHELF_CAST_EXTENT + 8) * m.scale, tabBarBlock(insets.bottom) + 12);
+  const contentEnd = (lastDrawn ? lastDrawn.top + lastDrawn.height : CONTENT_TOP) + Math.max((SHELF_CAST_EXTENT + 8) * m.scale, tabBarBlock(insets.bottom) + TAB_FADE * 0.6);
   const motions = useSceneMotions(useMemo(() => shownShelves.map((sh) => sh.id), [shownShelves]), frames);
   // 장면 위치(UI 스레드): 터치 판정·가림 순서가 읽는다
   const geoOf = (): SceneGeo => ({ rows: rows.map((r) => ({ shelfId: r.shelfId, baseline: r.baseline, dy: rows.length ? (r.baseline - rows[0].baseline) / m.scale : 0, space: r.space })), s: m.scale, originX: m.originX });
@@ -997,14 +997,7 @@ export function HomeScreen() {
         </Animated.ScrollView>
         </GestureDetector>
         <HeaderVeil scrollY={scrollY} hidden={editing} />
-        <TabBarVeil
-          scrollY={scrollY}
-          contentBottom={lastDrawn ? lastDrawn.top + lastDrawn.height : 0}
-          barTop={vpH - tabBarBlock(insets.bottom)}
-          height={tabBarBlock(insets.bottom)}
-          hidden={editing}
-          instant={reduceMotion}
-        />
+        <TabBarFade color={surfaces.wall} hidden={editing} />
 
         {popId && books[popId] && placementOf(layout, popId) ? (
           <BookSheet
