@@ -223,6 +223,9 @@ jobs:
             echo "org.gradle.parallel=false"
             echo "kotlin.compiler.execution.strategy=in-process"
             echo "reactNativeArchitectures=arm64-v8a,armeabi-v7a"
+            # R8 코드 축소와 안 쓰는 리소스 제거(2026-11-04: 에뮬에서 전 화면 확인, x86_64 APK 116MB → 94MB)
+            echo "android.enableMinifyInReleaseBuilds=true"
+            echo "android.enableShrinkResourcesInReleaseBuilds=true"
           } >> android/gradle.properties
 
       - name: Configure Android release signing

@@ -6,6 +6,7 @@ import { AccessibilityInfo, Animated, Image, type ImageSourcePropType, StyleShee
 import { settingsStore } from '@/store/settings-store';
 import { bootMark } from '@/ui/boot-trace';
 import { loadHomeSnapshot } from '@/ui/home-snapshot';
+import { colors } from '@/ui/theme';
 
 const quietStart = require('../../assets/loading/quiet-start.png');
 // 시작 화면 그림(853×1844, 가운데 맞춤)에서 점 세 개 자리. 그림에서는 점을 지웠고 준비 단계(step)만큼 채워 그린다
@@ -90,6 +91,6 @@ function Dots({ step, w, h }: { step: number; w: number; h: number }) {
 }
 
 const styles = StyleSheet.create({
-  screen: { ...StyleSheet.absoluteFill, backgroundColor: '#FFFFFF', zIndex: 10 },
+  screen: { ...StyleSheet.absoluteFill, backgroundColor: colors.bg, zIndex: 10 },
   image: { width: '100%', height: '100%' },
 });
