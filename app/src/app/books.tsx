@@ -17,7 +17,7 @@ import { usePlacementStore } from '@/store/placement-store';
 import { BookVisual } from '@/ui/BookVisual';
 import { ArrowUpDown, Check, LayoutGrid, ListIcon, Plus } from '@/ui/icons';
 import { Btn, Chip, Empty, FilterButton, IconButton, ListGroup, ListItem, Muted, Screen, ScreenList, SearchField, Segmented, Sheet, TextLink, ui } from '@/ui/kit';
-import { colors, icon, press, tidySpace as space, tidyType as type } from '@/ui/screenTheme';
+import { colors, icon, press, space, type } from '@/ui/theme';
 
 const TABS = [{ id: 'all', label: '전체' }, ...READ_STATUSES.map((st) => ({ id: st, label: STATUS_LABEL[st] }))] as const satisfies readonly { id: ReadStatus | 'all'; label: string }[];
 const SORT_LABEL: Record<AllBooksSort, string> = { recent: '최근순', title: '제목순' };
@@ -127,7 +127,6 @@ export default function AllBooks() {
 
   return (
     <Screen
-      tidy
       // 제목 대신 뒤로 옆에 검색창(2026-11-04 사용자 '저 글자 때문에 검색이 너무 내려간다', 토스 시안). 권수는 검색창 안내 글자에
       headerField={<SearchField value={q} onChangeText={setQ} placeholder={total ? `책 ${total}권에서 찾기` : '제목, 저자 검색'} accessibilityLabel="전체 책에서 찾기" style={s.search} />}
       scroll={false}
@@ -136,7 +135,7 @@ export default function AllBooks() {
           {total ? <TextLink label={selecting ? ko.allBooks.cancel : ko.allBooks.select} tone="soft" onPress={() => (selecting ? stopSelecting() : (setSelecting(true), setMessage(null)))} /> : null}
           {!selecting ? (
             <IconButton label="책 추가" onPress={() => router.push('/book/add')}>
-              <Plus size={icon.size} color={colors.title} strokeWidth={icon.stroke} />
+              <Plus size={icon.size} color={colors.ink} strokeWidth={icon.stroke} />
             </IconButton>
           ) : null}
         </View>

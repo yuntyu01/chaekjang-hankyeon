@@ -29,20 +29,9 @@ import Svg, { Defs, LinearGradient, Rect, Stop } from 'react-native-svg';
 
 import { MINI_TIMER_SPACE, miniTimerStore } from '@/store/mini-timer-store';
 import { useReading } from '@/store/reading-store';
-import { colors, fonts, headerType, icon, press, shape, space, tabHeader, tidyButton, tidyShape, tidySpace, tidyType, type } from '@/ui/screenTheme';
+import { buttonHeight, colors, fonts, headerType, icon, press, shape, space, tabHeader, type } from '@/ui/theme';
 
-// 일반 UI 정돈 변형(screenTheme tidy*): 대상 화면(전체 책·책 추가·책 정보·수정·설정·독서 타이머 조작부)만 <Tidy>로 감싼다.
-// 그 밖의 화면(책장·책 고르기 시트·갈피 등)은 감싸지 않아 예전 모습 그대로다. 모달(시트·확인창) 안에도 이어진다.
 const FOOTER_FADE = 24;
-const TidyContext = createContext(false);
-export function Tidy({ children }: { children: ReactNode }) {
-  return <TidyContext.Provider value>{children}</TidyContext.Provider>;
-}
-export const useTidy = () => useContext(TidyContext);
-// 부품 밖(화면·기능 코드)에서 같은 기준을 쓰려면: const { type, space } = useUi()
-export function useUi() {
-  return useTidy() ? { tidy: true, type: tidyType, space: tidySpace, shape: tidyShape } : { tidy: false, type, space, shape };
-}
 
 export const ui = {
   pad: space.page,
@@ -54,11 +43,7 @@ export const ui = {
 
 // 화면 틀: 위 안전 영역 + 머리줄(뒤로·가운데 제목·오른쪽 행동) + 스크롤 본문 + 아래 고정 버튼(footer).
 // 뒤로가 없는 화면(탭 첫 화면·완료 화면)은 제목을 왼쪽에 둔다. 키보드가 열리면 아래 고정 버튼이 키보드 위로 올라온다.
-// 허브 화면(screenTheme TAB_CARDS): 회색 바탕 + 흰 카드(2026-11-04 당근·토스 종합). 안의 ListGroup은 카드가 되고 SectionBand는 카드 사이 간격이 된다
-const HubContext = createContext(false);
-
 export function Screen({
-  hub = false,
   headerField,
   title,
   titleNote,
@@ -69,13 +54,10 @@ export function Screen({
   children,
   footer,
   bottomPad = 0,
-  tidy: tidyProp,
   compact,
   inline,
 }: {
-  hub?: boolean; // 회색 바탕 + 흰 카드 화면
   headerField?: ReactNode; // 검색이 주인공인 화면: 제목 대신 뒤로 옆에 검색창(2026-11-04 사용자 토스 시안 '뒤로가기 옆에')
-  tidy?: boolean; // 이 화면과 그 안의 부품을 정돈 변형으로(Tidy로 감싼다)
   compact?: boolean; // 정돈 변형에서 큰 제목 대신 머리줄 가운데 작은 제목(책 정보처럼 내용 첫머리가 주인공인 화면)
   inline?: boolean; // 정돈 변형에서 큰 제목을 머리줄 뒤로 단추 옆에(내 기록처럼 내용을 위로 올리는 화면)
   title?: string;
@@ -89,9 +71,6 @@ export function Screen({
   bottomPad?: number;
 }) {
   const insets = useSafeAreaInsets();
-  const inTidy = useTidy();
-  const t = inTidy || !!tidyProp;
-  const tt = t ? tidyType : type;
   // 진행 중 독서가 있으면 오른쪽 아래 미니 타이머가 마지막 내용을 가리지 않게 그만큼 더 내린다
   const { active } = useReading();
   const timerPad = active ? MINI_TIMER_SPACE : 0;
@@ -99,12 +78,12 @@ export function Screen({
   useEffect(() => () => miniTimerStore.setBottom(null), []);
   // 정돈 변형(2026-11-01 토스식 위계): 뒤로가 있는 화면은 머리줄에 뒤로·행동만 두고, 제목은 내용 맨 위 왼쪽에 크게(24 Bold).
   // 스크롤 화면이면 제목도 내용과 함께 올라간다
-  const large = t && back && !compact && !inline && !headerField && !!title;
-  const pad = hub ? space.cardMargin : space.page;
+  const large = back && !compact && !inline && !headerField && !!title;
+  const pad = space.page;
   const tabHead = (
     <View style={s.headerLeft}>
       <View style={{ flex: 1 }}>
-        {/* 탭 첫 화면·완료 화면의 왼쪽 제목: 책장 홈 머리줄과 같은 기준(screenTheme.tabHeader·headerType, 2026-11-01) */}
+        {/* 탭 첫 화면·완료 화면의 왼쪽 제목: 책장 홈 머리줄과 같은 기준(theme.tabHeader·headerType) */}
         <Text style={headerType.title} accessibilityRole="header">
           {title ?? ''}
         </Text>
@@ -114,12 +93,12 @@ export function Screen({
     </View>
   );
   const largeTitle = large ? (
-    <View style={ts.largeTitle}>
-      <Text style={tidyType.title} accessibilityRole="header">
+    <View style={s.largeTitle}>
+      <Text style={type.title} accessibilityRole="header">
         {title}
         {titleNote ? <Text style={[s.titleNote, { fontFamily: fonts.ui }]}>{`  ${titleNote}`}</Text> : null}
       </Text>
-      {subtitle ? <Text style={[tidyType.sub, { marginTop: 4 }]}>{subtitle}</Text> : null}
+      {subtitle ? <Text style={[type.sub, { marginTop: 4 }]}>{subtitle}</Text> : null}
     </View>
   ) : null;
   const body = scroll ? (
@@ -136,23 +115,23 @@ export function Screen({
     </View>
   );
   const screen = (
-    <View style={{ flex: 1, paddingTop: insets.top, backgroundColor: hub ? colors.page : colors.bg }}>
+    <View style={{ flex: 1, paddingTop: insets.top, backgroundColor: colors.bg }}>
       {back ? (
         <View style={s.header}>
           {/* 제목은 화면 가운데(양옆 버튼 폭과 상관없이) */}
           <View pointerEvents="none" style={s.titleCenter}>
             {large || inline || headerField ? null : <>
-            <Text style={t ? tidyType.navTitle : tt.title} numberOfLines={1} accessibilityRole="header">
+            <Text style={type.navTitle} numberOfLines={1} accessibilityRole="header">
               {title ?? ''}
               {titleNote ? <Text style={s.titleNote}>{`  ${titleNote}`}</Text> : null}
             </Text>
-            {subtitle ? <Text style={[tt.caption, { marginTop: t ? 4 : 2 }]} numberOfLines={1}>{subtitle}</Text> : null}
+            {subtitle ? <Text style={[type.caption, { marginTop: 4 }]} numberOfLines={1}>{subtitle}</Text> : null}
             </>}
           </View>
           <Pressable onPress={() => (router.canGoBack() ? router.back() : router.replace('/'))} hitSlop={8} accessibilityRole="button" accessibilityLabel="뒤로" style={s.back}>
-            <ChevronLeft size={28} color={colors.title} strokeWidth={icon.stroke} />
+            <ChevronLeft size={28} color={colors.ink} strokeWidth={icon.stroke} />
           </Pressable>
-          {inline ? <Text style={[tidyType.title, { flex: 1, marginLeft: 4 }]} numberOfLines={1} accessibilityRole="header">{title}{titleNote ? <Text style={[s.titleNote, { fontFamily: fonts.ui }]}>{`  ${titleNote}`}</Text> : null}</Text> : null}
+          {inline ? <Text style={[type.title, { flex: 1, marginLeft: 4 }]} numberOfLines={1} accessibilityRole="header">{title}{titleNote ? <Text style={[s.titleNote, { fontFamily: fonts.ui }]}>{`  ${titleNote}`}</Text> : null}</Text> : null}
           {headerField ? <View style={s.headerField}>{headerField}</View> : null}
           {right || !headerField ? <View style={s.right}>{right}</View> : <View style={{ width: space.page }} />}
         </View>
@@ -164,7 +143,7 @@ export function Screen({
       <KeyboardAvoidingView style={{ flex: 1 }} behavior="padding">
         {body}
         {footer ? (
-          <View onLayout={(e) => miniTimerStore.setBottom(e.nativeEvent.layout.height)} style={[s.footer, t && ts.footer, { paddingBottom: 12 + insets.bottom }]}>
+          <View onLayout={(e) => miniTimerStore.setBottom(e.nativeEvent.layout.height)} style={[s.footer, { paddingBottom: 12 + insets.bottom }]}>
             {/* 아래 고정 버튼 위 24는 흰색으로 번지게: 스크롤하다 멈춘 내용이 버튼 경계에서 뚝 잘려 가린 것처럼 보이지 않게(토스 하단 버튼처럼, 2026-11-01).
                 내용은 버튼 밑으로 들어가지 않는다(스크롤 영역이 버튼 위에서 끝난다) */}
             <Svg pointerEvents="none" width="100%" height={FOOTER_FADE} style={s.footerFade}>
@@ -182,22 +161,13 @@ export function Screen({
       </KeyboardAvoidingView>
     </View>
   );
-  const wrapped = <HubContext.Provider value={hub}>{screen}</HubContext.Provider>;
-  return t && !inTidy ? <Tidy>{wrapped}</Tidy> : wrapped;
+  return screen;
 }
 
-// 내용 한 묶음. 허브 화면에서만 흰 카드(모서리 18, 안쪽 18, 카드 사이 12)이고 흰 화면에서는 상자 없이 그대로다
-export function Card({ children, style }: { children: ReactNode; style?: StyleProp<ViewStyle> }) {
-  const hub = useContext(HubContext);
-  return <View style={[hub && s.card, style]}>{children}</View>;
-}
-
-// 구역 이름(시안의 '독서 환경'·'내 기록'): 작은 회갈색 글자, 위로 넉넉한 간격
 export function H2({ children, style, first }: { children: ReactNode; style?: StyleProp<ViewStyle>; first?: boolean }) {
-  const t = useTidy();
   return (
-    <View style={[t ? { marginTop: first ? tidySpace.l : tidySpace.section, marginBottom: tidySpace.s } : { marginTop: first ? space.group + 8 : space.section, marginBottom: space.tight + 2 }, style]}>
-      <Text style={t ? tidyType.section : type.section} accessibilityRole="header">
+    <View style={[{ marginTop: first ? space.l : space.section, marginBottom: space.s }, style]}>
+      <Text style={type.section} accessibilityRole="header">
         {children}
       </Text>
     </View>
@@ -206,7 +176,7 @@ export function H2({ children, style, first }: { children: ReactNode; style?: St
 
 export function Muted({ children, style, numberOfLines }: { children: ReactNode; style?: StyleProp<TextStyle>; numberOfLines?: number }) {
   return (
-    <Text style={[useTidy() ? tidyType.sub : s.muted, style]} numberOfLines={numberOfLines}>
+    <Text style={[type.sub, style]} numberOfLines={numberOfLines}>
       {children}
     </Text>
   );
@@ -232,7 +202,6 @@ export function Btn({
   icon?: ReactNode;
   style?: StyleProp<ViewStyle>;
 }) {
-  const t = useTidy();
   // 2026-11-04 당근·토스 종합: 주요 버튼은 테마색으로 채우고 흰 글자(화면에 하나). 보조·삭제는 흰 바탕 + 회색 선(사용자 '회색 바탕 말고 회색 선')
   const primary = kind === 'primary';
   const outlined = kind === 'secondary' || kind === 'danger';
@@ -246,9 +215,7 @@ export function Btn({
         : pressed
           ? { backgroundColor: colors.line }
           : null;
-  if (t)
-    // 정돈 변형: 높이 56·48·40 고정, 단색, 불러오는 중에도 크기가 그대로(글자 자리를 지키고 가운데에 돌림표)
-    return (
+  return (
       <Pressable
         onPress={onPress}
         disabled={off}
@@ -257,44 +224,21 @@ export function Btn({
         accessibilityLabel={label}
         accessibilityState={{ disabled: off, busy: !!busy }}
         style={({ pressed }) => [
-          ts.btn,
-          { minHeight: tidyButton[size] },
-          size === 's' && ts.btnSmall,
+          s.btn,
+          { minHeight: buttonHeight[size] },
+          size === 's' && s.btnSmall,
           fill(pressed),
           !primary && disabled && { opacity: 0.45 },
           style,
         ]}>
-        <View style={[ts.btnInner, busy && { opacity: 0 }]}>
+        <View style={[s.btnInner, busy && { opacity: 0 }]}>
           {iconNode}
-          <Text style={[size === 's' ? ts.btnTextSmall : ts.btnText, { color: ink }]} numberOfLines={2}>
+          <Text style={[size === 's' ? s.btnTextSmall : s.btnText, { color: ink }]} numberOfLines={2}>
             {label}
           </Text>
         </View>
         {busy ? <ActivityIndicator color={ink} size="small" style={StyleSheet.absoluteFill} /> : null}
       </Pressable>
-    );
-  return (
-    <Pressable
-      onPress={onPress}
-      disabled={off}
-      hitSlop={size === 's' ? { top: 4, bottom: 4 } : undefined}
-      accessibilityRole="button"
-      accessibilityLabel={label}
-      accessibilityState={{ disabled: off, busy: !!busy }}
-      style={({ pressed }) => [
-        s.btn,
-        size === 's' && s.btnSmall,
-        size === 'l' && s.btnLarge,
-        kind === 'ghost' && { backgroundColor: 'transparent' },
-        fill(pressed),
-        !primary && disabled && { opacity: 0.45 },
-        style,
-      ]}>
-      {busy ? <ActivityIndicator color={ink} size="small" /> : iconNode}
-      <Text style={[s.btnText, size === 's' && { fontSize: 15 }, size === 'l' && { fontSize: 17 }, { color: ink }]} numberOfLines={2}>
-        {label}
-      </Text>
-    </Pressable>
   );
 }
 
@@ -303,7 +247,7 @@ export function Btn({
 export function TextLink({ label, onPress, tone = 'accent', disabled, style }: { label: string; onPress: () => void; tone?: 'accent' | 'soft'; disabled?: boolean; style?: StyleProp<ViewStyle> }) {
   return (
     <Pressable onPress={onPress} disabled={disabled} hitSlop={{ left: 8, right: 8 }} accessibilityRole="button" accessibilityLabel={label} accessibilityState={{ disabled: !!disabled }} style={({ pressed }) => [s.link, pressed && press, disabled && { opacity: 0.4 }, style]}>
-      <Text style={[s.linkText, useTidy() && ts.linkText, { color: tone === 'accent' ? colors.accent : colors.inkSoft }]}>{label}</Text>
+      <Text style={[s.linkText, { color: tone === 'accent' ? colors.accent : colors.inkSoft }]}>{label}</Text>
     </Pressable>
   );
 }
@@ -346,24 +290,22 @@ function splitLabel(label: string) {
 }
 
 function LabelRow({ name, tag }: { name: string; tag?: string }) {
-  const t = useTidy();
   return (
-    <View style={[s.labelRow, t && ts.labelRow]}>
-      <Text style={t ? tidyType.label : s.label}>{name}</Text>
-      {tag ? <Text style={[s.labelTag, t && ts.labelTag]}>{tag}</Text> : null}
+    <View style={[s.labelRow]}>
+      <Text style={type.label}>{name}</Text>
+      {tag ? <Text style={[s.labelTag]}>{tag}</Text> : null}
     </View>
   );
 }
 
 // 입력칸: 입력칸색 단색 바탕, 테두리 없음, 누르면 갈색 테두리. 이름은 위에, 단위('쪽')는 칸 안 오른쪽, 도움말·오류는 아래.
 export function Field({ label, hint, error, unit, ...p }: TextInputProps & { label: string; hint?: string; error?: string; unit?: string }) {
-  const t = useTidy();
   const [focus, setFocus] = useState(false);
   const { name, tag, note } = splitLabel(label);
   const placeholder = p.placeholder ?? note;
   const help = p.placeholder && note ? note : hint;
   return (
-    <View style={[s.field, t && ts.field]}>
+    <View style={[s.field]}>
       <LabelRow name={name} tag={tag} />
       <View>
         <TextInput
@@ -379,7 +321,7 @@ export function Field({ label, hint, error, unit, ...p }: TextInputProps & { lab
             setFocus(false);
             p.onBlur?.(e);
           }}
-          style={[s.input, t && ts.input, p.multiline && s.inputMulti, !!unit && { paddingRight: 44 }, focus && s.inputFocus, !!error && { borderColor: colors.danger }, p.editable === false && { opacity: 0.55 }, p.style]}
+          style={[s.input, p.multiline && s.inputMulti, !!unit && { paddingRight: 44 }, focus && s.inputFocus, !!error && { borderColor: colors.danger }, p.editable === false && { opacity: 0.55 }, p.style]}
         />
         {unit ? (
           <View pointerEvents="none" style={s.unit}>
@@ -388,11 +330,11 @@ export function Field({ label, hint, error, unit, ...p }: TextInputProps & { lab
         ) : null}
       </View>
       {error ? (
-        <Text style={[t ? ts.help : s.muted, { marginTop: t ? 8 : 6, color: colors.danger }]} accessibilityLiveRegion="polite">
+        <Text style={[s.help, { marginTop: 8, color: colors.danger }]} accessibilityLiveRegion="polite">
           {error}
         </Text>
       ) : help ? (
-        <Text style={[t ? ts.help : s.muted, { marginTop: t ? 8 : 6 }]}>{help}</Text>
+        <Text style={[s.help, { marginTop: 8 }]}>{help}</Text>
       ) : null}
     </View>
   );
@@ -401,11 +343,10 @@ export function Field({ label, hint, error, unit, ...p }: TextInputProps & { lab
 // 고르는 칸(연결할 책 등): 입력칸과 같은 모양, 누르면 고르는 시트가 열린다
 export function SelectField({ label, value, placeholder, sub, onPress }: { label: string; value?: string; placeholder: string; sub?: string; onPress: () => void }) {
   const { name, tag } = splitLabel(label);
-  const t = useTidy();
   return (
-    <View style={[s.field, t && ts.field]}>
+    <View style={[s.field]}>
       <LabelRow name={name} tag={tag} />
-      <Pressable onPress={onPress} accessibilityRole="button" accessibilityLabel={`${label}, ${value ?? placeholder}`} style={({ pressed }) => [s.select, t && ts.input, pressed && { borderColor: colors.border }]}>
+      <Pressable onPress={onPress} accessibilityRole="button" accessibilityLabel={`${label}, ${value ?? placeholder}`} style={({ pressed }) => [s.select, pressed && { borderColor: colors.border }]}>
         <View style={{ flex: 1 }}>
           <Text style={[type.input, { color: value ? colors.ink : colors.inkFaint }]} numberOfLines={2}>
             {value ?? placeholder}
@@ -421,7 +362,7 @@ export function SelectField({ label, value, placeholder, sub, onPress }: { label
 // 검색창: 돋보기 + 입력 + 지우기(입력이 있을 때)
 export function SearchField({ value, onChangeText, busy, onSubmit, style, ...p }: TextInputProps & { value: string; onChangeText: (t: string) => void; busy?: boolean; onSubmit?: () => void }) {
   return (
-    <View style={[s.search, useTidy() && ts.search, style as StyleProp<ViewStyle>]}>
+    <View style={[s.search, style as StyleProp<ViewStyle>]}>
       <Pressable onPress={onSubmit} disabled={!onSubmit} accessibilityRole={onSubmit ? 'button' : undefined} accessibilityLabel={onSubmit ? '검색' : undefined} style={s.searchIcon}>
         <Search size={icon.size} color={colors.inkSoft} strokeWidth={icon.stroke} />
       </Pressable>
@@ -448,11 +389,10 @@ export function SearchField({ value, onChangeText, busy, onSubmit, style, ...p }
 }
 
 export function Chip({ label, on, onPress, color }: { label: string; on?: boolean; onPress?: () => void; color?: string }) {
-  const t = useTidy();
   return (
-    <Pressable onPress={onPress} accessibilityRole="button" accessibilityState={{ selected: !!on }} hitSlop={{ top: 4, bottom: 4 }} style={({ pressed }) => [s.chip, t && ts.chip, on && s.chipOn, pressed && !on && { backgroundColor: colors.line, borderColor: colors.line }]}>
+    <Pressable onPress={onPress} accessibilityRole="button" accessibilityState={{ selected: !!on }} hitSlop={{ top: 4, bottom: 4 }} style={({ pressed }) => [s.chip, on && s.chipOn, pressed && !on && { backgroundColor: colors.line, borderColor: colors.line }]}>
       {color ? <View style={[s.dot, { backgroundColor: color }]} /> : null}
-      <Text style={[s.chipText, t && ts.chipText, on && { color: colors.onAccent }, { maxWidth: 230 }]} numberOfLines={1}>
+      <Text style={[s.chipText, on && { color: colors.onAccent }, { maxWidth: 230 }]} numberOfLines={1}>
         {label}
       </Text>
     </Pressable>
@@ -462,15 +402,13 @@ export function Chip({ label, on, onPress, color }: { label: string; on?: boolea
 // 고르는 블록(2026-11): 서로 바꿔 고르는 선택지(갈피 '어떻게 남길까요?', 분위기, 목표 시간). 블록 전체가 누르는 자리.
 // 고르지 않은 것은 옅은 회백색 바탕, 고른 것은 흰 바탕 + 얇은 갈색 테두리 + 작은 체크(색만으로 구분하지 않는다). 단순 정보 블록과 구별된다
 export function Choice({ label, sub, selected, onPress, children, style, compact }: { label: string; sub?: string; selected: boolean; onPress: () => void; children?: ReactNode; style?: StyleProp<ViewStyle>; compact?: boolean }) {
-  const t = useTidy();
-  const tt = t ? tidyType : type;
   return (
     <Pressable onPress={onPress} accessibilityRole="radio" accessibilityState={{ selected, checked: selected }} accessibilityLabel={[label, sub].filter(Boolean).join(', ')} style={({ pressed }) => [cs.choice, compact && cs.choiceCompact, selected ? cs.choiceOn : null, pressed && !selected && { backgroundColor: colors.surface }, style]}>
       {children}
       <View style={cs.choiceRow}>
         <View style={{ flex: 1, minWidth: 0 }}>
-          <Text style={[tt.button, { color: colors.ink, textAlign: compact ? 'center' : 'left' }, !compact && !sub && selected && { paddingRight: 28 }]}>{label}</Text>
-          {sub ? <Text style={[tt.caption, { marginTop: 2, textAlign: compact ? 'center' : 'left' }]}>{sub}</Text> : null}
+          <Text style={[type.button, { color: colors.ink, textAlign: compact ? 'center' : 'left' }, !compact && !sub && selected && { paddingRight: 28 }]}>{label}</Text>
+          {sub ? <Text style={[type.caption, { marginTop: 2, textAlign: compact ? 'center' : 'left' }]}>{sub}</Text> : null}
         </View>
       </View>
       {selected ? (
@@ -498,29 +436,20 @@ export function Row({ children, style, gap = 8 }: { children: ReactNode; style?:
 // 안내 상자: 확인이 필요한 알림(판본 정보 없음 등). 표면색 바탕, 테두리 없음
 export function Notice({ children, tone = 'info', style }: { children: ReactNode; tone?: 'info' | 'error'; style?: StyleProp<ViewStyle> }) {
   return (
-    <View style={[s.notice, useTidy() && ts.notice, style]} accessibilityLiveRegion="polite">
-      <Text style={[useTidy() ? tidyType.sub : type.sub, { color: tone === 'error' ? colors.danger : colors.ink }]}>{children}</Text>
+    <View style={[s.notice, style]} accessibilityLiveRegion="polite">
+      <Text style={[type.sub, { color: tone === 'error' ? colors.danger : colors.ink }]}>{children}</Text>
     </View>
   );
 }
 
 // 빈 화면·결과 없음: 짧은 안내 + 다음 행동
 export function Empty({ title, body, action, onAction, actionKind = 'primary' }: { title: string; body?: string; action?: string; onAction?: () => void; actionKind?: 'primary' | 'secondary' }) {
-  if (useTidy())
-    // 정돈 변형: 제목(무엇이 없는지) → 설명(왜·무엇을 하면 되는지) → 다음 행동. 결과 없음은 보조 버튼으로 낮춘다
-    return (
-      <View style={ts.empty}>
-        <Text style={[tidyType.heading, { textAlign: 'center' }]}>{title}</Text>
-        {body ? <Text style={[tidyType.sub, { textAlign: 'center', marginTop: tidySpace.s }]}>{body}</Text> : null}
-        {action && onAction ? <Btn label={action} kind={actionKind} onPress={onAction} style={{ marginTop: tidySpace.xl, minWidth: 160, alignSelf: 'center' }} /> : null}
-      </View>
-    );
   return (
-    <View style={{ alignItems: 'center', paddingVertical: 48, gap: 10 }}>
-      <Text style={[type.heading, { fontSize: 18, textAlign: 'center' }]}>{title}</Text>
-      {body ? <Text style={[type.sub, { textAlign: 'center' }]}>{body}</Text> : null}
-      {action && onAction ? <Btn label={action} onPress={onAction} style={{ marginTop: 10, minWidth: 180 }} /> : null}
-    </View>
+      <View style={s.empty}>
+        <Text style={[type.heading, { textAlign: 'center' }]}>{title}</Text>
+        {body ? <Text style={[type.sub, { textAlign: 'center', marginTop: space.s }]}>{body}</Text> : null}
+        {action && onAction ? <Btn label={action} kind={actionKind} onPress={onAction} style={{ marginTop: space.xl, minWidth: 160, alignSelf: 'center' }} /> : null}
+      </View>
   );
 }
 
@@ -675,10 +604,8 @@ export function ListItem({
   icon?: ReactNode;
   selected?: boolean;
 }) {
-  const t = useTidy();
   // 정돈 변형: 화살표는 다른 화면으로 넘어가는 줄에만(부르는 쪽이 chevron으로 정한다). 모든 줄에 붙이지 않는다
-  const arrow = chevron ?? (t ? false : !!onPress && !right);
-  const tt = t ? tidyType : type;
+  const arrow = chevron ?? false;
   return (
     <Pressable
       onPress={onPress}
@@ -689,12 +616,12 @@ export function ListItem({
       accessibilityLabel={[label, sub, value].filter(Boolean).join(', ')}>
       {iconNode ? <View style={s.itemIcon}>{iconNode}</View> : null}
       {/* 정돈 변형은 줄 위아래를 넉넉히(2026-11-01: 12~16 → 16~18. TDS 목록 줄 기본 위아래 여백 24) */}
-      <View style={{ flex: 1, paddingVertical: sub ? (t ? 18 : 14) : t ? 16 : 12, paddingRight: right || value || arrow ? 12 : 0 }}>
-        <Text style={[tt.row, danger && { color: colors.danger }]}>{label}</Text>
-        {sub ? <Text style={[tt.sub, { marginTop: 4 }]}>{sub}</Text> : null}
+      <View style={{ flex: 1, paddingVertical: sub ? 18 : 16, paddingRight: right || value || arrow ? 12 : 0 }}>
+        <Text style={[type.row, danger && { color: colors.danger }]}>{label}</Text>
+        {sub ? <Text style={[type.sub, { marginTop: 4 }]}>{sub}</Text> : null}
       </View>
       {value ? (
-        <Text style={[s.itemValue, t && ts.itemValue]} numberOfLines={1}>
+        <Text style={[s.itemValue]} numberOfLines={1}>
           {value}
         </Text>
       ) : null}
@@ -707,14 +634,13 @@ export function ListItem({
 // 고르게 나눈 탭(서랍 시안): 칸마다 같은 폭, 고른 칸은 갈색 굵은 글자 + 짧은 갈색 밑줄. 탭 아래 구분선은 없다.
 // fill: 칸을 똑같이 나눠 화면 끝까지(커뮤니티 '발견 | 팔로잉', 프로필 '독서 기록 | 평가' — 스레드·토스증권처럼). 고른 칸은 굵은 본문색 + 칸 폭 밑줄, 아래 얇은 선
 export function Tabs<T extends string>({ items, value, onChange, style, fill }: { items: readonly { id: T; label: string }[]; value: T; onChange: (id: T) => void; style?: StyleProp<ViewStyle>; fill?: boolean }) {
-  const tidyTabs = useTidy();
   return (
     <View style={[s.tabs, fill && s.tabsFill, style]} accessibilityRole="tablist">
       {items.map((it) => {
         const on = it.id === value;
         return (
           <Pressable key={it.id} onPress={() => onChange(it.id)} hitSlop={{ left: 4, right: 4 }} style={[s.tab, fill && s.tabFill]} accessibilityRole="tab" accessibilityState={{ selected: on }}>
-            <Text style={[s.tabText, tidyTabs && ts.tabText, on && s.tabTextOn, fill && s.tabTextFill, fill && on && { color: colors.ink }]} numberOfLines={1}>
+            <Text style={[s.tabText, on && s.tabTextOn, fill && s.tabTextFill, fill && on && { color: colors.ink }]} numberOfLines={1}>
               {it.label}
             </Text>
             <View style={[s.tabBar, fill && s.tabBarFill, !on && { backgroundColor: 'transparent' }]} />
@@ -758,26 +684,19 @@ export function FilterButton({ label, active, onPress, icon: lead }: { label: st
 }
 
 // 목록 묶음(2026-11-04 당근·토스 종합): 메뉴·설정 줄 사이에는 선을 긋지 않는다. 묶음끼리만 나눈다. 글이 많은 목록(후기·기록)은 항목 사이에 Divider를 쓴다.
-// title: 묶음 이름. 흰 화면은 작은 회색 글자, 허브 화면(회색 바탕)은 흰 카드 안 굵은 글자
+// title: 묶음 이름(작은 회색 글자)
 export function ListGroup({ children, style, title }: { children: ReactNode; style?: StyleProp<ViewStyle>; title?: string }) {
-  const hub = useContext(HubContext);
-  const head = title ? (
-    <Text style={[tidyType.caption, s.groupTitle, hub && s.groupTitleHub]} accessibilityRole="header">
-      {title}
-    </Text>
-  ) : null;
   return (
-    <View style={[hub && s.groupCard, style]}>
-      {head}
+    <View style={style}>
+      {title ? <Text style={[type.caption, s.groupTitle]} accessibilityRole="header">{title}</Text> : null}
       {children}
     </View>
   );
 }
 
-// 묶음 사이: 흰 화면은 화면 끝까지 닿는 1dp 선(당근 설정), 허브 화면은 카드 사이 간격
+// 묶음 사이: 화면 끝까지 닿는 1dp 선(당근 설정)
 export function SectionBand({ style }: { style?: StyleProp<ViewStyle> }) {
-  const hub = useContext(HubContext);
-  return <View style={[hub ? { height: space.cardGap } : s.band, style]} />;
+  return <View style={[s.band, style]} />;
 }
 
 export function Divider({ style }: { style?: StyleProp<ViewStyle> }) {
@@ -831,10 +750,9 @@ export function useSheetDrag(visible: boolean, onClose: () => void) {
 }
 // 시트 위쪽 손잡이: 판 위 끝부터 손잡이 아래까지 폭 전체가 끄는 자리다
 export function SheetGrip({ handlers, compact }: { handlers: ReturnType<typeof useSheetDrag>['handlers']; compact?: boolean }) {
-  const t = useTidy();
   return (
     <View {...handlers} style={s.grip} importantForAccessibility="no-hide-descendants" accessibilityElementsHidden>
-      <View style={[s.handle, t && ts.handle, compact ? { marginBottom: 4 } : null]} />
+      <View style={[s.handle, compact ? { marginBottom: 4 } : null]} />
     </View>
   );
 }
@@ -845,26 +763,24 @@ export function SheetGrip({ handlers, compact }: { handlers: ReturnType<typeof u
 // description은 제목 바로 아래 짧은 안내. 높이는 내용만큼(maxHeight를 넘으면 scroll 시트의 본문이 스크롤된다)
 export function Sheet({ visible, onClose, title, description, children, scroll = false, maxHeight }: { visible: boolean; onClose: () => void; title?: string; description?: string; children: ReactNode; scroll?: boolean; maxHeight?: DimensionValue }) {
   const insets = useSafeAreaInsets();
-  const t = useTidy();
   const drag = useSheetDrag(visible, onClose);
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose} statusBarTranslucent navigationBarTranslucent>
-      <HubContext.Provider value={false}>
       <View style={s.sheetWrap}>
       <Pressable style={[StyleSheet.absoluteFill, { backgroundColor: colors.scrim }]} onPress={onClose} accessibilityLabel="닫기" />
-      <Animated.View style={[s.sheet, t && ts.sheet, { paddingBottom: insets.bottom + space.item, maxHeight, transform: [{ translateY: drag.y }] }]}>
+      <Animated.View style={[s.sheet, { paddingBottom: insets.bottom + space.item, maxHeight, transform: [{ translateY: drag.y }] }]}>
         <SheetGrip handlers={drag.handlers} compact={!!title} />
         {title ? (
-          <View style={{ marginBottom: t ? tidySpace.m : space.item }}>
+          <View style={{ marginBottom: space.m }}>
             <View style={s.sheetHead}>
-              <Text style={[t ? tidyType.heading : type.heading, { flex: 1 }]} accessibilityRole="header">
+              <Text style={[type.heading, { flex: 1 }]} accessibilityRole="header">
                 {title}
               </Text>
               <Pressable onPress={onClose} hitSlop={6} style={({ pressed }) => [s.sheetClose, pressed && press]} accessibilityRole="button" accessibilityLabel={`${title} 닫기`}>
                 <X size={icon.size} color={colors.inkSoft} strokeWidth={icon.stroke} />
               </Pressable>
             </View>
-            {description ? <Text style={[t ? tidyType.sub : type.sub, { marginTop: 2 }]}>{description}</Text> : null}
+            {description ? <Text style={[type.sub, { marginTop: 2 }]}>{description}</Text> : null}
           </View>
         ) : null}
         {scroll ? (
@@ -876,23 +792,21 @@ export function Sheet({ visible, onClose, title, description, children, scroll =
         )}
       </Animated.View>
       </View>
-      </HubContext.Provider>
     </Modal>
   );
 }
 
 // 가운데 확인창(앱이 직접 그리는 것만. 운영체제 Alert는 그대로 쓴다)
 export function Dialog({ visible, onClose, title, body, children }: { visible: boolean; onClose: () => void; title: string; body?: string; children?: ReactNode }) {
-  const t = useTidy();
   return (
     <Modal transparent animationType="fade" visible={visible} onRequestClose={onClose} statusBarTranslucent navigationBarTranslucent>
       <View style={s.dialogWrap}>
-        <View style={[s.dialog, t && { borderRadius: tidyShape.dialog }]} accessibilityViewIsModal>
-          <Text style={t ? tidyType.heading : type.heading} accessibilityRole="header">
+        <View style={[s.dialog]} accessibilityViewIsModal>
+          <Text style={type.heading} accessibilityRole="header">
             {title}
           </Text>
-          {body ? <Text style={[t ? tidyType.body : type.body, { color: colors.inkSoft, marginTop: t ? 8 : 10 }]}>{body}</Text> : null}
-          {children ? <View style={{ gap: 8, marginTop: t ? tidySpace.xl : space.group }}>{children}</View> : null}
+          {body ? <Text style={[type.body, { color: colors.inkSoft, marginTop: 8 }]}>{body}</Text> : null}
+          {children ? <View style={{ gap: 8, marginTop: space.xl }}>{children}</View> : null}
         </View>
       </View>
     </Modal>
@@ -902,7 +816,7 @@ export function Dialog({ visible, onClose, title, body, children }: { visible: b
 // 화면 맨 아래 작은 이름표(시안: 짧은 선 + '책장 한켠')
 export function BrandFooter({ style }: { style?: StyleProp<ViewStyle> }) {
   return (
-    <View style={[{ flexDirection: 'row', alignItems: 'center', gap: 12, marginTop: useTidy() ? 48 : 56 }, style]} accessible accessibilityLabel="책장 한켠">
+    <View style={[{ flexDirection: 'row', alignItems: 'center', gap: 12, marginTop: 48 }, style]} accessible accessibilityLabel="책장 한켠">
       <View style={{ width: 20, height: shape.hairline * 2, backgroundColor: colors.inkFaint }} />
       <Text style={type.sub}>책장 한켠</Text>
     </View>
@@ -917,11 +831,11 @@ export const s = StyleSheet.create({
   back: { width: space.touch, height: space.touch, alignItems: 'center', justifyContent: 'center', marginLeft: 8 },
   headerField: { flex: 1, marginLeft: 2 },
   right: { flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-end', minWidth: space.touch, marginRight: 10 },
-  footer: { paddingHorizontal: space.page - 4, paddingTop: 12, backgroundColor: colors.bg },
+  footer: { paddingHorizontal: space.page, paddingTop: 12, backgroundColor: colors.bg },
   footerFade: { position: 'absolute', left: 0, right: 0, top: -FOOTER_FADE }, // 시안: 버튼은 입력칸보다 좌우로 조금 넓다(19~20)
   muted: { ...type.sub },
-  btn: { minHeight: 46, borderRadius: shape.button, paddingHorizontal: 18, paddingVertical: 12, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, backgroundColor: 'transparent' },
-  btnSmall: { minHeight: 40, paddingVertical: 8, paddingHorizontal: 14, borderRadius: shape.input },
+  btn: { minHeight: 46, borderRadius: shape.button, paddingHorizontal: 20, paddingVertical: 14, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, backgroundColor: 'transparent' },
+  btnSmall: { minHeight: 40, paddingVertical: 10, paddingHorizontal: 16, borderRadius: shape.input },
   btnLarge: { minHeight: 56, paddingVertical: 14 },
   iconButton: { width: space.touch, height: space.touch, alignItems: 'center', justifyContent: 'center' },
   iconCircle: { width: 36, height: 36, borderRadius: 18, borderWidth: shape.border, borderColor: colors.border, alignItems: 'center', justifyContent: 'center' },
@@ -932,18 +846,18 @@ export const s = StyleSheet.create({
   textActionText: { ...type.sub, color: colors.ink, textAlign: 'center' }, // 보조 행동: 15 Regular, 본문색
   textActionRule: { width: 1, height: 18, backgroundColor: colors.line },
   btnText: { ...type.button, flexShrink: 1, textAlign: 'center' },
-  field: { marginBottom: 26 }, // 갈피 수정 시안: 칸 아래 → 다음 이름 글자 위 약 30
-  labelRow: { flexDirection: 'row', alignItems: 'baseline', gap: 8, marginBottom: 7 },
+  field: { marginBottom: space.xl }, // 갈피 수정 시안: 칸 아래 → 다음 이름 글자 위 약 30
+  labelRow: { flexDirection: 'row', alignItems: 'baseline', gap: 8, marginBottom: space.s },
   label: type.label,
   labelTag: { ...type.caption, color: colors.inkSoft },
   unit: { position: 'absolute', right: 16, top: 0, bottom: 0, justifyContent: 'center' },
   unitText: { ...type.input, color: colors.inkSoft },
-  input: { ...type.input, minHeight: 52, borderRadius: shape.input, borderWidth: shape.border, borderColor: colors.input, backgroundColor: colors.input, paddingHorizontal: 16, paddingVertical: 13 },
+  input: { ...type.input, minHeight: 56, borderRadius: shape.input, borderWidth: shape.border, borderColor: colors.input, backgroundColor: colors.input, paddingHorizontal: 16, paddingVertical: 16 },
   inputMulti: { minHeight: 110, textAlignVertical: 'top', lineHeight: 25, paddingTop: 14 },
   inputFocus: { borderColor: colors.accent },
   select: { minHeight: 52, borderRadius: shape.input, borderWidth: shape.border, borderColor: colors.input, backgroundColor: colors.input, paddingHorizontal: 16, paddingVertical: 13, flexDirection: 'row', alignItems: 'center', gap: 8 },
   // 검색칸(서랍·책 추가 시안): 높이 44~46, 모서리 약 12
-  search: { minHeight: 46, borderRadius: 12, backgroundColor: colors.input, flexDirection: 'row', alignItems: 'center', paddingRight: 2 },
+  search: { minHeight: 52, borderRadius: shape.input, backgroundColor: colors.input, flexDirection: 'row', alignItems: 'center', paddingRight: 2 },
   searchIcon: { width: space.touch + 4, minHeight: 46, alignItems: 'center', justifyContent: 'center' },
   titleNote: { fontFamily: type.sub.fontFamily, color: colors.inkSoft },
   // 칸 폭을 똑같이 나누면 두 글자('완독'·'보류')와 세 글자('읽는 중') 탭 사이가 들쭉날쭉해 보였다(사용자 의견 2026-10-26):
@@ -961,7 +875,7 @@ export const s = StyleSheet.create({
   filterText: { fontFamily: fonts.ui, fontSize: 16, lineHeight: 22, color: colors.ink, includeFontPadding: false, flexShrink: 1 },
   filterTextOn: { fontFamily: fonts.uiBold, color: colors.onAccent },
   tab: { alignItems: 'center', paddingTop: 4, paddingHorizontal: 6, minHeight: space.touch },
-  tabText: { ...type.row, fontSize: 14, lineHeight: 20, color: colors.inkSoft },
+  tabText: { ...type.row, fontSize: 16, lineHeight: 22, color: colors.inkSoft },
   tabTextOn: { fontFamily: type.button.fontFamily, color: colors.ink },
   tabBar: { width: 32, height: 3, borderRadius: 2, backgroundColor: colors.ink, marginTop: 8 },
   tabsFill: { justifyContent: 'flex-start', borderBottomWidth: shape.hairline, borderBottomColor: colors.line },
@@ -970,11 +884,11 @@ export const s = StyleSheet.create({
   tabBarFill: { width: '100%', height: 2, borderRadius: 0, backgroundColor: colors.ink, marginTop: 10 },
   searchInput: { ...type.input, flex: 1, paddingVertical: 12 },
   clear: { width: 22, height: 22, borderRadius: 11, backgroundColor: colors.inkFaint, alignItems: 'center', justifyContent: 'center' },
-  chip: { minHeight: 38, paddingVertical: 8, borderRadius: shape.pill, borderWidth: shape.border, borderColor: colors.input, backgroundColor: colors.input, paddingHorizontal: 15, flexDirection: 'row', alignItems: 'center', gap: 6 },
+  chip: { minHeight: 40, paddingVertical: 8, borderRadius: shape.chip, borderWidth: shape.border, borderColor: colors.input, backgroundColor: colors.input, paddingHorizontal: 14, flexDirection: 'row', alignItems: 'center', gap: 6 },
   chipOn: { backgroundColor: colors.chipOn, borderColor: colors.chipOn },
   chipText: { ...type.sub, color: colors.ink, fontSize: 15 },
   dot: { width: 10, height: 10, borderRadius: 5 },
-  notice: { backgroundColor: colors.surface, borderRadius: shape.input, paddingVertical: 14, paddingHorizontal: 16 },
+  notice: { backgroundColor: colors.surface, borderRadius: shape.input, paddingVertical: 12, paddingHorizontal: 16 },
   item: { minHeight: space.row, flexDirection: 'row', alignItems: 'center' },
   itemIcon: { width: 32, alignItems: 'flex-start' },
   itemValue: { ...type.sub, fontSize: 15, flexShrink: 1, textAlign: 'right', marginLeft: 12, maxWidth: '55%' },
@@ -982,48 +896,25 @@ export const s = StyleSheet.create({
   track: { width: TRACK_W, height: TRACK_H, borderRadius: TRACK_H / 2, padding: 3, justifyContent: 'center' },
   knob: { width: KNOB, height: KNOB, borderRadius: KNOB / 2, backgroundColor: colors.raised, shadowColor: '#3B2A24', shadowOpacity: 0.18, shadowRadius: 2, shadowOffset: { width: 0, height: 1 }, elevation: 2 },
   sheetWrap: { flex: 1, justifyContent: 'flex-end' },
-  sheet: { flexShrink: 1, backgroundColor: colors.raised, borderTopLeftRadius: shape.sheet, borderTopRightRadius: shape.sheet, paddingHorizontal: space.page, paddingTop: 10 },
+  sheet: { flexShrink: 1, backgroundColor: colors.raised, borderTopLeftRadius: shape.sheet, borderTopRightRadius: shape.sheet, paddingHorizontal: space.page, paddingTop: 8 },
   grip: { alignSelf: 'stretch', marginTop: -10, paddingTop: 10 },
-  handle: { width: 36, height: 4, borderRadius: 2, backgroundColor: colors.track, alignSelf: 'center', marginBottom: 14 },
+  handle: { width: 36, height: 4, borderRadius: 2, backgroundColor: colors.track, alignSelf: 'center', marginBottom: 16 },
   sheetHead: { flexDirection: 'row', alignItems: 'center', minHeight: space.touch, gap: 8 },
   band: { height: 1, backgroundColor: colors.sectionLine, marginHorizontal: -space.page, marginVertical: 20 },
-  card: { backgroundColor: colors.raised, borderRadius: shape.card, padding: space.cardPad },
-  groupCard: { backgroundColor: colors.raised, borderRadius: shape.card, paddingHorizontal: space.cardPad, paddingVertical: 8 },
   groupTitle: { paddingBottom: 4 },
-  groupTitleHub: { fontFamily: fonts.uiBold, color: colors.ink, fontSize: 17, lineHeight: 24, paddingTop: 10 },
   slider: { height: 44, justifyContent: 'center', flex: 1 },
   sliderTrack: { position: 'absolute', height: 6, borderRadius: 3, backgroundColor: colors.track, top: 19 },
   sliderKnob: { position: 'absolute', top: 10, width: 24, height: 24, borderRadius: 12, backgroundColor: colors.bg, borderWidth: 2, ...shape.floatShadow },
   sheetClose: { width: space.touch, height: space.touch, marginRight: -10, alignItems: 'center', justifyContent: 'center' },
   dialogWrap: { flex: 1, backgroundColor: colors.scrim, justifyContent: 'center', padding: space.page },
   dialog: { backgroundColor: colors.raised, borderRadius: shape.dialog, padding: space.page },
+  largeTitle: { paddingTop: 4, paddingBottom: 24 },
+  btnInner: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8 },
+  btnTextSmall: { ...type.button, fontSize: 16, lineHeight: 22, flexShrink: 1, textAlign: 'center' },
+  help: { ...type.caption },
+  empty: { alignItems: 'stretch', paddingVertical: 48, paddingHorizontal: 8 },
 });
 
-// 정돈 변형 덮어쓰기(Tidy 안에서만). 간격 4·8·12·16·24·32, 조작 요소 모서리 10, 칩 8, 시트 20
-const ts = StyleSheet.create({
-  largeTitle: { paddingTop: 4, paddingBottom: 24 },
-  footer: { paddingHorizontal: tidySpace.page }, // 버튼 좌우 끝을 본문(입력칸·목록)과 같은 24에 맞춘다
-  btn: { borderRadius: tidyShape.button, paddingHorizontal: 20, paddingVertical: 14, alignItems: 'center', justifyContent: 'center', backgroundColor: 'transparent' },
-  btnSmall: { paddingVertical: 10, paddingHorizontal: 16 },
-  btnInner: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8 },
-  btnText: { ...tidyType.button, flexShrink: 1, textAlign: 'center' },
-  btnTextSmall: { ...tidyType.button, fontSize: 16, lineHeight: 22, flexShrink: 1, textAlign: 'center' },
-  linkText: { ...tidyType.sub, fontFamily: fonts.uiBold },
-  field: { marginBottom: tidySpace.xl },
-  labelRow: { marginBottom: tidySpace.s },
-  labelTag: { ...tidyType.caption },
-  input: { minHeight: 56, borderRadius: tidyShape.input, paddingVertical: 16 },
-  help: { ...tidyType.caption },
-  search: { minHeight: 52, borderRadius: tidyShape.input },
-  chip: { minHeight: 40, paddingVertical: 8, paddingHorizontal: 14, borderRadius: tidyShape.chip },
-  chipText: { ...tidyType.sub, color: colors.ink },
-  notice: { borderRadius: tidyShape.input, paddingVertical: 12, paddingHorizontal: 16 },
-  empty: { alignItems: 'stretch', paddingVertical: 48, paddingHorizontal: 8 },
-  itemValue: { ...tidyType.sub, flexShrink: 1, textAlign: 'right', marginLeft: 12, maxWidth: '55%' },
-  tabText: { ...tidyType.row, color: colors.inkSoft, fontSize: 16, lineHeight: 22 },
-  sheet: { borderTopLeftRadius: tidyShape.sheet, borderTopRightRadius: tidyShape.sheet, paddingTop: 8 },
-  handle: { marginBottom: 16 },
-});
 
 // 고르는 블록(Choice). 모서리 14, 안쪽 여백 16. 흰 바탕 + 얇은 테두리, 고르면 갈색 테두리 + 체크(2026-11-04 사용자: 애매한 연한 갈색 박스는 쓰지 않는다)
 const cs = StyleSheet.create({

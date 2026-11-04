@@ -100,7 +100,7 @@ export function useHomePerf({ view, pitchSV, viewGoal, savePitch, camSV, storeLo
     if (skinParam === 'off') void Storage.removeItem(PERF_SKIN_KEY);
     else void Storage.setItem(PERF_SKIN_KEY, skinParam);
   }, [skinParam]);
-  // 측정 번들: ?look=거리,눈높이,판 두께,그늘 높이,그늘 세기,테 반지름,틀 회색,따뜻함,곡면 반지름,꼭지점 둥글기,옆면 범위,옆면 세기,판 윤기,꼭지점 그늘,번짐 폭,구멍 모서리 움푹 파인 책장의 구도와 모서리를 저장한다(다음 실행부터, scene-config/skin). off면 지운다
+  // 측정 번들: ?look=거리,눈높이,판 두께,그늘 높이,그늘 세기,테 반지름,곡면 반지름,꼭지점 둥글기,옆면 범위,옆면 세기,판 윤기,꼭지점 그늘,번짐 폭,구멍 모서리 움푹 파인 책장의 구도와 모서리를 저장한다(다음 실행부터, scene-config/skin). off면 지운다
   useEffect(() => {
     if (!PERF_ENABLED || lookParam === undefined) return;
     if (lookParam === 'off') void Storage.removeItem(PERF_LOOK_KEY);

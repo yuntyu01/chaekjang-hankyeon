@@ -7,7 +7,7 @@ import { exportShare, exportToFolder, readBackupFile, restoreBackup } from '@/st
 import { PERF_ENABLED } from '@/ui/perf';
 import { accountInfo, deleteCloudAccount, linkGoogle, linkKakao, loginProviders, resumeCloudSync, syncNow, syncStatus } from '@/services/sync';
 import { Chip, H2, ListGroup, ListItem, Row, Screen, SectionBand } from '@/ui/kit';
-import { colors, tidySpace as space, tidyType as type } from '@/ui/screenTheme';
+import { colors, space, type } from '@/ui/theme';
 
 export default function BackupScreen() {
   const [busy, setBusy] = useState<'export' | 'share' | 'restore' | null>(null);
@@ -64,7 +64,7 @@ export default function BackupScreen() {
     );
   };
   return (
-    <Screen tidy title="백업 및 복원" subtitle={syncStatus.available ? '기록은 이 기기와 서버에 함께 저장돼요' : '모든 기록은 이 기기에만 저장돼요'}>
+    <Screen title="백업 및 복원" subtitle={syncStatus.available ? '기록은 이 기기와 서버에 함께 저장돼요' : '모든 기록은 이 기기에만 저장돼요'}>
       {/* 2026-11-01 토스식: 세로로 쌓인 버튼 대신 누르는 줄 목록, 설명은 한 줄. 동작·확인창은 그대로 */}
       <H2 first>백업 파일</H2>
       <Text style={[type.sub, { marginBottom: space.s }]}>책·독서 기록·갈피·장정·책장 배치·설정·사진이 들어가요. 진행 중인 타이머는 빠져요.</Text>

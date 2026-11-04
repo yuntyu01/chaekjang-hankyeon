@@ -12,7 +12,7 @@ import { ago, PostCard } from '@/features/community/PostCard';
 import { community, errorMessage, isNotFound, type Comment, type Post } from '@/services/community';
 import { MoreHorizontal } from '@/ui/icons';
 import { Btn, Divider, Empty, ListGroup, ListItem, Loading, Screen, Sheet, TextLink } from '@/ui/kit';
-import { colors, fonts, icon, press, space, tidyType } from '@/ui/screenTheme';
+import { colors, fonts, icon, press, space, type } from '@/ui/theme';
 
 export default function PostScreen() {
   const { id: raw } = useLocalSearchParams<{ id: string }>();
@@ -71,13 +71,12 @@ export default function PostScreen() {
     { text: '차단', style: 'destructive', onPress: () => void community.block(post.userId, true).then(() => router.back()).catch((e: unknown) => explainWriteError(e, '차단하지 못했어요')) },
   ]);
 
-  if (phase === 'loading') return <Screen title="독서 기록" tidy compact><Loading /></Screen>;
-  if (phase === 'gone') return <Screen title="독서 기록" tidy compact><Empty title="볼 수 없는 게시물이에요" body="지워졌거나 숨겨진 게시물이에요." /></Screen>;
-  if (phase === 'error' || !post) return <Screen title="독서 기록" tidy compact><Empty title="불러오지 못했어요" body={error} action="다시 시도" actionKind="secondary" onAction={() => { setPhase('loading'); void load(); }} /></Screen>;
+  if (phase === 'loading') return <Screen title="독서 기록" compact><Loading /></Screen>;
+  if (phase === 'gone') return <Screen title="독서 기록" compact><Empty title="볼 수 없는 게시물이에요" body="지워졌거나 숨겨진 게시물이에요." /></Screen>;
+  if (phase === 'error' || !post) return <Screen title="독서 기록" compact><Empty title="불러오지 못했어요" body={error} action="다시 시도" actionKind="secondary" onAction={() => { setPhase('loading'); void load(); }} /></Screen>;
   return (
     <Screen
       title="독서 기록"
-      tidy
       compact
       footer={
         <View style={st.compose}>
@@ -92,7 +91,7 @@ export default function PostScreen() {
       {/* 다른 사람의 책을 내 서재에: 기존 새 책 추가(검색·같은 ISBN 확인)를 그대로 쓴다. ISBN이 있으면 ISBN으로 찾는다 */}
       {!post.mine ? <TextLink label="이 책 내 서재에 추가" onPress={() => router.push({ pathname: '/book/add', params: { q: post.isbn13 ?? post.bookTitle } })} style={{ alignSelf: 'flex-start', marginLeft: 56, marginTop: -8, marginBottom: space.tight }} /> : null}
       <Divider style={{ marginHorizontal: -space.page }} />
-      <Text style={[tidyType.section, { marginTop: space.group, marginBottom: space.tight }]}>댓글 {comments.length}</Text>
+      <Text style={[type.section, { marginTop: space.group, marginBottom: space.tight }]}>댓글 {comments.length}</Text>
       {comments.length ? (
         comments.map((c) => (
           <Pressable key={c.id} onLongPress={() => commentMenu(c)} style={({ pressed }) => [st.comment, pressed && press]} accessibilityHint="길게 누르면 지우기·신고">
@@ -102,17 +101,17 @@ export default function PostScreen() {
             <View style={{ flex: 1, minWidth: 0 }}>
               <View style={st.commentHead}>
                 <Pressable onPress={() => router.push(`/community/user/${c.userId}`)} hitSlop={6} style={{ flexShrink: 1 }}><Text style={st.nick} numberOfLines={1}>{c.nickname}</Text></Pressable>
-                <Text style={tidyType.caption}>{ago(c.createdAt)}</Text>
+                <Text style={type.caption}>{ago(c.createdAt)}</Text>
                 <View style={{ flex: 1 }} />
                 <Pressable onPress={() => commentMenu(c)} hitSlop={10} accessibilityRole="button" accessibilityLabel={`${c.nickname}님의 댓글 더보기`} style={({ pressed }) => pressed && press}>
                   <MoreHorizontal size={icon.small} color={colors.inkSoft} strokeWidth={icon.stroke} />
                 </Pressable>
               </View>
-              <Text style={[tidyType.body, { marginTop: 2 }]}>{c.body}</Text>
+              <Text style={[type.body, { marginTop: 2 }]}>{c.body}</Text>
             </View>
           </Pressable>
         ))
-      ) : <Text style={[tidyType.sub, { paddingVertical: space.item }]}>첫 댓글을 남겨 보세요.</Text>}
+      ) : <Text style={[type.sub, { paddingVertical: space.item }]}>첫 댓글을 남겨 보세요.</Text>}
       <Sheet visible={menu} onClose={() => setMenu(false)}>
         <ListGroup>
           {post.mine ? <ListItem label="게시물 지우기" danger onPress={() => { setMenu(false); removePost(); }} /> : null}

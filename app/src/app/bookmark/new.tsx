@@ -17,7 +17,7 @@ import { keepImage } from '@/store/files';
 import { libraryStore, useLibrary } from '@/store/library-store';
 import { uiBus } from '@/store/ui-bus';
 import { Btn, Chip, Field, ListItem, Loading, Muted, Notice, Row, Screen, Segmented, SelectField, Toggle } from '@/ui/kit';
-import { tidySpace as space } from '@/ui/screenTheme';
+import { space } from '@/ui/theme';
 import type { OcrResult } from '../../../modules/text-recognition';
 
 const SOURCES = [{ id: 'type', label: '직접 입력' }, { id: 'photo', label: '사진' }] as const;
@@ -124,7 +124,7 @@ export default function NewBookmark() {
   const unsure = recog?.state === 'done' ? lowConfidenceLines(recog.result) : 0;
 
   return (
-    <Screen tidy title="갈피 남기기" footer={<Btn label="갈피 저장" onPress={save} busy={saving} disabled={!canSave} />}>
+    <Screen title="갈피 남기기" footer={<Btn label="갈피 저장" onPress={save} busy={saving} disabled={!canSave} />}>
       <View style={{ height: space.m }} />
       <SelectField label="책" value={e?.title} sub={e?.authors.length ? e.authors.join(', ') : undefined} placeholder="책을 골라 주세요" onPress={() => setPicking(true)} />
 

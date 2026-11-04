@@ -13,7 +13,7 @@ import { readingStore, useReading } from '@/store/reading-store';
 import { MINI_TIMER_SIZE, useMiniTimerPlace } from '@/store/mini-timer-store';
 import { settingsStore } from '@/store/settings-store';
 import { BookOpen, Play } from '@/ui/icons';
-import { colors, fonts, icon, shape } from '@/ui/screenTheme';
+import { colors, fonts, icon, shape } from '@/ui/theme';
 import { navigation } from '@/ui/theme';
 
 import { clock, useElapsed } from './ActiveReading';

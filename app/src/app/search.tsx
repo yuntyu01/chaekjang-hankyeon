@@ -12,7 +12,7 @@ import { useLibrary } from '@/store/library-store';
 import { usePlacementStore } from '@/store/placement-store';
 import { uiBus } from '@/store/ui-bus';
 import { Chip, Empty, Muted, Row, Screen, ScreenList, SearchField } from '@/ui/kit';
-import { tidySpace as space } from '@/ui/screenTheme';
+import { space } from '@/ui/theme';
 
 export default function SearchMine() {
   const { lib } = useLibrary();
@@ -38,7 +38,7 @@ export default function SearchMine() {
   };
   // 내 책 전부가 줄마다 책 그림(캔버스)으로 나온다: 화면 근처 줄만 그린다
   return (
-    <Screen tidy headerField={<SearchField value={q} onChangeText={setQ} autoFocus placeholder="제목·저자" accessibilityLabel="내 책 찾기" style={{ minHeight: 46 }} />} scroll={false}>
+    <Screen headerField={<SearchField value={q} onChangeText={setQ} autoFocus placeholder="제목·저자" accessibilityLabel="내 책 찾기" style={{ minHeight: 46 }} />} scroll={false}>
       <ScreenList
         data={list}
         keyExtractor={(b) => b.id}

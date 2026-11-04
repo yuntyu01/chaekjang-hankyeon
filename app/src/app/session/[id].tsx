@@ -10,7 +10,7 @@ import { sessionEditPatch, sessionFormOf, validDay, validTime } from '@/domain/s
 import { useCommunityOpen } from '@/features/community/useCommunityOpen';
 import { libraryStore, useLibrary } from '@/store/library-store';
 import { Btn, Empty, Field, ListGroup, ListItem, Muted, Row, Screen, SelectField } from '@/ui/kit';
-import { space } from '@/ui/screenTheme';
+import { space } from '@/ui/theme';
 
 export default function EditSession() {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -26,7 +26,7 @@ export default function EditSession() {
   const [startPage, setStartPage] = useState(initial?.startPage ?? '');
   const [pages, setPages] = useState(initial?.pages ?? '');
   const [memo, setMemo] = useState(initial?.memo ?? '');
-  if (!s || !initial) return <Screen tidy title="독서 기록"><Empty title="기록을 찾을 수 없어요" /></Screen>;
+  if (!s || !initial) return <Screen title="독서 기록"><Empty title="기록을 찾을 수 없어요" /></Screen>;
   const e = bookId ? lib.editions[lib.books[bookId]?.editionId] : undefined;
   const patch = sessionEditPatch(s, initial, { bookId, day, time, minutes, startPage, pages, memo });
   const save = () => {
@@ -35,7 +35,7 @@ export default function EditSession() {
     router.back();
   };
   return (
-    <Screen tidy title="독서 기록 수정" footer={<Btn label="저장" onPress={save} disabled={!patch} />}>
+    <Screen title="독서 기록 수정" footer={<Btn label="저장" onPress={save} disabled={!patch} />}>
       <Muted style={{ marginTop: space.item, marginBottom: space.group }}>지금 저장된 독서 시간: {formatDurationPrecise(s.durationMs)} (일시정지 제외)</Muted>
       <SelectField label="연결된 책" value={e?.title} placeholder="책 없음 (눌러서 연결)" onPress={() => setPicking(true)} />
       <Row style={{ flexWrap: 'nowrap' }} gap={10}>

@@ -17,7 +17,7 @@ import { noRibbon, RotatableBook, StandaloneBook } from '@/ui/book3d/StandaloneB
 import { frameBBox, standaloneFrame } from '@/domain/shelf-scene';
 import { frameCam } from '@/ui/book3d/StandaloneBook';
 import { Check } from '@/ui/icons';
-import { colors, fonts, shape, space, tidyType, type } from '@/ui/screenTheme';
+import { colors, fonts, shape, space, type } from '@/ui/theme';
 import { RealCover, TextLink } from '@/ui/kit';
 import { coverAtSize, spineRatioOf } from '@/domain/cover-url';
 import { realDimensions } from '@/domain/jacket-proportions';
@@ -243,7 +243,7 @@ const st = StyleSheet.create({
   noneRowOn: { borderColor: INK },
   noneSwatch: { width: 22, height: 30, borderRadius: 4, borderWidth: StyleSheet.hairlineWidth * 2, borderColor: 'rgba(0,0,0,0.12)' },
   noneText: { ...type.sub, flex: 1 },
-  h: { ...tidyType.section, marginTop: space.section, marginBottom: space.item }, // 구역 제목 18(2026-11-01 일반 화면 기준)
+  h: { ...type.section, marginTop: space.section, marginBottom: space.item }, // 구역 제목 18(2026-11-01 일반 화면 기준)
   swatches: { flexDirection: 'row', flexWrap: 'wrap', gap: 12 },
   swatchCell: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center' },
   swatch: { width: 40, height: 40, borderRadius: 20, borderWidth: 1, borderColor: 'rgba(0,0,0,0.08)', alignItems: 'center', justifyContent: 'center' },

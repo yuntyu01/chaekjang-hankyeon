@@ -1,5 +1,6 @@
 // 화면 공통 기준(2026-10-26 설정 시안): 대비·글자 크기·간격 범위, 글꼴 등록, 화면 코드가 토큰을 벗어나지 않는지.
-import { colors, fonts, night, shape, space, tidyButton, tidyShape, tidySpace, tidyType, type } from '../screenTheme';
+import { sceneColors } from '@/scene-config/palette';
+import { buttonHeight, colors, fonts, night, shape, space, type } from '../theme';
 
 // 노드 형식 정의 없이 쓰는 최소한의 fs·path(light-calibration 시험과 같은 방식)
 declare const __dirname: string;
@@ -24,19 +25,19 @@ const contrast = (a: string, b: string) => {
 // (본문 grey900 #191F28, 입력칸 grey100 #F2F4F6, 구분선 grey200 #E5E8EB, 보조는 grey600보다 한 단계 짙은 #646F7E — 입력칸 위 4.5:1)
 describe('색: 지정한 기준값', () => {
   it('배경·입력칸·대표색·글자·구분선·버튼 글자', () => {
-    expect(colors.bg).toBe('#FFFFFF');
+    expect(colors.bg).toBe('#FEFAF9'); // 따뜻한 벽 색
     expect(colors.input).toBe('#F2F4F6');
     expect(colors.accent).toBe('#6C534A');
     expect(colors.ink).toBe('#191F28');
     expect(colors.inkSoft).toBe('#646F7E');
-    expect(colors.title).toBe('#191F28');
+    expect(colors.ink).toBe('#191F28');
     expect(colors.line).toBe('#E5E8EB');
     expect(colors.border).toBe('#E5E8EB');
     expect(colors.onAccent).toBe('#FFFFFF');
   });
   it('UI 글자·구분선은 갈색 기가 없는 회색(빨강이 파랑보다 크지 않다: 중립이거나 토스처럼 살짝 차가움), 갈색은 대표색에만', () => {
     const rb = (hex: string) => parseInt(hex.slice(1, 3), 16) - parseInt(hex.slice(5, 7), 16);
-    for (const c of [colors.ink, colors.title, colors.inkSoft, colors.inkFaint, colors.line, colors.border, colors.disabledInk]) expect(rb(c)).toBeLessThanOrEqual(0);
+    for (const c of [colors.ink, colors.ink, colors.inkSoft, colors.inkFaint, colors.line, colors.border, colors.disabledInk]) expect(rb(c)).toBeLessThanOrEqual(0);
     expect(rb(colors.accent)).toBeGreaterThan(0);
   });
   it('화면 배경과 입력칸 배경은 다른 토큰이고, 입력칸은 바탕과 구별된다', () => {
@@ -60,7 +61,7 @@ describe('색: 읽을 수 있는 대비', () => {
   it('본문·제목은 바탕·입력칸·시트 위에서 7:1 이상', () => {
     for (const bg of [colors.bg, colors.input, colors.raised]) {
       expect(contrast(colors.ink, bg)).toBeGreaterThanOrEqual(7);
-      expect(contrast(colors.title, bg)).toBeGreaterThanOrEqual(7);
+      expect(contrast(colors.ink, bg)).toBeGreaterThanOrEqual(7);
     }
   });
   it('강조색·오류색은 바탕·입력칸·시트 위에서 4.5:1 이상', () => {
@@ -86,29 +87,29 @@ describe('색: 읽을 수 있는 대비', () => {
   });
 });
 
-describe('글자·간격 범위(지시: 제목 22~24를 출발점으로 시안에 맞춤 → 20~24, 본문·메뉴 16~17, 보조 13~15, 좌우 24~28, 묶음 사이 28~36)', () => {
+describe('글자·간격 범위(제목 24~28, 본문·메뉴 16~18, 보조 14~16, 좌우 24~28, 묶음 사이 28~40)', () => {
   it('글자 크기', () => {
-    expect(type.title.fontSize).toBeGreaterThanOrEqual(20);
-    expect(type.title.fontSize).toBeLessThanOrEqual(24);
+    expect(type.title.fontSize).toBeGreaterThanOrEqual(24);
+    expect(type.title.fontSize).toBeLessThanOrEqual(28);
     for (const t of [type.row, type.body, type.input, type.button, type.label]) {
       expect(t.fontSize).toBeGreaterThanOrEqual(16);
-      expect(t.fontSize).toBeLessThanOrEqual(17);
+      expect(t.fontSize).toBeLessThanOrEqual(18);
     }
-    for (const t of [type.sub, type.section, type.caption]) {
-      expect(t.fontSize).toBeGreaterThanOrEqual(13);
-      expect(t.fontSize).toBeLessThanOrEqual(15); // 시안 글자 높이에 맞춰 보조 설명 15(Pretendard)
+    for (const t of [type.sub, type.caption]) {
+      expect(t.fontSize).toBeGreaterThanOrEqual(14);
+      expect(t.fontSize).toBeLessThanOrEqual(16);
     }
   });
   it('간격과 터치 크기', () => {
     expect(space.page).toBeGreaterThanOrEqual(24);
     expect(space.page).toBeLessThanOrEqual(28);
     expect(space.section).toBeGreaterThanOrEqual(28);
-    expect(space.section).toBeLessThanOrEqual(36);
+    expect(space.section).toBeLessThanOrEqual(40);
     expect(space.touch).toBeGreaterThanOrEqual(44);
     expect(space.row).toBeGreaterThanOrEqual(48);
   });
   it('UI 글자는 모두 UI 글꼴(R·M·SB) 가족', () => {
-    for (const t of Object.values(type)) expect([fonts.ui, fonts.uiMedium, fonts.uiBold]).toContain(t.fontFamily);
+    for (const t of Object.values(type)) expect([fonts.ui, fonts.uiMedium, fonts.uiBold, fonts.uiTitle]).toContain(t.fontFamily);
   });
 });
 
@@ -157,7 +158,7 @@ describe('화면 코드가 공통 기준을 쓴다', () => {
         .readFileSync(f, 'utf8')
         .split('\n')
         .map((l, i) => [l, i + 1] as const)
-        .filter(([l]) => /fontSize\s*:/.test(l) && !/fontFamily|\.\.\.type\.|type\.[a-z]+|tidyType\.[a-z]+|\[(s|st|styles)\.[a-zA-Z]+|측정용/.test(l))
+        .filter(([l]) => /fontSize\s*:/.test(l) && !/fontFamily|\.\.\.type\.|type\.[a-z]+|type\.[a-z]+|\[(s|st|styles)\.[a-zA-Z]+|측정용/.test(l))
         .map(([, i]) => `${path.relative(SRC, f)}:${i}`),
     );
     expect(bad).toEqual([]);
@@ -175,43 +176,36 @@ describe('화면 코드가 공통 기준을 쓴다', () => {
   });
 });
 
-// 2026-10-31 일반 UI 정돈 변형: 대상 화면에만 켜고(전역 토큰은 그대로), 간격은 제한된 단계, 굵기는 역할대로
-describe('정돈 변형(tidy)', () => {
-  const read = (rel: string) => fs.readFileSync(path.join(SRC, rel), 'utf8');
+// 앱 전체가 한 벌의 토큰을 쓴다(2026-11-04 사용자 '하나 바꾸면 다 바뀌게'): 간격은 제한된 단계, 굵기는 역할대로
+describe('토큰 한 벌', () => {
   it('간격은 4·8·12·16·28·40 단계만(목록 줄 높이·누르는 자리는 따로, 2026-11-01 구역 사이를 넓혔다)', () => {
-    const { row, touch, cardMargin, cardPad, cardGap, ...rest } = tidySpace;
+    const { row, touch, ...rest } = space;
     expect(row).toBe(56);
     expect(touch).toBe(44);
-    expect([cardMargin, cardPad, cardGap]).toEqual([16, 18, 12]); // 허브 화면 카드(2026-11-04 당근·토스 종합)
     for (const v of Object.values(rest)) expect([4, 8, 12, 16, 24, 28, 40]).toContain(v);
   });
   it('버튼 높이·모서리 한 벌', () => {
-    expect(tidyButton).toEqual({ l: 60, m: 54, s: 44 }); // 2026-11-01 사용자 '버튼은 글자만 키우지 말고 높이·안쪽 여백도'
-    expect([tidyShape.button, tidyShape.input, tidyShape.chip, tidyShape.sheet, tidyShape.dialog, tidyShape.card]).toEqual([10, 10, shape.pill, 20, 18, 18]);
+    expect(buttonHeight).toEqual({ l: 60, m: 54, s: 44 }); // 2026-11-01 사용자 '버튼은 글자만 키우지 말고 높이·안쪽 여백도'
+    expect([shape.button, shape.input, shape.chip, shape.sheet, shape.dialog]).toEqual([10, 10, shape.pill, 20, 18]);
   });
   // 2026-11-01 '제목 키워'(토스식 위계): 큰 제목 Bold 24, 시트·묶음·구역 제목·책 제목·버튼 SemiBold, 입력칸 이름 Medium, 본문·보조 Regular
   it('굵기·크기 위계: 큰 제목 Bold, 제목류·버튼 SemiBold, 입력칸 이름 Medium, 본문·보조 Regular', () => {
-    expect(tidyType.title.fontFamily).toBe(fonts.uiTitle);
-    for (const k of ['navTitle', 'heading', 'section', 'rowStrong', 'button'] as const) expect(tidyType[k].fontFamily).toBe(fonts.uiBold);
-    expect(tidyType.label.fontFamily).toBe(fonts.uiMedium);
-    for (const k of ['row', 'body', 'sub', 'caption'] as const) expect(tidyType[k].fontFamily).toBe(fonts.ui);
+    expect(type.title.fontFamily).toBe(fonts.uiTitle);
+    for (const k of ['navTitle', 'heading', 'section', 'rowStrong', 'button'] as const) expect(type[k].fontFamily).toBe(fonts.uiBold);
+    expect(type.label.fontFamily).toBe(fonts.uiMedium);
+    for (const k of ['row', 'body', 'sub', 'caption'] as const) expect(type[k].fontFamily).toBe(fonts.ui);
     // 제목은 본문보다 분명히 크다(본문 17 기준 1.4배 이상), 시트 제목은 본문보다 크다
-    expect(tidyType.title.fontSize! / tidyType.row.fontSize!).toBeGreaterThanOrEqual(1.4);
-    expect(tidyType.heading.fontSize!).toBeGreaterThan(tidyType.row.fontSize!);
+    expect(type.title.fontSize! / type.row.fontSize!).toBeGreaterThanOrEqual(1.4);
+    expect(type.heading.fontSize!).toBeGreaterThan(type.row.fontSize!);
   });
   it('보조 글자도 바탕 위 4.5:1 이상, 너무 작지 않다(14 이상)', () => {
     for (const k of ['sub', 'caption', 'section'] as const) {
-      expect(contrast(String(tidyType[k].color), colors.bg)).toBeGreaterThanOrEqual(4.5);
-      expect(tidyType[k].fontSize).toBeGreaterThanOrEqual(14);
+      expect(contrast(String(type[k].color), colors.bg)).toBeGreaterThanOrEqual(4.5);
+      expect(type[k].fontSize).toBeGreaterThanOrEqual(14);
     }
   });
-  it('대상 화면만 켠다', () => {
-    for (const f of ['app/books.tsx', 'app/search.tsx', 'app/book/add.tsx', 'app/book/[id]/index.tsx', 'app/book/[id]/edit.tsx', 'app/settings.tsx']) expect(read(f)).toMatch(/<Screen\s+tidy|<Screen tidy/);
-    expect(read('features/reading/ReadingScreen.tsx')).toMatch(/<Tidy>/);
-  });
-  it('책장·책 고르기 시트·갈피 화면·하단 탭은 켜지 않는다', () => {
-    // 2026-11: 갈피 작성(app/bookmark/new.tsx)은 사진·문장 인식 흐름으로 새로 만들며 공통 기준을 쓴다(지시 0-3·7-2). 갈피 카드·목록·상세는 그대로 뺀다
-    const off = ['app/(tabs)/bookmarks.tsx', 'app/(tabs)/_layout.tsx', 'app/bookmark/[id].tsx', 'features/home/HomeScreen.tsx', 'features/home/BookSheet.tsx', 'features/bookmark/BookmarkCard.tsx', 'features/bookmark/BookmarkEmpty.tsx', 'features/reading/Scene.tsx'];
-    for (const f of off) if (fs.existsSync(path.join(SRC, f))) expect(read(f)).not.toMatch(/<Tidy|Screen[^>]*\btidy\b|tidyType|tidySpace/);
+  it('화면 바탕과 벽지 색이 같은 값이다(바꾸면 함께 바뀐다)', () => {
+    expect(colors.bg).toBe(sceneColors.wall);
+    expect(colors.raised).toBe(sceneColors.wall);
   });
 });

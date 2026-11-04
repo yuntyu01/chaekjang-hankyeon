@@ -3,7 +3,7 @@ import { Image, StyleSheet, Text, View } from 'react-native';
 
 import { BOARD_CARD_W, BOARD_MAX_LINES } from '@/domain/bookmark-board';
 import type { Bookmark } from '@/domain/library';
-import { colors, fonts } from '@/ui/screenTheme';
+import { colors, fonts } from '@/ui/theme';
 import { CARD_PAPER, paperTone } from './BookmarkCard';
 import { BookmarkPaper } from './BookmarkPaper';
 import { BookmarkTape } from './BookmarkTape';

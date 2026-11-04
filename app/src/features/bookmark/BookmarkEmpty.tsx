@@ -9,7 +9,7 @@ import { BookmarkCard } from '@/features/bookmark/BookmarkCard';
 import { MINI_TIMER_SPACE } from '@/store/mini-timer-store';
 import { useReading } from '@/store/reading-store';
 import { Btn, ui } from '@/ui/kit';
-import { colors, fonts, type } from '@/ui/screenTheme';
+import { colors, fonts, type } from '@/ui/theme';
 import { navigation } from '@/ui/theme';
 
 const SAMPLE = '어떤 문장은\n책을 덮은 뒤에도\n곁에 남아요.';

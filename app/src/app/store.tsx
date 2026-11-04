@@ -8,7 +8,7 @@ import { FRAME_SKINS, PLANK_SKINS, SKIN_CHOICE, SKIN_KEY, skinToString, WALL_SKI
 import { writeBootSetting } from '@/scene-config/boot-store';
 import { ko } from '@/i18n/ko';
 import { Btn, Choice, H2, Muted, Screen } from '@/ui/kit';
-import { colors, shape, tidySpace as space } from '@/ui/screenTheme';
+import { colors, shape, space } from '@/ui/theme';
 
 type Part = keyof SkinChoice;
 
@@ -59,7 +59,7 @@ export default function StoreScreen() {
     void reloadAppAsync('스킨 적용');
   };
   return (
-    <Screen tidy title={ko.store.title} footer={<Btn label={ko.store.apply} size="l" disabled={!changed} onPress={apply} />}>
+    <Screen title={ko.store.title} footer={<Btn label={ko.store.apply} size="l" disabled={!changed} onPress={apply} />}>
       <Preview choice={choice} />
       <H2>{ko.store.plank}</H2>
       <Options part="plank" table={PLANK_SKINS} value={choice.plank} onPick={pick} />
@@ -77,7 +77,7 @@ const st = StyleSheet.create({
   cell: { width: '48%' },
   swatch: { height: 28, borderRadius: shape.tag, marginBottom: space.s, borderWidth: shape.hairline, borderColor: colors.border },
   swatchNone: { backgroundColor: colors.bg, borderStyle: 'dashed', borderWidth: shape.border },
-  preview: { height: 190, borderRadius: shape.card, padding: space.m, alignItems: 'center', justifyContent: 'center', borderWidth: shape.hairline, borderColor: colors.border, overflow: 'hidden' },
+  preview: { height: 190, borderRadius: shape.sheet, padding: space.m, alignItems: 'center', justifyContent: 'center', borderWidth: shape.hairline, borderColor: colors.border, overflow: 'hidden' },
   previewNiche: { width: '72%', height: '100%', borderRadius: 8, paddingHorizontal: 10, paddingTop: 6, justifyContent: 'space-around' },
   previewRow: { justifyContent: 'flex-end' },
   previewBooks: { flexDirection: 'row', alignItems: 'flex-end', gap: 3, paddingLeft: 6 },

@@ -1,2 +1,2 @@
-// 장면 계산과 화면이 공유하는 배경/벽 색. UI 테마에 의존하지 않는다.
-export const sceneColors = { background: '#FEFEFE', wall: '#FEFEFE' };
+// 앱 바탕이자 기본 벽지 색 하나(2026-11-04 사용자 '벽지는 따뜻한 벽, 배경색은 전부 따뜻한 벽 색으로'). 시안 벽 237, 232, 231의 비율을 흰색에 준 값
+export const sceneColors = { wall: '#FEFAF9' };

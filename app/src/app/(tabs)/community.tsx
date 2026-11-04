@@ -13,7 +13,7 @@ import { MINI_TIMER_SPACE } from '@/store/mini-timer-store';
 import { useReading } from '@/store/reading-store';
 import { PenLine, UserRound } from '@/ui/icons';
 import { Divider, Empty, IconButton, Loading, Screen, Tabs, TextLink, ui } from '@/ui/kit';
-import { colors, icon, space, tidyType } from '@/ui/screenTheme';
+import { colors, icon, space, type } from '@/ui/theme';
 import { navigation } from '@/ui/theme';
 
 type Scope = 'discover' | 'following';
@@ -116,10 +116,10 @@ export default function CommunityTab() {
     </View>
   );
   const pad = (node: ReactNode) => <View style={{ paddingHorizontal: ui.pad }}>{node}</View>;
-  if (!avail) return <Screen title="커뮤니티" back={false} scroll={false} tidy><Loading /></Screen>;
-  if (!avail.ok) return <Screen title="커뮤니티" back={false} scroll={false} tidy><Unavailable a={avail} onRetry={recheck} /></Screen>;
+  if (!avail) return <Screen title="커뮤니티" back={false} scroll={false}><Loading /></Screen>;
+  if (!avail.ok) return <Screen title="커뮤니티" back={false} scroll={false}><Unavailable a={avail} onRetry={recheck} /></Screen>;
   return (
-    <Screen title="커뮤니티" back={false} scroll={false} tidy right={right}>
+    <Screen title="커뮤니티" back={false} scroll={false} right={right}>
       {/* 스레드·토스증권처럼 화면 끝까지 반반 나눈 탭, 글은 상자 없이 화면 폭 그대로 + 사이 얇은 선 */}
       <Tabs fill items={SCOPES} value={scope} onChange={(s) => { if (s !== scope) { setItems([]); setNext(null); setPhase('loading'); setScope(s); } }} style={{ marginHorizontal: -ui.pad }} />
       {phase === 'loading' ? <Loading /> : phase === 'error' ? (
@@ -144,7 +144,7 @@ export default function CommunityTab() {
             moreState === 'loading' ? <ActivityIndicator color={colors.accent} style={{ marginVertical: space.group }} />
               : moreState === 'error' ? (
                 <View style={{ alignItems: 'center', paddingVertical: space.item }}>
-                  <Text style={tidyType.sub}>더 불러오지 못했어요</Text>
+                  <Text style={type.sub}>더 불러오지 못했어요</Text>
                   <TextLink label="다시 시도" onPress={() => void loadMore()} />
                 </View>
               ) : null

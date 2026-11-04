@@ -9,7 +9,7 @@ import Animated, { SlideInDown, SlideOutDown } from 'react-native-reanimated';
 import type { Book } from '@/domain/types';
 import { ko } from '@/i18n/ko';
 import { BookVisual } from '@/ui/BookVisual';
-import { colors, fonts, shape, space, type } from '@/ui/screenTheme';
+import { colors, fonts, shape, space, type } from '@/ui/theme';
 import { Btn, TextActions } from '@/ui/kit';
 
 type Props = {

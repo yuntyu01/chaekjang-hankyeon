@@ -18,7 +18,7 @@ import { setSnapshotRoot, setSnapshotShown } from '@/ui/home-snapshot';
 import { PaperBackground } from '@/ui/PaperBackground';
 import { LoadingScreen } from '@/ui/LoadingScreen';
 import { colors } from '@/ui/theme';
-import { colors as screenColors } from '@/ui/screenTheme';
+import { colors as screenColors } from '@/ui/theme';
 
 // 화면 UI 글꼴: Pretendard R·M·SB(시안과 같은 글꼴, 홈 머리글 포함). assets/fonts/README.md
 const PretendardRegular = require('../../assets/fonts/Pretendard-Regular.otf');

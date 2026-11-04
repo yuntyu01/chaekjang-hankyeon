@@ -18,7 +18,7 @@ import { keepImage } from '@/store/files';
 import { libraryStore, useLibrary } from '@/store/library-store';
 import { ChevronLeft, MoreHorizontal, PenLine, Share } from '@/ui/icons';
 import { Btn, Chip, Empty, Field, IconButton, ListGroup, ListItem, Muted, Row, Screen, Sheet } from '@/ui/kit';
-import { colors, fonts, icon, screenTheme, shape, space, type } from '@/ui/screenTheme';
+import { colors, fonts, icon, shape, space, type } from '@/ui/theme';
 
 export function cardData(lib: Library, m: Bookmark): BookmarkCardData | null {
   const b = lib.books[m.myBookId];
@@ -105,11 +105,11 @@ export default function BookmarkDetail() {
     <View style={{ flex: 1, backgroundColor: PAGE_BG, paddingTop: insets.top }}>
       <View style={st.header}>
         <IconButton label="뒤로" onPress={() => router.back()}>
-          <ChevronLeft size={28} color={colors.title} strokeWidth={icon.stroke} />
+          <ChevronLeft size={28} color={colors.ink} strokeWidth={icon.stroke} />
         </IconButton>
         <Text style={type.title} accessibilityRole="header">갈피</Text>
         <IconButton label="더 보기" onPress={() => setMenu(true)}>
-          <MoreHorizontal size={icon.size} color={colors.title} strokeWidth={icon.stroke} />
+          <MoreHorizontal size={icon.size} color={colors.ink} strokeWidth={icon.stroke} />
         </IconButton>
       </View>
 
@@ -139,7 +139,7 @@ export default function BookmarkDetail() {
         <View style={{ alignItems: 'center', gap: 12, paddingTop: 6, paddingBottom: height * 0.047 }}>
           <Row gap={10} style={{ justifyContent: 'center' }}>
             {list.slice(0, 12).map((m, i) => (
-              <View key={m.id} style={[st.dot, i === index && { backgroundColor: screenTheme.blue, width: 10, height: 10, borderRadius: 5 }]} />
+              <View key={m.id} style={[st.dot, i === index && { backgroundColor: colors.accent, width: 10, height: 10, borderRadius: 5 }]} />
             ))}
           </Row>
           <Text style={st.count}>{list.length}개의 갈피</Text>

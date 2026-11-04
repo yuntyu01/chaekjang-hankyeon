@@ -5,7 +5,7 @@ import { Pressable, StyleSheet, Text, View } from 'react-native';
 import Svg, { Line, Rect } from 'react-native-svg';
 
 import { formatDuration } from '@/domain/library';
-import { colors, fonts } from '@/ui/screenTheme';
+import { colors, fonts } from '@/ui/theme';
 import { tickLabel, xLabels, yTicks, type Bar } from './chart-data';
 
 const PLOT_H = 170; // 막대 영역

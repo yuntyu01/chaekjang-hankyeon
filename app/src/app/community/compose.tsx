@@ -9,7 +9,7 @@ import { sessionPages } from '@/domain/community-draft';
 import { useLibrary } from '@/store/library-store';
 import { ChevronRight } from '@/ui/icons';
 import { Divider, Empty, Screen } from '@/ui/kit';
-import { colors, fonts, icon, tidySpace as space, tidyType as type } from '@/ui/screenTheme';
+import { colors, fonts, icon, space, type } from '@/ui/theme';
 
 const day = (iso: string) => {
   const d = new Date(iso);
@@ -27,7 +27,7 @@ export default function Compose() {
     [lib],
   );
   return (
-    <Screen tidy title="기록 공유하기" subtitle="공유할 독서 기록을 골라 주세요. 다음 화면에서 공개할 것만 고를 수 있어요." scroll>
+    <Screen title="기록 공유하기" subtitle="공유할 독서 기록을 골라 주세요. 다음 화면에서 공개할 것만 고를 수 있어요." scroll>
       {rows.length ? (
         <View style={{ marginHorizontal: -space.page }}>
           {rows.map((s, i) => {

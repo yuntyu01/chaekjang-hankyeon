@@ -34,7 +34,7 @@ import { useRetainedImageKey } from '@/ui/useRetainedImageKey';
 import type { BoxBuf } from '@/domain/light-model';
 import { SHOW } from '@/ui/shelf/shadow-debug';
 import { colors } from '@/ui/theme';
-import { colors as ui, type } from '@/ui/screenTheme';
+import { colors as ui, type } from '@/ui/theme';
 
 import { rowAffine, type RowGeom, type ShelfMetrics } from './metrics';
 import { makeMotion } from './scene';

@@ -57,7 +57,7 @@ import { HANDLE_HIT, handlePoint, HeaderWall, SHELF_CAST_EXTENT, ShelfScene, typ
 import { ANIM, PERF_ENABLED, TL, tl, tlu } from '@/ui/perf';
 import { colors, motion, navigation } from '@/ui/theme';
 // 책장 밖 UI(메뉴 시트·알림·빈 책장 안내)는 화면 공통 토큰을 쓴다(책장 장면·머리글은 theme.ts 그대로)
-import { colors as ui, headerType, icon, press, shape, space, tabHeader, type } from '@/ui/screenTheme';
+import { colors as ui, headerType, icon, press, shape, space, tabHeader, type } from '@/ui/theme';
 import { Btn, TextLink } from '@/ui/kit';
 import { ShelfMenuSheet } from './ShelfMenuSheet';
 import { LockedShelfSheet, LockedShelves } from './LockedShelves';
@@ -916,12 +916,12 @@ export function HomeScreen() {
           <View onLayout={(e) => setHeaderH(e.nativeEvent.layout.height)}>
             {/* 머리글 뒤 벽: 맨 윗줄 벽이 머리글 위 끝까지 이어진다 */}
             <HeaderWall rows={sceneRows} motions={motions} books={sceneBooks} m={m} width={winW} height={headerH} cam={camSV} />
-            {/* 머리줄(2026-11-01): 갈피·커뮤니티 탭과 같은 자리·크기(screenTheme.tabHeader·headerType: 위 16·좌우 24, 제목 24 Bold·연도 15).
+            {/* 머리줄(2026-11-01): 갈피·커뮤니티 탭과 같은 자리·크기(theme.tabHeader·headerType: 위 16·좌우 24, 제목 24 Bold·연도 15).
                 오른쪽은 '전체 책'(책 아이콘)과 더하기(원 테두리 없이), 다른 탭 머리줄 아이콘과 같은 크기. 시스템 글자 확대는 1.3배까지만(선반과 겹치지 않게) */}
             {bare ? null : (
               <View style={[styles.header, tabHeader]}>
                 <Pressable style={{ flex: 1 }} onPress={() => setShelfMenuOpen(true)} accessibilityRole="button" accessibilityLabel={ko.menu.title}>
-                  <Text style={[headerType.title, { color: colors.homeTitle }]} numberOfLines={1} maxFontSizeMultiplier={HEADER_TEXT_MAX} accessibilityRole="header">
+                  <Text style={[headerType.title, { color: colors.ink }]} numberOfLines={1} maxFontSizeMultiplier={HEADER_TEXT_MAX} accessibilityRole="header">
                     {ko.title}
                   </Text>
                   <Pressable
@@ -931,7 +931,7 @@ export function HomeScreen() {
                     accessibilityRole="button"
                     accessibilityLabel={ko.yearA11y(year, count)}
                     style={{ alignSelf: 'flex-start' }}>
-                    <Text style={[headerType.sub, { color: colors.homeSummary, marginTop: 4 }]} maxFontSizeMultiplier={HEADER_TEXT_MAX}>
+                    <Text style={[headerType.sub, { color: colors.inkSoft, marginTop: 4 }]} maxFontSizeMultiplier={HEADER_TEXT_MAX}>
                       {ko.year(year)}
                       {years.length > 1 ? ' ▾' : ''}
                       {editing ? ` · ${ko.decorating}` : ''}
@@ -944,13 +944,13 @@ export function HomeScreen() {
                     <>
                       {/* 등록한 모든 책(책장에 없는 책 포함)을 보고 골라 책장에 놓는 곳 */}
                       <Pressable onPress={() => router.push('/store')} hitSlop={6} accessibilityRole="button" accessibilityLabel={ko.store.a11y} style={({ pressed }) => [styles.headerIcon, pressed && press]}>
-                  <StoreIcon size={24} color={colors.homeIcon} />
+                  <StoreIcon size={24} color={colors.iconSoft} />
                 </Pressable>
                 <Pressable onPress={() => router.push('/books')} hitSlop={6} accessibilityRole="button" accessibilityLabel={ko.allBooks.title} style={({ pressed }) => [styles.headerIcon, pressed && press]}>
-                        <FilledBookIcon size={24} color={colors.homeIcon} />
+                        <FilledBookIcon size={24} color={colors.iconSoft} />
                       </Pressable>
                       <Pressable onPress={() => router.push('/book/add')} hitSlop={6} accessibilityRole="button" accessibilityLabel={ko.add} style={({ pressed }) => [styles.headerIcon, pressed && press]}>
-                        <Plus size={28} color={colors.homeIcon} strokeWidth={2.6} />
+                        <Plus size={28} color={colors.iconSoft} strokeWidth={2.6} />
                       </Pressable>
                     </>
                   )}

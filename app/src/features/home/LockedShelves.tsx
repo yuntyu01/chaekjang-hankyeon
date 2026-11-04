@@ -5,7 +5,7 @@ import { Pressable, StyleSheet } from 'react-native';
 
 import { ko } from '@/i18n/ko';
 import { Btn, Sheet } from '@/ui/kit';
-import { press } from '@/ui/screenTheme';
+import { press } from '@/ui/theme';
 import type { RowGeom } from '@/ui/shelf/metrics';
 import { LockIcon } from '@/ui/TabIcons';
 

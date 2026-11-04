@@ -12,7 +12,7 @@ const SHEET_TOP_RADIUS = 20;
 const PILL = { height: 58, side: 15, gap: 4, paddingX: 9 };
 export const TAB_ICON = 23;
 // 아이콘 색: 알약은 시안 값, 판은 앱 기본
-export const tabTint = TAB_BAR_KIND === 'pill' ? { active: '#000000', inactive: '#787676' } : { active: colors.tabActive, inactive: colors.tabInactive };
+export const tabTint = { active: colors.tabInk, inactive: colors.tabInkSoft };
 
 const barHeight = TAB_BAR_KIND === 'pill' ? PILL.height : navigation.height;
 // 탭 칸: 라이브러리 기본 칸은 위쪽에 여백을 둬 아이콘이 위로 쏠린다. 위 여백을 직접 정해 칸 세로 가운데에 둔다.
@@ -31,7 +31,7 @@ export function tabBarStyle(bottom: number) {
   if (TAB_BAR_KIND === 'pill') {
     return {
       ...base,
-      backgroundColor: '#FFFFFF',
+      backgroundColor: colors.white,
       // start·end로 준다: 라이브러리 기본 스타일이 start: 0, end: 0이라 left·right는 무시된다(폭을 직접 주면 왼쪽에 붙은 채 오른쪽만 줄어든다)
       start: PILL.side,
       end: PILL.side,
@@ -45,7 +45,7 @@ export function tabBarStyle(bottom: number) {
   }
   return {
     ...base,
-    backgroundColor: '#FFFFFF',
+    backgroundColor: colors.white,
     start: 0,
     end: 0,
     bottom: 0,

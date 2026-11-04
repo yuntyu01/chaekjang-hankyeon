@@ -7,7 +7,7 @@ import { SHELF_SLOTS } from '@/domain/layout-rules';
 import type { ShelfLayout } from '@/domain/types';
 import { ko } from '@/i18n/ko';
 import { placementStore } from '@/store/placement-store';
-import { ListGroup, ListItem, Sheet, Tidy } from '@/ui/kit';
+import { ListGroup, ListItem, Sheet } from '@/ui/kit';
 import { PERF_DETAIL, PERF_ENABLED, PERF_LEVELS, setPerfLevel, setShelfView, SHELF_VIEWS, type PerfLevel } from '@/ui/perf';
 
 type View_ = (typeof SHELF_VIEWS)[number];
@@ -34,7 +34,6 @@ export function ShelfMenuSheet({ visible, layout, onClose, onDecorate, showToast
   const item = (label: string, onPress: () => void) => <ListItem key={label} label={label} onPress={() => { onClose(); onPress(); }} />;
   const canPrune = layout.shelves.length > SHELF_SLOTS && layout.shelves.some((sh) => !layout.placements.some((p) => p.shelfId === sh.id));
   return (
-    <Tidy>
     <Sheet visible={visible} onClose={onClose} title={ko.menu.title}>
       <ListGroup>
         {item(ko.decorate, onDecorate)}
@@ -62,6 +61,5 @@ export function ShelfMenuSheet({ visible, layout, onClose, onDecorate, showToast
         ) : null}
       </ListGroup>
     </Sheet>
-    </Tidy>
   );
 }

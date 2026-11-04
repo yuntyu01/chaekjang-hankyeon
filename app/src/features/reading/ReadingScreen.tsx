@@ -17,10 +17,10 @@ import { useLibrary } from '@/store/library-store';
 import { readingStore, useReading } from '@/store/reading-store';
 import { saveAndStartOther } from '@/store/finish-reading';
 import { settingsStore, useSettings, type SceneId } from '@/store/settings-store';
-import { colors, fonts, icon, night, press, tidyShape as shape, tidySpace as space, tidyType as type } from '@/ui/screenTheme';
+import { colors, fonts, icon, night, press, shape, space, type } from '@/ui/theme';
 import { LibraryCover } from '@/ui/BookVisual';
 import { BookPicker } from '@/features/bookmark/BookPicker';
-import { Btn, Choice, Sheet, Slider, Tidy } from '@/ui/kit';
+import { Btn, Choice, Sheet, Slider } from '@/ui/kit';
 import { StatusBar } from 'expo-status-bar';
 
 const LIGHT = night.ink;
@@ -147,7 +147,7 @@ export function ReadingScreen({ initialBookId, soundOnly = false, inTab = false 
   const playLabel = soundOnly ? audio.playing ? '소리 멈추기' : '소리 재생' : !active ? '독서 시작' : running ? '일시정지' : '다시 읽기';
 
   return (
-    <Tidy>
+    <>
     <View onLayout={(e) => setViewportHeight(e.nativeEvent.layout.height)} style={{ flex: 1, backgroundColor: '#182C44' }}>
       {focused ? <StatusBar style="light" /> : null}
       <Scene id={scene} animate={focused && appActive && !reduce} height={open ? Math.max(viewportHeight * 0.3, viewportHeight - panelHeight + 22) : viewportHeight} />
@@ -273,7 +273,7 @@ export function ReadingScreen({ initialBookId, soundOnly = false, inTab = false 
         </View>
       </Sheet>
     </View>
-    </Tidy>
+    </>
   );
 }
 

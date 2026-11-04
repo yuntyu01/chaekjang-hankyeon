@@ -11,7 +11,7 @@ import { ReportSheet, type ReportTarget } from '@/features/community/ReportSheet
 import { community, errorMessage, isNotFound, type UserPage } from '@/services/community';
 import { MoreHorizontal } from '@/ui/icons';
 import { Btn, Divider, Empty, IconButton, ListGroup, ListItem, Loading, Screen, Sheet, Stars, Tabs } from '@/ui/kit';
-import { colors, icon, tidySpace as space, tidyType } from '@/ui/screenTheme';
+import { colors, icon, space, type } from '@/ui/theme';
 
 export default function UserScreen() {
   const { id: raw } = useLocalSearchParams<{ id: string }>();
@@ -44,18 +44,18 @@ export default function UserScreen() {
     { text: '차단', style: 'destructive', onPress: () => void community.block(id, true).then(() => router.back()).catch((e: unknown) => explainWriteError(e, '차단하지 못했어요')) },
   ]);
 
-  if (phase === 'loading') return <Screen title="독자" tidy><Loading /></Screen>;
-  if (phase === 'gone') return <Screen title="독자" tidy><Empty title="볼 수 없는 프로필이에요" body="공개 프로필이 없거나 볼 수 없는 사용자예요." /></Screen>;
-  if (phase === 'error' || !page) return <Screen title="독자" tidy><Empty title="불러오지 못했어요" body={error} action="다시 시도" actionKind="secondary" onAction={() => { setPhase('loading'); void load(); }} /></Screen>;
+  if (phase === 'loading') return <Screen title="독자"><Loading /></Screen>;
+  if (phase === 'gone') return <Screen title="독자"><Empty title="볼 수 없는 프로필이에요" body="공개 프로필이 없거나 볼 수 없는 사용자예요." /></Screen>;
+  if (phase === 'error' || !page) return <Screen title="독자"><Empty title="불러오지 못했어요" body={error} action="다시 시도" actionKind="secondary" onAction={() => { setPhase('loading'); void load(); }} /></Screen>;
   const p = page.profile;
   // 스레드처럼: 이름 크게 + 오른쪽 프로필 동그라미, 소개, '팔로워 N · 팔로잉 N' 한 줄, 팔로우 버튼, '독서 기록 | 평가' 탭
   return (
-    <Screen title="" tidy compact right={page.me ? undefined : <IconButton label="더보기" onPress={() => setMenu(true)}><MoreHorizontal size={icon.size} color={colors.ink} strokeWidth={icon.stroke} /></IconButton>}>
+    <Screen title="" compact right={page.me ? undefined : <IconButton label="더보기" onPress={() => setMenu(true)}><MoreHorizontal size={icon.size} color={colors.ink} strokeWidth={icon.stroke} /></IconButton>}>
       <View style={st.head}>
         <View style={{ flex: 1, minWidth: 0 }}>
-          <Text style={tidyType.title} accessibilityRole="header" numberOfLines={2}>{p.nickname}</Text>
-          {p.bio ? <Text style={[tidyType.body, { marginTop: space.tight }]}>{p.bio}</Text> : null}
-          <Text style={[tidyType.sub, { marginTop: space.s }]}>{`팔로워 ${p.followers} · 팔로잉 ${p.following} · 기록 ${p.posts}`}</Text>
+          <Text style={type.title} accessibilityRole="header" numberOfLines={2}>{p.nickname}</Text>
+          {p.bio ? <Text style={[type.body, { marginTop: space.tight }]}>{p.bio}</Text> : null}
+          <Text style={[type.sub, { marginTop: space.s }]}>{`팔로워 ${p.followers} · 팔로잉 ${p.following} · 기록 ${p.posts}`}</Text>
         </View>
         <Avatar name={p.nickname} id={p.userId} size={64} />
       </View>
@@ -71,20 +71,20 @@ export default function UserScreen() {
               </View>
             ))}
           </View>
-        ) : <Text style={[tidyType.sub, { paddingVertical: space.group }]}>아직 공유한 독서 기록이 없어요.</Text>
+        ) : <Text style={[type.sub, { paddingVertical: space.group }]}>아직 공유한 독서 기록이 없어요.</Text>
       ) : page.reviews.length ? (
         <ListGroup>
           {page.reviews.map((r) => (
             <View key={r.isbn13} style={{ paddingVertical: 16, gap: 6 }}>
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                <Text style={[tidyType.rowStrong, { flexShrink: 1 }]} numberOfLines={1}>{r.bookTitle ?? `ISBN ${r.isbn13}`}</Text>
+                <Text style={[type.rowStrong, { flexShrink: 1 }]} numberOfLines={1}>{r.bookTitle ?? `ISBN ${r.isbn13}`}</Text>
                 <Stars value={r.rating} size={14} />
               </View>
-              {r.body ? <Text style={tidyType.body}>{r.body}</Text> : null}
+              {r.body ? <Text style={type.body}>{r.body}</Text> : null}
             </View>
           ))}
         </ListGroup>
-      ) : <Text style={[tidyType.sub, { paddingVertical: space.group }]}>아직 남긴 공개 평가가 없어요.</Text>}
+      ) : <Text style={[type.sub, { paddingVertical: space.group }]}>아직 남긴 공개 평가가 없어요.</Text>}
       <Sheet visible={menu} onClose={() => setMenu(false)}>
         <ListGroup>
           <ListItem label="사용자 신고" onPress={() => { setMenu(false); setTimeout(() => setReport({ kind: 'user', id, label: '사용자' }), 350); }} />

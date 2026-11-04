@@ -4,8 +4,9 @@ import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import { STATUS_LABEL } from '@/features/book/labels';
 import type { Library } from '@/domain/library';
-import { Btn, Divider, SearchField, Sheet, useUi } from '@/ui/kit';
-import { colors, press } from '@/ui/screenTheme';
+import { Btn, Divider, SearchField, Sheet } from '@/ui/kit';
+import { space, type } from '@/ui/theme';
+import { colors, press } from '@/ui/theme';
 import { LinkedCover } from '@/ui/BookVisual';
 
 export function recentBookIds(lib: Library) {
@@ -17,8 +18,6 @@ export function recentBookIds(lib: Library) {
 
 // onAddNew: '새 책 등록'(등록 화면으로 갔다가 uiBus.offerPickedBook으로 돌아온다). 주지 않으면 줄을 보이지 않는다
 export function BookPicker({ lib, visible, allowNone, onPick, onClose, onAddNew }: { lib: Library; visible: boolean; allowNone?: boolean; onPick: (id: string | undefined) => void; onClose: () => void; onAddNew?: () => void }) {
-  // 부르는 화면의 기준을 따른다(독서 타이머는 정돈 변형, 갈피 작성은 예전 그대로)
-  const { type, space, tidy } = useUi();
   const [q, setQ] = useState('');
   const list = useMemo(() => {
     const recent = recentBookIds(lib);
@@ -31,7 +30,7 @@ export function BookPicker({ lib, visible, allowNone, onPick, onClose, onAddNew 
   }, [lib, q]);
   return (
     <Sheet visible={visible} onClose={onClose} title="책 고르기" maxHeight="85%">
-      <SearchField value={q} onChangeText={setQ} placeholder="제목·저자" accessibilityLabel="책 찾기" style={{ marginTop: space.tight, marginBottom: tidy ? 4 : space.tight }} />
+      <SearchField value={q} onChangeText={setQ} placeholder="제목·저자" accessibilityLabel="책 찾기" style={{ marginTop: space.tight, marginBottom: 4 }} />
       <ScrollView style={{ flexShrink: 1 }} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
         {onAddNew ? (
           <Pressable style={({ pressed }) => [st.item, pressed && press]} onPress={onAddNew} accessibilityRole="button" accessibilityLabel="새 책 등록">
@@ -53,10 +52,10 @@ export function BookPicker({ lib, visible, allowNone, onPick, onClose, onAddNew 
                 {/* 연결할 책: 실물 표지(사진이 없는 책만 장정 그림) */}
                 <View style={st.cover} pointerEvents="none"><LinkedCover lib={lib} id={id} width={34} /></View>
                 <View style={{ flex: 1 }}>
-                  <Text style={tidy ? type.rowStrong : type.row} numberOfLines={2}>
+                  <Text style={type.rowStrong} numberOfLines={2}>
                     {e?.title}
                   </Text>
-                  <Text style={[type.sub, { marginTop: tidy ? 4 : 2 }]} numberOfLines={1}>
+                  <Text style={[type.sub, { marginTop: 4 }]} numberOfLines={1}>
                     {[e?.authors.join(', '), STATUS_LABEL[b.status]].filter(Boolean).join(' · ')}
                   </Text>
                 </View>

@@ -2,7 +2,7 @@ import { Pressable, StyleSheet, Text, View, type StyleProp, type TextStyle } fro
 import type { Book } from '@/domain/types';
 import { BookVisual } from '@/ui/BookVisual';
 import { RealCover } from '@/ui/kit';
-import { colors, fonts, press } from '@/ui/screenTheme';
+import { colors, fonts, press } from '@/ui/theme';
 import { Bookmark } from '@/ui/icons';
 import { BookmarkPaper } from './BookmarkPaper';
 import { BookmarkTape } from './BookmarkTape';

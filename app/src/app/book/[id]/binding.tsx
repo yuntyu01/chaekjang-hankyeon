@@ -9,7 +9,7 @@ import { buildBookArt } from '@/domain/rebinding';
 import { libraryStore, useLibrary } from '@/store/library-store';
 import { usePlacementStore } from '@/store/placement-store';
 import { Btn, Empty, Screen } from '@/ui/kit';
-import { type } from '@/ui/screenTheme';
+import { type } from '@/ui/theme';
 
 export default function EditBinding() {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -23,10 +23,9 @@ export default function EditBinding() {
   // 추천 = 판본에 저장된 계산값(없으면 지금 입력으로 다시 계산)
   const recommended = useMemo<BindingDraft>(() => ({ ...bindingFields(e?.art ?? buildBookArt(e ? rebindInput(e) : { title: '' })), seed: 0, source: 'default' }), [e]);
   const [v, setV] = useState<BindingDraft>(() => ({ ...recommended, ...(bd ? { spineColor: bd.spineColor, motif: bd.motif, seed: bd.seed, source: bd.source, inkColor: bd.inkColor ?? recommended.inkColor, accentColor: bd.accentColor ?? recommended.accentColor, layout: bd.layout ?? recommended.layout, material: bd.material, coverArtId: bd.coverArtId } : {}) }));
-  if (!b || !e) return <Screen tidy title="장정 편집"><Empty title="책을 찾을 수 없어요" /></Screen>;
+  if (!b || !e) return <Screen title="장정 편집"><Empty title="책을 찾을 수 없어요" /></Screen>;
   return (
     <Screen
-      tidy
       title="장정 편집"
       right={
         <Pressable onPress={() => { setTouched(true); setV({ ...recommended, seed: v.seed, source: 'default' }); }} hitSlop={10} accessibilityRole="button" accessibilityLabel="추천 장정으로 초기화" style={{ minHeight: 44, justifyContent: 'center', paddingRight: 10 }}>

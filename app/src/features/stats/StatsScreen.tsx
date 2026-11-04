@@ -18,8 +18,8 @@ import { realReadingLibrary } from '@/domain/real-sample';
 import { useLibrary } from '@/store/library-store';
 import { PERF_ENABLED } from '@/ui/perf';
 import { LinkedCover } from '@/ui/BookVisual';
-import { Card, Chip, Empty, FilterButton, IconButton, ListGroup, ListItem, RealCover, Screen, SectionBand, Segmented, Sheet } from '@/ui/kit';
-import { colors, fonts, icon, press, TAB_CARDS, tidySpace as space, tidyType as type } from '@/ui/screenTheme';
+import { Chip, Empty, FilterButton, IconButton, ListGroup, ListItem, RealCover, Screen, SectionBand, Segmented, Sheet } from '@/ui/kit';
+import { colors, fonts, icon, press, space, type } from '@/ui/theme';
 
 const TABS = [{ id: 'calendar', label: '캘린더' }, { id: 'records', label: '기록' }] as const;
 const COVER_W = 52;
@@ -97,9 +97,8 @@ export function StatsScreen({ tab, initialBook }: { tab?: boolean; initialBook?:
     setBookSheet(false);
   };
   return (
-    <Screen tidy hub={TAB_CARDS} {...(tab ? { back: false } : { inline: true })} title="내 기록">
+    <Screen {...(tab ? { back: false } : { inline: true })} title="내 기록">
       <Segmented items={TABS} value={view} onChange={(v) => { setView(v); setPicked(null); }} />
-      <Card>
       <View style={st.periodRow}>
         <View style={st.period}>
           <IconButton label={monthly ? '이전 달' : '이전 해'} onPress={() => { shift(-1); setPicked(null); }}>
@@ -130,7 +129,6 @@ export function StatsScreen({ tab, initialBook }: { tab?: boolean; initialBook?:
       ) : null}
       {/* 달력·막대는 책을 읽지 않았어도 늘 보인다(2026-11-03 사용자) */}
       {view === 'calendar' ? <ReadingCalendar lib={lib} y={y} m={m} days={days} selected={selected} today={today} onSelect={setPicked} /> : <ReadingChart bars={bars} selected={selected} unit={monthly ? '일' : '월'} onSelect={setPicked} />}
-      </Card>
       {view === 'records' ? (
         <>
           <SectionBand />
@@ -193,7 +191,7 @@ export function StatsScreen({ tab, initialBook }: { tab?: boolean; initialBook?:
           {selected ? (
             <>
             <SectionBand />
-            <Card style={{ paddingBottom: space.s }}>
+            <View style={{ paddingBottom: space.s }}>
               <View style={st.dayHead}>
                 <Text style={type.section} accessibilityRole="header">{monthly ? dayTitle(selected) : `${y}년 ${Number(selected.slice(5))}월`}</Text>
                 <Text style={type.sub}>{formatDuration(selMs)}</Text>
@@ -222,7 +220,7 @@ export function StatsScreen({ tab, initialBook }: { tab?: boolean; initialBook?:
                       <View style={st.rowRight}><Text style={st.rowValue}>{shortMs(r.ms)}</Text></View>
                     </Pressable>
                   ))}
-            </Card>
+            </View>
             </>
           ) : null}
         </>

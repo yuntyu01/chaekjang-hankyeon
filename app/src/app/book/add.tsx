@@ -21,7 +21,7 @@ import { uiBus } from '@/store/ui-bus';
 import { LibraryCover } from '@/ui/BookVisual';
 import { ChevronDown, ChevronUp } from '@/ui/icons';
 import { Btn, Chip, Empty, Field, H2, Loading, Muted, Notice, RealCover, Row, Screen, SearchField, Sheet, TextLink } from '@/ui/kit';
-import { colors, fonts, icon, press, shape, tidySpace as space, tidyType as type } from '@/ui/screenTheme';
+import { colors, fonts, icon, press, shape, space, type } from '@/ui/theme';
 
 type Step = 'find' | 'confirm' | 'binding' | 'done';
 
@@ -230,7 +230,6 @@ export default function AddBook() {
   if (step === 'confirm' || step === 'done')
     return (
       <Screen
-        tidy
         title="책 확인"
         footer={
           // 주요 행동: 추천 장정으로 바로 추가(책장에 놓기). 장정은 고르고 싶을 때만(보조)
@@ -332,7 +331,6 @@ export default function AddBook() {
   if (step === 'binding' && binding)
     return (
       <Screen
-        tidy
         title="장정 미리보기"
         footer={
           <View>
@@ -380,7 +378,7 @@ function FindStep({ initial, notice, onPick, onManual }: { initial?: string; not
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
   return (
-    <Screen tidy title="새 책 추가">
+    <Screen title="새 책 추가">
       <SearchField
         value={q}
         onChangeText={(t) => {

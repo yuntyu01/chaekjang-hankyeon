@@ -4,7 +4,7 @@ import { useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import Svg, { Line, Rect } from 'react-native-svg';
 
-import { colors, fonts, tidyType as type } from '@/ui/screenTheme';
+import { colors, fonts, type } from '@/ui/theme';
 
 export type MiniBar = { key: string; name: string; value: number };
 

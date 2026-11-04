@@ -9,7 +9,7 @@ import { explainWriteError } from '@/features/community/actions';
 import { community, communityAvailability, errorMessage, type BookReviews as Reviews } from '@/services/community';
 import { Btn, Field, Muted, Sheet, Stars, TextLink } from '@/ui/kit';
 import { Star } from '@/ui/icons';
-import { colors, fonts, tidySpace as space, tidyType as type } from '@/ui/screenTheme';
+import { colors, fonts, space, type } from '@/ui/theme';
 
 export type ReviewsState = { available: boolean; data: Reviews | null; error: string; load: () => Promise<void>; setData: (d: Reviews) => void };
 

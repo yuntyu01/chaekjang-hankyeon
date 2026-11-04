@@ -8,7 +8,7 @@ import { memoShelfBook, type Library } from '@/domain/library';
 import type { Book } from '@/domain/types';
 import { coverAtSize } from '@/domain/cover-url';
 import { RealCover } from '@/ui/kit';
-import { colors } from '@/ui/screenTheme';
+import { colors } from '@/ui/theme';
 import { BOOK_PAD, frameCam, noRibbon, StandaloneBook } from '@/ui/book3d/StandaloneBook';
 
 // Every screen uses the same saved book model and renderer as the bookshelf.

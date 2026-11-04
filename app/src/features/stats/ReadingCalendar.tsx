@@ -5,7 +5,7 @@ import { Image, Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { coverAtSize } from '@/domain/cover-url';
 import { formatDuration, type Library } from '@/domain/library';
-import { colors, fonts, press } from '@/ui/screenTheme';
+import { colors, fonts, press } from '@/ui/theme';
 import { calendarWeeks, type DayBooks } from './chart-data';
 
 const WEEK = ['일', '월', '화', '수', '목', '금', '토'];

@@ -15,7 +15,7 @@ import { useLibrary, libraryStore } from '@/store/library-store';
 import { placementStore, usePlacementStore } from '@/store/placement-store';
 import { uiBus } from '@/store/ui-bus';
 import { Btn, Chip, Empty, Field, H2, IconButton, ListGroup, ListItem, Muted, Row, Screen, Segmented, Sheet, Stars, TextLink, s as kit } from '@/ui/kit';
-import { colors, fonts, icon, press, shape, tidySpace as space, tidyType as type } from '@/ui/screenTheme';
+import { colors, fonts, icon, press, shape, space, type } from '@/ui/theme';
 import { BookVisual, LibraryCover } from '@/ui/BookVisual';
 
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
@@ -35,7 +35,7 @@ export default function BookDetailScreen() {
   const reviews = useBookReviews(e?.isbn13);
   if (!b || !e)
     return (
-      <Screen tidy title="책">
+      <Screen title="책">
         <Empty title="책을 찾을 수 없어요" body="삭제되었거나 예시 책장 책이에요." action="책장으로" onAction={() => router.dismissTo('/')} />
       </Screen>
     );
@@ -83,12 +83,11 @@ export default function BookDetailScreen() {
 
   return (
     <Screen
-      tidy
       compact
       title="책 정보"
       right={
         <IconButton label="더 보기" onPress={() => setMenu(true)}>
-          <MoreHorizontal size={icon.size} color={colors.title} strokeWidth={icon.stroke} />
+          <MoreHorizontal size={icon.size} color={colors.ink} strokeWidth={icon.stroke} />
         </IconButton>
       }>
       <View style={st.hero}>

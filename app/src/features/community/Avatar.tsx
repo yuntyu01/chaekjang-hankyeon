@@ -2,7 +2,7 @@
 // 색은 사용자 번호로 고정(같은 사람은 늘 같은 색). 책등 색 계열의 낮은 채도
 import { Text, View } from 'react-native';
 
-import { colors, fonts } from '@/ui/screenTheme';
+import { colors, fonts } from '@/ui/theme';
 
 const PALETTE = ['#7F95A8', '#8E9A78', '#B98270', '#6E879E', '#A0906F', '#9A7F8F', '#6F8F86', '#A8826A'];
 

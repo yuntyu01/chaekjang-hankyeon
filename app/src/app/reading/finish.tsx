@@ -14,7 +14,7 @@ import { saveFinishedReading } from '@/store/finish-reading';
 import { useLibrary } from '@/store/library-store';
 import { readingStore, useReading } from '@/store/reading-store';
 import { Btn, Empty, Field, H2, ListGroup, ListItem, Muted, Row, Screen, SelectField, TextLink } from '@/ui/kit';
-import { colors, fonts, shape, tidySpace as space, tidyType as type } from '@/ui/screenTheme';
+import { colors, fonts, shape, space, type } from '@/ui/theme';
 import { useCommunityOpen } from '@/features/community/useCommunityOpen';
 
 const page = (v?: string) => {
@@ -56,7 +56,7 @@ export default function Finish() {
     const se = sb ? lib.editions[sb.editionId] : undefined;
     const pagesText = ss && ss.startPage !== undefined && ss.pagesRead !== undefined && ss.pagesRead >= ss.startPage ? `${ss.startPage}→${ss.pagesRead}쪽(${ss.pagesRead - ss.startPage}쪽)` : ss?.pagesRead ? `${ss.pagesRead}쪽까지` : null;
     return (
-      <Screen tidy title="저장했어요" back={false} footer={<Btn label="확인" size="l" onPress={() => router.dismissTo('/read')} />}>
+      <Screen title="저장했어요" back={false} footer={<Btn label="확인" size="l" onPress={() => router.dismissTo('/read')} />}>
         <View style={st.savedSummary} accessible>
           <Text style={type.rowStrong} numberOfLines={2}>{se?.title ?? '책 없이 읽은 시간'}</Text>
           <Text style={[type.sub, { marginTop: 4 }]}>{[ss ? (ss.durationMs < 60000 ? formatDurationPrecise(ss.durationMs) : formatDuration(ss.durationMs)) : null, pagesText].filter(Boolean).join(' · ')}</Text>
@@ -73,7 +73,7 @@ export default function Finish() {
   }
   if (!pending)
     return (
-      <Screen tidy title="독서 기록">
+      <Screen title="독서 기록">
         <Empty title="끝낸 독서가 없어요" action="읽기로" onAction={() => router.dismissTo('/read')} />
       </Screen>
     );
@@ -116,7 +116,7 @@ export default function Finish() {
       },
     ]);
   return (
-    <Screen tidy title="독서 끝" back={false} footer={<Btn label="개인 기록 저장" onPress={save} busy={saving} disabled={saving || pending.durationMs < 1000 || badRange} />}>
+    <Screen title="독서 끝" back={false} footer={<Btn label="개인 기록 저장" onPress={save} busy={saving} disabled={saving || pending.durationMs < 1000 || badRange} />}>
       {readingError ? <Text accessibilityRole="alert" style={type.sub}>독서 기록을 기기에 저장하지 못했어요. 저장을 다시 시도해 주세요.</Text> : null}
       <View style={st.summary} accessible accessibilityLabel={`실제 독서 시간 ${formatDurationPrecise(pending.durationMs)}`}>
         <Text style={type.sub}>실제 독서 시간</Text>

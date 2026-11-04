@@ -7,7 +7,7 @@ import type { Post } from '@/services/community';
 import { Avatar } from '@/features/community/Avatar';
 import { Heart, MessageCircle, MoreHorizontal } from '@/ui/icons';
 import { RealCover } from '@/ui/kit';
-import { colors, fonts, icon, press, space } from '@/ui/screenTheme';
+import { colors, fonts, icon, press, space } from '@/ui/theme';
 
 export function ago(iso: string, now = Date.now()) {
   const m = Math.max(0, Math.round((now - Date.parse(iso)) / 60000));

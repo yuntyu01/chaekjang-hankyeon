@@ -16,15 +16,15 @@ export const PLANK_SKINS = {
 
 // 틀 색은 안쪽 면에서 모서리 그늘 전 평균으로 보이는 색이다(light-model runCalibration). 흰 틀: 시안 안쪽 면 앞 226·뒤 214
 export const FRAME_SKINS = {
-  white: { name: '흰 틀', color: '#ECEBE9', mat: 'paint' },
-  pine: { name: '밝은 나무 틀', color: '#F2DCC1', mat: 'wood' },
-  walnut: { name: '호두나무 틀', color: '#8F6E55', mat: 'wood' },
+  white: { name: '흰 벽', color: '#ECE7E4', mat: 'paint' },
+  pine: { name: '밝은 나무 벽', color: '#F2D7BC', mat: 'wood' },
+  walnut: { name: '호두나무 벽', color: '#8F6950', mat: 'wood' },
   none: null,
 } satisfies Record<string, SkinPart | null>;
 
 // 벽지는 머리글 글자 뒤에도 깔리므로 밝은 색만 둔다(어두운 벽지는 검은 머리글 글자가 안 보인다)
 export const WALL_SKINS = {
-  white: { name: '흰 벽', color: sceneColors.wall, mat: 'paint' },
+  white: { name: '따뜻한 흰 벽', color: sceneColors.wall, mat: 'paint' },
   paper: { name: '종이 벽지', color: '#F6F4EE', mat: 'wallpaper' },
   cream: { name: '크림', color: '#F5EEE1', mat: 'paint' },
   sage: { name: '세이지', color: '#E3E8DD', mat: 'paint' },
@@ -61,30 +61,17 @@ export const FRAME_ON = SKIN.frame !== null;
 // - plankSpec: 판 표면 반사 몫 배수(반무광 마감). 낮은 눈에서 판 윗면을 스치듯 보면 반사가 뒷벽의 밝은 빛을 비춰 윗면이 밝아진다(시안 윗면 202~217, 1배면 197)
 // - coveMm: 안쪽 모서리 곡면 반지름(2026-11-04 사용자 '선반이랑 벽 만나는 곳을 부드럽게 이어지게'). 벽·틀·판이 맞닿는 곳에서 두 면의 법선이 서서히 돌아 모서리에서 같아진다(light-model coveNormal)
 // - cornerMm: 뒷벽 네 꼭지점 둥글기(2026-11-04 사용자 '안쪽 꼭지점 모서리가 더 곡선이어야'). 판 윗면의 뒤쪽 꼭지점도 같은 값
-// - frameGrey: 측정 번들에서 틀 색을 바꿔 볼 때(0이면 스킨 색)
-// - warm: 구멍 안(뒷벽·틀)을 따뜻하게 하는 정도(화면 단계, 빨강 − 파랑). 시안 약 6. 빛 계산은 그대로이고 보이는 색만 바뀐다
-export const LOOK = { dist: 3300, eyeY: 150, thickMm: 19, jointMm: 8, jointK: 0.22, rimMm: 3, frameGrey: 0, warm: 5, coveMm: 7, cornerMm: 9, sideMm: 26, sideK: 0.6, plankSpec: 2, cornerK: 0.22, softMm: 3, rimCorner: 4 };
-// 측정 번들 전용: 딥링크 ?look=거리,눈높이,판 두께,그늘 높이,그늘 세기,테 반지름,틀 회색,따뜻함,곡면 반지름,꼭지점 둥글기,옆면 범위,옆면 세기,판 윤기,꼭지점 그늘 을 저장하면 다음 실행부터 적용, ?look=off로 지운다(useHomePerf). 배포본은 이 값을 읽지 않는다
+export const LOOK = { dist: 3300, eyeY: 150, thickMm: 19, jointMm: 8, jointK: 0.22, rimMm: 3, coveMm: 7, cornerMm: 9, sideMm: 26, sideK: 0.6, plankSpec: 2, cornerK: 0.22, softMm: 3, rimCorner: 4 };
+// 측정 번들 전용: 딥링크 ?look=거리,눈높이,판 두께,그늘 높이,그늘 세기,테 반지름,곡면 반지름,꼭지점 둥글기,옆면 범위,옆면 세기,판 윤기,꼭지점 그늘 을 저장하면 다음 실행부터 적용, ?look=off로 지운다(useHomePerf). 배포본은 이 값을 읽지 않는다
 export const PERF_LOOK_KEY = 'perf-look';
 {
   const saved = readPerfSetting(PERF_LOOK_KEY);
   const v = saved ? saved.split(',').map(Number) : [];
-  if (v.length === 16 && v.every(Number.isFinite)) {
-    const [dist, eyeY, thickMm, jointMm, jointK, rimMm, frameGrey, warm, coveMm, cornerMm, sideMm, sideK, plankSpec, cornerK, softMm, rimCorner] = v;
-    Object.assign(LOOK, { dist, eyeY, thickMm, jointMm, jointK, rimMm, frameGrey, warm, coveMm, cornerMm, sideMm, sideK, plankSpec, cornerK, softMm, rimCorner });
-    if (frameGrey > 0 && SKIN.frame) {
-      const h = Math.round(frameGrey).toString(16).padStart(2, '0');
-      SKIN.frame = { ...SKIN.frame, color: `#${h}${h}${h}` };
-    }
+  if (v.length === 14 && v.every(Number.isFinite)) {
+    const [dist, eyeY, thickMm, jointMm, jointK, rimMm, coveMm, cornerMm, sideMm, sideK, plankSpec, cornerK, softMm, rimCorner] = v;
+    Object.assign(LOOK, { dist, eyeY, thickMm, jointMm, jointK, rimMm, coveMm, cornerMm, sideMm, sideK, plankSpec, cornerK, softMm, rimCorner });
     console.log('[look] 적용', saved);
   }
 }
-// 구멍 안 색을 따뜻하게(초록 5/6, 파랑 1, 시안 벽 237, 232, 231의 비율)
-function warmed(hex: string) {
-  const v = parseInt(hex.slice(1, 7), 16);
-  const ch = (x: number) => Math.max(0, Math.min(255, Math.round(x))).toString(16).padStart(2, '0');
-  return `#${ch((v >> 16) & 255)}${ch(((v >> 8) & 255) - (LOOK.warm * 5) / 6)}${ch((v & 255) - LOOK.warm)}`;
-}
-// 뒷벽의 보이는 색. 벽지 색 그대로면 평평한 벽과 같다
-export const BACK_COLOR = FRAME_ON ? warmed(SKIN.wall.color) : SKIN.wall.color;
-if (SKIN.frame && LOOK.warm) SKIN.frame = { ...SKIN.frame, color: warmed(SKIN.frame.color) };
+// 뒷벽의 보이는 색 = 벽지 색
+export const BACK_COLOR = SKIN.wall.color;

@@ -4,27 +4,24 @@ import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import type { Book } from '@/domain/types';
 import { StandaloneBook } from '@/ui/book3d/StandaloneBook';
-import { useTidy } from '@/ui/kit';
-import { press, tidyType, type } from '@/ui/screenTheme';
+import { press, type } from '@/ui/theme';
 
 export const BookRow = memo(function BookRow({ book, sub, right, onPress, onLongPress, selected }: { book: Book; sub?: string; right?: React.ReactNode; onPress?: () => void; onLongPress?: () => void; selected?: boolean }) {
-  // 정돈 변형(전체 책·책 찾기): 제목 Medium 17 · 저자 Regular 15 · 상태 Regular 14, 줄 위아래 12, 표지와 글 사이 16
-  const t = useTidy();
   return (
-    <Pressable onPress={onPress} onLongPress={onLongPress} style={({ pressed }) => [st.row, t && st.rowTidy, pressed && press]} accessibilityRole="button" accessibilityState={selected === undefined ? undefined : { selected }} accessibilityLabel={[book.title, book.author, sub].filter(Boolean).join(', ')}>
+    <Pressable onPress={onPress} onLongPress={onLongPress} style={({ pressed }) => [st.row, pressed && press]} accessibilityRole="button" accessibilityState={selected === undefined ? undefined : { selected }} accessibilityLabel={[book.title, book.author, sub].filter(Boolean).join(', ')}>
       <View style={st.thumb}>
         <StandaloneBook book={book} pose="front" scale={0.42} />
       </View>
       <View style={{ flex: 1, gap: 4 }}>
-        <Text style={t ? tidyType.rowStrong : st.title} numberOfLines={t ? 3 : 2}>
+        <Text style={type.rowStrong} numberOfLines={3}>
           {book.title}
         </Text>
         {book.author ? (
-          <Text style={t ? tidyType.sub : st.meta} numberOfLines={1}>
+          <Text style={type.sub} numberOfLines={1}>
             {book.author}
           </Text>
         ) : null}
-        {sub ? <Text style={t ? tidyType.caption : st.sub}>{sub}</Text> : null}
+        {sub ? <Text style={type.caption}>{sub}</Text> : null}
       </View>
       {right}
     </Pressable>
@@ -33,9 +30,5 @@ export const BookRow = memo(function BookRow({ book, sub, right, onPress, onLong
 
 const st = StyleSheet.create({
   row: { flexDirection: 'row', alignItems: 'center', gap: 16, paddingVertical: 14 },
-  rowTidy: { paddingVertical: 12 },
   thumb: { width: 64, alignItems: 'center', justifyContent: 'center' },
-  title: type.rowStrong,
-  meta: type.sub,
-  sub: type.caption,
 });

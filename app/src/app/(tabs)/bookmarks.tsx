@@ -12,7 +12,7 @@ import { bookmarkPreferencesStore, useBookmarkPreferences } from '@/store/bookma
 import { LinkedCover } from '@/ui/BookVisual';
 import { Check, Plus, Search, X } from '@/ui/icons';
 import { Empty, FilterButton, IconButton, ListGroup, ListItem, Screen, SearchField, Segmented, Sheet, ui } from '@/ui/kit';
-import { colors, icon, press, space, type } from '@/ui/screenTheme';
+import { colors, icon, press, space, type } from '@/ui/theme';
 import { navigation } from '@/ui/theme';
 
 // 갈피(2026-11-01 사용자 시안): 머리줄 '갈피 N개' + 검색·추가, '전체 갈피 | 아껴둔' 전환 칸, 그 아래 거르기 '모든 책 ▾'(책 선택 시트: 내 책 검색·

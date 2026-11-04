@@ -6,7 +6,7 @@ import { ko } from '@/i18n/ko';
 import { BookmarkTabIcon, CommunityTabIcon, ProfileTabIcon, ReadTabIcon, RecordTabIcon, ShelfIcon } from '@/ui/TabIcons';
 import { TAB_ICON, tabBarStyle, tabItemStyle, tabTint } from '@/ui/tabBar';
 import { colors } from '@/ui/theme';
-import { colors as ui } from '@/ui/screenTheme';
+import { colors as ui } from '@/ui/theme';
 
 // 하단 탭: 책장 · 갈피 · 읽기 · 기록(2026-11-03 사용자 '기록은 따로 탭') · 내 정보, 서버가 열면 커뮤니티까지(2026-11). 둥근 선 아이콘(2026-11-01 사용자 '인스타처럼 둥글게'): 고르지 않은 탭은 속이 빈 회색,
 // 고른 탭은 진한 색으로 속이 찬 모양(사용자 '눌린 바탕 말고 아이콘 속이 차게'). 글자 없이 아이콘만(조금 키운 27). 아이콘은 책장 장면과 같은 종이 위에 뜬다.

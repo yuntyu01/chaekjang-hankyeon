@@ -12,7 +12,7 @@ import { DU_PER_MM, MAX_FRONT_SPIN, MAX_SPIN, SHELF_DEPTH, SHELF_FRONT } from '@
 import type { Pose } from '@/domain/types';
 import { ko } from '@/i18n/ko';
 import { Undo2 } from '@/ui/icons';
-import { colors, fonts, press, shape, space, type } from '@/ui/screenTheme';
+import { colors, fonts, press, shape, space, type } from '@/ui/theme';
 import { PERF_ENABLED } from '@/ui/perf';
 import { createPreviewFrame } from './preview-frame';
 
