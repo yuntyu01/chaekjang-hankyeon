@@ -1,5 +1,5 @@
 // 화면 공통 기준(2026-10-26 설정 시안): 대비·글자 크기·간격 범위, 글꼴 등록, 화면 코드가 토큰을 벗어나지 않는지.
-import { sceneColors } from '@/scene-config/palette';
+import { sceneColors, uiBackground } from '@/scene-config/palette';
 import { buttonHeight, colors, fonts, night, shape, space, type } from '../theme';
 
 // 노드 형식 정의 없이 쓰는 최소한의 fs·path(light-calibration 시험과 같은 방식)
@@ -25,7 +25,7 @@ const contrast = (a: string, b: string) => {
 // (본문 grey900 #191F28, 입력칸 grey100 #F2F4F6, 구분선 grey200 #E5E8EB, 보조는 grey600보다 한 단계 짙은 #646F7E — 입력칸 위 4.5:1)
 describe('색: 지정한 기준값', () => {
   it('배경·입력칸·대표색·글자·구분선·버튼 글자', () => {
-    expect(colors.bg).toBe('#FEFAF9'); // 따뜻한 벽 색
+    expect(colors.bg).toBe('#FFFFFF'); // 당근과 같은 순백(2026-11-05). 책장 벽지는 따로
     expect(colors.input).toBe('#F2F4F6');
     expect(colors.accent).toBe('#6C534A');
     expect(colors.ink).toBe('#191F28');
@@ -204,8 +204,9 @@ describe('토큰 한 벌', () => {
       expect(type[k].fontSize).toBeGreaterThanOrEqual(14);
     }
   });
-  it('화면 바탕과 벽지 색이 같은 값이다(바꾸면 함께 바뀐다)', () => {
-    expect(colors.bg).toBe(sceneColors.wall);
-    expect(colors.raised).toBe(sceneColors.wall);
+  it('일반 화면 바탕은 순백이고 책장 벽지는 따로 둔다(2026-11-05 사용자)', () => {
+    expect(colors.bg).toBe(uiBackground);
+    expect(colors.raised).toBe(colors.bg);
+    expect(sceneColors.wall).toBe('#FEFAF9');
   });
 });

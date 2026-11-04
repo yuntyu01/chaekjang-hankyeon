@@ -6,7 +6,7 @@ import { AccessibilityInfo, Animated, Image, type ImageSourcePropType, StyleShee
 import { settingsStore } from '@/store/settings-store';
 import { bootMark } from '@/ui/boot-trace';
 import { loadHomeSnapshot } from '@/ui/home-snapshot';
-import { colors } from '@/ui/theme';
+import { sceneColors } from '@/scene-config/palette';
 
 const quietStart = require('../../assets/loading/quiet-start.png');
 // 시작 화면 그림(853×1844, 가운데 맞춤)에서 점 세 개 자리. 그림에서는 점을 지웠고 준비 단계(step)만큼 채워 그린다
@@ -91,6 +91,7 @@ function Dots({ step, w, h }: { step: number; w: number; h: number }) {
 }
 
 const styles = StyleSheet.create({
-  screen: { ...StyleSheet.absoluteFill, backgroundColor: colors.bg, zIndex: 10 },
+  // 시작 화면은 뒤이어 나오는 책장 벽과 같은 색(기기 시작 화면 app.json도 같은 값)
+  screen: { ...StyleSheet.absoluteFill, backgroundColor: sceneColors.wall, zIndex: 10 },
   image: { width: '100%', height: '100%' },
 });

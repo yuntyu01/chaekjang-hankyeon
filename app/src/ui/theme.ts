@@ -1,19 +1,19 @@
 import { StyleSheet, type TextStyle } from 'react-native';
 
-import { sceneColors } from '@/scene-config/palette';
+import { uiBackground } from '@/scene-config/palette';
 
 // 앱의 색·글꼴·간격·모양은 여기서만 정한다(2026-11-04 사용자 '테마색·글씨체·배경색을 통일해서 하나 바꾸면 다 바뀌게'). 화면마다 값을 따로 적지 말고 이 토큰과 ui/kit 부품을 쓴다.
 // 바탕은 벽지 색과 같은 따뜻한 흰색 하나다(scene-config/palette). 책장 재질·빛·치수는 scene-config에 따로 있다.
 export const colors = {
   // 2026-11-01 사용자 '본문색 토스처럼': 글자·바탕 회색을 토스 디자인 시스템(TDS) grey 단계로 맞췄다(차가운 중립 회색, 노란기 없음).
   // 갈색(accent)은 브랜드색으로 주요 버튼·선택 표시·활성 조절부에만 그대로 쓴다. 책장 재질·갈피 카드 종이색은 따로(theme.ts·BookmarkCard).
-  bg: sceneColors.wall, // 화면 배경 = 벽지 색(2026-11-04 사용자 '배경색은 전부 따뜻한 벽 색으로')
+  bg: uiBackground, // 화면 배경(2026-11-05 사용자 '당근 배경색으로, 배경 흰색만'). 책장 벽지는 scene-config sceneColors.wall로 따로
   white: '#FFFFFF', // 떠 있는 것의 흰색(하단바 알약, 스위치 손잡이, 갈피 종이)
   input: '#F2F4F6', // 입력칸·검색창 배경(TDS grey100)
   surface: '#F2F4F6', // 구분이 필요한 작은 영역(요약 블록·안내 상자·눌린 줄)
   sectionLine: '#EFF1F3', // 묶음 사이 화면 끝까지 닿는 1dp 선(당근 설정 #EFEFEF)
   chipOn: '#293038', // 고른 칩·거르기(당근 #293038): 테마색이 아니라 짙은 회색. 테마색은 주요 행동에만
-  raised: sceneColors.wall, // 하단 시트·확인창·정보 상자(바탕과 같은 색)
+  raised: uiBackground, // 하단 시트·확인창·정보 상자(바탕과 같은 색)
   ink: '#191F28', // 본문 글자(TDS grey900, 흰 바탕 16.6:1)
   inkSoft: '#646F7E', // 보조 글자: TDS grey600(#6B7684)보다 한 단계 짙게(회색 입력칸 위 4.5:1 이상: 흰 바탕 5.1, 입력칸 4.6)
   inkFaint: '#B0B8C1', // 입력 안내 글자·장식 선(TDS grey400, 본문에 쓰지 않는다)
