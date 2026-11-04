@@ -125,7 +125,7 @@ export default function NewBookmark() {
 
       {!photo ? (
         <View style={{ marginBottom: space.l }}>
-          <Muted style={{ marginBottom: space.s }}>사진에서 가져오기 · 찍거나 고른 뒤 간직할 부분만 자르면 글자를 바로 읽어요</Muted>
+          <Muted style={{ marginBottom: space.s }}>사진을 찍으면 글자를 바로 읽어 아래에 채워요</Muted>
           <Row style={{ flexWrap: 'nowrap' }}>
             <Btn label="페이지 찍기" kind="secondary" size="s" onPress={() => fromPhoto('camera')} style={{ flex: 1 }} />
             <Btn label="사진 고르기" kind="secondary" size="s" onPress={() => fromPhoto('library')} style={{ flex: 1 }} />
