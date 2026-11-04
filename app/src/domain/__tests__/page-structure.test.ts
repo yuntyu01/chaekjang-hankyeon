@@ -46,7 +46,8 @@ describe('책 몸체 구조', () => {
   });
 
   it('세운 책 머리: 들어간 속지는 앞쪽 sq/ky(머리 높이에서 본 기울기)만큼 책등 뒤로 숨고, 8°에서는 더 많이 보인다', () => {
-    for (const deg of [3, 8]) {
+    // 눈이 책 머리보다 높은 각에서(움푹 파인 책장 기본 각은 눈이 머리보다 낮아 머리가 안 보인다)
+    for (const deg of [4, 8]) {
       const cam = camAt(deg);
       const g = pageGeom(cam, standing, 'head', px);
       expect(g.ok).toBe(true);
@@ -61,7 +62,7 @@ describe('책 몸체 구조', () => {
     }
     // 더 내려다보면(8°) 숨는 깊이가 짧다
     const kyAt = (deg: number) => viewAt(camAt(deg), toWorld(standing, { x: dims.T / 2, y: dims.H, z: 0 })).ky;
-    expect(SQUARE / kyAt(8)).toBeLessThan(SQUARE / kyAt(3));
+    expect(SQUARE / kyAt(8)).toBeLessThan(SQUARE / kyAt(4));
   });
 
   it('안쪽 벽은 카메라 쪽을 향한 것만 그린다(사선 kx > 0: 왼쪽 판 안쪽 면)', () => {

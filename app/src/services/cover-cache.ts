@@ -116,9 +116,11 @@ function retryLater(fn: () => void) {
   };
 }
 
-// 받아 둔 표지 정리(앱을 켠 뒤 한 번): 강제 종료로 남은 조각 파일을 지우고, 상한을 넘으면 오래된 것부터 지운다
+// 받아 둔 표지 정리(앱을 켠 뒤 한 번): 강제 종료로 남은 조각 파일을 지우고, 받은 지 오래된 표지를 지우고, 상한을 넘으면 오래된 것부터 지운다.
+// 만료: YES24 답변(2026-11)은 이미지 파일을 일시적 저장(캐싱) 범위에서만 허용하고 장기 보관은 안 된다. 기간 기준은 정해져 있지 않아 90일로 둔다(지운 표지는 다음에 볼 때 다시 받는다)
 export const COVER_CACHE_MAX_BYTES = 150 * 1024 * 1024;
-export async function pruneCoverCache(maxBytes = COVER_CACHE_MAX_BYTES) {
+export const COVER_CACHE_MAX_AGE_SEC = 90 * 24 * 3600;
+export async function pruneCoverCache(maxBytes = COVER_CACHE_MAX_BYTES, nowMs = Date.now()) {
   try {
     const names = await FS.readDirectoryAsync(COVER_DIR);
     const files: { path: string; size: number; at: number }[] = [];
@@ -129,7 +131,13 @@ export async function pruneCoverCache(maxBytes = COVER_CACHE_MAX_BYTES) {
         continue;
       }
       const info = await FS.getInfoAsync(path);
-      if (info.exists) files.push({ path, size: info.size ?? 0, at: info.modificationTime ?? 0 });
+      if (!info.exists) continue;
+      const at = info.modificationTime ?? 0;
+      if (at > 0 && nowMs / 1000 - at > COVER_CACHE_MAX_AGE_SEC) {
+        await FS.deleteAsync(path, { idempotent: true }).catch(() => undefined);
+        continue;
+      }
+      files.push({ path, size: info.size ?? 0, at });
     }
     let total = files.reduce((sum, f) => sum + f.size, 0);
     files.sort((a, b) => a.at - b.at);

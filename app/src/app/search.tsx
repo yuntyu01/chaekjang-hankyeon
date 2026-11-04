@@ -38,15 +38,14 @@ export default function SearchMine() {
   };
   // 내 책 전부가 줄마다 책 그림(캔버스)으로 나온다: 화면 근처 줄만 그린다
   return (
-    <Screen tidy title="내 책에서 찾기" scroll={false}>
+    <Screen tidy headerField={<SearchField value={q} onChangeText={setQ} autoFocus placeholder="제목·저자" accessibilityLabel="내 책 찾기" style={{ minHeight: 46 }} />} scroll={false}>
       <ScreenList
         data={list}
         keyExtractor={(b) => b.id}
         renderItem={({ item: b }) => <BookRow book={b} sub={[STATUS_LABEL[lib.books[b.id].status], where(b.id)].filter(Boolean).join(' · ')} onPress={() => open(b.id)} />}
         ListHeaderComponent={
           <View style={{ marginBottom: list.length ? space.xs : 0 }}>
-            <SearchField value={q} onChangeText={setQ} autoFocus placeholder="제목·저자" accessibilityLabel="내 책 찾기" style={{ marginTop: space.item }} />
-            <Row style={{ marginTop: space.l }}>
+            <Row style={{ marginTop: space.s }}>
               {READ_STATUSES.map((st) => (
                 <Chip key={st} label={STATUS_LABEL[st]} on={status === st} onPress={() => setStatus(status === st ? null : st)} />
               ))}

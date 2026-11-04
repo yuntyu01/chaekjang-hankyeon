@@ -4,14 +4,15 @@
 // - 색상: 이 책 추천 색 + 모든 색. 고른 색에 테두리와 체크
 // - 재질: 무광 종이·천·코팅지 + 책등 글자 배치
 // 탭을 바꿔도 고르던 값은 그대로다(값은 부모가 가진다). 저장하면 사용자 오버라이드(source 'custom')가 된다.
-import { useMemo, useState } from 'react';
+import { useMemo, useState, useEffect } from 'react';
 import { Image, Pressable, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 import Svg, { Circle, Defs, LinearGradient, Path, Rect, Stop } from 'react-native-svg';
 
 import { artworkCover, COVER_ARTWORKS } from '@/domain/cover-artworks';
 import { ESTIMATED_PAGES, ESTIMATED_SIZE, type Binding, type SizeMm } from '@/domain/library';
-import { BOOK_COLORS, LAYOUT_VARIANTS, layoutArt, suggestColors, tonesFor, type LayoutVariant } from '@/domain/rebinding';
-import { BINDING_MATERIALS, type BindingMaterial, type Book } from '@/domain/types';
+import { BOOK_COLORS, coverSwatches, LAYOUT_VARIANTS, layoutArt, suggestColors, tonesFor, type LayoutVariant } from '@/domain/rebinding';
+import { coverPalette } from '@/services/cover-palette';
+import { BINDING_MATERIALS, DEFAULT_MATERIAL, type BindingMaterial, type Book } from '@/domain/types';
 import { noRibbon, RotatableBook, StandaloneBook } from '@/ui/book3d/StandaloneBook';
 import { frameBBox, standaloneFrame } from '@/domain/shelf-scene';
 import { frameCam } from '@/ui/book3d/StandaloneBook';
@@ -24,7 +25,7 @@ import { realDimensions } from '@/domain/jacket-proportions';
 export type BindingDraft = Pick<Binding, 'spineColor' | 'motif' | 'seed' | 'source' | 'inkColor' | 'accentColor' | 'layout' | 'material' | 'coverArtId'>;
 
 const LAYOUT_NAMES: Record<LayoutVariant, string> = { spine_a: '기본', spine_b: '제목 낮게', spine_c: '무늬 낮게' };
-const MATERIAL_NAMES: Record<BindingMaterial, string> = { paper: '무광 종이', cloth: '천', coated: '코팅지' };
+const MATERIAL_NAMES: Record<BindingMaterial, string> = { fine: '고운 종이', linen: '린넨', matte: '매끈 무광', laid: '줄무늬 종이' };
 
 // realCover: 실제 표지(YES24 도서 이미지·내가 찍은 사진). 기본 정면 그림을 고르지 않았으면 책장처럼 정면에 꽉 채워 그린다
 export function previewBook(p: { title: string; author?: string; size?: SizeMm; pages?: number; binding: BindingDraft; realCover?: string }): Book {
@@ -79,7 +80,7 @@ export function BindingEditor({ title, author, size, pages, value, recommended, 
       </View>
 
       {tab === 'art' ? <ArtPane showingCurrent={!!current} realCover={realCover} title={title} value={value} custom={custom} onChange={onChange} /> : null}
-      {tab === 'color' ? <ColorPane value={value} recommended={recommended} custom={custom} onChange={onChange} /> : null}
+      {tab === 'color' ? <ColorPane value={value} recommended={recommended} custom={custom} onChange={onChange} realCover={realCover} /> : null}
       {tab === 'material' ? <MaterialPane title={title} author={author} size={size} pages={pages} value={value} custom={custom} onChange={onChange} /> : null}
     </View>
   );
@@ -121,12 +122,25 @@ function ArtPane({ value, custom, onChange, showingCurrent, realCover, title }: 
   );
 }
 
-// 색상: 이 책 추천 색 + 모든 색(이름은 읽기용으로만). 고른 색에 테두리와 체크. 맨 아래 추천 장정으로 되돌리기
-function ColorPane({ value, recommended, custom, onChange }: PaneProps & { recommended: BindingDraft }) {
-  const rec = useMemo(() => suggestColors(recommended.spineColor), [recommended.spineColor]);
-  const rest = useMemo(() => BOOK_COLORS.filter((c) => !rec.includes(c.hex)), [rec]);
-  const material = value.material ?? 'paper';
-  const same = value.spineColor === recommended.spineColor && value.motif === recommended.motif && value.layout === recommended.layout && material === (recommended.material ?? 'paper') && !value.coverArtId;
+// 표지에서 많은 색 순서(표지가 없거나 못 읽으면 빈 목록이라 줄이 보이지 않는다)
+function useCoverSwatches(uri: string | undefined) {
+  const [list, setList] = useState<string[]>([]);
+  useEffect(() => {
+    let alive = true;
+    setList([]);
+    if (uri) void coverPalette(uri, 6).then((p) => { if (alive) setList(coverSwatches(p)); });
+    return () => { alive = false; };
+  }, [uri]);
+  return list;
+}
+
+// 색상: 표지 색(많은 순서) + 이 책 추천 색 + 모든 색(이름은 읽기용으로만). 고른 색에 테두리와 체크. 맨 아래 추천 장정으로 되돌리기
+function ColorPane({ value, recommended, custom, onChange, realCover }: PaneProps & { recommended: BindingDraft; realCover?: string }) {
+  const fromCover = useCoverSwatches(realCover ? coverAtSize(realCover, 'L') : undefined);
+  const rec = useMemo(() => suggestColors(recommended.spineColor).filter((h) => !fromCover.includes(h)), [recommended.spineColor, fromCover]);
+  const rest = useMemo(() => BOOK_COLORS.filter((c) => !rec.includes(c.hex) && !fromCover.includes(c.hex)), [rec, fromCover]);
+  const material = value.material ?? DEFAULT_MATERIAL;
+  const same = value.spineColor === recommended.spineColor && value.motif === recommended.motif && value.layout === recommended.layout && material === (recommended.material ?? DEFAULT_MATERIAL) && !value.coverArtId;
   const swatch = (hex: string, name: string) => {
     const on = value.spineColor === hex;
     return (
@@ -137,6 +151,12 @@ function ColorPane({ value, recommended, custom, onChange }: PaneProps & { recom
   };
   return (
     <View>
+      {fromCover.length ? (
+        <>
+          <Text style={st.h}>표지 색</Text>
+          <View style={st.swatches}>{fromCover.map((hex, i) => swatch(hex, `표지 색 ${i + 1}`))}</View>
+        </>
+      ) : null}
       <Text style={st.h}>이 책에 어울리는 색</Text>
       <View style={st.swatches}>{rec.map((hex, i) => swatch(hex, i === 0 ? '추천' : `추천 ${i + 1}`))}</View>
       <Text style={st.h}>모든 색</Text>
@@ -150,7 +170,7 @@ function ColorPane({ value, recommended, custom, onChange }: PaneProps & { recom
 function MaterialPane({ value, custom, onChange, title, author, size, pages }: PaneProps & { title: string; author?: string; size?: SizeMm; pages?: number }) {
   const { width } = useWindowDimensions();
   const tile = (width - 40 - 24) / 3;
-  const material = value.material ?? 'paper';
+  const material = value.material ?? DEFAULT_MATERIAL;
   const layout = value.layout ?? 'spine_a';
   const base = useMemo(() => previewBook({ title, author, size, pages, binding: value }), [title, author, size, pages, value]);
   // 책등 배율: 칸 높이에 맞게
@@ -261,14 +281,15 @@ function MaterialSwatch({ material, color, w, h }: { material: BindingMaterial; 
         </LinearGradient>
       </Defs>
       <Rect width={w} height={h} rx={10} fill={color} />
-      {material === 'paper' ? speck.map((p, i) => <Circle key={i} cx={p.cx} cy={p.cy} r={p.r} fill={p.d ? '#000000' : '#FFFFFF'} opacity={p.d ? p.o : p.o * 0.5} />) : null}
-      {material === 'cloth' ? (
+      {material === 'fine' ? speck.map((p, i) => <Circle key={i} cx={p.cx} cy={p.cy} r={p.r} fill={p.d ? '#000000' : '#FFFFFF'} opacity={p.d ? p.o : p.o * 0.5} />) : null}
+      {material === 'linen' ? (
         <>
           <Path d={weave.d} stroke="#000000" strokeOpacity={0.22} strokeWidth={1.1} />
           <Path d={weave.v} stroke="#FFFFFF" strokeOpacity={0.14} strokeWidth={1.1} />
         </>
       ) : null}
-      <Rect width={w} height={h} rx={10} fill={material === 'coated' ? 'url(#gloss)' : 'url(#soft)'} />
+      {material === 'laid' ? <Path d={weave.d} stroke="#000000" strokeOpacity={0.14} strokeWidth={1} /> : null}
+      <Rect width={w} height={h} rx={10} fill={material === 'matte' ? 'url(#gloss)' : 'url(#soft)'} />
     </Svg>
   );
 }

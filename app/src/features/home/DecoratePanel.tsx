@@ -387,7 +387,7 @@ const styles = StyleSheet.create({
   caption: { ...type.caption, marginLeft: 48 },
   choices: { flex: 1, flexDirection: 'row', gap: 6 },
   choice: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, height: 44, borderRadius: shape.input },
-  choiceOn: { backgroundColor: colors.accentSoft },
+  choiceOn: { borderWidth: shape.border, borderColor: colors.inkFaint },
   pressed: { backgroundColor: colors.surface },
   choiceText: { ...type.caption, fontSize: 13.5, color: colors.ink },
   slider: { flex: 1, height: 44, justifyContent: 'center', marginLeft: 4 },

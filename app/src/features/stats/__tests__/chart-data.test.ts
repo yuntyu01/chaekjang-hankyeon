@@ -1,5 +1,5 @@
 import type { Session } from '@/domain/library';
-import { booksByDay, calendarWeeks, dayTitle, hasPause, monthBars, tickLabel, timeRange, xLabels, yearBars, yTicks } from '../chart-data';
+import { booksByDay, calendarWeeks, dayTitle, hasPause, hourBars, hourLabel, monthBars, peakHour, tickLabel, timeRange, xLabels, yearBars, yTicks } from '../chart-data';
 
 const at = (d: string, h: number, min: number) => new Date(`${d}T${String(h).padStart(2, '0')}:${String(min).padStart(2, '0')}:00`).toISOString();
 const sess = (d: string, minutes: number) => ({ id: d + minutes, startedAt: at(d, 9, 0), endedAt: at(d, 10, 0), durationMs: minutes * 60000 }) as unknown as Session;
@@ -59,5 +59,37 @@ describe('달력', () => {
     const m = booksByDay([ses('a', at(9), 60000, 'x'), ses('b', at(10), 300000, 'y'), ses('c', at(11), 300000, 'x'), ses('d', at(12), 1000)]);
     expect(m.get('2026-10-05')).toEqual({ books: ['x', 'y'], loose: true, ms: 661000 });
     expect(m.size).toBe(1);
+  });
+});
+
+describe('읽은 시간대', () => {
+  const at = (h: number, m = 0, day = 10) => new Date(2026, 9, day, h, m).toISOString();
+  const session = (start: string, end: string, min: number) => ({ startedAt: start, endedAt: end, durationMs: min * 60000 }) as unknown as Session;
+  const min = (hours: number[], h: number) => Math.round(hours[h] / 60000);
+  it('한 시간 안의 기록은 그 칸에, 여러 시간에 걸치면 걸친 길이만큼 나눈다', () => {
+    const h = hourBars([session(at(21, 10), at(21, 40), 30), session(at(22, 30), at(23, 30), 60)]);
+    expect(min(h, 21)).toBe(30);
+    expect(min(h, 22)).toBe(30);
+    expect(min(h, 23)).toBe(30);
+    expect(h.reduce((a, b) => a + b, 0)).toBeCloseTo(90 * 60000, 3);
+  });
+  it('일시정지가 있으면 실제 독서 시간만 비율대로 나눈다', () => {
+    const h = hourBars([session(at(9, 30), at(10, 30), 30)]);
+    expect(min(h, 9)).toBe(15);
+    expect(min(h, 10)).toBe(15);
+  });
+  it('자정을 넘긴 기록은 밤과 새벽 칸으로 나뉜다', () => {
+    const h = hourBars([session(at(23, 30), at(0, 30, 11), 60)]);
+    expect(min(h, 23)).toBe(30);
+    expect(min(h, 0)).toBe(30);
+  });
+  it('시작과 끝이 같으면 시작 칸에 넣는다', () => {
+    expect(min(hourBars([session(at(7), at(7), 5)]), 7)).toBe(5);
+  });
+  it('가장 많이 읽은 시간과 글자', () => {
+    expect(peakHour(Array.from({ length: 24 }, () => 0))).toBeNull();
+    const h = hourBars([session(at(21), at(21, 50), 50), session(at(9), at(9, 20), 20)]);
+    expect(peakHour(h)).toBe(21);
+    expect([0, 9, 12, 21].map(hourLabel)).toEqual(['밤 12시', '오전 9시', '낮 12시', '오후 9시']);
   });
 });

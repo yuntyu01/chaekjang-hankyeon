@@ -21,7 +21,7 @@ import { uiBus } from '@/store/ui-bus';
 import { LibraryCover } from '@/ui/BookVisual';
 import { ChevronDown, ChevronUp } from '@/ui/icons';
 import { Btn, Chip, Empty, Field, H2, Loading, Muted, Notice, RealCover, Row, Screen, SearchField, Sheet, TextLink } from '@/ui/kit';
-import { colors, fonts, icon, press, tidySpace as space, tidyType as type } from '@/ui/screenTheme';
+import { colors, fonts, icon, press, shape, tidySpace as space, tidyType as type } from '@/ui/screenTheme';
 
 type Step = 'find' | 'confirm' | 'binding' | 'done';
 
@@ -452,7 +452,7 @@ function ManualLink({ onPress }: { onPress: () => void }) {
 
 const st = StyleSheet.create({
   result: { flexDirection: 'row', alignItems: 'center', gap: space.l, paddingVertical: space.m, paddingHorizontal: space.page },
-  addText: { fontFamily: fonts.uiBold, fontSize: 15, lineHeight: 20, color: colors.accent },
+  addText: { fontFamily: fonts.uiBold, fontSize: 15, lineHeight: 20, color: colors.ink },
   manual: { alignSelf: 'center', minHeight: space.touch, justifyContent: 'center', marginTop: space.l },
   manualStrong: { fontFamily: fonts.uiBold, color: colors.accent },
   // 표지 사진 그림자는 옅게(갈색 기 없이)
@@ -463,7 +463,7 @@ const st = StyleSheet.create({
   sourceRow: { flexDirection: 'row', alignItems: 'center', marginTop: space.s },
   sourceLink: { textDecorationLine: 'underline', color: colors.inkSoft },
   moreRow: { flexDirection: 'row', alignItems: 'center', minHeight: 64, marginTop: space.xl, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.line, paddingTop: space.l },
-  add: { minHeight: 36, paddingHorizontal: 14, borderRadius: 8, backgroundColor: colors.accentSoft, alignItems: 'center', justifyContent: 'center' }, // 오른쪽 같은 자리의 작은 '추가'
+  add: { minHeight: 36, paddingHorizontal: 14, borderRadius: 8, borderWidth: shape.border, borderColor: colors.border, alignItems: 'center', justifyContent: 'center' }, // 오른쪽 같은 자리의 작은 '추가'
   doneBlock: { flexDirection: 'row', gap: space.l, alignItems: 'flex-start' },
   doneResult: { marginTop: space.m },
 });

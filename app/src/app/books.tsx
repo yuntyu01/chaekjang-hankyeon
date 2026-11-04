@@ -128,8 +128,8 @@ export default function AllBooks() {
   return (
     <Screen
       tidy
-      title={ko.allBooks.title}
-      titleNote={total ? `· ${total}권` : undefined}
+      // 제목 대신 뒤로 옆에 검색창(2026-11-04 사용자 '저 글자 때문에 검색이 너무 내려간다', 토스 시안). 권수는 검색창 안내 글자에
+      headerField={<SearchField value={q} onChangeText={setQ} placeholder={total ? `책 ${total}권에서 찾기` : '제목, 저자 검색'} accessibilityLabel="전체 책에서 찾기" style={s.search} />}
       scroll={false}
       right={
         <View style={s.headRight}>
@@ -153,8 +153,7 @@ export default function AllBooks() {
         extraData={`${selecting}:${picked.join()}`}
         ListHeaderComponent={
           <View style={{ marginBottom: rows.length ? (grid ? space.l : space.xs) : 0 }}>
-            <SearchField value={q} onChangeText={setQ} placeholder="제목, 저자 검색" accessibilityLabel="전체 책에서 찾기" style={{ marginTop: space.item }} />
-            <Segmented items={TABS} value={status} onChange={setStatus} style={{ marginTop: space.l }} />
+            <Segmented items={TABS} value={status} onChange={setStatus} style={{ marginTop: space.s }} />
             <View style={s.tools}>
               <FilterButton label={SORT_LABEL[sort]} onPress={() => setSortOpen(true)} icon={<ArrowUpDown size={15} color={colors.inkSoft} strokeWidth={icon.stroke} />} />
               <Chip label={offCount ? `${ko.allBooks.offShelf} ${offCount}` : ko.allBooks.offShelf} on={offShelfOnly} onPress={() => setOffShelfOnly(!offShelfOnly)} />
@@ -200,6 +199,7 @@ function PickMark({ on }: { on: boolean }) {
 
 const s = StyleSheet.create({
   headRight: { flexDirection: 'row', alignItems: 'center', gap: space.s },
+  search: { minHeight: 46 },
   tools: { flexDirection: 'row', alignItems: 'center', gap: space.s, marginTop: space.m },
   gridRow: { gap: GAP, marginBottom: space.xl },
   coverBox: { justifyContent: 'flex-end', alignItems: 'center' },

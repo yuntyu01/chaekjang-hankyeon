@@ -1,10 +1,11 @@
 // 책을 책장에 놓기(전체 책·책 상세·책 추가가 같이 쓴다). 책 정보는 그대로 두고 배치만 바꾼다(같은 책 ID).
 // - 이미 책장에 있는 책은 건너뛴다(같은 책이 두 번 꽂히지 않는다).
 // - 기존 크기·배치 규칙(placeAtFirstFit)으로 빈 자리를 찾고, 책을 줄이거나 다른 책을 옮겨 끼워 넣지 않는다.
-// - 자리가 모자라면 묻는다: '새 선반 추가'(누를 때마다 한 칸만, 기존 선반과 같은 재질·크기·간격) 또는 '보관만 하기'.
+// - 자리가 모자라면 묻는다: 잠긴 선반 열기(누를 때마다 한 칸만, 기존 선반과 같은 재질·크기·간격) 또는 '보관만 하기'. 다 열었으면 보관한다.
 import { Alert } from 'react-native';
 
 import { placementOf } from '@/domain/layout-engine';
+import { lockedShelfCount } from '@/domain/layout-rules';
 import { ko } from '@/i18n/ko';
 import { placementStore } from '@/store/placement-store';
 
@@ -25,7 +26,7 @@ export function keepOffShelf(ids: readonly string[]) {
   for (const id of ids) placementStore.addToDrawer(id);
 }
 
-// 놓아 보고, 남은 책이 있으면 새 선반 추가 / 보관만 하기를 고르게 한다. done(놓은 수, 보관만 한 수)
+// 놓아 보고, 남은 책이 있으면 잠긴 선반 열기 / 보관만 하기를 고르게 한다. done(놓은 수, 보관만 한 수)
 export function placeWithChoice(ids: readonly string[], done?: (placed: number, kept: number) => void) {
   let total = 0;
   const step = (rest: readonly string[], afterNewShelf = false) => {
@@ -47,13 +48,18 @@ export function placeWithChoice(ids: readonly string[], done?: (placed: number, 
       keep();
       return;
     }
+    // 잠긴 칸이 남아 있으면 열 수 있다. 다 열었으면 보관한다
+    if (!lockedShelfCount(placementStore.get().layout.shelves.length)) {
+      keep();
+      return;
+    }
     Alert.alert(
       ko.allBooks.noRoomTitle,
       ko.allBooks.noRoomBody(r.left.length),
       [
         { text: ko.allBooks.keep, style: 'cancel', onPress: keep },
         {
-          text: ko.allBooks.addShelf,
+          text: ko.lockedShelf.buy,
           onPress: () => {
             if (answered) return;
             if (!placementStore.addShelf()) return keep();

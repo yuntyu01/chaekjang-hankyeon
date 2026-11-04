@@ -36,10 +36,12 @@ import { colors } from '@/ui/theme';
 import { colors as ui, type } from '@/ui/screenTheme';
 
 import { rowAffine, type RowGeom, type ShelfMetrics } from './metrics';
+import { makeMotion } from './scene';
 import { useRowPlanner, type Drops } from './planner';
 import { bodyOf, camWithDy, eyeDyAt, frontOccluders, liveSV, locate, lowered, outsideDist, presentSV, sceneOrder, TRANSIT_ROW, transitLead, transitVisible, warmSV, type Motion, type SceneGeo, type SceneMotion } from './scene';
 import { GlowOf, makeStruct, occludersOf, RowBooks, structKeyOf, useFadingAtlas, useFloorKey, useFrontKey, useRowBoxes, useShadePoses, useTargetPoses, useWallKey, Z_WALL, type CamSV, type Ghost, type RowStruct } from './ShelfMotion';
-import { FRONT_AREA, FRONT_KEY, plankOutlinePath, rowEnv, SHELF_CAST_EXTENT, ShelfBoard, ShelfWall, TOP_AREA, TOP_KEY, UNDER_ENV, wallArea } from './ShelfPlank';
+import { FRAME_ON } from '@/scene-config/skin';
+import { FLAT_Z, frameParts, FRONT_AREA, FRONT_KEY, plankOutlinePath, rowEnv, SHELF_CAST_EXTENT, ShelfBoard, ShelfFlatWall, ShelfFrame, ShelfWall, TOP_AREA, TOP_KEY, UNDER_ENV, wallArea } from './ShelfPlank';
 
 // 줄 아틀라스에서 벽 띠의 자리
 const WALL_KEY = 'wall';
@@ -61,6 +63,7 @@ export type SceneRowProps = {
 
 type Props = {
   rows: SceneRowProps[];
+  lockedRows: RowGeom[]; // 아직 열지 않은 칸: 책 없는 보통 줄로 그린다(흐린 책·자물쇠는 HomeScreen LockedShelves)
   motions: SceneMotion[];
   geo: Readonly<SharedValue<SceneGeo>>;
   books: Record<string, Book>;
@@ -120,9 +123,12 @@ export function ShelfScene(p: Props) {
     <>
       {/* 줄 캔버스들이 다시 기록되기 전에(형제 순서상 먼저 도는 효과) 옮겨 가는 책을 이동 캔버스에 넘긴다 */}
       <TransitMark items={p.leaving} />
+      {p.lockedRows.map((row, i) => (
+        <LockedRowCanvas key={row.shelfId} row={row} upper={i > 0 ? p.lockedRows[i - 1] : (p.rows.at(-1)?.row ?? null)} last={i === p.lockedRows.length - 1} m={p.m} width={p.width} cam={p.cam} shared={p.shared} debug={p.debug} />
+      ))}
       {p.rows.map((r, i) => {
         const mo = motionOf(p.motions, r.shelfId);
-        return mo ? <RowCanvas key={r.shelfId} last={i === p.rows.length - 1} r={r} upper={i > 0 ? p.rows[i - 1].row : null} mo={mo} books={p.books} m={p.m} width={p.width} cam={p.cam} shared={p.shared} debug={p.debug} /> : null;
+        return mo ? <RowCanvas key={r.shelfId} last={i === p.rows.length - 1 && !p.lockedRows.length} r={r} upper={i > 0 ? p.rows[i - 1].row : null} mo={mo} books={p.books} m={p.m} width={p.width} cam={p.cam} shared={p.shared} debug={p.debug} /> : null;
       })}
       <TransitCanvas ids={p.transitIds} rows={p.rows} motions={p.motions} geo={p.geo} books={p.books} m={p.m} width={p.width} height={p.height} cam={p.cam} shared={p.shared} glowId={p.glowId} />
       {p.rows.map((r, i) => {
@@ -148,7 +154,7 @@ const RowLayers = memo(function RowLayers({ r, st, mo, order, px, upx, books, ca
   const top = !upx;
   // 그림자는 모두 줄의 그림자용 자세 모음만 읽는다(바뀐 책이 있을 때만 다시 계산·다시 그리기)
   // 위 판 아랫면(맨 윗줄은 위에 판이 없다): 판 앞을 지나 다른 줄로 옮겨 가는 책의 그림자는 판이 막는 만큼 뺀다
-  const ceil = top ? Infinity : space;
+  const ceil = top && !FRAME_ON ? Infinity : space;
   const poses = useShadePoses(mo, st.ids, space, r.shelfId, ceil);
   // 빛 계산: 이 줄의 둘레(판 윗면, 위 판 아랫면)와 경로 도착 자세의 책 상자 목록. 하늘 가림은 줄의 면 전부를 아틀라스 한 장에 굽는다
   // (책이 움직이기 시작할 때 도착 자세로 굽고 앞 굽기에서 서서히 바꾼다, useFadingAtlas).
@@ -157,9 +163,13 @@ const RowLayers = memo(function RowLayers({ r, st, mo, order, px, upx, books, ca
   const env = useMemo(() => rowEnv(space, top), [space, top]);
   const envSV = useDerivedValue<Env | null>(() => env);
   const boxes = useRowBoxes(target, st.ids, books, env);
+  // 움푹 파인 책장이면 뒷벽은 줄 높이까지만(맨 윗줄 위와 양옆은 구멍 밖 평평한 벽이 덮는다), 틀이 없으면 맨 윗줄 벽이 캔버스 위 끝까지
+  const roofed = top && FRAME_ON;
   const wallY1 = space + SHELF_THICK + (top ? HEAD_DU : 0);
-  const wallA = useMemo(() => wallArea(-SHELF_THICK, wallY1), [wallY1]);
-  const underA = useMemo(() => wallArea(-SHELF_THICK - SHELF_CAST_EXTENT, -SHELF_THICK), []);
+  const backY1 = FRAME_ON ? space + SHELF_THICK : wallY1;
+  const wallA = useMemo(() => wallArea(-SHELF_THICK, backY1), [backY1]);
+  const underA = useMemo(() => wallArea(-SHELF_THICK - SHELF_CAST_EXTENT, -SHELF_THICK, FLAT_Z), []);
+  const frame = useMemo(() => (FRAME_ON ? frameParts(-SHELF_THICK / 2, roofed ? space : space + SHELF_THICK / 2, roofed ? space : null) : []), [space, roofed]);
   const ids = st.ids;
   const wallOn = SHOW.shelf && LIGHT_ON.wall;
   const boardOn = SHOW.shelfBoard && SHOW.shelfShade && LIGHT_ON.plank;
@@ -172,6 +182,7 @@ const RowLayers = memo(function RowLayers({ r, st, mo, order, px, upx, books, ca
     const items: BakeItem[] = [];
     if (wallOn) items.push(areaItem(WALL_KEY, wallA, env, bx));
     if (wallOn && last) items.push(areaItem(UNDER_KEY, underA, UNDER_ENV, NO_BOXES));
+    if (wallOn) for (const part of frame) items.push(areaItem(part.key, part.area, env, bx));
     if (boardOn) items.push(areaItem(TOP_KEY, TOP_AREA, env, bx), areaItem(FRONT_KEY, FRONT_AREA, env, bx));
     if (booksOn) {
       bx.ids.forEach((id, i) => {
@@ -182,7 +193,7 @@ const RowLayers = memo(function RowLayers({ r, st, mo, order, px, upx, books, ca
     return bakeAtlas(items, bakeKey);
   });
   // 이 줄 책이 벽·판 윗면에서 창빛을 가리는 몫(벽·판 셰이더가 빛 계산 안에서 쓴다)
-  const wallKey = useWallKey(r.shelfId, poses, st.ids, px, top ? wallY1 : space + SHELF_THICK, ceil);
+  const wallKey = useWallKey(r.shelfId, poses, st.ids, px, top && !FRAME_ON ? wallY1 : space + SHELF_THICK, ceil);
   const floorKey = useFloorKey(r.shelfId, poses, st.ids, px, ceil);
   const frontKey = useFrontKey(r.shelfId, poses, st.ids, px);
   return (
@@ -190,8 +201,10 @@ const RowLayers = memo(function RowLayers({ r, st, mo, order, px, upx, books, ca
       {/* 이 줄 벽: 판 아랫면 높이(판 양 끝 너머로 보인다)부터 위 판 두께 가운데까지(그 위는 위 줄 캔버스), 맨 윗줄은 캔버스 위 끝까지.
           판 아랫면 아래는 아래 줄 공간이라 아래 줄 캔버스가 그 둘레로 칠한다(이 줄 둘레로는 판 밑을 계산할 수 없다. 판 끝 둥근 모서리로 드러난다).
           아래 줄 벽이 이 판 두께 가운데까지 올라와 두 캔버스가 판 두께 절반 겹친다(줄마다 카메라가 달라 조금 어긋나도 틈이 없다) */}
-      {SHOW.shelf ? <ShelfWall cam={cam} px={px} y0={-SHELF_THICK} y1={wallY1} top={top ? wallY1 : space + SHELF_THICK / 2} bottom={-SHELF_THICK} env={env} atlas={atlas} akey={WALL_KEY} zIndex={Z_WALL} keyShadow={wallKey} /> : null}
-      {SHOW.shelf && last ? <ShelfWall cam={cam} px={px} y0={-SHELF_THICK - SHELF_CAST_EXTENT} y1={-SHELF_THICK} env={UNDER_ENV} atlas={atlas} akey={UNDER_KEY} zIndex={Z_WALL} /> : null}
+      {SHOW.shelf ? <ShelfWall cam={cam} px={px} y0={-SHELF_THICK} y1={backY1} top={roofed ? space : top && !FRAME_ON ? wallY1 : space + SHELF_THICK / 2} bottom={-SHELF_THICK} roofY={roofed ? space : undefined} env={env} atlas={atlas} akey={WALL_KEY} zIndex={FRAME_ON ? Z_WALL + 1 : Z_WALL} keyShadow={wallKey} /> : null}
+      {SHOW.shelf && FRAME_ON ? <ShelfFrame parts={frame} cam={cam} px={px} env={env} atlas={atlas} zIndex={Z_WALL} /> : null}
+      {SHOW.shelf && FRAME_ON ? <ShelfFlatWall cam={cam} px={px} topY={top ? wallY1 : space + SHELF_THICK / 2} bottomY={last ? -SHELF_THICK - SHELF_CAST_EXTENT : -SHELF_THICK} openTop={roofed ? space : null} openBottom={last ? -SHELF_THICK : null} ceilY={space} zIndex={Z_WALL + 2} /> : null}
+      {SHOW.shelf && last ? <ShelfWall cam={cam} px={px} y0={-SHELF_THICK - SHELF_CAST_EXTENT} y1={-SHELF_THICK} z={FLAT_Z} env={UNDER_ENV} atlas={atlas} akey={UNDER_KEY} zIndex={Z_WALL + 3} /> : null}
       {SHOW.shelfBoard ? <ShelfBoard px={px} cam={cam} zIndex={plankZ} env={env} atlas={atlas} keyShadow={floorKey} frontShadow={frontKey} /> : null}
       {RENDER.books ? <RowBooks m={mo} shelfId={r.shelfId} st={st} books={books} glowId={r.glowId} dragId={r.dragId} cam={cam} px={px} space={space} ceil={ceil} shared={shared} order={order} poses={poses} env={envSV} atlas={atlas} boxes={boxes} debug={debug} /> : null}
     </>
@@ -238,6 +251,14 @@ const RowCanvas = memo(
   (a, b) =>
     sameRowDraw(a.r, b.r) && a.last === b.last && a.upper?.space === b.upper?.space && a.upper?.baseline === b.upper?.baseline && a.upper?.shelfId === b.upper?.shelfId && a.mo === b.mo && a.books === b.books && a.m === b.m && a.width === b.width && a.cam === b.cam && a.shared === b.shared && a.debug === b.debug,
 );
+
+// 잠긴 칸: 책이 없는 보통 줄(같은 벽·틀·판·빛). 움직일 책이 없어 줄 계획(RowOverlay)은 없다
+const NO_BOOKS: Record<string, Book> = {};
+function LockedRowCanvas({ row, upper, last, m, width, cam, shared, debug }: { row: RowGeom; upper: RowGeom | null; last: boolean; m: ShelfMetrics; width: number; cam: CamSV; shared: Shared; debug: boolean }) {
+  const mo = useMemo(() => makeMotion([]), []);
+  const r = useMemo<SceneRowProps>(() => ({ shelfId: row.shelfId, row, frames: [], dragId: null, glowId: null, hint: null }), [row]);
+  return <RowCanvas r={r} upper={upper} mo={mo} books={NO_BOOKS} m={m} width={width} cam={cam} shared={shared} debug={debug} last={last} />;
+}
 
 // ---------- 이동 캔버스 ----------
 // 다른 줄로 옮겨 가는 동안의 책: 모든 줄 캔버스 위에서, 그 책 앞에 있는 판·책 윤곽 밖에만 그린다.
@@ -517,7 +538,20 @@ function HeadHandle({ mo, row, id, cam, m, gesture, offX, offY }: { mo?: Motion;
 export function HeaderWall({ rows, motions, books, m, width, height, cam }: { rows: SceneRowProps[]; motions: SceneMotion[]; books: Record<string, Book>; m: ShelfMetrics; width: number; height: number; cam: CamSV }) {
   const mo = rows[0] ? motionOf(motions, rows[0].shelfId) : undefined;
   if (!mo || height <= 0) return null;
+  if (FRAME_ON) return <FlatHeaderWall row={rows[0]} m={m} width={width} height={height} cam={cam} />;
   return <HeaderWallRow row={rows[0]} mo={mo} books={books} m={m} width={width} height={height} cam={cam} />;
+}
+// 움푹 파인 책장: 머리글 뒤는 구멍 밖 평평한 벽이다(가리는 것이 없어 굽지 않는다)
+function FlatHeaderWall({ row, m, width, height, cam }: { row: SceneRowProps; m: ShelfMetrics; width: number; height: number; cam: CamSV }) {
+  const px = useMemo(() => rowAffine(m, row.row, -height), [m, row.row, height]);
+  // 캔버스 위·아래 끝의 벽 높이(원근·보기 각으로 달라지는 몫을 넉넉히)
+  const y1 = px.ty / px.s + 40;
+  const y0 = (px.ty - height) / px.s - 40;
+  return (
+    <Canvas style={{ position: 'absolute', left: 0, top: 0, width, height }} pointerEvents="none">
+      <ShelfWall cam={cam} px={px} y0={y0} y1={y1} z={FLAT_Z} env={null} akey={WALL_KEY} zIndex={0} />
+    </Canvas>
+  );
 }
 // 맨 윗줄 벽과 같은 입력(같은 책 상자·둘레)
 function HeaderWallRow({ row, mo, books, m, width, height, cam }: { row: SceneRowProps; mo: Motion; books: Record<string, Book>; m: ShelfMetrics; width: number; height: number; cam: CamSV }) {

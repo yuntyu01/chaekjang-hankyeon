@@ -1,11 +1,13 @@
 // 책장 메뉴 시트(머리줄 메뉴): 꾸미기·책 찾기·전체 책·설정·선반 추가와 정리. 측정 번들에서만 측정 항목이 더 보인다.
 import { router } from 'expo-router';
-import { Modal, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Animated, Modal, Pressable, StyleSheet, Text, View } from 'react-native';
 
+import { lockedShelfCount, SHELF_SLOTS } from '@/domain/layout-rules';
 import type { ShelfLayout } from '@/domain/types';
 import { ko } from '@/i18n/ko';
 import { placementStore } from '@/store/placement-store';
 import { BookMarked, Eraser, Paintbrush, Plus, Search, Settings } from '@/ui/icons';
+import { SheetGrip, useSheetDrag } from '@/ui/kit';
 import { MENU_FLAGS, PERF_DETAIL, PERF_ENABLED, PERF_LEVELS, setPerfLevel, setShelfView, SHELF_VIEWS, type PerfLevel } from '@/ui/perf';
 import { colors as ui, icon, shape, space, type } from '@/ui/screenTheme';
 
@@ -17,6 +19,7 @@ type Props = {
   layout: ShelfLayout;
   onClose: () => void;
   onDecorate: () => void;
+  onOpenLocked: () => void;
   showToast: (t: { text: string }) => void;
   perf: {
     demo: boolean;
@@ -30,23 +33,26 @@ type Props = {
   };
 };
 
-export function ShelfMenuSheet({ visible, reduceMotion, bottomInset, layout, onClose, onDecorate, showToast, perf }: Props) {
+export function ShelfMenuSheet({ visible, reduceMotion, bottomInset, layout, onClose, onDecorate, onOpenLocked, showToast, perf }: Props) {
+  const drag = useSheetDrag(visible, onClose);
   const item = (children: React.ReactNode, onPress: () => void) => (
     <Pressable accessibilityRole="button" style={styles.menuItem} onPress={() => { onClose(); onPress(); }}>{children}</Pressable>
   );
   const iconProps = { size: icon.size, color: ui.ink, strokeWidth: icon.stroke };
-  const canPrune = layout.shelves.length > 3 && layout.shelves.some((sh) => !layout.placements.some((p) => p.shelfId === sh.id));
+  const canPrune = layout.shelves.length > SHELF_SLOTS && layout.shelves.some((sh) => !layout.placements.some((p) => p.shelfId === sh.id));
   return (
     <Modal visible={visible} transparent statusBarTranslucent={MENU_FLAGS.translucent} navigationBarTranslucent={MENU_FLAGS.translucent} animationType={reduceMotion ? 'none' : 'fade'} onRequestClose={onClose}>
-      <Pressable style={styles.menuBackdrop} onPress={onClose} accessibilityLabel="닫기" />
-      <View style={[styles.menuSheet, { paddingBottom: bottomInset + 24 }]}>
+      <View style={styles.menuWrap}>
+      <Pressable style={[StyleSheet.absoluteFill, styles.menuBackdrop]} onPress={onClose} accessibilityLabel="닫기" />
+      <Animated.View style={[styles.menuSheet, { paddingBottom: bottomInset + 24, transform: [{ translateY: drag.y }] }]}>
+        <SheetGrip handlers={drag.handlers} />
         <Text style={styles.menuTitle}>{ko.menu.title}</Text>
         {item(<><Paintbrush {...iconProps} /><Text style={styles.menuText}>{ko.decorate}</Text></>, onDecorate)}
         {item(<><Search {...iconProps} /><Text style={styles.menuText}>{ko.menu.search}</Text></>, () => router.push('/search'))}
         {item(<><BookMarked {...iconProps} /><Text style={styles.menuText}>{ko.allBooks.title}{layout.drawer.length ? ` · 책장에 없는 책 ${layout.drawer.length}권` : ''}</Text></>, () => router.push('/books'))}
         {item(<><Settings {...iconProps} /><Text style={styles.menuText}>{ko.menu.settings}</Text></>, () => router.push('/settings'))}
         <View style={styles.menuDivider} />
-        {item(<><Plus {...iconProps} /><Text style={styles.menuText}>{ko.menu.addShelf}</Text></>, () => showToast({ text: placementStore.addShelf() ? ko.menu.shelfAdded : ko.menu.shelfFail }))}
+        {lockedShelfCount(layout.shelves.length) ? item(<><Plus {...iconProps} /><Text style={styles.menuText}>{ko.menu.addShelf}</Text></>, onOpenLocked) : null}
         {canPrune ? item(<><Eraser {...iconProps} /><Text style={styles.menuText}>{ko.menu.prune}</Text></>, () => showToast({ text: placementStore.pruneShelves() ? ko.menu.pruned : ko.menu.shelfFail })) : null}
         {PERF_ENABLED ? (
           <>
@@ -78,14 +84,16 @@ export function ShelfMenuSheet({ visible, reduceMotion, bottomInset, layout, onC
             })}
           </>
         ) : null}
+      </Animated.View>
       </View>
     </Modal>
   );
 }
 
 const styles = StyleSheet.create({
-  menuBackdrop: { flex: 1, backgroundColor: ui.scrim },
-  menuSheet: { backgroundColor: ui.raised, borderTopLeftRadius: shape.sheet, borderTopRightRadius: shape.sheet, paddingHorizontal: space.page, paddingTop: 22 },
+  menuWrap: { flex: 1, justifyContent: 'flex-end' },
+  menuBackdrop: { backgroundColor: ui.scrim },
+  menuSheet: { backgroundColor: ui.raised, borderTopLeftRadius: shape.sheet, borderTopRightRadius: shape.sheet, paddingHorizontal: space.page, paddingTop: 10 },
   menuTitle: { ...type.heading, marginBottom: space.tight },
   menuItem: { flexDirection: 'row', alignItems: 'center', gap: 16, minHeight: space.row },
   menuText: type.row,

@@ -5,7 +5,8 @@
 // 놓을 곳이 없으면 책은 제자리에 있고 안내만 뜬다(따로 떠 있는 끌기 그림 없음). 화면 가장자리에서 자동 스크롤.
 import { router, useFocusEffect, useLocalSearchParams, useNavigation } from 'expo-router';
 import * as Haptics from 'expo-haptics';
-import { BookMarked, Plus } from '@/ui/icons';
+import { Plus } from '@/ui/icons';
+import { FilledBookIcon } from '@/ui/TabIcons';
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { PixelRatio, Pressable, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
@@ -27,6 +28,7 @@ import { scheduleOnRN, scheduleOnUI } from 'react-native-worklets';
 import { camAt, VIEW_PITCH_MAX, VIEW_PITCH_MIN } from '@/domain/camera';
 import { withSharpCover } from '@/domain/cover-url';
 import { DESIGN_WIDTH, PLANK_INSET, SHELF_FRONT, SHELF_THICK, VIEW_DEG_PER_DP, viewSettle } from '@/domain/geometry';
+import { lockedShelfCount } from '@/domain/layout-rules';
 import { useViewStore, viewStore } from '@/store/view-store';
 import {
   itemWidth,
@@ -40,6 +42,7 @@ import {
 } from '@/domain/layout-engine';
 import { corners, fromPlaced, type Book3 } from '@/domain/book3';
 import { frameBBox } from '@/domain/shelf-scene';
+import type { BindingMaterial } from '@/domain/types';
 import { ko } from '@/i18n/ko';
 import { settingsStore, useSettings } from '@/store/settings-store';
 import { uiBus } from '@/store/ui-bus';
@@ -47,7 +50,7 @@ import { bootMark, watchResponsive } from '@/ui/boot-trace';
 import { placementStore, usePlacementStore } from '@/store/placement-store';
 import { useShelfShared } from '@/ui/book3d/art';
 import { useHomeSnapshot } from '@/ui/home-snapshot';
-import { CONTENT_TOP, computeRows, LAYOUT, toContent, useShelfMetrics, type RowGeom } from '@/ui/shelf/metrics';
+import { CONTENT_TOP, computeRows, LAYOUT, lockedRowsAfter, toContent, useShelfMetrics, type RowGeom } from '@/ui/shelf/metrics';
 import { flushApply, PULL_MS, WAIT_MAX } from '@/ui/shelf/planner';
 import { liveSV, pickAt, plankFrontBand, rowPx, TRANSIT_ROW, warmSV, type Pick, type SceneGeo } from '@/ui/shelf/scene';
 import { HANDLE_HIT, handlePoint, HeaderWall, SHELF_CAST_EXTENT, ShelfScene, type DropHint, type SceneRowProps } from '@/ui/shelf/ShelfScene';
@@ -57,16 +60,19 @@ import { colors, motion, navigation } from '@/ui/theme';
 import { colors as ui, headerType, icon, press, shape, space, tabHeader, type } from '@/ui/screenTheme';
 import { Btn, TextLink } from '@/ui/kit';
 import { ShelfMenuSheet } from './ShelfMenuSheet';
+import { LockedShelfSheet, LockedShelves } from './LockedShelves';
 import { useHomePerf } from './useHomePerf';
 
 import { BookSheet } from './BookSheet';
 import { STATUS_LABEL } from '@/features/book/labels';
 import { libraryStore, useLibrary } from '@/store/library-store';
 import { miniTimerStore } from '@/store/mini-timer-store';
-import { tabBarStyle } from '@/ui/tabBar';
+import { surfaces } from '@/ui/lighting';
+import { tabBarBlock, tabBarStyle } from '@/ui/tabBar';
 
 import { DecoratePanel } from './DecoratePanel';
-import { HeaderVeil, TabBarVeil } from './TabBarVeil';
+import { HeaderVeil } from './HeaderVeil';
+import { TabBarVeil } from './TabBarVeil';
 import { useShelfEditCommands } from './useShelfEditCommands';
 import { useShelfInteraction } from './useShelfInteraction';
 import { useShelfDragPreview } from './useShelfDragPreview';
@@ -108,9 +114,12 @@ export function HomeScreen() {
   const selectedId = popId;
   const [debugGeom, setDebugGeom] = useState(false); // 개발용 형상 보기
   const [selectedYear, setSelectedYear] = useState<number | null>(null); // 헤더 독서 연도
-  const [vpH, setVpH] = useState(0);
+  // 머리글은 책장과 함께 스크롤된다(2026-11-04 사용자 '상단 라인은 고정이 아니야'). vpH·스크롤·콘텐츠 좌표는 머리글 아래를 기준으로 그대로 둔다:
+  // 콘텐츠 y = (화면 y − 머리글 아래 끝) + 스크롤. 실제 스크롤 칸은 머리글 높이만큼 더 크고 머리글이 콘텐츠 맨 위에 있어 최대 스크롤도 같다
+  const [viewportFull, setViewportFull] = useState(0);
+  const [headerH, setHeaderH] = useState(0);
+  const vpH = Math.max(0, viewportFull - headerH);
   // 줄 화면(스크롤 영역) 위 끝의 화면 y: 머리글 뒤 벽(HeaderWall) 높이
-  const [vpTop, setVpTop] = useState(0);
   // 꾸미기 조작부가 화면 아래를 차지하는 동안 공통 미니 타이머는 숨긴다
   useEffect(() => {
     miniTimerStore.setHidden(editing);
@@ -119,11 +128,15 @@ export function HomeScreen() {
   const [panelH, setPanelH] = useState(0);
   const [shelfMenuOpen, setShelfMenuOpen] = useState(false);
   const [toast, setToast] = useState<Toast>(null);
+  const [lockSheetOpen, setLockSheetOpen] = useState(false);
   const { holds, holdsRef, holdRows, releaseLater } = useRowHolds(() => dragRef.current?.members ?? []);
 
   const scrollRef = useAnimatedRef<Animated.ScrollView>();
   const scrollY = useSharedValue(0);
   const viewportH = useSharedValue(0);
+  useLayoutEffect(() => {
+    viewportH.value = vpH;
+  }, [vpH, viewportH]);
   const contentH = useSharedValue(0);
   const active = useSharedValue(false);
   const vpOrigin = useSharedValue({ x: 0, y: 0 }); // 뷰포트의 창(window) 좌표
@@ -170,10 +183,9 @@ export function HomeScreen() {
   const dragJs = useRef({ preview: [] as number[], commit: [] as number[], js: [] as number[], commitStart: 0, raf: 0, last: 0 });
   // ---------- 표시할 배치와 장면 ----------
   // 확정 배치 또는 끄는 중 미리보기(유효할 때만). 놓을 곳이 없으면 확정 배치 그대로(끄는 책은 제자리, 안내만).
-  const { gap, rowfit } = useLocalSearchParams<{ gap?: string; rowfit?: string }>();
+  const { gap } = useLocalSearchParams<{ gap?: string }>();
   // 줄 위치 계산(rows) 전에 렌더 중에 바로 반영한다(측정 번들 비교안)
   if (PERF_ENABLED && gap !== undefined) LAYOUT.topGap = Number(gap);
-  if (PERF_ENABLED && rowfit !== undefined) LAYOUT.rowFit = Number(rowfit);
   const shown = drag?.preview?.kind === 'ok' ? drag.preview.layout : layout;
   const shownShelves = useMemo(() => sortedShelves(shown), [shown]);
   const frames = useShelfScenes(shown, books);
@@ -186,8 +198,13 @@ export function HomeScreen() {
     if (!same) rowsRef.current = next;
     return rowsRef.current;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [shown, books, m.scale, vpH, insets.bottom, gap, rowfit]);
+  }, [shown, books, m.scale, vpH, insets.bottom, gap]);
   const rowOf = useMemo(() => new Map(rows.map((r) => [r.shelfId, r])), [rows]);
+  // 아직 열지 않은 칸(줄 판정·끌기에는 들어가지 않는다: 그림과 누르는 자리뿐)
+  const lockedRows = useMemo(() => lockedRowsAfter(rows, lockedShelfCount(shownShelves.length), m.scale), [rows, shownShelves.length, m.scale]);
+  // 콘텐츠 끝: 마지막 칸 아래 그림자 + 끝까지 올렸을 때 마지막 판이 하단바 위로 나오는 여백
+  const lastDrawn = lockedRows.at(-1) ?? rows.at(-1);
+  const contentEnd = (lastDrawn ? lastDrawn.top + lastDrawn.height : CONTENT_TOP) + Math.max((SHELF_CAST_EXTENT + 8) * m.scale, tabBarBlock(insets.bottom) + 12);
   const motions = useSceneMotions(useMemo(() => shownShelves.map((sh) => sh.id), [shownShelves]), frames);
   // 장면 위치(UI 스레드): 터치 판정·가림 순서가 읽는다
   const geoOf = (): SceneGeo => ({ rows: rows.map((r) => ({ shelfId: r.shelfId, baseline: r.baseline, dy: rows.length ? (r.baseline - rows[0].baseline) / m.scale : 0, space: r.space })), s: m.scale, originX: m.originX });
@@ -591,7 +608,7 @@ export function HomeScreen() {
   });
 
   // 성능 측정·비교 캡처용 조작(EXPO_PUBLIC_PERF=1 번들에서만 쓰인다, useHomePerf)
-  const { perfKey, setPerfKey, shelfView, setShelfViewState, camDebug, camNow, mark, dragPerfStart, dragPerfStop, undoPerfStart, runPerf } = useHomePerf({
+  const { perfKey, setPerfKey, shelfView, setShelfViewState, camDebug, camNow, mark, mat, dragPerfStart, dragPerfStop, undoPerfStart, runPerf } = useHomePerf({
     view, pitchSV, viewGoal, savePitch, camSV, storeLoaded: store.loaded, tasks, dragJs, dragRef, rows, motions, m, setToast, setDebugGeom,
   });
   // 표지로 세운 책은 실제 표지를 큰 그림으로 받는다(장면에 넘기는 사본만)
@@ -599,6 +616,8 @@ export function HomeScreen() {
   const sceneBooks = useMemo(() => {
     const out = { ...books };
     if (frontIds) for (const id of frontIds.split('|')) if (out[id]) out[id] = withSharpCover(out[id]);
+    // 측정 번들: ?mat=linen 처럼 책장 전체에 한 재질을 입힌다(재질 비교 사진용, 장면에 넘기는 사본만)
+    if (PERF_ENABLED && mat) for (const id of Object.keys(out)) out[id] = { ...out[id], art: { ...out[id].art, material: mat as BindingMaterial } };
     if (!PERF_ENABLED || !mark) return out;
     mark.split(',').forEach((id, i) => {
       const b = books[id];
@@ -606,7 +625,7 @@ export function HomeScreen() {
       if (b) out[id] = { ...b, themeColor: c, body: undefined, quotes: 0, art: { ...b.art, inkColor: c, ribbon: c } };
     });
     return out;
-  }, [books, frontIds, mark]);
+  }, [books, frontIds, mark, mat]);
 
   // 꾸미기 켜기·끄기. 줄 간격은 3D 값이라 그대로다. 나올 때 조작부 여백이 빠져 목록 끝이 줄어도
   // 지금 스크롤이 잘리지 않게 여백을 잠깐 남겼다가, 넘친 만큼은 부드럽게 올린 뒤 뺀다.
@@ -614,9 +633,7 @@ export function HomeScreen() {
     if (!on && dragRef.current) finishDrag();
     if (on === editing) return;
     if (!on) {
-      const last = rows.at(-1);
-      const h = Math.max(vpH, (last ? last.top + last.height : 0) + (SHELF_CAST_EXTENT + 8) * m.scale);
-      const max = Math.max(0, h - vpH);
+      const max = Math.max(0, Math.max(vpH, contentEnd) - vpH);
       setTailPad(panelH);
       if (scrollY.value > max) {
         tasks.later('edit-scroll', () => {
@@ -644,7 +661,7 @@ export function HomeScreen() {
     const box = frameBBox(f, camAt(view.pitch));
     const bottom = toContent(m, row, { x: 0, y: box.minY + box.height }).y;
     viewportRef.current?.measureInWindow((_x, vy, _w, vh) => {
-      const limit = sheetTop - vy - 14; // 뷰포트 좌표에서 시트 위 끝(조금 띄운다)
+      const limit = sheetTop - (vy + headerH) - 14; // 머리글 아래 기준 좌표에서 시트 위 끝(조금 띄운다)
       const need = bottom - scrollY.value - limit;
       if (need <= 0) return;
       sheetPad.current = true;
@@ -657,9 +674,7 @@ export function HomeScreen() {
     if (popId || !sheetPad.current) return;
     sheetPad.current = false;
     if (editing) return;
-    const last = rows.at(-1);
-    const h = Math.max(vpH, (last ? last.top + last.height : 0) + (SHELF_CAST_EXTENT + 8) * m.scale);
-    const max = Math.max(0, h - vpH);
+    const max = Math.max(0, Math.max(vpH, contentEnd) - vpH);
     if (scrollY.value > max) {
       scrollRef.current?.scrollTo({ y: max, animated: !reduceMotion });
       tasks.later('tail-padding', () => setTailPad(0), 450);
@@ -868,63 +883,20 @@ export function HomeScreen() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [shownShelves, rowOf, frames, arrivals, dragShelf, glowShelf, glowId, drag?.bookId, drag?.preview, holds, holdRest, drops],
   );
-  const contentHeight = Math.max(vpH, (rows.at(-1) ? rows.at(-1)!.top + rows.at(-1)!.height : CONTENT_TOP) + (SHELF_CAST_EXTENT + 8) * m.scale + (editing ? panelH : tailPad));
+  const contentHeight = Math.max(vpH, contentEnd + (editing ? panelH : tailPad));
 
   return (
-    <View style={[styles.root, { paddingTop: insets.top }]}>
-      {/* 머리글 뒤 벽: 맨 윗줄 벽이 화면 위 끝까지 이어진다 */}
-      <HeaderWall rows={sceneRows} motions={motions} books={sceneBooks} m={m} width={winW} height={vpTop} cam={camSV} />
+    <View style={[styles.root, { paddingTop: insets.top, backgroundColor: surfaces.wall }]}>
       {PERF_ENABLED && camDebug === '1' ? (
         <Text pointerEvents="none" style={{ position: 'absolute', zIndex: 99, left: 8, bottom: navigation.height + insets.bottom + 4, fontSize: 11, color: '#7A2E1E', backgroundColor: 'rgba(255,255,255,0.8)' }}>{/* 측정용 */}
           {`저장 ${view.pitch}° · ${camNow || `적용 ${view.pitch}°`} · 배율 ${m.scale.toFixed(4)}dp/DU(${(m.scale * PixelRatio.get()).toFixed(3)}px/DU) · 3D 줄 간격 ${(rows[0]?.space ?? 0).toFixed(1)}DU · 꾸미기 ${editing ? '켬' : '끔'}`}
         </Text>
       ) : null}
-      {/* 머리줄(2026-11-01): 갈피·커뮤니티 탭과 같은 자리·크기(screenTheme.tabHeader·headerType: 위 16·좌우 24, 제목 24 Bold·연도 15).
-          오른쪽은 '전체 책'(책 아이콘)과 더하기(원 테두리 없이), 다른 탭 머리줄 아이콘과 같은 크기. 시스템 글자 확대는 1.3배까지만(선반과 겹치지 않게) */}
-      {bare ? null : (
-        <View style={[styles.header, tabHeader]}>
-          <Pressable style={{ flex: 1 }} onPress={() => setShelfMenuOpen(true)} accessibilityRole="button" accessibilityLabel={ko.menu.title}>
-            <Text style={[headerType.title, { color: colors.homeTitle }]} numberOfLines={1} maxFontSizeMultiplier={HEADER_TEXT_MAX} accessibilityRole="header">
-              {ko.title}
-            </Text>
-            <Pressable
-              onPress={() => setSelectedYear(years[(years.indexOf(year) + 1) % years.length])}
-              disabled={years.length < 2}
-              hitSlop={8}
-              accessibilityRole="button"
-              accessibilityLabel={ko.yearA11y(year, count)}
-              style={{ alignSelf: 'flex-start' }}>
-              <Text style={[headerType.sub, { color: colors.homeSummary, marginTop: 4 }]} maxFontSizeMultiplier={HEADER_TEXT_MAX}>
-                {ko.year(year)}
-                {years.length > 1 ? ' ▾' : ''}
-                {editing ? ` · ${ko.decorating}` : ''}
-              </Text>
-            </Pressable>
-          </Pressable>
-          <View style={[styles.actions, { gap: 4, marginRight: -10, marginTop: -6 }]}>
-            {/* 꾸미기를 끌며 시작한 동안(머리글을 아직 숨기기 전)에는 숨긴다 */}
-            {editing ? null : (
-              <>
-                {/* 등록한 모든 책(책장에 없는 책 포함)을 보고 골라 책장에 놓는 곳 */}
-                <Pressable onPress={() => router.push('/books')} hitSlop={6} accessibilityRole="button" accessibilityLabel={ko.allBooks.title} style={({ pressed }) => [styles.headerIcon, pressed && press]}>
-                  <BookMarked size={icon.size} color={colors.homeTitle} strokeWidth={icon.stroke} />
-                </Pressable>
-                <Pressable onPress={() => router.push('/book/add')} hitSlop={6} accessibilityRole="button" accessibilityLabel={ko.add} style={({ pressed }) => [styles.headerIcon, pressed && press]}>
-                  <Plus size={icon.size + 2} color={colors.homeTitle} strokeWidth={icon.stroke + 0.2} />
-                </Pressable>
-              </>
-            )}
-          </View>
-        </View>
-      )}
-
       <View
         ref={viewportRef}
         style={{ flex: 1 }}
         onLayout={(e) => {
-          viewportH.value = e.nativeEvent.layout.height;
-          setVpH(e.nativeEvent.layout.height);
-          setVpTop(e.nativeEvent.layout.y);
+          setViewportFull(e.nativeEvent.layout.height);
         }}>
         <GestureDetector gesture={scrollNative}>
         <Animated.ScrollView
@@ -938,13 +910,56 @@ export function HomeScreen() {
           // 책을 끄는 동안만 손 스크롤을 막는다(가장자리 자동 스크롤). 꾸미기에서도 빈 벽을 끌면 스크롤.
           scrollEnabled={!drag}
           onContentSizeChange={(_w, h) => {
-            contentH.value = h;
+            contentH.value = h - headerH;
           }}
           showsVerticalScrollIndicator={false}>
+          <View onLayout={(e) => setHeaderH(e.nativeEvent.layout.height)}>
+            {/* 머리글 뒤 벽: 맨 윗줄 벽이 머리글 위 끝까지 이어진다 */}
+            <HeaderWall rows={sceneRows} motions={motions} books={sceneBooks} m={m} width={winW} height={headerH} cam={camSV} />
+            {/* 머리줄(2026-11-01): 갈피·커뮤니티 탭과 같은 자리·크기(screenTheme.tabHeader·headerType: 위 16·좌우 24, 제목 24 Bold·연도 15).
+                오른쪽은 '전체 책'(책 아이콘)과 더하기(원 테두리 없이), 다른 탭 머리줄 아이콘과 같은 크기. 시스템 글자 확대는 1.3배까지만(선반과 겹치지 않게) */}
+            {bare ? null : (
+              <View style={[styles.header, tabHeader]}>
+                <Pressable style={{ flex: 1 }} onPress={() => setShelfMenuOpen(true)} accessibilityRole="button" accessibilityLabel={ko.menu.title}>
+                  <Text style={[headerType.title, { color: colors.homeTitle }]} numberOfLines={1} maxFontSizeMultiplier={HEADER_TEXT_MAX} accessibilityRole="header">
+                    {ko.title}
+                  </Text>
+                  <Pressable
+                    onPress={() => setSelectedYear(years[(years.indexOf(year) + 1) % years.length])}
+                    disabled={years.length < 2}
+                    hitSlop={8}
+                    accessibilityRole="button"
+                    accessibilityLabel={ko.yearA11y(year, count)}
+                    style={{ alignSelf: 'flex-start' }}>
+                    <Text style={[headerType.sub, { color: colors.homeSummary, marginTop: 4 }]} maxFontSizeMultiplier={HEADER_TEXT_MAX}>
+                      {ko.year(year)}
+                      {years.length > 1 ? ' ▾' : ''}
+                      {editing ? ` · ${ko.decorating}` : ''}
+                    </Text>
+                  </Pressable>
+                </Pressable>
+                <View style={[styles.actions, { gap: 4, marginRight: -10, marginTop: -6 }]}>
+                  {/* 꾸미기를 끌며 시작한 동안(머리글을 아직 숨기기 전)에는 숨긴다 */}
+                  {editing ? null : (
+                    <>
+                      {/* 등록한 모든 책(책장에 없는 책 포함)을 보고 골라 책장에 놓는 곳 */}
+                      <Pressable onPress={() => router.push('/books')} hitSlop={6} accessibilityRole="button" accessibilityLabel={ko.allBooks.title} style={({ pressed }) => [styles.headerIcon, pressed && press]}>
+                        <FilledBookIcon size={24} color={colors.homeIcon} />
+                      </Pressable>
+                      <Pressable onPress={() => router.push('/book/add')} hitSlop={6} accessibilityRole="button" accessibilityLabel={ko.add} style={({ pressed }) => [styles.headerIcon, pressed && press]}>
+                        <Plus size={28} color={colors.homeIcon} strokeWidth={2.6} />
+                      </Pressable>
+                    </>
+                  )}
+                </View>
+              </View>
+            )}
+          </View>
           <GestureDetector gesture={gesture}>
             <View key={perfKey} style={{ height: contentHeight }} collapsable={false}>
               <ShelfScene
                 rows={sceneRows}
+                lockedRows={lockedRows}
                 motions={motions}
                 geo={geoSV}
                 books={sceneBooks}
@@ -966,14 +981,17 @@ export function HomeScreen() {
               />
             </View>
           </GestureDetector>
+          <View pointerEvents="box-none" style={[StyleSheet.absoluteFill, { top: headerH }]}>
+            <LockedShelves rows={lockedRows} m={m} width={winW} disabled={editing} onPress={() => setLockSheetOpen(true)} />
+          </View>
         </Animated.ScrollView>
         </GestureDetector>
-        <HeaderVeil scrollY={scrollY} hidden={editing} instant={reduceMotion} />
+        <HeaderVeil scrollY={scrollY} hidden={editing} />
         <TabBarVeil
           scrollY={scrollY}
-          contentBottom={rows.at(-1) ? rows.at(-1)!.top + rows.at(-1)!.height : 0}
-          barTop={vpH - navigation.height - insets.bottom}
-          height={navigation.height + insets.bottom}
+          contentBottom={lastDrawn ? lastDrawn.top + lastDrawn.height : 0}
+          barTop={vpH - tabBarBlock(insets.bottom)}
+          height={tabBarBlock(insets.bottom)}
           hidden={editing}
           instant={reduceMotion}
         />
@@ -1019,7 +1037,7 @@ export function HomeScreen() {
             <View style={styles.emptyCard}>
               <Text style={styles.emptyTitle}>{ko.empty.title}</Text>
               <Text style={styles.emptyBody}>{layout.drawer.length ? `${ko.empty.body}\n책장에 없는 책이 ${layout.drawer.length}권 있어요.` : ko.empty.body}</Text>
-              <Btn label={ko.add} onPress={() => router.push('/book/add')} icon={<Plus size={icon.small} color={ui.ink} strokeWidth={icon.stroke} />} style={styles.emptyBtn} />
+              <Btn label={ko.add} onPress={() => router.push('/book/add')} icon={<Plus size={icon.small} color={ui.onAccent} strokeWidth={icon.stroke} />} style={styles.emptyBtn} />
               {layout.drawer.length ? <TextLink label="전체 책에서 고르기" tone="soft" onPress={() => router.push({ pathname: '/books', params: { filter: 'off' } })} style={{ marginTop: 4 }} /> : null}
             </View>
           </View>
@@ -1082,6 +1100,14 @@ export function HomeScreen() {
         />
       ) : null}
 
+      <LockedShelfSheet
+        visible={lockSheetOpen}
+        onClose={() => setLockSheetOpen(false)}
+        onBuy={() => {
+          setLockSheetOpen(false);
+          showToast({ text: placementStore.addShelf() ? ko.lockedShelf.done : ko.menu.shelfFail });
+        }}
+      />
       <ShelfMenuSheet
         visible={shelfMenuOpen}
         reduceMotion={reduceMotion}
@@ -1089,6 +1115,7 @@ export function HomeScreen() {
         layout={layout}
         onClose={() => setShelfMenuOpen(false)}
         onDecorate={() => { closeBook(); setEditingKeep(true); }}
+        onOpenLocked={() => setLockSheetOpen(true)}
         showToast={showToast}
         perf={{ demo: store.demo, debugGeom, setDebugGeom, setPerfKey, runPerf, shelfView, setShelfViewState, setToast }}
       />

@@ -320,7 +320,7 @@ const st = StyleSheet.create({
   volHead: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'baseline', marginTop: space.xl },
   volRow: { flexDirection: 'row', alignItems: 'center', gap: space.s, marginTop: space.xs },
   mute: { width: space.touch, height: space.touch, borderRadius: 22, alignItems: 'center', justifyContent: 'center' },
-  muteOn: { backgroundColor: colors.accentSoft },
+  muteOn: { borderWidth: shape.border, borderColor: colors.track },
   // 소리 묶음: 회색 상자 대신 위 얇은 선과 여백으로 나눈다(2026-11-01)
   soundBlock: { marginTop: space.xl, paddingTop: space.xl, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.line },
   error: { ...type.sub, color: colors.danger, marginTop: space.m },

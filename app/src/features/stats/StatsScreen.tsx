@@ -1,4 +1,4 @@
-// 내 기록(2026-11-01 사용자 시안): 달력/월/연도 전환 칸 → 기간·책 고르기 → 읽은 시간 크게 → 날마다 읽은 책 표지를 겹친 달력(2026-11-02) 또는 날·달별 막대그래프 → 고른 날의 독서 기록(표지·시간대·실제 독서 시간).
+// 내 기록(2026-11-01 사용자 시안): 달력/월/연도 전환 칸 → 기간·책 고르기 → 읽은 시간 크게 → 날마다 읽은 책 표지를 겹친 달력(2026-11-02) 또는 날·달별 막대그래프 → 읽은 시간대 막대(2026-11-04) → 고른 날의 독서 기록(표지·시간대·실제 독서 시간).
 // 모두 실제 저장 데이터로 계산한다. 완독·재독 기준은 domain/library periodStats와 같다(책 상세도 같은 기준).
 // 책을 고르면(책 상세에서 들어오거나 '모든 책 ▾') 전부 그 책만. 책 없는 독서 시간은 모든 책에서만 센다.
 import { router, useLocalSearchParams } from 'expo-router';
@@ -12,13 +12,14 @@ import { navigation } from '@/ui/theme';
 import { booksByDay, dayTitle, hasPause, monthBars, timeRange, yearBars } from '@/features/stats/chart-data';
 import { ReadingCalendar } from '@/features/stats/ReadingCalendar';
 import { ReadingChart } from '@/features/stats/ReadingChart';
+import { ReadingHours } from '@/features/stats/ReadingHours';
 import { formatDuration, formatDurationPrecise, monthPeriod, periodStats, sessionDay, yearPeriod } from '@/domain/library';
 import { realReadingLibrary } from '@/domain/real-sample';
 import { useLibrary } from '@/store/library-store';
 import { PERF_ENABLED } from '@/ui/perf';
 import { LinkedCover } from '@/ui/BookVisual';
-import { Empty, FilterButton, IconButton, ListGroup, ListItem, Muted, RealCover, Screen, Segmented, Sheet } from '@/ui/kit';
-import { colors, fonts, icon, press, tidySpace as space, tidyType as type } from '@/ui/screenTheme';
+import { Card, Empty, FilterButton, IconButton, ListGroup, ListItem, RealCover, Screen, SectionBand, Segmented, Sheet } from '@/ui/kit';
+import { colors, fonts, icon, press, TAB_CARDS, tidySpace as space, tidyType as type } from '@/ui/screenTheme';
 
 // 달력·월은 같은 달(달력은 날마다 읽은 책 표지, 월은 막대), 연도는 달마다 막대
 const MODES = [{ id: 'calendar', label: '달력' }, { id: 'month', label: '월' }, { id: 'year', label: '연도' }] as const;
@@ -91,8 +92,9 @@ export function StatsScreen({ tab, initialBook }: { tab?: boolean; initialBook?:
     setBookSheet(false);
   };
   return (
-    <Screen tidy {...(tab ? { back: false } : { inline: true })} title="내 기록">
-      <Segmented items={MODES} value={mode} onChange={(v) => { setMode(v); setPicked(null); }} style={{ marginTop: space.s }} />
+    <Screen tidy hub={TAB_CARDS} {...(tab ? { back: false } : { inline: true })} title="내 기록">
+      <Card>
+      <Segmented items={MODES} value={mode} onChange={(v) => { setMode(v); setPicked(null); }} />
       <View style={st.periodRow}>
         <View style={st.period}>
           <IconButton label={monthly ? '이전 달' : '이전 해'} onPress={() => { shift(-1); setPicked(null); }}>
@@ -115,13 +117,21 @@ export function StatsScreen({ tab, initialBook }: { tab?: boolean; initialBook?:
         <Text style={[type.sub, { marginTop: space.xs }]}>{activeDays}일 읽었어요 · 독서 {sessions.length}회</Text>
       </View>
 
+      {/* 달력·막대는 책을 읽지 않았어도 늘 보인다(2026-11-03 사용자) */}
+      {mode === 'calendar' ? <ReadingCalendar lib={lib} y={y} m={m} days={days} selected={selected} today={today} onSelect={setPicked} /> : <ReadingChart bars={bars} selected={selected} unit={monthly ? '일' : '월'} onSelect={setPicked} />}
+      </Card>
+      <SectionBand />
+      <Card>
+        <ReadingHours sessions={sessions} />
+      </Card>
       {!Object.keys(lib.sessions).length ? (
         <Empty title="아직 독서 기록이 없어요" body="읽기 탭에서 타이머를 시작해 보세요." action="읽기 시작" onAction={() => router.push('/read')} />
       ) : (
         <>
-          {mode === 'calendar' ? <ReadingCalendar lib={lib} y={y} m={m} days={days} selected={selected} today={today} onSelect={setPicked} /> : <ReadingChart bars={bars} selected={selected} unit={monthly ? '일' : '월'} onSelect={setPicked} />}
           {selected ? (
-            <View style={{ marginTop: space.xl }}>
+            <>
+            <SectionBand />
+            <Card style={{ paddingBottom: space.s }}>
               <View style={st.dayHead}>
                 <Text style={type.section} accessibilityRole="header">{monthly ? dayTitle(selected) : `${y}년 ${Number(selected.slice(5))}월`}</Text>
                 <Text style={type.sub}>{formatDuration(selMs)}</Text>
@@ -150,11 +160,11 @@ export function StatsScreen({ tab, initialBook }: { tab?: boolean; initialBook?:
                       <View style={st.rowRight}><Text style={st.rowValue}>{shortMs(r.ms)}</Text></View>
                     </Pressable>
                   ))}
-            </View>
-          ) : (
-            <Muted style={{ marginTop: space.l }}>이 기간에는 기록이 없어요.</Muted>
-          )}
-          <ListGroup style={{ marginTop: space.xl }}>
+            </Card>
+            </>
+          ) : null}
+          <SectionBand />
+          <ListGroup>
             <ListItem label="완독" sub={st0.completedRounds > st0.completedCount || st0.rereads ? `완독 ${st0.completedRounds}회 · 재독 ${st0.rereads}회` : undefined} value={`${st0.completedCount}권`} />
             <ListItem label="남긴 갈피" value={`${st0.bookmarkCount}개`} />
           </ListGroup>
@@ -182,7 +192,7 @@ export function StatsScreen({ tab, initialBook }: { tab?: boolean; initialBook?:
 }
 
 const st = StyleSheet.create({
-  periodRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: space.l },
+  periodRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: space.m },
   period: { flexDirection: 'row', alignItems: 'center', marginLeft: -10 },
   periodText: { fontFamily: fonts.uiBold, fontSize: 19, lineHeight: 26, color: colors.ink, fontVariant: ['tabular-nums'], includeFontPadding: false },
   hero: { marginTop: space.xl, marginBottom: space.s },

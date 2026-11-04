@@ -3,10 +3,10 @@
 // 두 가지:
 //   bake: 하늘 가림(둘레·책 상자가 가린 하늘, 시점과 상관없다)을 면 좌표 그림에 굽는다. 무거운 몫은 모두 여기(책이 멈췄을 때만 돈다).
 //   lit: 구운 그림(tex)을 읽고 나머지(하늘·창빛 직접 몫, 둥근 모서리 법선, 반사광)를 화소마다. 곱하기·컬러 닷지 두 가지로 컴파일한다.
-import { EDGE_R, GROOVE, PLANK_EDGE_R, SEAM_R, SPINE_CURVE } from '@/domain/book-parts';
-import { FIBER_L, FIBER_W } from '@/domain/surface-pattern';
-import { SHELF_DEPTH, SHELF_FRONT, SHELF_THICK, SHELF_X0, SHELF_X1 } from '@/domain/geometry';
-import { ALBEDO, BOX_MAX, BOX_VEC, CONTACT_H, CONTACT_MIN_NY, DESIGN, ENV_COLS, ENV_NY, CAM, EREF, EXPOSURE, FAR, GAMMA, GRID_N, KEY_BANDS, KEY_C, KEY_DIRS, L_ELEV, L_UNIT, RAD, SKY_C, TONE, TOUCH, type C3 } from '@/domain/light-model';
+import { EDGE_R, GROOVE, PLANK_EDGE_R, RIM_CORNER, SEAM_R, SPINE_CURVE } from '@/domain/book-parts';
+import { FIBER_L, FIBER_W, WOOD_FINE_SCALE, WOOD_FLAT } from '@/domain/surface-pattern';
+import { FRAME_FRONT, FRAME_X0, FRAME_X1, RIM_R, SHELF_DEPTH, SHELF_FRONT, SHELF_THICK, SHELF_X0, SHELF_X1 } from '@/domain/geometry';
+import { ALBEDO, BOX_MAX, BOX_VEC, CONTACT_H, CONTACT_MIN_NY, DESIGN, ENV_COLS, ENV_NY, CAM, EREF, CORNER_K, COVE_NARROW, COVE_R, COVE_WIDE, EXPOSURE, FAR, GAMMA, GRID_N, JOINT_BACK, JOINT_H, JOINT_K, JOINT_SIDE, KEY_BANDS, ROOF_SIDE_K, SIDE_FLOOR_K, SIDE_FRONT, SIDE_H, SIDE_K, SOFT_DEPTH, KEY_C, KEY_DIRS, L_ELEV, L_UNIT, RAD, SKY_C, TONE, TOUCH, type C3 } from '@/domain/light-model';
 import type { Affine, Cam, Vec3 } from '@/domain/camera';
 import { F0, light } from '@/ui/lighting';
 
@@ -107,6 +107,8 @@ function header() {
   const float THICK = ${f(SHELF_THICK)};
   const float X0 = ${f(SHELF_X0)};
   const float X1 = ${f(SHELF_X1)};
+  // 움푹 파인 책장(light-model Env side): env.x > 1.5이면 틀 안쪽 면이 양옆(X0, X1)을 막는다. FFRONT: 구멍 앞 끝
+  const float FFRONT = ${f(FRAME_FRONT)};
   const int ENV_COLS = ${ENV_COLS};
   const float FARV = ${f(FAR)};
   // 둘레 면 밝기(선형 RGB: 반사율 × 받는 빛)와 속지 반사율(되비침), 속지 색(그림이 칠하는 색)
@@ -114,6 +116,8 @@ function header() {
   const float3 RADU = ${c3(RAD.under)};
   const float3 RADW = ${c3(RAD.wall)};
   const float3 RADE = ${c3(RAD.end)};
+  const float3 RADSL = ${c3(RAD.sideL)};
+  const float3 RADSR = ${c3(RAD.sideR)};
   const float3 PAPER = ${c3(ALBEDO.paper)};
   const float3 PAPER_COLOR = ${c3(DESIGN.paper)};
   const float EDGER = ${f(EDGE_R)};
@@ -200,20 +204,29 @@ function header() {
     }
     return min(1.0, k);
   }
-  // 위 판(ceil ~ ceil + 두께) + 아래 판(floor − 두께 ~ floor)(light-model plankKeyBlocked)
+  // 틀 안쪽 면이 창빛 원반을 가리는 몫(light-model sideBlock)
+  float sideBlock(float3 p) {
+    float zf = p.z + FFRONT;
+    if (zf <= 0.0) return 0.0;
+    return min(1.0, diskBand(-1.0, 1.0, -2.0, (atan((X0 - p.x) / zf) - LAZ) / LRAD) + diskBand(-1.0, 1.0, (atan((X1 - p.x) / zf) - LAZ) / LRAD, 2.0));
+  }
+  // 위 판(ceil ~ ceil + 두께) + 아래 판(floor − 두께 ~ floor), 틀이 있으면 안쪽 면까지(light-model plankKeyBlocked)
   float plankKeyOf(float3 p) {
     if (env.x < 0.5) return 0.0;
     float zf = p.z + FRONT;
     float k = 0.0;
     if (env.z < FARV) k += plankBlock(p, env.z, env.z + THICK, zf);
     if (env.y > -FARV) k += plankBlock(p, env.y - THICK, env.y, zf);
-    return min(1.0, k);
+    k = min(1.0, k);
+    return env.x > 1.5 ? 1.0 - (1.0 - k) * (1.0 - sideBlock(p)) : k;
   }
   // 가림이 없을 때 받는 빛(light-model openE)
   float3 openE(float3 p, float3 n) { return skyIrr(n) + KEYC * (DIFF * max(0.0, dot(n, LU)) * (1.0 - plankKeyOf(p))); }
   // 판 속 벽 점(판 두께 높이, 판 범위 안)은 판에 가려 보이지 않는다. 판 끝 둥근 모서리·안티에일리어싱으로 드러나는 화소는 그 시선이 실제로
   // 닿는 판 끝 바로 너머 벽으로 본다
   float3 wallOutside(float3 P, float3 n) {
+    // 틀 안쪽 면 너머 벽 점(가려져 안 보인다)은 굽기 칸 보간이 틀 안 값을 잇도록 안쪽 면 바로 앞 값으로
+    if (env.x > 1.5 && n.z < -0.5 && P.z >= DEPTH - 1e-3) return float3(clamp(P.x, X0 + 0.01, X1 - 0.01), P.y, P.z);
     if (env.x < 0.5 || n.z > -0.5 || P.z < DEPTH - 1e-3 || P.x <= X0 || P.x >= X1) return P;
     bool inF = env.y > -FARV && P.y < env.y && P.y > env.y - THICK;
     bool inC = env.z < FARV && P.y > env.z && P.y < env.z + THICK;
@@ -235,8 +248,14 @@ function header() {
       float x = p.x + w.x * t;
       if (t > 0.0 && t < hit.x && inDepth(p.z + w.z * t) && x >= X0 && x <= X1) hit = float4(t, RADU);
     }
+    // 틀 안쪽 면
+    if (env.x > 1.5 && abs(w.x) > 1e-6) {
+      float t = ((w.x > 0.0 ? X1 : X0) - p.x) / w.x;
+      float zh = p.z + w.z * t;
+      if (t > 0.01 && t < hit.x && zh >= -FFRONT && zh <= DEPTH) hit = float4(t, w.x > 0.0 ? RADSR : RADSL);
+    }
     // 판 끝면(판 끝 너머에서 판 쪽으로)
-    if (abs(w.x) > 1e-6) {
+    if (env.x < 1.5 && abs(w.x) > 1e-6) {
       float X = w.x > 0.0 ? X0 : X1;
       if ((w.x > 0.0 && p.x < X) || (w.x < 0.0 && p.x > X)) {
         float t = (X - p.x) / w.x;
@@ -253,6 +272,24 @@ function header() {
       if (t > 0.0 && t < hit.x && ((y >= env.y && y <= env.z) || x < X0 || x > X1)) hit = float4(t, RADW);
     }
     return hit;
+  }
+  // 거친 면의 반사(light-model envLobe와 같은 식): 거칠기만큼 퍼져 판 앞 모서리가 칼 같은 선으로 비치지 않는다
+  float3 envLobe(float3 p, float3 w, float rough) {
+    // envHit은 한 번만 부른다: 셰이더 컴파일러가 함수를 호출마다 펼쳐 부르는 곳이 늘면 컴파일이 크게 느려진다(앱 시작이 멈춘 듯 보였다)
+    float3 hit = envHit(p, w).yzw;
+    if (env.x < 0.5 || w.z >= -0.05) return hit;
+    float zf = p.z + FRONT;
+    if (zf <= 0.0) return hit;
+    float x = p.x + w.x * (zf / -w.z);
+    if (x < X0 || x > X1) return hit;
+    float e = w.y / -w.z;
+    float sp = max(0.02, rough * rough);
+    float ec = (env.z - p.y) / zf;
+    float ef = (env.y - p.y) / zf;
+    float fc = env.z < FARV && p.y < env.z - 0.001 ? smoothstep(ec - sp, ec + sp, e) : 0.0;
+    float ff = env.y > -FARV && p.y > env.y + 0.001 ? 1.0 - smoothstep(ef - sp, ef + sp, e) : 0.0;
+    float fs = max(0.0, 1.0 - fc - ff);
+    return skyRad(w) * fs + RADU * fc + RADF * ff;
   }
 `;
 }
@@ -424,6 +461,20 @@ function envCode(grid: boolean) {
     }
     float z = DEPTH - p.z;
     float zf = -FRONT - p.z;
+    // 틀 안쪽 면 둘(앞 끝 ~ 벽, light-model envQuads part 'side')
+    if (env.x > 1.5) {
+      float zs = -FFRONT - p.z;
+      float y0 = max(env.y, -FARV) - p.y;
+      float y1 = min(env.z, FARV) - p.y;
+      for (int side = 0; side < 2; side++) {
+        float X = side == 0 ? X0 : X1;
+        if (side == 0 ? p.x <= X : p.x >= X) continue;
+        float x = X - p.x;
+        float4 q = quadVF(float3(x, y0, z), float3(x, y0, zs), float3(x, y1, zs), float3(x, y1, z), n, p, 3);
+        if (q.x > 0.0) loss += skyOf(q) - (side == 0 ? RADSL : RADSR) * q.x;
+      }
+      return loss;
+    }
     // 판 끝 너머 벽: 판이 없어 위아래로 열려 있다(가림 없는 벽 밝기)
     if (z > 0.0) {
       for (int side = 0; side < 2; side++) {
@@ -577,6 +628,22 @@ function boxCode() {
     }
     float z = DEPTH - p.z;
     float zf = -FRONT - p.z;
+    if (env.x > 1.5) {
+      float zs = -FFRONT - p.z;
+      float y0 = max(env.y, -FARV) - p.y;
+      float y1 = min(env.z, FARV) - p.y;
+      for (int side = 0; side < 2; side++) {
+        float X = side == 0 ? X0 : X1;
+        if (side == 0 ? p.x <= X : p.x >= X) continue;
+        float x = X - p.x;
+        float4 q = coneVF(P, cnt, n, p, float3(x, y0, z), float3(x, y0, zs), float3(x, y1, zs), float3(x, y1, z), 3);
+        if (q.x > 0.0) {
+          sum += (side == 0 ? RADSL : RADSR) * q.x;
+          rest -= q;
+        }
+      }
+      return sum + skyOf(rest);
+    }
     if (z > 0.0) {
       for (int side = 0; side < 2; side++) {
         float xa = (side == 0 ? -FARV : X1) - p.x;
@@ -742,14 +809,39 @@ ${boxCode()}
     }
     return m * n.y;
   }
+  // 안쪽 모서리 그늘(light-model jointShade): 벽·틀·판이 맞닿는 모서리 쪽 어두운 띠가 가리는 몫
+  float jointF(float h, float H, float K) {
+    float d = max(0.0, h);
+    return 0.5 * K * (1.0 - d / sqrt(d * d + H * H));
+  }
+  float jointXs(float3 P, float w) {
+    return (1.0 - jointF(P.x - ${f(FRAME_X0)}, ${f(JOINT_H)}, ${f(JOINT_K)} * w)) * (1.0 - jointF(${f(FRAME_X1)} - P.x, ${f(JOINT_H)}, ${f(JOINT_K)} * w));
+  }
+  float jointShade(float3 P, float3 n) {
+    if (env.x < 1.5 || P.z < ${f(-FRAME_FRONT - 0.5)}) return 0.0;
+    float k = 1.0;
+    if (abs(n.x) > 0.5) k = (1.0 - jointF(env.z - P.y, ${f(SIDE_H)}, ${f(SIDE_K)} * (${f(SIDE_FRONT)} + ${f(1 - SIDE_FRONT)} * clamp((P.z + ${f(FRAME_FRONT)}) / ${f(SHELF_DEPTH + FRAME_FRONT)}, 0.0, 1.0)))) * (1.0 - jointF(P.y - env.y, ${f(JOINT_H)}, ${f(SIDE_FLOOR_K)})) * (1.0 - jointF(DEPTH - P.z, ${f(JOINT_H)}, ${f(JOINT_K * JOINT_BACK)}));
+    else if (abs(n.z) > 0.5) {
+      float fx = max(2.0 * jointF(P.x - ${f(FRAME_X0)}, ${f(SIDE_H)}, 1.0), 2.0 * jointF(${f(FRAME_X1)} - P.x, ${f(SIDE_H)}, 1.0));
+      float fy = 2.0 * jointF(env.z - P.y, ${f(SIDE_H)}, 1.0);
+      k = (1.0 - jointF(env.z - P.y, ${f(JOINT_H)}, ${f(JOINT_K)})) * jointXs(P, ${f(JOINT_SIDE)}) * (1.0 - ${f(CORNER_K)} * fx * fy);
+    }
+    else if (n.y > 0.5) k = jointXs(P, 1.0) * (1.0 - jointF(DEPTH - P.z, ${f(JOINT_H)}, ${f(JOINT_K * 0.5)}));
+    else {
+      float t = clamp((P.z + ${f(FRAME_FRONT)}) / ${f(SHELF_DEPTH + FRAME_FRONT)}, 0.0, 1.0);
+      float fx = max(2.0 * jointF(P.x - ${f(FRAME_X0)}, ${f(SIDE_H)}, 1.0), 2.0 * jointF(${f(FRAME_X1)} - P.x, ${f(SIDE_H)}, 1.0));
+      k = jointXs(P, ${f(JOINT_SIDE)}) * (1.0 - jointF(DEPTH - P.z, ${f(JOINT_H)}, ${f(JOINT_K * JOINT_BACK)})) * (1.0 - ${f(ROOF_SIDE_K)} * fx * (${f(SIDE_FRONT)} + ${f(1 - SIDE_FRONT)} * t));
+    }
+    return 1.0 - k;
+  }
   half4 main(float2 p) {
     float2 pc = clamp(p, float2(0.5), max(float2(0.5), cells - float2(0.5)));
     float3 P = wallOutside(O + pc.x * Ux + pc.y * Vy, tN);
     // 둘레 먼저(구간 밝기를 채운다), 그다음 책 상자
     float3 L = envLoss(P, tN);
     L += boxesLoss(P, tN, selfIdx, -1.0, -1.0);
-    // 접촉 그늘 몫만큼의 받는 빛(가림은 그릴 때 OCC를 곱하므로 나눠 담는다)
-    L += contactShade(P, tN, selfIdx) * (skyIrr(tN) + KEYC * (DIFF * max(0.0, dot(tN, LU)))) / OCC;
+    // 접촉 그늘·안쪽 모서리 그늘 몫만큼의 받는 빛(가림은 그릴 때 OCC를 곱하므로 나눠 담는다)
+    L += (contactShade(P, tN, selfIdx) + (selfIdx < -0.5 ? jointShade(P, tN) : 0.0)) * (skyIrr(tN) + KEYC * (DIFF * max(0.0, dot(tN, LU)))) / OCC;
     float3 g = lossEnc(L, skyIrr(tN));
     // 디더: 칸마다 다른 −½~½ 단계(8비트로 담을 때 띠 대신 고른 잡음)
     float3 q = fract(float3(floor(p).x, floor(p).y, floor(p).x) * 0.1031);
@@ -965,7 +1057,7 @@ function materialCode() {
       if (g1 > 0.0) f += mG.y * vnoise(float2(u, v) / s1).x * g1;
       if (g2 > 0.0) f += mG.z * vnoise(float2(u / s2 + 17.0, v / s2 + 31.0)).x * g2;
       // 짧은 섬유(surface-pattern fiberPattern·fiberSeen과 같은 식)
-      float fs = smoothstep(0.0, 1.0, clamp((FIBW / max(fm, 1e-9) - 0.1) / 0.25, 0.0, 1.0));
+      float fs = smoothstep(0.0, 1.0, clamp((FIBW / max(fm, 1e-9) - 0.1) / 0.25, 0.0, 1.0)) * smoothstep(0.0, 1.0, clamp((min(fp.x, fp.y) / max(fm, 1e-9) - 0.2) / 0.25, 0.0, 1.0));
       if (mG.w > 0.0 && fs > 0.0) {
         float na = vnoise(float2((0.94 * u + 0.34 * v) / FIBL + 5.0, (-0.34 * u + 0.94 * v) / FIBW + 9.0)).x;
         float nb = vnoise(float2((0.82 * u - 0.57 * v) / FIBL + 41.0, (0.57 * u + 0.82 * v) / FIBW + 23.0)).x;
@@ -985,9 +1077,23 @@ function materialCode() {
         cover += max(0.0, min(b + w * 0.5, u + fp.x * 0.5) - max(b - w * 0.5, u - fp.x * 0.5));
       }
       f -= mG.z * (min(1.0, cover / max(fp.x, 1e-6)) - w / s2);
+    } else if (mG.x > 4.5) {
+      // 린넨 실(surface-pattern linenPattern과 같은 식)
+      f += mG.z * vnoise(float2(u / s2 + 17.0, v / s2 + 31.0)).x * seenOf(s2, fm);
+      float fs = smoothstep(0.0, 1.0, clamp((FIBW / max(fm, 1e-9) - 0.1) / 0.25, 0.0, 1.0)) * smoothstep(0.0, 1.0, clamp((min(fp.x, fp.y) / max(fm, 1e-9) - 0.2) / 0.25, 0.0, 1.0));
+      if (mG.w > 0.0 && fs > 0.0) {
+        float na = vnoise(float2(u / FIBL + 5.0, v / FIBW + 9.0)).x;
+        float nb = vnoise(float2(u / FIBW + 41.0, v / FIBL + 23.0)).x;
+        f += mG.w * 0.5 * (na * abs(na) + nb * abs(nb)) * fs;
+      }
     } else if (mG.x > 3.5) {
       float warp = vnoise(float2(u / (40.0 * s1), v / (4.0 * s1) + 5.0)).x * 1.5;
       f -= mG.y * (pulseCover(v / s1 + warp, 0.25, fp.y / s1) - 0.25);
+      // 가는 결(surface-pattern과 같은 식)
+      if (mG.w > 0.0) {
+        float s3 = s1 * ${f(WOOD_FINE_SCALE)};
+        f -= mG.w * (pulseCover(v / s3 + warp * 2.3 + 3.1, 0.3, fp.y / s3) - 0.3);
+      }
       f += mG.z * vnoise(float2(u / s2 + 11.0, v * 6.0 / s2)).x * seenOf(s2 / 6.0, fp.y);
     }
     return float4(su, sv, f, r);
@@ -1057,6 +1163,8 @@ function shadeCode(mode: 0 | 1 | 2 | 3, split = false) {
     return r > 0.0 ? clamp(1.0 - dist / r, 0.0, 1.0) : 0.0;
   }
   float slope(float t) { return t / sqrt(max(1e-4, 1.0 - t * t)); }
+  const float RIMR = ${f(Math.max(RIM_R, 1e-3))};
+  const float RIMC = ${f(RIM_CORNER)};
   // 점 P(법선 n, 재질 색 a, 하늘 가림 loss: 선형 RGB)의 빛. 눈 쪽 방향 v, eref: 그 재질의 대표 자리 빛. 채널마다 계산한다
   // 받는 빛 = 하늘·천장·창빛(위 판이 가린 창빛 몫 빼고) − 하늘 가림. 반사광 = 거울 방향의 둘레·하늘(이웃 책의 반사는 뺀다) + GGX 창빛
   // rough: 표면 거칠기(재질, 그리지 못한 미세 높이 몫 포함), alb: 반사율 결(배수, 평균 1),
@@ -1084,7 +1192,7 @@ function shadeCode(mode: 0 | 1 | 2 | 3, split = false) {
     // target의 1/4보다 낮추지 않는다(확산 몫이 0인 채널은 곱하기에서 0이 되면 닷지가 반사광을 더하지 못한다)
     float3 am = max(a, float3(1e-4));
     float3 sa = max(float3(0.0), float3(toneInv(am.x), toneInv(am.y), toneInv(am.z)) - sref) * r * EXPO;
-    float3 spec = (ks * envHit(P, reflect(-v, n)).yzw * vis + KEYC * (ggxKey(n, v, rough) * kS * DIFF * (1.0 - kb))) / ECAM;
+    float3 spec = (ks * envLobe(P, reflect(-v, n), rough) * vis + KEYC * (ggxKey(n, v, rough) * kS * DIFF * (1.0 - kb))) / ECAM;
     float3 st = sa + spec * EXPO;
     float3 t0 = float3(toneF(sa.x), toneF(sa.y), toneF(sa.z));
     float3 target = float3(toneF(st.x), toneF(st.y), toneF(st.z));
@@ -1111,6 +1219,9 @@ function shadeCode(mode: 0 | 1 | 2 | 3, split = false) {
 // 하늘 가림은 구운 그림(tex: 캔버스 px로 읽히게 행렬을 붙인 것), 없으면(liveEnv) 둘레만 그 자리에서.
 // 책이 움직이는 동안은 앞 굽기(tex2, 움직이기 전 자리)에서 새 굽기(tex, 도착 자리)로 mixT만큼 섞는다
 // mode 2(단색 재질 base를 한 번에): 출력 = base × 이득(채널마다 1에서 자름). 곱하기·닷지 두 겹(대상 색 읽기)이 필요 없다
+// 틀 면을 구운 범위 밖에서 읽을 때 범위 끝에서 물러나는 거리: 칸 간격(ShelfPlank DEEP_TEXEL 12, SceneLight BAKE_TEXEL 2)의 반 + 조금. 칸 끝을 읽으면 옆 칸과 섞인다
+const DEEP_HALF = 6.5;
+const BAKE_HALF = 1.5;
 export function litSource(dodge: boolean | 'direct') {
   const mode = dodge === 'direct' ? 2 : dodge ? 1 : 0;
   return `
@@ -1126,6 +1237,11 @@ export function litSource(dodge: boolean | 'direct') {
   uniform float3 tN;        // 평면 바깥 법선
   uniform float4 bev0;      // 모서리 둥글기(평면 안에서 모서리 쪽 단위 벡터, 모서리의 그 축 좌표). 없으면 0
   uniform float4 bev1;
+  uniform float4 rim;       // 평평한 벽의 구멍(x0, x1, y0, y1): 구멍 앞 끝 둥근 테. x0 > x1이면 없다
+  uniform float rimCeil;    // 이 줄 위 면 높이: 테도 안쪽 면처럼 그 아래에서 어두워진다(light-model sideCeilF)
+  uniform float kS;         // 재질의 표면 반사 몫 배수(materials specular)
+  uniform float4 softBox;   // 안쪽 모서리 번짐: 면 좌표의 둥근 사각형(a0, a1, b0, b1)
+  uniform float2 softR;     // 그 반지름, 번짐 폭(폭 0이면 번지지 않는다)
   uniform float4 cam4;      // 눈(x, y, 기준면 z, 거리): 눈 위치 = (x, y, z − 거리)
   uniform float keyOn;      // 판(위·아래)이 창빛을 가리는 몫을 넣을지
   uniform float3 albedo;    // 재질 색(선형 RGB, 닷지: 반사광을 감마 공간에 더할 때)
@@ -1145,6 +1261,52 @@ ${polyCode()}
 ${envCode(false)}
 ${materialCode()}
 ${shadeCode(mode)}
+  // 안쪽 모서리 곡면(light-model coveNormal): 벽·틀·판이 맞닿는 곳에서 면 법선이 맞닿은 면 법선 쪽으로 돈다
+  float jointF2(float h) {
+    float d = max(0.0, h);
+    return ${f(0.5 * SIDE_K)} * (1.0 - d / sqrt(d * d + ${f(SIDE_H * SIDE_H)}));
+  }
+  float coveB(float d, float end) {
+    float t = max(0.0, d);
+    return t < ${f(Math.max(COVE_R, 1e-3))} ? tan(end * (1.0 - t / ${f(Math.max(COVE_R, 1e-3))})) : 0.0;
+  }
+  // 안쪽 모서리 번짐: 뒷벽·천장·판 윗면은 맞닿은 면 위에 그려진다. 실제 모서리는 곡면이라 한 면의 빛이 다른 면의 빛으로 서서히 넘어가므로, 그린 면이 모서리 쪽에서 투명해져 밑면이 비치게 한다.
+  // 면 좌표: 뒷벽은 (x, y), 천장·판 윗면은 (x, z × 눌림): 화면에서 눌린 깊이를 눌린 만큼 줄여 폭이 화면에서 같게 보인다. 둥근 사각형 안쪽 거리라 꼭지점도 둥글다
+  float softEdge(float3 P) {
+    float2 u = abs(tN.z) > 0.5 ? P.xy : float2(P.x, P.z * ${f(SOFT_DEPTH)});
+    float front = 0.0;
+    if (tN.y > 0.5) {
+      // 판 윗면 양 끝 변은 뒤(안쪽 면)에서 앞(판 끝)으로 벌어진다. 벽보다 앞은 맞닿은 면이 없어 번지지 않는다
+      float c = ${f((SHELF_X0 + SHELF_X1) / 2)};
+      float t = clamp((DEPTH - P.z) / ${f(SHELF_DEPTH + SHELF_FRONT)}, 0.0, 1.0);
+      u.x = c + (P.x - c) * ${f((FRAME_X1 - FRAME_X0) / 2)} / mix(${f((FRAME_X1 - FRAME_X0) / 2)}, ${f((SHELF_X1 - SHELF_X0) / 2)}, t);
+      front = 1.0 - smoothstep(${f(-FRAME_FRONT + 10)}, ${f(-FRAME_FRONT + 40)}, P.z);
+    }
+    float2 c2 = float2(softBox.x + softBox.y, softBox.z + softBox.w) * 0.5;
+    float2 q = abs(u - c2) - (float2(softBox.y - softBox.x, softBox.w - softBox.z) * 0.5 - float2(softR.x));
+    float d = softR.x - length(max(q, float2(0.0))) - min(max(q.x, q.y), 0.0);
+    return max(front, smoothstep(0.0, softR.y, d));
+  }
+  // 평면 위 점 Q가 그려지는 캔버스 자리: 사상 P = (O + p.x Ux + p.y Vy) / w의 역(면 안 두 축 Au, Av로 푼다)
+  float2 pxOf(float3 Q, float3 Au, float3 Av) {
+    float3 A = Ux - Q * Hw.x;
+    float3 B = Vy - Q * Hw.y;
+    float3 C = Q * Hw.z - O;
+    float a = dot(A, Au);
+    float b = dot(B, Au);
+    float c = dot(A, Av);
+    float d = dot(B, Av);
+    float e = dot(C, Au);
+    float g = dot(C, Av);
+    return float2(e * d - b * g, a * g - e * c) / (a * d - b * c);
+  }
+  float3 coveOf(float3 P) {
+    float3 c = float3(0.0);
+    if (env.x < 1.5 || ${COVE_R > 0 ? 'false' : 'true'} || P.z < ${f(-FRAME_FRONT - 0.5)}) return c;
+    if (abs(tN.y) < 0.5) c.y += coveB(P.y - env.y, ${f(COVE_NARROW)}) - coveB(env.z - P.y, ${f(COVE_NARROW)});
+    if (abs(tN.x) < 0.5 && tN.y > -0.5) c.x += coveB(P.x - ${f(FRAME_X0)}, ${f(COVE_WIDE)}) - coveB(${f(FRAME_X1)} - P.x, ${f(COVE_WIDE)});
+    return c;
+  }
   half4 main(float2 p) {
     float w = dot(Hw, float3(p, 1.0));
     float3 P = wallOutside((O + p.x * Ux + p.y * Vy) / w, tN);
@@ -1153,17 +1315,45 @@ ${shadeCode(mode)}
     float3 JY = (Vy - P * Hw.y) / w;
     float b0 = slope(arc(bev0.w - dot(P, bev0.xyz), PLANKR));
     float b1 = slope(arc(bev1.w - dot(P, bev1.xyz), PLANKR));
-    float3 n = normalize(tN + bev0.xyz * b0 + bev1.xyz * b1);
-    // 면 좌표: u = 판 길이 방향(x), v = 면 안의 다른 방향
-    float3 Au = float3(1.0, 0.0, 0.0);
+    float3 n = normalize(tN + bev0.xyz * b0 + bev1.xyz * b1 + coveOf(P));
+    float rimLoss = 0.0;
+    // 구멍 앞 끝 둥근 테(반지름 RIMR): 구멍(둥근 사각형, 모서리 RIMC)까지 거리 d로 벽 법선이 구멍 안쪽 면 법선 쪽으로 돈다
+    if (rim.x < rim.y) {
+      float2 c = float2(rim.x + rim.y, rim.z + rim.w) * 0.5;
+      float2 s = sign(P.xy - c);
+      float2 q = abs(P.xy - c) - (float2(rim.y - rim.x, rim.w - rim.z) * 0.5 - float2(RIMC));
+      float2 qp = max(q, float2(0.0));
+      float d = length(qp) + min(max(q.x, q.y), 0.0) - RIMC;
+      // 구멍 가장자리 화소(흐림, d ≤ 0)도 테 끝 법선이다: 평평한 벽 법선이면 밝은 색이 안쪽 면과 섞여 1px 밝은 줄이 된다
+      if (d < RIMR) {
+        float2 g = length(qp) > 1e-4 ? qp / length(qp) : (q.x > q.y ? float2(1.0, 0.0) : float2(0.0, 1.0));
+        // 법선 각이 테 폭에 고르게 돈다(정원호는 안쪽 끝에 변화가 몰려 2px 안에서 꺾여 보인다). 끝은 안쪽 면 법선까지 다 돌지 않는다:
+        // 테는 맞닿은 면의 되비침을 받지 않아 다 돌리면 안쪽 면보다 어두운 줄이 생긴다(천장 앞 90°면 테 끝 180, 천장 189). 옆 76°, 위 70°면 테 끝과 안쪽 면·천장 밝기가 이어진다
+        float rimT = min(1.0, 1.0 - d / RIMR);
+        // 시안처럼 바깥쪽에서 빠르게 어두워지고 안쪽은 안쪽 면 밝기로 이어진다(제곱근)
+        float th = mix(${f((76 * Math.PI) / 180)}, ${f((70 * Math.PI) / 180)}, g.y * g.y) * sqrt(rimT);
+        n = normalize(tN * cos(th) - float3(g * s, 0.0) * sin(th));
+        // 옆 테만 안쪽 면처럼 위 면 아래에서 어두워진다(위 테는 그 면 자체다)
+        rimLoss = rimT * (1.0 - g.y * g.y) * jointF2(rimCeil - P.y);
+      }
+    }
+    // 면 좌표: u = 판 길이 방향(x, 옆을 향한 틀 안쪽 면은 세로: 결이 틀 길이로 난다), v = 면 안의 다른 방향
+    float3 Au = abs(tN.x) > 0.5 ? float3(0.0, 1.0, 0.0) : float3(1.0, 0.0, 0.0);
     float3 Av = normalize(cross(tN, Au));
     float2 fp = float2(max(abs(dot(JX, Au)), abs(dot(JY, Au))), max(abs(dot(JX, Av)), abs(dot(JY, Av))));
-    float4 ms = matSample(float2(dot(P, Au), dot(P, Av)) + mSeed, fp, mR, mB, mG, mS);
+    // 나무 판 윗면은 나이테를 넓게 자른 면이라 결이 앞면보다 넓다(한 나이테 함수를 자른 방향만 다르다)
+    float vk = mG.x > 3.5 && mG.x < 4.5 && tN.y > 0.5 ? ${f(WOOD_FLAT)} : 1.0;
+    float4 ms = matSample(float2(dot(P, Au), dot(P, Av) * vk) + mSeed, float2(fp.x, fp.y * vk), mR, mB, mG, mS);
     n = normalize(n - ms.x * Au - ms.y * Av);
-    float3 loss = liveEnv > 0.5 ? envLoss(P, tN) : lossDec(float3(tex.eval(p).rgb), skyIrr(tN));
-    if (liveEnv < 0.5 && mixT < 1.0) loss = mix(lossDec(float3(tex2.eval(p).rgb), skyIrr(tN)), loss, mixT);
-    half4 g = shade(P, n, tN, normalize(float3(cam4.x, cam4.y, cam4.z - cam4.w) - P), loss, albedo, eref, ms.w, ms.z, float(keyTex.eval(float2(dot(P, kU), dot(P, kV)) + kO).a), sref, 1.0);
-    ${mode === 2 ? 'return half4(half3(min(base * float3(g.rgb), float3(1.0))), 1.0);' : 'return g;'}
+    // 틀 면을 구운 범위 밖으로 늘려 그린 곳(뒷벽 번짐 밑, 가장자리 화소 밑): 그대로 읽으면 아틀라스 옆 칸 값이다. 범위 끝 자리(칸 반 개 안쪽)의 구운 값을 읽어 면 끝 밝기가 그대로 이어진다
+    bool beyond = env.x > 1.5 && abs(tN.z) < 0.5 && tN.y < 0.5 && (P.z > DEPTH + 0.01 || P.z < -FFRONT - 0.01 || (abs(tN.x) > 0.5 && P.y > env.z + 0.01));
+    float3 Pb = beyond ? float3(P.x, abs(tN.x) > 0.5 ? min(P.y, env.z - ${f(BAKE_HALF)}) : P.y, clamp(P.z, -FFRONT + ${f(DEEP_HALF)}, DEPTH - ${f(DEEP_HALF)})) : P;
+    float2 pb = beyond && liveEnv < 0.5 ? pxOf(Pb, Au, Av) : p;
+    float3 loss = liveEnv > 0.5 ? envLoss(Pb, tN) : lossDec(float3(tex.eval(pb).rgb), skyIrr(tN));
+    if (liveEnv < 0.5 && mixT < 1.0) loss = mix(lossDec(float3(tex2.eval(pb).rgb), skyIrr(tN)), loss, mixT);
+    if (rimLoss > 0.0) loss += rimLoss * (skyIrr(tN) + KEYC * (DIFF * max(0.0, dot(tN, LU)))) / OCC;
+    half4 g = shade(P, n, tN, normalize(float3(cam4.x, cam4.y, cam4.z - cam4.w) - P), loss, albedo, eref, ms.w, ms.z, float(keyTex.eval(float2(dot(P, kU), dot(P, kV)) + kO).a), sref, kS);
+    ${mode === 2 ? 'float softA = softR.y > 0.0 ? softEdge(P) : 1.0;\n    return half4(half3(min(base * float3(g.rgb), float3(1.0))) * softA, softA);' : 'return g;'}
   }
 `;
 }
@@ -1362,6 +1552,33 @@ ${shadeCode(dodge === 'spec' ? 3 : dodge ? 1 : 0, split)}
     float4 K = float4(0.0);
     for (int i = 0; i < 6; i++) { if (i == fi) K = kRect[i]; }
     float kx = K.w > 0.5 ? float(keyTex.eval(K.xy + float2(u, v) * K.z).a) : 0.0;
+    // 두 면이 만나는 둥근 모서리(책등↔표지·뒤표지): 그늘은 면마다 따로 구워 모서리에서 값이 끊긴다(2026-11-03 사용자: 어린 왕자 책등과 표지 사이가 |처럼 각진다, 옆 책이 책등만 가린 책).
+    // 모서리 띠(둥근 반지름의 두 배)에서 옆 면의 같은 높이 값과 섞어 모서리에서 두 면이 같은 값이 되게 한다. 옆 면이 보이지 않으면(구운 칸이 없으면) 섞지 않는다
+    if (fi < 3) {
+      float seamW = min(pw * 0.5, 2.0 * SEAMR);
+      int fN = -1;
+      float uN = 0.0;
+      float dS = 0.0;
+      if (fi == 1) { fN = 0; uN = T; dS = u; }
+      else if (fi == 2) { fN = 0; uN = 0.0; dS = pw - u; }
+      else if (pw - u < u) { fN = 1; uN = 0.0; dS = pw - u; }
+      else { fN = 2; uN = W; dS = u; }
+      if (dS < seamW) {
+        float4 RN = float4(0.0);
+        float4 KN = float4(0.0);
+        for (int i = 0; i < 6; i++) { if (i == fN) { RN = rect[i]; KN = kRect[i]; } }
+        if (R.z > 0.0 && RN.z > 0.0) {
+          float kb = 1.0 - dS / seamW;
+          float kw = 0.5 * kb * kb * (3.0 - 2.0 * kb);
+          float3 nN = fN == 0 ? float3(0.0, 0.0, -1.0) : (fN == 1 ? float3(1.0, 0.0, 0.0) : float3(-1.0, 0.0, 0.0));
+          float pwN = fN == 0 ? T : W;
+          float3 skyN = skyIrr(toRow(nN));
+          float3 lossN = lossDec(float3(tex.eval(float2(RN.x + uN / pwN * RN.z, RN.y + v / ph * RN.w)).rgb), skyN);
+          loss = mix(loss, lossN * skyIrr(toRow(nl)) / max(skyN, float3(1e-4)), kw);
+          kx = mix(kx, KN.w > 0.5 ? float(keyTex.eval(KN.xy + float2(uN, v) * KN.z).a) : 0.0, kw);
+        }
+      }
+    }
     return shade(P, nw3, normalize(toRow(nl)), view, loss, a, page ? EREF_PAPER : erefB, ms.w, ms.z, kx, page ? srefP : srefB, page ? 1.0 : specK);
   }
 `;

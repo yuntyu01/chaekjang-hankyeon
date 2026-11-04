@@ -15,12 +15,13 @@
 // 4) 반사광: 유전체의 프레넬 반사를 거칠기까지 넣어(환경 반사 근사 EnvBRDF, GGX 창빛 하이라이트). 확산 몫은 반사된 만큼 줄어든다.
 // 워클릿은 만들어질 때 쓰는 함수를 붙잡으므로, 쓰이는 함수를 먼저 정의한다.
 import palette from '@/scene-config/reference-bindings.generated.json';
-import { ALBEDO_MAX, camera, contact, F0, light, materials, surfaces, type SurfaceMaterial } from '@/scene-config/lighting';
+import { ALBEDO_MAX, camera, contact, F0, light, materials, surfaceMats, surfaces, type SurfaceMaterial } from '@/scene-config/lighting';
+import { FRAME_ON, LOOK } from '@/scene-config/skin';
 
 import { corners, type Book3 } from './book3';
 import { rigOf } from './book-parts';
 import { camAt, VIEW_PITCH_MIN, type Cam, type Vec3 } from './camera';
-import { mm, SHELF_DEPTH, SHELF_FRONT, SHELF_THICK, SHELF_X0, SHELF_X1 } from './geometry';
+import { FRAME_FRONT, FRAME_X0, FRAME_X1, mm, SHELF_DEPTH, SHELF_FRONT, SHELF_THICK, SHELF_X0, SHELF_X1 } from './geometry';
 import type { BookSurface } from './types';
 import { CALIBRATION, CALIBRATION_INPUTS } from './light-calibration.generated';
 import { albedoPeak, MAT_UNIFORMS } from './surface-pattern';
@@ -111,19 +112,24 @@ function cmix(a: C3, b: C3, t: number): C3 {
 
 // 재질 색(시안에서 보이는 색, 선형 RGB: 그림이 칠하는 색)과 실제 반사율(ALBEDO, 맨 아래 calibrate가 정한다).
 // 둘레 면의 밝기(RAD: 반사율 × 받는 빛) = 판 윗면(위를 향함), 벽(앞을 향함), 윗선반 아랫면(아래를 향함)
-export const DESIGN = { plank: linearOf(surfaces.plank), wall: linearOf(surfaces.wall), paper: linearOf(surfaces.paper) };
-export const ALBEDO = { plank: DESIGN.plank, wall: DESIGN.wall, paper: DESIGN.paper };
-export const RAD = { floor: grey(0), wall: grey(0), under: grey(0), end: grey(0) };
+export const DESIGN = { plank: linearOf(surfaces.plank), frame: linearOf(surfaces.frame), wall: linearOf(surfaces.wall), paper: linearOf(surfaces.paper) };
+export const ALBEDO = { plank: DESIGN.plank, frame: DESIGN.frame, wall: DESIGN.wall, paper: DESIGN.paper };
+// sideL·sideR: 틀 안쪽 면(왼쪽 면은 오른쪽을 향해 창빛을 못 받고, 오른쪽 면은 왼쪽을 향해 받는다)
+export const RAD = { floor: grey(0), wall: grey(0), under: grey(0), end: grey(0), sideL: grey(0), sideR: grey(0) };
 // 재질마다 대표 자리에서 받는 빛(선형 RGB, calibrate): 화면 밝기 비 = 받는 빛 / EREF[재질]. 카메라(노출·화이트 밸런스)는 벽(EREF.wall)
-export const EREF = { wall: grey(1), plank: grey(1), book: grey(1), paper: grey(1) };
+export const EREF = { wall: grey(1), plank: grey(1), frame: grey(1), book: grey(1), paper: grey(1) };
+// 틀 안쪽 면이 받는 빛(맞추기가 면 가운데에서 잰다). 안쪽 면은 빛 격자에 없고 끝면(RAD.end)처럼 한 밝기로 되비친다(근사: 안쪽 모서리에서 오차가 가장 크다, 틀 시험)
+const SIDE_E = { l: grey(1), r: grey(1) };
 // 재질마다 대표 자리의 반사광(장면 밝기, calibrate): 재질 색은 이것까지 넣은 '보이는 색'이다. 책은 장정 재질마다
-export const SREF = { wall: grey(0), plank: grey(0), paper: grey(0), book: { paper: grey(0), cloth: grey(0), coated: grey(0), print: grey(0) } as Record<BookSurface, C3> };
+export const SREF = { wall: grey(0), plank: grey(0), frame: grey(0), paper: grey(0), book: { paper: grey(0), fine: grey(0), linen: grey(0), matte: grey(0), laid: grey(0) } as Record<BookSurface, C3> };
 function setRadiance() {
   RAD.floor = cmul(ALBEDO.plank, irradiance({ x: 0, y: 1, z: 0 }));
   RAD.wall = cmul(ALBEDO.wall, irradiance({ x: 0, y: 0, z: -1 }));
   RAD.under = cmul(ALBEDO.plank, irradiance({ x: 0, y: -1, z: 0 }));
   // 판 끝면(옆을 향함: 창빛은 비스듬히 스친다)
   RAD.end = cmul(ALBEDO.plank, irradiance({ x: -1, y: 0, z: 0 }));
+  RAD.sideL = cmul(ALBEDO.frame, SIDE_E.l);
+  RAD.sideR = cmul(ALBEDO.frame, SIDE_E.r);
 }
 // 벽은 판보다 훨씬 넓고 높다(하늘 가림 계산에서 끝이 보이지 않을 만큼)
 export const FAR = 1e4;
@@ -281,7 +287,8 @@ export function skyOf(F: number, M: Vec3): C3 {
 // 판은 z ∈ [−SHELF_FRONT, SHELF_DEPTH], 두께 SHELF_THICK(아래 판은 floor 아래로, 위 판은 ceil 위로), 벽은 z = SHELF_DEPTH(판 사이).
 // 판은 그린 곳(가로 SHELF_X0 ~ SHELF_X1)에서 끝난다: 판 끝 너머는 위아래로 열린 벽이고, 판 끝 가까이는 그 열린 쪽에서 빛이 더 든다.
 // 판 끝 너머로 보이는 다른 줄(그 줄 판·책)은 하늘로 본다(멀다).
-export type Env = { floor: number; ceil: number };
+// side: 움푹 파인 책장의 안쪽 면이 양옆을 막는다(판 끝 너머가 열려 있지 않다). 안쪽 면 SHELF_X0·SHELF_X1, 앞 끝 z = −FRAME_FRONT
+export type Env = { floor: number; ceil: number; side?: boolean };
 
 const inDepth = (z: number) => {
   'worklet';
@@ -317,8 +324,18 @@ export function envHit(p: Vec3, w: Vec3, env: Env | null): { t: number; rad: C3;
       which = ENV_CEIL;
     }
   }
+  // 틀 안쪽 면(면 위의 점에서 자기 면을 맞히지 않게 조금 띄운다: 셰이더는 점 좌표에 오차가 있다)
+  if (env.side && Math.abs(w.x) > 1e-6) {
+    const t = ((w.x > 0 ? SHELF_X1 : SHELF_X0) - p.x) / w.x;
+    const z = p.z + w.z * t;
+    if (t > 0.01 && t < best && z >= -FRAME_FRONT && z <= SHELF_DEPTH) {
+      best = t;
+      rad = w.x > 0 ? RAD.sideR : RAD.sideL;
+      which = SKY;
+    }
+  }
   // 판 끝면(판 끝 너머에서 판 쪽으로)
-  if (Math.abs(w.x) > 1e-6) {
+  if (!env.side && Math.abs(w.x) > 1e-6) {
     const X = w.x > 0 ? SHELF_X0 : SHELF_X1;
     if ((w.x > 0 && p.x < X) || (w.x < 0 && p.x > X)) {
       const t = (X - p.x) / w.x;
@@ -343,10 +360,34 @@ export function envHit(p: Vec3, w: Vec3, env: Env | null): { t: number; rad: C3;
   }
   return { t: best, rad, which };
 }
+// 거친 면의 반사: 거울 한 방향이 아니라 거칠기만큼 넓게 퍼진다. 거울 한 방향으로만 보면 벽에 기댄 표지에 위 판 앞 모서리가 칼 같은 일자 선으로 비친다(2026-11-03 사용자).
+// 앞으로 나가는 반사는 반사 방향의 기울기와 판 앞 모서리까지의 기울기 차이로 위·아래 판이 차지하는 몫을 부드럽게 정한다(퍼짐 폭 = α = r²). 셰이더 envLobe와 같은 식
+export function envLobe(p: Vec3, w: Vec3, env: Env | null, rough: number): C3 {
+  'worklet';
+  if (!env || w.z >= -0.05) return envHit(p, w, env).rad;
+  const zf = p.z + SHELF_FRONT;
+  if (zf <= 0) return envHit(p, w, env).rad;
+  const x = p.x + w.x * (zf / -w.z);
+  if (x < SHELF_X0 || x > SHELF_X1) return envHit(p, w, env).rad;
+  const e = w.y / -w.z;
+  const sp = Math.max(0.02, rough * rough);
+  const ss = (a: number, b: number, v: number) => {
+    const t = Math.max(0, Math.min(1, (v - a) / (b - a)));
+    return t * t * (3 - 2 * t);
+  };
+  const ec = (env.ceil - p.y) / zf;
+  const ef = (env.floor - p.y) / zf;
+  const fc = env.ceil < FAR && p.y < env.ceil - 1e-3 ? ss(ec - sp, ec + sp, e) : 0;
+  const ff = env.floor > -FAR && p.y > env.floor + 1e-3 ? 1 - ss(ef - sp, ef + sp, e) : 0;
+  const fs = Math.max(0, 1 - fc - ff);
+  const sky = skyRadiance(w);
+  return [0, 1, 2].map((c) => sky[c] * fs + RAD.under[c] * fc + RAD.floor[c] * ff) as C3;
+}
 
 // 둘레 면들(볼록 사각형, 밝기, 바깥 법선, 면 번호, 부분): 판 사이 벽·판 윗면·위 판 아랫면(part 'in': 판 범위, 빛 격자로 읽는다),
 // 판 끝 너머 벽(part 'left'·'right': 위아래로 열린 벽, 가림 없는 벽 밝기), 판 끝면(part 'end')
-type EnvQuad = { poly: Vec3[]; rad: C3; n: Vec3; which: number; part: 'in' | 'left' | 'right' | 'end' };
+// 틀이 있으면(env.side) 판 끝 너머 벽·판 끝면 대신 틀 안쪽 면(part 'side')
+type EnvQuad = { poly: Vec3[]; rad: C3; n: Vec3; which: number; part: 'in' | 'left' | 'right' | 'end' | 'side' };
 export function envQuads(env: Env): EnvQuad[] {
   'worklet';
   const X0 = SHELF_X0;
@@ -373,6 +414,22 @@ export function envQuads(env: Env): EnvQuad[] {
   const front = { x: 0, y: 0, z: -1 };
   const y0 = Math.max(env.floor, -FAR);
   const y1 = Math.min(env.ceil, FAR);
+  if (env.side) {
+    // 안쪽 면 하나(평면 x = X, 앞 끝 ~ 벽)
+    const panel = (X: number) => [
+      { x: X, y: y0, z: SHELF_DEPTH },
+      { x: X, y: y0, z: -FRAME_FRONT },
+      { x: X, y: y1, z: -FRAME_FRONT },
+      { x: X, y: y1, z: SHELF_DEPTH },
+    ];
+    return [
+      { poly: wall(X0, X1, y0, y1), rad: RAD.wall, n: front, which: ENV_WALL, part: 'in' },
+      { poly: plank(env.floor), rad: RAD.floor, n: { x: 0, y: 1, z: 0 }, which: ENV_FLOOR, part: 'in' },
+      { poly: plank(env.ceil), rad: RAD.under, n: { x: 0, y: -1, z: 0 }, which: ENV_CEIL, part: 'in' },
+      { poly: panel(X0), rad: RAD.sideL, n: { x: 1, y: 0, z: 0 }, which: SKY, part: 'side' },
+      { poly: panel(X1), rad: RAD.sideR, n: { x: -1, y: 0, z: 0 }, which: SKY, part: 'side' },
+    ];
+  }
   const out: EnvQuad[] = [
     { poly: wall(X0, X1, y0, y1), rad: RAD.wall, n: front, which: ENV_WALL, part: 'in' },
     { poly: wall(-FAR, X0, -FAR, FAR), rad: RAD.wall, n: front, which: ENV_WALL, part: 'left' },
@@ -683,6 +740,7 @@ function windowPlanes(p: Vec3, X: number, env: Env): Vec3[] {
 function acrossPlanes(p: Vec3, part: EnvQuad['part'], env: Env): Vec3[] {
   'worklet';
   let out: Vec3[] = [];
+  if (env.side) return out;
   if ((part === 'left' || part === 'in') && p.x > SHELF_X1) out = out.concat(windowPlanes(p, SHELF_X1, env));
   if (part === 'left' && p.x > SHELF_X0) out = out.concat(windowPlanes(p, SHELF_X0, env));
   if ((part === 'right' || part === 'in') && p.x < SHELF_X0) out = out.concat(windowPlanes(p, SHELF_X0, env));
@@ -748,7 +806,7 @@ function behindOf(p: Vec3, n: Vec3, P: Vec3[], total: VF, env: Env | null, G?: G
   for (const s of sectorsOf(p, env)) {
     const q = sectorVF(P, n, s, total);
     if (q.F === 0) continue;
-    const rad = s.part === 'in' ? (colRad(cols, G, s.which, p, q.M) ?? envRad(G, s.which, p, q.M, s.rad)) : s.part === 'end' ? s.rad : (colRad(cols, G, s.which, p, q.M) ?? s.rad);
+    const rad = s.part === 'in' ? (colRad(cols, G, s.which, p, q.M) ?? envRad(G, s.which, p, q.M, s.rad)) : s.part === 'end' || s.part === 'side' ? s.rad : (colRad(cols, G, s.which, p, q.M) ?? s.rad);
     for (let c = 0; c < 3; c++) sum[c] += rad[c] * q.F;
     rest = subVF(rest, q);
   }
@@ -862,7 +920,7 @@ export function envLossCols(p: Vec3, n: Vec3, env: Env | null, G?: Grid): { loss
       if (vf.F <= 0) continue;
       const sky = skyOf(vf.F, vf.M);
       const rad = q.part === 'in' ? envRad(G, q.which, p, vf.M, q.rad) : q.rad;
-      if (q.part !== 'end') out[q.which][q.part === 'left' ? 0 : q.part === 'right' ? (cols || 1) + 1 : split ? k + 1 : 1] = rad;
+      if (q.part !== 'end' && q.part !== 'side') out[q.which][q.part === 'left' ? 0 : q.part === 'right' ? (cols || 1) + 1 : split ? k + 1 : 1] = rad;
       for (let c = 0; c < 3; c++) loss[c] += sky[c] - vf.F * rad[c];
     }
   }
@@ -946,7 +1004,16 @@ export function plankBlock(p: Vec3, yb: number, yt: number, zf: number) {
   }
   return Math.min(1, k);
 }
-// 둘레의 판이 점 p에서 창빛 원반을 가리는 몫: 위 판(ceil ~ ceil + 두께) + 아래 판(floor − 두께 ~ floor)
+// 틀 안쪽 면이 창빛 원반을 가리는 몫. 구멍 앞 끝(z = −FRAME_FRONT)에 닿기 전에 안쪽 면 평면을 넘는 광선은 막힌다: 왼쪽 면은 방위 tan θ < (X0 − p.x) / 앞 끝까지 거리,
+// 오른쪽 면은 tan θ > (X1 − p.x) / 그 거리(원반을 수직선으로 자른 넓이)
+export function sideBlock(p: Vec3) {
+  'worklet';
+  const zf = p.z + FRAME_FRONT;
+  if (zf <= 0) return 0;
+  const v = (X: number) => (Math.atan((X - p.x) / zf) - L_AZ) / light.radius;
+  return Math.min(1, diskBand(-1, 1, -2, v(SHELF_X0)) + diskBand(-1, 1, v(SHELF_X1), 2));
+}
+// 둘레의 판이 점 p에서 창빛 원반을 가리는 몫: 위 판(ceil ~ ceil + 두께) + 아래 판(floor − 두께 ~ floor). 틀이 있으면 안쪽 면까지(판과 안쪽 면이 가리는 방향은 겹칠 수 있어 합집합)
 export function plankKeyBlocked(p: Vec3, env: Env | null) {
   'worklet';
   if (!env) return 0;
@@ -954,7 +1021,8 @@ export function plankKeyBlocked(p: Vec3, env: Env | null) {
   let k = 0;
   if (env.ceil < FAR) k += plankBlock(p, env.ceil, env.ceil + SHELF_THICK, zf);
   if (env.floor > -FAR) k += plankBlock(p, env.floor - SHELF_THICK, env.floor, zf);
-  return Math.min(1, k);
+  k = Math.min(1, k);
+  return env.side ? 1 - (1 - k) * (1 - sideBlock(p)) : k;
 }
 
 // ---------- 재질 표면(scene-config/lighting materials) ----------
@@ -966,15 +1034,17 @@ export function roughOf(m: SurfaceMaterial, seen = 0) {
 }
 export const ROUGH = {
   paper: roughOf(materials.paper),
-  cloth: roughOf(materials.cloth),
-  coated: roughOf(materials.coated),
-  print: roughOf(materials.print),
+  fine: roughOf(materials.fine),
+  linen: roughOf(materials.linen),
+  matte: roughOf(materials.matte),
+  laid: roughOf(materials.laid),
   pages: roughOf(materials.pages),
   wood: roughOf(materials.wood),
   paint: roughOf(materials.paint),
+  wallpaper: roughOf(materials.wallpaper),
 };
 // 재질의 표면 반사 몫 배수(materials specular). 셰이더 specK와 같은 값
-export const SPEC_K: Record<BookSurface, number> = { paper: 1, cloth: 1, coated: 1, print: materials.print.specular };
+export const SPEC_K: Record<BookSurface, number> = { paper: 1, fine: materials.fine.specular, linen: 1, matte: materials.matte.specular, laid: materials.laid.specular };
 // 창빛 하이라이트를 넓히는 광원 원반(반각 방향 퍼짐 = 원반 반지름의 절반): α² += (반지름/2)²
 const LR2 = (light.radius / 2) * (light.radius / 2);
 
@@ -1097,6 +1167,81 @@ export function contactShade(p: Vec3, n: Vec3, boxes: Box[], self = -1) {
   return f * n.y;
 }
 
+// 안쪽 모서리 그늘(움푹 파인 책장, scene-config/skin LOOK): 벽·틀·판이 맞닿는 모서리에서 맞닿은 면의 모서리 쪽 띠(높이 H)는 빛을 덜 되비춘다.
+// 면 위 점에서 그 띠가 가리는 몫은 접촉 그늘과 같은 수직 띠의 형태 계수 ½(1 − h/√(h² + H²))이고(h: 모서리까지 거리), 세기 K를 곱해 받는 빛을 줄인다.
+// 맞닿은 면이 밝을수록 되비친 빛이 많아 덜 어둡다: 위 면은 그대로, 옆 면 0.3배, 뒷벽 0.17배, 위를 향한 판 윗면 쪽은 없다.
+// 안쪽 면은 창빛을 받지 않아 판 그림자가 없으므로 위 면 아래에서 더 넓고 진하게(SIDE_H, SIDE_K), 판 윗면 위에서도 조금 어두워진다.
+// 가림 세기 occlusion이 넓은 빛을 맡고(가까운 곳도 멀리 있는 곳과 같은 비율이라 좁은 모서리가 안 어두워진다), 이 몫이 모서리 가까이만 맡는다.
+export const JOINT_H = mm(LOOK.jointMm);
+export const JOINT_K = LOOK.jointK;
+export const JOINT_SIDE = 0.3;
+export const JOINT_BACK = 0.17;
+export const SIDE_H = mm(LOOK.sideMm);
+export const SIDE_K = LOOK.sideK;
+export const SIDE_FLOOR_K = 0.4;
+export const CORNER_K = LOOK.cornerK;
+// 천장·판 윗면 깊이가 화면에서 눌리는 비율(눈높이 / 거리): 안쪽 모서리 번짐 폭을 화면에서 맞춘다(ui/scene-light-sksl softEdge)
+export const SOFT_DEPTH = LOOK.eyeY / LOOK.dist;
+function jointF(h: number, H: number, K: number) {
+  'worklet';
+  const d = Math.max(0, h);
+  return 0.5 * K * (1 - d / Math.sqrt(d * d + H * H));
+}
+// 안쪽 면의 위 면 그늘은 구멍 앞쪽일수록 옅다(앞쪽은 방이 더 많이 보인다, 시안: 위쪽 안쪽 면이 앞 216에서 뒤 174로 어두워진다)
+export const SIDE_FRONT = 0.45;
+export const ROOF_SIDE_K = 0.25;
+export function sideCeilF(h: number, z: number) {
+  'worklet';
+  const t = Math.min(1, Math.max(0, (z + FRAME_FRONT) / (SHELF_DEPTH + FRAME_FRONT)));
+  return jointF(h, SIDE_H, SIDE_K * (SIDE_FRONT + (1 - SIDE_FRONT) * t));
+}
+export function jointShade(p: Vec3, n: Vec3, env: Env | null) {
+  'worklet';
+  if (!env?.side || p.z < -FRAME_FRONT - 0.5) return 0;
+  const K = JOINT_K;
+  const H = JOINT_H;
+  const xs = (w: number) => (1 - jointF(p.x - FRAME_X0, H, K * w)) * (1 - jointF(FRAME_X1 - p.x, H, K * w));
+  let k = 1;
+  if (Math.abs(n.x) > 0.5) k = (1 - sideCeilF(env.ceil - p.y, p.z)) * (1 - jointF(p.y - env.floor, H, SIDE_FLOOR_K)) * (1 - jointF(SHELF_DEPTH - p.z, H, K * JOINT_BACK));
+  else if (Math.abs(n.z) > 0.5) {
+    // 뒷벽 꼭지점: 위 면과 안쪽 면이 함께 가리는 몫(두 띠 몫의 곱이라 꼭지점 둘레로 둥글게 옅어진다)
+    const fx = Math.max(2 * jointF(p.x - FRAME_X0, SIDE_H, 1), 2 * jointF(FRAME_X1 - p.x, SIDE_H, 1));
+    const fy = 2 * jointF(env.ceil - p.y, SIDE_H, 1);
+    k = (1 - jointF(env.ceil - p.y, H, K)) * xs(JOINT_SIDE) * (1 - CORNER_K * fx * fy);
+  }
+  else if (n.y > 0.5) k = xs(1) * (1 - jointF(SHELF_DEPTH - p.z, H, K * 0.5));
+  else {
+    // 천장: 안쪽 면 옆에서 안쪽 면만큼 어두워진다. 밝게 남으면 꼭지점에 흰 점과 대각선이 보인다(안쪽 면처럼 앞쪽은 옅다)
+    const t = Math.min(1, Math.max(0, (p.z + FRAME_FRONT) / (SHELF_DEPTH + FRAME_FRONT)));
+    const fx = Math.max(2 * jointF(p.x - FRAME_X0, SIDE_H, 1), 2 * jointF(FRAME_X1 - p.x, SIDE_H, 1));
+    k = xs(JOINT_SIDE) * (1 - jointF(SHELF_DEPTH - p.z, H, K * JOINT_BACK)) * (1 - ROOF_SIDE_K * fx * (SIDE_FRONT + (1 - SIDE_FRONT) * t));
+  }
+  return 1 - k;
+}
+
+// 안쪽 모서리 곡면(움푹 파인 책장): 벽·틀·판이 맞닿는 곳은 작은 오목면이다. 모서리에서 COVE_R 안쪽은 면 법선이 맞닿은 면 법선 쪽으로 돌아 두 면의 빛이 모서리에서 이어진다(그림은 평면 그대로, 빛의 법선만).
+// 끝 각: 안쪽 면 쪽 45°, 위아래 면 쪽 25°(천장이 어두워 45°면 맞닿은 면이 천장보다 어두워져 줄이 생긴다).
+// 깊이 방향(안쪽 면·천장·판 윗면이 뒷벽 쪽으로)은 돌리지 않는다: 화면에서 1px 안으로 눌려 밝은 실선만 남는다. 천장도 안쪽 면 쪽으로 돌리지 않는다: 돌면 밝아져 대각선이 도드라진다
+export const COVE_R = FRAME_ON ? mm(LOOK.coveMm) : 0;
+export const COVE_WIDE = Math.PI / 4;
+export const COVE_NARROW = (25 * Math.PI) / 180;
+function coveBend(d: number, end: number) {
+  'worklet';
+  const t = Math.max(0, d);
+  return t < COVE_R ? Math.tan(end * (1 - t / COVE_R)) : 0;
+}
+export function coveNormal(p: Vec3, n: Vec3, env: Env | null): Vec3 {
+  'worklet';
+  if (!env?.side || COVE_R <= 0 || p.z < -FRAME_FRONT - 0.5) return n;
+  let x = n.x;
+  let y = n.y;
+  const z = n.z;
+  if (Math.abs(n.y) < 0.5) y += coveBend(p.y - env.floor, COVE_NARROW) - coveBend(env.ceil - p.y, COVE_NARROW);
+  if (Math.abs(n.x) < 0.5 && n.y > -0.5) x += coveBend(p.x - FRAME_X0, COVE_WIDE) - coveBend(FRAME_X1 - p.x, COVE_WIDE);
+  const l = Math.hypot(x, y, z);
+  return { x: x / l, y: y / l, z: z / l };
+}
+
 export function skyLossAt(p: Vec3, n: Vec3, env: Env | null, boxes: Box[], G?: Grid, self = -1): C3 {
   'worklet';
   const { loss, cols } = envLossCols(p, n, env, G);
@@ -1107,11 +1252,11 @@ export function skyLossAt(p: Vec3, n: Vec3, env: Env | null, boxes: Box[], G?: G
   }
   return loss;
 }
-// 그릴 때 쓰는 가림(굽기 셰이더 bakeSource와 같은 값): 하늘 가림 + 접촉 그늘 몫만큼의 받는 빛(하늘·창빛). 가림은 그릴 때 light.occlusion을 곱하므로 나눠 담는다
+// 그릴 때 쓰는 가림(굽기 셰이더 bakeSource와 같은 값): 하늘 가림 + 접촉 그늘·안쪽 모서리 그늘 몫만큼의 받는 빛(하늘·창빛). 가림은 그릴 때 light.occlusion을 곱하므로 나눠 담는다
 export function bakedLossAt(p: Vec3, n: Vec3, env: Env | null, boxes: Box[], G?: Grid, self = -1): C3 {
   'worklet';
   const loss = skyLossAt(p, n, env, boxes, G, self);
-  const f = contactShade(p, n, boxes, self);
+  const f = contactShade(p, n, boxes, self) + (self < 0 ? jointShade(p, n, env) : 0);
   if (f <= 0) return loss;
   const sk = skyE(n);
   const ky = light.diffuse * Math.max(0, n.x * L_UNIT.x + n.y * L_UNIT.y + n.z * L_UNIT.z);
@@ -1154,7 +1299,7 @@ export function lightWithLoss(p: Vec3, n: Vec3, v: Vec3 | null, env: Env | null,
   const ks = envBRDF(nv, ro);
   const vn = 2 * (n.x * v.x + n.y * v.y + n.z * v.z);
   const rr = { x: vn * n.x - v.x, y: vn * n.y - v.y, z: vn * n.z - v.z };
-  const env3 = envHit(p, rr, env).rad;
+  const env3 = envLobe(p, rr, env, ro);
   const key3 = ggxKey(n, v, ro) * light.diffuse * (1 - kb);
   const cam = EREF.wall;
   const g = CAM.gain;
@@ -1327,12 +1472,11 @@ function gridNodes(env: Env, boxes: Box[], nx: number): GridNode[] {
   }
   return out;
 }
-// 줄의 빛 격자: 가림 없는 밝기에서 시작해 passes번 되풀이(되풀이할 때마다 한 번 더 튕긴 빛까지). 책이 없으면 둘레는 가로로 같다(가로 점 하나).
+// 줄의 빛 격자: 가림 없는 밝기에서 시작해 passes번 되풀이(되풀이할 때마다 한 번 더 튕긴 빛까지). 책도 틀도 없으면 둘레는 가로로 같다(가로 점 하나).
 // 되풀이 수: 다중 반사 경로 추적과 비교해 책 사이 틈 안쪽(가장 많이 튕기는 곳)까지 맞는 수(light-model 테스트)
 export const GRID_PASSES = 6;
-export function solveGrid(env: Env, boxes: Box[], passes = GRID_PASSES): Grid {
+export function solveGrid(env: Env, boxes: Box[], passes = GRID_PASSES, nx = boxes.length || env.side ? ENV_NX : 1): Grid {
   'worklet';
-  const nx = boxes.length ? ENV_NX : 1;
   const nodes = gridNodes(env, boxes, nx);
   let G: Grid | undefined;
   for (let k = 0; k < passes; k++) {
@@ -1397,7 +1541,8 @@ export function shadowAlpha(d: number) {
 const REF_SPACE = 200;
 const REF_BOOK_H = 150;
 const REF_X = (SHELF_X0 + SHELF_X1) / 2;
-const REF_ENV: Env = { floor: 0, ceil: REF_SPACE };
+// 움푹 파인 책장이면 벽의 대표 자리는 구멍 밖 평평한 벽이다(벽지 색 그대로 보이는 곳): 구멍 안 뒷벽은 그보다 물리대로 어둡다
+const REF_ENV: Env = { floor: 0, ceil: REF_SPACE, side: FRAME_ON };
 const REF_EYE = (() => {
   const e = camAt(VIEW_PITCH_MIN).eye!;
   return { x: e.x, y: e.y, z: e.z - e.dist };
@@ -1416,11 +1561,32 @@ function anchorLight(p: Vec3, n: Vec3, G: Grid, rough: number): C3 {
   const ks = envBRDF(refNv(p, n), rough);
   return [(E0[0] - loss[0]) * (1 - ks), (E0[1] - loss[1]) * (1 - ks), (E0[2] - loss[2]) * (1 - ks)];
 }
+// 틀 안쪽 면이 받는 빛의 면 평균(빈 줄). 격자 없는 면이라 면 위 아홉 점에서 잰다
+function sideMean(X: number, nx: number, G: Grid): C3 {
+  const n = { x: nx, y: 0, z: 0 };
+  const sum: C3 = [0, 0, 0];
+  for (const fy of [0.1, 0.5, 0.9]) {
+    for (const fz of [0.1, 0.5, 0.9]) {
+      const p = { x: X, y: REF_SPACE * fy, z: -FRAME_FRONT + (SHELF_DEPTH + FRAME_FRONT) * fz };
+      const E0 = openE(p, n, REF_ENV);
+      const lf = envLoss(p, n, REF_ENV, G);
+      for (let c = 0; c < 3; c++) sum[c] += (E0[c] - lf[c] * light.occlusion) / 9;
+    }
+  }
+  return sum;
+}
+// 틀의 대표 자리 빛: 안쪽 면 평균의 확산 몫(반사된 몫 뺀 것)
+function sideAnchor(G: Grid, rough: number): C3 {
+  const l = sideMean(SHELF_X0, 1, G);
+  const r = sideMean(SHELF_X1, -1, G);
+  const ks = envBRDF(refNv({ x: SHELF_X0, y: REF_SPACE / 2, z: (SHELF_DEPTH - FRAME_FRONT) / 2 }, { x: 1, y: 0, z: 0 }), rough);
+  return [0, 1, 2].map((c) => ((l[c] + r[c]) / 2) * (1 - ks)) as C3;
+}
 // 장정 재질의 대표 자리 빛: 재질이 다르면 대표 자리에서 반사되는 몫이 달라 확산 몫이 다르다(무광 종이 EREF.book 기준)
 const REF_NV_BOOK = refNv(REF_BOOK_P, REF_FRONT);
 export function bookEref(m?: BookSurface): C3 {
   'worklet';
-  const k = (1 - envBRDF(REF_NV_BOOK, ROUGH[m ?? 'paper']) * SPEC_K[m ?? 'paper']) / (1 - envBRDF(REF_NV_BOOK, ROUGH.paper));
+  const k = (1 - envBRDF(REF_NV_BOOK, ROUGH[m ?? 'fine']) * SPEC_K[m ?? 'fine']) / (1 - envBRDF(REF_NV_BOOK, ROUGH.paper));
   return [EREF.book[0] * k, EREF.book[1] * k, EREF.book[2] * k];
 }
 // 대표 자리의 반사광(이득 1일 때 장면 밝기): 눈(REF_EYE) 쪽으로 반사되는 둘레·하늘과 창빛(lightWithLoss와 같은 식)
@@ -1431,8 +1597,8 @@ function anchorSpec(p: Vec3, n: Vec3, G: Grid, rough: number): C3 {
   return [s[0] / CAM.gain, s[1] / CAM.gain, s[2] / CAM.gain];
 }
 // 대표 자리 반사광(이득 1): 맞추기가 정한다
-const SPEC0 = { wall: grey(0), plank: grey(0), paper: grey(0), book: { paper: grey(0), cloth: grey(0), coated: grey(0), print: grey(0) } as Record<BookSurface, C3> };
-export type Calibration = { gain: number; eref: { wall: C3; plank: C3; book: C3; paper: C3 }; albedo: { wall: C3; plank: C3; paper: C3 }; sref: typeof SREF };
+const SPEC0 = { wall: grey(0), plank: grey(0), frame: grey(0), paper: grey(0), book: { paper: grey(0), fine: grey(0), linen: grey(0), matte: grey(0), laid: grey(0) } as Record<BookSurface, C3> };
+export type Calibration = { gain: number; eref: { wall: C3; plank: C3; frame: C3; book: C3; paper: C3 }; albedo: { wall: C3; plank: C3; frame: C3; paper: C3 }; sideE: { l: C3; r: C3 }; sref: typeof SREF };
 // 재질 하나의 반사율: 화면 색 = tone(이득 g × 반사율 × 받는 빛 / 카메라 빛 + 반사광)에서 대표 자리(받는 빛 ref, 반사광 g·s0)가 재질 색 d.
 // 반사율 = (toneInv(d) − g·s0) × 카메라 빛 / (ref × g). 반사광만으로 재질 색보다 밝은 채널은 0(그 방의 빛에서 그만큼 짙게 보일 수 없다)
 function albedoOf(d: C3, ref: C3, s0: C3, g: number): C3 {
@@ -1442,15 +1608,15 @@ function albedoOf(d: C3, ref: C3, s0: C3, g: number): C3 {
 // 노출 기준(이득 gain): 모든 재질 색(벽·판·속지, 시안 장정 색 × 장정 재질)에서 반사율이 그 색(화면 색)을 넘지 않고
 // 결의 가장 밝은 점(grainPeak)까지 ALBEDO_MAX(실제 가장 흰 재질의 반사율)를 넘지 않는 가장 작은 이득. 어깨가 밝은 쪽을 누르므로 이득이 1이면 밝은 색은 반사율이 1을 넘는다.
 // 반사율 ≤ d ⇔ g ≥ toneInv(d)·cam / (ref·d + s0·cam), 반사율 × 결 최대 f ≤ ALBEDO_MAX(실제 가장 흰 재질) ⇔ g ≥ toneInv(d)·cam·f / (ref·ALBEDO_MAX + f·s0·cam)
-const BOOK_MATS = ['paper', 'cloth', 'coated'] as const;
-// 대표 자리 반사광을 재 두는 표면: 장정 재질 + 실물 표지(사진 색은 재질 색이 아니라 위 이득 조건에는 넣지 않는다)
-const BOOK_SURFACES = [...BOOK_MATS, 'print'] as const;
+const BOOK_MATS = ['fine', 'linen', 'matte', 'laid'] as const;
+// 대표 자리 반사광을 재 두는 표면: 장정 재질 + 갈피 종이
+const BOOK_SURFACES = [...BOOK_MATS, 'paper'] as const;
 function setAlbedo() {
   const cam = EREF.wall;
   const peak = (name: keyof typeof materials) => albedoPeak(MAT_UNIFORMS[name]);
   const all: [C3, C3, C3, number][] = [
-    [DESIGN.wall, EREF.wall, SPEC0.wall, peak('paint')],
-    [DESIGN.plank, EREF.plank, SPEC0.plank, peak('wood')],
+    [DESIGN.wall, EREF.wall, SPEC0.wall, peak(surfaceMats.wall)],
+    [DESIGN.plank, EREF.plank, SPEC0.plank, peak(surfaceMats.plank)],
     [DESIGN.paper, EREF.paper, SPEC0.paper, peak('pages')],
   ];
   for (const hex of Object.keys(palette)) for (const m of BOOK_MATS) all.push([linearOf(hex), bookEref(m), SPEC0.book[m], peak(m)]);
@@ -1463,73 +1629,102 @@ function setAlbedo() {
         ),
       ),
     ),
+    // 틀은 대표 자리가 그늘진 안쪽 면이라 반사율이 보이는 색보다 클 수 있다(앞을 향해 트인 자리였다면 더 밝았을 색): 상한만 지킨다
+    ...[0, 1, 2].map((c) => {
+      const f = peak(surfaceMats.frame);
+      return (toneInv(DESIGN.frame[c]) * cam[c] * f) / (EREF.frame[c] * ALBEDO_MAX + f * SPEC0.frame[c] * cam[c]);
+    }),
   );
   const g = CAM.gain;
   ALBEDO.wall = albedoOf(DESIGN.wall, EREF.wall, SPEC0.wall, g);
   ALBEDO.plank = albedoOf(DESIGN.plank, EREF.plank, SPEC0.plank, g);
+  ALBEDO.frame = albedoOf(DESIGN.frame, EREF.frame, SPEC0.frame, g);
   ALBEDO.paper = albedoOf(DESIGN.paper, EREF.paper, SPEC0.paper, g);
   const gs = (s0: C3): C3 => [s0[0] * g, s0[1] * g, s0[2] * g];
   SREF.wall = gs(SPEC0.wall);
   SREF.plank = gs(SPEC0.plank);
+  SREF.frame = gs(SPEC0.frame);
   SREF.paper = gs(SPEC0.paper);
-  SREF.book = { paper: gs(SPEC0.book.paper), cloth: gs(SPEC0.book.cloth), coated: gs(SPEC0.book.coated), print: gs(SPEC0.book.print) };
+  SREF.book = Object.fromEntries(BOOK_SURFACES.map((m) => [m, gs(SPEC0.book[m])])) as Record<BookSurface, C3>;
   setRadiance();
 }
 // 맞추기(테스트에서만). 반사율이 1e-4보다 덜 바뀌면 멈춘다
 export function runCalibration(log?: (s: string) => void): Calibration {
   const front = { x: 0, y: 0, z: -1 };
   for (let i = 0; i < 20; i++) {
-    const before = [ALBEDO.wall, ALBEDO.plank, ALBEDO.paper, EREF.book, SREF.wall, SREF.plank, SREF.paper, ...BOOK_SURFACES.map((m) => SREF.book[m])].flat();
+    const before = [ALBEDO.wall, ALBEDO.plank, ALBEDO.frame, ALBEDO.paper, EREF.book, SIDE_E.l, SIDE_E.r, SREF.wall, SREF.plank, SREF.frame, SREF.paper, ...BOOK_SURFACES.map((m) => SREF.book[m])].flat();
     // 대표 자리의 둘레(빈 줄)도 여러 번 튕긴 빛으로(빛 격자)
-    const G = solveGrid(REF_ENV, []);
-    EREF.wall = anchorLight({ x: REF_X, y: REF_SPACE / 2, z: SHELF_DEPTH }, front, G, ROUGH.paint);
-    EREF.plank = anchorLight({ x: REF_X, y: -SHELF_THICK / 2, z: -SHELF_FRONT }, front, G, ROUGH.wood);
+    // 대표 자리는 줄 가운데라 가로 점 하나면 된다(스킨을 바꿔 다시 맞출 때 오래 걸리지 않게)
+    const G = solveGrid(REF_ENV, [], GRID_PASSES, 1);
+    const rWall = ROUGH[surfaceMats.wall];
+    const rPlank = ROUGH[surfaceMats.plank];
+    const rFrame = ROUGH[surfaceMats.frame];
+    // 틀의 대표 자리: 안쪽 면 평균(틀 색은 안쪽 면에서 보이는 색이다). 틀이 없으면 쓰이지 않는다
+    const frameP = { x: REF_X, y: REF_SPACE / 2, z: -FRAME_FRONT };
+    const wallP = FRAME_ON ? frameP : { x: REF_X, y: REF_SPACE / 2, z: SHELF_DEPTH };
+    EREF.wall = anchorLight(wallP, front, G, rWall);
+    EREF.plank = anchorLight({ x: REF_X, y: -SHELF_THICK / 2, z: -SHELF_FRONT }, front, G, rPlank);
+    EREF.frame = FRAME_ON ? sideAnchor(G, rFrame) : anchorLight(frameP, front, G, rFrame);
+    // 틀 안쪽 면이 받는 빛(되비침에 쓴다): 면 전체 평균(가운데만 재면 모서리 쪽 어두운 몫이 빠져 되비침이 커진다)
+    SIDE_E.l = sideMean(SHELF_X0, 1, G);
+    SIDE_E.r = sideMean(SHELF_X1, -1, G);
     EREF.book = anchorLight(REF_BOOK_P, front, G, ROUGH.paper);
     EREF.paper = anchorLight(REF_BOOK_P, front, G, ROUGH.pages);
-    SPEC0.wall = anchorSpec({ x: REF_X, y: REF_SPACE / 2, z: SHELF_DEPTH }, front, G, ROUGH.paint);
-    SPEC0.plank = anchorSpec({ x: REF_X, y: -SHELF_THICK / 2, z: -SHELF_FRONT }, front, G, ROUGH.wood);
+    SPEC0.wall = anchorSpec(wallP, front, G, rWall);
+    SPEC0.plank = anchorSpec({ x: REF_X, y: -SHELF_THICK / 2, z: -SHELF_FRONT }, front, G, rPlank);
+    SPEC0.frame = anchorSpec(frameP, front, G, rFrame);
     SPEC0.paper = anchorSpec(REF_BOOK_P, front, G, ROUGH.pages);
     for (const m of BOOK_SURFACES) SPEC0.book[m] = anchorSpec(REF_BOOK_P, front, G, ROUGH[m]).map((v) => v * SPEC_K[m]) as C3;
     setAlbedo();
-    const after = [ALBEDO.wall, ALBEDO.plank, ALBEDO.paper, EREF.book, SREF.wall, SREF.plank, SREF.paper, ...BOOK_SURFACES.map((m) => SREF.book[m])].flat();
+    const after = [ALBEDO.wall, ALBEDO.plank, ALBEDO.frame, ALBEDO.paper, EREF.book, SIDE_E.l, SIDE_E.r, SREF.wall, SREF.plank, SREF.frame, SREF.paper, ...BOOK_SURFACES.map((m) => SREF.book[m])].flat();
     const change = Math.max(...after.map((v, k) => Math.abs(v - before[k])));
     log?.(`calibration ${i}: change ${change.toExponential(2)}`);
     if (change < 1e-6) break;
   }
-  return { gain: CAM.gain, eref: { wall: EREF.wall, plank: EREF.plank, book: EREF.book, paper: EREF.paper }, albedo: { wall: ALBEDO.wall, plank: ALBEDO.plank, paper: ALBEDO.paper }, sref: SREF };
+  return { gain: CAM.gain, eref: { wall: EREF.wall, plank: EREF.plank, frame: EREF.frame, book: EREF.book, paper: EREF.paper }, albedo: { wall: ALBEDO.wall, plank: ALBEDO.plank, frame: ALBEDO.frame, paper: ALBEDO.paper }, sideE: { l: SIDE_E.l, r: SIDE_E.r }, sref: SREF };
 }
 // 맞추기 입력(이 값이 바뀌면 미리 계산한 값을 다시 만든다). method: 맞추기 방법을 바꾸면 올린다
-const CALIBRATION_METHOD = 6; // 5: 판 그림자를 광선 기준으로(판 끝 대각선), 6: 빛 격자 창빛을 판·책 가림 합집합으로(2026-10-26)
+const CALIBRATION_METHOD = 8; // 5: 판 그림자를 광선 기준으로(판 끝 대각선), 6: 빛 격자 창빛을 판·책 가림 합집합으로(2026-10-26), 7: 책장 틀과 스킨(2026-11-04), 8: 틀 색은 안쪽 면 기준(2026-11-04)
 export function calibrationInputs() {
-  return JSON.stringify({ method: CALIBRATION_METHOD, light, F0, ALBEDO_MAX, materials, surfaces, palette: Object.keys(palette), TONE, REF_SPACE, REF_BOOK_H, SHELF_DEPTH, SHELF_FRONT, SHELF_THICK, SHELF_X0, SHELF_X1, GRID_N, ENV_NY, ENV_COLS, GRID_PASSES, TOUCH, eye: REF_EYE });
+  return JSON.stringify({ method: CALIBRATION_METHOD, light, F0, ALBEDO_MAX, materials, surfaces, surfaceMats, FRAME_ON, LOOK, FRAME_FRONT, palette: Object.keys(palette), TONE, REF_SPACE, REF_BOOK_H, SHELF_DEPTH, SHELF_FRONT, SHELF_THICK, SHELF_X0, SHELF_X1, GRID_N, ENV_NY, ENV_COLS, GRID_PASSES, TOUCH, eye: REF_EYE });
 }
 export function applyCalibration(c: Calibration) {
   CAM.gain = c.gain;
   EREF.wall = c.eref.wall;
   EREF.plank = c.eref.plank;
+  EREF.frame = c.eref.frame;
   EREF.book = c.eref.book;
   EREF.paper = c.eref.paper;
   ALBEDO.wall = c.albedo.wall;
   ALBEDO.plank = c.albedo.plank;
+  ALBEDO.frame = c.albedo.frame;
   ALBEDO.paper = c.albedo.paper;
+  SIDE_E.l = c.sideE.l;
+  SIDE_E.r = c.sideE.r;
   SREF.wall = c.sref.wall;
   SREF.plank = c.sref.plank;
+  SREF.frame = c.sref.frame;
   SREF.paper = c.sref.paper;
   SREF.book = { ...c.sref.book };
   setRadiance();
   // 반사율은 1을 넘을 수 없다(받은 빛보다 많이 되비추는 면은 없다)
-  for (const v of [ALBEDO.wall, ALBEDO.plank, ALBEDO.paper]) if (Math.max(...v) > 1) throw new Error(`light-model: albedo > 1 (${v.join(', ')})`);
+  for (const v of [ALBEDO.wall, ALBEDO.plank, ALBEDO.frame, ALBEDO.paper]) if (Math.max(...v) > 1) throw new Error(`light-model: albedo > 1 (${v.join(', ')})`);
 }
 // 처음 값: 미리 계산한 맞추기. 입력이 바뀌어 낡았으면(다시 만들기 전) 그린 색 그대로 한 번 맞춘 값(light-calibration 테스트가 알린다)
 if (CALIBRATION && CALIBRATION_INPUTS === calibrationInputs()) applyCalibration(CALIBRATION);
-else setAlbedo();
+else if (process.env.EXPO_PUBLIC_PERF === '1') {
+  // 측정 번들에서 빛을 바꿔 비교할 때(?light=): 그 빛으로 맞추기를 실행 중에 다시 한다
+  const t0 = Date.now();
+  runCalibration();
+  console.log('[light] 맞추기', Date.now() - t0, 'ms 이득', CAM.gain.toFixed(3));
+} else setAlbedo();
 
 // 장정 재질의 대표 자리 반사광
 export function bookSref(m?: BookSurface): C3 {
   'worklet';
-  return SREF.book[m ?? 'paper'];
+  return SREF.book[m ?? 'fine'];
 }
-// 책 장정 색(시안 색) → 실제 반사율(되비침에 쓴다, albedoOf와 같은 식). m: 장정 재질(없으면 무광 종이)
+// 책 장정 색(시안 색) → 실제 반사율(되비침에 쓴다, albedoOf와 같은 식). m: 장정 재질(없으면 고운 종이)
 export function bookAlbedo(hex: string, m?: BookSurface): C3 {
   'worklet';
   const c = linearOf(hex);

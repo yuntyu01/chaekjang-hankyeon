@@ -10,6 +10,7 @@ import { BASE_CAM, type Point } from '@/domain/camera';
 import { bookHeight, DESIGN_WIDTH, SHELF, SHELF_FRONT, SHELF_THICK } from '@/domain/geometry';
 import { sortedShelves, type BookMap } from '@/domain/layout-engine';
 import type { ShelfLayout } from '@/domain/types';
+import { FRAME_ON } from '@/scene-config/skin';
 
 export const MAX_LAYOUT_WIDTH = 520;
 export const CONTENT_TOP = 10; // 시안의 첫 책 머리/선반 기준선에 맞춘 최소 상단 여백
@@ -25,9 +26,13 @@ export type RowGeom = {
   baseline: number; // 콘텐츠 px: 책 기준선 왼쪽 끝(선반 공간 원점)의 화면 y
 };
 
+// 움푹 파인 책장의 바깥 여백: 시안의 구멍 왼쪽 끝이 화면 폭의 약 3%라 장면을 설계 폭보다 양쪽으로 4DU 넓게 잡는다(화면에서 약 2% 작아진다). 선반 치수(DU)·저장된 배치는 그대로라 책 수가 같다
+export const SCENE_PAD = FRAME_ON ? 4 : 0;
+
 export function makeMetrics(windowWidth: number): ShelfMetrics {
   const width = Math.min(windowWidth, MAX_LAYOUT_WIDTH);
-  return { scale: width / DESIGN_WIDTH, originX: (windowWidth - width) / 2 };
+  const scale = width / (DESIGN_WIDTH + 2 * SCENE_PAD);
+  return { scale, originX: (windowWidth - width) / 2 + SCENE_PAD * scale };
 }
 
 // 폭이 그대로면 같은 객체(이 값을 받는 메모·효과가 렌더마다 다시 돌지 않게)
@@ -39,8 +44,6 @@ export function useShelfMetrics() {
 export const RIBBON_OUT = 15; // 줄 간격에 예약하는 갈피 높이(가장 긴 장). 실제 모양은 ribbon-design.
 // 가장 키 큰 책(갈피 포함) 머리 위의 3D 여유(DU). 예전 기본 보기(3°)에서 예전 줄 간격(가장 큰 책의 투영 높이 + 2DU)과 같아지게 정한 값(기본은 2026-10-06부터 4°).
 export const ROW_CLEARANCE = 22;
-// 시안의 둘째 줄 위 여백은 조금 넓고, 마지막 줄 위 여백은 더 촘촘하다.
-export const ROW_CLEARANCES = [26.1, 27.85, 10.55];
 // 줄 칸(화면)의 기준 보기는 기본 4°(BASE_CAM)다: 칸 경계 = 윗선반 앞면 아래 모서리를 기본 보기로 본 자리(기본 보기에서 예전과 같은 위치).
 // 칸은 줄을 고르는 터치 띠·세로 가운데 정렬에만 쓰고, 그리기·가림은 실제 카메라로 한다.
 // 원근 카메라에서는 판 높이·줄 가운데의 요약 기울기(camera.ts). 줄 칸은 이 값으로 잰다: 줄 기준선 사이 화면 거리가 3D 줄 간격과
@@ -51,8 +54,7 @@ const REF_KY = BASE_CAM.ky;
 const MIN_SPACE = 110 + SHELF.rowTopPad + SHELF_FRONT * REF_KY;
 
 // 헤더 아래 빈 공간 비율(1 = 세 줄을 가운데 정렬). 측정 번들에서 비교할 때만 바꾼다
-// rowFit(기본 1): 각 줄에 필요한 높이로 3D 줄 간격을 맞춘다.
-export const LAYOUT = { topGap: 0.34, rowFit: 1 };
+export const LAYOUT = { topGap: 0.34 };
 
 // 한 선반에 놓인 책 중 가장 높은 머리(갈피 포함, DU). 자세와 무관하게 책 세로 길이로 잰다(자세를 바꿔도 줄이 움직이지 않게).
 function tallestOn(layout: ShelfLayout, books: BookMap, shelfId: string) {
@@ -66,12 +68,11 @@ function tallestOn(layout: ShelfLayout, books: BookMap, shelfId: string) {
   return top;
 }
 
-// 3D 줄 간격(판 윗면 → 윗선반 아랫면, DU): 해당 선반의 가장 키 큰 책 + 여유.
+// 3D 줄 간격(판 윗면 → 윗선반 아랫면, DU): 모든 줄이 같다(2026-11-04 사용자 '선반 간격은 일정하게'). 책장에서 가장 키 큰 책 + 여유, 빈 책장은 MIN_SPACE
 export function rowSpaces(layout: ShelfLayout, books: BookMap): Map<string, number> {
   const shelves = sortedShelves(layout);
-  const need = new Map(shelves.map((s, i) => [s.id, tallestOn(layout, books, s.id) + (shelves.length === 3 ? ROW_CLEARANCES[i] : ROW_CLEARANCE)]));
-  const space = Math.max(MIN_SPACE, ...need.values());
-  return new Map(shelves.map((s) => [s.id, space - LAYOUT.rowFit * (space - Math.max(MIN_SPACE, need.get(s.id)!))]));
+  const space = Math.max(MIN_SPACE, ...shelves.map((s) => tallestOn(layout, books, s.id) + ROW_CLEARANCE));
+  return new Map(shelves.map((s) => [s.id, space]));
 }
 
 export function computeRows(layout: ShelfLayout, books: BookMap, scale: number, viewportHeight = 0, bottomInset = 0): RowGeom[] {
@@ -85,6 +86,20 @@ export function computeRows(layout: ShelfLayout, books: BookMap, scale: number, 
     const clear = space - SHELF_FRONT * REF_KY;
     const row = { shelfId: s.id, top, clear, space, height: heights[i], baseline: top + clear * scale };
     top += heights[i];
+    return row;
+  });
+}
+
+// 잠긴 선반 줄(아직 열지 않은 칸): 마지막 줄 아래로 이어진다. 높이는 지금 줄 중 가장 높은 줄만큼(시안: 다른 줄과 같은 높이)
+export function lockedRowsAfter(rows: RowGeom[], count: number, scale: number): RowGeom[] {
+  const space = Math.max(MIN_SPACE, ...rows.map((r) => r.space));
+  const clear = space - SHELF_FRONT * REF_KY;
+  const height = (space + SHELF_THICK) * scale;
+  const last = rows.at(-1);
+  let top = last ? last.top + last.height : CONTENT_TOP;
+  return Array.from({ length: count }, (_, i) => {
+    const row = { shelfId: `locked:${i}`, top, clear, space, height, baseline: top + clear * scale };
+    top += height;
     return row;
   });
 }

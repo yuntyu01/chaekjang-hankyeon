@@ -12,7 +12,10 @@ export const colors = {
   // 갈색(accent)은 브랜드색으로 주요 버튼·선택 표시·활성 조절부에만 그대로 쓴다. 책장 재질·갈피 카드 종이색은 따로(theme.ts·BookmarkCard).
   bg: '#FFFFFF', // 화면 배경(시트·확인창·메뉴도 같은 바탕)
   input: '#F2F4F6', // 입력칸·검색창 배경(TDS grey100)
-  surface: '#F2F4F6', // 구분이 필요한 작은 영역(요약 블록·안내 상자·눌린 줄)·묶음 사이 띠
+  surface: '#F2F4F6', // 구분이 필요한 작은 영역(요약 블록·안내 상자·눌린 줄)
+  page: '#F2F4F6', // 허브 화면 바탕(2026-11-04 당근 #F3F4F6·토스 #F2F4F6): 흰 카드(shape.card)를 얹는다. 목록·설정·상세는 흰 바탕 그대로
+  sectionLine: '#EFF1F3', // 묶음 사이 화면 끝까지 닿는 1dp 선(당근 설정 #EFEFEF)
+  chipOn: '#293038', // 고른 칩·거르기(당근 #293038): 테마색이 아니라 짙은 회색. 테마색은 주요 행동에만
   raised: '#FFFFFF', // 하단 시트·확인창·정보 상자
   ink: '#191F28', // 본문 글자(TDS grey900, 흰 바탕 16.6:1)
   title: '#191F28', // 화면 제목·뒤로
@@ -21,10 +24,8 @@ export const colors = {
   line: '#E5E8EB', // 구분선(TDS grey200)
   border: '#E5E8EB', // 기본 테두리
   track: '#D1D6DB', // 슬라이더 남은 트랙·꺼진 스위치(TDS grey300)
-  accent: '#6C534A', // 대표색: 주요 버튼·선택 상태·입력 포커스·켜진 스위치
+  accent: '#6C534A', // 테마색(2026-11-04 당근·토스 종합): 화면의 주요 버튼 하나·켜진 스위치·입력 포커스·체크. 칩·탭·하단바에는 쓰지 않는다
   accentPressed: '#5A443C',
-  accentSoft: '#F2EDEA', // 옅은 갈색 바탕: 보조 버튼·고른 칸(토스의 옅은 파랑 바탕 + 파랑 글자 자리)
-  accentSoftPressed: '#E8DED9',
   onAccent: '#FFFFFF',
   disabled: '#E5E8EB', // 누를 수 없는 주요 버튼 바탕
   disabledInk: '#B0B8C1',
@@ -33,6 +34,9 @@ export const colors = {
   scrim: 'rgba(25,31,40,0.36)',
   inkAction: '#F2D9A6', // 짙은 알림(토스트) 위 행동 글자(되돌리기)
 };
+
+// 내 정보·기록 탭 모양(2026-11-04 사용자 '굳이 박스 표시할 필요가 있나'): false면 흰 바탕 + 묶음 사이 선, true면 회색 바탕 + 흰 카드. 이 값 하나로 바뀐다
+export const TAB_CARDS = false as boolean;
 
 // 글꼴: UI는 Pretendard 한 가족(2026-10-26 시안과 같은 글꼴: 한글은 본고딕 뼈대, 영문·숫자는 Inter 모양. 한글 11,172자·영문·숫자가 모두 있어 섞이지 않는다).
 // 숫자는 폭이 달라 시간처럼 바뀌는 숫자에는 fontVariant tabular-nums(글꼴의 tnum)를 쓴다.
@@ -79,6 +83,9 @@ export const space = {
   tight: 6,
   row: 56, // 목록 한 줄 최소 높이(시안 56)
   touch: 44, // 아이콘 버튼 최소 터치 크기
+  cardMargin: 16, // 허브 화면 카드 바깥(당근 18, 토스 14)
+  cardPad: 18, // 카드 안쪽
+  cardGap: 12, // 카드 사이
 };
 
 // 모양: 버튼·입력창 모서리, 테두리, 그림자. 그림자는 떠 있는 것(시트·토스트·미니 타이머)에만.
@@ -86,7 +93,9 @@ export const shape = {
   button: 10, // 갈피 수정 시안 실측 약 9
   input: 10,
   pill: 999,
-  sheet: 22,
+  card: 18, // 허브 화면 흰 카드(당근 약 18, 토스 약 20)
+  tag: 6, // 작은 꼬리표
+  sheet: 20,
   dialog: 18,
   hairline: StyleSheet.hairlineWidth,
   border: 1,
@@ -105,7 +114,7 @@ export const press = { opacity: 0.55 };
 // ui/kit 부품은 <Tidy>(또는 Screen tidy) 안에서만 이 값으로 그린다.
 // 글꼴: Pretendard 그대로(R 400·M 500·SB 600 파일). 프로젝트에 '살짝 둥근 고딕'이 R·M·SB로 갖춰진 것이 없다(나눔스퀘어라운드는 B·EB뿐).
 // 굵기 기준: 화면 제목 SemiBold, 시트·묶음 제목·책 제목·주요 버튼·입력칸 이름 Medium, 본문·저자·상태·설명·보조 행동 Regular.
-// 간격은 4·8·12·16·28·40 단계만, 모서리는 조작 요소 10·칩 8·시트 20·확인창 16.
+// 간격은 4·8·12·16·28·40 단계만(허브 카드는 16·18·12), 모서리는 조작 요소 10·칩 둥근 알약·카드 18·시트 20·확인창 18.
 export const tidyType = {
   // 2026-11-01 토스(TDS) 기준으로 위계를 다시 세웠다: 큰 제목 24 Bold(TDS 24 '조금 큰 제목') · 시트·묶음 제목 20(TDS 20 '작은 제목') ·
   // 구역 제목 18 · 본문 17(TDS '일반 본문') · 보조 15('작은 본문') · 작은 메타 14. 크기 차이로 무엇이 주인공인지 보이게 한다
@@ -128,7 +137,7 @@ export const tidyType = {
 export const tabHeader = { paddingTop: 16, paddingBottom: 12, paddingHorizontal: 24, minHeight: 64 };
 export const headerType = { title: tidyType.title, sub: tidyType.sub };
 export const tidySpace = { ...space, section: 40, group: 28, tight: 8, xs: 4, s: 8, m: 12, l: 16, xl: 28, xxl: 40 };
-export const tidyShape = { ...shape, button: 10, input: 10, chip: 8, sheet: 20, dialog: 16, cover: 4 };
+export const tidyShape = { ...shape, button: 10, input: 10, chip: shape.pill, sheet: 20, dialog: 18, cover: 4 };
 // 버튼 높이: 화면의 단 하나뿐인 주요 행동 l, 보통 m, 줄 안의 작은 행동 s
 export const tidyButton = { l: 60, m: 54, s: 44 };
 

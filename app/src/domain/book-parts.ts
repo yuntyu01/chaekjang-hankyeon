@@ -5,6 +5,8 @@
 // 모든 면은 이 구조의 평면 조각을 같은 카메라로 투영해 그린다(화면 좌표에서 밀어 넣기·흔들림 없음). 보이는지는 자세와 카메라로 정한다.
 // 충돌·받침·가림 순서는 바깥 상자(T×H×W) 그대로이고, 그리는 모양은 그 상자 안에만 있다: 둥근 모서리(EDGE_R)는 책 전체 윤곽을
 // 안쪽으로 깎을 뿐 밖으로 내밀지 않는다.
+import { FRAME_ON, LOOK } from '@/scene-config/skin';
+
 import type { Book3, FaceId, Vec3 } from './book3';
 import { mm } from './geometry';
 
@@ -19,8 +21,17 @@ export const EDGE_R = mm(4);
 // 두 면이 함께 보이는 세로 변(돌린 표지 책의 표지·옆면)의 둥글기 7mm(2026-11-02 사용자 '정면이랑 측면 이어지는 쪽 좀 둥글게'). 법선은 두 면의 가운데(45°)에서 만난다
 export const SEAM_R = mm(7);
 // 선반 판 모서리 둥글기 2mm(사용자 결정 2026-10-26: 4mm는 판 윗면 앞 끝이 밝은 띠로 칠해져 윗면은 두껍고 앞면은 얇아 보였다).
-// 판 윤곽(ShelfPlank)과 판 면 모서리 법선(셰이더 PLANKR)이 같이 쓴다.
+// 판 면 모서리 법선(셰이더 PLANKR)이 쓴다.
 export const PLANK_EDGE_R = mm(2);
+// 선반 양끝 윤곽의 둥글기 5mm(2026-11-03 사용자 시안 '선반 양끝 부드럽게', 시안에서 약 4.5mm). 윤곽(화면 모양)만 둥글린다: 면 빛의 모서리 법선은 위의 2mm 그대로라 앞 끝 밝은 띠가 다시 생기지 않는다
+// 움푹 파인 책장은 판 끝이 안쪽 면에 맞닿아 거의 각지다(시안 판 끝 아래 모서리 약 1mm)
+export const PLANK_END_R = FRAME_ON ? mm(2) : mm(5);
+// 뒷벽 꼭지점과 판 윗면 뒤쪽 꼭지점 둥글기(scene-config/skin LOOK)
+export const BACK_CORNER_R = mm(LOOK.cornerMm);
+// 안쪽 모서리 번짐 폭: 뒷벽·천장·판 윗면이 맞닿은 면으로 이만큼 서서히 넘어간다(ui/scene-light-sksl softEdge)
+export const SOFT_W = mm(LOOK.softMm);
+// 구멍 앞 끝의 벽 면 안 모서리 둥글기(둥근 테 바깥쪽은 이 값 + 테 반지름, scene-config/skin LOOK)
+export const RIM_CORNER = LOOK.rimCorner;
 // 갈피 탭(종이를 자른 모서리) 둥글기 1.5mm(시안 탭 모서리 1.1~1.5mm)
 export const TAB_R = mm(1.5);
 // 둥근 책등(양장 둥근 등: 두께 방향 원호). 가운데가 가장 바깥이고 양 끝으로 갈수록 안으로 들어간다. 책등 양 끝에서 면이 기우는 각(라디안).

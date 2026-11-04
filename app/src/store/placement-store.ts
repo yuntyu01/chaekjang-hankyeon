@@ -3,10 +3,12 @@
 import { useSyncExternalStore } from 'react';
 import { readLayout, saveLayout } from '@/db/local-db';
 
+import { SHELF_SLOTS } from '@/domain/layout-rules';
 import { addShelf, firstFitCandidates, fitToShelf, keepGaps, leanUntouchedFront, moveToDrawer, refitFrontToWall, pruneEmptyShelves, validate } from '@/domain/layout-engine';
 import { ensureShelves, migrate, normalize, type BookMap } from '@/domain/layout-schema';
 import { ensureLeanGaps, resolveLeans, withLeans, type FallDirections, type LeanResolution } from '@/domain/shelf-scene';
 import { MOCKUP_BOOKS, MOCKUP_LAYOUT } from '@/domain/mockup-sample';
+import { MAT_REAL_BOOKS, MAT_REAL_LAYOUT, MAT_SIDE_BOOKS, MAT_SIDE_LAYOUT } from '@/domain/material-sample';
 import { REAL_BEFORE, REAL_BOOKS, REAL_FRONT_BEFORE, REAL_FRONT_BOOKS, REAL_FRONT_LAYOUT, REAL_LAYOUT, REAL_SIDE_BOOKS, REAL_SIDE_LAYOUT } from '@/domain/real-sample';
 import { SAMPLE_BOOKS, SAMPLE_LAYOUT } from '@/domain/onboarding-sample';
 import type { Book, BookPlacement, ShelfLayout, ShelfLayoutV1 } from '@/domain/types';
@@ -32,7 +34,7 @@ export const EMPTY_LAYOUT: ShelfLayout = ensureShelves({ version: 2, shelves: []
 const noFalls = () => ({ fell: null, fellIds: [] as string[], fallDirections: {} as FallDirections });
 let state: State = { books: {}, layout: EMPTY_LAYOUT, undo: null, save: 'idle', loaded: false, notice: null, ...noFalls(), demo: false };
 let userSnapshot: { books: BookMap; layout: ShelfLayout } | null = null;
-export type DemoKind = 'sample' | 'mockup' | 'real' | 'real-front' | 'real-side' | 'real-before' | 'real-front-before';
+export type DemoKind = 'sample' | 'mockup' | 'real' | 'real-front' | 'real-side' | 'real-before' | 'real-front-before' | 'mat-side' | 'mat-real';
 const DEMO_SHELVES: Record<DemoKind, [Book[], ShelfLayout]> = {
   sample: [SAMPLE_BOOKS, SAMPLE_LAYOUT],
   mockup: [MOCKUP_BOOKS, MOCKUP_LAYOUT],
@@ -41,6 +43,8 @@ const DEMO_SHELVES: Record<DemoKind, [Book[], ShelfLayout]> = {
   'real-side': [REAL_SIDE_BOOKS, REAL_SIDE_LAYOUT],
   'real-before': REAL_BEFORE,
   'real-front-before': REAL_FRONT_BEFORE,
+  'mat-side': [MAT_SIDE_BOOKS, MAT_SIDE_LAYOUT],
+  'mat-real': [MAT_REAL_BOOKS, MAT_REAL_LAYOUT],
 };
 // 측정 번들 ?demoboot= 값: '1'은 예시 책장, 나머지는 이름 그대로. 그 밖의 값은 끈다(null)
 export const demoKindOf = (v: string | null | undefined): DemoKind | null => (v === '1' ? 'sample' : v && v !== 'sample' && v in DEMO_SHELVES ? (v as DemoKind) : null);
@@ -216,7 +220,8 @@ export const placementStore = {
     return placementStore.commit(addShelf(state.layout, id));
   },
   pruneShelves() {
-    return placementStore.commit(pruneEmptyShelves(state.layout));
+    // 연 칸(다섯 칸 안)은 비어 있어도 없애지 않는다: 없애면 산 칸이 다시 잠긴다
+    return placementStore.commit(pruneEmptyShelves(state.layout, SHELF_SLOTS));
   },
 
   // 측정 번들 전용: 예시 18권 책장(메모리에만). 끄면 내 책장으로 돌아간다.

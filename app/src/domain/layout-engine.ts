@@ -22,6 +22,7 @@ import {
   SHELF_X1,
   singleFootprint,
 } from './geometry';
+import { FRAME_ON } from '@/scene-config/skin';
 import { collisionRangeX, corners, frontBook3, fromPlaced, gap, lowest, xRange, type Book3 } from './book3';
 import { boxSize, type Placed } from './box';
 import { frontExtent, frontFall2, frontLean, frontLeaner2, frontSupport2, pitchForWall, releasedPitch, spinStep, tiltStep, WALL_TOUCH, wallLeanPose, wallReach, type FrontState } from './front-pose';
@@ -299,7 +300,8 @@ export const EDGE_PAD = 1;
 // (옆 책에 밀려도 그 너머로는 나가지 않는다)
 function itemBounds(item: ShelfItem, layout: ShelfLayout, width: number) {
   const b = bounds([item], layout);
-  if (item.stacked || !placementOf(layout, item.bookIds[0])?.overhang) return b;
+  // 틀이 있으면 옆판에 막혀 판 끝 밖으로 걸칠 수 없다
+  if (FRAME_ON || item.stacked || !placementOf(layout, item.bookIds[0])?.overhang) return b;
   return {
     lo: Math.min(b.lo, Math.max(SHELF_X0 + OVERHANG_MARGIN - width / 2, b.lo - SHELF.sideMargin + EDGE_PAD)),
     hi: Math.max(b.hi, Math.min(SHELF_X1 - OVERHANG_MARGIN + width / 2, b.hi + SHELF.sideMargin - EDGE_PAD)),

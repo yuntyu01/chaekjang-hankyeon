@@ -37,7 +37,10 @@ export function vnoise(x: number, y: number): [number, number, number] {
 // 값 잡음 기울기 한 성분의 RMS: 미세 높이 진폭을 재질의 기울기 RMS에 맞출 때 나눈다(격자 칸 256개를 칸마다 8×8 점으로 잰 값. 앱을 켤 때마다 다시 재지 않는다, 맞는지는 시험)
 export const VN_GRAD_RMS = 0.7564737144031012;
 
-export const GRAIN_KIND = { none: 0, fiber: 1, weave: 2, sheets: 3, wood: 4 } as const;
+// 나무: 판 윗면 결이 앞면보다 넓은 배수(나이테를 넓게 자른 면, 시안 윗면 깊이 230mm에 줄 약 4~5개), 가는 결의 간격(늦재 간격 대비)
+export const WOOD_FLAT = 1 / 14;
+export const WOOD_FINE_SCALE = 0.43;
+export const GRAIN_KIND = { none: 0, fiber: 1, weave: 2, sheets: 3, wood: 4, linen: 5 } as const;
 // 셰이더 입력: mRough = (거칠기 r, 기울기 RMS), mBump = (1/크기 u, 1/크기 v, 진폭, 천 올이면 1), mGrain = (종류, 세기 1, 세기 2, 접장 틈 폭 또는 섬유 세기), mGsize = (크기 1, 크기 2)
 // 접장 사이 틈 폭(속지 sheets): 낱장 1.5장(0.1mm × 1.5)
 export const SHEET_GAP = mm(0.15);
@@ -56,7 +59,7 @@ export function matUniforms(m: SurfaceMaterial): MatUniforms {
   return {
     mRough: [m.roughness, b ? b.slope : 0],
     mBump: bump,
-    mGrain: [GRAIN_KIND[g.kind], g.contrast[0], g.contrast[1], g.kind === 'sheets' ? SHEET_GAP : g.kind === 'fiber' ? (g.fine ?? 0) : 0],
+    mGrain: [GRAIN_KIND[g.kind], g.contrast[0], g.contrast[1], g.kind === 'sheets' ? SHEET_GAP : g.kind === 'fiber' || g.kind === 'linen' || g.kind === 'wood' ? (g.fine ?? 0) : 0],
     mGsize: [mm(g.size[0]), mm(g.size[1])],
   };
 }
@@ -75,10 +78,21 @@ export function fiberSeen(fp: number) {
   const x = Math.min(1, Math.max(0, (FIBER_W / Math.max(fp, 1e-9) - 0.1) / 0.25));
   return x * x * (3 - 2 * x);
 }
+// 비스듬히 보이는 면에서 섬유가 뭉개지는 몫: 한 화소가 덮는 면 길이가 두 방향으로 크게 다르면(기댄 책 밑면처럼 얇게 보이는 면) 섬유가 빗금처럼 자글자글해진다(2026-11-03 사용자). 비가 0.2 아래면 0, 0.45 위면 1
+export function fiberAniso(fu: number, fv: number) {
+  const x = Math.min(1, Math.max(0, (Math.min(fu, fv) / Math.max(fu, fv, 1e-9) - 0.2) / 0.25));
+  return x * x * (3 - 2 * x);
+}
 // 섬유 무늬(−1~1, 평균 0): 길쭉한 잡음 두 겹을 서로 다른 방향으로 엇갈린다. n·|n|로 값이 큰 곳만 남겨 가는 줄처럼 보인다
 export function fiberPattern(u: number, v: number) {
   const a = vnoise((0.94 * u + 0.34 * v) / FIBER_L + 5, (-0.34 * u + 0.94 * v) / FIBER_W + 9)[0];
   const b = vnoise((0.82 * u - 0.57 * v) / FIBER_L + 41, (0.57 * u + 0.82 * v) / FIBER_W + 23)[0];
+  return 0.5 * (a * Math.abs(a) + b * Math.abs(b));
+}
+// 린넨 실(−1~1, 평균 0): 섬유와 같은 굵기·길이의 실이 가로·세로로 직각 교차한다
+export function linenPattern(u: number, v: number) {
+  const a = vnoise(u / FIBER_L + 5, v / FIBER_W + 9)[0];
+  const b = vnoise(u / FIBER_W + 41, v / FIBER_L + 23)[0];
   return 0.5 * (a * Math.abs(a) + b * Math.abs(b));
 }
 // 주기 pulse(한 주기 1 중 끝쪽 q 폭이 1인 띠)의 0~x 적분
@@ -96,17 +110,17 @@ export function pulseCover(x: number, q: number, w: number) {
 export function grainPeak(M: MatUniforms) {
   const [kind, c1, c2, gap] = M.mGrain;
   const [, s2] = M.mGsize;
-  if (kind === GRAIN_KIND.fiber) return 1 + c1 + c2 + gap;
+  if (kind === GRAIN_KIND.fiber || kind === GRAIN_KIND.linen) return 1 + c1 + c2 + gap;
   if (kind === GRAIN_KIND.weave) return 1 + c1 + c2;
   if (kind === GRAIN_KIND.sheets) return 1 + c1 + (c2 * gap) / s2;
-  if (kind === GRAIN_KIND.wood) return 1 + c1 * 0.25 + c2;
+  if (kind === GRAIN_KIND.wood) return 1 + c1 * 0.25 + gap * 0.3 + c2;
   return 1;
 }
 
 // 결 최대 중 면 전체의 밝기에 드는 몫(뭉침·얼룩만). 짧은 섬유는 몇 화소짜리 가는 줄이라 그 자리의 반사율만 잠깐 올린다:
 // 카메라 이득(light-model setAlbedo)은 이 값으로 정하고, 섬유까지 더한 grainPeak는 반사율 1을 넘지 않는지만 본다. 섬유 세기로 이득을 정하면 결을 올릴 때마다 벽·판·책의 반사율이 줄고 어두운 책이 떴다(2026-11-03)
 export function albedoPeak(M: MatUniforms) {
-  return M.mGrain[0] === GRAIN_KIND.fiber ? grainPeak(M) - M.mGrain[3] : grainPeak(M);
+  return M.mGrain[0] === GRAIN_KIND.fiber || M.mGrain[0] === GRAIN_KIND.linen ? grainPeak(M) - M.mGrain[3] : grainPeak(M);
 }
 
 // 한 점의 재질 표본: 미세 높이의 기울기(면 u·v 방향, 법선을 n − su·U − sv·V로 기울인다), 반사율 배수 f, 거칠기 r(그리지 못한 높이 몫 포함).
@@ -138,7 +152,7 @@ export function matSample(u: number, v: number, fu: number, fv: number, M: MatUn
   let f = 1;
   if (kind === GRAIN_KIND.fiber) {
     f += c1 * vnoise(u / s1, v / s1)[0] * seenOf(s1, fm) + c2 * vnoise(u / s2 + 17, v / s2 + 31)[0] * seenOf(s2, fm);
-    if (gap > 0) f += gap * fiberPattern(u, v) * fiberSeen(fm);
+    if (gap > 0) f += gap * fiberPattern(u, v) * fiberSeen(fm) * fiberAniso(fu, fv);
   } else if (kind === GRAIN_KIND.weave) {
     const k = (2 * Math.PI) / s1;
     f += c1 * Math.cos(k * u) * Math.cos(k * v) * seenOf(s1 / 2, fm) + c2 * vnoise(u / s2 + 17, v / s2 + 31)[0] * seenOf(s2, fm);
@@ -156,11 +170,18 @@ export function matSample(u: number, v: number, fu: number, fv: number, M: MatUn
       cover += Math.max(0, hi - lo);
     }
     f -= c2 * (Math.min(1, cover / Math.max(fu, 1e-6)) - w / s2);
+  } else if (kind === GRAIN_KIND.linen) {
+    f += c2 * vnoise(u / s2 + 17, v / s2 + 31)[0] * seenOf(s2, fm);
+    if (gap > 0) f += gap * linenPattern(u, v) * fiberSeen(fm) * fiberAniso(fu, fv);
   } else if (kind === GRAIN_KIND.wood) {
     // 나이테(판 길이 u 방향으로 이어진 늦재 띠, 폭 0.25주기): 결이 천천히 굽이친다. 화소 안 넓이 비로
     const warp = vnoise(u / (40 * s1), v / (4 * s1) + 5)[0] * 1.5;
     const q = 0.25;
     f -= c1 * (pulseCover(v / s1 + warp, q, fv / s1) - q);
+    if (gap > 0) {
+      const s3 = s1 * WOOD_FINE_SCALE;
+      f -= gap * (pulseCover(v / s3 + warp * 2.3 + 3.1, 0.3, fv / s3) - 0.3);
+    }
     f += c2 * vnoise(u / s2 + 11, (v * 6) / s2)[0] * seenOf(s2 / 6, fv);
   }
   return { su, sv, f, r, seen };

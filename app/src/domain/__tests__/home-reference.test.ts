@@ -51,8 +51,8 @@ it('예시는 서재에 저장하지 않고(표시 전용) 홈 장식만 적용�
   expect(books[profile.b03.bookId].quotes).toBe(0);
   expect(toShelfBook(lib, 'owned')!.art.ribbonVisible).toBeUndefined();
   // 시안 재질은 표시 전용 책 모양에만
-  expect(books[profile.b04.bookId].art.material).toBe('coated');
-  expect(books[profile.b02.bookId].art.material).toBe('cloth');
+  expect(books[profile.b04.bookId].art.material).toBe('matte');
+  expect(books[profile.b02.bookId].art.material).toBe('linen');
   expect(books[profile.b03.bookId].art.material).toBeUndefined();
   expect(books.owned.art.material).toBeUndefined();
 });

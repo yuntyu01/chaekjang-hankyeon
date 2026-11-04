@@ -20,6 +20,8 @@ jest.mock('expo-sqlite/kv-store', () => ({
 import { Alert } from 'react-native';
 
 import { placementOf, type BookMap } from '@/domain/layout-engine';
+import { SHELF_SLOTS } from '@/domain/layout-rules';
+import { ko } from '@/i18n/ko';
 import { SAMPLE_BOOKS } from '@/domain/test-fixtures/interaction-books';
 import { EMPTY_LAYOUT, placementStore, repair } from '@/store/placement-store';
 
@@ -65,17 +67,26 @@ it('자리가 모자라면 묻고, 보관만 하기를 고르면 선반을 늘�
   expect(now().drawer).toHaveLength(kept);
 });
 
-it('새 선반 추가를 고르면 한 칸씩만 더하고, 기존 배치는 그대로 둔 채 남은 책을 놓는다', () => {
+it('잠긴 선반을 열면 한 칸씩만 더하고, 기존 배치는 그대로 둔 채 남은 책을 놓는다', () => {
   placeWithChoice(ids.slice(0, 1));
   const first = placementOf(now(), ids[0]);
-  const alert = answer('새 선반 추가');
+  const alert = answer(ko.lockedShelf.buy);
   placeWithChoice(ids);
-  const calls = alert.mock.calls.length;
-  // 물을 때마다 선반 한 칸: 처음 세 칸 + 물은 횟수
-  expect(now().shelves).toHaveLength(3 + calls);
-  expect(now().drawer).toHaveLength(0);
+  // 물을 때마다 선반 한 칸: 처음 세 칸 + 잠긴 두 칸까지만
+  expect(alert.mock.calls.length).toBe(2);
+  expect(now().shelves).toHaveLength(SHELF_SLOTS);
   expect(placementOf(now(), ids[0])).toEqual(first);
-  for (const id of ids) expect(now().placements.filter((p) => p.bookId === id)).toHaveLength(1);
+  for (const id of ids) expect(now().placements.filter((p) => p.bookId === id).length + now().drawer.filter((d) => d === id).length).toBe(1);
+});
+
+it('다섯 칸을 다 열었으면 더 묻지 않고 남은 책을 보관한다', async () => {
+  const many = Array.from({ length: 12 }, (_, k) => k).flatMap((k) => SAMPLE_BOOKS.map((b) => ({ ...b, id: `${b.id}-m${k}` })));
+  await placementStore.load(Object.fromEntries(many.map((b) => [b.id, b])));
+  const alert = answer(ko.lockedShelf.buy);
+  placeWithChoice(many.map((b) => b.id));
+  expect(alert.mock.calls.length).toBe(2);
+  expect(now().shelves).toHaveLength(SHELF_SLOTS);
+  expect(now().drawer.length).toBeGreaterThan(0);
 });
 
 // 2026-10-31 기기에서 찾음: 시안 책장에서 모순을 빼고 다시 놓았더니 첫 선반 맨 끝(왼쪽으로 기댄 '흰'의 기댄 자리)에 꽂혀 흰이 바로 섰다
@@ -107,7 +118,7 @@ it('처음 설치한 꽉 찬 책장에 새 책을 놓을 때 새 선반 추가�
   expect(placementStore.commit(withLeans(MOCKUP_LAYOUT, mock))).toBe(true);
   placementStore.syncBooks({ ...mock, new1: { ...MOCKUP_BOOKS[3], id: 'new1', title: '처음 등록한 책' } });
   const before = now().placements;
-  const alert = answer('새 선반 추가');
+  const alert = answer(ko.lockedShelf.buy);
   let result: [number, number] | null = null;
   placeWithChoice(['new1'], (placed, kept) => (result = [placed, kept]));
   expect(alert).toHaveBeenCalledTimes(1);

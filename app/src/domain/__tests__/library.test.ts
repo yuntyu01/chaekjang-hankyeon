@@ -93,8 +93,8 @@ describe('책장용 책 모양', () => {
     const bdId = lib.books.bk1.bindingId!;
     expect(lib.bindings[bdId].material).toBeUndefined();
     expect(toShelfBook(lib, 'bk1')!.art.material).toBeUndefined();
-    lib.bindings[bdId] = { ...lib.bindings[bdId], material: 'cloth' };
-    expect(toShelfBook(lib, 'bk1')!.art.material).toBe('cloth');
+    lib.bindings[bdId] = { ...lib.bindings[bdId], material: 'linen' };
+    expect(toShelfBook(lib, 'bk1')!.art.material).toBe('linen');
   });
 
   it('실제 표지가 있는 책은 정면 그림이 실제 표지(YES24는 L 크기), 기본 정면 그림을 고르면 그 그림이 앞선다', () => {
@@ -130,7 +130,7 @@ describe('책장용 책 모양', () => {
     lib.editions[eId] = { ...lib.editions[eId], coverUri: 'https://image.yes24.com/goods/1/L', coverSource: 'api' };
     for (const color of ['#0e0c08', '#ffffff']) {
       lib.bindings[bdId] = { ...lib.bindings[bdId], spineColor: color };
-      expect(bookLightRef(toShelfBook(lib, 'bk1')!, linearOf)).toEqual({ albedo: [0.5, 0.5, 0.5], picture: true, material: 'print' });
+      expect(bookLightRef(toShelfBook(lib, 'bk1')!, linearOf)).toEqual({ albedo: [0.5, 0.5, 0.5], picture: true, material: 'fine' });
     }
   });
 

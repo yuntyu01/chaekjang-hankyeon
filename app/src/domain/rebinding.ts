@@ -7,7 +7,7 @@ import { MOTIF_SLOTS, type MotifSlotId } from './motif-slots';
 import type { HeightClass, ThicknessClass } from './types';
 
 // 3: 실제 표지가 있는 책의 기본 색 = 표지에서 가장 넓게 차지하는 색 그대로(2026-11-01 사용자). 예전 판은 시작할 때 한 번 다시 계산한다(cover-color-backfill)
-export const REBIND_VERSION = 3;
+export const REBIND_VERSION = 4;
 
 // 팔레트 범위(지시서 2): 채도 25~55%, 명도 35~80%
 export const SAT_RANGE = [0.25, 0.55] as const;
@@ -310,8 +310,9 @@ export function applyOverride(art: BookArtParams, o: ArtOverride | undefined): B
 // 가장 많은 묶음의 평균색. 표지 그림의 흰 바탕은 화면 순백이지만 실제 종이는 그만큼 희지 않다: 그대로 칠하면 음영이 잘려 흰 벽에 묻히므로 종이 흰색까지만.
 // 세 채널을 같은 비율로 낮춘다: HSL 명도만 낮추면 옅은 색기(JPEG의 거의 흰색)가 채도 그대로 진해져 민트색이 되고 벽까지 번진다(2026-11-01 실측)
 const PAPER_WHITE = 237;
-export function dominantColorOf(rgba: ArrayLike<number>): string | null {
+function topColor(rgba: ArrayLike<number>): { hex: string; share: number } | null {
   const bins = new Map<number, { n: number; r: number; g: number; b: number }>();
+  let total = 0;
   for (let i = 0; i + 3 < rgba.length; i += 4) {
     if (rgba[i + 3] < 128) continue;
     const key = ((rgba[i] >> 5) << 6) | ((rgba[i + 1] >> 5) << 3) | (rgba[i + 2] >> 5);
@@ -321,13 +322,41 @@ export function dominantColorOf(rgba: ArrayLike<number>): string | null {
     bin.g += rgba[i + 1];
     bin.b += rgba[i + 2];
     bins.set(key, bin);
+    total++;
   }
   let top: { n: number; r: number; g: number; b: number } | null = null;
   for (const bin of bins.values()) if (!top || bin.n > top.n) top = bin;
   if (!top) return null;
   const [r, g, b] = [top.r / top.n, top.g / top.n, top.b / top.n];
   const k = Math.min(1, PAPER_WHITE / Math.max(r, g, b));
-  return rgbHex(r * k, g * k, b * k);
+  return { hex: rgbHex(r * k, g * k, b * k), share: top.n / total };
+}
+export function dominantColorOf(rgba: ArrayLike<number>): string | null {
+  return topColor(rgba)?.hex ?? null;
+}
+// 표지에서 책등과 맞닿는 좁은 띠의 색: 한 색이 띠의 70% 이상일 때만 그 색(2026-11-03 사용자 제안: '구의 증명'처럼 왼쪽 띠가 전부 민트면 책등도 민트).
+// 여러 색이 섞인 띠(왼쪽 위만 어두운 사진 등)는 null이라 표지 전체의 주조색을 쓴다. 예시 19권에서 눈에 띄게 바뀌는 책은 '구의 증명'뿐이다
+export const EDGE_MIN_SHARE = 0.7;
+export function edgeColorOf(rgba: ArrayLike<number>): string | null {
+  const top = topColor(rgba);
+  return top && top.share >= EDGE_MIN_SHARE ? top.hex : null;
+}
+
+// 색상 칸 맨 앞의 '표지 색'(2026-11-03 사용자 '표지에서 많은 색 순서대로 3~5개'): 많은 순서로 최대 5색. 아주 적은 색(3% 미만)은 빼고, 거의 같은 색은 앞의 것만 남긴다.
+// 책 몸체 색과 같은 상한(PAPER_WHITE)을 둔다
+const SWATCH_MIN_WEIGHT = 0.03;
+const SWATCH_MIN_DISTANCE = 28;
+export function coverSwatches(palette: PaletteEntry[] | null | undefined, max = 5): string[] {
+  const out: { hex: string; rgb: number[] }[] = [];
+  for (const e of [...(palette ?? [])].sort((a, b) => b.weight - a.weight)) {
+    if (e.weight < SWATCH_MIN_WEIGHT || out.length >= max) continue;
+    const c = [1, 3, 5].map((i) => parseInt(e.hex.slice(i, i + 2), 16));
+    const k = Math.min(1, PAPER_WHITE / Math.max(...c));
+    const rgb = c.map((v) => v * k);
+    if (out.some((o) => Math.hypot(o.rgb[0] - rgb[0], o.rgb[1] - rgb[1], o.rgb[2] - rgb[2]) < SWATCH_MIN_DISTANCE)) continue;
+    out.push({ hex: rgbHex(rgb[0], rgb[1], rgb[2]), rgb });
+  }
+  return out.map((o) => o.hex);
 }
 
 export function extractPalette(rgba: ArrayLike<number>, n = 3): PaletteEntry[] {

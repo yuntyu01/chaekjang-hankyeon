@@ -18,7 +18,7 @@ import { bookEref, bookSref, ENV_NX, ENV_NY, GRID_N, GRID_PASSES, SPEC_K, SREF, 
 import type { Recv3 } from '@/domain/received3';
 import { MAT_UNIFORMS, type MatUniforms } from '@/domain/surface-pattern';
 import type { BookSurface } from '@/domain/types';
-import type { MaterialName } from '@/ui/lighting';
+import { materials, type MaterialName, type SurfaceMaterial } from '@/ui/lighting';
 import { faceVisible } from '@/ui/book3d/face-geometry';
 
 import { PERF_ENABLED } from './perf';
@@ -48,6 +48,7 @@ const BLEND = ['multiply', 'colorDodge', 'plus'] as const;
 
 const ZERO3 = [0, 0, 0];
 const NO_EDGE = [0, 0, 0, 1e9];
+const NO_RIM = [1, 0, 0, 0];
 const IDENTITY = [1, 0, 0, 0, 1, 0, 0, 0, 1];
 const BASE = {
   O: ZERO3,
@@ -57,6 +58,11 @@ const BASE = {
   tN: [0, 0, -1],
   bev0: NO_EDGE,
   bev1: NO_EDGE,
+  rim: NO_RIM,
+  rimCeil: 1e9,
+  kS: 1,
+  softBox: [0, 0, 0, 0],
+  softR: [0, 0],
   cam4: [0, 0, 0, 0],
   env: ZERO3,
   keyOn: 1,
@@ -84,7 +90,8 @@ function camOf(c: Cam, far: Vec3) {
 }
 function envOf(env: Env | null) {
   'worklet';
-  return env ? [1, env.floor, env.ceil] : ZERO3;
+  // x: 0 둘레 없음, 1 판만, 2 틀 옆판까지
+  return env ? [env.side ? 2 : 1, env.floor, env.ceil] : ZERO3;
 }
 function arr(v: Vec3) {
   'worklet';
@@ -148,7 +155,7 @@ function solveGridImage(env: Env, bx: BoxBuf): SkImage | null {
   let img: SkImage | null = null;
   const prev: SkImage[] = [];
   for (let k = 0; k < GRID_PASSES; k++) {
-    const u = { env: envOf(env), box: bx.v, nBox, gridOn: img ? 1 : 0, gridNx: nBox ? ENV_NX : 1 };
+    const u = { env: envOf(env), box: bx.v, nBox, gridOn: img ? 1 : 0, gridNx: nBox || env.side ? ENV_NX : 1 };
     paint.setShader(GRID.makeShaderWithChildren(processUniforms(GRID, u), [linearShader(img ?? EMPTY)]));
     canvas.drawRect(Skia.XYWHRect(0, 0, W, H), paint);
     // 스냅숏은 표면을 다시 그리기 전에 떠 둔다(GPU 순서는 Skia가 지킨다: 되풀이마다 기다리지 않는다)
@@ -232,7 +239,7 @@ export function bakeAtlas(items: BakeItem[], key: string): Atlas {
     const g = gridOf(it.env, it.bx);
     const u = {
       O: arr(it.O), Ux: arr(it.U), Vy: arr(it.V), tN: arr(it.n), cells: [it.w, it.h], env: envOf(it.env), box: it.bx.v, nBox: it.bx.list.length, selfIdx: it.self,
-      gridOn: g ? 1 : 0, gridNx: it.bx.list.length ? ENV_NX : 1,
+      gridOn: g ? 1 : 0, gridNx: it.bx.list.length || it.env?.side ? ENV_NX : 1,
     };
     paint.setShader(BAKE.makeShaderWithChildren(processUniforms(BAKE, u), [linearShader(g ?? EMPTY)]));
     canvas.save();
@@ -395,7 +402,7 @@ export function bookItems(id: string, b: Book3, env: Env | null, bx: BoxBuf, sel
 // 책 한 권의 빛: 책 윤곽(outline, 캔버스 px) 안을 화소마다 광선으로(셰이더 bookSource가 보이는 면·속지 구멍을 찾는다).
 // albedo: 장정 색(선형 RGB, 속지는 셰이더 상수), material: 장정 재질(없으면 무광 종이), atlas·id: 이 책이 있는 줄의 구운 하늘 가림(면 key = faceKey(id, 면)), env: 둘레,
 // keyShadow: 이 책 면이 받는 창빛 그림자(bookKeyImage), picture: 그림 표지 책(반사광을 더하기 겹으로 따로)
-export function BookLight({ dims: d, state, cam, px, outline, albedo, material = 'paper', env, atlas, id, keyShadow, picture = false }: {
+export function BookLight({ dims: d, state, cam, px, outline, albedo, material = 'fine', env, atlas, id, keyShadow, picture = false }: {
   dims: Book3['dims']; state: RO<Book3>; cam: RO<Cam>; px: Affine; outline: RO<SkPath>; albedo: C3; material?: BookSurface;
   env?: RO<Env | null>; atlas?: RO<Atlas>; id: string; keyShadow?: RO<BookKey>; picture?: boolean;
 }) {
@@ -491,12 +498,16 @@ export function areaItem(key: string, a: BakeArea, env: Env | null, bx: BoxBuf):
 // color가 있으면(단색 재질) 재질 색 × 빛을 한 번에 칠하고, 없으면 아래 재질 그림 위에 곱하기·닷지 두 겹으로 다시 칠한다.
 // atlas·key: 구운 그림과 이 영역의 자리, matrix: 영역 칸 → 캔버스 px(칸 수 w × h를 받아)
 // keyShadow: 책이 이 면에서 창빛 원반을 가리는 몫(평면 좌표 그림, PlaneKey: 벽·판 윗면)
-export function BakedPlane({ path, cam, px, plane, env, atlas, akey, matrix, albedo, eref, sref = ZERO3, mat, seed = [0, 0], color, keyShadow }: {
+export function BakedPlane({ path, cam, px, plane, env, atlas, akey, matrix, albedo, eref, sref = ZERO3, mat, seed = [0, 0], color, keyShadow, rim = NO_RIM, rimCeil = 1e9, soft }: {
   path: RO<SkPath> | SkPath; cam: RO<Cam>; px: Affine; plane: Plane; env: Env | null; atlas?: RO<Atlas>; akey: string; matrix: (c: Cam, w: number, h: number) => number[]; albedo: C3; eref: C3; sref?: number[]; mat: MaterialName; seed?: number[]; color?: string;
   keyShadow?: RO<PlaneKey>;
+  rim?: number[];
+  rimCeil?: number;
+  soft?: { box: number[]; r: number[] }; // 안쪽 모서리 번짐(color가 있을 때만, scene-light-sksl softEdge)
 }) {
   const base = color ? rgbOf(color) : null;
   const m = matOf(MAT_UNIFORMS[mat], seed);
+  const kS = (materials[mat] as SurfaceMaterial).specular ?? 1;
   const keyImage = useDerivedValue(() => (keyShadow ? keyShadow.value : NO_PLANE_KEY).image);
   const sample = useDerivedValue(() => (atlas ? sampleOf(atlas.value, akey, (w, h) => matrix(cam.value, w, h)) : NO_SAMPLE));
   const prevAt = useDerivedValue(() => (atlas ? prevSampleOf(atlas.value, akey, (w, h) => matrix(cam.value, w, h)) : { sample: NO_SAMPLE, mix: 1 }));
@@ -509,6 +520,10 @@ export function BakedPlane({ path, cam, px, plane, env, atlas, akey, matrix, alb
       tN: arr(plane.n),
       bev0: edgeOf(plane.edges?.[0]),
       bev1: edgeOf(plane.edges?.[1]),
+      rim,
+      rimCeil,
+      kS,
+      ...(soft ? { softBox: soft.box, softR: soft.r } : null),
       cam4: camOf(c, plane.O),
       env: envOf(env),
       albedo,

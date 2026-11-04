@@ -1,5 +1,5 @@
 // 화면 공통 기준(2026-10-26 설정 시안): 대비·글자 크기·간격 범위, 글꼴 등록, 화면 코드가 토큰을 벗어나지 않는지.
-import { colors, fonts, night, space, tidyButton, tidyShape, tidySpace, tidyType, type } from '../screenTheme';
+import { colors, fonts, night, shape, space, tidyButton, tidyShape, tidySpace, tidyType, type } from '../screenTheme';
 
 // 노드 형식 정의 없이 쓰는 최소한의 fs·path(light-calibration 시험과 같은 방식)
 declare const __dirname: string;
@@ -44,7 +44,7 @@ describe('색: 지정한 기준값', () => {
     expect(contrast(colors.input, colors.bg)).toBeGreaterThan(1.05);
   });
   it('바탕·입력칸·시트·작은 강조 바탕은 노란 크림이나 진한 베이지가 아니다(빨강−파랑 차 10 이하, 밝기 높음)', () => {
-    for (const c of [colors.bg, colors.input, colors.surface, colors.raised, colors.accentSoft]) {
+    for (const c of [colors.bg, colors.input, colors.surface, colors.raised]) {
       const [r, , b] = [1, 3, 5].map((i) => parseInt(c.slice(i, i + 2), 16));
       expect(r - b).toBeLessThanOrEqual(10);
       expect(lum(c)).toBeGreaterThan(0.8);
@@ -179,14 +179,15 @@ describe('화면 코드가 공통 기준을 쓴다', () => {
 describe('정돈 변형(tidy)', () => {
   const read = (rel: string) => fs.readFileSync(path.join(SRC, rel), 'utf8');
   it('간격은 4·8·12·16·28·40 단계만(목록 줄 높이·누르는 자리는 따로, 2026-11-01 구역 사이를 넓혔다)', () => {
-    const { row, touch, ...rest } = tidySpace;
+    const { row, touch, cardMargin, cardPad, cardGap, ...rest } = tidySpace;
     expect(row).toBe(56);
     expect(touch).toBe(44);
+    expect([cardMargin, cardPad, cardGap]).toEqual([16, 18, 12]); // 허브 화면 카드(2026-11-04 당근·토스 종합)
     for (const v of Object.values(rest)) expect([4, 8, 12, 16, 24, 28, 40]).toContain(v);
   });
   it('버튼 높이·모서리 한 벌', () => {
     expect(tidyButton).toEqual({ l: 60, m: 54, s: 44 }); // 2026-11-01 사용자 '버튼은 글자만 키우지 말고 높이·안쪽 여백도'
-    expect([tidyShape.button, tidyShape.input, tidyShape.chip, tidyShape.sheet, tidyShape.dialog]).toEqual([10, 10, 8, 20, 16]);
+    expect([tidyShape.button, tidyShape.input, tidyShape.chip, tidyShape.sheet, tidyShape.dialog, tidyShape.card]).toEqual([10, 10, shape.pill, 20, 18, 18]);
   });
   // 2026-11-01 '제목 키워'(토스식 위계): 큰 제목 Bold 24, 시트·묶음·구역 제목·책 제목·버튼 SemiBold, 입력칸 이름 Medium, 본문·보조 Regular
   it('굵기·크기 위계: 큰 제목 Bold, 제목류·버튼 SemiBold, 입력칸 이름 Medium, 본문·보조 Regular', () => {

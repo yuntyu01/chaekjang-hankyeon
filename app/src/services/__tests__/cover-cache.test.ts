@@ -15,7 +15,7 @@ jest.mock('expo-file-system/legacy', () => ({
 }));
 import { AppState } from 'react-native';
 
-import { COVER_DIR, COVER_RETRY_MS, coverFileName, isRemoteImage, pruneCoverCache, watchCover, withTimeout, type CoverState } from '../cover-cache';
+import { COVER_CACHE_MAX_AGE_SEC, COVER_DIR, COVER_RETRY_MS, coverFileName, isRemoteImage, pruneCoverCache, watchCover, withTimeout, type CoverState } from '../cover-cache';
 
 const URL = 'https://image.yes24.com/goods/1/L';
 const FILE = `${COVER_DIR}${coverFileName(URL)}`;
@@ -188,7 +188,7 @@ it('정리: 조각 파일은 지우고, 상한을 넘으면 오래된 것부터 
   mockFiles.set(`${COVER_DIR}old.img`, 100); // 크기를 시각으로도 쓴다(작을수록 오래됨)
   mockFiles.set(`${COVER_DIR}new.img`, 200);
   mockFiles.set(`${COVER_DIR}x.img.abc.part`, 50);
-  await pruneCoverCache(250);
+  await pruneCoverCache(250, 1000 * 1000);
   expect(mockFiles.has(`${COVER_DIR}x.img.abc.part`)).toBe(false);
   expect(mockFiles.has(`${COVER_DIR}old.img`)).toBe(false);
   expect(mockFiles.has(`${COVER_DIR}new.img`)).toBe(true);
@@ -214,4 +214,15 @@ it('정리: 지금 받고 있는 조각은 지우지 않아 그 표지가 그대
   expect(mockFiles.has(FILE)).toBe(true);
   expect(last()).toEqual({ image: `image:${FILE}`, pending: false });
   stop();
+});
+
+it('정리: 받은 지 90일이 지난 표지는 용량이 남아도 지운다(일시적 저장, 장기 보관 금지)', async () => {
+  jest.useRealTimers();
+  const nowSec = 2_000_000_000;
+  mockFiles.set(`${COVER_DIR}old.img`, nowSec - COVER_CACHE_MAX_AGE_SEC - 1); // 모의 파일은 크기 값을 시각으로도 쓴다
+  mockFiles.set(`${COVER_DIR}keep.img`, nowSec - COVER_CACHE_MAX_AGE_SEC + 60);
+  await pruneCoverCache(Number.MAX_SAFE_INTEGER, nowSec * 1000);
+  expect(mockFiles.has(`${COVER_DIR}old.img`)).toBe(false);
+  expect(mockFiles.has(`${COVER_DIR}keep.img`)).toBe(true);
+  expect(COVER_CACHE_MAX_AGE_SEC).toBe(90 * 24 * 3600);
 });

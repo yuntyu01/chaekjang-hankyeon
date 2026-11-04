@@ -1,5 +1,8 @@
 // 받침을 잃고 넘어진 책이 머무는 곳(shelf-scene layFallen·fallRest): 판 끝에 걸쳐 눕기(overhang), 서로 쪽으로 넘어진 두 권의 A자 기대기,
 // 발이 미끄러지다 뒤 책에 기운 몸이 닿아 막힌 기대기(lean.slide), 서랍으로 떨어지는 책의 사라지는 경로(transition dropTrack).
+// 판 끝에 걸쳐 눕기는 틀이 없는 스킨에서만 있다(틀이 있으면 옆판에 막힌다: frame-bounds 시험)
+jest.mock('@/scene-config/skin', () => ({ ...jest.requireActual('@/scene-config/skin'), FRAME_ON: false }));
+
 import { corners, fromPlaced, gap, lowest, pivotLocal, toWorld } from '../book3';
 import {
   applySwapTarget,

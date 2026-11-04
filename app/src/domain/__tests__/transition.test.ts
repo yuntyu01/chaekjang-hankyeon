@@ -1,6 +1,7 @@
 // 전환 경로: 모든 진행률 t에서(접촉 근처는 촘촘히) 겹치지 않고, 끝은 정확히 목표, 바닥 아래로 내려가지 않는다.
 import { corners, facing, fromPlaced, gap, lowest, xRange, type Book3 } from '../book3';
 import { boxSize } from '../box';
+import { camAt } from '../camera';
 import { CAMERA, SHELF_DEPTH, SHELF_FRONT } from '../geometry';
 import { moveBook, moveToDrawer, placementOf, rotateStep, setPose, setTilt, type BookMap, type Result } from '../layout-engine';
 import { SAMPLE_BOOKS, SAMPLE_LAYOUT } from '../onboarding-sample';
@@ -126,7 +127,7 @@ describe('3D 자세', () => {
       expect(Math.min(...c.map((q) => q.y))).toBeCloseTo(0, 6);
       expect(Math.max(...c.map((q) => q.y))).toBeCloseTo(size.h, 6);
       expect(Math.max(...c.map((q) => q.z))).toBeCloseTo(size.d, 6);
-      const seen = (['spine', 'cover', 'back', 'head', 'tail', 'fore'] as const).filter((f) => facing(CAMERA, body, f) > 0).sort();
+      const seen = (['spine', 'cover', 'back', 'head', 'tail', 'fore'] as const).filter((f) => facing(camAt(4), body, f) > 0).sort(); // 눈이 책 머리보다 높은 각(움푹 파인 책장 기본 각은 머리가 안 보인다)
       if (pose === 'spine') expect(seen).toEqual(['cover', 'head', 'spine']);
       if (pose === 'horizontal') expect(seen).toEqual(['cover', 'spine', 'tail']);
       if (pose === 'front') expect(seen).toEqual(['cover', 'fore', 'head']);

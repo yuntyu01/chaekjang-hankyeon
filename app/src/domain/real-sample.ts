@@ -1,7 +1,7 @@
 // 측정 번들 전용 실물 비교 책장: 실제 책(YES24 표지·제공 mm·책등 사진 비율)을 내 서재 책과 똑같은 모양으로 꽂는다(library toShelfBook과 같은 값).
 // 메모리에만 쓰고 저장하지 않는다(placementStore.setDemo). 표지는 그릴 때 YES24에서 받으므로 인터넷이 필요하다. 앱 배포본의 예시 책장은 이것을 쓰지 않는다.
 // real: 예시 책장과 같은 줄(표지 세 권 + 책등), real-front: 모든 책을 표지로 세운 책장, real-side: 돌려 세워 장정·옆모습이 보이는 책장. -before는 바꾸기 전 모습(비교 사진용).
-// 책 색은 표지에서 가장 넓게 차지하는 색(rebinding dominantColorOf로 뽑아 둔 값).
+// 책 색은 표지에서 책등과 맞닿는 띠가 거의 한 색이면 그 색, 아니면 가장 넓게 차지하는 색(rebinding edgeColorOf·dominantColorOf로 뽑아 둔 값).
 import { frontExtent, wallLeanPose } from './front-pose';
 import { frontDims, SHELF_DEPTH, WALL_GAP } from './geometry';
 import { realDimensions } from './jacket-proportions';
@@ -20,12 +20,12 @@ const ROWS: Row[] = [
   ['b05', '여행의 이유', '김영하', '복복서가', 125905365, 128, 188, 260, 0.1, '#039066'],
   ['b17', '불편한 편의점', '김호연', '나무옆의자', 99308021, 135, 200, 268, 0.08, '#EDECEB'],
   ['b06', '흰', '한강', '문학동네', 143896198, 120, 188, 180, 0.1025, '#B0CFE5'],
-  ['b07', '코스모스', '칼 세이건', '사이언스북스', 2312211, 153, 224, 719, 0.185, '#070708'],
+  ['b07', '코스모스', '칼 세이건', '사이언스북스', 2312211, 153, 224, 719, 0.185, '#0A0A0A'],
   ['b08', '쇼코의 미소', '최은영', '문학동네', 29288225, 145, 210, 296, 0.0725, '#EDE3EB'],
-  ['b09', '82년생 김지영', '조남주', '민음사', 32972572, 127, 188, 192, 0.07, '#D6D3D8'],
+  ['b09', '82년생 김지영', '조남주', '민음사', 32972572, 127, 188, 192, 0.07, '#CDCCD0'],
   ['b10', '채식주의자', '한강', '창비', 108422348, 128, 194, 276, 0.105, '#5276B3'],
-  ['b18', '구의 증명', '최진영', '은행나무', 118578901, 128, 188, 192, 0.0625, '#453736'],
-  ['b11', '아무튼, 서재', '김윤관', '제철소', 51095578, 110, 178, 140, 0.0525, '#EDECEA'],
+  ['b18', '구의 증명', '최진영', '은행나무', 118578901, 128, 188, 192, 0.0625, '#91CEAF'],
+  ['b11', '아무튼, 서재', '김윤관', '제철소', 51095578, 110, 178, 140, 0.0525, '#EDECE9'],
   ['b12', '사피엔스', '유발 하라리', '김영사', 23030284, 152, 215, 636, 0.1375, '#EDECE9'],
   ['b13', '달러구트 꿈 백화점', '이미예', '팩토리나인', 91065309, 134, 200, 300, 0.09, '#EDECE6'],
   ['b14', '소년이 온다', '한강', '창비', 13137546, 153, 224, 216, 0.09, '#4E4C33'],
@@ -33,6 +33,12 @@ const ROWS: Row[] = [
   ['b16', '우리가 빛의 속도로 갈 수 없다면', '김초엽', '허블', 74261416, 130, 198, 344, 0.12, '#EDE9E4'],
   ['b19', '작별하지 않는다', '한강', '문학동네', 103495056, 138, 201, 332, 0.085, '#708AB0'],
 ];
+
+// 예시 책의 갈피(색, 장 수): 실제 서재처럼 몇 권에 갈피가 꽂혀 있다(2026-11-03 사용자 '실사 책 찍을 때도 갈피 넣어 줘'). 색은 예시 책장 갈피와 같은 범위
+const MARKS: Record<string, [string, number]> = {
+  b01: ['#98AC9E', 1], b02: ['#98AC9E', 2], b03: ['#E3A857', 1], b04: ['#D98A7C', 2], b05: ['#8EAAD0', 2], b06: ['#F3B497', 1],
+  b07: ['#E3A857', 2], b10: ['#8EAAD0', 1], b13: ['#D98A7C', 1], b14: ['#98AC9E', 1], b16: ['#8EAAD0', 2], b19: ['#F3B497', 1],
+};
 
 function toBook([id, title, author, publisher, goods, widthMm, heightMm, pages, ratio, color]: Row): Book {
   const physical = { widthMm, heightMm, pages };
@@ -48,7 +54,8 @@ function toBook([id, title, author, publisher, goods, widthMm, heightMm, pages, 
     coverAspectRatio: widthMm / heightMm,
     physical,
     dims: realDimensions(physical, ratio || undefined),
-    art: { motif: 'none', vectorCover: true },
+    art: { motif: 'none', vectorCover: true, ribbon: MARKS[id]?.[0], ribbonCount: MARKS[id]?.[1] },
+    quotes: MARKS[id]?.[1] ?? 0,
   };
 }
 
@@ -106,7 +113,7 @@ export const REAL_SIDE_LAYOUT: ShelfLayout = {
 };
 
 // 바꾸기 전 모습(비교 사진용): 곧게 세워 기본 깊이에 두고, 재질을 코팅 없는 무광 종이로 고르고, 주소 끝에 ?를 붙여 큰 표지로 바뀌지 않게 한다(같은 그림 L)
-const before = (b: Book): Book => ({ ...b, coverArtUri: `${b.coverArtUri}?`, art: { ...b.art, material: 'paper' } });
+const before = (b: Book): Book => ({ ...b, coverArtUri: `${b.coverArtUri}?`, art: { ...b.art, material: 'fine' } });
 export const REAL_BEFORE: [Book[], ShelfLayout] = [REAL_BOOKS.map(before), STRAIGHT_LAYOUT];
 export const REAL_FRONT_BEFORE: [Book[], ShelfLayout] = [REAL_FRONT_BOOKS.map(before), FRONT_STRAIGHT_LAYOUT];
 

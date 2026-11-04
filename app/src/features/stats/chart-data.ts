@@ -26,6 +26,42 @@ export function yearBars(sessions: Session[], y: number): Bar[] {
   return bars;
 }
 
+// 읽은 시간대: 기록을 하루 24칸(기기 시간)에 나눠 더한다. 시작~끝이 여러 시간에 걸치면 걸친 길이 비율로 나눈다(일시정지 자리는 저장하지 않아 고르게 뺀다). 자정을 넘겨도 된다
+export function hourBars(sessions: Session[]): number[] {
+  const out = Array.from({ length: 24 }, () => 0);
+  for (const s of sessions) {
+    const a = new Date(s.startedAt).getTime();
+    const b = new Date(s.endedAt).getTime();
+    if (!(b > a)) {
+      out[new Date(a).getHours()] += s.durationMs;
+      continue;
+    }
+    let t = a;
+    while (t < b) {
+      const d = new Date(t);
+      const next = new Date(d.getFullYear(), d.getMonth(), d.getDate(), d.getHours() + 1).getTime();
+      const end = Math.min(next, b);
+      out[d.getHours()] += (s.durationMs * (end - t)) / (b - a);
+      t = end;
+    }
+  }
+  return out;
+}
+// 가장 많이 읽은 시간(기록이 없으면 null, 같으면 이른 시간)
+export function peakHour(hours: number[]): number | null {
+  let peak: number | null = null;
+  hours.forEach((ms, h) => {
+    if (ms > 0 && (peak === null || ms > hours[peak])) peak = h;
+  });
+  return peak;
+}
+// 0 → '밤 12시', 9 → '오전 9시', 12 → '낮 12시', 21 → '오후 9시'
+export function hourLabel(h: number) {
+  if (h === 0) return '밤 12시';
+  if (h === 12) return '낮 12시';
+  return h < 12 ? `오전 ${h}시` : `오후 ${h - 12}시`;
+}
+
 // 달력(일요일 시작): 주마다 7칸, 그달이 아닌 칸은 null
 export function calendarWeeks(y: number, m: number): (string | null)[][] {
   const days = new Date(y, m, 0).getDate();

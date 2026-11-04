@@ -3,7 +3,7 @@
 // 직교 투영이라 각 면은 평행사변형이고, 면 = 원점 O + 가로 U + 세로 V(화면 좌표, 설계 단위)로 나타낸다.
 // 이웃한 면은 같은 꼭짓점을 쓴다(윗면 앞 변 = 앞면 위 변, 옆면 왼쪽 변 = 윗면 오른쪽 변·앞면 오른쪽 변).
 import { project, type Camera } from './box';
-import { viewAt } from './camera';
+import { viewAt, type Vec3 } from './camera';
 import { SHELF_DEPTH, SHELF_FRONT, SHELF_THICK, SHELF_X0, SHELF_X1 } from './geometry';
 import type { Point } from './shelf-scene';
 
@@ -68,6 +68,13 @@ export function shelfFaces(cam: Camera): ShelfFaces {
     side: viewAt(cam, v.RFT).kx > 0 ? face(P.RFT, P.RBT, P.RBB, P.RFB) : null,
     corners: P,
   };
+}
+
+// 3D 사각형(O에서 U, V로 펼침)을 투영한 면(틀 안쪽 면: 양옆, 위)
+export function quadFace(cam: Camera, O: Vec3, U: Vec3, V: Vec3): ShelfFace {
+  'worklet';
+  const add = (a: Vec3, b: Vec3) => ({ x: a.x + b.x, y: a.y + b.y, z: a.z + b.z });
+  return face(project(cam, O), project(cam, add(O, U)), project(cam, add(add(O, U), V)), project(cam, add(O, V)));
 }
 
 // 텍스처 그림(w × h px) → 화면 px 행렬(3×3 행 우선): 그림 (0,0)=O, (w,0)=O+U, (0,h)=O+V. 화면 px = 설계 단위 × s + (tx, ty).

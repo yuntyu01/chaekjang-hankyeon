@@ -6,7 +6,7 @@ import { LIB_KINDS, type LibKind } from './library';
 import { isCoverArtworkId } from './cover-artworks';
 import type { Binding, Bookmark, Edition, Library, MyBook, Round, Session } from './library';
 import { heightClassOf, thicknessClassOf, type LayoutVariant } from './rebinding';
-import { BINDING_MATERIALS, type BindingMaterial } from './types';
+import { bindingMaterialOf } from './types';
 
 export type Dirty = Record<string, { deleted: boolean; at: string }>; // 키: "kind:id"
 export const dirtyKey = (kind: LibKind, id: string) => `${kind}:${id}`;
@@ -125,7 +125,7 @@ export const editionFromWire = (w: WireEdition, imageDir: string): Edition => ({
 export const bookFromWire = (w: WireBook): MyBook => ({ id: w.id, editionId: w.editionId ?? '', status: (w.status as MyBook['status']) ?? 'want', rating: nz(w.rating), note: nz(w.note), currentPage: nz(w.currentPage), bindingId: nz(w.bindingId), createdAt: w.createdAt ?? w.updatedAt, updatedAt: w.updatedAt });
 export const bindingFromWire = (w: WireBinding, imageDir: string): Binding => ({
   id: w.id, myBookId: w.myBookId ?? '', spineColor: w.spineColor ?? '#8A8378', inkColor: nz(w.inkColor), accentColor: nz(w.accentColor), motif: w.motif ?? 'none', layout: nz(w.layout) as LayoutVariant | undefined,
-  material: BINDING_MATERIALS.includes(w.material as BindingMaterial) ? (w.material as BindingMaterial) : undefined,
+  material: bindingMaterialOf(w.material),
   coverArtId: isCoverArtworkId(w.coverArtId) ? w.coverArtId : undefined,
   coverArtUri: w.coverArtFileId ? `${imageDir}${w.coverArtFileId}` : undefined, spineArtUri: w.spineArtFileId ? `${imageDir}${w.spineArtFileId}` : undefined,
   source: (w.source as Binding['source']) ?? 'default', status: (w.status as Binding['status']) ?? 'ready', seed: w.seed ?? 0, createdAt: w.createdAt ?? w.updatedAt, updatedAt: w.updatedAt,

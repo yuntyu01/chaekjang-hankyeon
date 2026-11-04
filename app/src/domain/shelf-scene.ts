@@ -3,6 +3,8 @@
 import { boxSize, collide, CONTACT, frontPoly, hull, type Placed } from './box';
 import { corners, fromPlaced, type Book3 } from './book3';
 import { project, type Cam, type Point } from './camera';
+import { FRAME_ON } from '@/scene-config/skin';
+
 import { SHELF, SHELF_USABLE_WIDTH, SHELF_X0, SHELF_X1 } from './geometry';
 import { bookXs, checkSpace, EDGE_PAD, itemBoxes, itemPositions, moveToDrawer, normalize, OVERHANG_MARGIN, placementOf, setTilt, settle, shelfItems, type BookMap } from './layout-engine';
 import { firstContact, leanContact, type LeanContact } from './lean';
@@ -517,7 +519,8 @@ function layFallen(layout: ShelfLayout, books: BookMap, fallen: BookFrame[], fal
       // 다 들어가지 못하면 화면에 보이는 데까지만(판 끝 너머 화면 가장자리 EDGE_PAD 안) 판 끝에 걸친다. 그래도 옆 책을 밀어야 하면 서랍으로.
       // 물리대로 걸치면 선반이 화면 폭과 같아 책이 반쯤 화면 밖으로 잘렸다(사용자 결정 2026-10-27)
       const inside = Math.max(lo, Math.min(hi - h, lie));
-      const vis = Math.max(-SHELF.sideMargin + EDGE_PAD, Math.min(hi + SHELF.sideMargin - EDGE_PAD - h, lie));
+      // 틀이 있으면 옆판에 막혀 걸칠 수 없다(안에 못 들어가면 서랍으로)
+      const vis = FRAME_ON ? inside : Math.max(-SHELF.sideMargin + EDGE_PAD, Math.min(hi + SHELF.sideMargin - EDGE_PAD - h, lie));
       const ok = (r: ReturnType<typeof tryAt>) => r.space && Math.abs(r.moved) < 0.5 && r.shoved <= NO_SHOVE;
       const a = tryAt(inside);
       if (ok(a)) {

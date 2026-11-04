@@ -1,11 +1,32 @@
-import { computeRows, makeMetrics, LAYOUT, RIBBON_OUT, ROW_CLEARANCE, ROW_CLEARANCES, rowAt, toContent, toScene } from '@/ui/shelf/metrics';
+import { computeRows, lockedRowsAfter, makeMetrics, LAYOUT, RIBBON_OUT, ROW_CLEARANCE, rowAt, toContent, toScene } from '@/ui/shelf/metrics';
 import { BASE_CAM, project } from '../camera';
 import { bookHeight, SHELF_FRONT, SHELF_THICK } from '../geometry';
 import { addShelf, moveToShelf, setPose, threeShelfLayout, validate, type BookMap } from '../layout-engine';
+import { lockedShelfCount, SHELF_SLOTS } from '../layout-rules';
 import { SAMPLE_BOOKS, SAMPLE_LAYOUT } from '../test-fixtures/interaction-books';
 import { computeShelf, frameBBox } from '../shelf-scene';
 
 const books: BookMap = Object.fromEntries(SAMPLE_BOOKS.map((b) => [b.id, b]));
+
+describe('잠긴 선반 줄', () => {
+  it('기본 세 칸 아래로 두 칸이 이어지고, 열면 줄어들고 다 열면 없다', () => {
+    expect(lockedShelfCount(3)).toBe(2);
+    expect(lockedShelfCount(4)).toBe(1);
+    expect(lockedShelfCount(SHELF_SLOTS)).toBe(0);
+    expect(lockedShelfCount(9)).toBe(0);
+  });
+  it('마지막 줄 바로 아래에 같은 높이로 붙고, 있어도 위 세 줄 자리는 그대로다', () => {
+    const rows = computeRows(SAMPLE_LAYOUT, books, 1, 800, 70);
+    const locked = lockedRowsAfter(rows, 2, 1);
+    expect(locked).toHaveLength(2);
+    expect(locked[0].top).toBeCloseTo(rows[2].top + rows[2].height);
+    expect(locked[1].top).toBeCloseTo(locked[0].top + locked[0].height);
+    expect(locked[0].height).toBeCloseTo(Math.max(...rows.map((r) => r.height)));
+    expect(locked[0].baseline).toBeGreaterThan(locked[0].top);
+    expect(locked[0].baseline).toBeLessThan(locked[0].top + locked[0].height);
+    expect(lockedRowsAfter(rows, 0, 1)).toEqual([]);
+  });
+});
 
 it('선반 칸은 이어지고 헤더 아래 여백과 하단 공간을 둔다', () => {
   const rows = computeRows(SAMPLE_LAYOUT, books, 1, 800, 70);
@@ -23,12 +44,12 @@ it('선반 칸은 이어지고 헤더 아래 여백과 하단 공간을 둔다',
   }
 });
 
-it('줄 간격은 각 선반의 가장 키 큰 책과 갈피에 맞추며 자세 변경에는 고정된다', () => {
+it('줄 간격은 모든 줄이 같다: 책장의 가장 키 큰 책과 갈피에 맞추며 자세 변경에는 고정된다', () => {
   const m = makeMetrics(390);
   const rows = computeRows(SAMPLE_LAYOUT, books, m.scale, 800, 70);
+  const tallest = Math.max(...SAMPLE_LAYOUT.placements.map((p) => bookHeight(books[p.bookId]) + ((books[p.bookId].quotes ?? 0) > 0 ? RIBBON_OUT : 0)));
   for (const row of rows) {
-    const tallest = Math.max(...SAMPLE_LAYOUT.placements.filter((p) => p.shelfId === row.shelfId).map((p) => bookHeight(books[p.bookId]) + ((books[p.bookId].quotes ?? 0) > 0 ? RIBBON_OUT : 0)));
-    expect(row.space).toBeCloseTo(tallest + (ROW_CLEARANCES[rows.indexOf(row)] ?? ROW_CLEARANCE), 9);
+    expect(row.space).toBeCloseTo(tallest + ROW_CLEARANCE, 9);
     expect(row.height).toBeCloseTo((row.space + SHELF_THICK) * m.scale, 9);
     // 책 기준선(선반 공간 원점)이 row.baseline, 칸 아래 끝 = 이 줄 판 앞면 아래 모서리를 기본 보기로 본 자리(원근 d 때문에 0.5DU 안쪽 차이)
     expect(toContent(m, row, { x: 0, y: 0 }).y).toBeCloseTo(row.baseline, 9);
@@ -40,16 +61,20 @@ it('줄 간격은 각 선반의 가장 키 큰 책과 갈피에 맞추며 자세
   expect(computeRows(front.layout, books, m.scale, 800, 70)).toEqual(rows);
 });
 
-it('키 큰 책을 빈 선반으로 옮기면 필요한 칸만 커지고 나머지 줄의 높이는 유지된다', () => {
-  const layout = addShelf(SAMPLE_LAYOUT, 'empty');
-  const before = computeRows(layout, books, 1);
-  const result = moveToShelf(layout, books, 'b02', 'empty');
+it('키 큰 책을 옮겨도 빈 선반이 생겨도 모든 줄 간격은 같다', () => {
+  const m = makeMetrics(390);
+  const result = moveToShelf(addShelf(SAMPLE_LAYOUT, 'extra'), books, 'b06', 'extra');
   if (!result.ok) throw new Error(result.reason);
-  const after = computeRows(result.layout, books, 1);
-  expect(after[3].space).toBeGreaterThan(before[3].space);
-  expect(after[1].space).toBe(before[1].space);
-  expect(after[2].space).toBe(before[2].space);
-  expect(after[3].top).toBeCloseTo(after[2].top + after[2].height);
+  const rows = computeRows(result.layout, books, m.scale, 800, 70);
+  expect(rows).toHaveLength(4);
+  for (const row of rows) {
+    expect(row.space).toBeCloseTo(rows[0].space, 9);
+    expect(row.height).toBeCloseTo(rows[0].height, 9);
+  }
+  // 빈 책장도 줄 간격은 같고 최소 높이는 지킨다
+  const empty = computeRows(threeShelfLayout({ ...SAMPLE_LAYOUT, placements: [], drawer: SAMPLE_LAYOUT.placements.map((p) => p.bookId) }), books, m.scale, 800, 70);
+  expect(new Set(empty.map((r) => r.space)).size).toBe(1);
+  expect(empty[0].space).toBeGreaterThan(100);
 });
 
 it('기존 4번째 선반을 정리하면서 책을 서랍에 보존하고 3개를 유지한다', () => {

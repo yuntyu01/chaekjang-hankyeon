@@ -2,7 +2,7 @@ import { contrast } from '../color';
 import { spineTitleLayout } from '../title-layout';
 import {
   accentFor, applyOverride, buildBookArt, extractPalette, genreOf, hexToHsl, inkFor, LIGHT_RANGE, MIN_CONTRAST, pickMotif,
-  BOOK_COLORS, SAT_RANGE, showAuthorOnSpine, suggestColors, tameToPalette, type RebindInput,
+  BOOK_COLORS, coverSwatches, dominantColorOf, edgeColorOf, SAT_RANGE, showAuthorOnSpine, suggestColors, tameToPalette, type RebindInput,
 } from '../rebinding';
 
 const inRange = (hex: string) => {
@@ -134,5 +134,35 @@ describe('median cut', () => {
     expect(p[0].weight).toBeCloseTo(0.7, 1);
     expect(hexToHsl(p[0].hex).h).toBeLessThan(10);
     expect(p.reduce((a, e) => a + e.weight, 0)).toBeCloseTo(1, 5);
+  });
+});
+
+describe('책등 색과 표지 색(2026-11-03 사용자)', () => {
+  const px = (list: [number[], number][]) => list.flatMap(([c, n]) => Array.from({ length: n }, () => [...c, 255])).flat();
+  const MINT = [145, 206, 175];
+  const BROWN = [69, 55, 54];
+  it('책등과 맞닿는 띠가 거의 한 색이면 그 색(구의 증명: 민트), 전체 주조색과 달라도', () => {
+    expect(edgeColorOf(px([[MINT, 99], [BROWN, 1]]))).toBe(dominantColorOf(px([[MINT, 1]])));
+  });
+  it('띠에 여러 색이 섞이면 쓰지 않는다(데미안: 왼쪽 위만 어두운 사진)', () => {
+    expect(edgeColorOf(px([[BROWN, 50], [[237, 237, 237], 50]]))).toBeNull();
+    expect(edgeColorOf(px([[BROWN, 69], [[237, 237, 237], 31]]))).toBeNull();
+    expect(edgeColorOf(px([[BROWN, 70], [[237, 237, 237], 30]]))).not.toBeNull();
+  });
+  it('표지 색: 많은 순서, 최대 5개, 아주 적은 색과 거의 같은 색은 뺀다', () => {
+    const list = coverSwatches([
+      { hex: '#112233', weight: 0.1 },
+      { hex: '#CC3344', weight: 0.5 },
+      { hex: '#CC3546', weight: 0.2 }, // 거의 같은 색
+      { hex: '#33AA66', weight: 0.15 },
+      { hex: '#FFEE00', weight: 0.02 }, // 너무 적다
+    ]);
+    expect(list.map((h) => h.toUpperCase())).toEqual(['#CC3344', '#33AA66', '#112233']);
+    expect(coverSwatches(null)).toEqual([]);
+    const many = ['#100000', '#600000', '#B00000', '#006000', '#00B000', '#000060', '#0000B0'].map((hex, i) => ({ hex, weight: 0.2 - i * 0.01 }));
+    expect(coverSwatches(many)).toHaveLength(5);
+  });
+  it('표지 색도 책 색과 같은 밝기 상한을 넘지 않는다', () => {
+    expect(coverSwatches([{ hex: '#FFFFFF', weight: 1 }]).map((h) => h.toUpperCase())).toEqual(['#EDEDED']);
   });
 });

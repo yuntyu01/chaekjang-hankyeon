@@ -15,7 +15,7 @@ import type { CatalogBook, UserBook } from '@/domain/catalog';
 import { emptyLibrary, LIB_KINDS, type Binding, type Bookmark, type Edition, type LibKind, type Library, type MyBook, type Round, type Session } from '@/domain/library';
 import { migrate } from '@/domain/layout-schema';
 import { heightClassOf, thicknessClassOf, type LayoutVariant } from '@/domain/rebinding';
-import type { BindingMaterial, BookPlacement, Pose, ShelfLayout, ShelfLayoutV1, Tilt } from '@/domain/types';
+import { bindingMaterialOf, type BookPlacement, type Pose, type ShelfLayout, type ShelfLayoutV1, type Tilt } from '@/domain/types';
 
 // 서재 종류(= Library의 키)와 표 이름
 export { LIB_KINDS, type LibKind };
@@ -409,7 +409,8 @@ function binding(r: Row): Binding {
   put(b, 'inkColor', r.ink_color);
   put(b, 'accentColor', r.accent_color);
   put(b, 'layout', r.layout as LayoutVariant);
-  put(b, 'material', r.material as BindingMaterial);
+  const material = bindingMaterialOf(r.material);
+  if (material) b.material = material;
   put(b, 'coverArtUri', r.cover_art_uri);
   put(b, 'coverArtId', r.cover_art_id);
   put(b, 'spineArtUri', r.spine_art_uri);

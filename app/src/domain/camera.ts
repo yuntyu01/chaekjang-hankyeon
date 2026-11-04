@@ -12,6 +12,8 @@
 // 보기 각(pitch)은 눈높이만 바꾼다(eye.y = dist·tan(각)): 책 배치·충돌·줄 간격(3D)은 카메라를 읽지 않는다.
 // 워클릿은 만들어질 때 쓰는 함수를 붙잡으므로, 쓰이는 함수를 먼저 정의한다.
 
+import { FRAME_ON, LOOK } from '@/scene-config/skin';
+
 export type Eye = { x: number; y: number; z: number; dist: number };
 export type Cam = { kx: number; ky: number; eye?: Eye };
 export type Point = { x: number; y: number };
@@ -23,10 +25,11 @@ export type Vec3 = { x: number; y: number; z: number };
 // - 책 머리(판 위 약 200mm)는 윗면이 거의 보이지 않는다 → 눈높이 ≈ 0.031 × 6.4m ≈ 200mm.
 // 시안 구도는 1.8°(눈 ≈ 책 머리)였고, 2026-10-06 사용자 요청으로 기본을 4°(눈 ≈ 판 위 450mm, 책 머리 윗면이 조금 보인다)로 올렸다.
 // 꾸미기에서 8°까지 눈을 올려 내려다본다.
-export const VIEW_PITCH_MIN = 4;
+// 움푹 파인 책장은 시안에서 잰 구도(scene-config/skin LOOK): 눈이 천장보다 낮아 천장이 보인다
+// 줄 앞 카메라 거리(DU, 틀 없는 책장은 6.45m × 0.7625DU/mm)
+export const VIEW_DIST = FRAME_ON ? LOOK.dist : 4918;
+export const VIEW_PITCH_MIN = FRAME_ON ? (Math.atan(LOOK.eyeY / LOOK.dist) * 180) / Math.PI : 4;
 export const VIEW_PITCH_MAX = 8;
-// 줄 앞 카메라 거리(DU, 6.45m × 0.7625DU/mm)
-export const VIEW_DIST = 4918;
 // 줄 가운데(선반 공간 x): 화면 가운데 = DESIGN_WIDTH / 2 - 책 줄 왼쪽 여백(geometry USABLE_LEFT) = 195 - 12
 export const VIEW_CX = 183;
 // 예전 사선 카메라의 옆면 기울기. 원근 카메라는 0(옆면은 원근이 정한다)

@@ -54,7 +54,12 @@ export const ui = {
 
 // 화면 틀: 위 안전 영역 + 머리줄(뒤로·가운데 제목·오른쪽 행동) + 스크롤 본문 + 아래 고정 버튼(footer).
 // 뒤로가 없는 화면(탭 첫 화면·완료 화면)은 제목을 왼쪽에 둔다. 키보드가 열리면 아래 고정 버튼이 키보드 위로 올라온다.
+// 허브 화면(screenTheme TAB_CARDS): 회색 바탕 + 흰 카드(2026-11-04 당근·토스 종합). 안의 ListGroup은 카드가 되고 SectionBand는 카드 사이 간격이 된다
+const HubContext = createContext(false);
+
 export function Screen({
+  hub = false,
+  headerField,
   title,
   titleNote,
   subtitle,
@@ -68,6 +73,8 @@ export function Screen({
   compact,
   inline,
 }: {
+  hub?: boolean; // 회색 바탕 + 흰 카드 화면
+  headerField?: ReactNode; // 검색이 주인공인 화면: 제목 대신 뒤로 옆에 검색창(2026-11-04 사용자 토스 시안 '뒤로가기 옆에')
   tidy?: boolean; // 이 화면과 그 안의 부품을 정돈 변형으로(Tidy로 감싼다)
   compact?: boolean; // 정돈 변형에서 큰 제목 대신 머리줄 가운데 작은 제목(책 정보처럼 내용 첫머리가 주인공인 화면)
   inline?: boolean; // 정돈 변형에서 큰 제목을 머리줄 뒤로 단추 옆에(내 기록처럼 내용을 위로 올리는 화면)
@@ -92,7 +99,20 @@ export function Screen({
   useEffect(() => () => miniTimerStore.setBottom(null), []);
   // 정돈 변형(2026-11-01 토스식 위계): 뒤로가 있는 화면은 머리줄에 뒤로·행동만 두고, 제목은 내용 맨 위 왼쪽에 크게(24 Bold).
   // 스크롤 화면이면 제목도 내용과 함께 올라간다
-  const large = t && back && !compact && !inline && !!title;
+  const large = t && back && !compact && !inline && !headerField && !!title;
+  const pad = hub ? space.cardMargin : space.page;
+  const tabHead = (
+    <View style={s.headerLeft}>
+      <View style={{ flex: 1 }}>
+        {/* 탭 첫 화면·완료 화면의 왼쪽 제목: 책장 홈 머리줄과 같은 기준(screenTheme.tabHeader·headerType, 2026-11-01) */}
+        <Text style={headerType.title} accessibilityRole="header">
+          {title ?? ''}
+        </Text>
+        {subtitle ? <Text style={[headerType.sub, { marginTop: 4 }]}>{subtitle}</Text> : null}
+      </View>
+      {right ? <View style={[s.right, { marginRight: -10, marginTop: -6 }]}>{right}</View> : null}
+    </View>
+  );
   const largeTitle = large ? (
     <View style={ts.largeTitle}>
       <Text style={tidyType.title} accessibilityRole="header">
@@ -103,23 +123,25 @@ export function Screen({
     </View>
   ) : null;
   const body = scroll ? (
-    <ScrollView contentContainerStyle={{ paddingHorizontal: space.page, paddingBottom: space.section + bottomPad + timerPad + (footer ? 0 : insets.bottom) }} keyboardShouldPersistTaps="handled">
+    <ScrollView contentContainerStyle={{ paddingHorizontal: pad, paddingBottom: space.section + bottomPad + timerPad + (footer ? 0 : insets.bottom) }} keyboardShouldPersistTaps="handled">
+      {/* 탭 첫 화면 제목도 내용과 함께 올라간다(2026-11-04 사용자 '상단 라인은 고정이 아니야') */}
+      {!back ? <View style={{ marginHorizontal: -pad }}>{tabHead}</View> : null}
       {largeTitle}
       {children}
     </ScrollView>
   ) : (
-    <View style={{ flex: 1, paddingHorizontal: space.page }}>
+    <View style={{ flex: 1, paddingHorizontal: pad }}>
       {largeTitle}
       {children}
     </View>
   );
   const screen = (
-    <View style={{ flex: 1, paddingTop: insets.top, backgroundColor: colors.bg }}>
+    <View style={{ flex: 1, paddingTop: insets.top, backgroundColor: hub ? colors.page : colors.bg }}>
       {back ? (
         <View style={s.header}>
           {/* 제목은 화면 가운데(양옆 버튼 폭과 상관없이) */}
           <View pointerEvents="none" style={s.titleCenter}>
-            {large || inline ? null : <>
+            {large || inline || headerField ? null : <>
             <Text style={t ? tidyType.navTitle : tt.title} numberOfLines={1} accessibilityRole="header">
               {title ?? ''}
               {titleNote ? <Text style={s.titleNote}>{`  ${titleNote}`}</Text> : null}
@@ -130,20 +152,12 @@ export function Screen({
           <Pressable onPress={() => (router.canGoBack() ? router.back() : router.replace('/'))} hitSlop={8} accessibilityRole="button" accessibilityLabel="뒤로" style={s.back}>
             <ChevronLeft size={28} color={colors.title} strokeWidth={icon.stroke} />
           </Pressable>
-          {inline ? <Text style={[tidyType.title, { flex: 1, marginLeft: 4 }]} numberOfLines={1} accessibilityRole="header">{title}</Text> : null}
-          <View style={s.right}>{right}</View>
+          {inline ? <Text style={[tidyType.title, { flex: 1, marginLeft: 4 }]} numberOfLines={1} accessibilityRole="header">{title}{titleNote ? <Text style={[s.titleNote, { fontFamily: fonts.ui }]}>{`  ${titleNote}`}</Text> : null}</Text> : null}
+          {headerField ? <View style={s.headerField}>{headerField}</View> : null}
+          {right || !headerField ? <View style={s.right}>{right}</View> : <View style={{ width: space.page }} />}
         </View>
-      ) : (
-        <View style={s.headerLeft}>
-          <View style={{ flex: 1 }}>
-            {/* 탭 첫 화면·완료 화면의 왼쪽 제목: 책장 홈 머리줄과 같은 기준(screenTheme.tabHeader·headerType, 2026-11-01) */}
-            <Text style={headerType.title} accessibilityRole="header">
-              {title ?? ''}
-            </Text>
-            {subtitle ? <Text style={[headerType.sub, { marginTop: 4 }]}>{subtitle}</Text> : null}
-          </View>
-          {right ? <View style={[s.right, { marginRight: -10, marginTop: -6 }]}>{right}</View> : null}
-        </View>
+      ) : scroll ? null : (
+        tabHead
       )}
       {/* 안드로이드도 padding: 화면 끝까지 그리는(edge-to-edge) 창은 키보드가 열려도 줄지 않아 아래 저장 버튼이 가려진다.
           창이 줄어드는 환경이면 겹치는 높이가 0이라 두 번 비키지 않는다. */}
@@ -168,7 +182,14 @@ export function Screen({
       </KeyboardAvoidingView>
     </View>
   );
-  return t && !inTidy ? <Tidy>{screen}</Tidy> : screen;
+  const wrapped = <HubContext.Provider value={hub}>{screen}</HubContext.Provider>;
+  return t && !inTidy ? <Tidy>{wrapped}</Tidy> : wrapped;
+}
+
+// 내용 한 묶음. 허브 화면에서만 흰 카드(모서리 18, 안쪽 18, 카드 사이 12)이고 흰 화면에서는 상자 없이 그대로다
+export function Card({ children, style }: { children: ReactNode; style?: StyleProp<ViewStyle> }) {
+  const hub = useContext(HubContext);
+  return <View style={[hub && s.card, style]}>{children}</View>;
 }
 
 // 구역 이름(시안의 '독서 환경'·'내 기록'): 작은 회갈색 글자, 위로 넉넉한 간격
@@ -212,11 +233,19 @@ export function Btn({
   style?: StyleProp<ViewStyle>;
 }) {
   const t = useTidy();
-  // 주요·보조 버튼은 흰 바탕 + 옅은 회색 테두리 + 먹색 글자(2026-11-02 사용자 '애매한 갈색 박스 말고 테두리 회색으로 감싼 거로')
+  // 2026-11-04 당근·토스 종합: 주요 버튼은 테마색으로 채우고 흰 글자(화면에 하나). 보조·삭제는 흰 바탕 + 회색 선(사용자 '회색 바탕 말고 회색 선')
   const primary = kind === 'primary';
-  const outlined = primary || kind === 'secondary';
+  const outlined = kind === 'secondary' || kind === 'danger';
   const off = !!disabled || !!busy;
-  const ink = primary && disabled ? colors.disabledInk : kind === 'danger' ? colors.danger : colors.ink;
+  const ink = primary ? (disabled ? colors.disabledInk : colors.onAccent) : kind === 'danger' ? colors.danger : colors.ink;
+  const fill = (pressed: boolean) =>
+    primary
+      ? { backgroundColor: disabled ? colors.disabled : pressed && !off ? colors.accentPressed : colors.accent }
+      : outlined
+        ? { backgroundColor: pressed && !off ? colors.input : colors.raised, borderWidth: shape.border, borderColor: colors.border }
+        : pressed
+          ? { backgroundColor: colors.line }
+          : null;
   if (t)
     // 정돈 변형: 높이 56·48·40 고정, 단색, 불러오는 중에도 크기가 그대로(글자 자리를 지키고 가운데에 돌림표)
     return (
@@ -231,12 +260,8 @@ export function Btn({
           ts.btn,
           { minHeight: tidyButton[size] },
           size === 's' && ts.btnSmall,
-          outlined && ts.btnOutlined,
-          outlined && pressed && { backgroundColor: colors.input },
-          // 삭제는 회색 바탕 + 붉은 글자
-          kind === 'danger' && { backgroundColor: colors.input },
+          fill(pressed),
           !primary && disabled && { opacity: 0.45 },
-          !outlined && pressed && { backgroundColor: colors.line },
           style,
         ]}>
         <View style={[ts.btnInner, busy && { opacity: 0 }]}>
@@ -260,12 +285,9 @@ export function Btn({
         s.btn,
         size === 's' && s.btnSmall,
         size === 'l' && s.btnLarge,
-        outlined && s.btnOutlined,
-        outlined && pressed && { backgroundColor: colors.input },
-        kind === 'ghost' && { borderColor: 'transparent', backgroundColor: 'transparent' },
-        kind === 'danger' && { backgroundColor: colors.input, borderColor: colors.input },
+        kind === 'ghost' && { backgroundColor: 'transparent' },
+        fill(pressed),
         !primary && disabled && { opacity: 0.45 },
-        !outlined && pressed && { backgroundColor: colors.line, borderColor: colors.line },
         style,
       ]}>
       {busy ? <ActivityIndicator color={ink} size="small" /> : iconNode}
@@ -722,7 +744,7 @@ export function Segmented<T extends string>({ items, value, onChange, style }: {
   );
 }
 
-// 거르기 단추(모든 책 ▾ · 모든 유형 ▾ · 최근 추가순 ▾): 눌러 시트에서 고른다. 기본값이 아니면(걸러진 상태) 본문색 굵게
+// 거르기 단추(모든 책 ▾ · 모든 유형 ▾ · 최근 추가순 ▾): 눌러 시트에서 고른다. 기본값이 아니면(걸러진 상태) 고른 칩처럼 짙은 바탕에 흰 글자
 export function FilterButton({ label, active, onPress, icon: lead }: { label: string; active?: boolean; onPress: () => void; icon?: ReactNode }) {
   return (
     <Pressable onPress={onPress} hitSlop={{ top: 6, bottom: 6 }} accessibilityRole="button" accessibilityLabel={`${label}, 바꾸기`} style={({ pressed }) => [s.filter, active && s.filterOn, pressed && { backgroundColor: colors.line }]}>
@@ -730,29 +752,32 @@ export function FilterButton({ label, active, onPress, icon: lead }: { label: st
       <Text style={[s.filterText, active && s.filterTextOn]} numberOfLines={1}>
         {label}
       </Text>
-      <ChevronDown size={16} color={active ? colors.ink : colors.inkSoft} strokeWidth={icon.stroke} />
+      <ChevronDown size={16} color={active ? colors.onAccent : colors.inkSoft} strokeWidth={icon.stroke} />
     </Pressable>
   );
 }
 
-// 목록 묶음: 줄 사이에만 얇은 구분선(마지막 줄 아래는 없음). 회색 상자에 넣지 않고 화면 폭 그대로 쓴다(2026-11-01 토스식)
-export function ListGroup({ children, style }: { children: ReactNode; style?: StyleProp<ViewStyle> }) {
-  const items = Children.toArray(children).filter(isValidElement);
+// 목록 묶음(2026-11-04 당근·토스 종합): 메뉴·설정 줄 사이에는 선을 긋지 않는다. 묶음끼리만 나눈다. 글이 많은 목록(후기·기록)은 항목 사이에 Divider를 쓴다.
+// title: 묶음 이름. 흰 화면은 작은 회색 글자, 허브 화면(회색 바탕)은 흰 카드 안 굵은 글자
+export function ListGroup({ children, style, title }: { children: ReactNode; style?: StyleProp<ViewStyle>; title?: string }) {
+  const hub = useContext(HubContext);
+  const head = title ? (
+    <Text style={[tidyType.caption, s.groupTitle, hub && s.groupTitleHub]} accessibilityRole="header">
+      {title}
+    </Text>
+  ) : null;
   return (
-    <View style={style}>
-      {items.map((c, i) => (
-        <Fragment key={c.key ?? i}>
-          {i ? <View style={s.divider} /> : null}
-          {c}
-        </Fragment>
-      ))}
+    <View style={[hub && s.groupCard, style]}>
+      {head}
+      {children}
     </View>
   );
 }
 
-// 묶음 사이 띠: 화면 끝까지 닿는 8 높이 회색 띠(설정의 '독서 환경 / 내 기록 / 앱 안내'처럼 의미가 다른 묶음을 나눌 때)
+// 묶음 사이: 흰 화면은 화면 끝까지 닿는 1dp 선(당근 설정), 허브 화면은 카드 사이 간격
 export function SectionBand({ style }: { style?: StyleProp<ViewStyle> }) {
-  return <View style={[s.band, style]} />;
+  const hub = useContext(HubContext);
+  return <View style={[hub ? { height: space.cardGap } : s.band, style]} />;
 }
 
 export function Divider({ style }: { style?: StyleProp<ViewStyle> }) {
@@ -779,17 +804,56 @@ export function ScreenList<T>({ contentContainerStyle, ...p }: FlatListProps<T>)
   );
 }
 
-// 하단 시트: 어두운 덮개 + 위쪽만 둥근 판(손잡이·머리줄·내용). 바깥을 누르거나 뒤로 가면 닫힌다.
+// 시트 손잡이를 끌어 내리면 닫힌다(화면을 넘어가는 모달 안이라 RN PanResponder로). 위로는 움직이지 않는다
+const SHEET_DRAG_CLOSE = 60; // dp
+const SHEET_FLICK_CLOSE = 0.8; // dp/ms
+export function useSheetDrag(visible: boolean, onClose: () => void) {
+  const y = useRef(new Animated.Value(0)).current;
+  const close = useRef(onClose);
+  useEffect(() => {
+    close.current = onClose;
+  }, [onClose]);
+  useEffect(() => {
+    if (visible) y.setValue(0);
+  }, [visible, y]);
+  const handlers = useRef(
+    PanResponder.create({
+      onStartShouldSetPanResponder: () => true,
+      onPanResponderMove: (_, g) => y.setValue(Math.max(0, g.dy)),
+      onPanResponderRelease: (_, g) => {
+        if (g.dy > SHEET_DRAG_CLOSE || g.vy > SHEET_FLICK_CLOSE) close.current();
+        else Animated.spring(y, { toValue: 0, useNativeDriver: true, bounciness: 0 }).start();
+      },
+      onPanResponderTerminate: () => Animated.spring(y, { toValue: 0, useNativeDriver: true, bounciness: 0 }).start(),
+    }),
+  ).current.panHandlers;
+  return { y, handlers };
+}
+// 시트 위쪽 손잡이: 판 위 끝부터 손잡이 아래까지 폭 전체가 끄는 자리다
+export function SheetGrip({ handlers, compact }: { handlers: ReturnType<typeof useSheetDrag>['handlers']; compact?: boolean }) {
+  const t = useTidy();
+  return (
+    <View {...handlers} style={s.grip} importantForAccessibility="no-hide-descendants" accessibilityElementsHidden>
+      <View style={[s.handle, t && ts.handle, compact ? { marginBottom: 4 } : null]} />
+    </View>
+  );
+}
+
+// 하단 시트: 어두운 덮개 + 위쪽만 둥근 판(손잡이·머리줄·내용). 바깥을 누르거나 뒤로 가면, 손잡이를 끌어 내리면 닫힌다.
+// 덮개는 판 뒤까지 깐다: 판 윗선에서 끝나면 둥글게 깎인 모서리로 밝은 화면이 비쳐 흰 바탕에서 모서리가 각져 보인다
 // 제목이 있는 시트는 머리줄 오른쪽에 닫기 단추(2026-11: 분위기·목표 시간·책 고르기 공통. 아래쪽 '닫기' 글자 대신).
 // description은 제목 바로 아래 짧은 안내. 높이는 내용만큼(maxHeight를 넘으면 scroll 시트의 본문이 스크롤된다)
 export function Sheet({ visible, onClose, title, description, children, scroll = false, maxHeight }: { visible: boolean; onClose: () => void; title?: string; description?: string; children: ReactNode; scroll?: boolean; maxHeight?: DimensionValue }) {
   const insets = useSafeAreaInsets();
   const t = useTidy();
+  const drag = useSheetDrag(visible, onClose);
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose} statusBarTranslucent navigationBarTranslucent>
-      <Pressable style={{ flex: 1, backgroundColor: colors.scrim }} onPress={onClose} accessibilityLabel="닫기" />
-      <View style={[s.sheet, t && ts.sheet, { paddingBottom: insets.bottom + space.item, maxHeight }]}>
-        <View style={[s.handle, t && ts.handle, title ? { marginBottom: 4 } : null]} />
+      <HubContext.Provider value={false}>
+      <View style={s.sheetWrap}>
+      <Pressable style={[StyleSheet.absoluteFill, { backgroundColor: colors.scrim }]} onPress={onClose} accessibilityLabel="닫기" />
+      <Animated.View style={[s.sheet, t && ts.sheet, { paddingBottom: insets.bottom + space.item, maxHeight, transform: [{ translateY: drag.y }] }]}>
+        <SheetGrip handlers={drag.handlers} compact={!!title} />
         {title ? (
           <View style={{ marginBottom: t ? tidySpace.m : space.item }}>
             <View style={s.sheetHead}>
@@ -810,7 +874,9 @@ export function Sheet({ visible, onClose, title, description, children, scroll =
         ) : (
           children
         )}
+      </Animated.View>
       </View>
+      </HubContext.Provider>
     </Modal>
   );
 }
@@ -849,13 +915,13 @@ export const s = StyleSheet.create({
   headerLeft: { ...tabHeader, flexDirection: 'row', alignItems: 'flex-start' },
   titleCenter: { position: 'absolute', left: 64, right: 64, top: 4, bottom: 0, alignItems: 'center', justifyContent: 'center' },
   back: { width: space.touch, height: space.touch, alignItems: 'center', justifyContent: 'center', marginLeft: 8 },
+  headerField: { flex: 1, marginLeft: 2 },
   right: { flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-end', minWidth: space.touch, marginRight: 10 },
   footer: { paddingHorizontal: space.page - 4, paddingTop: 12, backgroundColor: colors.bg },
   footerFade: { position: 'absolute', left: 0, right: 0, top: -FOOTER_FADE }, // 시안: 버튼은 입력칸보다 좌우로 조금 넓다(19~20)
   muted: { ...type.sub },
-  btn: { minHeight: 46, borderRadius: shape.button, borderWidth: shape.border, borderColor: colors.border, paddingHorizontal: 18, paddingVertical: 12, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, backgroundColor: 'transparent' },
+  btn: { minHeight: 46, borderRadius: shape.button, paddingHorizontal: 18, paddingVertical: 12, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, backgroundColor: 'transparent' },
   btnSmall: { minHeight: 40, paddingVertical: 8, paddingHorizontal: 14, borderRadius: shape.input },
-  btnOutlined: { backgroundColor: colors.raised, borderColor: colors.border },
   btnLarge: { minHeight: 56, paddingVertical: 14 },
   iconButton: { width: space.touch, height: space.touch, alignItems: 'center', justifyContent: 'center' },
   iconCircle: { width: 36, height: 36, borderRadius: 18, borderWidth: shape.border, borderColor: colors.border, alignItems: 'center', justifyContent: 'center' },
@@ -891,13 +957,13 @@ export const s = StyleSheet.create({
   segTextOn: { fontFamily: fonts.uiBold, color: colors.ink },
   // 거르기 단추: 옅은 회색 알약(칩과 같은 채움), 글자 15
   filter: { flexDirection: 'row', alignItems: 'center', gap: 4, minHeight: 40, paddingLeft: 16, paddingRight: 12, borderRadius: 20, backgroundColor: colors.surface, maxWidth: 220 },
-  filterOn: { backgroundColor: colors.accentSoft },
-  filterText: { fontFamily: fonts.ui, fontSize: 16, lineHeight: 22, color: colors.inkSoft, includeFontPadding: false, flexShrink: 1 },
-  filterTextOn: { fontFamily: fonts.uiBold, color: colors.ink },
+  filterOn: { backgroundColor: colors.chipOn },
+  filterText: { fontFamily: fonts.ui, fontSize: 16, lineHeight: 22, color: colors.ink, includeFontPadding: false, flexShrink: 1 },
+  filterTextOn: { fontFamily: fonts.uiBold, color: colors.onAccent },
   tab: { alignItems: 'center', paddingTop: 4, paddingHorizontal: 6, minHeight: space.touch },
   tabText: { ...type.row, fontSize: 14, lineHeight: 20, color: colors.inkSoft },
   tabTextOn: { fontFamily: type.button.fontFamily, color: colors.ink },
-  tabBar: { width: 32, height: 3, borderRadius: 2, backgroundColor: colors.accent, marginTop: 8 },
+  tabBar: { width: 32, height: 3, borderRadius: 2, backgroundColor: colors.ink, marginTop: 8 },
   tabsFill: { justifyContent: 'flex-start', borderBottomWidth: shape.hairline, borderBottomColor: colors.line },
   tabFill: { flex: 1, paddingHorizontal: 0, paddingTop: 10 },
   tabTextFill: { fontFamily: fonts.uiBold, fontSize: 16, lineHeight: 22 },
@@ -905,7 +971,7 @@ export const s = StyleSheet.create({
   searchInput: { ...type.input, flex: 1, paddingVertical: 12 },
   clear: { width: 22, height: 22, borderRadius: 11, backgroundColor: colors.inkFaint, alignItems: 'center', justifyContent: 'center' },
   chip: { minHeight: 38, paddingVertical: 8, borderRadius: shape.pill, borderWidth: shape.border, borderColor: colors.input, backgroundColor: colors.input, paddingHorizontal: 15, flexDirection: 'row', alignItems: 'center', gap: 6 },
-  chipOn: { backgroundColor: colors.accent, borderColor: colors.accent },
+  chipOn: { backgroundColor: colors.chipOn, borderColor: colors.chipOn },
   chipText: { ...type.sub, color: colors.ink, fontSize: 15 },
   dot: { width: 10, height: 10, borderRadius: 5 },
   notice: { backgroundColor: colors.surface, borderRadius: shape.input, paddingVertical: 14, paddingHorizontal: 16 },
@@ -915,10 +981,16 @@ export const s = StyleSheet.create({
   divider: { height: shape.hairline, backgroundColor: colors.line },
   track: { width: TRACK_W, height: TRACK_H, borderRadius: TRACK_H / 2, padding: 3, justifyContent: 'center' },
   knob: { width: KNOB, height: KNOB, borderRadius: KNOB / 2, backgroundColor: colors.raised, shadowColor: '#3B2A24', shadowOpacity: 0.18, shadowRadius: 2, shadowOffset: { width: 0, height: 1 }, elevation: 2 },
-  sheet: { backgroundColor: colors.raised, borderTopLeftRadius: shape.sheet, borderTopRightRadius: shape.sheet, paddingHorizontal: space.page, paddingTop: 10 },
-  handle: { width: 36, height: 4, borderRadius: 2, backgroundColor: colors.line, alignSelf: 'center', marginBottom: 14 },
+  sheetWrap: { flex: 1, justifyContent: 'flex-end' },
+  sheet: { flexShrink: 1, backgroundColor: colors.raised, borderTopLeftRadius: shape.sheet, borderTopRightRadius: shape.sheet, paddingHorizontal: space.page, paddingTop: 10 },
+  grip: { alignSelf: 'stretch', marginTop: -10, paddingTop: 10 },
+  handle: { width: 36, height: 4, borderRadius: 2, backgroundColor: colors.track, alignSelf: 'center', marginBottom: 14 },
   sheetHead: { flexDirection: 'row', alignItems: 'center', minHeight: space.touch, gap: 8 },
-  band: { height: 8, backgroundColor: colors.surface, marginHorizontal: -space.page, marginTop: 24 },
+  band: { height: 1, backgroundColor: colors.sectionLine, marginHorizontal: -space.page, marginVertical: 20 },
+  card: { backgroundColor: colors.raised, borderRadius: shape.card, padding: space.cardPad },
+  groupCard: { backgroundColor: colors.raised, borderRadius: shape.card, paddingHorizontal: space.cardPad, paddingVertical: 8 },
+  groupTitle: { paddingBottom: 4 },
+  groupTitleHub: { fontFamily: fonts.uiBold, color: colors.ink, fontSize: 17, lineHeight: 24, paddingTop: 10 },
   slider: { height: 44, justifyContent: 'center', flex: 1 },
   sliderTrack: { position: 'absolute', height: 6, borderRadius: 3, backgroundColor: colors.track, top: 19 },
   sliderKnob: { position: 'absolute', top: 10, width: 24, height: 24, borderRadius: 12, backgroundColor: colors.bg, borderWidth: 2, ...shape.floatShadow },
@@ -933,7 +1005,6 @@ const ts = StyleSheet.create({
   footer: { paddingHorizontal: tidySpace.page }, // 버튼 좌우 끝을 본문(입력칸·목록)과 같은 24에 맞춘다
   btn: { borderRadius: tidyShape.button, paddingHorizontal: 20, paddingVertical: 14, alignItems: 'center', justifyContent: 'center', backgroundColor: 'transparent' },
   btnSmall: { paddingVertical: 10, paddingHorizontal: 16 },
-  btnOutlined: { backgroundColor: colors.raised, borderWidth: shape.border, borderColor: colors.border },
   btnInner: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8 },
   btnText: { ...tidyType.button, flexShrink: 1, textAlign: 'center' },
   btnTextSmall: { ...tidyType.button, fontSize: 16, lineHeight: 22, flexShrink: 1, textAlign: 'center' },
@@ -954,11 +1025,11 @@ const ts = StyleSheet.create({
   handle: { marginBottom: 16 },
 });
 
-// 고르는 블록(Choice). 모서리 14, 안쪽 여백 16. 2026-11-01: 회색으로 채우지 않고 흰 바탕 + 얇은 테두리, 고르면 옅은 갈색 바탕 + 갈색 테두리 + 체크
+// 고르는 블록(Choice). 모서리 14, 안쪽 여백 16. 흰 바탕 + 얇은 테두리, 고르면 갈색 테두리 + 체크(2026-11-04 사용자: 애매한 연한 갈색 박스는 쓰지 않는다)
 const cs = StyleSheet.create({
   choice: { borderRadius: 14, padding: 16, backgroundColor: colors.bg, borderWidth: 1.5, borderColor: colors.line, minHeight: 56, justifyContent: 'center' },
   choiceCompact: { paddingVertical: 12, paddingHorizontal: 8, alignItems: 'stretch' },
-  choiceOn: { backgroundColor: colors.accentSoft, borderColor: colors.accent },
+  choiceOn: { backgroundColor: colors.bg, borderColor: colors.accent },
   choiceRow: { flexDirection: 'row', alignItems: 'center' },
   check: { position: 'absolute', top: 8, right: 8, width: 20, height: 20, borderRadius: 10, backgroundColor: colors.accent, alignItems: 'center', justifyContent: 'center' },
   checkWideBox: { position: 'absolute', top: 0, bottom: 0, right: 16, justifyContent: 'center' },

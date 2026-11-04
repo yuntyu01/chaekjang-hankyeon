@@ -8,6 +8,8 @@ import { Easing, useAnimatedReaction, useFrameCallback, useSharedValue, withRepe
 import { scheduleOnRN, scheduleOnUI } from 'react-native-worklets';
 
 import { VIEW_PITCH_MAX, VIEW_PITCH_MIN, type Cam } from '@/domain/camera';
+import { PERF_LIGHT_KEY } from '@/scene-config/lighting';
+import { PERF_LOOK_KEY, PERF_SKIN_KEY } from '@/scene-config/skin';
 import { DEMO_BOOT_KEY } from '@/store/boot';
 import { demoKindOf, placementStore } from '@/store/placement-store';
 import { viewStore } from '@/store/view-store';
@@ -42,7 +44,7 @@ export function useHomePerf({ view, pitchSV, viewGoal, savePitch, camSV, storeLo
   const [shelfView, setShelfViewState] = useState<(typeof SHELF_VIEWS)[number]>('전체');
   // 측정 번들에서만: chaekjang:///?sv=0~4 로 선반 보기를 바로 고른다(비교 캡처용)
   // lv=<그리기 단계>(예: full, cast)로 단계만 바꿔 같은 화면을 비교한다
-  const { sv, lv, sh, lt, cam: camDebug, pitch: pitchParam, slow, transit, geom, pushdbg, mark } = useLocalSearchParams<{ sv?: string; lv?: string; sh?: string; lt?: string; cam?: string; pitch?: string; slow?: string; transit?: string; geom?: string; pushdbg?: string; mark?: string }>();
+  const { sv, lv, sh, lt, cam: camDebug, pitch: pitchParam, slow, transit, geom, pushdbg, mark, mat, light: lightParam, skin: skinParam, look: lookParam } = useLocalSearchParams<{ sv?: string; lv?: string; sh?: string; lt?: string; cam?: string; pitch?: string; slow?: string; transit?: string; geom?: string; pushdbg?: string; mark?: string; mat?: string; light?: string; skin?: string; look?: string }>();
   // 측정 번들: ?mark=b11,b12 처럼 고른 책을 한 가지 색(자홍, 둘째는 청록)으로만 그린다. 화면 녹화에서 그 책이 프레임마다 몇 군데에
   // 얼마나 보이는지 세어 빈 프레임·두 권 보임을 찾는다(장면에 넘기는 그림용 사본만 바꾼다. 배치 계산·저장은 그대로).
   // 측정 번들: ?geom=1 로 형상 보기(3D 상자 모서리·받침·계산상 선반)를 켜고 끈다(캡처 스크립트용)
@@ -81,6 +83,24 @@ export function useHomePerf({ view, pitchSV, viewGoal, savePitch, camSV, storeLo
     return () => clearTimeout(id);
   }, [perfrun, storeLoaded]);
   if (PERF_ENABLED && menutl !== undefined) MENU_FLAGS.translucent = menutl === '1';
+  // 측정 번들: ?light=17,10,14,.55,.25,-.12,.35,.3 빛 값을 저장한다(다음 실행부터, scene-config/lighting). off면 지운다
+  useEffect(() => {
+    if (!PERF_ENABLED || lightParam === undefined) return;
+    if (lightParam === 'off') void Storage.removeItem(PERF_LIGHT_KEY);
+    else void Storage.setItem(PERF_LIGHT_KEY, lightParam);
+  }, [lightParam]);
+  // 측정 번들: ?skin=선반,틀,벽지 스킨을 저장한다(다음 실행부터, scene-config/skin). off면 지운다
+  useEffect(() => {
+    if (!PERF_ENABLED || skinParam === undefined) return;
+    if (skinParam === 'off') void Storage.removeItem(PERF_SKIN_KEY);
+    else void Storage.setItem(PERF_SKIN_KEY, skinParam);
+  }, [skinParam]);
+  // 측정 번들: ?look=거리,눈높이,판 두께,그늘 높이,그늘 세기,테 반지름,틀 회색,따뜻함,곡면 반지름,꼭지점 둥글기,옆면 범위,옆면 세기,판 윤기,꼭지점 그늘,번짐 폭,구멍 모서리 움푹 파인 책장의 구도와 모서리를 저장한다(다음 실행부터, scene-config/skin). off면 지운다
+  useEffect(() => {
+    if (!PERF_ENABLED || lookParam === undefined) return;
+    if (lookParam === 'off') void Storage.removeItem(PERF_LOOK_KEY);
+    else void Storage.setItem(PERF_LOOK_KEY, lookParam);
+  }, [lookParam]);
   useEffect(() => {
     if (!PERF_ENABLED || demoboot === undefined) return;
     const kind = demoKindOf(demoboot);
@@ -273,5 +293,5 @@ export function useHomePerf({ view, pitchSV, viewGoal, savePitch, camSV, storeLo
   const runPerfRef = useRef(runPerf);
   runPerfRef.current = runPerf;
 
-  return { perfKey, setPerfKey, shelfView, setShelfViewState, camDebug, camNow, mark, dragPerfStart, dragPerfStop, undoPerfStart, runPerf };
+  return { perfKey, setPerfKey, shelfView, setShelfViewState, camDebug, camNow, mark, mat, dragPerfStart, dragPerfStop, undoPerfStart, runPerf };
 }

@@ -1,10 +1,10 @@
 // 빛 모델(domain/light-model): 해석적인 하늘 가림(램버트 윤곽 적분 + 앞 가리개는 뒤에 보일 것과의 차이)이
 // 같은 장면을 광선으로 직접 적분한 값(몬테카를로)과 맞는지, 그리고 반사·창빛 가림의 기본 성질.
 import type { Book3, Vec3 } from '../book3';
-import { ALBEDO, bakedLossAt, contactShade, diskBlocked, gridKeyFree, ggxKey, KEY_C, lum, RAD, ROUGH, skyIrradiance, SREF, bookAlbedo, bookEref, boxOf, tone, toneInv, toneTarget, TONE, darkening, DESIGN, EREF, envBRDF, faceAlbedo, lightWithLoss, FAR, irradiance, L_ELEV, L_UNIT, linearOf, plankKeyBlocked, polyVF, sceneLight, skyLossAt, skyRadiance, solveGrid, traceRadiance, withCovers, type Box, type C3, type Env, type Grid } from '../light-model';
-import { SHELF_DEPTH, SHELF_FRONT, SHELF_THICK, SHELF_X0, SHELF_X1 } from '../geometry';
+import { COVE_R, coveNormal, envHit, envLobe, JOINT_K, jointShade, runCalibration, sideBlock, ALBEDO, bakedLossAt, contactShade, diskBlocked, gridKeyFree, ggxKey, KEY_C, lum, RAD, ROUGH, skyIrradiance, SREF, bookAlbedo, bookEref, boxOf, tone, toneInv, toneTarget, TONE, darkening, DESIGN, EREF, envBRDF, faceAlbedo, lightWithLoss, FAR, irradiance, L_ELEV, L_UNIT, linearOf, plankKeyBlocked, polyVF, sceneLight, skyLossAt, skyRadiance, solveGrid, traceRadiance, withCovers, type Box, type C3, type Env, type Grid } from '../light-model';
+import { FRAME_FRONT, FRAME_X0, SHELF_DEPTH, SHELF_FRONT, SHELF_THICK, SHELF_X0, SHELF_X1 } from '../geometry';
 import palette from '@/scene-config/reference-bindings.generated.json';
-import { ALBEDO_MAX, light } from '@/scene-config/lighting';
+import { ALBEDO_MAX, light, surfaceMats } from '@/scene-config/lighting';
 import { camAt, VIEW_PITCH_MIN } from '../camera';
 import { albedoPeak, MAT_UNIFORMS } from '../surface-pattern';
 
@@ -171,6 +171,8 @@ describe('빛 모델: 하늘 가림', () => {
 function pathTrace(p: Vec3, n: Vec3, env: Env, boxes: Box[], N: number): C3 {
   const r = rng(3);
   const slabs: [number, number][] = [[env.floor - SHELF_THICK, env.floor], [env.ceil, env.ceil + SHELF_THICK]];
+  // 틀 안쪽 면: 앞 끝 ~ 벽, 위아래로 이어진 상자
+  const panels: [number, number][] = env.side ? [[SHELF_X0 - 50, SHELF_X0], [SHELF_X1, SHELF_X1 + 50]] : [];
   type Hit = { t: number; n: Vec3; a: C3 } | null;
   const hitBox = (q: Vec3, w: Vec3, lo: Vec3, hi: Vec3) => {
     let t0 = 1e-7;
@@ -198,6 +200,10 @@ function pathTrace(p: Vec3, n: Vec3, env: Env, boxes: Box[], N: number): C3 {
     for (const [y0, y1] of slabs) {
       const h = hitBox(q, w, { x: SHELF_X0, y: y0, z: -SHELF_FRONT }, { x: SHELF_X1, y: y1, z: SHELF_DEPTH });
       if (h && (!best || h.t < best.t)) best = { ...h, a: ALBEDO.plank };
+    }
+    for (const [x0, x1] of panels) {
+      const h = hitBox(q, w, { x: x0, y: -1e6, z: -FRAME_FRONT }, { x: x1, y: 1e6, z: SHELF_DEPTH });
+      if (h && (!best || h.t < best.t)) best = { ...h, a: ALBEDO.frame };
     }
     for (const b of boxes) {
       const ax = [b.ax, b.ay, b.az];
@@ -287,6 +293,78 @@ describe('빛 격자(여러 번 튕긴 빛)', () => {
   });
 });
 
+describe('책장 틀(옆판·위 판): 같은 빛 모델', () => {
+  withOcclusion();
+  const framed: Env = { floor: 0, ceil: 200, side: true };
+  // 옆판 밝기(RAD.sideL·sideR)는 맞추기가 정하므로 물리 그대로의 가림 세기(1)로 다시 맞춘 뒤 정답과 비교한다
+  let G: Grid;
+  beforeAll(() => {
+    runCalibration();
+    G = solveGrid(framed, []);
+  });
+  const appOcclusion = light.occlusion;
+  afterAll(() => {
+    light.occlusion = appOcclusion;
+    runCalibration();
+  });
+  const lumOf = (c: C3) => 0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2];
+  const front = { x: 0, y: 0, z: -1 };
+  const up = { x: 0, y: 1, z: 0 };
+  it.each([
+    ['틀 안 가운데 벽', { x: 183, y: 100, z: SHELF_DEPTH }, front],
+    ['왼쪽 옆판 바로 옆 벽', { x: 2, y: 100, z: SHELF_DEPTH }, front],
+    ['오른쪽 옆판 바로 옆 벽', { x: 364, y: 100, z: SHELF_DEPTH }, front],
+    ['왼쪽 옆판 옆 판 윗면', { x: 3, y: 0, z: 40 }, up],
+    ['왼쪽 옆판 안쪽 면', { x: SHELF_X0, y: 100, z: 60 }, { x: 1, y: 0, z: 0 }],
+    ['오른쪽 옆판 안쪽 면', { x: SHELF_X1, y: 100, z: 60 }, { x: -1, y: 0, z: 0 }],
+  ] as [string, Vec3, Vec3][])('%s: 해석 값 = 경로 추적(휘도 오차 8% 또는 0.025 이내)', (_, p, n) => {
+    const an = lumOf(analytic(p, n, framed, [], G));
+    const pt = lumOf(pathTrace(p, n, framed, [], 8000));
+    expect(Math.abs(an - pt)).toBeLessThan(Math.max(0.025, 0.08 * pt));
+  });
+  // 안쪽 면을 한 밝기로 되비치는 근사의 오차는 두 면이 만나는 모서리에서 가장 크다. 반사율 상한을 0.7 → 0.85로 올리며 튄 빛이 커져 0.052 → 0.072가 됐다(가림 1 기준, 앱은 가림 0.5라 그 절반쯤)
+  it('왼쪽 위 안쪽 모서리 벽: 해석 값 = 경로 추적(휘도 오차 0.08 이내)', () => {
+    const p = { x: 2, y: 195, z: SHELF_DEPTH };
+    expect(Math.abs(lumOf(analytic(p, front, framed, [], G)) - lumOf(pathTrace(p, front, framed, [], 8000)))).toBeLessThan(0.08);
+  });
+  it('구멍 밖 평평한 벽은 가려지지 않는다(판 끝이 벽보다 3mm 나온 몫만 판 바로 밑에)', () => {
+    const under: Env = { floor: -FAR, ceil: -SHELF_THICK };
+    const flat = (d: number) => lumOf(analytic({ x: 183, y: -SHELF_THICK - d, z: -FRAME_FRONT }, front, under, []));
+    expect(flat(20)).toBeGreaterThan(flat(0.5));
+    expect(Math.abs(flat(20) - lumOf(analytic({ x: 183, y: 0, z: -FRAME_FRONT }, front, null, [])))).toBeLessThan(0.005);
+  });
+  it('창빛 가림 = 원반 위 방향을 하나씩 쏜 광선(옆판이 왼쪽 빛을 막는다)', () => {
+    const blockedByRay = (p: Vec3) => {
+      // 원반 위 고른 방향이 앞면 앞으로 나가기 전에 옆판 평면을 넘으면 막힌다(판은 멀리 두어 옆판만 본다)
+      const R = Math.tan(light.radius);
+      let n = 0;
+      let k = 0;
+      for (let i = -60; i <= 60; i++)
+        for (let j = -60; j <= 60; j++) {
+          const u = i / 60;
+          const v = j / 60;
+          if (u * u + v * v > 1) continue;
+          n++;
+          const az = Math.atan2(L_UNIT.x, -L_UNIT.z) + Math.atan(u * R);
+          const x = p.x + Math.tan(az) * (p.z + FRAME_FRONT);
+          if (x < SHELF_X0 || x > SHELF_X1) k++;
+        }
+      return k / n;
+    };
+    for (const p of [{ x: 2, y: 100, z: SHELF_DEPTH }, { x: 20, y: 100, z: SHELF_DEPTH }, { x: 40, y: 100, z: SHELF_DEPTH }, { x: 183, y: 100, z: SHELF_DEPTH }, { x: 364, y: 100, z: SHELF_DEPTH }, { x: 10, y: 100, z: 60 }]) {
+      expect(Math.abs(sideBlock(p) - blockedByRay(p))).toBeLessThan(0.015);
+    }
+    // 왼쪽 빛이라 왼쪽 옆판 옆이 오른쪽 옆판 옆보다 많이 가려진다
+    expect(sideBlock({ x: 2, y: 100, z: SHELF_DEPTH })).toBeGreaterThan(sideBlock({ x: 364, y: 100, z: SHELF_DEPTH }) + 0.5);
+  });
+  it('틀이 있으면 벽은 옆판 가까이에서 물리대로 어두워지고, 왼쪽(빛을 등진 옆판 그늘)이 더 어둡다', () => {
+    const at = (x: number) => lumOf(analytic({ x, y: 100, z: SHELF_DEPTH }, front, framed, [], G));
+    expect(at(183)).toBeGreaterThan(at(60));
+    expect(at(60)).toBeGreaterThan(at(2));
+    expect(at(364)).toBeGreaterThan(at(2));
+  });
+});
+
 describe('카메라 톤 곡선', () => {
   it('되돌리기(toneInv)가 맞고, 단조 증가에 이음매에서 기울기가 이어지며, 1을 넘지 않는다', () => {
     let prev = -1;
@@ -304,6 +382,97 @@ describe('카메라 톤 곡선', () => {
   });
 });
 
+describe('안쪽 모서리 그늘', () => {
+  const framed: Env = { floor: 0, ceil: 200, side: true };
+  const front = { x: 0, y: 0, z: -1 };
+  const up = { x: 0, y: 1, z: 0 };
+  const side = { x: 1, y: 0, z: 0 };
+  // 위 면에서 h만큼 아래 뒷벽
+  const below = (h: number) => jointShade({ x: 183, y: 200 - h, z: SHELF_DEPTH }, front, framed);
+  it('틀이 있는 줄에서만, 모서리에 가까울수록 진하고 멀면 거의 없다', () => {
+    expect(jointShade({ x: 183, y: 199, z: SHELF_DEPTH }, front, { floor: 0, ceil: 200 })).toBe(0);
+    expect(jointShade({ x: 183, y: 199, z: SHELF_DEPTH }, front, null)).toBe(0);
+    let prev = 1;
+    for (const h of [0, 2, 5, 10, 20, 40, 80]) {
+      const f = below(h);
+      expect(f).toBeLessThan(prev);
+      prev = f;
+    }
+    expect(below(0)).toBeCloseTo(0.5 * JOINT_K, 2);
+    expect(below(80)).toBeLessThan(0.01);
+  });
+  it('구멍 앞 끝 칸도 안쪽이다: 앞 끝과 그 바로 뒤의 그늘이 이어진다(앞 끝이 빠지면 구운 칸 하나만큼 밝은 줄이 생긴다)', () => {
+    const at = (z: number) => jointShade({ x: FRAME_X0, y: 100, z }, side, framed);
+    expect(at(-FRAME_FRONT)).toBeGreaterThan(0);
+    expect(Math.abs(at(-FRAME_FRONT) - at(-FRAME_FRONT + 12))).toBeLessThan(0.01);
+  });
+  it('안쪽 면은 창빛 그림자가 없어 위 면 아래에서 뒷벽보다 넓고 진하다', () => {
+    const atSide = (h: number) => jointShade({ x: FRAME_X0, y: 200 - h, z: 40 }, side, framed);
+    for (const h of [2, 10, 20, 30]) expect(atSide(h)).toBeGreaterThan(below(h));
+    expect(atSide(20)).toBeGreaterThan(0.05);
+    expect(jointShade({ x: FRAME_X0, y: 2, z: 40 }, side, framed)).toBeGreaterThan(jointShade({ x: FRAME_X0, y: 100, z: 40 }, side, framed));
+  });
+  it('뒷벽은 아래 판 쪽으로 어두워지지 않고, 안쪽 면 쪽은 위 면 쪽보다 약하다', () => {
+    expect(jointShade({ x: 183, y: 1, z: SHELF_DEPTH }, front, framed)).toBeLessThan(0.001);
+    expect(jointShade({ x: FRAME_X0 + 1, y: 100, z: SHELF_DEPTH }, front, framed)).toBeLessThan(below(1));
+  });
+  it('뒷벽 꼭지점은 위 면·안쪽 면 어느 한쪽 가까이보다 어둡고 둘레로 둥글게 옅어진다', () => {
+    const at = (dx: number, dy: number) => jointShade({ x: FRAME_X0 + dx, y: 200 - dy, z: SHELF_DEPTH }, front, framed);
+    expect(at(1, 1)).toBeGreaterThan(at(1, 100));
+    expect(at(1, 1)).toBeGreaterThan(at(100, 1));
+    expect(at(1, 1)).toBeGreaterThan(at(10, 10));
+    expect(at(10, 10)).toBeGreaterThan(at(40, 40));
+    // 대각선 거리가 같은 두 점의 그늘이 비슷하다: 네모가 아니라 둥근 무늬
+    expect(Math.abs(at(14, 2) - at(10, 10))).toBeLessThan(0.1);
+  });
+  it('판 윗면은 안쪽 면과 뒷벽 쪽으로 어두워지고 구멍 앞에 나온 판 앞면에는 없다', () => {
+    expect(jointShade({ x: FRAME_X0 + 1, y: 0, z: 0 }, up, framed)).toBeGreaterThan(0.05);
+    expect(jointShade({ x: 183, y: 0, z: SHELF_DEPTH - 1 }, up, framed)).toBeGreaterThan(0.03);
+    expect(jointShade({ x: 183, y: 0, z: 0 }, up, framed)).toBeLessThan(0.01);
+    expect(jointShade({ x: FRAME_X0 + 1, y: -6, z: -SHELF_FRONT }, front, framed)).toBe(0);
+  });
+  it('구운 가림에 그 몫만큼 받는 빛으로 들어가고, 책 면(self ≥ 0)에는 넣지 않는다', () => {
+    const P = { x: 183, y: 197, z: SHELF_DEPTH };
+    const base = skyLossAt(P, front, framed, []);
+    const baked = bakedLossAt(P, front, framed, []);
+    expect(baked[1]).toBeGreaterThan(base[1]);
+    const book = bakedLossAt(P, front, framed, [], undefined, 0);
+    expect(book[1]).toBeCloseTo(base[1], 9);
+  });
+});
+
+describe('안쪽 모서리 곡면', () => {
+  const framed: Env = { floor: 0, ceil: 200, side: true };
+  const wall = { x: 0, y: 0, z: -1 };
+  const side = { x: 1, y: 0, z: 0 };
+  const up = { x: 0, y: 1, z: 0 };
+  it('뒷벽은 안쪽 면 쪽으로 45°, 위 면 쪽으로 25° 돈다', () => {
+    const a = coveNormal({ x: FRAME_X0, y: 100, z: SHELF_DEPTH }, wall, framed);
+    expect(a.x).toBeCloseTo(Math.SQRT1_2, 6);
+    const c = coveNormal({ x: 183, y: 200, z: SHELF_DEPTH }, wall, framed);
+    expect(Math.atan2(-c.y, -c.z)).toBeCloseTo((25 * Math.PI) / 180, 6);
+  });
+  it('안쪽 면은 위 면 쪽으로 25° 돌고, 깊이 방향(뒷벽 쪽)으로는 돌지 않는다. 천장은 돌지 않는다', () => {
+    const a = coveNormal({ x: FRAME_X0, y: 200, z: 40 }, side, framed);
+    expect(Math.atan2(-a.y, a.x)).toBeCloseTo((25 * Math.PI) / 180, 6);
+    expect(coveNormal({ x: FRAME_X0, y: 100, z: SHELF_DEPTH }, side, framed)).toEqual(side);
+    expect(coveNormal({ x: 183, y: 0, z: SHELF_DEPTH }, up, framed)).toEqual(up);
+    const down = { x: 0, y: -1, z: 0 };
+    expect(coveNormal({ x: FRAME_X0 + 1, y: 200, z: 40 }, down, framed)).toEqual(down);
+  });
+  it('곡면 밖과 틀 없는 줄은 면 법선 그대로, 곡면 안에서는 모서리에서 멀수록 면 법선에 가깝다', () => {
+    expect(coveNormal({ x: 183, y: 100, z: SHELF_DEPTH }, wall, framed)).toEqual(wall);
+    expect(coveNormal({ x: FRAME_X0, y: 100, z: SHELF_DEPTH }, wall, { floor: 0, ceil: 200 })).toEqual(wall);
+    let prev = 1;
+    for (const t of [0, 0.25, 0.5, 0.75, 1]) {
+      const n = coveNormal({ x: FRAME_X0 + COVE_R * t, y: 100, z: SHELF_DEPTH }, wall, framed);
+      expect(n.x).toBeLessThan(prev + 1e-9);
+      prev = n.x;
+    }
+    expect(prev).toBeCloseTo(0, 6);
+  });
+});
+
 describe('재질 반사율 맞추기(역렌더링)', () => {
   it('노출 기준: 반사율은 모두(시안 장정 색 × 장정 재질 포함) 그 화면 색 이하이고 결의 가장 밝은 점까지 실제 흰 재질 반사율(ALBEDO_MAX) 이하, 이득은 그중 가장 작은 값', () => {
     const peak = (m: keyof typeof MAT_UNIFORMS) => albedoPeak(MAT_UNIFORMS[m]); // 짧은 섬유는 이득에 넣지 않는다(반사율 1 아래인지는 surface-pattern 시험)
@@ -311,7 +480,7 @@ describe('재질 반사율 맞추기(역렌더링)', () => {
       [ALBEDO.wall, DESIGN.wall, peak('paint')],
       [ALBEDO.plank, DESIGN.plank, peak('wood')],
       [ALBEDO.paper, DESIGN.paper, peak('pages')],
-      ...Object.keys(palette).flatMap((hex) => (['paper', 'cloth', 'coated'] as const).map((m): [C3, C3, number] => [bookAlbedo(hex, m), linearOf(hex), peak(m)])),
+      ...Object.keys(palette).flatMap((hex) => (['fine', 'linen', 'matte', 'laid'] as const).map((m): [C3, C3, number] => [bookAlbedo(hex, m), linearOf(hex), peak(m)])),
     ];
     let tight = 0;
     for (const [a, d, f] of all)
@@ -320,14 +489,21 @@ describe('재질 반사율 맞추기(역렌더링)', () => {
         expect(v * f).toBeLessThanOrEqual(ALBEDO_MAX + 1e-9);
         tight = Math.max(tight, v / d[c], (v * f) / ALBEDO_MAX);
       });
+    // 틀은 대표 자리가 그늘진 안쪽 면이라 보이는 색보다 밝을 수 있고 상한만 지킨다
+    ALBEDO.frame.forEach((v) => {
+      const f = peak(surfaceMats.frame);
+      expect(v * f).toBeLessThanOrEqual(ALBEDO_MAX + 1e-9);
+      tight = Math.max(tight, (v * f) / ALBEDO_MAX);
+    });
     // 이득을 조금이라도 낮추면 어느 하나가 넘는다
     expect(tight).toBeCloseTo(1, 9);
   });
-  it('벽 대표 자리(빈 줄 가운데)에서 받는 빛 비가 1: 시안 벽 색 그대로 보인다', () => {
-    const p = { x: (SHELF_X0 + SHELF_X1) / 2, y: 100, z: SHELF_DEPTH };
+  it('벽 대표 자리(구멍 밖 평평한 벽)에서 받는 빛 비가 1: 벽지 색 그대로 보인다', () => {
+    const p = { x: (SHELF_X0 + SHELF_X1) / 2, y: 100, z: -FRAME_FRONT };
     const n = { x: 0, y: 0, z: -1 };
+    const refEnv: Env = { floor: 0, ceil: 200, side: true };
     // 대표 자리 빛은 빈 줄의 여러 번 튕긴 빛(빛 격자)이고, 그 자리 반사 몫(1 − ks)까지 들어 있다
-    const E = lightWithLoss(p, n, null, row, skyLossAt(p, n, row, [], solveGrid(row, [])), true, [1, 1, 1]).r;
+    const E = lightWithLoss(p, n, null, refEnv, skyLossAt(p, n, refEnv, [], solveGrid(refEnv, [], undefined, 1)), true, [1, 1, 1]).r;
     const ks = envBRDF(0.999, ROUGH.paint);
     E.forEach((e, c) => expect((e * (1 - ks)) / EREF.wall[c]).toBeCloseTo(1, 1));
   });
@@ -355,6 +531,7 @@ describe('하늘 가림 상한', () => {
 });
 
 describe('대표 자리 반사광(SREF)', () => {
+  const refEnv: Env = { floor: 0, ceil: 200, side: true };
   // 대표 자리(맞추기와 같은 눈·자리)에서 빛 모델이 주는 받는 빛 비 r과 반사광 spec
   const e = camAt(VIEW_PITCH_MIN).eye!;
   const eye = { x: e.x, y: e.y, z: e.z - e.dist };
@@ -362,13 +539,13 @@ describe('대표 자리 반사광(SREF)', () => {
   const at = (p: Vec3, eref: C3, rough: number) => {
     const d = { x: eye.x - p.x, y: eye.y - p.y, z: eye.z - p.z };
     const l = Math.hypot(d.x, d.y, d.z);
-    return lightWithLoss(p, front, { x: d.x / l, y: d.y / l, z: d.z / l }, row, skyLossAt(p, front, row, [], solveGrid(row, [])), true, eref, undefined, rough);
+    return lightWithLoss(p, front, { x: d.x / l, y: d.y / l, z: d.z / l }, refEnv, skyLossAt(p, front, refEnv, [], solveGrid(refEnv, [], undefined, 1)), true, eref, undefined, rough);
   };
   const mid = (SHELF_X0 + SHELF_X1) / 2;
   it.each([
-    ['벽', { x: mid, y: 100, z: SHELF_DEPTH }, () => EREF.wall, ROUGH.paint, () => SREF.wall, () => DESIGN.wall],
+    ['벽', { x: mid, y: 100, z: -FRAME_FRONT }, () => EREF.wall, ROUGH.paint, () => SREF.wall, () => DESIGN.wall],
     ['판 앞면', { x: mid, y: -SHELF_THICK / 2, z: -SHELF_FRONT }, () => EREF.plank, ROUGH.wood, () => SREF.plank, () => DESIGN.plank],
-    ['코팅지 장정(하늘색)', { x: mid, y: 75, z: 0 }, () => bookEref('coated'), ROUGH.coated, () => SREF.book.coated, () => linearOf('#88A4BA')],
+    ['린넨 장정(하늘색)', { x: mid, y: 75, z: 0 }, () => bookEref('linen'), ROUGH.linen, () => SREF.book.linen, () => linearOf('#88A4BA')],
   ] as [string, Vec3, () => C3, number, () => C3, () => C3][])('%s: 반사광이 SREF이고, 확산 + 반사광으로 보이는 색이 재질 색', (_, p, eref, rough, sref, design) => {
     const { r, spec } = at(p, eref(), rough);
     spec.forEach((v, c) => expect(v).toBeCloseTo(sref()[c], 2));
@@ -376,9 +553,9 @@ describe('대표 자리 반사광(SREF)', () => {
   });
   it('반사광보다 짙은 채널은 반사율 0(그 방의 빛에서 그만큼 짙게 보일 수 없다)', () => {
     const navy = linearOf('#1D426B');
-    const a = bookAlbedo('#1D426B', 'coated');
+    const a = bookAlbedo('#1D426B', 'matte');
     navy.forEach((v, c) => {
-      if (toneInv(v) <= SREF.book.coated[c]) expect(a[c]).toBe(0);
+      if (toneInv(v) <= SREF.book.matte[c]) expect(a[c]).toBe(0);
       else expect(a[c]).toBeGreaterThan(0);
     });
   });
@@ -499,23 +676,23 @@ describe('빛 모델: 창빛 가림·반사', () => {
   });
 
   it('재질: 모두 같은 유전체(F0)라 정면 반사는 비슷하고, 매끈할수록(코팅지 > 천 > 무광 종이) 비스듬한 반사와 창빛 하이라이트가 크다', () => {
-    expect(ROUGH.coated).toBeLessThan(ROUGH.cloth);
-    expect(ROUGH.cloth).toBeLessThan(ROUGH.paper);
-    for (const r of [ROUGH.coated, ROUGH.paper, ROUGH.cloth]) expect(Math.abs(envBRDF(1, r) - envBRDF(1, ROUGH.paper))).toBeLessThan(0.015);
-    expect(envBRDF(0.1, ROUGH.coated)).toBeGreaterThan(envBRDF(0.1, ROUGH.cloth));
-    expect(envBRDF(0.1, ROUGH.cloth)).toBeGreaterThan(envBRDF(0.1, ROUGH.paper));
+    expect(ROUGH.linen).toBeLessThan(ROUGH.matte);
+    expect(ROUGH.matte).toBeLessThan(ROUGH.paper);
+    for (const r of [ROUGH.linen, ROUGH.paper, ROUGH.matte]) expect(Math.abs(envBRDF(1, r) - envBRDF(1, ROUGH.paper))).toBeLessThan(0.015);
+    expect(envBRDF(0.1, ROUGH.linen)).toBeGreaterThan(envBRDF(0.1, ROUGH.matte));
+    expect(envBRDF(0.1, ROUGH.matte)).toBeGreaterThan(envBRDF(0.1, ROUGH.paper));
     // 거울 방향(빛과 눈의 가운데가 법선)의 하이라이트
     const v = { x: 0, y: 0, z: -1 };
     const hx = L_UNIT.x + v.x, hy = L_UNIT.y + v.y, hz = L_UNIT.z + v.z;
     const hl = Math.hypot(hx, hy, hz);
     const n = { x: hx / hl, y: hy / hl, z: hz / hl };
-    expect(ggxKey(n, v, ROUGH.coated)).toBeGreaterThan(ggxKey(n, v, ROUGH.cloth));
-    expect(ggxKey(n, v, ROUGH.cloth)).toBeGreaterThan(ggxKey(n, v, ROUGH.paper));
+    expect(ggxKey(n, v, ROUGH.linen)).toBeGreaterThan(ggxKey(n, v, ROUGH.matte));
+    expect(ggxKey(n, v, ROUGH.matte)).toBeGreaterThan(ggxKey(n, v, ROUGH.paper));
   });
 
   it('창빛 하이라이트는 광원 원반 크기보다 좁아지지 않는다: 거칠기 0이어도 봉우리가 유한하고, 빛 에너지(반구 적분)는 1을 넘지 않는다', () => {
     const v = { x: 0, y: 0, z: -1 };
-    for (const r of [0, ROUGH.coated, ROUGH.paper]) {
+    for (const r of [0, ROUGH.linen, ROUGH.paper]) {
       // 법선을 반구 위로 훑어 n·l 가중 반사(π·휘도/세기를 π로 나눈 것)를 눈 방향마다 적분 = 방향 반사율 ≤ F 몫
       let s = 0;
       const N = 160;
@@ -588,14 +765,16 @@ describe('빛 격자 창빛: 판과 책 가림의 합집합', () => {
   });
 
   it('판이 원반 위쪽, 책 머리가 아래쪽을 가리면 겹친 몫을 두 번 빼지 않는다(따로 곱하면 너무 밝다)', () => {
-    // 위 판 아래 60DU 벽 점: 판이 위 약 19° 위쪽을, 앞에 선 책(머리가 점보다 8DU 위)이 약 20° 아래쪽을 가린다
-    const P = { x: 180, y: 140, z: SHELF_DEPTH };
-    const book: Book3 = { id: 'b', dims: { T: 50, H: 148, W: 100 }, roll: 0, yaw: 0, t: { x: 150, y: 0, z: 0 } };
-    const exact = dense(P, row, { lo: { x: 150, y: 0, z: 0 }, hi: { x: 200, y: 148, z: 100 } });
+    // 벽 점을 빛 각도에 맞춰 잡는다: 위 판이 원반 가운데 위쪽을, 앞에 선 책 머리(점 바로 위, 벽에서 22DU)가 그보다 조금 위까지 아래쪽을 가린다
+    const y = 200 - (SHELF_DEPTH + SHELF_FRONT) * Math.tan(L_ELEV);
+    const H = y + 22 * Math.tan(L_ELEV + 0.1 * light.radius);
+    const P = { x: 180, y, z: SHELF_DEPTH };
+    const book: Book3 = { id: 'b', dims: { T: 50, H, W: 100 }, roll: 0, yaw: 0, t: { x: 150, y: 0, z: 0 } };
+    const exact = dense(P, row, { lo: { x: 150, y: 0, z: 0 }, hi: { x: 200, y: H, z: 100 } });
     const got = gridKeyFree(P, row, [boxOf(book, [0.5, 0.5, 0.5])], [false]);
     expect(Math.abs(got - (1 - exact.union))).toBeLessThan(0.08);
     // 따로 곱한 값(판 활꼴 × 책 방향 몫)은 합집합보다 눈에 띄게 밝다
-    const bookOnly = dense(P, { floor: -FAR, ceil: FAR }, { lo: { x: 150, y: 0, z: 0 }, hi: { x: 200, y: 148, z: 100 } }).union;
+    const bookOnly = dense(P, { floor: -FAR, ceil: FAR }, { lo: { x: 150, y: 0, z: 0 }, hi: { x: 200, y: H, z: 100 } }).union;
     expect((1 - exact.plank) * (1 - bookOnly) - (1 - exact.union)).toBeGreaterThan(0.1);
   });
 });
@@ -632,5 +811,30 @@ describe('접촉 그늘', () => {
     const lit = (loss: number[]) => lightWithLoss(P, up, null, null, loss as [number, number, number], false).r[1];
     const f = contactShade(P, up, [box]);
     expect(lit(baked) / lit(plain)).toBeLessThan(1 - f * 0.8);
+  });
+});
+
+describe('그늘 색과 반사 경계(2026-11-03 사용자)', () => {
+  it('크림색이 그늘에서 붉어지지 않는다: 어두워져도 R/B 비가 거의 그대로', () => {
+    const c = linearOf('#FDF0E0');
+    const at = (k: number) => [0, 1, 2].map((i) => tone(toneInv(c[i]) * k));
+    const ratio = (v: number[]) => v[0] / v[2];
+    for (const k of [0.9, 0.8, 0.6]) expect(ratio(at(k)) / ratio(at(1))).toBeLessThan(1.03);
+  });
+  it('거친 면 반사에는 판 앞 모서리의 칼 같은 선이 없다', () => {
+    const env: Env = { floor: 0, ceil: 200 };
+    const l = Math.hypot(0.5, 1);
+    const w = { x: 0, y: 0.5 / l, z: -1 / l };
+    const lum3 = (c: C3) => (c[0] + c[1] + c[2]) / 3;
+    let hard = 0;
+    let soft = 0;
+    for (let y = 100; y < 190; y++) {
+      const a = { x: 180, y, z: 50 };
+      const b = { x: 180, y: y + 1, z: 50 };
+      hard = Math.max(hard, Math.abs(lum3(envHit(b, w, env).rad) - lum3(envHit(a, w, env).rad)));
+      soft = Math.max(soft, Math.abs(lum3(envLobe(b, w, env, 0.8)) - lum3(envLobe(a, w, env, 0.8))));
+    }
+    expect(hard).toBeGreaterThan(0.1);
+    expect(soft).toBeLessThan(hard * 0.05);
   });
 });

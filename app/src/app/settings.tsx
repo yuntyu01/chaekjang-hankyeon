@@ -1,5 +1,5 @@
 // 설정(2026-10-26 설정 시안): 독서 환경(진동·효과음·움직임 줄이기) / 내 기록(백업 및 복원 → 따로 된 화면) / 앱 안내(문의·개인정보·앱 정보).
-// 2026-11-01 토스식: 큰 제목, 의미별 묶음(독서 환경 / 내 기록 / 앱 안내)은 화면 폭 그대로의 줄 + 묶음 사이 회색 띠. 설명은 한 줄. 다른 화면으로 가는 줄에만 화살표. 백업·복원·동기화는 app/backup.tsx(기능은 그대로 옮겼다).
+// 2026-11-04 당근·토스 종합: 흰 바탕, 줄 사이 선 없음, 묶음 사이 화면 끝까지 닿는 1dp 선(TAB_CARDS를 켜면 '내 정보' 탭만 회색 바탕 + 흰 카드). 설명은 한 줄. 다른 화면으로 가는 줄에만 화살표. 백업·복원·동기화는 app/backup.tsx(기능은 그대로 옮겼다).
 import Constants from 'expo-constants';
 import { router } from 'expo-router';
 import { useState, useSyncExternalStore } from 'react';
@@ -9,8 +9,10 @@ import { settingsStore, useSettings } from '@/store/settings-store';
 import { useCommunityOpen } from '@/features/community/useCommunityOpen';
 import { syncStatus } from '@/services/sync';
 import { Check } from '@/ui/icons';
-import { BrandFooter, Btn, H2, ListGroup, ListItem, Screen, SectionBand, Sheet, Toggle } from '@/ui/kit';
-import { colors, icon, tidySpace as space, tidyType as type } from '@/ui/screenTheme';
+import { BrandFooter, Btn, ListGroup, ListItem, Screen, SectionBand, Sheet, Toggle } from '@/ui/kit';
+import { colors, icon, TAB_CARDS, tidySpace as space, tidyType as type } from '@/ui/screenTheme';
+import { navigation } from '@/ui/theme';
+import { ko } from '@/i18n/ko';
 
 const PRIVACY_URL = 'https://midi-broccoli-56c.notion.site/Covebook-3eb50284670881b0a0e2c6029cea29c7';
 const MOTION = [
@@ -19,7 +21,12 @@ const MOTION = [
   { id: 'off', label: '끄기', short: '끔' },
 ] as const;
 
-export default function SettingsScreen() {
+export default function SettingsRoute() {
+  return <SettingsScreen />;
+}
+
+// tab: 하단 '내 정보' 탭(뒤로 없음, 떠 있는 탭 바만큼 아래 여백)
+export function SettingsScreen({ tab = false }: { tab?: boolean }) {
   const communityOpen = useCommunityOpen();
   const s = useSettings();
   const st = useSyncExternalStore(syncStatus.subscribe, syncStatus.get);
@@ -27,24 +34,21 @@ export default function SettingsScreen() {
   const [privacy, setPrivacy] = useState(false);
   const backupSub = !syncStatus.available ? '기록은 이 기기에 저장돼요' : st.state === 'error' ? '동기화하지 못했어요' : '기록은 이 기기와 서버에 저장돼요';
   return (
-    <Screen tidy title="설정">
-      <H2 first>독서 환경</H2>
-      <ListGroup>
+    <Screen tidy hub={tab && TAB_CARDS} title={tab ? ko.tabs.me : '설정'} back={!tab} bottomPad={tab ? navigation.height + 16 : 0}>
+      <ListGroup title="독서 환경">
         <ListItem label="진동" right={<Toggle label="진동" value={s.haptics} onValueChange={(v) => settingsStore.set({ haptics: v })} />} />
         <ListItem label="효과음" sub="책장 효과음 · 준비 중이에요" right={<Toggle label="효과음" value={s.sound} onValueChange={(v) => settingsStore.set({ sound: v })} />} />
         <ListItem label="움직임 줄이기" value={MOTION.find((m) => m.id === s.reduceMotion)?.short} onPress={() => setMotion(true)} />
       </ListGroup>
 
       <SectionBand />
-      <H2 first>내 기록</H2>
-      <ListGroup>
+      <ListGroup title="내 기록">
         <ListItem label="백업 및 복원" sub={backupSub} chevron onPress={() => router.push('/backup')} />
         {communityOpen && syncStatus.available ? <ListItem label="커뮤니티 공개 프로필" chevron onPress={() => router.push('/community/profile')} /> : null}
       </ListGroup>
 
       <SectionBand />
-      <H2 first>앱 안내</H2>
-      <ListGroup>
+      <ListGroup title="앱 안내">
         <ListItem label="문의하기" sub="yuntyu01@gmail.com" onPress={() => Linking.openURL('mailto:yuntyu01@gmail.com')} />
         <ListItem label="개인정보 처리방침" onPress={() => setPrivacy(true)} />
         <ListItem label="앱 정보" value={Constants.expoConfig?.version ?? ''} />

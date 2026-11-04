@@ -39,15 +39,22 @@ export type BookArt = {
   plainCover?: boolean;
   // 재장정 정면: 예시 일러스트 대신 바탕색 단색 + 종이 결 + 상단 제목 + 큰 모티프 하나(실제 표지·그림을 쓰지 않는다)
   vectorCover?: boolean;
-  // 장정 재질(표지·책등·판). 없으면 무광 종이
+  // 장정 재질(표지·책등·판). 없으면 고운 종이
   material?: BindingMaterial;
 };
 
-// 장정 재질: 무광 종이 · 천 · 코팅지(모두 유전체, 표면 거칠기와 결·미세 높이만 다르다: scene-config/lighting materials)
-export type BindingMaterial = 'paper' | 'cloth' | 'coated';
-export const BINDING_MATERIALS: BindingMaterial[] = ['paper', 'cloth', 'coated'];
-// 빛 계산이 아는 책 표면: 사용자가 고르는 장정 재질 + 실제 표지 사진 책의 무광 인쇄지(binding-material bookLightRef가 정한다, 저장하지 않는다)
-export type BookSurface = BindingMaterial | 'print';
+// 장정 재질: 고운 종이(기본) · 린넨 · 매끈 무광 · 줄무늬 종이(모두 유전체, 표면 거칠기와 결·미세 높이만 다르다: scene-config/lighting materials)
+export type BindingMaterial = 'fine' | 'linen' | 'matte' | 'laid';
+export const BINDING_MATERIALS: BindingMaterial[] = ['fine', 'linen', 'matte', 'laid'];
+export const DEFAULT_MATERIAL: BindingMaterial = 'fine';
+// 저장본·다른 기기에서 온 값: 예전 재질 이름은 가장 가까운 새 재질로(2026-11-03), 모르는 값은 없는 것으로
+const LEGACY_MATERIAL: Record<string, BindingMaterial> = { paper: 'fine', print: 'fine', cloth: 'linen', coated: 'matte' };
+export function bindingMaterialOf(v: unknown): BindingMaterial | undefined {
+  if (typeof v !== 'string') return undefined;
+  return BINDING_MATERIALS.includes(v as BindingMaterial) ? (v as BindingMaterial) : LEGACY_MATERIAL[v];
+}
+// 빛 계산이 아는 표면: 사용자가 고르는 장정 재질 + 갈피 종이·빛 맞추기 기준인 무광 종이
+export type BookSurface = BindingMaterial | 'paper';
 
 // 이미지 자산: 앱 번들(require 결과 숫자) 또는 원격 URI
 export type ImageSource = number | { uri: string };

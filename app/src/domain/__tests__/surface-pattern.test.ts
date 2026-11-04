@@ -4,7 +4,7 @@ import palette from '@/scene-config/reference-bindings.generated.json';
 import { materials } from '@/scene-config/lighting';
 
 import { bookAlbedo, ROUGH } from '../light-model';
-import { FIBER_W, fiberSeen, GRAIN_KIND, grainPeak, MAT_UNIFORMS, matSample, VN_GRAD_RMS, vnoise } from '../surface-pattern';
+import { fiberAniso, FIBER_W, fiberSeen, GRAIN_KIND, grainPeak, MAT_UNIFORMS, matSample, VN_GRAD_RMS, vnoise } from '../surface-pattern';
 
 const NAMES = Object.keys(materials) as (keyof typeof materials)[];
 // 고르게 흩은 표본 점(R2 저불일치 수열: 두 축이 서로 묶이지 않는다)
@@ -66,7 +66,7 @@ describe('재질 무늬', () => {
     expect(top).toBeLessThanOrEqual(grainPeak(MAT_UNIFORMS[name]) + 1e-9);
   });
 
-  it.each(['paper', 'print'] as const)('%s: 짧은 섬유가 화소 하나 크기로 보이고, 면이 눕혀져 화소보다 가늘어지면 사라진다', (name) => {
+  it.each(['paper', 'fine'] as const)('%s: 짧은 섬유가 화소 하나 크기로 보이고, 면이 눕혀져 화소보다 가늘어지면 사라진다', (name) => {
     const M = MAT_UNIFORMS[name];
     const fineOnly = { ...M, mGrain: [M.mGrain[0], 0, 0, M.mGrain[3]] };
     const std = (fp: number) => {
@@ -78,16 +78,23 @@ describe('재질 무늬', () => {
     // 정면으로 놓인 책: fp는 1dp(1080폭 기기에서 약 1.23mm, 섬유 폭의 2.2배)라도 섬유가 다 보인다
     const faceOn = FIBER_W * 2.2;
     expect(fiberSeen(faceOn)).toBe(1);
-    expect(std(faceOn)).toBeGreaterThan(0.02);
+    expect(std(faceOn)).toBeGreaterThan(0.15 * M.mGrain[3]);
     // 면이 많이 눕혀지면 사라진다
     expect(fiberSeen(FIBER_W * 10)).toBe(0);
     expect(std(FIBER_W * 10)).toBeCloseTo(0, 9);
   });
 
   it('결을 곱해도 반사율은 1을 넘지 않는다(장정 재질 × 가장 밝은 시안 장정 색)', () => {
-    for (const name of ['paper', 'cloth', 'coated'] as const) {
+    for (const name of ['fine', 'linen', 'matte', 'laid'] as const) {
       const fmax = grainPeak(MAT_UNIFORMS[name]);
       for (const hex of Object.keys(palette)) expect(Math.max(...bookAlbedo(hex, name)) * fmax).toBeLessThanOrEqual(1 + 1e-9);
     }
   });
+});
+
+it('비스듬한 면에서는 섬유를 뺀다(얇게 보이는 면이 자글자글하지 않게), 정면과 돌린 책등은 그대로', () => {
+  const f = FIBER_W / 2;
+  expect(fiberAniso(f, f)).toBe(1); // 정면
+  expect(fiberAniso(f, f / Math.cos((58 * Math.PI) / 180))).toBeGreaterThan(0.9); // 32° 돌린 책의 책등
+  expect(fiberAniso(f, f / Math.cos((80 * Math.PI) / 180))).toBe(0); // 얇게 보이는 면
 });

@@ -1,6 +1,7 @@
 // 책 형상 계산. 모든 값은 설계 단위(DU, 기준 폭 390)이며 화면에서는 scale을 곱한다.
 // 카메라(보기 각·사선)는 domain/camera 하나뿐이다. 여기 값들은 카메라와 상관없는 3D 구조다.
 import { BASE_CAM, kyOf, VIEW_KX, VIEW_PITCH_MAX, VIEW_PITCH_MIN } from './camera';
+import { FRAME_ON, LOOK } from '@/scene-config/skin';
 import { frontExtent } from './front-pose';
 import type { Book, BookPlacement, HeightClass, ThicknessClass } from './types';
 
@@ -21,14 +22,23 @@ export const SHELF_FRONT_MM = 70;
 export const SHELF_DEPTH_MM = SHELF_TOTAL_DEPTH_MM - SHELF_FRONT_MM;
 export const SHELF_DEPTH = SHELF_DEPTH_MM * DU_MM;
 export const SHELF_FRONT = SHELF_FRONT_MM * DU_MM;
+export const FRAME_FRONT = (SHELF_FRONT_MM - 3) * DU_MM; // 평평한 벽 면(구멍 앞 끝, z = −FRAME_FRONT)
 // 시안 선반 앞면 두께: 853px 시안에서 약 33~35px(1.666px/mm) → 약 21mm. 약 16.4DU.
-export const SHELF_THICK_MM = 21.5;
+// 움푹 파인 책장은 시안 앞면 약 27px에 맞춘 두께(scene-config/skin LOOK)
+export const SHELF_THICK_MM = FRAME_ON ? LOOK.thickMm : 21.5;
 export const SHELF_THICK = SHELF_THICK_MM * DU_MM;
 // 판 좌우 끝(선반 공간 x): 책 줄(0 ~ 사용 폭)보다 양쪽으로 PLANK_OVER씩 길다(줄 가운데에 대해 대칭).
 // 원근 카메라에서 판 앞 끝(z = -SHELF_FRONT)은 눈에 가까워 조금 넓게 보인다: 화면에서는 양 끝에서 약 PLANK_INSET - 1.5 안쪽.
 const PLANK_OVER = 1.5;
 export const SHELF_X0 = -PLANK_OVER;
 export const SHELF_X1 = USABLE_W + PLANK_OVER;
+// 움푹 파인 책장(스킨이 틀을 고른 경우, 2026-11-04 사용자 시안): 평평한 벽(z = −FRAME_FRONT)에 구멍을 파고 그 안쪽 면(틀)과 뒷벽(z = SHELF_DEPTH) 사이에 판을 끼운다.
+// 앞 판 끝은 벽보다 3mm 나와 있다(FRAME_FRONT 위). 구멍 앞 끝은 둥근 테(반지름 RIM_R)다. 테 바깥쪽 약 1DU는 거의 흰색이라 그만큼 판 끝 밖에서 시작해야 화면에서 판 끝과 보이는 테가 한 줄로 맞는다.
+// 안쪽 면(FRAME_X0·FRAME_X1)은 테만큼 안쪽이다(판 끝은 안쪽 면에 조금 파묻혀 끼워진다)
+export const RIM_R = FRAME_ON ? LOOK.rimMm * DU_MM : 0;
+const RIM_OUT = FRAME_ON ? 1 : 0;
+export const FRAME_X0 = SHELF_X0 + RIM_R - RIM_OUT;
+export const FRAME_X1 = SHELF_X1 - RIM_R + RIM_OUT;
 
 export const SHELF = {
   sideMargin: USABLE_LEFT, // 선반 공간 x=0의 화면 설계 좌표
