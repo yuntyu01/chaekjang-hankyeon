@@ -27,7 +27,8 @@ export function ReadingChart({ bars, selected, unit, onSelect }: { bars: Bar[]; 
   const base = TIP_H + PLOT_H;
   const barH = (ms: number) => Math.max(barW, scale(ms)); // 아주 짧은 기록도 둥근 점으로 보이게
   // 말풍선은 막대 위 가운데, 양 끝에서는 그래프 안쪽에 붙인다(꼬리는 늘 막대 위)
-  const tipSide = sel < 0 ? {} : cx(sel) + tipW / 2 > w ? { right: 0 } : { left: Math.max(0, cx(sel) - tipW / 2) };
+  // 자리는 정수로, 폭은 1dp 넘게 달라질 때만 받는다: 자리가 소수이면 글자 폭이 미세하게 달라져 폭 → 자리 → 폭으로 쉬지 않고 다시 그렸다(2026-11-05 확인: 기록 칸에서 초당 60프레임, CPU 약 100%)
+  const tipSide = sel < 0 ? {} : cx(sel) + tipW / 2 > w ? { right: 0 } : { left: Math.round(Math.max(0, cx(sel) - tipW / 2)) };
   const barTop = sel >= 0 ? base - barH(bars[sel].ms) : 0;
   const tipLeft = sel < 0 ? 0 : 'right' in tipSide ? w - tipW : (tipSide.left ?? 0);
   const under = bars.filter((b, i) => b.ms > 0 && cx(i) + barW / 2 >= tipLeft && cx(i) - barW / 2 <= tipLeft + tipW);
@@ -70,7 +71,7 @@ export function ReadingChart({ bars, selected, unit, onSelect }: { bars: Bar[]; 
           {sel >= 0 ? (
             <>
               {tipBase < barTop ? <View style={[st.tipStem, { left: cx(sel) - 0.5, top: tipBase - 12, height: barTop - tipBase + 12 }]} pointerEvents="none" /> : null}
-              <View onLayout={(e) => setTipW(e.nativeEvent.layout.width)} style={[st.tip, tipSide, { top: tipBase - 42, opacity: tipW ? 1 : 0 }]} pointerEvents="none">
+              <View onLayout={(e) => { const next = e.nativeEvent.layout.width; setTipW((old) => (Math.abs(old - next) > 1 ? next : old)); }} style={[st.tip, tipSide, { top: tipBase - 42, opacity: tipW ? 1 : 0 }]} pointerEvents="none">
                 <Text style={st.tipText}>{bars[sel].label}{unit} · <Text style={st.tipStrong}>{formatDuration(bars[sel].ms)}</Text></Text>
               </View>
               <View style={[st.tipArrow, { left: cx(sel) - 5, top: tipBase - 17 }]} pointerEvents="none" />
