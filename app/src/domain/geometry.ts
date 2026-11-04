@@ -118,6 +118,14 @@ export { MAX_STACK, HOME_SHELF_COUNT } from './layout-rules';
 
 // tilt 값은 부호만 쓴다(기대는 방향: -1 왼쪽, +1 오른쪽). 실제 각도는 빈틈과 옆 책 3D 상자로 계산하고, 버티는지는 statics.ts가 정한다.
 
+// 책 크기 범위(2026-11-05 사용자 '최대·최소를 정해, 가장 큰 책 + 갈피가 윗선반에 닿지 않게, 최대에 맞춰 각 책은 비율대로'). 실제 책 크기를 정하는 곳(jacket-proportions realDimensions)에서 적용한다.
+// 줄 간격이 이 최대 높이로 고정된다(ui/shelf/metrics ROW_SPACE). 높이 225mm는 신국판(가장 흔한 큰 판형), 170mm·폭 100mm보다 작은 문고판은 눌러 고르기 어려워 키운다.
+// 두께 상한은 약 890쪽: 가장 두꺼운 책 3권(MAX_STACK)을 쌓아도 줄 간격 안에 들어간다. 하한 28DU는 책등 제목이 들어가는 값.
+export const BOOK_SIZE_MM = { minH: 170, maxH: 225, minW: 100, maxW: 170 };
+export const BOOK_MAX_H = mm(BOOK_SIZE_MM.maxH);
+export const BOOK_MAX_T = spineDU(55);
+export const BOOK_MIN_T = 28;
+
 export function bookHeight(book: Book) {
   if (book.dims?.height) return book.dims.height;
   if (book.physical) return mm(book.physical.heightMm);

@@ -28,7 +28,7 @@ const SLOP = 3 * m.scale; // 손가락 여유 3DU
 const STEEP = camAt(VIEW_PITCH_MAX);
 
 function sceneOf(layout: ShelfLayout) {
-  const rows = computeRows(layout, books, m.scale, 900, 80);
+  const rows = computeRows(layout, m.scale, 900, 80);
   const geo: SceneGeo = { rows: rows.map((r) => ({ shelfId: r.shelfId, baseline: r.baseline, dy: (r.baseline - rows[0].baseline) / m.scale, space: r.space })), s: m.scale, originX: m.originX };
   const list: SceneMotion[] = rows.map((r) => ({ shelfId: r.shelfId, m: makeMotion(bodiesOf(layout, books, r.shelfId)) }));
   return { rows, geo, list };

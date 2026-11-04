@@ -1,5 +1,5 @@
 import type { Book, Physical } from './types';
-import { mm, spineDU, thicknessMm } from './geometry';
+import { BOOK_MAX_T, BOOK_MIN_T, BOOK_SIZE_MM, mm, spineDU, thicknessMm } from './geometry';
 
 type Dims = NonNullable<Book['dims']>;
 const clamp = (v: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, v));
@@ -20,12 +20,19 @@ export function illustratedDimensions(p: Physical): Dims {
 // 두께는 YES24 책등 사진 비율(폭/높이)이 있으면 실제 두께로 그 값, 없으면 쪽수로 어림한다.
 // 잘못 온 값(가로 20mm 같은 것)은 흔한 판형으로 그린다.
 // 최소 두께 28DU(2026-11-01 사용자 '최소 크기는 위 예시 책 크기의 글씨가 여유롭게 들어오게'): 책등 제목이 예시 책과 같은 글자 크기(11DU, 폭의 약 42%)로 들어간다.
-export const REAL_SPINE_MIN = 28;
+export const REAL_SPINE_MIN = BOOK_MIN_T;
 const saneSize = (w: number, h: number) => w >= 70 && h >= 90 && w / h >= 0.45 && w / h <= 1.3;
+// 높이·폭·두께에 함께 곱하는 배율: 범위(geometry BOOK_SIZE_MM) 안의 책은 1이라 모두 같은 축척이고(225mm 책이 최대 높이면 188mm 책은 그 84%), 밖의 책만 비율을 지켜 줄이거나 키운다. 둘이 부딪치면(아주 넓고 낮은 책) 최대가 이긴다
+export function bookSizeFactor(w: number, h: number) {
+  const { minH, maxH, minW, maxW } = BOOK_SIZE_MM;
+  return Math.min(maxH / h, maxW / w, Math.max(1, minH / h, minW / w));
+}
 export function realDimensions(p: Physical, spineRatio?: number, minSpine = REAL_SPINE_MIN): Dims {
   const [w, h] = saneSize(p.widthMm, p.heightMm) ? [p.widthMm, p.heightMm] : [128, 188];
-  const height = mm(h);
-  return { height, coverWidth: mm(w), thickness: Math.max(minSpine, spineRatio ? height * spineRatio : mm(thicknessMm(p.pages))) };
+  const f = bookSizeFactor(w, h);
+  const height = mm(h * f);
+  const thick = spineRatio ? height * spineRatio : mm(thicknessMm(p.pages)) * f;
+  return { height, coverWidth: mm(w * f), thickness: Math.min(BOOK_MAX_T, Math.max(minSpine, thick)) };
 }
 
 // 저장된 배치를 맞췄을 때의 책 크기(시작할 때 틈을 지키며 지금 크기로 옮기는 기준). fitted: 그때의 최소 두께를 적어 둔 값.
