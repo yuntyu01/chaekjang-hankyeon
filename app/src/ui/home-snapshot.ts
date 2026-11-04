@@ -7,6 +7,7 @@ import { type DependencyList, type RefObject, useEffect } from 'react';
 import { AppState, Dimensions, PixelRatio, type View } from 'react-native';
 
 import { captureWindow, screenCaptureAvailable } from '../../modules/screen-capture';
+import { SKIN_CHOICE, skinToString } from '@/scene-config/skin';
 import { artIdle } from './book3d/art';
 import { PERF_ENABLED } from './perf';
 
@@ -15,7 +16,9 @@ const DIR = screenCaptureAvailable && FS.documentDirectory ? `${FS.documentDirec
 const META = DIR ? `${DIR}meta.json` : null;
 // 홈 그림이 크게 바뀌어 예전 사진을 버려야 할 때 올린다
 const REV = 3; // 2: 책 제목 글꼴을 고운바탕 Bold로, 3: 함렛 SemiBold·종이·천 결 세기
-type Meta = { rev: number; file: string; w: number; h: number; scale: number; fontScale: number };
+// skin: 찍을 때의 책장 스킨. 스토어에서 스킨을 바꾸면 옛 사진을 띄우지 않는다(2026-11-05: 적용한 뒤 그림이 다 될 때까지 옛 선반이 보여 안 바뀐 줄 알았다)
+type Meta = { rev: number; skin: string; file: string; w: number; h: number; scale: number; fontScale: number };
+const SKIN_NOW = skinToString(SKIN_CHOICE);
 
 const screenNow = () => {
   const { width, height } = Dimensions.get('window');
@@ -28,7 +31,7 @@ export async function loadHomeSnapshot(): Promise<string | null> {
   try {
     const meta = JSON.parse(await FS.readAsStringAsync(META)) as Meta;
     const now = screenNow();
-    const same = meta.rev === REV && Math.abs(meta.w - now.w) < 1 && Math.abs(meta.h - now.h) < 1 && meta.scale === now.scale && meta.fontScale === now.fontScale;
+    const same = meta.rev === REV && meta.skin === SKIN_NOW && Math.abs(meta.w - now.w) < 1 && Math.abs(meta.h - now.h) < 1 && meta.scale === now.scale && meta.fontScale === now.fontScale;
     return same ? DIR + meta.file : null;
   } catch {
     return null;
@@ -88,7 +91,7 @@ async function capture() {
       await captureWindow(DIR + file, rect, 92);
       // 찍는 동안 바뀌었으면 버린다(다음 차례에 다시 찍는다)
       if (gen !== staleGen) return FS.deleteAsync(DIR + file, { idempotent: true });
-      const meta: Meta = { rev: REV, file, ...screenNow() };
+      const meta: Meta = { rev: REV, skin: SKIN_NOW, file, ...screenNow() };
       await FS.writeAsStringAsync(META, JSON.stringify(meta));
       metaOnDisk = true;
       dirty = false;
