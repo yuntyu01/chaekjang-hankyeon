@@ -28,7 +28,7 @@
 //   따뜻한 방 빛만 남아 흰 벽 그림자가 노란 올리브색(판 아래 #DEDCD1, R−B 13~28)으로 떴다. 그늘의 따뜻한 기운은 판에서 튄 빛(색 번짐)으로만 남는다
 // 세기는 상대값이다. 재질 색(시안 색)은 그 재질이 대표 자리에서 보이는 색으로 보고 반사율을 거꾸로 구한다
 // (light-model calibrate). 카메라(노출·화이트 밸런스)는 줄 가운데 벽에 맞춘다.
-import { readPerfSetting } from './perf-store';
+import { readPerfSetting } from './boot-store';
 import { LOOK, SKIN } from './skin';
 
 const tanD = (d: number) => Math.tan((d * Math.PI) / 180);

@@ -6,7 +6,7 @@
 import { router, useFocusEffect, useLocalSearchParams, useNavigation } from 'expo-router';
 import * as Haptics from 'expo-haptics';
 import { Plus } from '@/ui/icons';
-import { FilledBookIcon } from '@/ui/TabIcons';
+import { FilledBookIcon, StoreIcon } from '@/ui/TabIcons';
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { PixelRatio, Pressable, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
@@ -943,7 +943,10 @@ export function HomeScreen() {
                   {editing ? null : (
                     <>
                       {/* 등록한 모든 책(책장에 없는 책 포함)을 보고 골라 책장에 놓는 곳 */}
-                      <Pressable onPress={() => router.push('/books')} hitSlop={6} accessibilityRole="button" accessibilityLabel={ko.allBooks.title} style={({ pressed }) => [styles.headerIcon, pressed && press]}>
+                      <Pressable onPress={() => router.push('/store')} hitSlop={6} accessibilityRole="button" accessibilityLabel={ko.store.a11y} style={({ pressed }) => [styles.headerIcon, pressed && press]}>
+                  <StoreIcon size={24} color={colors.homeIcon} />
+                </Pressable>
+                <Pressable onPress={() => router.push('/books')} hitSlop={6} accessibilityRole="button" accessibilityLabel={ko.allBooks.title} style={({ pressed }) => [styles.headerIcon, pressed && press]}>
                         <FilledBookIcon size={24} color={colors.homeIcon} />
                       </Pressable>
                       <Pressable onPress={() => router.push('/book/add')} hitSlop={6} accessibilityRole="button" accessibilityLabel={ko.add} style={({ pressed }) => [styles.headerIcon, pressed && press]}>

@@ -24,6 +24,7 @@ import { camAt, VIEW_PITCH_MIN, type Cam, type Vec3 } from './camera';
 import { FRAME_FRONT, FRAME_X0, FRAME_X1, mm, SHELF_DEPTH, SHELF_FRONT, SHELF_THICK, SHELF_X0, SHELF_X1 } from './geometry';
 import type { BookSurface } from './types';
 import { CALIBRATION, CALIBRATION_INPUTS } from './light-calibration.generated';
+import { readBootSetting, writeBootSetting } from '@/scene-config/boot-store';
 import { albedoPeak, MAT_UNIFORMS } from './surface-pattern';
 
 // 화면 감마(합성·색 → 반사율 모두 같은 값)
@@ -1710,14 +1711,25 @@ export function applyCalibration(c: Calibration) {
   // 반사율은 1을 넘을 수 없다(받은 빛보다 많이 되비추는 면은 없다)
   for (const v of [ALBEDO.wall, ALBEDO.plank, ALBEDO.frame, ALBEDO.paper]) if (Math.max(...v) > 1) throw new Error(`light-model: albedo > 1 (${v.join(', ')})`);
 }
-// 처음 값: 미리 계산한 맞추기. 입력이 바뀌어 낡았으면(다시 만들기 전) 그린 색 그대로 한 번 맞춘 값(light-calibration 테스트가 알린다)
-if (CALIBRATION && CALIBRATION_INPUTS === calibrationInputs()) applyCalibration(CALIBRATION);
-else if (process.env.EXPO_PUBLIC_PERF === '1') {
-  // 측정 번들에서 빛을 바꿔 비교할 때(?light=): 그 빛으로 맞추기를 실행 중에 다시 한다
+// 처음 값: 미리 계산한 맞추기(기본 스킨, light-calibration 테스트가 낡았는지 알린다). 스토어에서 다른 스킨을 고르면 처음 한 번 맞추고 시작 설정에 저장해 다음부터 건너뛴다
+function startCalibration() {
+  const inputs = calibrationInputs();
+  if (CALIBRATION && CALIBRATION_INPUTS === inputs) return applyCalibration(CALIBRATION);
+  let hash = 5381;
+  for (let i = 0; i < inputs.length; i++) hash = (hash * 33 + inputs.charCodeAt(i)) | 0;
+  const key = `calibration:${hash}`;
+  try {
+    const saved = JSON.parse(readBootSetting(key) ?? 'null') as { inputs: string; c: Calibration } | null;
+    if (saved?.inputs === inputs) return applyCalibration(saved.c);
+  } catch {
+    // 저장본이 깨졌으면 다시 맞춘다
+  }
   const t0 = Date.now();
-  runCalibration();
+  const c = runCalibration();
+  writeBootSetting(key, JSON.stringify({ inputs, c }));
   console.log('[light] 맞추기', Date.now() - t0, 'ms 이득', CAM.gain.toFixed(3));
-} else setAlbedo();
+}
+startCalibration();
 
 // 장정 재질의 대표 자리 반사광
 export function bookSref(m?: BookSurface): C3 {

@@ -34,6 +34,16 @@ export function FilledBookIcon({ color, size = 24 }: { color: string; size?: num
   );
 }
 
+// 홈 머리글 스토어: 차양이 있는 작은 가게. 칸 24에 폭 20, 키 19
+export function StoreIcon({ color, size = 24 }: { color: string; size?: number }) {
+  return (
+    <Svg width={size} height={size} viewBox="0 0 24 24">
+      <Path d="M4.6 3H19.4L22 9.2A3 3 0 0 1 16.6 10.6A3.1 3.1 0 0 1 12 11.6A3.1 3.1 0 0 1 7.4 10.6A3 3 0 0 1 2 9.2Z" fill={color} />
+      <Path d="M4 12.9A4.8 4.8 0 0 0 7.5 12.5A4.9 4.9 0 0 0 12 13.5A4.9 4.9 0 0 0 16.5 12.5A4.8 4.8 0 0 0 20 12.9V20A1.5 1.5 0 0 1 18.5 21.5H5.5A1.5 1.5 0 0 1 4 20ZM14 15.5V21.5H17.5V15.5Z" fill={color} fillRule="evenodd" />
+    </Svg>
+  );
+}
+
 // 잠긴 선반 자물쇠(시안): 고리 + 몸통 + 열쇠 구멍(hole 색). 칸 32 × 40
 export function LockIcon({ width, height, color, hole }: { width: number; height: number; color: string; hole: string }) {
   return (

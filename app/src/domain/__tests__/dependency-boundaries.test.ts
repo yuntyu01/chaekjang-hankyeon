@@ -72,7 +72,7 @@ it('shared scene inputs have no dependencies outside scene-config', () => {
   const violations: string[] = [];
   for (const file of sources(dir)) {
     // 측정 번들 전용 저장값 읽기(배포본은 읽지 않는다)는 이 파일 하나로만
-    if (path.basename(file) === 'perf-store.ts') continue;
+    if (path.basename(file) === 'boot-store.ts') continue;
     for (const specifier of importsOf(readFileSync(file, 'utf8'))) {
       const target = localTarget(file, specifier);
       if (!target || !within(target, dir)) violations.push(`${path.relative(src, file)} -> ${specifier}`);

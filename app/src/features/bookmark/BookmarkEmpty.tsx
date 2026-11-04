@@ -14,7 +14,7 @@ import { navigation } from '@/ui/theme';
 
 const SAMPLE = '어떤 문장은\n책을 덮은 뒤에도\n곁에 남아요.';
 // 예시 책: 실제 책 표지(2026-11-04 사용자 '예쁜 파란색 책'). 문장은 이 책의 문장이 아니라서 저자는 적지 않고 '예시'로 밝힌다
-const SAMPLE_BOOK = { title: '채식주의자', coverUri: 'https://image.yes24.com/goods/108422348/L', color: '#5276B3' };
+const SAMPLE_BOOK = { title: '채식주의자', coverUri: 'https://image.yes24.com/goods/108422348/L', color: '#5276B3' }; // 내용 색
 
 export function BookmarkEmpty() {
   const insets = useSafeAreaInsets();

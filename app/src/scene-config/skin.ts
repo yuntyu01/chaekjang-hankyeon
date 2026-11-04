@@ -3,7 +3,7 @@
 // 스킨은 재질 색과 재질 이름만 정한다. 그림자·빛은 부품마다 같은 빛 모델이 3D 모양에서 계산한다(스킨별 덧칠 없음):
 // 색은 그 부품이 대표 자리에서 보이는 색이고 반사율은 맞추기(light-model runCalibration)가 거꾸로 구한다.
 import { sceneColors } from './palette';
-import { readPerfSetting } from './perf-store';
+import { readBootSetting, readPerfSetting } from './boot-store';
 
 export type SkinPart = { name: string; color: string; mat: 'wood' | 'paint' | 'wallpaper' };
 
@@ -35,14 +35,15 @@ export const DEFAULT_SKIN: SkinChoice = { plank: 'pine', frame: 'white', wall: '
 
 // 측정 번들 전용: 빌드 없이 스킨을 바꿔 비교한다. 딥링크 ?skin=선반,틀,벽지 를 저장하면 다음 실행부터 적용, ?skin=off로 지운다(useHomePerf). 배포본은 이 값을 읽지 않는다
 export const PERF_SKIN_KEY = 'perf-skin';
-function chosen(): SkinChoice {
-  const saved = readPerfSetting(PERF_SKIN_KEY);
+// 스토어에서 고른 값(시작 설정). 적용하면 앱을 다시 켠다(app/store)
+export const SKIN_KEY = 'shelf-skin';
+export const skinToString = (c: SkinChoice) => `${c.plank},${c.frame},${c.wall}`;
+export function parseSkin(saved: string | null): SkinChoice | null {
   const [plank, frame, wall] = saved ? saved.split(',') : [];
-  if (plank in PLANK_SKINS && frame in FRAME_SKINS && wall in WALL_SKINS) {
-    console.log('[skin] 적용', saved);
-    return { plank, frame, wall } as SkinChoice;
-  }
-  return DEFAULT_SKIN;
+  return plank in PLANK_SKINS && frame in FRAME_SKINS && wall in WALL_SKINS ? ({ plank, frame, wall } as SkinChoice) : null;
+}
+function chosen(): SkinChoice {
+  return parseSkin(readPerfSetting(PERF_SKIN_KEY)) ?? parseSkin(readBootSetting(SKIN_KEY)) ?? DEFAULT_SKIN;
 }
 
 export const SKIN_CHOICE = chosen();
