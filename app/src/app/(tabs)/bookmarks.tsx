@@ -11,7 +11,7 @@ import { useReading } from '@/store/reading-store';
 import { bookmarkPreferencesStore, useBookmarkPreferences } from '@/store/bookmark-preferences-store';
 import { LinkedCover } from '@/ui/BookVisual';
 import { Check, Plus, Search, X } from '@/ui/icons';
-import { Empty, FilterIcon, IconButton, ListGroup, ListItem, Screen, SearchField, Sheet, Tabs, ui } from '@/ui/kit';
+import { Empty, FilterGroup, FilterIcon, FilterOption, IconButton, Screen, SearchField, Sheet, Tabs, ui } from '@/ui/kit';
 import { colors, icon, press, space, type } from '@/ui/theme';
 import { TAB_CONTENT_PAD } from '@/ui/tabBar';
 
@@ -48,11 +48,11 @@ export default function BookmarksTab() {
   const closeSheet = () => { setSheet(null); setBookQ(''); };
   // 불러오는 중에는 제목만(빈 화면이 잠깐 보이지 않게). 저장된 갈피가 하나도 없을 때만 빈 화면: 문장 수·검색·추가·분류는 감춘다
   if (!loaded) return <Screen title="갈피" back={false} scroll={false}><View /></Screen>;
-  if (!all.length) return <Screen title="갈피" back={false} scroll={false} tabFade><BookmarkEmpty /></Screen>;
+  if (!all.length) return <Screen title="갈피" back={false} scroll={false}><BookmarkEmpty /></Screen>;
   const shownBooks = books.filter((x) => !bookQ.trim() || x.title.includes(bookQ.trim()));
   const emptyTitle = view === 'saved' && !q && !book && kind === 'all' ? '아껴둔 갈피가 없어요' : kind === 'photo' && !q ? '사진 갈피가 없어요' : '맞는 갈피가 없어요';
   const emptyBody = view === 'saved' && !q && !book && kind === 'all' ? '갈피 오른쪽 아래의 표시를 눌러 모아 보세요.' : kind === 'photo' && !q ? '페이지를 찍어 그대로 붙여 두세요.' : q.trim() ? '다른 낱말로 찾아보세요.' : '다른 책이나 유형을 골라 보세요.';
-  return <Screen title="갈피" back={false} scroll={false} tabFade right={
+  return <Screen title="갈피" back={false} scroll={false} right={
     <View style={{ flexDirection: 'row', gap: 4 }}>
       <IconButton label={searching ? '갈피 검색 닫기' : '갈피 검색'} onPress={() => { if (searching) setQ(''); setSearching(!searching); }}>{searching ? <X size={icon.size} color={colors.ink} strokeWidth={icon.stroke} /> : <Search size={icon.size} color={colors.ink} strokeWidth={icon.stroke} />}</IconButton>
       <IconButton label="갈피 추가" onPress={() => router.push({ pathname: '/bookmark/new', params: { ...(book ? { book } : {}), ...(kind === 'photo' ? { mode: 'photo' } : {}) } })}><Plus size={icon.size} color={colors.ink} strokeWidth={icon.stroke} /></IconButton>
@@ -69,16 +69,16 @@ export default function BookmarksTab() {
       ListEmptyComponent={<Empty title={emptyTitle} body={emptyBody} />}
       renderItem={({ item: m }) => { const b = lib.books[m.myBookId]; const e = lib.editions[b.editionId]; if (!e) return null; return <BookmarkCard compact showMemo={false} width={width - ui.pad * 2} seed={m.id} onOpen={() => router.push(`/bookmark/${m.id}`)} saved={savedIds.includes(m.id)} onToggleSaved={() => toggleSaved(m.id)} data={{ text: m.text, title: e.title, author: e.authors.join(', '), page: m.page, date: ymd(m.createdAt), color: memoShelfBook(lib, b.id)?.art.ribbon, coverUri: e.coverUri, book: memoShelfBook(lib, b.id) ?? undefined, photoUri: m.photoUri, photoRatio: m.photoRatio }} />; }} />
     <Sheet visible={sheet === 'filter'} onClose={closeSheet} title="필터">
-      <ListGroup title="책">
-        <ListItem label={bookTitle ?? '모든 책'} onPress={() => setSheet('book')} />
+      <FilterGroup title="책" first>
+        <FilterOption label={bookTitle ?? '모든 책'} chevron onPress={() => setSheet('book')} />
         {/* 책을 고르면 그 책의 갈피를 보드로 볼 수 있다 */}
-        {book ? <ListItem label="보드로 보기" onPress={() => { closeSheet(); router.push(`/bookmark/board/${book}`); }} /> : null}
-      </ListGroup>
-      <ListGroup title="유형" style={{ marginTop: space.m }}>
+        {book ? <FilterOption label="보드로 보기" chevron onPress={() => { closeSheet(); router.push(`/bookmark/board/${book}`); }} /> : null}
+      </FilterGroup>
+      <FilterGroup title="유형">
         {(Object.keys(KIND_LABEL) as Kind[]).map((k) => (
-          <ListItem key={k} label={KIND_LABEL[k]} chevron={false} right={kind === k ? <Check size={20} color={colors.accent} strokeWidth={2.2} /> : null} onPress={() => setKind(k)} />
+          <FilterOption key={k} label={KIND_LABEL[k]} selected={kind === k} onPress={() => setKind(k)} />
         ))}
-      </ListGroup>
+      </FilterGroup>
     </Sheet>
     {/* 책 선택: 내 책 검색 + '모든 책' + 갈피가 있는 책(표지·갈피 수). 고른 줄에 체크 */}
     <Sheet visible={sheet === 'book'} onClose={closeSheet} title="책 선택" scroll maxHeight="80%">

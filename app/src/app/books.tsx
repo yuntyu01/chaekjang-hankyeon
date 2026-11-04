@@ -17,7 +17,7 @@ import { useLibrary } from '@/store/library-store';
 import { usePlacementStore } from '@/store/placement-store';
 import { BookVisual, coverRect } from '@/ui/BookVisual';
 import { Check, LayoutGrid, ListIcon, Plus } from '@/ui/icons';
-import { Btn, Empty, FilterIcon, IconButton, ListGroup, ListItem, Muted, Screen, ScreenList, SearchField, Sheet, Tabs, TextLink, Toggle, ui } from '@/ui/kit';
+import { Btn, Empty, FilterGroup, FilterIcon, FilterOption, IconButton, Muted, Screen, ScreenList, SearchField, Sheet, Tabs, TextLink, Toggle, ui } from '@/ui/kit';
 import { colors, icon, press, space, type } from '@/ui/theme';
 
 const TABS = [{ id: 'all', label: '전체' }, ...READ_STATUSES.map((st) => ({ id: st, label: STATUS_LABEL[st] }))] as const satisfies readonly { id: ReadStatus | 'all'; label: string }[];
@@ -154,20 +154,19 @@ export default function AllBooks() {
         extraData={`${selecting}:${picked.join()}`}
         ListHeaderComponent={
           <View style={{ marginBottom: rows.length ? (grid ? space.m : space.xs) : 0 }}>
+            {/* 읽기 상태 탭은 고르는 중에도 그대로(2026-11-05 사용자). 탭을 바꿔도 고른 책은 유지된다 */}
+            <Tabs items={TABS} value={status} onChange={setStatus} style={{ marginTop: space.xs }} />
             {selecting ? (
               <Text style={s.guide}>{ko.allBooks.pickGuide}</Text>
             ) : (
-              <>
-                <Tabs items={TABS} value={status} onChange={setStatus} style={{ marginTop: space.xs }} />
-                <View style={s.tools}>
-                  <Text style={[type.sub, { flex: 1 }]} numberOfLines={1}>책 {rows.length}권</Text>
-                  {canPlace ? <TextLink label={ko.allBooks.place} onPress={() => { setSelecting(true); setMessage(null); }} style={s.placeLink} /> : null}
-                  <FilterIcon active={offShelfOnly || sort !== 'recent'} onPress={() => setFilterOpen(true)} />
-                  <IconButton label={grid ? '목록으로 보기' : '표지 격자로 보기'} onPress={() => setView(grid ? 'list' : 'grid')} style={s.toolEnd}>
-                    {grid ? <ListIcon size={icon.size} color={colors.ink} strokeWidth={icon.stroke} /> : <LayoutGrid size={icon.size} color={colors.ink} strokeWidth={icon.stroke} />}
-                  </IconButton>
-                </View>
-              </>
+              <View style={s.tools}>
+                <Text style={[type.sub, { flex: 1 }]} numberOfLines={1}>책 {rows.length}권</Text>
+                {canPlace ? <TextLink label={ko.allBooks.place} onPress={() => { setSelecting(true); setMessage(null); }} style={s.placeLink} /> : null}
+                <FilterIcon active={offShelfOnly || sort !== 'recent'} onPress={() => setFilterOpen(true)} />
+                <IconButton label={grid ? '목록으로 보기' : '표지 격자로 보기'} onPress={() => setView(grid ? 'list' : 'grid')} style={s.toolEnd}>
+                  {grid ? <ListIcon size={icon.size} color={colors.ink} strokeWidth={icon.stroke} /> : <LayoutGrid size={icon.size} color={colors.ink} strokeWidth={icon.stroke} />}
+                </IconButton>
+              </View>
             )}
             {message ? <Muted style={{ marginTop: space.s, color: colors.ink }}>{message}</Muted> : null}
           </View>
@@ -189,14 +188,14 @@ export default function AllBooks() {
         }
       />
       <Sheet visible={filterOpen} onClose={() => setFilterOpen(false)} title="필터">
-        <ListGroup title="정렬">
+        <FilterGroup title="정렬" first>
           {(Object.keys(SORT_LABEL) as AllBooksSort[]).map((k) => (
-            <ListItem key={k} label={SORT_LABEL[k]} chevron={false} right={sort === k ? <Check size={20} color={colors.accent} strokeWidth={2.2} /> : null} onPress={() => setSort(k)} />
+            <FilterOption key={k} label={SORT_LABEL[k]} selected={sort === k} onPress={() => setSort(k)} />
           ))}
-        </ListGroup>
-        <ListGroup title="책장" style={{ marginTop: space.m }}>
-          <ListItem label={ko.allBooks.offShelf} sub={`${offCount}권`} chevron={false} right={<Toggle label={ko.allBooks.offShelf} value={offShelfOnly} onValueChange={setOffShelfOnly} />} />
-        </ListGroup>
+        </FilterGroup>
+        <FilterGroup title="책장">
+          <FilterOption label={ko.allBooks.offShelf} sub={`${offCount}권`} right={<Toggle label={ko.allBooks.offShelf} value={offShelfOnly} onValueChange={setOffShelfOnly} />} />
+        </FilterGroup>
       </Sheet>
     </Screen>
   );
@@ -226,6 +225,7 @@ function GridCell({ book, width, label, state, onPress, onLongPress }: { book: B
       <Text style={s.cellTitle} numberOfLines={1}>
         {book.title}
       </Text>
+      {book.author ? <Text style={s.cellAuthor} numberOfLines={1}>{book.author}</Text> : null}
     </Pressable>
   );
 }
@@ -239,9 +239,10 @@ const s = StyleSheet.create({
   tools: { flexDirection: 'row', alignItems: 'center', marginTop: space.xs },
   placeLink: { marginRight: space.s },
   toolEnd: { marginRight: -10 },
-  guide: { ...type.sub, textAlign: 'center', marginTop: space.xs, marginBottom: space.s },
-  gridRow: { gap: GAP, marginBottom: space.xl, alignItems: 'flex-end' },
+  guide: { ...type.sub, textAlign: 'center', marginTop: space.m, marginBottom: space.s },
+  gridRow: { gap: GAP, marginBottom: space.xl, alignItems: 'flex-start' },
   cellTitle: { ...type.row, fontSize: 15, lineHeight: 21, color: colors.ink, marginTop: space.s },
+  cellAuthor: { ...type.caption, fontSize: 13, lineHeight: 18, color: colors.inkSoft, marginTop: 1 },
   cellMark: { position: 'absolute' },
   pickedEdge: { position: 'absolute', borderWidth: 2, borderColor: colors.accent, borderRadius: 5 },
   onShelfWrap: { position: 'absolute', left: 0, right: 0, alignItems: 'center' },

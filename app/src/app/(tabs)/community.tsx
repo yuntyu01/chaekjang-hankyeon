@@ -119,7 +119,7 @@ export default function CommunityTab() {
   if (!avail) return <Screen title="커뮤니티" back={false} scroll={false}><Loading /></Screen>;
   if (!avail.ok) return <Screen title="커뮤니티" back={false} scroll={false}><Unavailable a={avail} onRetry={recheck} /></Screen>;
   return (
-    <Screen title="커뮤니티" back={false} scroll={false} tabFade right={right}>
+    <Screen title="커뮤니티" back={false} scroll={false} right={right}>
       {/* 스레드·토스증권처럼 화면 끝까지 반반 나눈 탭, 글은 상자 없이 화면 폭 그대로 + 사이 얇은 선 */}
       <Tabs fill items={SCOPES} value={scope} onChange={(s) => { if (s !== scope) { setItems([]); setNext(null); setPhase('loading'); setScope(s); } }} style={{ marginHorizontal: -ui.pad }} />
       {phase === 'loading' ? <Loading /> : phase === 'error' ? (

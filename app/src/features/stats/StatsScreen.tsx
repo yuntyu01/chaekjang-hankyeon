@@ -98,7 +98,7 @@ export function StatsScreen({ tab, initialBook }: { tab?: boolean; initialBook?:
     setBookSheet(false);
   };
   return (
-    <Screen {...(tab ? { back: false, tabFade: true } : { inline: true, title: '내 기록' })}>
+    <Screen {...(tab ? { back: false } : { inline: true, title: '내 기록' })}>
       <Segmented items={TABS} value={view} onChange={(v) => { setView(v); setPicked(null); }} style={tab ? st.segTop : undefined} />
       <View style={st.period}>
         <IconButton label={monthly ? '이전 달' : '이전 해'} onPress={() => { shift(-1); setPicked(null); }}>

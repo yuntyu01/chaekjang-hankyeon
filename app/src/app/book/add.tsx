@@ -380,24 +380,27 @@ function FindStep({ initial, notice, onPick, onManual }: { initial?: string; not
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
   return (
-    <Screen title="새 책 추가">
-      <SearchField
-        value={q}
-        onChangeText={(t) => {
-          setQ(t);
-          if (!t) {
-            ctrl.current?.abort();
-            setBusy(false);
-            setItems(null);
-            setErr(null);
-          }
-        }}
-        onSubmit={() => run()}
-        busy={busy}
-        placeholder="새 책 찾기 · 제목이나 저자"
-        accessibilityLabel="제목이나 저자로 찾기"
-        style={{ marginTop: space.item }}
-      />
+    <Screen
+      // 큰 제목 없이 뒤로 옆에 검색창(2026-11-05 사용자 '내 책 찾기처럼', 전체 책·내 책 찾기와 같은 머리줄)
+      headerField={
+        <SearchField
+          value={q}
+          onChangeText={(t) => {
+            setQ(t);
+            if (!t) {
+              ctrl.current?.abort();
+              setBusy(false);
+              setItems(null);
+              setErr(null);
+            }
+          }}
+          onSubmit={() => run()}
+          busy={busy}
+          placeholder="새 책 찾기 · 제목이나 저자"
+          accessibilityLabel="제목이나 저자로 찾기"
+          style={{ minHeight: 46 }}
+        />
+      }>
       {notice ? <Muted style={{ marginTop: space.s }}>{notice}</Muted> : null}
 
       {/* 상태: 찾는 중(결과가 아직 없을 때) · 오류(다시 시도) · 결과 없음(직접 입력) · 결과 */}

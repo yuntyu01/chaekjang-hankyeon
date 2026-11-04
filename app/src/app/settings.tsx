@@ -34,7 +34,7 @@ export function SettingsScreen({ tab = false }: { tab?: boolean }) {
   const [privacy, setPrivacy] = useState(false);
   const backupSub = !syncStatus.available ? '기록은 이 기기에 저장돼요' : st.state === 'error' ? '동기화하지 못했어요' : '기록은 이 기기와 서버에 저장돼요';
   return (
-    <Screen title={tab ? ko.tabs.me : '설정'} back={!tab} tabFade={tab} bottomPad={tab ? TAB_CONTENT_PAD - space.section : 0}>
+    <Screen title={tab ? ko.tabs.me : '설정'} back={!tab} bottomPad={tab ? TAB_CONTENT_PAD - space.section : 0}>
       <ListGroup title="독서 환경">
         <ListItem label="진동" right={<Toggle label="진동" value={s.haptics} onValueChange={(v) => settingsStore.set({ haptics: v })} />} />
         <ListItem label="효과음" sub="책장 효과음 · 준비 중이에요" right={<Toggle label="효과음" value={s.sound} onValueChange={(v) => settingsStore.set({ sound: v })} />} />

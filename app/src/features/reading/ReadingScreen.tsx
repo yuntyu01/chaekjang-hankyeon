@@ -32,7 +32,7 @@ const sceneName = (id: string) => (id === 'rain' ? '창가의 빗소리' : SCENE
 function PlayIcon({ size, color }: { size: number; color: string }) {
   return (
     <Svg width={size} height={size} viewBox="0 0 24 24" style={{ marginLeft: size * 0.08 }}>
-      <Path d="M7.5 5.2v13.6L18.6 12z" fill={color} stroke={color} strokeWidth={2.6} strokeLinejoin="round" />
+      <Path d="M8.6 7v10l8.2-5z" fill={color} stroke={color} strokeWidth={5} strokeLinejoin="round" />
     </Svg>
   );
 }
@@ -177,9 +177,10 @@ export function ReadingScreen({ initialBookId, soundOnly = false, inTab = false 
             {!soundOnly ? <Pressable onPress={() => setControls('goal')} accessibilityRole="button" accessibilityLabel={`목표 시간 설정, ${settings.goalMin ? settings.goalMin + '분' : '자유롭게 시간 재기'}`} style={st.timeArea}>
               <Elapsed running={ticking}>{(ms) => <>
                 <Text style={st.time} accessibilityLabel={`읽은 시간 ${clock(ms)}`}>{clock(ms)}</Text>
+                {/* 상태 글은 시간 아래 여백 안에 겹쳐 둔다: 나타나도 시간이 움직이지 않고, 없을 때 시간 위아래 여백이 같다(2026-11-05 사용자 '위아래 여백이 애매') */}
                 <Text style={st.status}>{active && !running ? '일시정지' : goalMs ? (ms >= goalMs ? `목표 ${settings.goalMin}분을 채웠어요` : `목표 ${settings.goalMin}분`) : ' '}</Text>
               </>}</Elapsed>
-              {readingError ? <Text accessibilityRole="alert" style={[st.status, { color: colors.danger }]}>독서 시간을 기기에 저장하지 못했어요. 저장 공간을 확인해 주세요.</Text> : null}
+              {readingError ? <Text accessibilityRole="alert" style={[st.status, { position: 'relative', bottom: 0, color: colors.danger }]}>독서 시간을 기기에 저장하지 못했어요. 저장 공간을 확인해 주세요.</Text> : null}
             </Pressable> : null}
             {/* 3) [분위기 | 재생·일시정지 | 목표]: 재생은 단색 원(그라데이션·그림자 없음), 실행 중이면 일시정지·멈춰 있으면 재생.
                 분위기는 장면과 환경음이 한 세트라 하나로 고른다(소리 크기도 같은 시트) */}
@@ -301,11 +302,11 @@ const st = StyleSheet.create({
   changeBook: type.caption,
   fold: { alignItems: 'center', gap: 2, minWidth: space.touch, minHeight: 48, justifyContent: 'center' },
   foldText: type.caption,
-  timeArea: { alignItems: 'center' },
+  timeArea: { alignItems: 'center', paddingTop: space.l, paddingBottom: space.l },
   // 시간: 숫자 폭 고정(tabular-nums), 자간은 글꼴 기본값
   time: { fontFamily: fonts.ui, fontSize: 48, lineHeight: 56, color: colors.ink, fontVariant: ['tabular-nums'], includeFontPadding: false },
-  status: { ...type.caption, textAlign: 'center' },
-  controls: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: space.s },
+  status: { ...type.caption, textAlign: 'center', position: 'absolute', bottom: -3, left: 0, right: 0 },
+  controls: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: space.xs },
   // 양옆 칸은 재생 단추를 뺀 폭을 반씩(글자 확대에서도 '창가의 빗소리'가 잘리지 않게, 넘치면 두 줄)
   side: { flex: 1, minHeight: 60, alignItems: 'center', justifyContent: 'center', gap: space.xs, paddingHorizontal: space.xs },
   sideText: { ...type.caption, color: colors.ink, textAlign: 'center' },

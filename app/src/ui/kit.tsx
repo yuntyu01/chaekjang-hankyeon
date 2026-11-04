@@ -2,7 +2,6 @@
 // 설정·목록은 카드 대신 여백과 구분선으로 나누고, 입력창처럼 구분이 필요한 곳만 표면색을 깐다.
 import { router } from 'expo-router';
 import { Check, ChevronDown, ChevronLeft, ChevronRight, Search, SlidersHorizontal, Star, X } from '@/ui/icons';
-import { TabBarFade } from '@/ui/TabBarFade';
 import { Fragment, useEffect, useRef, useState, type ReactNode } from 'react';
 import {
   ActivityIndicator,
@@ -45,7 +44,6 @@ export const ui = {
 // 화면 틀: 위 안전 영역 + 머리줄(뒤로·가운데 제목·오른쪽 행동) + 스크롤 본문 + 아래 고정 버튼(footer).
 // 뒤로가 없는 화면(탭 첫 화면·완료 화면)은 제목을 왼쪽에 둔다. 키보드가 열리면 아래 고정 버튼이 키보드 위로 올라온다.
 export function Screen({
-  tabFade,
   left,
   headerField,
   title,
@@ -60,7 +58,6 @@ export function Screen({
   compact,
   inline,
 }: {
-  tabFade?: boolean; // 하단바가 떠 있는 탭 화면: 하단바 쪽을 배경색으로 서서히 덮는다(ui/TabBarFade)
   left?: ReactNode; // 머리줄 왼쪽을 뒤로 대신 다른 것으로(고르는 중의 '취소', 2026-11-05 사용자 시안)
   headerField?: ReactNode; // 검색이 주인공인 화면: 제목 대신 뒤로 옆에 검색창(2026-11-04 사용자 토스 시안 '뒤로가기 옆에')
   compact?: boolean; // 정돈 변형에서 큰 제목 대신 머리줄 가운데 작은 제목(책 정보처럼 내용 첫머리가 주인공인 화면)
@@ -166,7 +163,6 @@ export function Screen({
           </View>
         ) : null}
       </KeyboardAvoidingView>
-      {tabFade ? <TabBarFade /> : null}
     </View>
   );
   return screen;
@@ -688,6 +684,28 @@ export function FilterIcon({ active, onPress }: { active?: boolean; onPress: () 
   );
 }
 
+// 필터 시트 묶음(2026-11-05 사용자 '책과 유형 사이에 선, 묶음 이름은 진한 글씨, 항목은 연한 회색'): 첫 묶음 말고는 위에 선을 긋는다
+export function FilterGroup({ title, first, children }: { title: string; first?: boolean; children: ReactNode }) {
+  return (
+    <View style={!first && s.filterGroupLine}>
+      <Text style={s.filterGroupTitle} accessibilityRole="header">{title}</Text>
+      {children}
+    </View>
+  );
+}
+// 필터 항목: 고른 항목만 진한 글씨와 체크. chevron은 다른 시트로 넘어가는 항목, right는 스위치 등
+export function FilterOption({ label, sub, selected, chevron, right, onPress }: { label: string; sub?: string; selected?: boolean; chevron?: boolean; right?: ReactNode; onPress?: () => void }) {
+  return (
+    <Pressable onPress={onPress} disabled={!onPress} accessibilityRole="button" accessibilityState={{ selected: !!selected }} style={({ pressed }) => [s.filterOption, pressed && press]}>
+      <View style={{ flex: 1, minWidth: 0 }}>
+        <Text style={[s.filterOptionText, selected && s.filterOptionOn]} numberOfLines={1}>{label}</Text>
+        {sub ? <Text style={type.caption}>{sub}</Text> : null}
+      </View>
+      {right ?? (selected ? <Check size={20} color={colors.accent} strokeWidth={2.2} /> : chevron ? <ChevronRight size={icon.size} color={colors.inkFaint} strokeWidth={icon.stroke} /> : null)}
+    </Pressable>
+  );
+}
+
 // 거르기 단추(모든 책 ▾ · 모든 유형 ▾ · 최근 추가순 ▾): 눌러 시트에서 고른다. 기본값이 아니면(걸러진 상태) 고른 칩처럼 짙은 바탕에 흰 글자
 // plain: 바탕 없이 글자와 화살표만(내 기록 요약 줄, 2026-11-05 사용자 시안). 걸러진 상태는 굵은 글자로 나눈다
 export function FilterButton({ label, active, plain, onPress, icon: lead }: { label: string; active?: boolean; plain?: boolean; onPress: () => void; icon?: ReactNode }) {
@@ -899,6 +917,11 @@ export const s = StyleSheet.create({
   segText: { fontFamily: fonts.ui, fontSize: 16, lineHeight: 22, color: colors.inkSoft, includeFontPadding: false },
   segTextOn: { fontFamily: fonts.uiBold, color: colors.ink },
   // 거르기 단추: 옅은 회색 알약(칩과 같은 채움), 글자 15
+  filterGroupLine: { borderTopWidth: shape.hairline * 2, borderTopColor: colors.line, marginTop: space.m, paddingTop: space.l },
+  filterGroupTitle: { ...type.rowStrong, marginBottom: space.xs },
+  filterOption: { flexDirection: 'row', alignItems: 'center', gap: space.m, minHeight: 50 },
+  filterOptionText: { ...type.row, color: colors.inkSoft },
+  filterOptionOn: { color: colors.ink, fontFamily: fonts.uiBold },
   filterPlain: { flexDirection: 'row', alignItems: 'center', gap: 4, minHeight: 32, maxWidth: 220, flexShrink: 1 },
   filter: { flexDirection: 'row', alignItems: 'center', gap: 4, minHeight: 40, paddingLeft: 16, paddingRight: 12, borderRadius: 20, backgroundColor: colors.surface, maxWidth: 220 },
   filterOn: { backgroundColor: colors.chipOn },
