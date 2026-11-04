@@ -13,7 +13,8 @@ import { colors, fonts, type } from '@/ui/screenTheme';
 import { navigation } from '@/ui/theme';
 
 const SAMPLE = '어떤 문장은\n책을 덮은 뒤에도\n곁에 남아요.';
-const SAMPLE_COLOR = '#7F9A6E'; // 카드의 뒷종이·테이프 색을 정하는 책 색(세이지)
+// 예시 책: 실제 책 표지(2026-11-04 사용자 '예쁜 파란색 책'). 문장은 이 책의 문장이 아니라서 저자는 적지 않고 '예시'로 밝힌다
+const SAMPLE_BOOK = { title: '채식주의자', coverUri: 'https://image.yes24.com/goods/108422348/L', color: '#5276B3' };
 
 export function BookmarkEmpty() {
   const insets = useSafeAreaInsets();
@@ -27,7 +28,7 @@ export function BookmarkEmpty() {
       showsVerticalScrollIndicator={false}>
       <Text style={st.tag}>예시</Text>
       <View accessible accessibilityLabel={`예시 갈피. ${SAMPLE.replace(/\n/g, ' ')}`} pointerEvents="none">
-        <BookmarkCard compact showMemo={false} width={width - ui.pad * 2} seed="sample" data={{ text: SAMPLE, title: '내가 읽은 책', author: '책장 한켠', page: 12, date: `${now.getMonth() + 1}월 ${now.getDate()}일`, color: SAMPLE_COLOR }} />
+        <BookmarkCard compact showMemo={false} width={width - ui.pad * 2} seed="sample" data={{ text: SAMPLE, title: SAMPLE_BOOK.title, page: 12, date: `${now.getMonth() + 1}월 ${now.getDate()}일`, color: SAMPLE_BOOK.color, coverUri: SAMPLE_BOOK.coverUri }} />
       </View>
       <Text style={st.title} accessibilityRole="header">
         첫 갈피를 남겨보세요

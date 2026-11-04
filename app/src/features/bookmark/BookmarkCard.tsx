@@ -9,7 +9,7 @@ import { BookmarkTape } from './BookmarkTape';
 import { PhotoPlate } from './PhotoPlate';
 
 // 갈피 종이: 화면 바탕(흰색)과 같은 계열. 앞 종이는 흰색(옅은 선·그림자로 구분),
-// 책 색에 따른 색 종이·테이프는 원래 색을 흰 바탕 쪽으로 섞어 연하게(종이 45%, 테이프 35%). 왼쪽 막대(ink)는 원래 색.
+// 책 색에 따른 색 종이·테이프는 원래 색을 흰 바탕 쪽으로 섞어 연하게(종이 45%, 테이프 35%).
 export const CARD_PAPER = '#FFFFFF';
 export const PAGE_BG = colors.bg;
 export type BookmarkCardData = { text: string; title: string; author?: string; page?: number; date: string; memo?: string; color: string; coverUri?: string; book?: Book; photoUri?: string; photoRatio?: number };
@@ -28,11 +28,11 @@ export function WordWrap({ text, style, maxLines }: { text: string; style: Style
 
 export function paperTone(color: string) {
   const c = /^#([\da-f]{6})$/i.exec(color)?.[1];
-  if (!c) return { paper: '#D0DEE8', tape: '#BCCFDF', ink: '#6896B5' };
+  if (!c) return { paper: '#D0DEE8', tape: '#BCCFDF' };
   const [r, g, b] = [0, 2, 4].map((i) => parseInt(c.slice(i, i + 2), 16));
-  if (g > r && g > b) return { paper: '#D9DFD0', tape: '#C4CCB9', ink: '#718569' };
-  if (b > r || b > g) return { paper: '#D0DEE8', tape: '#BCCFDF', ink: '#6896B5' };
-  return { paper: '#F5DCCF', tape: '#F2D6C7', ink: '#E0A08A' };
+  if (g > r && g > b) return { paper: '#D9DFD0', tape: '#C4CCB9' };
+  if (b > r || b > g) return { paper: '#D0DEE8', tape: '#BCCFDF' };
+  return { paper: '#F5DCCF', tape: '#F2D6C7' };
 }
 
 export function BookmarkCard({ data, showMemo, width, seed, compact = false, rasterizeBook = false, onCoverReady, onPhotoReady, onOpen, saved = false, onToggleSaved }: { data: BookmarkCardData; showMemo: boolean; width: number; seed: string; compact?: boolean; rasterizeBook?: boolean; onCoverReady?: () => void; onPhotoReady?: () => void; onOpen?: () => void; saved?: boolean; onToggleSaved?: () => void }) {
@@ -56,7 +56,7 @@ export function BookmarkCard({ data, showMemo, width, seed, compact = false, ras
           <BookmarkTape color={tone.tape} seed={`${seed}-tape`} width={compact ? 39 : 44} height={compact ? 43 : 45} paperEdge={compact ? 16 : 13} />
         </View>}
         <View style={[st.pageRow, compact && { minHeight: 24 }, photo && { justifyContent: 'space-between', marginRight: -3 }]}>
-          <View style={st.pageLeft}><View style={[st.bar, { backgroundColor: tone.ink, height: compact ? 16 : 22 }]} /><Text style={st.pageTop}>{photo ? '사진 갈피' : data.page ? `p. ${data.page}` : '남긴 문장'}</Text></View>
+          <View style={st.pageLeft}><Text style={st.pageTop}>{photo ? '사진 갈피' : data.page ? `p. ${data.page}` : '남긴 문장'}</Text></View>
           {photo && data.page ? <Text style={st.pageTop}>{data.page}쪽</Text> : null}
         </View>
         {photo ? (
@@ -98,7 +98,6 @@ const st = StyleSheet.create({
   pageRow: { flexDirection: 'row', alignItems: 'center', minHeight: 28 },
   pageLeft: { flexDirection: 'row', alignItems: 'center', gap: 10 },
   photoText: { fontFamily: fonts.reading, fontSize: 16, lineHeight: 27, color: '#34302C', marginTop: 14, includeFontPadding: false },
-  bar: { width: 3, borderRadius: 1.5 },
   pageTop: { fontFamily: fonts.ui, fontSize: 14, lineHeight: 20, color: colors.inkSoft, includeFontPadding: false },
   quote: { fontFamily: fonts.reading, color: '#292725', letterSpacing: -0.45, includeFontPadding: false },
   rule: { height: StyleSheet.hairlineWidth, backgroundColor: colors.line },

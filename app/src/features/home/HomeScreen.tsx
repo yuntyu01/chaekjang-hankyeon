@@ -1110,12 +1110,9 @@ export function HomeScreen() {
       />
       <ShelfMenuSheet
         visible={shelfMenuOpen}
-        reduceMotion={reduceMotion}
-        bottomInset={insets.bottom}
         layout={layout}
         onClose={() => setShelfMenuOpen(false)}
         onDecorate={() => { closeBook(); setEditingKeep(true); }}
-        onOpenLocked={() => setLockSheetOpen(true)}
         showToast={showToast}
         perf={{ demo: store.demo, debugGeom, setDebugGeom, setPerfKey, runPerf, shelfView, setShelfViewState, setToast }}
       />

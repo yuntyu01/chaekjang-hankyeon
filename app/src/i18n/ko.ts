@@ -5,7 +5,7 @@ export const ko = {
   yearA11y: (year: number, count: number) => `${year}년, 완독 ${count}권. 눌러서 다른 해 보기`,
   add: '책 추가',
   lockedShelf: { a11y: '잠긴 선반, 눌러서 열기', title: '선반 한 칸 더 열기', body: '책을 더 놓을 수 있는 선반이 한 칸 늘어나요. 한 번 열면 계속 쓸 수 있어요.', buy: '무료로 열기', done: '선반을 열었어요.' },
-  menu: { title: '책장 메뉴', search: '책 찾기', settings: '설정', addShelf: '선반 추가', prune: '빈 선반 정리', pruned: '빈 선반을 정리했어요.', shelfFail: '지금은 바꿀 수 없어요.' },
+  menu: { title: '책장 메뉴', search: '책 찾기', prune: '빈 선반 정리', pruned: '빈 선반을 정리했어요.', shelfFail: '지금은 바꿀 수 없어요.' },
   empty: { title: '첫 책을 꽂아보세요', body: '읽은 책, 읽고 있는 책, 읽고 싶은 책 모두 좋아요.' },
   addSoon: '책 추가는 다음 단계에서 열려요',
   decorate: '꾸미기',

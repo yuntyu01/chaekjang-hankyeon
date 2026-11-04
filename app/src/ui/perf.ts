@@ -36,8 +36,6 @@ export const ANIM = { slow: 1 };
 export const TRANSIT_DEBUG = { on: false };
 // 측정 번들: 끌어 놓을 때 쓰인 밀기 규칙(왼쪽 우선·오른쪽 대안·양쪽 나눔)을 안내 문구에 붙인다(?pushdbg=1, 영상 확인용)
 export const PUSH_DEBUG = { on: false };
-// 측정 번들: 메뉴 모달의 반투명 옵션을 다시 켜 ANR 재현 여부를 비교(?menutl=1). 기본은 끔
-export const MENU_FLAGS = { translucent: false };
 
 export const SHELF_MODES = ['all', 'plank', 'plankflat', 'wall', 'nowall', 'faces'] as const;
 export type ShelfMode = (typeof SHELF_MODES)[number];
