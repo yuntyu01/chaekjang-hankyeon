@@ -111,6 +111,27 @@ func (s *Server) yes24Search(q string, isbn bool) ([]searchItem, error) {
 	return out, nil
 }
 
+// 인기 책: 국내도서(001) 종합 베스트셀러 순서 그대로. 종이책만, 앞 20권
+func (s *Server) yes24Popular() ([]searchItem, error) {
+	raw, e := s.yes24Fetch("/category/bestseller", url.Values{"categoryId": {"001"}, "pageSize": {"40"}, "detail": {"Y"}})
+	if e != nil {
+		return nil, e
+	}
+	out := []searchItem{}
+	seen := map[string]bool{}
+	for _, it := range raw {
+		if !yes24PaperBook(it) || !validISBN(it.ISBN13) || seen[it.ISBN13] {
+			continue
+		}
+		seen[it.ISBN13] = true
+		out = append(out, it.item())
+		if len(out) == 20 {
+			break
+		}
+	}
+	return out, nil
+}
+
 // 결과 없음(SEARCH_001·GOODS_002, 404)은 빈 목록. 키 오류·한도 초과·서버 오류는 상위 서비스 오류로 알린다
 func (s *Server) yes24Fetch(path string, v url.Values) ([]yes24Item, error) {
 	req, e := http.NewRequest("GET", yes24Base()+path+"?"+v.Encode(), nil)

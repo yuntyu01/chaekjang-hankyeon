@@ -190,6 +190,36 @@ func (s *Server) search(w http.ResponseWriter, r *http.Request) error {
 	return nil
 }
 
+// 인기 책(책 추가 첫 화면): YES24 베스트셀러를 한 시간 캐시한다(약관이 허용하는 일시 캐싱, 사람마다 부르지 않게). 못 받으면 지난 목록으로 답한다
+const popularTTL = time.Hour
+
+func (s *Server) popular(w http.ResponseWriter, _ *http.Request) error {
+	if bookSource() != "yes24" {
+		writeJSON(w, 200, map[string]any{"items": []searchItem{}})
+		return nil
+	}
+	s.searchMu.Lock()
+	items, at := s.popularItems, s.popularAt
+	s.searchMu.Unlock()
+	if items != nil && time.Since(at) < popularTTL {
+		writeJSON(w, 200, map[string]any{"items": items})
+		return nil
+	}
+	fresh, err := s.yes24Popular()
+	if err != nil {
+		if items != nil {
+			writeJSON(w, 200, map[string]any{"items": items})
+			return nil
+		}
+		return err
+	}
+	s.searchMu.Lock()
+	s.popularItems, s.popularAt = fresh, time.Now()
+	s.searchMu.Unlock()
+	writeJSON(w, 200, map[string]any{"items": fresh})
+	return nil
+}
+
 type bookLockEntry struct {
 	mu   sync.Mutex
 	refs int

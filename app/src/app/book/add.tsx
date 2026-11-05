@@ -12,7 +12,7 @@ import { measureCoverAccents } from '@/services/cover-accent';
 import { measureSpineRatios } from '@/services/spine-ratio';
 import { STATUS_LABEL } from '@/features/book/labels';
 import { bindingFields, READ_STATUSES, rebindInput, type ReadStatus, type SizeMm } from '@/domain/library';
-import { candidateDetails, searchBooks, type BookCandidate } from '@/services/book-search';
+import { candidateDetails, popularBooks, searchBooks, type BookCandidate } from '@/services/book-search';
 import { deniedMessage, pickPhoto } from '@/services/photos';
 import { keepImage } from '@/store/files';
 import { libraryStore } from '@/store/library-store';
@@ -347,6 +347,21 @@ export default function AddBook() {
   return null;
 }
 
+// 검색 결과·인기 책 한 줄: 표지·제목·저자, 오른쪽 '추가'. rank가 있으면 맨 앞에 순위
+function ResultRow({ c, rank, onPick }: { c: BookCandidate; rank?: number; onPick: (c: BookCandidate) => void }) {
+  return (
+    <Pressable onPress={() => onPick(c)} style={({ pressed }) => [st.result, pressed && { backgroundColor: colors.surface }]} accessibilityRole="button" accessibilityLabel={`${c.title}, ${c.authors.join(', ')}, 추가`}>
+      {rank ? <Text style={st.rank}>{rank}</Text> : null}
+      <View style={st.cover}><RealCover uri={c.coverUrl} title={c.title} color={colors.input} width={56} ratio={0.72} /></View>
+      <View style={{ flex: 1, minWidth: 0, gap: 4 }}>
+        <Text style={type.rowStrong} numberOfLines={2}>{c.title}</Text>
+        {c.authors.length ? <Text style={type.sub} numberOfLines={1}>{c.authors.join(', ')}</Text> : null}
+      </View>
+      <View style={st.add} pointerEvents="none"><Text style={st.addText}>추가</Text></View>
+    </Pressable>
+  );
+}
+
 // 책 추가 첫 화면(2026-11-01 사용자): 검색창 → 결과 → 추가가 전부. 사진으로 책 찾기는 이번 범위에서 뺐고(사진은 갈피 문장에 집중),
 // 직접 입력은 결과 아래·결과 없음·검색 실패 때의 작은 '직접 등록' 글자 행동으로만 둔다. 결과 사이에는 선 없이 여백만, 누르면 옅은 바탕
 function FindStep({ initial, notice, onPick, onManual }: { initial?: string; notice: string | null; onPick: (c: BookCandidate) => void; onManual: (q: string) => void }) {
@@ -374,6 +389,13 @@ function FindStep({ initial, notice, onPick, onManual }: { initial?: string; not
       setItems(null);
     }
   };
+  const [popular, setPopular] = useState<BookCandidate[]>([]);
+  useEffect(() => {
+    if (initial) return;
+    const c = new AbortController();
+    void popularBooks(c.signal).then((list) => { if (!c.signal.aborted) setPopular(list); });
+    return () => c.abort();
+  }, [initial]);
   useEffect(() => {
     if (initial) void run(initial);
     return () => ctrl.current?.abort();
@@ -417,6 +439,18 @@ function FindStep({ initial, notice, onPick, onManual }: { initial?: string; not
       {items && !items.length && !busy ? (
         <Empty title={`‘${q.trim()}’에 맞는 책이 없어요`} body="제목이나 저자 이름을 짧게 줄여 찾거나, 직접 등록할 수 있어요." action="직접 등록" actionKind="secondary" onAction={() => onManual(q)} />
       ) : null}
+      {/* 검색 전: 인기 많은 책(2026-11-05 사용자). YES24 베스트셀러 순위 그대로, 못 받으면 아무것도 보이지 않는다 */}
+      {!q.trim() && !items && !busy && !err && popular.length ? (
+        <View style={{ marginTop: space.xl }}>
+          <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'baseline' }}>
+            <Text style={type.section} accessibilityRole="header">인기 많은 책</Text>
+            <Text style={type.caption}>YES24 베스트셀러</Text>
+          </View>
+          <View style={{ marginTop: space.s, marginHorizontal: -space.page }}>
+            {popular.map((c, i) => <ResultRow key={c.key} c={c} rank={i + 1} onPick={onPick} />)}
+          </View>
+        </View>
+      ) : null}
       {items?.length ? (
         <View style={{ marginTop: space.xl }}>
           {/* 결과 머리: 구역 이름처럼 작게(출처 표시는 YES24 약관) */}
@@ -426,16 +460,7 @@ function FindStep({ initial, notice, onPick, onManual }: { initial?: string; not
           </View>
           {/* 표지·제목·저자를 한 묶음으로, 오른쪽 같은 자리에 '추가'. 줄 사이 선 없이 여백만, 누르는 동안 옅은 바탕(화면 끝까지) */}
           <View style={{ marginTop: space.s, marginHorizontal: -space.page }}>
-            {items.map((c) => (
-              <Pressable key={c.key} onPress={() => onPick(c)} style={({ pressed }) => [st.result, pressed && { backgroundColor: colors.surface }]} accessibilityRole="button" accessibilityLabel={`${c.title}, ${c.authors.join(', ')}, 추가`}>
-                <View style={st.cover}><RealCover uri={c.coverUrl} title={c.title} color={colors.input} width={56} ratio={0.72} /></View>
-                <View style={{ flex: 1, minWidth: 0, gap: 4 }}>
-                  <Text style={type.rowStrong} numberOfLines={2}>{c.title}</Text>
-                  {c.authors.length ? <Text style={type.sub} numberOfLines={1}>{c.authors.join(', ')}</Text> : null}
-                </View>
-                <View style={st.add} pointerEvents="none"><Text style={st.addText}>추가</Text></View>
-              </Pressable>
-            ))}
+            {items.map((c) => <ResultRow key={c.key} c={c} onPick={onPick} />)}
           </View>
           <ManualLink onPress={() => onManual(q)} />
         </View>
@@ -459,6 +484,7 @@ const st = StyleSheet.create({
   manual: { alignSelf: 'center', minHeight: space.touch, justifyContent: 'center', marginTop: space.l },
   manualStrong: { fontFamily: fonts.uiBold, color: colors.accent },
   // 표지 사진 그림자는 옅게(갈색 기 없이)
+  rank: { ...type.rowStrong, width: 22, textAlign: 'center', fontVariant: ['tabular-nums'] },
   cover: { borderRadius: 3, boxShadow: [{ offsetX: 0, offsetY: 2, blurRadius: 4, color: 'rgba(0,0,0,0.10)' }] },
   // 책 확인: 표지 가운데, 그 아래 회색 '표지 바꾸기'와 제공처 한 줄
   coverArea: { alignItems: 'center', marginTop: space.s, marginBottom: space.l },

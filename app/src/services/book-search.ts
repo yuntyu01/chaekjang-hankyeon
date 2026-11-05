@@ -56,6 +56,23 @@ export function fromServer(i: ServerItem): BookCandidate {
   };
 }
 
+// 인기 책(책 추가 첫 화면): 서버의 YES24 베스트셀러. 서버가 아직 모르거나 못 받으면 빈 목록이고 화면은 검색창만 보인다
+let popularCache: BookCandidate[] | null = null;
+export async function popularBooks(signal?: AbortSignal): Promise<BookCandidate[]> {
+  if (popularCache) return popularCache;
+  if (!API) return [];
+  try {
+    const res = await fetch(`${API}/books/popular`, { signal });
+    if (!res.ok) return [];
+    const json = (await res.json()) as { items?: ServerItem[] };
+    const items = (json.items ?? []).filter((i) => i.provider && i.provider !== 'mock').map(fromServer);
+    if (items.length) popularCache = items;
+    return items;
+  } catch {
+    return [];
+  }
+}
+
 // 서버가 없거나(측정 번들) 개발용 가짜 목록이면 건너뛴다(가짜 책이 실제 검색 결과처럼 보이지 않게)
 async function searchServer(query: string, signal?: AbortSignal): Promise<SearchResult | null> {
   if (!API) return null;

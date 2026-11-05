@@ -10,6 +10,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 )
 
 // YES24 응답 모양은 2026-10-31 실제 호출(detail=Y)에서 옮겼다
@@ -300,5 +301,55 @@ func TestYes24ForeignCategoryRerank(t *testing.T) {
 {"title":"Human Acts","author":"Han Kang/ Deborah Smith (TRN)","goodsType":"외서","goodsSortNm":"외국도서-문학","isbn13":"9781101906743"}]}}`
 	if isbns, _ := run(authorAll, authorForeign, "Han Kang", 200); strings.Join(isbns, " ") != "9788936434120 9788936434595 9788954682152 9781408855652 9781101906743 9788998441012" {
 		t.Fatalf("저자 검색 %v", isbns)
+	}
+}
+
+func TestYes24Popular(t *testing.T) {
+	var seen []*http.Request
+	s := yes24Server(t, 200, yes24Body, &seen)
+	for range 2 {
+		w := httptest.NewRecorder()
+		s.Handler().ServeHTTP(w, httptest.NewRequest("GET", "/books/popular", nil))
+		if w.Code != 200 {
+			t.Fatalf("status %d %s", w.Code, w.Body)
+		}
+		var body struct {
+			Items []searchItem `json:"items"`
+		}
+		if err := json.Unmarshal(w.Body.Bytes(), &body); err != nil {
+			t.Fatal(err)
+		}
+		if len(body.Items) != 2 || body.Items[0].Title != "모순" || body.Items[0].Provider != "yes24" || body.Items[0].Link == "" {
+			t.Fatalf("items %+v", body.Items)
+		}
+	}
+	if len(seen) != 1 {
+		t.Fatalf("캐시 없이 %d번 불렀다", len(seen))
+	}
+	q := seen[0].URL
+	if q.Path != "/v1/category/bestseller" || q.Query().Get("categoryId") != "001" || q.Query().Get("detail") != "Y" {
+		t.Fatalf("url %s", q)
+	}
+}
+
+func TestYes24PopularKeepsLastOnFailure(t *testing.T) {
+	var seen []*http.Request
+	s := yes24Server(t, 500, `{"success":false,"errorCode":"X"}`, &seen)
+	s.popularItems = []searchItem{{ISBN: "9788998441012", Title: "모순"}}
+	s.popularAt = time.Now().Add(-2 * popularTTL)
+	w := httptest.NewRecorder()
+	s.Handler().ServeHTTP(w, httptest.NewRequest("GET", "/books/popular", nil))
+	if w.Code != 200 || !strings.Contains(w.Body.String(), "모순") {
+		t.Fatalf("status %d %s", w.Code, w.Body)
+	}
+}
+
+func TestPopularWithoutKeyIsEmpty(t *testing.T) {
+	t.Setenv("YES24_API_KEY", "")
+	s := New(nil)
+	w := httptest.NewRecorder()
+	s.Handler().ServeHTTP(w, httptest.NewRequest("GET", "/books/popular", nil))
+	if w.Code != 200 || strings.TrimSpace(w.Body.String()) != `{"items":[]}` {
+		t.Fatalf("status %d %s", w.Code, w.Body)
 	}
 }

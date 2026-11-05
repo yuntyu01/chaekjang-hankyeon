@@ -29,6 +29,8 @@ type Server struct {
 	ConfigError       error
 	searchMu          sync.Mutex
 	searchCache       map[string]searchEntry
+	popularItems      []searchItem
+	popularAt         time.Time
 	googleOnce        sync.Once
 	googleVerifier    *oidc.IDTokenVerifier
 	deletionMu        sync.RWMutex
@@ -192,6 +194,7 @@ func (s *Server) Handler() http.Handler {
 	m.HandleFunc("PUT /files/{id}", wrap(s.putFile))
 	m.HandleFunc("GET /files/{id}", wrap(s.getFile))
 	m.HandleFunc("GET /books/search", wrap(s.search))
+	m.HandleFunc("GET /books/popular", wrap(s.popular))
 	m.HandleFunc("GET /books/{isbn}", wrap(s.book))
 	m.HandleFunc("POST /auth/kakao/start", wrap(s.kakaoStart))
 	m.HandleFunc("GET /auth/kakao/callback", wrap(s.kakaoCallback))
