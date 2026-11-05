@@ -204,9 +204,10 @@ describe('토큰 한 벌', () => {
       expect(type[k].fontSize).toBeGreaterThanOrEqual(14);
     }
   });
-  it('일반 화면 바탕은 순백이고 책장 벽지는 따로 둔다(2026-11-05 사용자)', () => {
+  it('일반 화면 바탕과 책장 벽지는 같은 순백이다(2026-11-05 사용자)', () => {
     expect(colors.bg).toBe(uiBackground);
     expect(colors.raised).toBe(colors.bg);
-    expect(sceneColors.wall).toBe('#FEFAF9');
+    expect(sceneColors.wall).toBe('#FFFFFF');
+    expect(uiBackground).toBe('#FFFFFF');
   });
 });

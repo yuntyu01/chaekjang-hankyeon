@@ -24,7 +24,7 @@ export const FRAME_SKINS = {
 
 // 벽지는 머리글 글자 뒤에도 깔리므로 밝은 색만 둔다(어두운 벽지는 검은 머리글 글자가 안 보인다)
 export const WALL_SKINS = {
-  white: { name: '따뜻한 흰 벽', color: sceneColors.wall, mat: 'paint' },
+  white: { name: '흰 벽', color: sceneColors.wall, mat: 'paint' },
   paper: { name: '종이 벽지', color: '#F6F4EE', mat: 'wallpaper' },
   cream: { name: '크림', color: '#F5EEE1', mat: 'paint' },
   sage: { name: '세이지', color: '#E3E8DD', mat: 'paint' },
