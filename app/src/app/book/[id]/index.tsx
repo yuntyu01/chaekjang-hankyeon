@@ -91,7 +91,7 @@ export default function BookDetailScreen() {
       footer={
         <View style={st.actions}>
           <Btn label="갈피 남기기" kind="secondary" size="l" onPress={() => router.push({ pathname: '/bookmark/new', params: { book: id } })} style={{ flex: 1 }} />
-          <Btn label="이어서 읽기" size="l" onPress={() => router.push({ pathname: '/read', params: { book: id } })} style={{ flex: 1.4 }} />
+          <Btn label="이어서 읽기" size="l" onPress={() => router.push({ pathname: '/read', params: { book: id } })} style={{ flex: 1 }} />
         </View>
       }>
       <Segmented items={VIEW_TABS} value={tab} onChange={setTab} style={st.tabs} />
@@ -110,8 +110,9 @@ export default function BookDetailScreen() {
           <ListItem label="쪽수" value={e.pageCount ? `${e.pageCount}쪽` : '미입력'} />
           <ListItem label="판형" value={e.size ? `${e.size.widthMm}×${e.size.heightMm}mm` : '확인 전'} sub={e.size ? undefined : '책장에는 기본 크기로 표시해요'} />
           <ListItem label="도서 정보" value={e.source === 'search' ? e.sourceName ?? '검색' : e.source === 'photo' ? '사진으로 추가' : '직접 입력'} />
-          {e.link ? <ListItem label={`${e.sourceName ?? '판매처'} 상품 페이지`} onPress={() => void Linking.openURL(e.link!)} /> : null}
           <ListItem label="갈피 색" sub={b.ribbonColor ? '직접 고른 색' : '표지에서 고른 색'} onPress={() => setColorOpen(true)} right={<View style={[st.ribbonDot, { backgroundColor: paperColors(memoShelfBook(lib, id)?.art.ribbon, id).tape }]} />} />
+          {/* 판매 페이지는 맨 아래(2026-11-05 사용자 '맨 밑에 YES24에서 사는 거'). YES24 약관: 출처와 상품 링크를 함께 보인다 */}
+          {e.link ? <ListItem label={`${e.sourceName ?? '판매처'}에서 보기`} onPress={() => void Linking.openURL(e.link!)} /> : null}
         </ListGroup>
       ) : null}
 
