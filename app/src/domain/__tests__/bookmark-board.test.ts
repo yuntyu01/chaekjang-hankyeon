@@ -1,4 +1,4 @@
-import { BOARD_MAX_SCALE, BOARD_MIN_SCALE, boardBounds, boardCardSize, boardClamp, boardFit, boardFreeSpot, boardRotOf, boardSpots } from '../bookmark-board';
+import { BOARD_MAX_SCALE, BOARD_MIN_SCALE, boardBookIds, boardPageSlide, dotWindow, boardBounds, boardCardSize, boardClamp, boardFit, boardFreeSpot, boardRotOf, boardSpots } from '../bookmark-board';
 
 const at = (n: number) => `2026-10-${String(n).padStart(2, '0')}T00:00:00.000Z`;
 const mk = (n: number, more: object = {}) => ({ id: `m${n}`, text: '천천히 읽어야 보이는 문장이 있다.', createdAt: at(n), ...more });
@@ -83,5 +83,45 @@ describe('갈피 보드 보기', () => {
     const v = { x: 0, y: 0, s: 1 };
     const wall = [{ x: 195, y: 310, w: 2000, h: 2000 }];
     expect(boardFreeSpot(wall, v, VW, VH, { w: 216, h: 130 })).toEqual({ x: 195, y: 310 });
+  });
+});
+
+describe('옆 책으로 넘기기', () => {
+  const lib = {
+    books: { a: {}, b: {}, c: {} },
+    bookmarks: {
+      m1: { myBookId: 'a', createdAt: '2026-11-01' },
+      m2: { myBookId: 'b', createdAt: '2026-11-03' },
+      m3: { myBookId: 'a', createdAt: '2026-11-02' },
+      m4: { myBookId: 'gone', createdAt: '2026-11-04' },
+    },
+  } as unknown as Parameters<typeof boardBookIds>[0];
+
+  it('책 순서는 최근 갈피 순이고 지운 책은 뺀다', () => {
+    expect(boardBookIds(lib, 'a')).toEqual(['b', 'a']);
+  });
+  it('갈피가 없는 책으로 열어도 그 책이 들어간다', () => {
+    expect(boardBookIds(lib, 'c')).toEqual(['c', 'b', 'a']);
+  });
+
+  const wide = { x0: 0, x1: 1000 }; // 화면 360보다 넓다
+  it('보드가 화면에 다 들어오면 가로 끌기는 전부 넘기기다', () => {
+    expect(boardPageSlide(40, -30, 0.5, { x0: 0, x1: 500 }, 360)).toEqual({ x: 40, left: -30 });
+  });
+  it('보드가 더 넓으면 끝에 닿을 때까지 보드가 움직이고 남은 만큼만 넘긴다', () => {
+    // x 범위: 360-16-1000=-656 ~ 16
+    expect(boardPageSlide(0, -100, 1, wide, 360)).toEqual({ x: -100, left: 0 });
+    expect(boardPageSlide(-650, -20, 1, wide, 360)).toEqual({ x: -656, left: -14 });
+    expect(boardPageSlide(10, 20, 1, wide, 360)).toEqual({ x: 16, left: 14 });
+  });
+  it('범위 밖에 있던 보드는 튀어 들어오지 않는다', () => {
+    expect(boardPageSlide(100, 20, 1, wide, 360)).toEqual({ x: 100, left: 20 });
+    expect(boardPageSlide(100, -20, 1, wide, 360)).toEqual({ x: 80, left: 0 });
+  });
+  it('점은 많으면 지금 칸을 가운데 두고 잘린다', () => {
+    expect(dotWindow(3, 2, 7)).toEqual({ from: 0, to: 3 });
+    expect(dotWindow(20, 0, 7)).toEqual({ from: 0, to: 7 });
+    expect(dotWindow(20, 10, 7)).toEqual({ from: 7, to: 14 });
+    expect(dotWindow(20, 19, 7)).toEqual({ from: 13, to: 20 });
   });
 });

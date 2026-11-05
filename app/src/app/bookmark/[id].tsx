@@ -11,7 +11,9 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { ymd } from '@/features/book/labels';
 import { BookmarkCard, PAGE_BG, type BookmarkCardData } from '@/features/bookmark/BookmarkCard';
+import { tabColors } from '@/domain/color';
 import { bookmarksOf, memoShelfBook, type Bookmark, type Library } from '@/domain/library';
+import { PageDots } from '@/features/bookmark/PageDots';
 import { PhotoPlate } from '@/features/bookmark/PhotoPlate';
 import { deniedMessage, pickPhoto } from '@/services/photos';
 import { keepImage } from '@/store/files';
@@ -64,6 +66,8 @@ export default function BookmarkDetail() {
   if (!cur) return <Screen title="갈피"><Empty title="갈피를 찾을 수 없어요" /></Screen>;
   if (editing) return <EditBookmark m={editing} onDone={() => setEditing(null)} />;
   const curData = cardData(lib, cur);
+  // 넘김 점은 이 책의 갈피 색(2026-11-05 사용자). 지금 칸은 크고 진하게, 나머지는 같은 색을 옅게
+  const dotColor = tabColors(curData?.color, cur.myBookId)[0];
 
   // 공유: 화면 밖에 그린 같은 카드를 이미지로 뜬다
   const shoot = async (withMemo: boolean) => {
@@ -139,11 +143,7 @@ export default function BookmarkDetail() {
 
       {list.length > 1 ? (
         <View style={{ alignItems: 'center', gap: 12, paddingTop: 6, paddingBottom: height * 0.047 }}>
-          <Row gap={10} style={{ justifyContent: 'center' }}>
-            {list.slice(0, 12).map((m, i) => (
-              <View key={m.id} style={[st.dot, i === index && { backgroundColor: colors.accent, width: 10, height: 10, borderRadius: 5 }]} />
-            ))}
-          </Row>
+          <PageDots count={list.length} index={index} color={dotColor} max={12} gap={10} />
           <Text style={st.count}>{list.length}개의 갈피</Text>
         </View>
       ) : null}
@@ -268,7 +268,6 @@ function EditBookmark({ m, onDone }: { m: Bookmark; onDone: () => void }) {
 
 const st = StyleSheet.create({
   header: { minHeight: 60, paddingTop: 4, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 8 },
-  dot: { width: 7, height: 7, borderRadius: 3.5, backgroundColor: colors.inkFaint, opacity: 0.6 },
   count: type.caption,
   bottom: { flexDirection: 'row', flexWrap: 'wrap', gap: 16, alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: space.page, paddingTop: 12 },
   barBtn: { flexDirection: 'row', alignItems: 'center', gap: 6, minHeight: space.touch, paddingHorizontal: 2 },

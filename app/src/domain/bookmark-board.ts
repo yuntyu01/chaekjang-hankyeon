@@ -1,7 +1,7 @@
 // 갈피 보드 배치(순수, 2026-11-02 사용자 시안): 책 한 권의 갈피를 화면보다 넓은 보드에 흩어 붙인다. 좌표는 보드 dp, 자리는 카드 중심.
 // 새 갈피는 자동으로 놓이고(만든 순서로 두 줄에 번갈아) 손으로 옮긴 갈피만 저장된 자리(boardX·boardY·boardRot)를 쓴다.
 // 자동 자리는 앞선 갈피들로만 정해지므로 뒤에 갈피가 늘어도 이미 놓인 갈피는 움직이지 않는다. 손으로 옮긴 갈피의 칸은 비워 둔다(옮겼다고 다른 갈피가 밀려 오지 않게).
-import type { Bookmark } from './library';
+import type { Bookmark, Library } from './library';
 
 export const BOARD_CARD_W = 216;
 const COLUMN_GAP = 34;
@@ -119,3 +119,28 @@ export function boardFreeSpot(spots: BoardRect[], view: BoardView, vw: number, v
 
 // 보드 저장 값(기기마다, 마지막 위치·배율): 키
 export const boardViewKey = (bookId: string) => `bookmark-board-view:${bookId}`;
+
+// 보드에서 옆으로 넘길 책들: 갈피 탭과 같은 최근 갈피 순. 처음 연 책은 갈피가 없어도 들어간다(2026-11-05 사용자 '옆으로 넘기면 옆에 책')
+export function boardBookIds(lib: Pick<Library, 'books' | 'bookmarks'>, first: string) {
+  const ids = Object.values(lib.bookmarks).filter((m) => lib.books[m.myBookId]).sort((a, b) => b.createdAt.localeCompare(a.createdAt)).map((m) => m.myBookId);
+  const unique = [...new Set(ids)];
+  return unique.includes(first) ? unique : [first, ...unique];
+}
+
+// 가로로 끌 때 보드가 먼저 움직이고, 더 갈 곳이 없으면 남은 만큼(left)이 책 넘기기로 간다.
+// 보드가 화면 폭에 다 들어오면 보드는 가로로 움직이지 않고 전부 넘기기다. 더 넓으면(확대) 보드 끝이 화면 끝(pad)에 닿을 때까지 보드가 움직인다.
+export function boardPageSlide(x: number, dx: number, s: number, bounds: { x0: number; x1: number }, vw: number, pad = 16) {
+  'worklet';
+  if (s * (bounds.x1 - bounds.x0) + pad * 2 <= vw) return { x, left: dx };
+  const lo = Math.min(vw - pad - s * bounds.x1, x);
+  const hi = Math.max(pad - s * bounds.x0, x);
+  const nx = Math.max(lo, Math.min(hi, x + dx));
+  return { x: nx, left: dx - (nx - x) };
+}
+
+// 넘김 점: 많으면 지금 칸을 가운데 둔 max개만
+export function dotWindow(count: number, index: number, max: number) {
+  if (count <= max) return { from: 0, to: count };
+  const from = Math.max(0, Math.min(count - max, index - Math.floor(max / 2)));
+  return { from, to: from + max };
+}
