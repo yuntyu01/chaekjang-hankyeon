@@ -45,6 +45,16 @@ export function StoreIcon({ color, size = 24 }: { color: string; size?: number }
   );
 }
 
+// 홈 머리글 꾸미기: 비스듬한 붓(대 + 둥근 붓털). 칸 24
+export function DecorateIcon({ color, size = 24 }: { color: string; size?: number }) {
+  return (
+    <Svg width={size} height={size} viewBox="0 0 24 24">
+      <Path d="M11.3 16.2 21.7 5.8a2.4 2.4 0 0 0-3.4-3.4L7.9 12.8a.7.7 0 0 0 0 1l2.4 2.4a.7.7 0 0 0 1 0Z" fill={color} />
+      <Path d="M6.5 21.5A4 4 0 1 0 2.5 17.5a3 3 0 0 1-.8 2 1.15 1.15 0 0 0 .8 2Z" fill={color} />
+    </Svg>
+  );
+}
+
 // 잠긴 선반 자물쇠(시안): 고리 + 몸통 + 열쇠 구멍(hole 색). 칸 32 × 40
 export function LockIcon({ width, height, color, hole }: { width: number; height: number; color: string; hole: string }) {
   return (

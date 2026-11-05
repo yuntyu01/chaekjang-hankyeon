@@ -6,7 +6,7 @@
 import { router, useFocusEffect, useLocalSearchParams, useNavigation } from 'expo-router';
 import * as Haptics from 'expo-haptics';
 import { Plus } from '@/ui/icons';
-import { FilledBookIcon, StoreIcon } from '@/ui/TabIcons';
+import { DecorateIcon, FilledBookIcon, StoreIcon } from '@/ui/TabIcons';
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { PixelRatio, Pressable, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
@@ -28,7 +28,7 @@ import { scheduleOnRN, scheduleOnUI } from 'react-native-worklets';
 import { camAt, VIEW_PITCH_MAX, VIEW_PITCH_MIN } from '@/domain/camera';
 import { withSharpCover } from '@/domain/cover-url';
 import { DESIGN_WIDTH, PLANK_INSET, SHELF_FRONT, SHELF_THICK, VIEW_DEG_PER_DP, viewSettle } from '@/domain/geometry';
-import { lockedShelfCount } from '@/domain/layout-rules';
+import { lockedShelfCount, SHELF_SLOTS } from '@/domain/layout-rules';
 import { useViewStore, viewStore } from '@/store/view-store';
 import {
   itemWidth,
@@ -189,7 +189,9 @@ export function HomeScreen() {
   const dragJs = useRef({ preview: [] as number[], commit: [] as number[], js: [] as number[], commitStart: 0, raf: 0, last: 0 });
   // ---------- 표시할 배치와 장면 ----------
   // 확정 배치 또는 끄는 중 미리보기(유효할 때만). 놓을 곳이 없으면 확정 배치 그대로(끄는 책은 제자리, 안내만).
-  const { gap } = useLocalSearchParams<{ gap?: string }>();
+  const { gap, perfmenu } = useLocalSearchParams<{ gap?: string; perfmenu?: string }>();
+  // 측정 번들 ?perfmenu=1 일 때만 머리글 제목을 누르면 측정 메뉴가 열린다(꾸미기는 머리글 아이콘, 2026-11-05 사용자)
+  const perfMenuOn = PERF_ENABLED && perfmenu === '1';
   // 줄 위치 계산(rows) 전에 렌더 중에 바로 반영한다(측정 번들 비교안)
   if (PERF_ENABLED && gap !== undefined) LAYOUT.topGap = Number(gap);
   const shown = drag?.preview?.kind === 'ok' ? drag.preview.layout : layout;
@@ -635,6 +637,13 @@ export function HomeScreen() {
 
   // 꾸미기 켜기·끄기. 줄 간격은 3D 값이라 그대로다. 나올 때 조작부 여백이 빠져 목록 끝이 줄어도
   // 지금 스크롤이 잘리지 않게 여백을 잠깐 남겼다가, 넘친 만큼은 부드럽게 올린 뒤 뺀다.
+  // 머리글 꾸미기 아이콘: 책을 고르지 않은 채 꾸미기를 시작한다
+  const startDecorating = () => {
+    closeBook();
+    setEditingKeep(true);
+  };
+  // 열어 둔 칸보다 선반이 많고 빈 선반이 있으면 꾸미기 패널에서 정리할 수 있다
+  const canPrune = layout.shelves.length > SHELF_SLOTS && layout.shelves.some((sh) => !layout.placements.some((p) => p.shelfId === sh.id));
   const setEditingKeep = (on: boolean) => {
     if (!on && dragRef.current) finishDrag();
     if (on === editing) return;
@@ -926,7 +935,7 @@ export function HomeScreen() {
                 오른쪽은 '전체 책'(책 아이콘)과 더하기(원 테두리 없이), 다른 탭 머리줄 아이콘과 같은 크기. 시스템 글자 확대는 1.3배까지만(선반과 겹치지 않게) */}
             {bare ? null : (
               <View style={[styles.header, tabHeader]}>
-                <Pressable style={{ flex: 1 }} onPress={() => setShelfMenuOpen(true)} accessibilityRole="button" accessibilityLabel={ko.menu.title}>
+                <Pressable style={{ flex: 1 }} onPress={perfMenuOn ? () => setShelfMenuOpen(true) : undefined} disabled={!perfMenuOn} accessibilityRole={perfMenuOn ? 'button' : undefined} accessibilityLabel={perfMenuOn ? ko.menu.title : undefined}>
                   <Text style={[headerType.title, { color: colors.ink }]} numberOfLines={1} maxFontSizeMultiplier={HEADER_TEXT_MAX} accessibilityRole="header">
                     {ko.title}
                   </Text>
@@ -944,13 +953,16 @@ export function HomeScreen() {
                     </Text>
                   </Pressable>
                 </Pressable>
-                <View style={[styles.actions, { gap: 4, marginRight: -10, marginTop: -6 }]}>
+                <View style={[styles.actions, { marginRight: -10, marginTop: -6 }]}>
                   {/* 꾸미기를 끌며 시작한 동안(머리글을 아직 숨기기 전)에는 숨긴다 */}
                   {editing ? null : (
                     <>
                       {/* 등록한 모든 책(책장에 없는 책 포함)을 보고 골라 책장에 놓는 곳 */}
                       <Pressable onPress={() => router.push('/store')} hitSlop={6} accessibilityRole="button" accessibilityLabel={ko.store.a11y} style={({ pressed }) => [styles.headerIcon, pressed && press]}>
                   <StoreIcon size={24} color={colors.iconSoft} />
+                </Pressable>
+                <Pressable onPress={startDecorating} hitSlop={6} accessibilityRole="button" accessibilityLabel={ko.decorate} style={({ pressed }) => [styles.headerIcon, pressed && press]}>
+                  <DecorateIcon size={24} color={colors.iconSoft} />
                 </Pressable>
                 <Pressable onPress={() => router.push('/books')} hitSlop={6} accessibilityRole="button" accessibilityLabel={ko.allBooks.title} style={({ pressed }) => [styles.headerIcon, pressed && press]}>
                         <FilledBookIcon size={24} color={colors.iconSoft} />
@@ -1091,6 +1103,7 @@ export function HomeScreen() {
             });
           }}
           onDone={finishEditing}
+          onPrune={canPrune ? () => showToast({ text: placementStore.pruneShelves() ? ko.menu.pruned : ko.menu.shelfFail }) : undefined}
           bottomInset={insets.bottom}
           reduceMotion={reduceMotion}
           onPose={editPose}
@@ -1115,10 +1128,7 @@ export function HomeScreen() {
       />
       <ShelfMenuSheet
         visible={shelfMenuOpen}
-        layout={layout}
         onClose={() => setShelfMenuOpen(false)}
-        onDecorate={() => { closeBook(); setEditingKeep(true); }}
-        showToast={showToast}
         perf={{ demo: store.demo, debugGeom, setDebugGeom, setPerfKey, runPerf, shelfView, setShelfViewState, setToast }}
       />
     </View>

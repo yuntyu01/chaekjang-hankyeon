@@ -39,6 +39,7 @@ type Props = {
   canUndo: boolean;
   onUndo: () => void;
   onDone: () => void;
+  onPrune?: () => void;
 };
 
 // 돌리기: 연속 조절 막대(-max ~ +max, 눕힌 책 MAX_SPIN·표지 책 MAX_FRONT_SPIN). 가능한 각도는 부모가 되돌려 준 값(spin)으로 표시.
@@ -279,7 +280,7 @@ function Choice({ label, on, disabled, onPress, children }: { label: string; on:
   );
 }
 
-export function DecoratePanel({ bookId, title, pose, lean, canLean, msg, bottomInset, reduceMotion, onPose, onLean, spin, onSpin, spinRange, depth, onDepth, onHeight, angles, canUndo, onUndo, onDone }: Props) {
+export function DecoratePanel({ bookId, title, pose, lean, canLean, msg, bottomInset, reduceMotion, onPose, onLean, spin, onSpin, spinRange, depth, onDepth, onHeight, angles, canUndo, onUndo, onDone, onPrune }: Props) {
   const turns = pose === 'horizontal' || pose === 'front';
   return (
     <Animated.View
@@ -308,6 +309,12 @@ export function DecoratePanel({ bookId, title, pose, lean, canLean, msg, bottomI
         </Pressable>
       </View>
       {msg ? <Text style={styles.msg}>{msg}</Text> : null}
+      {/* 빈 선반 정리: 열어 둔 칸보다 선반이 많고 빈 선반이 있을 때만(책장 메뉴를 없애며 옮겼다, 2026-11-05) */}
+      {onPrune ? (
+        <Pressable onPress={onPrune} hitSlop={8} accessibilityRole="button" style={({ pressed }) => [styles.prune, pressed && press]}>
+          <Text style={styles.pruneText}>{ko.menu.prune}</Text>
+        </Pressable>
+      ) : null}
       <View style={styles.poses} accessibilityRole="tablist">
         {(['spine', 'front', 'horizontal'] as Pose[]).map((p) => (
           <PoseTab key={p} pose={p} on={!!title && pose === p} disabled={!title} onPress={() => onPose(p)} />
@@ -374,6 +381,8 @@ const styles = StyleSheet.create({
   doneText: { fontFamily: fonts.uiBold, fontSize: 16.5, color: colors.ink },
   titleEmpty: { ...type.row, color: colors.inkSoft },
   msg: { ...type.caption, color: colors.danger, marginTop: 6 },
+  prune: { alignSelf: 'flex-start', marginTop: 10 },
+  pruneText: { ...type.caption, color: colors.inkSoft },
   poses: { flexDirection: 'row', marginTop: 18 },
   poseTab: { flex: 1, alignItems: 'center', paddingTop: 2, minHeight: space.touch },
   poseText: { ...type.row, fontSize: 16, lineHeight: 22, color: colors.inkSoft, marginTop: 6 },
