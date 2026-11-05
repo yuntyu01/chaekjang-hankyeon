@@ -1,5 +1,5 @@
-import type { Session } from '@/domain/library';
-import { booksByDay, calendarWeeks, dayTitle, hasPause, hourBars, hourLabel, lengthBins, monthBars, sessionSummary, tickLabel, topBooks, weekdayBars, timeRange, xLabels, yearBars, yTicks } from '../chart-data';
+import type { Library, Session } from '@/domain/library';
+import { bookRecord, booksByDay, calendarWeeks, dayTitle, hasPause, hourBars, hourLabel, lengthBins, monthBars, sessionSummary, tickLabel, topBooks, weekdayBars, timeRange, xLabels, yearBars, yTicks } from '../chart-data';
 
 const at = (d: string, h: number, min: number) => new Date(`${d}T${String(h).padStart(2, '0')}:${String(min).padStart(2, '0')}:00`).toISOString();
 const sess = (d: string, minutes: number) => ({ id: d + minutes, startedAt: at(d, 9, 0), endedAt: at(d, 10, 0), durationMs: minutes * 60000 }) as unknown as Session;
@@ -98,5 +98,44 @@ describe('읽은 시간대', () => {
     expect(sessionSummary(list)).toEqual({ averageMs: 39 * 60000, longestMs: 120 * 60000, count: 5 });
     expect(sessionSummary([])).toEqual({ averageMs: 0, longestMs: 0, count: 0 });
     expect(topBooks(list, 1)).toEqual([{ id: 'a', ms: 140 * 60000 }]);
+  });
+});
+
+describe('책 한 권의 기록', () => {
+  const lib = (over: Partial<{ pageCount: number; currentPage: number; status: string }> = {}, sessions: Record<string, unknown>[] = [], finished = 0) => ({
+    books: { b: { id: 'b', editionId: 'e', status: over.status ?? 'reading', currentPage: over.currentPage } },
+    editions: { e: { id: 'e', title: '책', pageCount: over.pageCount } },
+    sessions: Object.fromEntries(sessions.map((s, i) => [`s${i}`, { myBookId: 'b', ...s }])),
+    rounds: Object.fromEntries(Array.from({ length: finished }, (_, i) => [`r${i}`, { myBookId: 'b', finishedAt: '2026-11-01', index: i + 1 }])),
+    bookmarks: {},
+  }) as unknown as Library;
+
+  it('다른 책은 세지 않고 날짜·시간·완독을 모은다', () => {
+    const l = lib({}, [sess('2026-11-03', 30), sess('2026-11-01', 20), sess('2026-11-03', 10), { ...sess('2026-11-02', 99), myBookId: 'other' }], 2);
+    expect(bookRecord(l, 'b')).toMatchObject({ readMs: 60 * 60000, days: 2, firstDay: '2026-11-01', lastDay: '2026-11-03', finished: 2 });
+  });
+  it('기록이 없으면 비어 있다', () => {
+    expect(bookRecord(lib(), 'b')).toEqual({ readMs: 0, days: 0, firstDay: null, lastDay: null, finished: 0, pagesPerMin: null, remainingMs: null });
+  });
+  it('쪽을 모르는 독서는 속도에 넣지 않는다', () => {
+    const l = lib({ pageCount: 300, currentPage: 50 }, [{ ...sess('2026-11-01', 60) }, { ...sess('2026-11-02', 60), pagesRead: 50 }]);
+    expect(bookRecord(l, 'b').pagesPerMin).toBeNull();
+    expect(bookRecord(l, 'b').remainingMs).toBeNull();
+  });
+  it('시작 쪽과 도달 쪽이 있는 독서로 속도와 남은 시간을 낸다', () => {
+    const l = lib({ pageCount: 300, currentPage: 100 }, [{ ...sess('2026-11-01', 60), startPage: 40, pagesRead: 100 }, { ...sess('2026-11-02', 500) }]);
+    const r = bookRecord(l, 'b');
+    expect(r.pagesPerMin).toBe(1);
+    expect(r.remainingMs).toBe(200 * 60000);
+  });
+  it('완독했거나 전체 쪽수를 모르면 남은 시간이 없다', () => {
+    const s = [{ ...sess('2026-11-01', 60), startPage: 1, pagesRead: 61 }];
+    expect(bookRecord(lib({ pageCount: 300, status: 'read' }, s), 'b').remainingMs).toBeNull();
+    expect(bookRecord(lib({}, s), 'b').remainingMs).toBeNull();
+    expect(bookRecord(lib({ pageCount: 300 }, s), 'b').pagesPerMin).toBe(1);
+  });
+  it('조금 읽은 기록으로는 속도를 내지 않는다', () => {
+    expect(bookRecord(lib({ pageCount: 300 }, [{ ...sess('2026-11-01', 2), startPage: 1, pagesRead: 30 }]), 'b').pagesPerMin).toBeNull();
+    expect(bookRecord(lib({ pageCount: 300 }, [{ ...sess('2026-11-01', 60), startPage: 1, pagesRead: 2 }]), 'b').pagesPerMin).toBeNull();
   });
 });

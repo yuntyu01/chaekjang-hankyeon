@@ -1,7 +1,7 @@
 // 내 기록: 맨 위 '캘린더 | 기록'(2026-11-04 사용자). 캘린더는 한 달 달력과 고른 날의 독서 기록, 기록은 월·연도 기간의 그래프(날·달별, 읽은 시간대, 요일, 한 번에 읽는 길이)와 많이 읽은 책.
-// 순서(2026-11-05 사용자 시안): 탭 → 가운데 큰 연월 → 달력·그래프 → '이번 달 독서'와 '모든 책' → 큰 시간 → 읽은 날·독서 횟수 한 줄. 탭 화면에는 '내 기록' 제목을 두지 않고, 기록이 없어도 달력과 0분만 보여 준다.
+// 순서(2026-11-05 사용자): 탭 → 책 선택 → 가운데 큰 연월 → 달력·그래프. 기간 요약('이번 달 독서'·큰 시간)은 기록 칸에만 두고, 캘린더 칸은 달력과 고른 날의 독서뿐이다. 탭 화면에는 '내 기록' 제목을 두지 않는다.
 // 모두 실제 저장 데이터로 계산한다. 완독·재독 기준은 domain/library periodStats와 같다(책 상세도 같은 기준).
-// 책을 고르면(책 상세에서 들어오거나 '모든 책 ▾') 전부 그 책만. 책 없는 독서 시간은 모든 책에서만 센다.
+// 책을 고르면(책 상세에서 들어오거나 '모든 책 ▾') 전부 그 책만이고, 기록 칸 맨 위에 그 책 전체 요약(BookRecord)이 붙는다. 책 없는 독서 시간은 모든 책에서만 센다.
 import { router, useLocalSearchParams } from 'expo-router';
 import { Check, ChevronLeft, ChevronRight } from '@/ui/icons';
 import { useMemo, useState } from 'react';
@@ -11,6 +11,7 @@ import { MINI_TIMER_SPACE } from '@/store/mini-timer-store';
 import { useReading } from '@/store/reading-store';
 import { TAB_CONTENT_PAD } from '@/ui/tabBar';
 import { booksByDay, dayTitle, hasPause, hourBars, hourLabel, LENGTH_BINS, lengthBins, monthBars, sessionSummary, timeRange, topBooks, WEEKDAYS, weekdayBars, yearBars } from '@/features/stats/chart-data';
+import { BookRecord, StatNumber } from '@/features/stats/BookRecord';
 import { ReadingCalendar } from '@/features/stats/ReadingCalendar';
 import { ReadingChart } from '@/features/stats/ReadingChart';
 import { MiniBars } from '@/features/stats/MiniBars';
@@ -100,6 +101,11 @@ export function StatsScreen({ tab, initialBook }: { tab?: boolean; initialBook?:
   return (
     <Screen {...(tab ? { back: false } : { inline: true, title: '내 기록' })}>
       <Segmented items={TABS} value={view} onChange={(v) => { setView(v); setPicked(null); }} style={tab ? st.segTop : undefined} />
+      {/* 책 선택은 두 칸 모두 같은 자리: 달력·그래프·숫자가 함께 바뀐다 */}
+      <View style={st.bookRow}>
+        <FilterButton plain label={title(book) ?? '모든 책'} active={!!book} onPress={() => setBookSheet(true)} />
+      </View>
+      {view === 'records' && book && lib.books[book] ? <BookRecord lib={lib} id={book} /> : null}
       <View style={st.period}>
         <IconButton label={monthly ? '이전 달' : '이전 해'} onPress={() => { shift(-1); setPicked(null); }}>
           <ChevronLeft size={icon.size} color={colors.ink} strokeWidth={icon.stroke} />
@@ -119,17 +125,14 @@ export function StatsScreen({ tab, initialBook }: { tab?: boolean; initialBook?:
       {/* 달력·막대는 책을 읽지 않았어도 늘 보인다(2026-11-03 사용자) */}
       {view === 'calendar' ? <ReadingCalendar lib={lib} y={y} m={m} days={days} selected={selected} today={today} onSelect={setPicked} /> : <ReadingChart bars={bars} selected={selected} unit={monthly ? '일' : '월'} onSelect={setPicked} />}
 
-      {/* 기간 요약: 책을 바꾸면 위 달력·그래프와 아래 숫자가 함께 바뀐다 */}
-      <View style={st.summaryHead}>
-        <Text style={[type.row, { flexShrink: 1 }]} accessibilityRole="header" numberOfLines={1}>{periodName} 독서</Text>
-        <FilterButton plain label={title(book) ?? '모든 책'} active={!!book} onPress={() => setBookSheet(true)} />
-      </View>
-      <View accessible accessibilityLabel={`${periodName} 독서 ${formatDuration(st0.readMs)}, 일시정지 제외, 읽은 날 ${activeDays}일, 독서 ${sessions.length}회`}>
-        <Text style={st.heroValue}>{formatDuration(st0.readMs)}</Text>
-        <Text style={[type.sub, { marginTop: space.xs }]}>읽은 날 {activeDays}일 · 독서 {sessions.length}회</Text>
-      </View>
+      {/* 기간 요약: 기록 칸에만(2026-11-05 사용자 '이번 달 독서는 기록에서 하는 거지') */}
       {view === 'records' ? (
         <>
+          <Text style={[type.row, st.summaryHead]} accessibilityRole="header" numberOfLines={1}>{periodName} 독서</Text>
+          <View accessible accessibilityLabel={`${periodName} 독서 ${formatDuration(st0.readMs)}, 일시정지 제외, 읽은 날 ${activeDays}일, 독서 ${sessions.length}회`}>
+            <Text style={st.heroValue}>{formatDuration(st0.readMs)}</Text>
+            <Text style={[type.sub, { marginTop: space.xs }]}>읽은 날 {activeDays}일 · 독서 {sessions.length}회</Text>
+          </View>
           <View style={st.numbers}>
             <StatNumber label="한 번 평균" value={summary.count ? shortMs(summary.averageMs) : '-'} />
             <StatNumber label="가장 길게" value={summary.count ? shortMs(summary.longestMs) : '-'} />
@@ -241,24 +244,14 @@ export function StatsScreen({ tab, initialBook }: { tab?: boolean; initialBook?:
   );
 }
 
-function StatNumber({ label, value }: { label: string; value: string }) {
-  return (
-    <View style={st.number} accessible accessibilityLabel={`${label} ${value}`}>
-      <Text style={type.caption}>{label}</Text>
-      <Text style={st.numberValue} numberOfLines={1} adjustsFontSizeToFit>{value}</Text>
-    </View>
-  );
-}
-
 const st = StyleSheet.create({
   segTop: { marginTop: space.s },
   periodKind: { flexDirection: 'row', justifyContent: 'center', gap: space.s, marginBottom: space.l },
-  summaryHead: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: space.m, marginTop: space.l, marginBottom: space.s },
+  bookRow: { flexDirection: 'row', justifyContent: 'flex-end', marginTop: space.s },
+  summaryHead: { marginTop: space.l, marginBottom: space.s },
   heroValue: { fontFamily: fonts.uiTitle, fontSize: 36, lineHeight: 44, color: colors.ink, fontVariant: ['tabular-nums'], includeFontPadding: false },
   numbers: { flexDirection: 'row', gap: space.m, marginTop: space.l },
-  number: { flex: 1, gap: space.xs },
-  numberValue: { fontFamily: fonts.uiBold, fontSize: 20, lineHeight: 28, color: colors.ink, fontVariant: ['tabular-nums'], includeFontPadding: false },
-  period: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: space.l, marginTop: space.xl, marginBottom: space.l },
+  period: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: space.l, marginTop: space.s, marginBottom: space.l },
   // 폭을 잡아 둔다: '9월'·'11월'을 오가도 양옆 화살표가 움직이지 않게(시안: 화살표는 글자에서 조금 떨어져 있다)
   periodText: { ...type.title, minWidth: 168, textAlign: 'center', fontVariant: ['tabular-nums'] },
   dayHead: { flexDirection: 'row', alignItems: 'baseline', justifyContent: 'space-between', marginBottom: space.s, gap: space.m },

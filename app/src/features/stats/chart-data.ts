@@ -1,5 +1,5 @@
 // 내 기록 막대그래프 자료(순수): 기간의 독서 기록을 날(월 보기)·달(연도 보기)별로 더하고, 눈금·글자를 만든다.
-import { sessionDay, type Session } from '@/domain/library';
+import { sessionDay, type Library, type Session } from '@/domain/library';
 
 export type Bar = { key: string; label: number; ms: number };
 
@@ -78,6 +78,36 @@ export function lengthBins(sessions: Session[]): number[] {
 export function sessionSummary(sessions: Session[]) {
   const total = sessions.reduce((a, s) => a + s.durationMs, 0);
   return { averageMs: sessions.length ? total / sessions.length : 0, longestMs: sessions.reduce((a, s) => Math.max(a, s.durationMs), 0), count: sessions.length };
+}
+
+// 책 한 권의 기록 전체(기간과 상관없이). 쪽은 시작 쪽과 도달 쪽이 모두 적힌 독서만 세고, 너무 적으면 속도를 내지 않는다(지어내지 않는다)
+const SPEED_MIN_MS = 5 * 60000;
+const SPEED_MIN_PAGES = 3;
+const FIVE_MIN = 5 * 60000;
+export function bookRecord(lib: Library, id: string) {
+  const sessions = Object.values(lib.sessions).filter((s) => s.myBookId === id);
+  const days = [...new Set(sessions.map(sessionDay))].sort();
+  let pages = 0;
+  let pagedMs = 0;
+  for (const s of sessions) {
+    if (s.startPage == null || s.pagesRead == null || s.pagesRead <= s.startPage) continue;
+    pages += s.pagesRead - s.startPage;
+    pagedMs += s.durationMs;
+  }
+  const pagesPerMin = pagedMs >= SPEED_MIN_MS && pages >= SPEED_MIN_PAGES ? pages / (pagedMs / 60000) : null;
+  const b = lib.books[id];
+  const total = b ? lib.editions[b.editionId]?.pageCount : undefined;
+  const left = total && b && b.status !== 'read' ? total - (b.currentPage ?? 0) : 0;
+  return {
+    readMs: sessions.reduce((a, s) => a + s.durationMs, 0),
+    days: days.length,
+    firstDay: days[0] ?? null,
+    lastDay: days[days.length - 1] ?? null,
+    finished: Object.values(lib.rounds).filter((r) => r.myBookId === id && r.finishedAt).length,
+    pagesPerMin,
+    // 남은 쪽을 그 속도로 읽는 시간(5분 단위. 시간이 쪽 수만큼 정확할 리 없다)
+    remainingMs: pagesPerMin && left > 0 ? Math.max(FIVE_MIN, Math.round(((left / pagesPerMin) * 60000) / FIVE_MIN) * FIVE_MIN) : null,
+  };
 }
 
 // 많이 읽은 책(책 없는 기록은 빼고 오래 읽은 순)
