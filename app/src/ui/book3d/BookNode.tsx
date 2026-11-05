@@ -20,6 +20,7 @@ import { bookFacePath } from '@/ui/book/BookBody';
 import { LIGHT_ON, RENDER, TL, tl } from '@/ui/perf';
 import { BookLight, seedOf, TabLight, type BookKey, type TabFrame } from '@/ui/SceneLight';
 import { SHOW } from '@/ui/shelf/shadow-debug';
+import { TAB_MAX_SPIN, TAB_TURN } from '@/scene-config/tab-turn';
 
 import { bookLightRef } from '@/domain/binding-material';
 import { useBookArt, tabsOf, toneOf, type BookArt, type Shared } from './art';
@@ -85,6 +86,30 @@ function PlainFace({ f, state, cam, px, tone }: { f: 'spine' | 'cover'; state: R
 
 // 갈피(종이 탭): 머리에서 위로 나온 종이. 보는 쪽을 향한 면(책등과 같은 법선)이라 탭 모양 안을 화소마다 같은 빛 모델로 다시 칠한다(SceneLight TabLight,
 // 재질은 무광 종이). 하늘 가림(둘레·이웃 책)은 탭 가운데 한 점에서, 책 자세·둘레·상자가 바뀔 때만 계산한다. 재질 색은 앞장 탭 종이 색
+// 돌아간 갈피의 축(TAB_TURN이 none이 아닐 때): ax = 그림의 가로 방향, up = 머리 방향, n = 보는 쪽으로 난 법선
+function tabAxes(b: Book3) {
+  'worklet';
+  const turn = (v: { x: number; y: number; z: number }) => rot(b.roll, b.yaw, v, b.spin ?? 0, b.pitch ?? 0);
+  const up = turn({ x: 0, y: 1, z: 0 });
+  const crossOf = (a: { x: number; y: number; z: number }, c: { x: number; y: number; z: number }) => ({ x: a.y * c.z - a.z * c.y, y: a.z * c.x - a.x * c.z, z: a.x * c.y - a.y * c.x });
+  let ax: { x: number; y: number; z: number };
+  if (TAB_TURN === 'paper') {
+    // 종이는 책장과 같은 면에 있다: 가로 방향이 책 깊이(책등에서 책배 쪽). 책등이 정면이면 거의 선 하나
+    const w = turn({ x: 0, y: 0, z: 1 });
+    ax = w.x < 0 ? { x: -w.x, y: -w.y, z: -w.z } : w;
+  } else {
+    const len = Math.hypot(up.x, up.y) || 1;
+    const x0 = { x: up.y / len, y: -up.x / len, z: 0 };
+    const w0 = crossOf(x0, up);
+    // 눕힌 책은 spin 축이 머리 방향과 달라 돌리지 않는다
+    const deg = Math.abs(up.y) > 0.5 ? Math.max(-TAB_MAX_SPIN, Math.min(TAB_MAX_SPIN, b.spin ?? 0)) : 0;
+    const c = Math.cos((deg * Math.PI) / 180);
+    const s = Math.sin((deg * Math.PI) / 180);
+    ax = { x: x0.x * c + w0.x * s, y: x0.y * c + w0.y * s, z: x0.z * c + w0.z * s };
+  }
+  return { ax, up, n: crossOf(up, ax) };
+}
+
 function Ribbons({ art, book, state, cam, px, sur }: { art: BookArt; book: Book; state: RO<Book3>; cam: RO<Cam>; px: Affine; sur: Surround }) {
   const albedo = linearOf(tabsOf(book)[0]?.color ?? toneOf(book));
   const at = useDerivedValue(() => {
@@ -92,7 +117,7 @@ function Ribbons({ art, book, state, cam, px, sur }: { art: BookArt; book: Book;
     const d = b.dims;
     const root = toWorld(b, { x: d.T * 0.55, y: d.H, z: d.W * RIBBON_Z });
     // 탭 그림은 보는 쪽을 향해 그린다(아래 matrix): 빛도 그 방향으로 받는다. 책 방향을 쓰면 표지 책의 탭이 옆을 향한 면이 되어 15%쯤 어두웠다
-    const n = { x: 0, y: 0, z: -1 };
+    const n = TAB_TURN === 'none' ? { x: 0, y: 0, z: -1 } : tabAxes(b).n;
     const up = rot(b.roll, b.yaw, { x: 0, y: 1, z: 0 }, b.spin ?? 0, b.pitch ?? 0);
     const half = art.ribbonsOut / 2;
     const c = { x: root.x + up.x * half, y: root.y + up.y * half, z: root.z + up.z * half };
@@ -117,7 +142,14 @@ function Ribbons({ art, book, state, cam, px, sur }: { art: BookArt; book: Book;
     const ux = (pu.x - p.x) / k;
     const uy = (pu.y - p.y) / k;
     const L = Math.hypot(ux, uy);
-    const matrix = L < 1e-3 ? HIDDEN_MATRIX : [-uy / L, -ux, q0[0], ux / L, -uy, q0[1], 0, 0, 1];
+    let matrix = L < 1e-3 ? HIDDEN_MATRIX : [-uy / L, -ux, q0[0], ux / L, -uy, q0[1], 0, 0, 1];
+    if (TAB_TURN !== 'none' && L >= 1e-3) {
+      // 가로 방향도 돌아간 축을 그대로 투영한다(폭이 줄고 원근만큼 비스듬해진다)
+      const { ax } = tabAxes(b);
+      const pa = project(c, { x: root.x + ax.x, y: root.y + ax.y, z: root.z + ax.z });
+      matrix = [(pa.x - p.x) / k, -ux, q0[0], (pa.y - p.y) / k, -uy, q0[1], 0, 0, 1];
+      frame.axR = ax;
+    }
     // 머리가 보는 쪽을 등지면(크게 젖힌 표지 책) 탭 뿌리는 책 뒤에 있다: 보이는 바깥 면에 가려지는 부분은 그리지 않는다
     const hide = Skia.PathBuilder.Make();
     if (facing(c, b, 'head') <= 0.002) {
