@@ -60,6 +60,7 @@ import { colors, motion, navigation } from '@/ui/theme';
 import { colors as ui, headerType, icon, press, shape, space, tabHeader, type } from '@/ui/theme';
 import { Btn, TextLink } from '@/ui/kit';
 import { ShelfMenuSheet } from './ShelfMenuSheet';
+import { memosByBook } from '@/features/book/all-books';
 import { LockedShelfSheet, LockedShelves } from './LockedShelves';
 import { useHomePerf } from './useHomePerf';
 
@@ -111,6 +112,8 @@ export function HomeScreen() {
   const reduceMotion = appSettings.reduceMotion === 'system' ? sysReduceMotion : appSettings.reduceMotion === 'on';
 
   const { drag, dragRef, updateDrag, bookId: popId, editId, message: editMsg, editing, openBook, closeBook, setEditId, setEditMsg, setEditing } = useShelfInteraction();
+  // 책 시트의 최근 메모(시트를 열 때만 찾는다)
+  const popMemo = useMemo(() => (popId ? memosByBook(lib).get(popId)?.[0]?.text : undefined), [lib, popId]);
   const selectedId = popId;
   const [debugGeom, setDebugGeom] = useState(false); // 개발용 형상 보기
   const [selectedYear, setSelectedYear] = useState<number | null>(null); // 헤더 독서 연도
@@ -1000,6 +1003,8 @@ export function HomeScreen() {
           <BookSheet
             book={books[popId]}
             status={lib.books[popId] ? STATUS_LABEL[lib.books[popId].status] : undefined}
+            note={lib.books[popId]?.note}
+            memo={popMemo}
             sample={!lib.books[popId]}
             bottomInset={insets.bottom}
             reduceMotion={reduceMotion}

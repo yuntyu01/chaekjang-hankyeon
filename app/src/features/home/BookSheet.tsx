@@ -1,5 +1,5 @@
 // 책장에서 책을 짧게 누르면 아래에서 올라오는 책 정보 시트(2026-10-31 책장 시안).
-// 왼쪽 작은 표지(실제 표지 사진, 없거나 못 읽으면 이 책의 장정 정면 + '꾸민 표지'), 오른쪽 제목·읽기 상태,
+// 왼쪽 작은 표지(실제 표지 사진, 없거나 못 읽으면 이 책의 장정 정면 + '꾸민 표지'), 오른쪽 제목·읽기 상태·한 줄 감상·최근 메모(2026-11-05 사용자, 적어 둔 것만),
 // 아래 '책 정보 보기'(회색 테두리 큰 버튼, 글자만)와 '읽기 시작 | 갈피 남기기'(글자만, 같은 너비).
 // 선반은 그대로 보이게 바탕을 어둡게 덮지 않는다. 바깥(선반)을 누르거나 뒤로 가기로 닫는다. 배치 조작은 꾹 눌러 꾸미기에서.
 import { useEffect, useState } from 'react';
@@ -8,12 +8,15 @@ import { Image, Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'rea
 import type { Book } from '@/domain/types';
 import { ko } from '@/i18n/ko';
 import { BookVisual } from '@/ui/BookVisual';
-import { colors, fonts, shape, space, type } from '@/ui/theme';
+import { StickyNote } from '@/ui/icons';
+import { colors, fonts, icon, shape, space, type } from '@/ui/theme';
 import { Btn, TextActions } from '@/ui/kit';
 
 type Props = {
   book: Book;
   status?: string; // 읽기 상태(읽기 전·읽는 중·완독·보류). 내 서재 기록이 없으면 비움
+  note?: string; // 한 줄 감상
+  memo?: string; // 가장 최근 메모(독서 기록·갈피)
   sample?: boolean; // 표시 전용 예시 책(서재에 없음): 읽기·갈피 대신 '내 서재에 추가'(onDetail이 책 추가로 보낸다)
   bottomInset: number;
   reduceMotion: boolean;
@@ -27,7 +30,7 @@ type Props = {
 // 시안(폭 393dp 기준) 실측: 표지 폭 약 80, 손잡이 → 표지 약 32, 표지 → 버튼 약 30, 버튼 높이 약 44, 버튼 → 보조 행동 글자 약 24
 const COVER_W = 104;
 
-export function BookSheet({ book, status, sample, bottomInset, reduceMotion, onClose, onDetail, onRead, onBookmark, onTop }: Props) {
+export function BookSheet({ book, status, note, memo, sample, bottomInset, reduceMotion, onClose, onDetail, onRead, onBookmark, onTop }: Props) {
   // 사진을 못 읽으면 이 시트에서만 장정으로 바꿔 보인다(저장된 표지 정보는 지우거나 바꾸지 않는다)
   const [photoOk, setPhotoOk] = useState(true);
   useEffect(() => setPhotoOk(true), [book.id]);
@@ -72,6 +75,13 @@ export function BookSheet({ book, status, sample, bottomInset, reduceMotion, onC
                 {book.title}
               </Text>
               {sample ? <Text style={styles.status}>{ko.info.sampleNote}</Text> : status ? <Text style={styles.status}>{status}</Text> : null}
+              {note ? <Text style={styles.note} numberOfLines={3}>{note}</Text> : null}
+              {memo ? (
+                <View style={styles.memo} accessible accessibilityLabel={`최근 메모, ${memo}`}>
+                  <StickyNote size={14} color={colors.inkSoft} strokeWidth={icon.stroke} style={styles.memoIcon} />
+                  <Text style={styles.memoText} numberOfLines={2}>{memo}</Text>
+                </View>
+              ) : null}
             </View>
           </View>
           <Btn label={sample ? ko.info.sampleAdd : ko.info.detailButton} onPress={onDetail} style={styles.primary} />
@@ -116,6 +126,10 @@ const styles = StyleSheet.create({
   info: { flex: 1, minWidth: 0 },
   title: { fontFamily: fonts.uiMedium, fontSize: 20, lineHeight: 27, letterSpacing: -0.2, color: colors.ink }, // 시트 책 제목 20 Medium
   status: { ...type.caption, fontSize: 14, lineHeight: 20, color: colors.inkSoft, marginTop: 8 }, // 읽기 상태 14 Regular
+  note: { ...type.sub, color: colors.ink, marginTop: space.s },
+  memo: { flexDirection: 'row', gap: 6, marginTop: space.s },
+  memoIcon: { marginTop: 3 },
+  memoText: { ...type.caption, color: colors.inkSoft, flex: 1, minWidth: 0 },
   primary: { marginTop: 22 },
   actions: { marginTop: 10 }, // 버튼 아래 끝 → 글자 위 끝 약 24(누르는 칸 48 안에서 글자가 가운데)
 });
