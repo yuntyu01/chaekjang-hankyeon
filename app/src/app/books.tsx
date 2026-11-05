@@ -107,10 +107,8 @@ export default function AllBooks() {
         sub={[book.author, st ? STATUS_LABEL[st] : null].filter(Boolean).join(' · ')}
         note={lib.books[book.id]?.note}
         memoCount={memos.get(book.id)?.length ?? 0}
-        placeLabel={onShelf ? undefined : ko.allBooks.placeShort}
         onPress={() => router.push(`/book/${book.id}`)}
         onLongPress={onShelf ? undefined : () => { setSelecting(true); setPicked([book.id]); }}
-        onPlace={onShelf ? undefined : () => placeNow([book.id])}
         onMemo={openMemo}
       />
     );

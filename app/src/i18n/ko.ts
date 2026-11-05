@@ -125,7 +125,6 @@ export const ko = {
     noRoomTitle: '책장에 빈 자리가 없어요',
     noRoomBody: (n: number) => `${n}권을 꽂을 자리가 없어요. 선반을 열면 바로 꽂을게요.`,
     openAndPlace: '무료로 선반 열고 꽂기',
-    placeShort: '꽂기',
     keep: '보관만 하기',
     removeFromShelf: '책장에서 빼기',
     removeNote: '책 정보·장정·독서 기록·갈피는 그대로 남아요. 전체 책에서 다시 꽂을 수 있어요.',
