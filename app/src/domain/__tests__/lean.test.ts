@@ -6,7 +6,7 @@ import { bookHeight, bookThickness, SHELF_USABLE_WIDTH } from '../geometry';
 import { bookXs, checkSpace, moveBook, normalize, setTilt, shelfItems, type BookMap } from '../layout-engine';
 import { overlaps } from '../test-fixtures/overlap';
 import { contactOf, LEAN_MARGIN, LEAN_MENU_MAX, leanStatics, slipAngle, supportTips, tipAngle } from '../statics';
-import { computeShelf, frontOutline, withLeans, type BookFrame } from '../shelf-scene';
+import { computeShelf, frontOutline, WALL_L, withLeans, type BookFrame } from '../shelf-scene';
 import type { Book, BookPlacement, ShelfLayout } from '../types';
 
 const rad = (d: number) => (d * Math.PI) / 180;
@@ -221,15 +221,15 @@ describe('세 권: 세우고, 옮기고, 기대게 하고, 저장 후 복원', (
       expect(g.box.z).toBeCloseTo(f.box.z, 4);
       expect(g.box.angle).toBeCloseTo(f.box.angle, 3);
     }
-    // 기댄 상대가 없어지면 그 각에서 더 넘어진다: 왼쪽에 닿을 책이 없어 바닥에 눕는다(무게중심이 판 안이라 선반에 남는다)
+    // 기댄 상대가 없어지면 그 각에서 더 넘어져 옆 벽에 기댄다(선반에 남는다)
     const noA = withLeans({ ...restored, placements: restored.placements.filter((p) => p.bookId !== 'A') }, books);
-    expect(noA.placements.find((p) => p.bookId === 'B')!.pose).toBe('horizontal');
+    expect(noA.placements.find((p) => p.bookId === 'B')!.lean?.on).toBe(WALL_L);
     expect(shelfItems(noA, 's')).toHaveLength(2);
-    // 선반 끝 가까이에서 넘어져 무게중심이 판 밖으로 나가면 선반에서 떨어진다(서랍)
+    // 벽 가까이에서 넘어져도 벽에 기대 선반에 남는다
     const edge = withLeans(layoutOf(place('A', 0, 0), place('B', 1, 40 + 30, -7)), books);
     const off = withLeans({ ...edge, placements: edge.placements.filter((p) => p.bookId !== 'A') }, books);
-    expect(off.placements.find((p) => p.bookId === 'B')).toBeUndefined();
-    expect(off.drawer).toContain('B');
+    expect(off.placements.find((p) => p.bookId === 'B')?.lean?.on).toBe(WALL_L);
+    expect(off.drawer).not.toContain('B');
     expect(bookThickness(B)).toBe(28);
   });
 });
@@ -455,7 +455,7 @@ describe('넘어진 책이 머무는 자리', () => {
     let seed = 12345;
     const rnd = () => ((seed = (seed * 1103515245 + 12345) % 2147483648) / 2147483648);
     let checked = 0;
-    for (let trial = 0; trial < 90; trial++) {
+    for (let trial = 0; trial < 240; trial++) {
       const bs: BookMap = {};
       const ps: BookPlacement[] = [];
       let x = 5 + rnd() * 40;

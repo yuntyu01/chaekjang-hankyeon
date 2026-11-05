@@ -55,21 +55,22 @@ export const FRAME_ON = SKIN.frame !== null;
 // - dist·eyeY: 줄 카메라 거리와 판 위 눈높이(DU). 시안의 안쪽 면 폭 약 19px, 판 윗면 약 15px, 천장 띠 약 6px가 같은 카메라로 나오는 자리다. 눈이 천장보다 낮아야 천장이 보인다(전 책장의 눈높이 344는 줄 간격 약 200보다 높아 천장이 안 보인다)
 // - thickMm: 판 두께(시안 앞면 약 29px)
 // - jointMm·jointK: 안쪽 모서리 그늘(light-model jointShade). 넓게 강하게 주면 벽이 시안보다 어둡다(16mm·0.6이면 판 바로 아래 167, 시안 190). 좁게 0.22면 시안처럼 천장·판 바로 아래만 어두워지고 천장과 뒷벽이 이어진다
-// - rimMm: 구멍 앞 끝 둥근 테 반지름(시안에서 평평한 벽 → 안쪽 면이 약 4~5px 동안 이어진다)
+// - lipMm: 평평한 벽 면이 판 앞면보다 앞에 있는 거리(2026-11-05 사용자 사진 '벽이 선반보다 조금 앞, 그만큼 모서리가 둥글고 그 둥근 만큼 빛 반사'). 판은 구멍 안에 끼어 있어 테가 판 끝 바깥으로 끊기지 않고 이어진다
+// - rimMm: 구멍 앞 끝 둥근 테 반지름. 벽이 앞에 나온 만큼 둥글다(lipMm과 같은 값). 같은 사진에서 테가 약 3~4px 안에 또렷하게 꺾인다: 원호라 어두워짐은 안쪽 절반에 몰린다
 // - sideMm·sideK: 안쪽 면이 위 면(천장·판 아랫면) 아래에서 어두워지는 범위와 세기. 안쪽 면은 창빛을 받지 않아 판 그림자가 없으므로 위에서 가려지는 몫을 따로 둔다. 시안 안쪽 면은 판 바로 아래 172에서 약 55px에 걸쳐 215까지 밝아진다
 // - cornerK: 뒷벽 꼭지점 둥근 그늘 세기(2026-11-04 사용자 '안쪽 꼭지점이 더 곡선이어야'). 위 면과 안쪽 면이 함께 가리는 곳이 둥글게 어두워져 안쪽 면과 뒷벽 경계가 곡선으로 녹아든다. 시안 꼭지점 약 170 → 뒷벽 약 190
 // - plankSpec: 판 표면 반사 몫 배수(반무광 마감). 낮은 눈에서 판 윗면을 스치듯 보면 반사가 뒷벽의 밝은 빛을 비춰 윗면이 밝아진다(시안 윗면 202~217, 1배면 197)
 // - coveMm: 안쪽 모서리 곡면 반지름(2026-11-04 사용자 '선반이랑 벽 만나는 곳을 부드럽게 이어지게'). 벽·틀·판이 맞닿는 곳에서 두 면의 법선이 서서히 돌아 모서리에서 같아진다(light-model coveNormal)
 // - cornerMm: 뒷벽 네 꼭지점 둥글기(2026-11-04 사용자 '안쪽 꼭지점 모서리가 더 곡선이어야'). 판 윗면의 뒤쪽 꼭지점도 같은 값
-export const LOOK = { dist: 3300, eyeY: 150, thickMm: 19, jointMm: 8, jointK: 0.22, rimMm: 3, coveMm: 7, cornerMm: 9, sideMm: 26, sideK: 0.6, plankSpec: 2, cornerK: 0.22, softMm: 3, rimCorner: 4 };
-// 측정 번들 전용: 딥링크 ?look=거리,눈높이,판 두께,그늘 높이,그늘 세기,테 반지름,곡면 반지름,꼭지점 둥글기,옆면 범위,옆면 세기,판 윤기,꼭지점 그늘 을 저장하면 다음 실행부터 적용, ?look=off로 지운다(useHomePerf). 배포본은 이 값을 읽지 않는다
+export const LOOK = { dist: 3300, eyeY: 150, thickMm: 19, jointMm: 8, jointK: 0.22, rimMm: 4, coveMm: 7, cornerMm: 9, sideMm: 26, sideK: 0.6, plankSpec: 2, cornerK: 0.22, softMm: 3, rimCorner: 1.5, lipMm: 4 };
+// 측정 번들 전용: 딥링크 ?look=거리,눈높이,판 두께,그늘 높이,그늘 세기,테 반지름,곡면 반지름,꼭지점 둥글기,옆면 범위,옆면 세기,판 윤기,꼭지점 그늘,번짐,테 모서리,벽 앞 거리 를 저장하면 다음 실행부터 적용, ?look=off로 지운다(useHomePerf). 배포본은 이 값을 읽지 않는다
 export const PERF_LOOK_KEY = 'perf-look';
 {
   const saved = readPerfSetting(PERF_LOOK_KEY);
   const v = saved ? saved.split(',').map(Number) : [];
-  if (v.length === 14 && v.every(Number.isFinite)) {
-    const [dist, eyeY, thickMm, jointMm, jointK, rimMm, coveMm, cornerMm, sideMm, sideK, plankSpec, cornerK, softMm, rimCorner] = v;
-    Object.assign(LOOK, { dist, eyeY, thickMm, jointMm, jointK, rimMm, coveMm, cornerMm, sideMm, sideK, plankSpec, cornerK, softMm, rimCorner });
+  if (v.length === 15 && v.every(Number.isFinite)) {
+    const [dist, eyeY, thickMm, jointMm, jointK, rimMm, coveMm, cornerMm, sideMm, sideK, plankSpec, cornerK, softMm, rimCorner, lipMm] = v;
+    Object.assign(LOOK, { dist, eyeY, thickMm, jointMm, jointK, rimMm, coveMm, cornerMm, sideMm, sideK, plankSpec, cornerK, softMm, rimCorner, lipMm });
     console.log('[look] 적용', saved);
   }
 }

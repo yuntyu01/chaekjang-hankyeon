@@ -321,17 +321,17 @@ describe('책장 틀(옆판·위 판): 같은 빛 모델', () => {
   ] as [string, Vec3, Vec3][])('%s: 해석 값 = 경로 추적(휘도 오차 9% 또는 0.025 이내)', (_, p, n) => {
     const an = lumOf(analytic(p, n, framed, [], G));
     const pt = lumOf(pathTrace(p, n, framed, [], 8000));
-    expect(Math.abs(an - pt)).toBeLessThan(Math.max(0.025, 0.09 * pt)); // 안쪽 면 바로 옆 근사 오차가 약 8%라 9%로 둔다(2026-11-04)
+    expect(Math.abs(an - pt)).toBeLessThan(Math.max(0.025, 0.1 * pt)); // 안쪽 면 바로 옆 근사 오차가 약 9%라 10%로 둔다(2026-11-05 안쪽 면이 판 끝과 같아져 시험 점이 면에 더 가까워졌다)
   });
   // 안쪽 면을 한 밝기로 되비치는 근사의 오차는 두 면이 만나는 모서리에서 가장 크다. 반사율 상한을 0.7 → 0.85로 올리며 튄 빛이 커져 0.052 → 0.072가 됐다(가림 1 기준, 앱은 가림 0.5라 그 절반쯤)
-  it('왼쪽 위 안쪽 모서리 벽: 해석 값 = 경로 추적(휘도 오차 0.08 이내)', () => {
+  it('왼쪽 위 안쪽 모서리 벽: 해석 값 = 경로 추적(휘도 오차 0.09 이내)', () => {
     const p = { x: FRAME_X0 + 0.5, y: 195, z: SHELF_DEPTH };
-    expect(Math.abs(lumOf(analytic(p, front, framed, [], G)) - lumOf(pathTrace(p, front, framed, [], 8000)))).toBeLessThan(0.08);
+    expect(Math.abs(lumOf(analytic(p, front, framed, [], G)) - lumOf(pathTrace(p, front, framed, [], 8000)))).toBeLessThan(0.09);
   });
-  it('구멍 밖 평평한 벽은 가려지지 않는다(판 끝이 벽보다 3mm 나온 몫만 판 바로 밑에)', () => {
+  it('구멍 밖 평평한 벽은 판 바로 밑에서도 가려지지 않는다(판이 벽보다 뒤에 있다)', () => {
     const under: Env = { floor: -FAR, ceil: -SHELF_THICK };
     const flat = (d: number) => lumOf(analytic({ x: 183, y: -SHELF_THICK - d, z: -FRAME_FRONT }, front, under, []));
-    expect(flat(20)).toBeGreaterThan(flat(0.5));
+    expect(Math.abs(flat(20) - flat(0.5))).toBeLessThan(0.005);
     expect(Math.abs(flat(20) - lumOf(analytic({ x: 183, y: 0, z: -FRAME_FRONT }, front, null, [])))).toBeLessThan(0.005);
   });
   it('창빛 가림 = 원반 위 방향을 하나씩 쏜 광선(옆판이 왼쪽 빛을 막는다)', () => {
@@ -426,7 +426,7 @@ describe('안쪽 모서리 그늘', () => {
     // 대각선 거리가 같은 두 점의 그늘이 비슷하다: 네모가 아니라 둥근 무늬
     expect(Math.abs(at(14, 2) - at(10, 10))).toBeLessThan(0.1);
   });
-  it('판 윗면은 안쪽 면과 뒷벽 쪽으로 어두워지고 구멍 앞에 나온 판 앞면에는 없다', () => {
+  it('판 윗면은 안쪽 면과 뒷벽 쪽으로 어두워지고 판 앞면에는 없다', () => {
     expect(jointShade({ x: FRAME_X0 + 1, y: 0, z: 0 }, up, framed)).toBeGreaterThan(0.05);
     expect(jointShade({ x: 183, y: 0, z: SHELF_DEPTH - 1 }, up, framed)).toBeGreaterThan(0.03);
     expect(jointShade({ x: 183, y: 0, z: 0 }, up, framed)).toBeLessThan(0.01);

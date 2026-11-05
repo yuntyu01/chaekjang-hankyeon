@@ -35,6 +35,8 @@ function reorient(b: State, roll: number, yaw: number, al: number, spin = 0): St
 // 같은 방향 두 자세를 잇는 이동. 높이가 바뀌면 L자(올라갈 때는 먼저 위로, 내려갈 때는 먼저 옆으로).
 export function moveSegs(b0: State, b1: State, t0: number, t1: number): Seg[] {
   if (Math.abs(b0.t.y - b1.t.y) < 0.01) return [pivotSeg(b0, b1, t0, t1, ZERO)];
+  // 받침이 빠져 곧장 아래로 떨어지는 책(자세·가로·깊이 그대로): 조각 하나로 점점 빨라지다 닿는 순간 멈춘다(중력, e 1)
+  if (b1.t.y < b0.t.y && Math.abs(b0.t.x - b1.t.x) < 0.01 && Math.abs(b0.t.z - b1.t.z) < 0.01) return [{ ...pivotSeg(b0, b1, t0, t1, ZERO), e: 1 }];
   const tm = (t0 + t1) / 2;
   const up = b1.t.y > b0.t.y;
   const mid: State = { ...b0, t: up ? { x: b0.t.x, y: b1.t.y, z: b0.t.z } : { x: b1.t.x, y: b0.t.y, z: b1.t.z } };

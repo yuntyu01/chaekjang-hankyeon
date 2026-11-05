@@ -132,6 +132,7 @@ function shaderLit(P: Vec3, n: Vec3, env: Env | null, dodge: boolean | 'direct',
       tN: [n.x, n.y, n.z],
       bev0: [0, 0, 0, 1e9],
       bev1: [0, 0, 0, 1e9],
+      endR: 0,
       rim,
       rimCeil: 1e9,
       kS: 1,
@@ -420,9 +421,9 @@ describe('구멍 앞 끝 둥근 테', () => {
     if (RIM_R <= 0) return;
     const z = -FRAME_FRONT;
     const left = { x: FRAME_X0 - RIM_R * 0.5, y: 100, z };
-    expect(maxDiff(shaderLit(left, n, null, false, albedo, undefined, PLAIN, 1e-3, 0, undefined, rim), lit(left, bent(1, 0, Math.sin(((76 * Math.PI) / 180) * Math.SQRT1_2))))).toBeLessThan(1.5 / 255);
+    expect(maxDiff(shaderLit(left, n, null, false, albedo, undefined, PLAIN, 1e-3, 0, undefined, rim), lit(left, bent(1, 0, Math.sin((76 / 90) * Math.asin(0.5)))))).toBeLessThan(1.5 / 255);
     const top = { x: 183, y: 180 + RIM_R * 0.5, z };
-    expect(maxDiff(shaderLit(top, n, null, false, albedo, undefined, PLAIN, 1e-3, 0, undefined, rim), lit(top, bent(0, -1, Math.sin(((70 * Math.PI) / 180) * Math.SQRT1_2))))).toBeLessThan(1.5 / 255);
+    expect(maxDiff(shaderLit(top, n, null, false, albedo, undefined, PLAIN, 1e-3, 0, undefined, rim), lit(top, bent(0, -1, Math.sin((70 / 90) * Math.asin(0.5)))))).toBeLessThan(1.5 / 255);
     // 구멍 가장자리 화소(구멍 쪽으로 조금 넘어간 자리)도 테 끝 법선이라 벽처럼 밝지 않다: 밝으면 안쪽 면과 섞여 1px 밝은 줄이 된다
     const edge = { x: FRAME_X0 + 0.2, y: 100, z };
     expect(shaderLit(edge, n, null, false, albedo, undefined, PLAIN, 1e-3, 0, undefined, rim)[0]).toBeLessThan(shaderLit({ x: FRAME_X0 - RIM_R * 3, y: 100, z }, n, null, false, albedo, undefined, PLAIN, 1e-3, 0, undefined, rim)[0] - 0.05);

@@ -298,6 +298,15 @@ const inDepth = (z: number) => {
   return z >= -SHELF_FRONT && z <= SHELF_DEPTH;
 };
 
+// 위 앞쪽 넓은 조명이 방향 w에 보이는 밝기(반사광 전용, scene-config/lighting overhead). 위로 약 50° 쪽이 가장 밝고 부드럽게 옅어진다(거친 면이라 칼 같은 선으로 비치지 않는다). 셰이더 overheadGlow와 같은 식
+export function overheadGlow(w: Vec3): number {
+  'worklet';
+  const ss = (a: number, b: number, v: number) => {
+    const t = Math.max(0, Math.min(1, (v - a) / (b - a)));
+    return t * t * (3 - 2 * t);
+  };
+  return light.overhead * ss(0.15, 0.8, w.y) * (1 - ss(-0.6, -0.1, w.z));
+}
 // 둘레 면 번호: 벽, 판 윗면, 위 판 아랫면(빛 격자의 둘레 칸 순서), 하늘
 export const ENV_WALL = 0;
 export const ENV_FLOOR = 1;
@@ -367,11 +376,16 @@ export function envHit(p: Vec3, w: Vec3, env: Env | null): { t: number; rad: C3;
 // 앞으로 나가는 반사는 반사 방향의 기울기와 판 앞 모서리까지의 기울기 차이로 위·아래 판이 차지하는 몫을 부드럽게 정한다(퍼짐 폭 = α = r²). 셰이더 envLobe와 같은 식
 export function envLobe(p: Vec3, w: Vec3, env: Env | null, rough: number): C3 {
   'worklet';
-  if (!env || w.z >= -0.05) return envHit(p, w, env).rad;
+  const glow = overheadGlow(w);
+  const seen = () => {
+    const h = envHit(p, w, env);
+    return (h.t === Infinity ? h.rad.map((v) => v + glow) : h.rad) as C3;
+  };
+  if (!env || w.z >= -0.05) return seen();
   const zf = p.z + SHELF_FRONT;
-  if (zf <= 0) return envHit(p, w, env).rad;
+  if (zf <= 0) return seen();
   const x = p.x + w.x * (zf / -w.z);
-  if (x < SHELF_X0 || x > SHELF_X1) return envHit(p, w, env).rad;
+  if (x < SHELF_X0 || x > SHELF_X1) return seen();
   const e = w.y / -w.z;
   const sp = Math.max(0.02, rough * rough);
   const ss = (a: number, b: number, v: number) => {
@@ -384,7 +398,7 @@ export function envLobe(p: Vec3, w: Vec3, env: Env | null, rough: number): C3 {
   const ff = env.floor > -FAR && p.y > env.floor + 1e-3 ? 1 - ss(ef - sp, ef + sp, e) : 0;
   const fs = Math.max(0, 1 - fc - ff);
   const sky = skyRadiance(w);
-  return [0, 1, 2].map((c) => sky[c] * fs + RAD.under[c] * fc + RAD.floor[c] * ff) as C3;
+  return [0, 1, 2].map((c) => (sky[c] + glow) * fs + RAD.under[c] * fc + RAD.floor[c] * ff) as C3;
 }
 
 // 둘레 면들(볼록 사각형, 밝기, 바깥 법선, 면 번호, 부분): 판 사이 벽·판 윗면·위 판 아랫면(part 'in': 판 범위, 빛 격자로 읽는다),
@@ -1200,7 +1214,8 @@ export function sideCeilF(h: number, z: number) {
 }
 export function jointShade(p: Vec3, n: Vec3, env: Env | null) {
   'worklet';
-  if (!env?.side || p.z < -FRAME_FRONT - 0.5) return 0;
+  // 판 앞면(앞을 향한 면 중 벽 면 쪽)은 위아래로 맞닿은 면이 없다. 판 끝은 둥근 법선(Plane endR)이 어둡게 한다
+  if (!env?.side || p.z < -FRAME_FRONT - 0.5 || (Math.abs(n.z) > 0.5 && p.z < -SHELF_FRONT + 0.5)) return 0;
   const K = JOINT_K;
   const H = JOINT_H;
   const xs = (w: number) => (1 - jointF(p.x - FRAME_X0, H, K * w)) * (1 - jointF(FRAME_X1 - p.x, H, K * w));
@@ -1235,7 +1250,7 @@ function coveBend(d: number, end: number) {
 }
 export function coveNormal(p: Vec3, n: Vec3, env: Env | null): Vec3 {
   'worklet';
-  if (!env?.side || COVE_R <= 0 || p.z < -FRAME_FRONT - 0.5) return n;
+  if (!env?.side || COVE_R <= 0 || p.z < -FRAME_FRONT - 0.5 || (Math.abs(n.z) > 0.5 && p.z < -SHELF_FRONT + 0.5)) return n;
   let x = n.x;
   let y = n.y;
   const z = n.z;

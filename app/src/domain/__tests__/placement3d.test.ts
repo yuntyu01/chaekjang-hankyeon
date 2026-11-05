@@ -3,7 +3,7 @@ import { corners, footprintXZ, fromPlaced, gap, lowest, topXZ, toWorld } from '.
 import { boxSize, type Placed } from '../box';
 import { MAX_SPIN, SHELF_DEPTH, SHELF_FRONT, SHELF_USABLE_WIDTH } from '../geometry';
 import { checkSpace, moveBook, placementOf, setPose, setSpin, type BookMap, type Result } from '../layout-engine';
-import { bodiesOf, computeShelf, PLANK_BOUNDS, withLeans } from '../shelf-scene';
+import { bodiesOf, computeShelf, withLeans } from '../shelf-scene';
 import { stackBoxes, stackSupported, supportedOn } from '../support';
 import type { Book, BookPlacement, ShelfLayout, Tilt } from '../types';
 
@@ -34,9 +34,12 @@ function expectNoPenetration(l: ShelfLayout) {
   for (let i = 0; i < bs.length; i++) {
     expect(lowest(bs[i])).toBeGreaterThan(-0.05); // 선반을 뚫지 않는다
     for (const c of corners(bs[i])) {
-      expect(c.z).toBeGreaterThanOrEqual(-SHELF_FRONT - 0.05); // 선반 앞 끝
       expect(c.z).toBeLessThanOrEqual(SHELF_DEPTH + 0.05); // 뒷벽
     }
+    // 앞으로는 돌려 눕힌 책의 모서리만 판 앞으로 나갈 수 있고, 무게중심은 판 위다
+    const cs = corners(bs[i]);
+    if (!bs[i].spin) for (const c of cs) expect(c.z).toBeGreaterThanOrEqual(-SHELF_FRONT - 0.05);
+    expect(cs.reduce((s, c) => s + c.z, 0) / cs.length).toBeGreaterThan(-SHELF_FRONT);
     for (let j = i + 1; j < bs.length; j++) expect(gap(bs[i], bs[j])).toBeGreaterThan(-TOL);
   }
 }
@@ -157,7 +160,6 @@ describe('높이·깊이가 다른 책의 기대기', () => {
   it('선반 끝·빈 공간에서는 무리하게 기대지 않는다', () => {
     const l = withLeans(layoutOf(place('B', 0, 0, { tilt: -7 })), books);
     expect(placementOf(l, 'B')!.tilt).toBe(0);
-    expect(PLANK_BOUNDS.min).toBeLessThan(0);
   });
 });
 

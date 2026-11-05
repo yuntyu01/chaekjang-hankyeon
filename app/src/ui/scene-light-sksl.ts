@@ -11,7 +11,7 @@ import type { Affine, Cam, Vec3 } from '@/domain/camera';
 import { F0, light } from '@/ui/lighting';
 
 // 평면: 한 점 O, 바깥 법선 n, 둥근 모서리(평면 안에서 모서리 쪽 단위 벡터 T와 모서리의 그 축 좌표 at)
-export type Plane = { O: Vec3; n: Vec3; edges?: { T: Vec3; at: number }[] };
+export type Plane = { O: Vec3; n: Vec3; edges?: { T: Vec3; at: number }[]; endR?: number };
 
 // 캔버스 px (X, Y) → 평면 위 점: 눈 E에서 화면 점 S(X, Y)로 가는 광선이 평면(점 O, 법선 n)과 만나는 곳.
 // P = E + (S − E) / w, w = n·(S − E) / n·(O − E)는 X·Y에 1차라 P = N(X, Y) / w(X, Y)(N도 1차)로 셰이더에 넘긴다.
@@ -145,6 +145,8 @@ function header() {
   const float3 SKYC = ${c3(SKY_C)};
   const float3 KEYC = ${c3(KEY_C)};
   float3 skyRad(float3 w) { return SKYC * (AMB + 1.5 * dot(SKYTILT, w)); }
+  // 위 앞쪽 넓은 조명(반사광 전용, light-model overheadGlow)
+  float overheadGlow(float3 w) { return ${f(light.overhead)} * smoothstep(0.15, 0.8, w.y) * (1.0 - smoothstep(-0.6, -0.1, w.z)); }
   // 면이 하늘(방)에서 받는 빛
   float3 skyIrr(float3 n) { return SKYC * (AMB + dot(SKYTILT, n)); }
   float3 irr(float3 n) { return skyIrr(n) + KEYC * (DIFF * max(0.0, dot(n, LU))); }
@@ -276,7 +278,9 @@ function header() {
   // 거친 면의 반사(light-model envLobe와 같은 식): 거칠기만큼 퍼져 판 앞 모서리가 칼 같은 선으로 비치지 않는다
   float3 envLobe(float3 p, float3 w, float rough) {
     // envHit은 한 번만 부른다: 셰이더 컴파일러가 함수를 호출마다 펼쳐 부르는 곳이 늘면 컴파일이 크게 느려진다(앱 시작이 멈춘 듯 보였다)
-    float3 hit = envHit(p, w).yzw;
+    float4 h = envHit(p, w);
+    float glow = overheadGlow(w);
+    float3 hit = h.yzw + float3(h.x > 1e8 ? glow : 0.0);
     if (env.x < 0.5 || w.z >= -0.05) return hit;
     float zf = p.z + FRONT;
     if (zf <= 0.0) return hit;
@@ -289,7 +293,7 @@ function header() {
     float fc = env.z < FARV && p.y < env.z - 0.001 ? smoothstep(ec - sp, ec + sp, e) : 0.0;
     float ff = env.y > -FARV && p.y > env.y + 0.001 ? 1.0 - smoothstep(ef - sp, ef + sp, e) : 0.0;
     float fs = max(0.0, 1.0 - fc - ff);
-    return skyRad(w) * fs + RADU * fc + RADF * ff;
+    return (skyRad(w) + float3(glow)) * fs + RADU * fc + RADF * ff;
   }
 `;
 }
@@ -818,7 +822,7 @@ ${boxCode()}
     return (1.0 - jointF(P.x - ${f(FRAME_X0)}, ${f(JOINT_H)}, ${f(JOINT_K)} * w)) * (1.0 - jointF(${f(FRAME_X1)} - P.x, ${f(JOINT_H)}, ${f(JOINT_K)} * w));
   }
   float jointShade(float3 P, float3 n) {
-    if (env.x < 1.5 || P.z < ${f(-FRAME_FRONT - 0.5)}) return 0.0;
+    if (env.x < 1.5 || P.z < ${f(-FRAME_FRONT - 0.5)} || (abs(n.z) > 0.5 && P.z < ${f(-SHELF_FRONT + 0.5)})) return 0.0;
     float k = 1.0;
     if (abs(n.x) > 0.5) k = (1.0 - jointF(env.z - P.y, ${f(SIDE_H)}, ${f(SIDE_K)} * (${f(SIDE_FRONT)} + ${f(1 - SIDE_FRONT)} * clamp((P.z + ${f(FRAME_FRONT)}) / ${f(SHELF_DEPTH + FRAME_FRONT)}, 0.0, 1.0)))) * (1.0 - jointF(P.y - env.y, ${f(JOINT_H)}, ${f(SIDE_FLOOR_K)})) * (1.0 - jointF(DEPTH - P.z, ${f(JOINT_H)}, ${f(JOINT_K * JOINT_BACK)}));
     else if (abs(n.z) > 0.5) {
@@ -1237,6 +1241,7 @@ export function litSource(dodge: boolean | 'direct') {
   uniform float3 tN;        // 평면 바깥 법선
   uniform float4 bev0;      // 모서리 둥글기(평면 안에서 모서리 쪽 단위 벡터, 모서리의 그 축 좌표). 없으면 0
   uniform float4 bev1;
+  uniform float endR;       // 판 앞면 양 끝 세로 모서리 둥글기(0이면 없다)
   uniform float4 rim;       // 평평한 벽의 구멍(x0, x1, y0, y1): 구멍 앞 끝 둥근 테. x0 > x1이면 없다
   uniform float rimCeil;    // 이 줄 위 면 높이: 테도 안쪽 면처럼 그 아래에서 어두워진다(light-model sideCeilF)
   uniform float kS;         // 재질의 표면 반사 몫 배수(materials specular)
@@ -1276,10 +1281,7 @@ ${shadeCode(mode)}
     float2 u = abs(tN.z) > 0.5 ? P.xy : float2(P.x, P.z * ${f(SOFT_DEPTH)});
     float front = 0.0;
     if (tN.y > 0.5) {
-      // 판 윗면 양 끝 변은 뒤(안쪽 면)에서 앞(판 끝)으로 벌어진다. 벽보다 앞은 맞닿은 면이 없어 번지지 않는다
-      float c = ${f((SHELF_X0 + SHELF_X1) / 2)};
-      float t = clamp((DEPTH - P.z) / ${f(SHELF_DEPTH + SHELF_FRONT)}, 0.0, 1.0);
-      u.x = c + (P.x - c) * ${f((FRAME_X1 - FRAME_X0) / 2)} / mix(${f((FRAME_X1 - FRAME_X0) / 2)}, ${f((SHELF_X1 - SHELF_X0) / 2)}, t);
+      // 앞 끝은 맞닿은 면으로 번지지 않는다(판 앞면과 만나는 곧은 끝)
       front = 1.0 - smoothstep(${f(-FRAME_FRONT + 10)}, ${f(-FRAME_FRONT + 40)}, P.z);
     }
     float2 c2 = float2(softBox.x + softBox.y, softBox.z + softBox.w) * 0.5;
@@ -1302,7 +1304,7 @@ ${shadeCode(mode)}
   }
   float3 coveOf(float3 P) {
     float3 c = float3(0.0);
-    if (env.x < 1.5 || ${COVE_R > 0 ? 'false' : 'true'} || P.z < ${f(-FRAME_FRONT - 0.5)}) return c;
+    if (env.x < 1.5 || ${COVE_R > 0 ? 'false' : 'true'} || P.z < ${f(-FRAME_FRONT - 0.5)} || (abs(tN.z) > 0.5 && P.z < ${f(-SHELF_FRONT + 0.5)})) return c;
     if (abs(tN.y) < 0.5) c.y += coveB(P.y - env.y, ${f(COVE_NARROW)}) - coveB(env.z - P.y, ${f(COVE_NARROW)});
     if (abs(tN.x) < 0.5 && tN.y > -0.5) c.x += coveB(P.x - ${f(FRAME_X0)}, ${f(COVE_WIDE)}) - coveB(${f(FRAME_X1)} - P.x, ${f(COVE_WIDE)});
     return c;
@@ -1315,7 +1317,9 @@ ${shadeCode(mode)}
     float3 JY = (Vy - P * Hw.y) / w;
     float b0 = slope(arc(bev0.w - dot(P, bev0.xyz), PLANKR));
     float b1 = slope(arc(bev1.w - dot(P, bev1.xyz), PLANKR));
-    float3 n = normalize(tN + bev0.xyz * b0 + bev1.xyz * b1 + coveOf(P));
+    // 판 앞면 양 끝: 윤곽(PLANK_END_R)과 같은 반지름으로 법선이 옆으로 돈다. 윤곽만 둥글고 빛이 평면이면 곡면으로 보이지 않는다(2026-11-05 사용자 '선반 끝 곡선')
+    float be = endR > 0.0 ? slope(arc(${f(SHELF_X1)} - P.x, endR)) - slope(arc(P.x - ${f(SHELF_X0)}, endR)) : 0.0;
+    float3 n = normalize(tN + bev0.xyz * b0 + bev1.xyz * b1 + coveOf(P) + float3(be, 0.0, 0.0));
     float rimLoss = 0.0;
     // 구멍 앞 끝 둥근 테(반지름 RIMR): 구멍(둥근 사각형, 모서리 RIMC)까지 거리 d로 벽 법선이 구멍 안쪽 면 법선 쪽으로 돈다
     if (rim.x < rim.y) {
@@ -1327,14 +1331,13 @@ ${shadeCode(mode)}
       // 구멍 가장자리 화소(흐림, d ≤ 0)도 테 끝 법선이다: 평평한 벽 법선이면 밝은 색이 안쪽 면과 섞여 1px 밝은 줄이 된다
       if (d < RIMR) {
         float2 g = length(qp) > 1e-4 ? qp / length(qp) : (q.x > q.y ? float2(1.0, 0.0) : float2(0.0, 1.0));
-        // 법선 각이 테 폭에 고르게 돈다(정원호는 안쪽 끝에 변화가 몰려 2px 안에서 꺾여 보인다). 끝은 안쪽 면 법선까지 다 돌지 않는다:
-        // 테는 맞닿은 면의 되비침을 받지 않아 다 돌리면 안쪽 면보다 어두운 줄이 생긴다(천장 앞 90°면 테 끝 180, 천장 189). 옆 76°, 위 70°면 테 끝과 안쪽 면·천장 밝기가 이어진다
+        // 원호 단면(앞에서 본 자리 sin θ = t): 벽 쪽은 천천히, 안쪽 끝에서 빠르게 돌아 테가 또렷하게 꺾인다(2026-11-05 사용자 사진, 제곱근으로 돌리면 넓게 번져 흐릿했다).
+        // 끝은 안쪽 면 법선까지 다 돌지 않는다: 테는 맞닿은 면의 되비침을 받지 않아 다 돌리면 안쪽 면보다 어두운 줄이 생긴다(천장 앞 90°면 테 끝 180, 천장 189). 옆 76°, 위 70°면 테 끝과 안쪽 면·천장 밝기가 이어진다
         float rimT = min(1.0, 1.0 - d / RIMR);
-        // 시안처럼 바깥쪽에서 빠르게 어두워지고 안쪽은 안쪽 면 밝기로 이어진다(제곱근)
-        float th = mix(${f((76 * Math.PI) / 180)}, ${f((70 * Math.PI) / 180)}, g.y * g.y) * sqrt(rimT);
+        float th = mix(${f(76 / 90)}, ${f(70 / 90)}, g.y * g.y) * asin(rimT);
         n = normalize(tN * cos(th) - float3(g * s, 0.0) * sin(th));
-        // 옆 테만 안쪽 면처럼 위 면 아래에서 어두워진다(위 테는 그 면 자체다)
-        rimLoss = rimT * (1.0 - g.y * g.y) * jointF2(rimCeil - P.y);
+        // 옆 테만 안쪽 면처럼 위 면 아래에서 어두워진다(위 테는 그 면 자체다). 안쪽 끝에 몰린다(벽 쪽은 방을 그대로 본다), 위 판 높이 위로는 없다(판이 테보다 뒤라 가리지 않는다)
+        rimLoss = P.y < rimCeil ? rimT * rimT * rimT * (1.0 - g.y * g.y) * jointF2(rimCeil - P.y) : 0.0;
       }
     }
     // 면 좌표: u = 판 길이 방향(x, 옆을 향한 틀 안쪽 면은 세로: 결이 틀 길이로 난다), v = 면 안의 다른 방향

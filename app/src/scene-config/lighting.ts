@@ -49,18 +49,22 @@ export const light = {
   keyColor: [1, 1, 1] as [number, number, number],
   // 방 빛 하늘 가림 세기(물리 1). 모든 곳에 같은 비율로 쓴다
   occlusion: L0.occlusion,
+  // 위 앞쪽 넓은 조명의 밝기(2026-11-05 사용자 사진 '둥근 만큼 빛 반사', 하늘 평균 약 1 대비). 위가 밝은 방(skyTilt)을 고르게 퍼뜨리지 않고 실제처럼 위 앞쪽에 모인 조명으로 본 것이다.
+  // 면이 받는 빛은 skyTilt에 이미 들어 있어 반사광에만 더한다(light-model overheadGlow). 평평한 면은 거울 방향이 앞(앞면)이나 뒤(윗면)라 비치지 않고, 위로 기운 둥근 모서리(판 앞 모서리, 책 머리 모서리, 구멍 아래 테)에만 빛줄이 생긴다.
+  // 사진의 판 앞 모서리 빛줄(앞면보다 파랑 채널 약 +30단계, 빨강은 어깨에 눌려 +7)에 맞췄다
+  overhead: SKIN.frame ? 3.2 : 0,
 };
 
-// 측정 번들 전용: 빌드 없이 빛을 바꿔 비교한다. 딥링크 ?light=위 각,왼쪽 각,반지름,ambient,skyTilt y,skyTilt z,diffuse,occlusion[,반사율 상한] 을 저장하면 다음 실행부터 적용, ?light=off로 지운다(useHomePerf). 배포본은 이 값을 읽지 않는다
+// 측정 번들 전용: 빌드 없이 빛을 바꿔 비교한다. 딥링크 ?light=위 각,왼쪽 각,반지름,ambient,skyTilt y,skyTilt z,diffuse,occlusion[,반사율 상한[,위쪽 조명]] 을 저장하면 다음 실행부터 적용, ?light=off로 지운다(useHomePerf). 배포본은 이 값을 읽지 않는다
 export const PERF_LIGHT_KEY = 'perf-light';
 let perfAlbedoMax: number | undefined;
 {
   const saved = readPerfSetting(PERF_LIGHT_KEY);
   const v = saved ? saved.split(',').map(Number) : [];
-  if ((v.length === 8 || v.length === 9) && v.every(Number.isFinite)) {
-    const [el, az, rad, ambient, ty, tz, diffuse, occlusion, albedoMax] = v;
+  if (v.length >= 8 && v.length <= 10 && v.every(Number.isFinite)) {
+    const [el, az, rad, ambient, ty, tz, diffuse, occlusion, albedoMax, overhead] = v;
     perfAlbedoMax = albedoMax;
-    Object.assign(light, { dir: keyDir(el, az), radius: (rad * Math.PI) / 180, ambient, skyTilt: { x: 0, y: ty, z: tz }, diffuse, occlusion });
+    Object.assign(light, { dir: keyDir(el, az), radius: (rad * Math.PI) / 180, ambient, skyTilt: { x: 0, y: ty, z: tz }, diffuse, occlusion, overhead: overhead ?? light.overhead });
     console.log('[light] 적용', saved);
   }
 }

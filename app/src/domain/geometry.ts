@@ -22,23 +22,28 @@ export const SHELF_FRONT_MM = 70;
 export const SHELF_DEPTH_MM = SHELF_TOTAL_DEPTH_MM - SHELF_FRONT_MM;
 export const SHELF_DEPTH = SHELF_DEPTH_MM * DU_MM;
 export const SHELF_FRONT = SHELF_FRONT_MM * DU_MM;
-export const FRAME_FRONT = (SHELF_FRONT_MM - 3) * DU_MM; // 평평한 벽 면(구멍 앞 끝, z = −FRAME_FRONT)
+export const FRAME_FRONT = (SHELF_FRONT_MM + (FRAME_ON ? LOOK.lipMm : -3)) * DU_MM; // 평평한 벽 면(구멍 앞 끝, z = −FRAME_FRONT). 움푹 파인 책장은 판 앞면보다 앞이다(scene-config/skin LOOK lipMm)
 // 시안 선반 앞면 두께: 853px 시안에서 약 33~35px(1.666px/mm) → 약 21mm. 약 16.4DU.
 // 움푹 파인 책장은 시안 앞면 약 27px에 맞춘 두께(scene-config/skin LOOK)
 export const SHELF_THICK_MM = FRAME_ON ? LOOK.thickMm : 21.5;
 export const SHELF_THICK = SHELF_THICK_MM * DU_MM;
 // 판 좌우 끝(선반 공간 x): 책 줄(0 ~ 사용 폭)보다 양쪽으로 PLANK_OVER씩 길다(줄 가운데에 대해 대칭).
 // 원근 카메라에서 판 앞 끝(z = -SHELF_FRONT)은 눈에 가까워 조금 넓게 보인다: 화면에서는 양 끝에서 약 PLANK_INSET - 1.5 안쪽.
-const PLANK_OVER = 1.5;
+// 움푹 파인 책장은 판 끝이 곧 옆 벽이라 더 길지 않다: 책은 옆 벽에 닿을 수 있다(보이지 않는 벽 없이, 2026-11-05 물리 점검)
+const PLANK_OVER = FRAME_ON ? 0 : 1.5;
 export const SHELF_X0 = -PLANK_OVER;
 export const SHELF_X1 = USABLE_W + PLANK_OVER;
 // 움푹 파인 책장(스킨이 틀을 고른 경우, 2026-11-04 사용자 시안): 평평한 벽(z = −FRAME_FRONT)에 구멍을 파고 그 안쪽 면(틀)과 뒷벽(z = SHELF_DEPTH) 사이에 판을 끼운다.
-// 앞 판 끝은 벽보다 3mm 나와 있다(FRAME_FRONT 위). 구멍 앞 끝은 둥근 테(반지름 RIM_R)다. 테 바깥쪽 약 1DU는 거의 흰색이라 그만큼 판 끝 밖에서 시작해야 화면에서 판 끝과 보이는 테가 한 줄로 맞는다.
-// 안쪽 면(FRAME_X0·FRAME_X1)은 테만큼 안쪽이다(판 끝은 안쪽 면에 조금 파묻혀 끼워진다)
+// 판 끝이 안쪽 면에 닿고(FRAME_X0·FRAME_X1 = 판 끝), 판 앞면은 벽보다 뒤에 있다. 구멍 앞 끝은 둥근 테(반지름 RIM_R)이고 평평한 벽에서 구멍 바깥쪽으로 그만큼 넓다:
+// 화면에서 벽 → 테 → 판 끝 순서로 놓여 테가 판에 끊기지 않는다
 export const RIM_R = FRAME_ON ? LOOK.rimMm * DU_MM : 0;
-const RIM_OUT = FRAME_ON ? 1 : 0;
-export const FRAME_X0 = SHELF_X0 + RIM_R - RIM_OUT;
-export const FRAME_X1 = SHELF_X1 - RIM_R + RIM_OUT;
+export const FRAME_X0 = SHELF_X0;
+export const FRAME_X1 = SHELF_X1;
+
+// 옆 벽에 기댄 책의 기댄 상대(lean.on)
+export const WALL_L = '#wall-l';
+export const WALL_R = '#wall-r';
+export const isWallId = (id: string | undefined) => id === WALL_L || id === WALL_R;
 
 export const SHELF = {
   sideMargin: USABLE_LEFT, // 선반 공간 x=0의 화면 설계 좌표
@@ -97,8 +102,8 @@ export function viewSettle(home: number, p0: number, now: number, vy: number) {
   if (moved < VIEW_SMALL_DEG) return home;
   return now - VIEW_PITCH_MIN < VIEW_PITCH_MAX - now ? VIEW_PITCH_MIN : VIEW_PITCH_MAX;
 }
-// 눕힌 책의 수직축 회전 범위(도). 미적·조작상의 제한(선반 깊이·충돌·받침에 따라 더 좁아질 수 있다).
-export const MAX_SPIN = 12;
+// 눕힌 책의 수직축 회전 범위(도). 2026-11-05 사용자 '돌리고 눕히면 벽에 대각선으로 눕는지': 뒷모서리가 벽에 닿고 앞모서리는 무게중심이 판 위인 데까지 판 앞으로 나간다(옆 책·옆 벽에 따라 더 좁아진다).
+export const MAX_SPIN = 45;
 // 표지 책의 좌우 돌리기 범위(도): 서 있는 책은 제자리에서 자유롭게 돈다(2026-10-10 사용자: 표지 상태 돌리기는 자유로워야).
 // 옆 책·벽·선반 끝에 닿으면 그 직전에서 멈춘다(frontSpin reach)
 export const MAX_FRONT_SPIN = 90;

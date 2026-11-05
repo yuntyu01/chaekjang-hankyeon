@@ -18,6 +18,9 @@ jest.mock('expo-sqlite/kv-store', () => ({
   },
 }));
 
+// 옆으로 떨어지는 책은 틀이 없는 스킨에만 있다(틀이 있으면 옆 벽에 기댄다: wall-physics 시험)
+jest.mock('@/scene-config/skin', () => ({ ...jest.requireActual('@/scene-config/skin'), FRAME_ON: false }));
+
 import { moveToShelf, type BookMap } from '@/domain/layout-engine';
 import { resolveLeans, withLeans } from '@/domain/shelf-scene';
 import type { Book, BookPlacement, ShelfLayout } from '@/domain/types';

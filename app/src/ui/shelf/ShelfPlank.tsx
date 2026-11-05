@@ -12,7 +12,7 @@ import { useDerivedValue, type SharedValue } from 'react-native-reanimated';
 import { toPx, VIEW_CX, VIEW_DIST, type Affine, type Cam, type Vec3 } from '@/domain/camera';
 import { project, type Camera } from '@/domain/box';
 import { BACK_CORNER_R, PLANK_END_R, RIM_CORNER, SOFT_W } from '@/domain/book-parts';
-import { DESIGN_WIDTH, FRAME_FRONT, FRAME_X0, FRAME_X1, SHELF, SHELF_DEPTH, SHELF_FRONT, SHELF_THICK, SHELF_X0, SHELF_X1 } from '@/domain/geometry';
+import { DESIGN_WIDTH, FRAME_FRONT, FRAME_X0, FRAME_X1, RIM_R, SHELF, SHELF_DEPTH, SHELF_FRONT, SHELF_THICK, SHELF_X0, SHELF_X1 } from '@/domain/geometry';
 import { darkening, DESIGN, EREF, FAR, NEGLIGIBLE, shadowAlpha, SOFT_DEPTH, SREF, type Env } from '@/domain/light-model';
 import { hull } from '@/domain/shadow-shape';
 import type { Point } from '@/domain/shelf-scene';
@@ -48,6 +48,8 @@ function grow(poly: Point[], i: number, j: number, dir: Point): Point[] {
 }
 
 // ---------- 평면들(줄 공간) ----------
+// 판 앞면 양 끝의 둥근 법선 폭: 사진에서 끝 2~3px가 곡면으로 어두워진다(윤곽 반지름 2mm보다 좁다. 윤곽과 같은 폭이면 앞 모서리 빛줄이 끝에서 일찍 끊긴다)
+const PLANK_END_NORMAL_R = 1;
 // 판 윗면(y = 0): 앞 모서리 둥글기. 판 앞면(z = −SHELF_FRONT): 위·아래 모서리 둥글기. 벽(z = SHELF_DEPTH): 판과 만나는 안쪽 모서리라 둥글기 없음
 const TOP: Plane = { O: { x: 0, y: 0, z: 0 }, n: { x: 0, y: 1, z: 0 }, edges: [{ T: { x: 0, y: 0, z: -1 }, at: SHELF_FRONT }] };
 const FRONT: Plane = {
@@ -57,6 +59,7 @@ const FRONT: Plane = {
     { T: { x: 0, y: 1, z: 0 }, at: 0 },
     { T: { x: 0, y: -1, z: 0 }, at: SHELF_THICK },
   ],
+  endR: PLANK_END_NORMAL_R,
 };
 // 벽 평면: 뒷벽(z = SHELF_DEPTH), 움푹 파인 책장의 구멍 밖 평평한 벽(z = −FRAME_FRONT)
 function wallPlane(z: number): Plane {
@@ -67,18 +70,20 @@ function wallPlane(z: number): Plane {
 export function rowEnv(space: number, top: boolean): Env {
   return FRAME_ON ? { floor: 0, ceil: space, side: true } : { floor: 0, ceil: top ? FAR : space };
 }
-// 맨 아랫줄 판 밑 벽의 둘레: 위로 판 아랫면만. 움푹 파인 책장이면 판 밑은 구멍 밖 평평한 벽(FLAT_Z)이라 벽보다 나온 판 끝만 가린다
+// 맨 아랫줄 판 밑 벽의 둘레: 위로 판 아랫면만(틀이 없을 때. 움푹 파인 책장은 판이 벽보다 뒤라 판 밑 평평한 벽을 가리지 않는다)
 export const FLAT_Z = FRAME_ON ? -FRAME_FRONT : SHELF_DEPTH;
 export const UNDER_ENV: Env = { floor: -FAR, ceil: -SHELF_THICK };
 
 // 맨 아랫줄 판 밑 벽이 판 때문에 어두워지는 깊이: 어둠이 화면 한 단계의 절반보다 작아지는 곳까지(판 가운데 아래에서)
 const MID_X = (SHELF_X0 + SHELF_X1) / 2;
-export const SHELF_CAST_EXTENT = (() => {
+export const SHELF_CAST_EXTENT = FRAME_ON ? RIM_R + 8 : (() => {
   const n: Vec3 = { x: 0, y: 0, z: -1 };
   let d = 1;
   while (d < 1000 && shadowAlpha(darkening({ x: MID_X, y: -SHELF_THICK - d, z: FLAT_Z }, n, UNDER_ENV, [])) >= NEGLIGIBLE) d *= 1.1;
   return d;
 })();
+// 맨 아랫줄 구멍 아래 끝: 판 아랫면보다 이만큼 위다. 벽이 판보다 앞이라 화면에서 구멍 끝이 판 아랫면보다 조금 낮게 나와, 그 틈이 비지 않게 판이 구멍 끝을 덮는다
+export const HOLE_BOTTOM_OVER = 0.6;
 
 // 평면 사각형 영역을 칸 간격 BAKE_TEXEL 안팎으로 나눈 굽기 영역(가로·세로 칸 크기는 영역에 꼭 맞게)
 function bakeArea(O: Vec3, along: Vec3, across: Vec3, len: number, wid: number, plane: Plane, texU = BAKE_TEXEL, texV = BAKE_TEXEL): BakeArea {
@@ -155,6 +160,27 @@ function Face({ poly, children }: { poly: RO<SkPath>; children?: React.ReactNode
   );
 }
 
+// 둔각 꼭짓점(판 윗면 빗변과 앞면 세로 변이 만나는 어깨)은 같은 반지름으로 둥글려도 곡선이 아주 짧아 뾰족해 보인다(2026-11-05 사용자 '선반 끝 곡선').
+// 양쪽 변으로 d만큼 물러난 두 점으로 바꿔 직각 모서리와 비슷한 길이의 곡선이 되게 한다
+function softShoulders(pts: Point[], d: number): Point[] {
+  'worklet';
+  const out: Point[] = [];
+  const n = pts.length;
+  for (let i = 0; i < n; i++) {
+    const v = pts[i];
+    const a = pts[(i + n - 1) % n];
+    const b = pts[(i + 1) % n];
+    const la = Math.hypot(a.x - v.x, a.y - v.y);
+    const lb = Math.hypot(b.x - v.x, b.y - v.y);
+    const cos = la > 0 && lb > 0 ? ((a.x - v.x) * (b.x - v.x) + (a.y - v.y) * (b.y - v.y)) / (la * lb) : 0;
+    // 안쪽 각이 110°보다 크고 양쪽 변이 충분히 길 때만(cos 110° ≈ −0.34)
+    if (cos < -0.34 && la > 4 * d && lb > 4 * d) {
+      out.push({ x: v.x + ((a.x - v.x) / la) * d, y: v.y + ((a.y - v.y) / la) * d }, { x: v.x + ((b.x - v.x) / lb) * d, y: v.y + ((b.y - v.y) / lb) * d });
+    } else out.push(v);
+  }
+  return out;
+}
+
 // 판의 화면 모양(px 변환 px로): 윗면·앞면 다각형과 두 면의 투영 껍질을 모서리 반지름(PLANK_END_R)으로 둥글린 윤곽.
 // 판 그리기(ShelfBoard)와 아래 줄 캔버스가 이 판 자리를 비우는 윤곽이 같은 모양을 쓴다(판 끝 둥근 모서리로 깎인 곳은 아래 줄이 판 밑 벽을 칠한다)
 export function plankShape(c: Camera, px: Affine) {
@@ -162,15 +188,18 @@ export function plankShape(c: Camera, px: Affine) {
   const f = shelfFaces(c);
   const s = px.s;
   const P = (q: Point) => ({ x: q.x * s + px.tx, y: q.y * s + px.ty });
-  // 움푹 파인 책장: 판 앞 끝은 둥근 테 바깥과 한 줄이고 뒤로 가며 안쪽 면에 맞닿는다
-  const top = (FRAME_ON ? [project(c, { x: FRAME_X0, y: 0, z: SHELF_DEPTH }), project(c, { x: FRAME_X1, y: 0, z: SHELF_DEPTH }), f.top.poly[2], f.top.poly[3]] : f.top.poly).map(P);
+  const top = f.top.poly.map(P);
   // 앞면은 위 변(윗면과 공유)을 위로 조금 덮는다
   const front = grow(f.front.poly.map(P), 0, 1, { x: 0, y: -1 });
-  return { top, front, outline: roundedPolygon(hull([...top, ...front]), PLANK_END_R * s) };
+  return { top, front, outline: roundedPolygon(softShoulders(hull([...top, ...front]), PLANK_END_R * s), PLANK_END_R * s) };
 }
+// 아래 줄 캔버스가 비우는 자리. 경로 자르기는 안티에일리어싱이 없어 둥근 모서리 쪽에서만 판의 마지막 어두운 화소 줄이 드러났다(1줄, 약 5px): 아래 끝을 1px 올려 그 줄은 어디서나 아래 줄이 덮는다
 export function plankOutlinePath(c: Camera, px: Affine) {
   'worklet';
-  return pathOf(plankShape(c, px).outline);
+  const o = plankShape(c, px).outline;
+  let y1 = -Infinity;
+  for (const q of o) y1 = Math.max(y1, q.y);
+  return pathOf(o.map((q) => ({ x: q.x, y: Math.min(q.y, y1 - 1) })));
 }
 
 // 판(윗면·앞면). env: 이 판 위 줄의 둘레, atlas: 그 줄의 구운 하늘 가림(TOP_KEY·FRONT_KEY 자리), keyShadow·frontShadow: 그 줄 책이 판 윗면·앞면에서 창빛을 가리는 몫
@@ -298,7 +327,8 @@ export function ShelfFlatWall({ cam, px, topY, bottomY, openTop, openBottom, cei
     const Y = (y: number) => toPx(c, px, { x: 0, y, z: -FRAME_FRONT }).y;
     // 뒷벽 위 끝은 카메라 기울기로 이 면 위 끝보다 화면에서 더 위에 온다. 이 면이 함께 올라가 덮지 않으면 구멍 밖으로 회색 띠가 삐져나온다.
     // 끝이 같은 줄에 겹치면 두 가장자리의 흐림 사이로 뒷벽이 비쳐 옅은 선이 남아 1px 더 올린다
-    const ya = Math.min(Y(topY), toPx(c, px, { x: 0, y: topY, z: SHELF_DEPTH }).y - 1);
+    // 틀 면을 앞으로 늘려 그린 몫(SIDE_AHEAD)도 눈보다 높은 줄에서는 화면에서 더 위로 올라온다: 함께 덮지 않으면 판 옆 테에 작은 눈금이 보인다
+    const ya = Math.min(Y(topY), toPx(c, px, { x: 0, y: topY, z: SHELF_DEPTH }).y - 1, toPx(c, px, { x: 0, y: topY, z: -FRAME_FRONT - SIDE_AHEAD }).y - 1);
     const yb = Y(bottomY);
     const xl = toPx(c, px, { x: FRAME_X0, y: 0, z: -FRAME_FRONT }).x;
     const xr = toPx(c, px, { x: FRAME_X1, y: 0, z: -FRAME_FRONT }).x;

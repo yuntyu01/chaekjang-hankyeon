@@ -20,12 +20,12 @@ export const SQUARE = mm(2.5);
 export const EDGE_R = mm(4);
 // 두 면이 함께 보이는 세로 변(돌린 표지 책의 표지·옆면)의 둥글기 7mm(2026-11-02 사용자 '정면이랑 측면 이어지는 쪽 좀 둥글게'). 법선은 두 면의 가운데(45°)에서 만난다
 export const SEAM_R = mm(7);
-// 선반 판 모서리 둥글기 2mm(사용자 결정 2026-10-26: 4mm는 판 윗면 앞 끝이 밝은 띠로 칠해져 윗면은 두껍고 앞면은 얇아 보였다).
-// 판 면 모서리 법선(셰이더 PLANKR)이 쓴다.
-export const PLANK_EDGE_R = mm(2);
+// 선반 판 모서리 둥글기 3mm(판 면 모서리 법선, 셰이더 PLANKR). 2026-10-26 4mm는 판 윗면 앞 끝이 밝은 띠로 칠해져 2mm로 줄였고(그때는 눈이 높아 윗면으로 많이 보였다),
+// 2026-11-05 사용자 사진 '둥근 만큼 빛 반사': 그 사진의 판 앞 모서리 빛줄이 약 3~4px라 3mm로 키웠다(위쪽 조명 light.overhead가 비치는 띠 폭 ≈ 반지름의 절반)
+export const PLANK_EDGE_R = mm(3);
 // 선반 양끝 윤곽의 둥글기 5mm(2026-11-03 사용자 시안 '선반 양끝 부드럽게', 시안에서 약 4.5mm). 윤곽(화면 모양)만 둥글린다: 면 빛의 모서리 법선은 위의 2mm 그대로라 앞 끝 밝은 띠가 다시 생기지 않는다
-// 움푹 파인 책장은 판 끝이 안쪽 면에 맞닿아 거의 각지다(시안 판 끝 아래 모서리 약 1mm)
-export const PLANK_END_R = FRAME_ON ? mm(2) : mm(5);
+// 움푹 파인 책장은 판 끝이 안쪽 면에 맞닿는다. 2026-11-05 사용자 사진의 판 끝 모서리 약 2.5mm
+export const PLANK_END_R = FRAME_ON ? mm(2.6) : mm(5);
 // 뒷벽 꼭지점과 판 윗면 뒤쪽 꼭지점 둥글기(scene-config/skin LOOK)
 export const BACK_CORNER_R = mm(LOOK.cornerMm);
 // 안쪽 모서리 번짐 폭: 뒷벽·천장·판 윗면이 맞닿은 면으로 이만큼 서서히 넘어간다(ui/scene-light-sksl softEdge)

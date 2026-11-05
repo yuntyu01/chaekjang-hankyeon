@@ -9,6 +9,7 @@ import {
   MAX_FRONT_SPIN,
   MAX_SPIN,
   frontWidth,
+  isWallId,
   LYING_BACK_Z,
   defaultDepth,
   WALL_GAP,
@@ -201,7 +202,11 @@ export function leanSpacing(items: ShelfItem[], layout: ShelfLayout, books: Book
   const nb = items[i + dir];
   if (!nb) return null;
   const me = itemBoxes(items[i], layout, books, 0)[0];
-  const other = itemBoxes(nb, layout, books, 0);
+  // 옆 책이 이미 기대 있으면 기댄 자세로 닿는다(서 있는 상자로 재면 기운 만큼 틈이 틀려 닿지 못하고 선다)
+  const other = itemBoxes(nb, layout, books, 0).map((o) => {
+    const lean = placementOf(layout, o.bookId)?.lean;
+    return lean ? { ...o, angle: lean.angle, x: o.x - Math.sign(lean.angle) * (lean.slide ?? 0) } : o;
+  });
   const key = `${boxKeyOf([me])}|${boxKeyOf(other)}|${dir}|${want.toFixed(3)}`;
   if (spacingCache.has(key)) return spacingCache.get(key)!;
   const wide = { min: -1e9, max: 1e9 };
@@ -363,9 +368,27 @@ export function settle(layout: ShelfLayout, books: BookMap, desired: Map<string,
 // 그룹에서 빼면 나머지는 빈틈 없이 내려앉는다. 다시 맞추는 것은 그 책이 있던 줄뿐이다: 다른 줄까지 맞추면 저장 위치가 없던 줄
 // (예시 배치·옛 저장본)에 반올림한 위치가 붙어, 끄는 동안 상관없는 줄의 자세가 미세하게 바뀌고 경로를 다시 짜게 된다.
 export function detach(layout: ShelfLayout, bookId: string, books?: BookMap): ShelfLayout {
-  const from = layout.placements.find((p) => p.bookId === bookId)?.shelfId;
-  const removed = normalize({ ...layout, placements: layout.placements.filter((p) => p.bookId !== bookId) });
-  return books ? settle(removed, books, bookXs(layout, books), from) : removed;
+  const gone = layout.placements.find((p) => p.bookId === bookId);
+  const from = gone?.shelfId;
+  const stack = gone?.stackId ? layout.placements.filter((p) => p.stackId === gone.stackId).sort((a, b) => (a.stackOrder ?? 0) - (b.stackOrder ?? 0)) : [];
+  const at = stack.findIndex((p) => p.bookId === bookId);
+  const above = at >= 0 ? stack[at + 1] : undefined;
+  const placements = layout.placements.filter((p) => p.bookId !== bookId);
+  const desired = books ? bookXs(layout, books) : null;
+  if (above && books && desired) {
+    // 받치던 책이 빠지면 위 책들은 옆으로 움직이지 않고 그 자리로 곧장 떨어진다(2026-11-05 사용자 '눕혀 있는 책 빼면 떨어지는지').
+    // 맨 아래 책이 빠지면 바로 위 책이 새 받침이 되어 지금 놓인 가로·깊이를 그대로 갖고, 빠진 책이 위 책에 준 어긋남은 그다음 책이 이어받는다
+    const box = boxOf(layout, books, above.bookId);
+    const carry = (q: BookPlacement) => ({ ...q, stackDx: round2((q.stackDx ?? 0) + (gone?.stackDx ?? 0)) || undefined, stackDz: round2((q.stackDz ?? 0) + (gone?.stackDz ?? 0)) || undefined });
+    const i = placements.findIndex((q) => q.bookId === above.bookId);
+    if (at === 0 && box) {
+      // 그다음 책은 새 받침 기준 어긋남을 그대로 둔다(새 받침의 어긋남만큼 절대 자리가 밀리지 않게 따로 더하지 않는다: 받침 x·z가 어긋남까지 품는다)
+      placements[i] = { ...placements[i], depth: round2(box.z), stackDx: undefined, stackDz: undefined };
+      for (const id of stack.map((p) => p.bookId)) if (id !== bookId) desired.set(id, box.x);
+    } else placements[i] = carry(placements[i]);
+  }
+  const removed = normalize({ ...layout, placements });
+  return books && desired ? settle(removed, books, desired, from) : removed;
 }
 
 function withOrders(layout: ShelfLayout, shelfId: string, items: ShelfItem[]): BookPlacement[] {
@@ -400,6 +423,13 @@ function insertItem(
   return settle(next, books, desired);
 }
 
+// 혼자 놓인 돌려 눕힌 책(쌓인 책은 위 책 받침 판정이 있어 판 안에 둔다)
+function lyingSpun(item: ShelfItem, layout: ShelfLayout) {
+  if (item.stacked) return false;
+  const p = placementOf(layout, item.bookIds[0]);
+  return p?.pose === 'horizontal' && !!p.spin;
+}
+
 // 여러 선반의 공간·무결성을 한 번에 확인한다: 좌우 끝, 앞뒤 깊이(선반 앞 끝~뒷벽), 쌓기 받침.
 // 선반 밖으로 튀어나오는 배치는 허용하지 않는다: 모든 책(돌린 책·쌓인 책 포함)의 실제 바닥 네 모서리가
 // 좌우 경계(0 ~ 사용 폭)와 깊이(앞 끝 -SHELF_FRONT ~ 벽 SHELF_DEPTH) 안에 있어야 한다.
@@ -419,7 +449,13 @@ export function checkSpace(layout: ShelfLayout, books: BookMap, only?: string): 
       // 선반 윗면 전체(앞 끝 ~ 벽) 안: 책 기준선(z=0)은 세운 책이 서는 기본 자리일 뿐 경계가 아니다
       for (const c of itemBottomCorners(p.item, layout, books, p.x)) {
         if (c.x < lo - 0.01 || c.x > hi + 0.01) return 'no-space';
-        if (c.z < -SHELF_FRONT - 0.01 || c.z > SHELF_DEPTH + 0.01) return 'no-space';
+        if (c.z > SHELF_DEPTH + 0.01) return 'no-space';
+        // 돌려 눕힌 책만 앞모서리가 판 앞으로 나갈 수 있다(아래에서 무게중심을 본다)
+        if (c.z < -SHELF_FRONT - 0.01 && !lyingSpun(p.item, layout)) return 'no-space';
+      }
+      if (lyingSpun(p.item, layout)) {
+        const box = itemBoxes(p.item, layout, books, p.x)[0];
+        if (box.z + spunExtent(books[box.bookId], box.spin).d / 2 < -SHELF_FRONT + OVERHANG_MARGIN) return 'no-space';
       }
     }
   }
@@ -624,8 +660,9 @@ export function setPose(layout: ShelfLayout, books: BookMap, bookId: string, pos
   const book = books[bookId];
   // 새 자세의 깊이: 사용자가 둔 깊이(더미에서 나오면 지금 놓인 깊이)는 자세를 바꿔도 지키고 선반 안으로만 맞춘다.
   // 처음 표지 전시하는 책(깊이 기록 없음)은 벽에 기대 본다(wallLeanPose), 자리가 없으면 뒤쪽(벽에서 WALL_GAP 앞)에 세워 본다.
-  const kept = p.stackId ? boxOf(layout, books, bookId)?.z : p.depth;
   const d = placementDepth(book, { pose, depth: 0 }).z1;
+  // 돌려 눕힌 책의 깊이는 앞으로 나온 모서리 자리라 그대로 쓰면 세울 때 판 맨 앞으로 튀어나온다: 책 가운데를 지킨다
+  const kept = p.stackId ? boxOf(layout, books, bookId)?.z : p.pose === 'horizontal' && p.spin && p.depth !== undefined ? p.depth + spunExtent(book, p.spin).d / 2 - d / 2 : p.depth;
   const fit = (z: number) => round2(Math.max(-SHELF_FRONT, Math.min(SHELF_DEPTH - d, z)));
   type Try = { depth?: number; pitch?: number };
   const tries: Try[] = kept !== undefined ? [{ depth: fit(kept) }] : pose === 'front' ? [wallLeanPose(frontDims(book), SHELF_DEPTH), { depth: fit(SHELF_DEPTH - WALL_GAP - d) }, {}] : [{}];
@@ -639,7 +676,14 @@ export function setPose(layout: ShelfLayout, books: BookMap, bookId: string, pos
       const placements = layout.placements.map((q) => (q.bookId === bookId ? { ...q, pose, tilt: 0 as Tilt, depth, spin: undefined, pitch, wallLean: undefined, flip: undefined } : q));
       last = finish(layout, settle(normalize({ ...layout, placements }), books, bookXs(layout, books)), books);
     }
-    if (last.ok) return last;
+    if (last.ok) {
+      // 돌린 채 눕히거나 세운다: 되는 데까지 그 각을 지킨다(2026-11-05 사용자 '돌리고 눕히면 대각선으로 눕는지')
+      if (pose === 'horizontal' && found.pose === 'front' && found.spin && !found.stackId) {
+        const spun = setSpin(last.layout, books, bookId, found.spin);
+        if (spun.ok) return spun;
+      }
+      return last;
+    }
   }
   return last;
 }
@@ -1359,12 +1403,18 @@ export function setSpin(layout: ShelfLayout, books: BookMap, bookId: string, deg
   const book = books[bookId];
   const z0 = placementDepth(book, p);
   const center = (z0.z0 + z0.z1) / 2; // 가운데를 축으로 돈다: 깊이 가운데는 그대로(선반 앞선·뒷벽 안으로만)
+  const w0 = spunExtent(book, p.spin).w;
+  const x0 = desired.get(bookId) ?? 0;
   const tryAt = (a: number): ShelfLayout | null => {
     const spin = Math.round(a * 100) / 100 || undefined;
-    const d = spunExtent(book, spin).d;
-    const depth = Math.round(Math.max(-SHELF_FRONT, Math.min(SHELF_DEPTH - d, center - d / 2)) * 100) / 100;
+    const e = spunExtent(book, spin);
+    // 혼자 놓인 책은 뒷모서리가 벽에 닿으면 앞으로 밀려나고 앞모서리는 판 앞으로 나갈 수 있다(checkSpace가 무게중심을 본다), 더미 받침은 판 안에
+    const back = Math.min(SHELF_DEPTH - e.d, center - e.d / 2);
+    const depth = Math.round((p.stackId ? Math.max(-SHELF_FRONT, back) : back) * 100) / 100;
     const placements = layout.placements.map((q) => (q.bookId === bookId ? { ...q, spin, depth: p.stackId ? q.depth : depth } : q));
-    const next = settle({ ...layout, placements }, books, desired, p.shelfId);
+    // 가운데를 축으로 돈다: 왼쪽 끝이 넓어진 폭의 절반만큼 옮겨 간다(더미는 자리 그대로)
+    const want2 = p.stackId ? desired : new Map(desired).set(bookId, Math.round((x0 - (e.w - w0) / 2) * 100) / 100);
+    const next = settle({ ...layout, placements }, books, want2, p.shelfId);
     return checkSpace(next, books, p.shelfId) ? null : next;
   };
   let best = tryAt(want);
@@ -1418,6 +1468,11 @@ export function setTilt(layout: ShelfLayout, books: BookMap, bookId: string, til
     const i = items.findIndex((it) => it.bookIds.includes(bookId));
     const dir = tilt < 0 ? -1 : 1;
     const nb = items[i + dir];
+    if (!nb && FRAME_ON) {
+      // 그쪽에 옆 책이 없으면 옆 벽에 기댄다: 윗모서리가 벽에 닿는 각이 want가 되는 자리로 옮긴다(발 쪽 책은 필요한 만큼 settle이 민다)
+      const lift = bookHeight(books[bookId]) * Math.sin((want * Math.PI) / 180);
+      desired.set(bookId, dir < 0 ? SHELF_X0 + lift : SHELF_X1 - bookThickness(books[bookId]) - lift);
+    }
     if (nb) {
       const pos = itemPositions(items, next, books);
       const [l, r] = dir < 0 ? [i - 1, i] : [i, i + 1];
@@ -1439,10 +1494,20 @@ export function setTilt(layout: ShelfLayout, books: BookMap, bookId: string, til
           for (const k of ks) for (const id of items[k].bookIds) desired.set(id, desired.get(id)! + v);
         };
         const delta = s - have;
-        const a = delta > 0 ? Math.min(delta, room(ahead, dir)) : delta;
-        shift(ahead, dir * a);
-        const rest = delta > 0 ? Math.min(delta - a, room(behind, -dir)) : 0;
-        if (rest > 0.05) shift(behind, -dir * rest);
+        // 받침 쪽 줄이 옆 벽에 기대 있으면 그 자리가 곧 벽까지 거리라 옮기지 못한다: 이 책 쪽만 옮긴다(좁힐 때는 이 책만)
+        const wallLocked = ahead.some((k) => items[k].bookIds.some((id) => isWallId(placementOf(next, id)?.lean?.on)));
+        if (wallLocked) {
+          if (delta < 0) shift([i], -dir * delta);
+          else {
+            const rest = Math.min(delta, room(behind, -dir));
+            if (rest > 0.05) shift(behind, -dir * rest);
+          }
+        } else {
+          const a = delta > 0 ? Math.min(delta, room(ahead, dir)) : delta;
+          shift(ahead, dir * a);
+          const rest = delta > 0 ? Math.min(delta - a, room(behind, -dir)) : 0;
+          if (rest > 0.05) shift(behind, -dir * rest);
+        }
       }
     }
   }

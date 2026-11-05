@@ -72,8 +72,8 @@ it('면 = 3D 꼭짓점의 투영, 이웃 면은 같은 꼭짓점', () => {
 });
 
 it('판은 책 줄(0 ~ 사용 폭)을 덮고 화면 안에 들어간다', () => {
-  expect(SHELF_X0).toBeLessThan(0);
-  expect(SHELF_X1).toBeGreaterThan(SHELF_USABLE_WIDTH);
+  expect(SHELF_X0).toBeLessThanOrEqual(0);
+  expect(SHELF_X1).toBeGreaterThanOrEqual(SHELF_USABLE_WIDTH);
   const f = shelfFaces(CAMERA);
   const xs = Object.values(f.corners).map((q) => SHELF.sideMargin + q.x);
   expect(Math.min(...xs)).toBeGreaterThan(0);

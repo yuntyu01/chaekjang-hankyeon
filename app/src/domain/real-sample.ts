@@ -61,6 +61,7 @@ function toBook([id, title, author, publisher, goods, widthMm, heightMm, pages, 
 
 const ALL = ROWS.map(toBook);
 const byId = (id: string) => ALL.find((b) => b.id === id)!;
+export const realBookOf = byId;
 // 표지 책의 자세: 벽에 기댄다(앱 기본 자세와 같다, front-pose wallLeanPose)
 const leaning = (id: string, spin = 0): Pick<BookPlacement, 'depth' | 'pitch' | 'spin'> => wallLeanPose(frontDims(byId(id)), SHELF_DEPTH, spin);
 // 크게 돌린 책(옆모습): 곧게 서서 벽 가까이. 책이 벽을 뚫지 않는 만큼만 앞으로

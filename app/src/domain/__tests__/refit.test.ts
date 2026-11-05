@@ -1,6 +1,7 @@
 // 선반 경계(좌우 끝·깊이 0~230mm) 판정, 188mm 책 돌리기, 깊이 300mm·20DU 돌출 시절 저장본 복구.
 import { mm, SHELF_DEPTH, SHELF_FRONT, SHELF_USABLE_WIDTH } from '../geometry';
-import { checkSpace, fitToShelf, itemBottomCorners, itemPositions, placementOf, setSpin, shelfItems, type BookMap } from '../layout-engine';
+import { corners, fromPlaced } from '../book3';
+import { boxOf, checkSpace, fitToShelf, itemBottomCorners, itemPositions, placementOf, setSpin, shelfItems, type BookMap } from '../layout-engine';
 import { SAMPLE_BOOKS, SAMPLE_LAYOUT } from '../onboarding-sample';
 import type { Book, BookPlacement, ShelfLayout, Tilt } from '../types';
 
@@ -77,14 +78,16 @@ describe('188mm 눕힌 책 돌리기', () => {
     if (r.ok) expectInside(r.layout, bm);
   });
 
-  it('깊이(0~230mm)가 모자라면 그 각도까지만', () => {
+  it('깊이(0~230mm)가 모자라면 뒷모서리가 벽에 닿고 앞모서리가 판 앞으로 조금 나온다(무게중심은 판 위)', () => {
     // 표지 폭 200mm: 12°면 188·sin12 + 200·cos12 ≈ 235mm > 230mm
     const l = layoutOf(place('W', 0, 100, { pose: 'horizontal' }));
     const r = setSpin(l, books, 'W', 12);
-    const got = r.ok ? spinOf(r.layout, 'W') : 0;
-    expect(got).toBeLessThan(12);
-    expect(got).toBeGreaterThan(8);
-    if (r.ok) expectInside(r.layout, books);
+    if (!r.ok) throw new Error(r.reason);
+    expect(spinOf(r.layout, 'W')).toBe(12);
+    const cs = corners(fromPlaced(boxOf(r.layout, books, 'W')!));
+    expect(Math.max(...cs.map((c) => c.z))).toBeCloseTo(SHELF_DEPTH, 1);
+    expect(Math.min(...cs.map((c) => c.z))).toBeLessThan(-SHELF_FRONT);
+    expect(cs.reduce((s, c) => s + c.z, 0) / cs.length).toBeGreaterThan(-SHELF_FRONT);
   });
 });
 

@@ -1,12 +1,12 @@
 // 선반 한 칸의 책 프레임 계산(순수). 프레임 = 선반 공간의 3D 상자(카메라와 무관). 그리기·터치·그림자는 이 상자를
 // 매 프레임 같은 카메라로 투영해 쓴다(투영 결과를 여기 저장하지 않는다).
 import { boxSize, collide, CONTACT, frontPoly, hull, type Placed } from './box';
-import { corners, fromPlaced, type Book3 } from './book3';
+import { corners, fromPlaced, gap, type Book3 } from './book3';
 import { project, type Cam, type Point } from './camera';
 import { FRAME_ON } from '@/scene-config/skin';
 
-import { SHELF, SHELF_USABLE_WIDTH, SHELF_X0, SHELF_X1 } from './geometry';
-import { bookXs, checkSpace, EDGE_PAD, itemBoxes, itemPositions, moveToDrawer, normalize, OVERHANG_MARGIN, placementOf, setTilt, settle, shelfItems, type BookMap } from './layout-engine';
+import { FRAME_FRONT, isWallId, SHELF, SHELF_DEPTH, SHELF_USABLE_WIDTH, SHELF_X0, SHELF_X1, WALL_L, WALL_R } from './geometry';
+import { bookXs, checkSpace, EDGE_PAD, frontRelease, frontStateOf, itemBoxes, itemPositions, moveToDrawer, normalize, OVERHANG_MARGIN, placementOf, setTilt, settle, shelfItems, type BookMap } from './layout-engine';
 import { firstContact, leanContact, type LeanContact } from './lean';
 import { centerXY, contactOf, fallenSpan, isBacked, LEAN_MENU_MAX, leanStatics, supportTips, tipAngle, type Force } from './statics';
 import { tiltToward, type Book, type Pose, type ShelfLayout, type Tilt } from './types';
@@ -36,6 +36,13 @@ export type ItemFrame = { key: string; x: number; width: number; bookIds: string
 
 // 선반 판 좌우 끝(선반 공간 x). 이 밖으로 쓰러지거나 지나가면 안 된다(판 3D 상자와 같은 값).
 export const PLANK_BOUNDS = { min: SHELF_X0, max: SHELF_X1 };
+
+// 움푹 파인 책장의 옆 벽(2026-11-05 사용자 '새로운 벽에 기대는지'): 책처럼 기댈 수 있는 아주 높은 상자. 기댄 상대(lean.on)도 책 id처럼 저장한다.
+// 판 끝으로 떨어지는 대신 벽에 닿아 멈추므로, 틀이 있으면 '판 끝 밖'은 생기지 않는다
+export { WALL_L, WALL_R };
+const WALL_T = 60;
+const wallBox = (bookId: string, x: number): Placed => ({ bookId, pose: 'spine', size: { w: WALL_T, h: 4000, d: SHELF_DEPTH + FRAME_FRONT }, x, y: 0, z: -FRAME_FRONT, angle: 0 });
+export const SIDE_WALLS: Placed[] = FRAME_ON ? [wallBox(WALL_L, SHELF_X0 - WALL_T), wallBox(WALL_R, SHELF_X1)] : [];
 
 function frameOf(p: Placed, bookId: string, itemKey: string, shelfId: string, tilt: Tilt, stackIndex: number): BookFrame {
   return { bookId, itemKey, shelfId, pose: p.pose, tilt, stackIndex, box: p };
@@ -123,7 +130,7 @@ function solveLeans(frames: BookFrame[], layout: ShelfLayout, first: -1 | 1) {
     Object.assign(f, { box: { ...f.box, x, angle: r.angle }, slide: slide || undefined, leanOn: r.on, leanFailed: !!r.failed, fell: r.fell ? (Math.sign(f.tilt) as -1 | 1) : undefined });
   };
   // 장애물: 바닥에 누운 책과, 이 책에 기대 있는 책(이 책이 기울면 함께 밀려난다)은 뺀다
-  const othersOf = (f: BookFrame) => frames.filter((o) => o !== f && !fallen.has(o.bookId) && o.leanOn !== f.bookId).map((o) => o.box);
+  const othersOf = (f: BookFrame) => [...frames.filter((o) => o !== f && !fallen.has(o.bookId) && o.leanOn !== f.bookId).map((o) => o.box), ...SIDE_WALLS];
   // 발 뒤(기우는 반대쪽)에 붙어 선 책이 발을 막으면 바닥이 미끄러지지 않는다: 바닥 마찰 대신 그 책이 발을 민다
   // (바닥이 발을 기우는 쪽으로 밀어야 할 때만, 바닥이 책을 누르고 있을 때만). 기운 상자 그대로 뒤 책에 닿아 있는지 본다
   // (예전에는 서 있던 상자로 봐서, 기울어 들린 아래 모서리가 뒤 책에서 37mm까지 떨어져 있어도 막힌 것으로 쳤다).
@@ -196,7 +203,7 @@ function solveLeans(frames: BookFrame[], layout: ShelfLayout, first: -1 | 1) {
 
     // 버티는지(무게중심·바닥 마찰)와 받침이 넘어가는지. 기대는 사슬의 바깥(아무도 기대지 않은 책)부터 미는 힘을 넘긴다.
     const active = frames.filter((f) => f.pose === 'spine' && f.tilt !== 0 && !standing.has(f.bookId) && !fallen.has(f.bookId) && f.leanOn && f.box.angle);
-    const byId = new Map(frames.map((f) => [f.bookId, f]));
+    const byId = new Map([...frames, ...SIDE_WALLS.map((w) => frameOf(w, w.bookId, w.bookId, '', 0, 0))].map((f) => [f.bookId, f]));
     const loads = new Map<string, Force[]>();
     const leansOnMe = (id: string) => active.filter((f) => f.leanOn === id && !(paired.has(f.bookId) && paired.has(id)));
     const order: BookFrame[] = [];
@@ -225,8 +232,8 @@ function solveLeans(frames: BookFrame[], layout: ShelfLayout, first: -1 | 1) {
     // 받침이 되는 똑바로 선 세운 책: 미는 힘에 넘어가면 그쪽으로 기운다(다음 바퀴에 넘어지는 책으로 푼다)
     for (const [id, pushes] of loads) {
       const s = byId.get(id);
-      // 지금 똑바로 선 책(기대려다 실패해 선 책 포함: 저장된 기울기와 상관없이 실제 각으로 본다)
-      if (!s || s.pose !== 'spine' || s.box.angle !== 0 || s.stackIndex !== 0) continue;
+      // 지금 똑바로 선 책(기대려다 실패해 선 책 포함: 저장된 기울기와 상관없이 실제 각으로 본다). 옆 벽은 넘어가지 않는다
+      if (!s || isWallId(id) || s.pose !== 'spine' || s.box.angle !== 0 || s.stackIndex !== 0) continue;
       const others = othersOf(s);
       const d = supportTips(s.box, pushes, (dir) => isBacked(s.box, dir, others));
       if (!d) continue;
@@ -291,8 +298,8 @@ function restOf(f: BookFrame, others: Placed[], stored?: { angle: number; on: st
       }
       return holds(c, slide);
     }
-    // 옆 책이 다가와 파고든다: 서 있던 자리에서 밀려 세워지며 처음 닿는 각
-    const c = leanContact(up, dir, others, PLANK_BOUNDS, 0, Math.max(LEAN_MENU_MAX, Math.abs(stored.angle)));
+    // 옆 책이 다가와 파고든다: 서 있던 자리에서 밀려 세워지며 처음 닿는 각. 저장할 때 반올림한 각이 닿는 각을 아주 조금 넘은 경우(옆 벽)도 찾도록 1° 더 본다
+    const c = leanContact(up, dir, others, PLANK_BOUNDS, 0, Math.max(LEAN_MENU_MAX, Math.abs(stored.angle) + 1));
     if (!c.found) return { angle: 0, failed: true };
     return holds(c);
   }
@@ -319,7 +326,8 @@ type FallRest = { kind: 'lean'; x: number; angle: number; on: string; slide?: nu
 // 발 뒤(넘어지는 반대쪽) 책은 미끄러지는 발을 막는 것으로만 본다: 기운 몸(그 걸음에서 처음 닿는 각의 상자)이 뒤 책에 닿으면 발이 막힌다
 // (solveLeans braced와 같은 규칙). 배치는 기댄 책도 서 있던 상자로 자리를 잡으므로(layout-engine itemBoxes) 배치 자리는 서 있던
 // 상자가 뒤 책에 닿는 데까지(upMax)만 옮기고, 그 너머로 미끄러진 만큼은 slide로 둔다(기운 상자는 들린 아래 모서리만큼 뒤 책과 떨어져 있다).
-function fallRest(up: Placed, d: -1 | 1, others: Placed[]): FallRest {
+function fallRest(up: Placed, d: -1 | 1, row: Placed[]): FallRest {
+  const others = [...row, ...SIDE_WALLS];
   const T = up.size.w;
   const H = up.size.h;
   const mid = up.x + T / 2;
@@ -613,7 +621,13 @@ export function resolveLeans(layout: ShelfLayout, books: BookMap, only?: string)
     const fallen = [...result.values()].filter((f) => f.fell);
     if (!fallen.length) {
       // 저장한 결과를 다시 풀어도 같아야 끝난다(받침이 넘어가 기댄 책이 다른 길로 풀린 것은 저장된 각으로 다시 풀면 바뀔 수 있다)
-      if (JSON.stringify(next.placements) === JSON.stringify(cur.placements)) return { layout: next, falls };
+      if (JSON.stringify(next.placements) === JSON.stringify(cur.placements)) {
+        // 세운 책까지 풀린 뒤 받침을 잃은 표지 책이 있으면 넘어뜨리고(눕거나 벽·책에 기대면 세운 책의 받침이 달라진다) 다시 푼다
+        const fronts = settleFronts(next, books, only);
+        if (fronts === next) return { layout: next, falls };
+        cur = fronts;
+        continue;
+      }
       cur = next;
       continue;
     }
@@ -623,6 +637,29 @@ export function resolveLeans(layout: ShelfLayout, books: BookMap, only?: string)
     tried.add(key);
   }
   return { layout: cur, falls };
+}
+
+// 젖힌 채 받침을 잃은 표지 책(2026-11-05 물리 점검: 뒤에서 받치던 책을 빼도 공중에 젖혀 있었다): 조금 더 젖혀도 벽·옆 벽·다른 책에 닿지 않으면 놓은 것처럼 넘어진다.
+// 손으로 젖히는 동안은 이 계산을 거치지 않는다(useShelfEditCommands가 놓을 때 frontRelease)
+const FRONT_FREE_STEP = 0.6;
+function settleFronts(layout: ShelfLayout, books: BookMap, only?: string): ShelfLayout {
+  let cur = layout;
+  for (const p of layout.placements) {
+    if (p.pose !== 'front' || p.stackId || (only && p.shelfId !== only)) continue;
+    const pitch = p.pitch ?? 0;
+    if (pitch <= 0.05 || pitch >= 89.9) continue;
+    const frames = computeShelf(cur, books, p.shelfId).frames;
+    const me = frames.find((f) => f.bookId === p.bookId);
+    if (!me) continue;
+    const more = fromPlaced({ ...me.box, pitch: (me.box.pitch ?? 0) + FRONT_FREE_STEP });
+    const cs = corners(more);
+    const held = cs.some((c) => c.z > SHELF_DEPTH + 0.01 || (FRAME_ON && (c.x < SHELF_X0 - 0.01 || c.x > SHELF_X1 + 0.01))) || frames.some((f) => f !== me && gap(more, fromPlaced(f.box)) < -CONTACT);
+    if (held) continue;
+    const st = frontStateOf(cur, books, p.bookId);
+    const fell = st && frontRelease(cur, books, p.bookId, st.state, st.qx);
+    if (fell) cur = fell;
+  }
+  return cur;
 }
 
 // 배치만 필요한 호출의 호환 함수. 떨어지는 연출에는 resolveLeans의 falls도 함께 전달한다.

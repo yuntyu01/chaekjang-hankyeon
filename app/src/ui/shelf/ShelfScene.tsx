@@ -42,7 +42,7 @@ import { useRowPlanner, type Drops } from './planner';
 import { bodyOf, camWithDy, eyeDyAt, frontOccluders, liveSV, locate, lowered, outsideDist, presentSV, sceneOrder, TRANSIT_ROW, transitLead, transitVisible, warmSV, type Motion, type SceneGeo, type SceneMotion } from './scene';
 import { GlowOf, makeStruct, occludersOf, RowBooks, structKeyOf, useFadingAtlas, useFloorKey, useFrontKey, useRowBoxes, useShadePoses, useTargetPoses, useWallKey, Z_WALL, type CamSV, type Ghost, type RowStruct } from './ShelfMotion';
 import { FRAME_ON } from '@/scene-config/skin';
-import { FLAT_Z, frameParts, FRONT_AREA, FRONT_KEY, plankOutlinePath, rowEnv, SHELF_CAST_EXTENT, ShelfBoard, ShelfFlatWall, ShelfFrame, ShelfWall, TOP_AREA, TOP_KEY, UNDER_ENV, wallArea } from './ShelfPlank';
+import { FLAT_Z, frameParts, FRONT_AREA, HOLE_BOTTOM_OVER, FRONT_KEY, plankOutlinePath, rowEnv, SHELF_CAST_EXTENT, ShelfBoard, ShelfFlatWall, ShelfFrame, ShelfWall, TOP_AREA, TOP_KEY, UNDER_ENV, wallArea } from './ShelfPlank';
 
 // 잠긴 칸의 책 흐림(책만 한 겹으로 모아 흐린다, 벽·판 위에 그린다)
 const FROST_Z = 1e6;
@@ -56,6 +56,8 @@ const FROST_LAYER = (
 // 줄 아틀라스에서 벽 띠의 자리
 const WALL_KEY = 'wall';
 const UNDER_KEY = 'wall:under';
+// 안쪽 면을 줄마다 나누는 자리: 판 아랫면. 판이 벽보다 뒤라 판 끝 옆으로 안쪽 면이 보여, 판 두께 가운데서 나누면 그 자리에서 밝기가 뛴다. 줄 카메라가 달라 틈이 생기지 않게 조금 겹친다
+const FRAME_OVERLAP = 1;
 
 export type DropHint = { text: string; bad: boolean } | null;
 
@@ -180,7 +182,7 @@ const RowLayers = memo(function RowLayers({ r, st, mo, order, px, upx, books, ca
   const backY1 = FRAME_ON ? space + SHELF_THICK : wallY1;
   const wallA = useMemo(() => wallArea(-SHELF_THICK, backY1), [backY1]);
   const underA = useMemo(() => wallArea(-SHELF_THICK - SHELF_CAST_EXTENT, -SHELF_THICK, FLAT_Z), []);
-  const frame = useMemo(() => (FRAME_ON ? frameParts(-SHELF_THICK / 2, roofed ? space : space + SHELF_THICK / 2, roofed ? space : null) : []), [space, roofed]);
+  const frame = useMemo(() => (FRAME_ON ? frameParts(-SHELF_THICK, roofed ? space : space + FRAME_OVERLAP, roofed ? space : null) : []), [space, roofed]);
   const ids = st.ids;
   const wallOn = SHOW.shelf && LIGHT_ON.wall;
   const boardOn = SHOW.shelfBoard && SHOW.shelfShade && LIGHT_ON.plank;
@@ -192,7 +194,7 @@ const RowLayers = memo(function RowLayers({ r, st, mo, order, px, upx, books, ca
     if (ids.length && !ids.some((id) => ps[id])) return NO_ATLAS;
     const items: BakeItem[] = [];
     if (wallOn) items.push(areaItem(WALL_KEY, wallA, env, bx));
-    if (wallOn && last) items.push(areaItem(UNDER_KEY, underA, UNDER_ENV, NO_BOXES));
+    if (wallOn && last && !FRAME_ON) items.push(areaItem(UNDER_KEY, underA, UNDER_ENV, NO_BOXES));
     if (wallOn) for (const part of frame) items.push(areaItem(part.key, part.area, env, bx));
     if (boardOn) items.push(areaItem(TOP_KEY, TOP_AREA, env, bx), areaItem(FRONT_KEY, FRONT_AREA, env, bx));
     if (booksOn) {
@@ -214,8 +216,8 @@ const RowLayers = memo(function RowLayers({ r, st, mo, order, px, upx, books, ca
           아래 줄 벽이 이 판 두께 가운데까지 올라와 두 캔버스가 판 두께 절반 겹친다(줄마다 카메라가 달라 조금 어긋나도 틈이 없다) */}
       {SHOW.shelf ? <ShelfWall cam={cam} px={px} y0={-SHELF_THICK} y1={backY1} top={roofed ? space : top && !FRAME_ON ? wallY1 : space + SHELF_THICK / 2} bottom={-SHELF_THICK} roofY={roofed ? space : undefined} env={env} atlas={atlas} akey={WALL_KEY} zIndex={FRAME_ON ? Z_WALL + 1 : Z_WALL} keyShadow={wallKey} /> : null}
       {SHOW.shelf && FRAME_ON ? <ShelfFrame parts={frame} cam={cam} px={px} env={env} atlas={atlas} zIndex={Z_WALL} /> : null}
-      {SHOW.shelf && FRAME_ON ? <ShelfFlatWall cam={cam} px={px} topY={top ? wallY1 : space + SHELF_THICK / 2} bottomY={last ? -SHELF_THICK - SHELF_CAST_EXTENT : -SHELF_THICK} openTop={roofed ? space : null} openBottom={last ? -SHELF_THICK : null} ceilY={space} zIndex={Z_WALL + 2} /> : null}
-      {SHOW.shelf && last ? <ShelfWall cam={cam} px={px} y0={-SHELF_THICK - SHELF_CAST_EXTENT} y1={-SHELF_THICK} z={FLAT_Z} env={UNDER_ENV} atlas={atlas} akey={UNDER_KEY} zIndex={Z_WALL + 3} /> : null}
+      {SHOW.shelf && FRAME_ON ? <ShelfFlatWall cam={cam} px={px} topY={top ? wallY1 : space + SHELF_THICK / 2} bottomY={last ? -SHELF_THICK - SHELF_CAST_EXTENT : -SHELF_THICK} openTop={roofed ? space : null} openBottom={last ? -SHELF_THICK + HOLE_BOTTOM_OVER : null} ceilY={space} zIndex={Z_WALL + 2} /> : null}
+      {SHOW.shelf && last && !FRAME_ON ? <ShelfWall cam={cam} px={px} y0={-SHELF_THICK - SHELF_CAST_EXTENT} y1={-SHELF_THICK} z={FLAT_Z} env={UNDER_ENV} atlas={atlas} akey={UNDER_KEY} zIndex={Z_WALL + 3} /> : null}
       {SHOW.shelfBoard ? <ShelfBoard px={px} cam={cam} zIndex={plankZ} env={env} atlas={atlas} keyShadow={floorKey} frontShadow={frontKey} /> : null}
       {RENDER.books && frosted ? <Group zIndex={FROST_Z} layer={FROST_LAYER}><RowBooks m={mo} shelfId={r.shelfId} st={st} books={books} glowId={r.glowId} dragId={r.dragId} cam={cam} px={px} space={space} ceil={ceil} shared={shared} order={order} poses={poses} env={envSV} atlas={atlas} boxes={boxes} debug={debug} /></Group> : null}
       {RENDER.books && !frosted ? <RowBooks m={mo} shelfId={r.shelfId} st={st} books={books} glowId={r.glowId} dragId={r.dragId} cam={cam} px={px} space={space} ceil={ceil} shared={shared} order={order} poses={poses} env={envSV} atlas={atlas} boxes={boxes} debug={debug} /> : null}
