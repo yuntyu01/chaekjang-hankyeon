@@ -29,7 +29,7 @@ export type WireRound = Wire & { myBookId?: string; index?: number; startedAt?: 
 export type WireSession = Wire & {
   myBookId?: string | null; roundId?: string | null; startedAt?: string; endedAt?: string; durationMs?: number; startPage?: number | null; pagesRead?: number | null; memo?: string | null; createdAt?: string;
 };
-export type WireBookmark = Wire & { boardX?: number | null; boardY?: number | null; boardRot?: number | null; myBookId?: string; text?: string; page?: number | null; memo?: string | null; photoFileId?: string | null; photoRatio?: number | null; sessionId?: string | null; savedAt?: string | null; createdAt?: string };
+export type WireBookmark = Wire & { boardX?: number | null; boardY?: number | null; boardRot?: number | null; boardW?: number | null; myBookId?: string; text?: string; page?: number | null; memo?: string | null; photoFileId?: string | null; photoRatio?: number | null; sessionId?: string | null; savedAt?: string | null; createdAt?: string };
 export type WireLayout = { layoutJson: string; version: number; updatedAt: string };
 
 export type PushBody = {
@@ -74,7 +74,7 @@ export const sessionToWire = (s: Session): WireSession => ({
   id: s.id, myBookId: s.myBookId, roundId: s.roundId, startedAt: s.startedAt, endedAt: s.endedAt, durationMs: s.durationMs, startPage: s.startPage, pagesRead: s.pagesRead, memo: s.memo, createdAt: s.createdAt, updatedAt: s.updatedAt,
 });
 export const bookmarkToWire = (m: Bookmark, imageDir: string): WireBookmark => ({
-  id: m.id, myBookId: m.myBookId, text: m.text, page: m.page, memo: m.memo, photoFileId: fileIdOf(m.photoUri, imageDir), photoRatio: m.photoRatio, sessionId: m.sessionId, savedAt: m.savedAt, boardX: m.boardX, boardY: m.boardY, boardRot: m.boardRot, createdAt: m.createdAt, updatedAt: m.updatedAt,
+  id: m.id, myBookId: m.myBookId, text: m.text, page: m.page, memo: m.memo, photoFileId: fileIdOf(m.photoUri, imageDir), photoRatio: m.photoRatio, sessionId: m.sessionId, savedAt: m.savedAt, boardX: m.boardX, boardY: m.boardY, boardRot: m.boardRot, boardW: m.boardW, createdAt: m.createdAt, updatedAt: m.updatedAt,
 });
 
 // 올릴 변경 묶음: 바뀐 항목(현재 값)과 삭제 표시. 이미 사라진 항목이 dirty에 없고 삭제도 아니면 건너뛴다.
@@ -136,7 +136,7 @@ export const sessionFromWire = (w: WireSession): Session => ({
   createdAt: w.createdAt ?? w.updatedAt, updatedAt: w.updatedAt,
 });
 export const bookmarkFromWire = (w: WireBookmark, imageDir: string): Bookmark => ({
-  id: w.id, myBookId: w.myBookId ?? '', text: w.text ?? '', page: nz(w.page), memo: nz(w.memo), photoUri: w.photoFileId ? `${imageDir}${w.photoFileId}` : undefined, photoRatio: nz(w.photoRatio), sessionId: nz(w.sessionId), savedAt: nz(w.savedAt), boardX: nz(w.boardX), boardY: nz(w.boardY), boardRot: nz(w.boardRot),
+  id: w.id, myBookId: w.myBookId ?? '', text: w.text ?? '', page: nz(w.page), memo: nz(w.memo), photoUri: w.photoFileId ? `${imageDir}${w.photoFileId}` : undefined, photoRatio: nz(w.photoRatio), sessionId: nz(w.sessionId), savedAt: nz(w.savedAt), boardX: nz(w.boardX), boardY: nz(w.boardY), boardRot: nz(w.boardRot), boardW: nz(w.boardW),
   createdAt: w.createdAt ?? w.updatedAt, updatedAt: w.updatedAt,
 });
 
@@ -177,7 +177,8 @@ export function mergeRemote(lib: Library, pull: PullBody, imageDir: string, dirt
   apply('bookmarks', pull.bookmarks as never, (w: WireBookmark) => {
     const item = bookmarkFromWire(w, imageDir);
     const local = lib.bookmarks[w.id];
-    return w.boardX === undefined && local ? { ...item, boardX: local.boardX, boardY: local.boardY, boardRot: local.boardRot } : item;
+    if (!local) return item;
+    return { ...item, ...(w.boardX === undefined ? { boardX: local.boardX, boardY: local.boardY, boardRot: local.boardRot } : null), ...(w.boardW === undefined ? { boardW: local.boardW } : null) };
   });
   for (const w of writes) {
     const it = w.item as unknown as { coverFileId?: string; photoUri?: string; coverUri?: string; coverArtUri?: string; spineArtUri?: string };

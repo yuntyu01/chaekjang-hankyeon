@@ -125,6 +125,13 @@ describe('갈피 보드 자리 동기화', () => {
     const { lib } = mergeRemote(lib0(), pullOf(wire), DIR);
     expect(lib.bookmarks.bm9).toMatchObject({ text: '바뀜', boardX: 120.5, boardY: 80, boardRot: -2.5 });
   });
+  it('카드 폭을 모르는 옛 서버의 응답은 기기의 폭을 지우지 않고, 아는 서버의 값은 따른다', () => {
+    const base = lib0();
+    const local = { ...base, bookmarks: { ...base.bookmarks, bm9: { ...base.bookmarks.bm9, boardW: 320 } } };
+    expect(mergeRemote(local, pullOf({ ...wire, boardX: 10, boardY: 20, boardRot: 1 }), DIR).lib.bookmarks.bm9.boardW).toBe(320);
+    expect(mergeRemote(local, pullOf({ ...wire, boardX: 10, boardY: 20, boardRot: 1, boardW: 280 }), DIR).lib.bookmarks.bm9.boardW).toBe(280);
+    expect(mergeRemote(local, pullOf({ ...wire, boardX: 10, boardY: 20, boardRot: 1, boardW: null }), DIR).lib.bookmarks.bm9.boardW).toBeUndefined();
+  });
   it('자리가 비었다고 온 새 서버 값(null)은 비운다', () => {
     const { lib } = mergeRemote(lib0(), pullOf({ ...wire, boardX: null, boardY: null, boardRot: null }), DIR);
     expect(lib.bookmarks.bm9.boardX).toBeUndefined();

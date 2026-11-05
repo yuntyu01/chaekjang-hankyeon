@@ -184,7 +184,7 @@ export const libraryStore = {
     commit({ ...state.lib, bookmarks: { ...state.lib.bookmarks, [m.id]: m } });
     return m.id;
   },
-  updateBookmark(id: string, patch: Partial<Pick<Bookmark, 'text' | 'page' | 'memo' | 'myBookId' | 'photoUri' | 'photoRatio' | 'sessionId' | 'savedAt' | 'boardX' | 'boardY' | 'boardRot'>>) {
+  updateBookmark(id: string, patch: Partial<Pick<Bookmark, 'text' | 'page' | 'memo' | 'myBookId' | 'photoUri' | 'photoRatio' | 'sessionId' | 'savedAt' | 'boardX' | 'boardY' | 'boardRot' | 'boardW'>>) {
     const m = state.lib.bookmarks[id];
     if (!m) return;
     commit({ ...state.lib, bookmarks: { ...state.lib.bookmarks, [id]: { ...m, ...patch, updatedAt: now() } } });

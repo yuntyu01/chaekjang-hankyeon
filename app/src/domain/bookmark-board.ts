@@ -15,6 +15,10 @@ export const BOARD_MAX_SCALE = 2.6;
 const LINE_H = 29;
 const CHARS_PER_LINE = 11.5;
 export const BOARD_MAX_LINES = 7;
+// 카드 폭(손잡이로 바꾼다). 글은 폭에 맞춰 줄이 바뀌고, 사진은 폭에 맞춰 커진다
+export const BOARD_MIN_W = 150;
+export const BOARD_MAX_W = 420;
+const NOTE_PAD = 36; // 글 카드 좌우 안쪽 여백 합
 
 export type BoardRect = { x: number; y: number; w: number; h: number };
 export type BoardSpot = BoardRect & { id: string; rot: number; placed: boolean };
@@ -29,19 +33,34 @@ function hash(id: string, salt: number) {
 export const boardRotOf = (id: string) => (hash(id, 1) * 2 - 1) * MAX_ROT;
 
 // 카드 크기(추정): 사진은 인화지 모양, 글은 줄 수만큼. 실제 높이는 그려 본 뒤 재지만, 자동 자리는 이 값으로 정해 재는 순서에 흔들리지 않게 한다
-export function boardCardSize(m: Pick<Bookmark, 'text' | 'photoUri' | 'photoRatio'>) {
-  if (m.photoUri) {
-    const r = Math.max(0.9, Math.min(1.5, m.photoRatio && m.photoRatio > 0 ? m.photoRatio : 1.3));
-    return { w: BOARD_CARD_W, h: Math.round((BOARD_CARD_W - 20) / r) + 44 };
-  }
-  const chars = m.text.replace(/\s+/g, ' ').trim().length;
-  const lines = Math.max(2, Math.min(BOARD_MAX_LINES, Math.ceil(chars / CHARS_PER_LINE)));
-  return { w: BOARD_CARD_W, h: 68 + lines * LINE_H };
+export const boardPhotoRatio = (ratio?: number) => Math.max(0.9, Math.min(1.5, ratio && ratio > 0 ? ratio : 1.3));
+export const boardTextChars = (text: string) => text.replace(/\s+/g, ' ').trim().length;
+// 폭에 따른 높이(끄는 동안 UI 스레드에서도 계산한다). ratio가 있으면 사진, 없으면 글 chars자
+export function boardHeightAt(w: number, chars: number, ratio: number) {
+  'worklet';
+  if (ratio) return Math.round((w - 20) / ratio) + 44;
+  const perLine = (CHARS_PER_LINE * (w - NOTE_PAD)) / (BOARD_CARD_W - NOTE_PAD);
+  const lines = Math.max(2, Math.min(BOARD_MAX_LINES, Math.ceil(chars / perLine)));
+  return 68 + lines * LINE_H;
+}
+export function boardCardSize(m: Pick<Bookmark, 'text' | 'photoUri' | 'photoRatio' | 'boardW'>) {
+  const w = Math.max(BOARD_MIN_W, Math.min(BOARD_MAX_W, m.boardW ?? BOARD_CARD_W));
+  return { w, h: boardHeightAt(w, boardTextChars(m.text), m.photoUri ? boardPhotoRatio(m.photoRatio) : 0) };
+}
+// 폭을 바꾼 뒤 저장할 값: 왼쪽 위 모서리는 그대로 둔다(손잡이는 오른쪽 아래)
+export function boardResized(m: Pick<Bookmark, 'text' | 'photoUri' | 'photoRatio'>, spot: BoardSpot, width: number) {
+  const next = boardCardSize({ ...m, boardW: width });
+  return { boardW: next.w, boardX: spot.x + (next.w - spot.w) / 2, boardY: spot.y + (next.h - spot.h) / 2, boardRot: spot.rot };
+}
+// 한 점을 그대로 두고 배율만 바꾼 보기(끌다가 화면 끝에 닿으면 보드가 넓어진다)
+export function boardZoomAt(v: BoardView, k: number, px: number, py: number): BoardView {
+  'worklet';
+  return { x: px - (px - v.x) * k, y: py - (py - v.y) * k, s: v.s * k };
 }
 
 const overlaps = (a: BoardRect, b: BoardRect, gap = 6) => Math.abs(a.x - b.x) < (a.w + b.w) / 2 + gap && Math.abs(a.y - b.y) < (a.h + b.h) / 2 + gap;
 
-type BoardMark = Pick<Bookmark, 'id' | 'text' | 'photoUri' | 'photoRatio' | 'createdAt' | 'boardX' | 'boardY' | 'boardRot'>;
+type BoardMark = Pick<Bookmark, 'id' | 'text' | 'photoUri' | 'photoRatio' | 'createdAt' | 'boardX' | 'boardY' | 'boardRot' | 'boardW'>;
 const hasSpot = (m: BoardMark) => typeof m.boardX === 'number' && typeof m.boardY === 'number';
 
 export function boardSpots(marks: BoardMark[]): BoardSpot[] {

@@ -98,6 +98,7 @@ export type Bookmark = {
   boardX?: number;
   boardY?: number;
   boardRot?: number;
+  boardW?: number; // 카드 폭(dp). 손잡이로 바꾼 갈피만 값이 있다
   createdAt: string;
   updatedAt: string;
 };
