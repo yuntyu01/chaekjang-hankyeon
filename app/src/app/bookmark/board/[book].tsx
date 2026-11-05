@@ -210,10 +210,17 @@ function BoardPage({ id, lib, turner }: { id: string; lib: Library; turner: Turn
 
   const pinchStart = useSharedValue(1);
   // 가로로 시작한 한 손가락 끌기만 책을 넘긴다. 세로 끌기와 두 손가락은 보드만 움직인다
+  // 안드로이드는 활성화 순간 이동 거리(translation)를 0으로 되돌리므로, 방향은 누른 자리와 활성화 자리의 차이로 잰다
   const paging = useSharedValue(false);
+  const beginX = useSharedValue(0);
+  const beginY = useSharedValue(0);
   const pan = useMemo(() => Gesture.Pan().minDistance(6).maxPointers(2)
+    .onBegin((ev) => {
+      beginX.value = ev.x;
+      beginY.value = ev.y;
+    })
     .onStart((ev) => {
-      paging.value = !settling.value && (edges.value.prev || edges.value.next) && ev.numberOfPointers === 1 && Math.abs(ev.translationX) > Math.abs(ev.translationY);
+      paging.value = !settling.value && (edges.value.prev || edges.value.next) && ev.numberOfPointers <= 1 && Math.abs(ev.x - beginX.value) > Math.abs(ev.y - beginY.value);
     })
     .onChange((ev) => {
       if (ev.numberOfPointers > 1) paging.value = false;
@@ -241,7 +248,7 @@ function BoardPage({ id, lib, turner }: { id: string; lib: Library; turner: Turn
     .onEnd((ev, ok) => {
       scheduleOnRN(saveView, x.value, y.value, s.value);
       settle(ev.velocityX, ok);
-    }), [boundsSV, drag, edges, paging, s, saveView, settle, settling, vpSV, x, y]);
+    }), [beginX, beginY, boundsSV, drag, edges, paging, s, saveView, settle, settling, vpSV, x, y]);
   const pinch = useMemo(() => Gesture.Pinch()
     .onStart(() => {
       pinchStart.value = s.value;

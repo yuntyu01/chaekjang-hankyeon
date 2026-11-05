@@ -145,16 +145,23 @@ export function realReadingLibrary(y: number, m: number): Library {
 }
 
 // 화면 사진용(측정 번들 ?seedlib=1): 실제 저장 경로로 비교 책장의 책과 지난달·이번 달 기록, 갈피를 넣는다(이미 책이 있으면 건너뛴다)
-type SeedStore = BoardStore & { addSession(input: Pick<Session, 'myBookId' | 'startedAt' | 'endedAt' | 'durationMs'>): string };
+type SeedStore = BoardStore & { addSession(input: Pick<Session, 'myBookId' | 'startedAt' | 'endedAt' | 'durationMs' | 'startPage' | 'pagesRead'>): string };
 export function realLibrarySeed(store: SeedStore, now: Date) {
   if (Object.keys(store.get().lib.books).length) return;
   const ids = new Map<string, string>();
-  for (const b of ALL) ids.set(b.id, store.addBook({ edition: { title: b.title, authors: b.author ? [b.author] : [], coverUri: b.coverArtUri, coverSource: 'api', source: 'search' }, status: 'reading', binding: { spineColor: b.themeColor, motif: 'none', source: 'default', seed: 1 } }));
+  // 실제 책 정보를 그대로 넣는다(책 정보 화면의 쪽수·판형·판매처 줄이 사진에 나오게)
+  for (const b of ALL) ids.set(b.id, store.addBook({ edition: { title: b.title, authors: b.author ? [b.author] : [], publisher: b.publisher, pageCount: b.physical?.pages, size: b.physical ? { widthMm: b.physical.widthMm, heightMm: b.physical.heightMm } : undefined, coverUri: b.coverArtUri, coverSource: 'api', source: 'search', sourceName: 'YES24', link: b.coverArtUri?.replace('image.yes24.com/goods/', 'www.yes24.com/product/goods/').replace(/\/L$/, '') }, status: 'reading', binding: { spineColor: b.themeColor, motif: 'none', source: 'default', seed: 1 } }));
+  const pageAt = new Map<string, number>();
   const prev = new Date(now.getFullYear(), now.getMonth() - 1, 1);
   for (const [y, m] of [[prev.getFullYear(), prev.getMonth() + 1], [now.getFullYear(), now.getMonth() + 1]]) {
     for (const s of Object.values(realReadingLibrary(y, m).sessions)) {
       if (new Date(s.startedAt).getTime() > now.getTime()) continue;
-      store.addSession({ myBookId: s.myBookId ? ids.get(s.myBookId) : undefined, startedAt: s.startedAt, endedAt: s.endedAt, durationMs: s.durationMs });
+      // 책마다 이어 읽은 쪽(기록 탭의 읽는 속도·다 읽기까지가 사진에 나오게). 분당 0.8쪽 안팎
+      const total = (s.myBookId && byId(s.myBookId).physical?.pages) || 0;
+      const startPage = (s.myBookId && pageAt.get(s.myBookId)) || 1;
+      const pagesRead = Math.min(total, startPage + Math.round((s.durationMs / 60000) * 0.8));
+      if (s.myBookId) pageAt.set(s.myBookId, pagesRead);
+      store.addSession({ myBookId: s.myBookId ? ids.get(s.myBookId) : undefined, startedAt: s.startedAt, endedAt: s.endedAt, durationMs: s.durationMs, startPage, pagesRead });
     }
   }
   const first = ids.get(ALL[0].id)!;
