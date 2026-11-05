@@ -74,7 +74,7 @@ export type SceneRowProps = {
 type Props = {
   rows: SceneRowProps[];
   lockedRows: RowGeom[]; // 아직 열지 않은 칸(흐린 예시 책, 자물쇠는 HomeScreen LockedShelves)
-  lockedReady: boolean; // 시작 때 보이는 줄을 먼저 굽고 잠긴 칸은 그 뒤에 그린다
+  lockedReady: boolean; // 잠긴 칸의 흐린 책은 시작 화면이 걷힌 뒤에 그린다(칸과 선반은 처음부터)
   motions: SceneMotion[];
   geo: Readonly<SharedValue<SceneGeo>>;
   books: Record<string, Book>;
@@ -134,8 +134,8 @@ export function ShelfScene(p: Props) {
     <>
       {/* 줄 캔버스들이 다시 기록되기 전에(형제 순서상 먼저 도는 효과) 옮겨 가는 책을 이동 캔버스에 넘긴다 */}
       <TransitMark items={p.leaving} />
-      {p.lockedReady && p.lockedRows.map((row, i) => (
-        <LockedRowCanvas key={row.shelfId} index={i} row={row} upper={i > 0 ? p.lockedRows[i - 1] : (p.rows.at(-1)?.row ?? null)} last={i === p.lockedRows.length - 1} m={p.m} width={p.width} cam={p.cam} shared={p.shared} debug={p.debug} />
+      {p.lockedRows.map((row, i) => (
+        <LockedRowCanvas key={row.shelfId} index={i} ready={p.lockedReady} row={row} upper={i > 0 ? p.lockedRows[i - 1] : (p.rows.at(-1)?.row ?? null)} last={i === p.lockedRows.length - 1} m={p.m} width={p.width} cam={p.cam} shared={p.shared} debug={p.debug} />
       ))}
       {p.rows.map((r, i) => {
         const mo = motionOf(p.motions, r.shelfId);
@@ -265,10 +265,12 @@ const RowCanvas = memo(
 );
 
 // 잠긴 칸: 보통 줄과 같은 벽·틀·판·빛에 예시 책을 세우고 책만 흐리게 한다(벽의 책 그림자는 또렷하게 남아 안에 책이 있는 것처럼 보인다). 책이 움직이지 않아 줄 계획(RowOverlay)은 없다
-function LockedRowCanvas({ index, row, upper, last, m, width, cam, shared, debug }: { index: number; row: RowGeom; upper: RowGeom | null; last: boolean; m: ShelfMetrics; width: number; cam: CamSV; shared: Shared; debug: boolean }) {
+const NO_FRAMES: SceneRowProps['frames'] = [];
+function LockedRowCanvas({ index, ready, row, upper, last, m, width, cam, shared, debug }: { index: number; ready: boolean; row: RowGeom; upper: RowGeom | null; last: boolean; m: ShelfMetrics; width: number; cam: CamSV; shared: Shared; debug: boolean }) {
   const preview = lockedPreview(index);
-  const mo = useMemo(() => makeMotion(preview.frames.map((f) => fromPlaced(f.box))), [preview]);
-  const r = useMemo<SceneRowProps>(() => ({ shelfId: row.shelfId, row, frames: preview.frames, dragId: null, glowId: null, hint: null }), [row, preview]);
+  const frames = ready ? preview.frames : NO_FRAMES;
+  const mo = useMemo(() => makeMotion(frames.map((f) => fromPlaced(f.box))), [frames]);
+  const r = useMemo<SceneRowProps>(() => ({ shelfId: row.shelfId, row, frames, dragId: null, glowId: null, hint: null }), [row, frames]);
   return <RowCanvas r={r} upper={upper} mo={mo} books={preview.books} m={m} width={width} cam={cam} shared={shared} debug={debug} last={last} frosted />;
 }
 

@@ -56,8 +56,20 @@ let capturing = false;
 export function setSnapshotRoot(ref: RefObject<View | null>) {
   root = ref;
 }
+const startWaiters: (() => void)[] = [];
 export function setSnapshotShown() {
   shown = true;
+  startWaiters.splice(0).forEach((f) => f());
+}
+// 시작 화면이 걷힌 뒤 부른다(이미 걷혔으면 바로)
+export function whenStartDone(cb: () => void) {
+  if (shown) cb();
+  else startWaiters.push(cb);
+}
+// 다음 실행에 낡은 사진이 뜨지 않게 지운다(스킨을 바꿀 때). 네이티브 시작 사진은 스킨을 모르므로 미리 지워야 한다
+export function dropHomeSnapshot() {
+  markStale();
+  if (META) void onDisk(() => FS.deleteAsync(META, { idempotent: true }));
 }
 
 function markStale() {

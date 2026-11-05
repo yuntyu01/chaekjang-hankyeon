@@ -22,6 +22,9 @@ class ScreenCaptureModule : Module() {
   override fun definition() = ModuleDefinition {
     Name("ScreenCapture")
 
+    // JS 시작 화면이 같은 사진을 그렸다: 네이티브 시작 사진을 걷는다
+    Function("hideStartPhoto") { StartPhoto.hide() }
+
     // path: 저장할 파일(file:// 주소 또는 경로), x·y·w·h: 창 안 영역(물리 픽셀), quality: JPEG 품질 0~100
     AsyncFunction("captureWindow") { path: String, x: Int, y: Int, w: Int, h: Int, quality: Int, promise: Promise ->
       if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return@AsyncFunction promise.reject("ERR_UNSUPPORTED", "PixelCopy(Window) needs Android 8", null)

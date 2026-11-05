@@ -49,7 +49,7 @@ import { uiBus } from '@/store/ui-bus';
 import { bootMark, watchResponsive } from '@/ui/boot-trace';
 import { placementStore, usePlacementStore } from '@/store/placement-store';
 import { useShelfShared } from '@/ui/book3d/art';
-import { useHomeSnapshot } from '@/ui/home-snapshot';
+import { useHomeSnapshot, whenStartDone } from '@/ui/home-snapshot';
 import { CONTENT_TOP, computeRows, LAYOUT, lockedRowsAfter, toContent, useShelfMetrics, type RowGeom } from '@/ui/shelf/metrics';
 import { flushApply, PULL_MS, WAIT_MAX } from '@/ui/shelf/planner';
 import { liveSV, pickAt, plankFrontBand, rowPx, TRANSIT_ROW, warmSV, type Pick, type SceneGeo } from '@/ui/shelf/scene';
@@ -129,12 +129,9 @@ export function HomeScreen() {
   const [shelfMenuOpen, setShelfMenuOpen] = useState(false);
   const [toast, setToast] = useState<Toast>(null);
   const [lockSheetOpen, setLockSheetOpen] = useState(false);
-  // 잠긴 칸은 시작 때 보이는 줄을 다 그린 뒤에 그린다(시작 시간에 넣지 않는다)
+  // 잠긴 칸의 흐린 책은 시작 화면이 걷힌 뒤에 그린다(책 그림 대기열에 함께 들어가 첫 화면을 늦췄다). 칸과 선반은 처음부터 있다
   const [lockedReady, setLockedReady] = useState(false);
-  useEffect(() => {
-    const id = setTimeout(() => setLockedReady(true), 1500);
-    return () => clearTimeout(id);
-  }, []);
+  useEffect(() => whenStartDone(() => setLockedReady(true)), []);
   const { holds, holdsRef, holdRows, releaseLater } = useRowHolds(() => dragRef.current?.members ?? []);
 
   const scrollRef = useAnimatedRef<Animated.ScrollView>();
@@ -183,7 +180,7 @@ export function HomeScreen() {
     return () => setFocused(false);
   }, []));
   const atRest = focused && settled && !drag && !popId && !editing && !shelfMenuOpen && !toast;
-  useHomeSnapshot(atRest, [layout, books, bookShared, appSettings, view, winW, selectedYear], () => scrollY.value < 1);
+  useHomeSnapshot(atRest && lockedReady, [layout, books, bookShared, appSettings, view, winW, selectedYear], () => scrollY.value < 1);
 
   // 측정 번들: 끌기 한 번 동안 JS 쪽 시간(미리보기 계산, 미리보기 → 커밋, JS 프레임 간격)
   const dragJs = useRef({ preview: [] as number[], commit: [] as number[], js: [] as number[], commitStart: 0, raf: 0, last: 0 });

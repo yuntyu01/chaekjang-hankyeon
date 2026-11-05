@@ -6,6 +6,7 @@ import { AccessibilityInfo, Animated, Image, type ImageSourcePropType, StyleShee
 import { settingsStore } from '@/store/settings-store';
 import { bootMark } from '@/ui/boot-trace';
 import { loadHomeSnapshot } from '@/ui/home-snapshot';
+import { hideStartPhoto } from '../../modules/screen-capture';
 import { sceneColors } from '@/scene-config/palette';
 
 const quietStart = require('../../assets/loading/quiet-start.png');
@@ -19,7 +20,10 @@ const DOTS = { cx: 426, cy: 1286, gap: 37.5, d: 16 };
 export function LoadingScreen({ ready, step, onFinished }: { ready: boolean; step: 1 | 2 | 3; onFinished: () => void }) {
   const [source, setSource] = useState<{ image: ImageSourcePropType; shot: boolean } | null>(null);
   useEffect(() => {
-    void loadHomeSnapshot().then((uri) => setSource(uri ? { image: { uri }, shot: true } : { image: quietStart, shot: false }));
+    void loadHomeSnapshot().then((uri) => {
+      setSource(uri ? { image: { uri }, shot: true } : { image: quietStart, shot: false });
+      if (!uri) hideStartPhoto();
+    });
   }, []);
   const [imageReady, setImageReady] = useState(false);
   const [size, setSize] = useState<{ w: number; h: number } | null>(null);
@@ -65,8 +69,13 @@ export function LoadingScreen({ ready, step, onFinished }: { ready: boolean; ste
           resizeMode={source.shot ? 'stretch' : 'contain'}
           fadeDuration={0}
           accessible={false}
-          onLoad={() => { if (source.shot) bootMark('snapshot-shown'); }}
-          onError={() => { if (source.shot) setSource({ image: quietStart, shot: false }); }}
+          onLoad={() => {
+            if (!source.shot) return;
+            bootMark('snapshot-shown');
+            // 같은 사진이 그려진 다음 네이티브 시작 사진을 걷는다(사이가 비어 보이지 않게 두 프레임 뒤)
+            requestAnimationFrame(() => requestAnimationFrame(hideStartPhoto));
+          }}
+          onError={() => { if (source.shot) { hideStartPhoto(); setSource({ image: quietStart, shot: false }); } }}
           onLoadEnd={() => setImageReady(true)}
         />
       ) : null}

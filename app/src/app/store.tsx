@@ -6,6 +6,7 @@ import { StyleSheet, View } from 'react-native';
 
 import { FRAME_SKINS, PLANK_SKINS, SKIN_CHOICE, SKIN_KEY, skinToString, WALL_SKINS, type SkinChoice } from '@/scene-config/skin';
 import { writeBootSetting } from '@/scene-config/boot-store';
+import { dropHomeSnapshot } from '@/ui/home-snapshot';
 import { ko } from '@/i18n/ko';
 import { Btn, Choice, H2, Muted, Screen } from '@/ui/kit';
 import { colors, shape, space } from '@/ui/theme';
@@ -56,6 +57,7 @@ export default function StoreScreen() {
   const pick = (part: Part, k: string) => setChoice((c) => ({ ...c, [part]: k }));
   const apply = () => {
     writeBootSetting(SKIN_KEY, skinToString(choice));
+    dropHomeSnapshot();
     void reloadAppAsync('스킨 적용');
   };
   return (

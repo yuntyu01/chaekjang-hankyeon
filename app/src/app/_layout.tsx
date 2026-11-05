@@ -15,6 +15,7 @@ import { bootMark } from '@/ui/boot-trace';
 import { startProfile } from '@/ui/profile';
 import { BookArtProvider } from '@/ui/book3d/art';
 import { setSnapshotRoot, setSnapshotShown } from '@/ui/home-snapshot';
+import { hideStartPhoto } from '../../modules/screen-capture';
 import { PaperBackground } from '@/ui/PaperBackground';
 import { LoadingScreen } from '@/ui/LoadingScreen';
 import { colors } from '@/ui/theme';
@@ -61,7 +62,7 @@ export default function RootLayout() {
     return () => { active = false; };
   }, [bootAttempt]);
   useEffect(() => {
-    if (bootError) void SplashScreen.hideAsync();
+    if (bootError) { hideStartPhoto(); void SplashScreen.hideAsync(); }
   }, [bootError]);
   const ready = (loaded || !!error) && booted;
   // 첫 책장의 책 그림(글꼴·원본 그림·입힌 장정 그림, 책마다 기록)이 다 되면 시작 화면을 걷는다(그림 표지 책만 빈자리로 보이다 나타나지 않게).
