@@ -2,15 +2,17 @@
 // 2026-11-05 사용자 시안(구조만 시안, 색은 우리 것): 뒤로·검색·더하기, 밑줄 탭(읽기 상태), '책 N권'과 '책장에 꽂기'·필터·보기 전환. 정렬과 '책장에 없는 책'은 필터 시트에.
 // '책장에 꽂기'를 누르면 고르는 상태: 머리줄 '취소'와 'N권 선택', 표지 모서리 고름 표시, 아래 '선택한 N권 꽂기'. 이미 책장에 있는 책은 고를 수 없다(같은 책이 두 번 꽂히지 않는다). 책을 누르면 책 정보로.
 import { router, useLocalSearchParams } from 'expo-router';
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { BackHandler, Pressable, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 
-import { listAllBooks, type AllBooksRow, type AllBooksSort } from '@/features/book/all-books';
+import { listAllBooks, memosByBook, type AllBooksRow, type AllBooksSort } from '@/features/book/all-books';
+import { BookListRow } from '@/features/book/BookListRow';
 import { BookRow } from '@/features/book/BookRow';
+import { MemoPopover, type MemoAnchor } from '@/features/book/MemoPopover';
 import { STATUS_LABEL } from '@/features/book/labels';
 import { placeWithChoice } from '@/features/book/place-books';
 import { placementOf } from '@/domain/layout-engine';
-import { READ_STATUSES, type ReadStatus } from '@/domain/library';
+import { finishedYear, READ_STATUSES, type ReadStatus } from '@/domain/library';
 import type { Book } from '@/domain/types';
 import { ko } from '@/i18n/ko';
 import { useLibrary } from '@/store/library-store';
@@ -36,6 +38,8 @@ export default function AllBooks() {
   const [status, setStatus] = useState<ReadStatus | 'all'>('all');
   const [offShelfOnly, setOffShelfOnly] = useState(params.filter === 'off');
   const [sort, setSort] = useState<AllBooksSort>('recent');
+  const [year, setYear] = useState<number | null>(null);
+  const [memoOf, setMemoOf] = useState<{ id: string; anchor: MemoAnchor } | null>(null);
   const [filterOpen, setFilterOpen] = useState(false);
   const [view, setViewState] = useState(lastView);
   const [selecting, setSelecting] = useState(false);
@@ -46,7 +50,11 @@ export default function AllBooks() {
     setViewState(v);
   };
 
-  const rows = useMemo(() => listAllBooks(lib, place.books, place.layout, { q, status, offShelfOnly, sort }), [lib, place.books, place.layout, q, status, offShelfOnly, sort]);
+  const rows = useMemo(() => listAllBooks(lib, place.books, place.layout, { q, status, offShelfOnly, sort, year }), [lib, place.books, place.layout, q, status, offShelfOnly, sort, year]);
+  const memos = useMemo(() => memosByBook(lib), [lib]);
+  // 완독한 해(필터). 완독한 책이 있을 때만 보인다
+  const years = useMemo(() => [...new Set(Object.keys(lib.books).map((id) => finishedYear(lib, id)).filter((y): y is number => !!y))].sort((a, b) => b - a), [lib]);
+  const openMemo = useCallback((id: string, anchor: MemoAnchor) => setMemoOf({ id, anchor }), []);
   const total = Object.keys(lib.books).length;
   const offCount = Object.keys(lib.books).filter((id) => place.layout.drawer.includes(id)).length;
   // 고른 책 중 그사이 책장에 놓인 책은 뺀다
@@ -91,13 +99,19 @@ export default function AllBooks() {
         </View>
       );
     }
+    // 시안(2026-11-05 사용자): 제목 · 저자 · 한 줄 감상 두 줄, 메모가 있으면 메모 아이콘. 상태 탭이 있어 상태는 저자 옆에 작게
+    const st = lib.books[book.id]?.status;
     return (
-      <BookRow
+      <BookListRow
         book={book}
-        sub={sub}
+        sub={[book.author, st ? STATUS_LABEL[st] : null].filter(Boolean).join(' · ')}
+        note={lib.books[book.id]?.note}
+        memoCount={memos.get(book.id)?.length ?? 0}
+        placeLabel={onShelf ? undefined : ko.allBooks.placeShort}
         onPress={() => router.push(`/book/${book.id}`)}
         onLongPress={onShelf ? undefined : () => { setSelecting(true); setPicked([book.id]); }}
-        right={onShelf ? null : <Btn label={ko.allBooks.place} kind="secondary" size="s" onPress={() => placeNow([book.id])} />}
+        onPlace={onShelf ? undefined : () => placeNow([book.id])}
+        onMemo={openMemo}
       />
     );
   };
@@ -118,11 +132,12 @@ export default function AllBooks() {
     );
   };
 
-  const filtered = !!q.trim() || status !== 'all' || offShelfOnly;
+  const filtered = !!q.trim() || status !== 'all' || offShelfOnly || !!year;
   const clearFilters = () => {
     setQ('');
     setStatus('all');
     setOffShelfOnly(false);
+    setYear(null);
   };
   const grid = view === 'grid';
   const canPlace = Object.keys(lib.books).some((id) => !placementOf(place.layout, id));
@@ -162,7 +177,7 @@ export default function AllBooks() {
               <View style={s.tools}>
                 <Text style={[type.sub, { flex: 1 }]} numberOfLines={1}>책 {rows.length}권</Text>
                 {canPlace ? <TextLink label={ko.allBooks.place} onPress={() => { setSelecting(true); setMessage(null); }} style={s.placeLink} /> : null}
-                <FilterIcon active={offShelfOnly || sort !== 'recent'} onPress={() => setFilterOpen(true)} />
+                <FilterIcon active={offShelfOnly || sort !== 'recent' || !!year} onPress={() => setFilterOpen(true)} />
                 <IconButton label={grid ? '목록으로 보기' : '표지 격자로 보기'} onPress={() => setView(grid ? 'list' : 'grid')} style={s.toolEnd}>
                   {grid ? <ListIcon size={icon.size} color={colors.ink} strokeWidth={icon.stroke} /> : <LayoutGrid size={icon.size} color={colors.ink} strokeWidth={icon.stroke} />}
                 </IconButton>
@@ -196,7 +211,13 @@ export default function AllBooks() {
         <FilterGroup title="책장">
           <FilterOption label={ko.allBooks.offShelf} sub={`${offCount}권`} right={<Toggle label={ko.allBooks.offShelf} value={offShelfOnly} onValueChange={setOffShelfOnly} />} />
         </FilterGroup>
+        {years.length ? (
+          <FilterGroup title="완독한 해">
+            {years.map((y) => <FilterOption key={y} label={`${y}년`} selected={year === y} onPress={() => setYear(year === y ? null : y)} />)}
+          </FilterGroup>
+        ) : null}
       </Sheet>
+      <MemoPopover anchor={memoOf?.anchor ?? null} memos={memoOf ? memos.get(memoOf.id) ?? [] : []} onClose={() => setMemoOf(null)} />
     </Screen>
   );
 }

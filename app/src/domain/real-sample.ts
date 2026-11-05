@@ -145,7 +145,18 @@ export function realReadingLibrary(y: number, m: number): Library {
 }
 
 // 화면 사진용(측정 번들 ?seedlib=1): 실제 저장 경로로 비교 책장의 책과 지난달·이번 달 기록, 갈피를 넣는다(이미 책이 있으면 건너뛴다)
-type SeedStore = BoardStore & { addSession(input: Pick<Session, 'myBookId' | 'startedAt' | 'endedAt' | 'durationMs' | 'startPage' | 'pagesRead'>): string };
+type SeedStore = BoardStore & { addSession(input: Pick<Session, 'myBookId' | 'startedAt' | 'endedAt' | 'durationMs' | 'startPage' | 'pagesRead' | 'memo'>): string; updateBook(id: string, patch: { note?: string }): void };
+// 사진용 한 줄 감상·메모(측정 번들에만 들어간다)
+const SEED_NOTES: Record<string, string> = {
+  '작별하지 않는다': '눈 내리는 장면이 오래 남았다. 쉽게 읽히지 않아서 더 천천히 읽게 되는 책이었다.',
+  '우리가 빛의 속도로 갈 수 없다면': '과학 이야기인데 결국 사람 이야기였다.',
+  '이처럼 사소한 것들': '짧은데 마지막 장면을 여러 번 다시 읽었다.',
+  '소년이 온다': '한 장 넘기기가 어려웠지만 끝까지 읽어야 한다고 느꼈다.',
+};
+const SEED_MEMOS: Record<string, string[]> = {
+  '작별하지 않는다': ['3장까지 읽음. 제주 이야기가 시작되는 부분부터 다시 읽을 것', '친구에게 추천하기'],
+  '소년이 온다': ['동호가 나오는 장은 밤에 읽지 말 것'],
+};
 export function realLibrarySeed(store: SeedStore, now: Date) {
   if (Object.keys(store.get().lib.books).length) return;
   const ids = new Map<string, string>();
@@ -163,6 +174,14 @@ export function realLibrarySeed(store: SeedStore, now: Date) {
       if (s.myBookId) pageAt.set(s.myBookId, pagesRead);
       store.addSession({ myBookId: s.myBookId ? ids.get(s.myBookId) : undefined, startedAt: s.startedAt, endedAt: s.endedAt, durationMs: s.durationMs, startPage, pagesRead });
     }
+  }
+  for (const b of ALL) {
+    const id = ids.get(b.id)!;
+    if (SEED_NOTES[b.title]) store.updateBook(id, { note: SEED_NOTES[b.title] });
+    (SEED_MEMOS[b.title] ?? []).forEach((memo, i) => {
+      const start = new Date(now.getTime() - (i + 2) * 86400000);
+      store.addSession({ myBookId: id, startedAt: start.toISOString(), endedAt: new Date(start.getTime() + 1200000).toISOString(), durationMs: 1200000, memo });
+    });
   }
   const first = ids.get(ALL[0].id)!;
   BOARD_QUOTES.slice(0, 3).forEach(([text, page]) => store.addBookmark({ myBookId: first, text, page }));

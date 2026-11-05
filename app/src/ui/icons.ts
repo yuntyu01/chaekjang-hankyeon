@@ -30,3 +30,4 @@ export { default as MessageCircle } from 'lucide-react-native/icons/message-circ
 export { default as LayoutGrid } from 'lucide-react-native/icons/layout-grid';
 export { default as ListIcon } from 'lucide-react-native/icons/list';
 export { default as SlidersHorizontal } from 'lucide-react-native/icons/sliders-horizontal';
+export { default as StickyNote } from 'lucide-react-native/icons/sticky-note';

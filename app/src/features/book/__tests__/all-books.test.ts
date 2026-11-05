@@ -3,7 +3,7 @@ import { emptyLibrary, type Library, type MyBook, type ReadStatus } from '@/doma
 import { SAMPLE_BOOKS } from '@/domain/test-fixtures/interaction-books';
 import type { ShelfLayout } from '@/domain/types';
 
-import { listAllBooks } from '../all-books';
+import { listAllBooks, memosByBook } from '../all-books';
 
 const [a, b, c] = SAMPLE_BOOKS;
 const books = { [a.id]: a, [b.id]: b, [c.id]: c };
@@ -31,4 +31,24 @@ it('제목순 정렬', () => {
   const rows = listAllBooks(lib, books, layout, { ...all, sort: 'title' });
   const titles = rows.map((r) => r.book.title);
   expect(titles).toEqual([...titles].sort((x, y) => x.localeCompare(y, 'ko')));
+});
+
+describe('책마다 남긴 메모', () => {
+  const memoLib = {
+    sessions: {
+      s1: { id: 's1', myBookId: 'x', startedAt: '2026-11-01T01:00:00', endedAt: '2026-11-01T02:00:00', memo: '  첫 메모 ' },
+      s2: { id: 's2', myBookId: 'x', startedAt: '2026-11-03T01:00:00', endedAt: '2026-11-03T02:00:00', memo: '   ' },
+      s3: { id: 's3', startedAt: '2026-11-03T01:00:00', endedAt: '2026-11-03T02:00:00', memo: '책 없는 메모' },
+    },
+    bookmarks: {
+      m1: { id: 'm1', myBookId: 'x', createdAt: '2026-11-02T00:00:00Z', memo: '갈피 메모' },
+      m2: { id: 'm2', myBookId: 'y', createdAt: '2026-11-02T00:00:00Z' },
+    },
+  } as unknown as Parameters<typeof memosByBook>[0];
+  it('최근 순으로 모으고 빈 메모와 책 없는 메모는 뺀다', () => {
+    const map = memosByBook(memoLib);
+    expect(map.get('x')?.map((m) => [m.text, m.kind])).toEqual([['갈피 메모', 'bookmark'], ['첫 메모', 'reading']]);
+    expect(map.has('y')).toBe(false);
+    expect(map.size).toBe(1);
+  });
 });

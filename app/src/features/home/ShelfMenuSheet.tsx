@@ -1,7 +1,7 @@
-// 책장 메뉴 시트(머리글 왼쪽 글자를 누르면): 꾸미기·책 찾기만 둔다(2026-11-04 사용자 '메뉴 왜 이렇게 많아, 글씨체, 아이콘').
+// 책장 메뉴 시트(머리글 왼쪽 글자를 누르면): 꾸미기만 둔다(2026-11-04 사용자 '메뉴 왜 이렇게 많아, 글씨체, 아이콘'). 책 찾기는 전체 책 검색과 겹쳐 뺐다(2026-11-05 사용자).
 // 전체 책·스토어·책 추가는 머리글 오른쪽 아이콘, 설정은 내 정보 탭, 선반 추가는 잠긴 칸을 누르면 된다. 줄 모양은 설정 화면과 같은 부품이다(ListItem).
 // 측정 번들: 딥링크 ?perfmenu=1 이면 측정 항목이 더 보인다.
-import { router, useLocalSearchParams } from 'expo-router';
+import { useLocalSearchParams } from 'expo-router';
 
 import { SHELF_SLOTS } from '@/domain/layout-rules';
 import type { ShelfLayout } from '@/domain/types';
@@ -37,7 +37,6 @@ export function ShelfMenuSheet({ visible, layout, onClose, onDecorate, showToast
     <Sheet visible={visible} onClose={onClose} title={ko.menu.title}>
       <ListGroup>
         {item(ko.decorate, onDecorate)}
-        {item(ko.menu.search, () => router.push('/search'))}
         {canPrune ? item(ko.menu.prune, () => showToast({ text: placementStore.pruneShelves() ? ko.menu.pruned : ko.menu.shelfFail })) : null}
         {PERF_ENABLED && perfmenu === '1' ? (
           <>
