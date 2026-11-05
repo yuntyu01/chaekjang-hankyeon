@@ -1,7 +1,7 @@
 // 전체 책 목록: 등록한 모든 책(책장에 놓인 책 + 책장에 없는 책)을 검색·읽기 상태·책장에 없는 책으로 거르고 정렬한다.
 // 책 정보는 서재(library) 한 곳에만 있고, 책장 배치는 같은 책 ID로 따로 본다(두 곳에 따로 저장하지 않는다).
 import { placementOf } from '@/domain/layout-engine';
-import { finishedYear, sessionDay, type Library, type ReadStatus } from '@/domain/library';
+import { bookmarksOf, finishedYear, roundsOf, sessionDay, type Library, type ReadStatus } from '@/domain/library';
 import type { Book, ShelfLayout } from '@/domain/types';
 
 export type AllBooksSort = 'recent' | 'title';
@@ -40,4 +40,14 @@ export function memosByBook(lib: Pick<Library, 'sessions' | 'bookmarks'>) {
   for (const m of Object.values(lib.bookmarks)) add(m.myBookId, { id: m.id, text: m.memo?.trim() ?? '', at: m.createdAt, kind: 'bookmark' });
   for (const list of out.values()) list.sort((a, b) => b.at.localeCompare(a.at));
   return out;
+}
+
+// 책을 지우면 함께 지워지는 것과 남는 것(library-store deleteBook과 같은 기준)
+export function deleteSummary(lib: Library, ids: readonly string[]) {
+  const set = new Set(ids);
+  return {
+    rounds: ids.reduce((a, id) => a + roundsOf(lib, id).length, 0),
+    marks: ids.reduce((a, id) => a + bookmarksOf(lib, id).length, 0),
+    sessions: Object.values(lib.sessions).filter((s) => s.myBookId && set.has(s.myBookId)).length,
+  };
 }

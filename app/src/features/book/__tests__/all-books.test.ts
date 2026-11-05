@@ -3,7 +3,7 @@ import { emptyLibrary, type Library, type MyBook, type ReadStatus } from '@/doma
 import { SAMPLE_BOOKS } from '@/domain/test-fixtures/interaction-books';
 import type { ShelfLayout } from '@/domain/types';
 
-import { listAllBooks, memosByBook } from '../all-books';
+import { deleteSummary, listAllBooks, memosByBook } from '../all-books';
 
 const [a, b, c] = SAMPLE_BOOKS;
 const books = { [a.id]: a, [b.id]: b, [c.id]: c };
@@ -59,4 +59,16 @@ describe('책마다 남긴 메모', () => {
     expect(map.has('y')).toBe(false);
     expect(map.size).toBe(1);
   });
+});
+
+it('삭제하면 지워지는 것과 남는 것을 고른 책만 센다', () => {
+  const base = { createdAt: '2026-11-01', updatedAt: '2026-11-01' };
+  const l: Library = {
+    ...lib,
+    rounds: { r1: { id: 'r1', myBookId: a.id, index: 1, ...base }, r2: { id: 'r2', myBookId: b.id, index: 1, ...base } },
+    bookmarks: { m1: { id: 'm1', myBookId: a.id, text: 'x', ...base }, m2: { id: 'm2', myBookId: c.id, text: 'y', ...base } },
+    sessions: { s1: { id: 's1', myBookId: a.id, startedAt: '2026-11-01', endedAt: '2026-11-01', durationMs: 1, ...base }, s2: { id: 's2', startedAt: '2026-11-01', endedAt: '2026-11-01', durationMs: 1, ...base } },
+  };
+  expect(deleteSummary(l, [a.id, b.id])).toEqual({ rounds: 2, marks: 1, sessions: 1 });
+  expect(deleteSummary(l, [])).toEqual({ rounds: 0, marks: 0, sessions: 0 });
 });

@@ -1,5 +1,5 @@
-// 자리가 없을 때 전용 시트(2026-11-05 사용자 '이것도 전용 디자인 만들어줘', 운영체제 확인창 대신): 꽂으려던 책이 선반 판 위에 서 있고, 아래에서 선반을 열거나 보관한다.
-// 선반 판은 지금 책장의 판 색. 바깥을 누르거나 닫으면 보관한다(책이 사라지지 않게. 전체 책에서 언제든 꽂을 수 있다).
+// 자리가 없을 때 전용 시트(2026-11-05 사용자 '이것도 전용 디자인 만들어줘', 운영체제 확인창 대신): 진열하려던 책이 선반 판 위에 서 있고, 아래에서 선반을 열거나 보관한다.
+// 선반 판은 지금 책장의 판 색. 바깥을 누르거나 닫으면 보관한다(책이 사라지지 않게. 전체 책에서 언제든 진열할 수 있다).
 import { useEffect, useState } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 
@@ -26,7 +26,7 @@ export function NoRoomSheet() {
   const rest = (req?.ids.length ?? 0) - Math.min(ids.length, SHOWN);
   return (
     <Sheet visible={!!req} onClose={() => answer(req?.onKeep)} title={ko.allBooks.noRoomTitle} description={ko.allBooks.noRoomBody(req?.ids.length ?? 0)}>
-      <View style={st.shelf} accessible accessibilityLabel={`꽂으려던 책 ${req?.ids.length ?? 0}권`}>
+      <View style={st.shelf} accessible accessibilityLabel={`진열하려던 책 ${req?.ids.length ?? 0}권`}>
         <View style={st.books}>
           {ids.slice(0, SHOWN).map((id) => (
             <View key={id} style={st.book} pointerEvents="none"><LibraryCover lib={lib} id={id} width={68} /></View>

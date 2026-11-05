@@ -200,8 +200,8 @@ export default function AddBook() {
           {draft.authors ? <Text style={[type.sub, { marginTop: 2 }]} numberOfLines={1}>{draft.authors}</Text> : null}
           {placed !== null ? (
             <View style={st.doneResult}>
-              <Text style={[type.button, { color: colors.accent }]}>{placed === 'shelf' ? '전시 책장에 놓았어요' : '전체 책에만 보관했어요'}</Text>
-              <Text style={[type.caption, { marginTop: 2 }]}>{placed === 'shelf' ? '꾸미기에서 자리와 자세를 바꿀 수 있어요.' : '책장에는 아직 없어요. 전체 책에서 언제든 놓을 수 있어요.'}</Text>
+              <Text style={[type.button, { color: colors.accent }]}>{placed === 'shelf' ? '책장에 진열했어요' : '전체 책에만 보관했어요'}</Text>
+              <Text style={[type.caption, { marginTop: 2 }]}>{placed === 'shelf' ? '꾸미기에서 자리와 자세를 바꿀 수 있어요.' : '책장에는 아직 없어요. 전체 책에서 언제든 진열할 수 있어요.'}</Text>
             </View>
           ) : null}
         </View>
@@ -336,7 +336,7 @@ export default function AddBook() {
         title="장정 미리보기"
         footer={
           <View>
-            <Btn label="추가하고 책장에 놓기" busy={saving} onPress={() => void add('shelf')} />
+            <Btn label="추가하고 책장에 진열" busy={saving} onPress={() => void add('shelf')} />
             <TextLink label="보관만 하기" tone="soft" disabled={saving} onPress={() => void add('keep')} style={{ marginTop: space.xs, marginBottom: -space.s }} />
           </View>
         }>
