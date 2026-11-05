@@ -123,7 +123,7 @@ export const ko = {
     cancel: '취소',
     placed: (n: number) => `${n}권을 책장에 꽂았어요`,
     noRoomTitle: '책장에 빈 자리가 없어요',
-    noRoomBody: (n: number) => `${n}권을 꽂을 자리가 없어요. 선반을 한 칸 열면 바로 꽂을게요.`,
+    noRoomBody: (n: number) => `${n}권을 꽂을 자리가 없어요. 선반을 열면 바로 꽂을게요.`,
     openAndPlace: '무료로 선반 열고 꽂기',
     placeShort: '꽂기',
     keep: '보관만 하기',

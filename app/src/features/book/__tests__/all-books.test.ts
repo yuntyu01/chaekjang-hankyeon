@@ -33,6 +33,14 @@ it('제목순 정렬', () => {
   expect(titles).toEqual([...titles].sort((x, y) => x.localeCompare(y, 'ko')));
 });
 
+it('완독한 해로 거른다', () => {
+  const done: Library = { ...lib, rounds: { r1: { id: 'r1', myBookId: a.id, index: 1, finishedAt: '2025-03-01', createdAt: '2025-03-01', updatedAt: '2025-03-01' } } };
+  const filter = { q: '', status: 'all' as const, offShelfOnly: false, sort: 'recent' as const };
+  expect(listAllBooks(done, books, layout, { ...filter, year: 2025 }).map((r) => r.book.id)).toEqual([a.id]);
+  expect(listAllBooks(done, books, layout, { ...filter, year: 2024 })).toEqual([]);
+  expect(listAllBooks(done, books, layout, { ...filter, year: null })).toHaveLength(3);
+});
+
 describe('책마다 남긴 메모', () => {
   const memoLib = {
     sessions: {
