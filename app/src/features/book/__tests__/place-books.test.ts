@@ -17,14 +17,13 @@ jest.mock('expo-sqlite/kv-store', () => ({
 
 // 책장에 놓기(전체 책·책 상세·책 추가): 같은 책 ID로 배치만 바꾼다. 이미 놓인 책은 다시 꽂지 않고,
 // 자리가 없으면 사용자가 고른 만큼만 선반을 더하거나 보관한다(책을 줄이거나 다른 책을 옮기지 않는다).
-import { Alert } from 'react-native';
-
 import { placementOf, type BookMap } from '@/domain/layout-engine';
 import { SHELF_SLOTS } from '@/domain/layout-rules';
 import { ko } from '@/i18n/ko';
 import { SAMPLE_BOOKS } from '@/domain/test-fixtures/interaction-books';
 import { EMPTY_LAYOUT, placementStore, repair } from '@/store/placement-store';
 
+import { setNoRoomHost, type NoRoomRequest } from '../no-room';
 import { placeBooks, placeWithChoice } from '../place-books';
 
 // 예시 18권은 빈 선반 세 칸에 다 들어가서, 같은 책 세 벌(54권)로 자리가 모자라게 한다
@@ -32,10 +31,11 @@ const copies = [0, 1, 2].flatMap((k) => SAMPLE_BOOKS.map((b) => ({ ...b, id: `${
 const books: BookMap = Object.fromEntries(copies.map((b) => [b.id, b]));
 const ids = copies.map((b) => b.id);
 const now = () => placementStore.get().layout;
-const answer = (text: string) =>
-  jest.spyOn(Alert, 'alert').mockImplementation((_t, _m, buttons) => {
-    buttons?.find((b) => b.text === text)?.onPress?.();
-  });
+const answer = (text: string) => {
+  const host = jest.fn((req: NoRoomRequest) => (text === ko.allBooks.keep ? req.onKeep() : req.onOpen()));
+  setNoRoomHost(host);
+  return host;
+};
 
 beforeEach(async () => {
   jest.restoreAllMocks();

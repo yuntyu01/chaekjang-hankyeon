@@ -2,11 +2,9 @@
 // - 이미 책장에 있는 책은 건너뛴다(같은 책이 두 번 꽂히지 않는다).
 // - 기존 크기·배치 규칙(placeAtFirstFit)으로 빈 자리를 찾고, 책을 줄이거나 다른 책을 옮겨 끼워 넣지 않는다.
 // - 자리가 모자라면 묻는다: 잠긴 선반 열기(누를 때마다 한 칸만, 기존 선반과 같은 재질·크기·간격) 또는 '보관만 하기'. 다 열었으면 보관한다.
-import { Alert } from 'react-native';
-
 import { placementOf } from '@/domain/layout-engine';
 import { lockedShelfCount } from '@/domain/layout-rules';
-import { ko } from '@/i18n/ko';
+import { askNoRoom } from '@/features/book/no-room';
 import { placementStore } from '@/store/placement-store';
 
 export function placeBooks(ids: readonly string[]): { placed: string[]; left: string[] } {
@@ -36,7 +34,7 @@ export function placeWithChoice(ids: readonly string[], done?: (placed: number, 
       done?.(total, 0);
       return;
     }
-    let answered = false; // 버튼과 바깥 누르기(onDismiss)가 겹쳐도 한 번만
+    let answered = false; // 버튼과 바깥 누르기가 겹쳐도 한 번만
     const keep = () => {
       if (answered) return;
       answered = true;
@@ -53,23 +51,16 @@ export function placeWithChoice(ids: readonly string[], done?: (placed: number, 
       keep();
       return;
     }
-    Alert.alert(
-      ko.allBooks.noRoomTitle,
-      ko.allBooks.noRoomBody(r.left.length),
-      [
-        { text: ko.allBooks.keep, style: 'cancel', onPress: keep },
-        {
-          text: ko.lockedShelf.buy,
-          onPress: () => {
-            if (answered) return;
-            if (!placementStore.addShelf()) return keep();
-            answered = true;
-            step(r.left, true);
-          },
-        },
-      ],
-      { cancelable: true, onDismiss: keep },
-    );
+    askNoRoom({
+      ids: r.left,
+      onKeep: keep,
+      onOpen: () => {
+        if (answered) return;
+        if (!placementStore.addShelf()) return keep();
+        answered = true;
+        step(r.left, true);
+      },
+    });
   };
   step(ids);
 }

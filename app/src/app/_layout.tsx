@@ -8,6 +8,7 @@ import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
 import { RecoveryDialog } from '@/features/reading/ActiveReading';
+import { NoRoomSheet } from '@/features/book/NoRoomSheet';
 import { MiniTimer } from '@/features/reading/MiniTimer';
 import { bootStores } from '@/store/boot';
 import { backfillCoverColors } from '@/services/cover-color-backfill';
@@ -90,6 +91,7 @@ export default function RootLayout() {
             </Stack>
             <MiniTimer />
             <RecoveryDialog />
+            <NoRoomSheet />
           </BookArtProvider> : null}
         </View>
         {bootError ? (
