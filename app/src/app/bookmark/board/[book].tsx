@@ -32,7 +32,8 @@ const LIFT = 1.04;
 const HANDLE = 44;
 // 카드를 끌다 화면 끝에 닿으면 보드가 넓어진다: 끝에서 이만큼 안쪽(dp), 1초에 이 배율로
 const EDGE = 44;
-const EDGE_ZOOM = 0.72;
+const EDGE_ZOOM = 0.85;
+const EDGE_MIN_SCALE = 0.45; // 글이 보일 만큼까지만(더 줄이려면 두 손가락)
 
 // 책 넘기기: 이만큼 끌거나 이 속도로 튕기면 다음 책으로
 const TURN_AT = 0.22;
@@ -280,6 +281,7 @@ function BoardPage({ id, lib, turner }: { id: string; lib: Library; turner: Turn
     else router.push(`/bookmark/${markId}`);
   }, []);
   const viewChanged = useCallback(() => saveView(x.value, y.value, s.value), [s, saveView, x, y]);
+  const editCard = useCallback((markId: string, patch: { boardX: number; boardY: number; boardRot: number; boardW?: number }) => libraryStore.updateBoard(spots, markId, patch), [spots]);
   const board = useMemo(() => {
     const tapEmpty = Gesture.Tap().maxDistance(8).onEnd((_, ok) => {
       if (ok) scheduleOnRN(clearPick);
@@ -318,7 +320,7 @@ function BoardPage({ id, lib, turner }: { id: string; lib: Library; turner: Turn
             <Animated.View style={[st.layer, layer, { opacity: shown ? 1 : 0 }]}>
               {order.map((m) => {
                 const o = spotOf.get(m.id);
-                return o ? <BoardItem key={m.id} mark={m} spot={o} color={color} x={x} y={y} scale={s} vp={vpSV} originY={originY} selected={picked === m.id} onSelect={setPicked} onTap={tapCard} onViewChanged={viewChanged} /> : null;
+                return o ? <BoardItem key={m.id} mark={m} spot={o} color={color} x={x} y={y} scale={s} vp={vpSV} originY={originY} selected={picked === m.id} onSelect={setPicked} onTap={tapCard} onViewChanged={viewChanged} onEdit={editCard} /> : null;
               })}
             </Animated.View>
           ) : (
@@ -347,11 +349,12 @@ type BoardItemProps = {
   onSelect: (id: string) => void;
   onTap: (id: string) => void;
   onViewChanged: () => void;
+  onEdit: (id: string, patch: { boardX: number; boardY: number; boardRot: number; boardW?: number }) => void;
 };
 
 // 갈피 한 장: 누르면 크게 읽기. 꾹 누르면 들리고, 끌면 옮겨지며(다른 갈피 위에도 놓을 수 있다), 떼면 고른 상태가 되어 손잡이로 폭을 바꾼다.
 // 끄는 자리는 손가락 위치로 바로 계산한다(끌다가 화면 끝에 닿아 보드가 넓어져도 카드가 손가락 아래에 남는다)
-function BoardItem({ mark, spot, color, x, y, scale, vp, originY, selected, onSelect, onTap, onViewChanged }: BoardItemProps) {
+function BoardItem({ mark, spot, color, x, y, scale, vp, originY, selected, onSelect, onTap, onViewChanged, onEdit }: BoardItemProps) {
   const dx = useSharedValue(0);
   const dy = useSharedValue(0);
   const lift = useSharedValue(0);
@@ -372,8 +375,8 @@ function BoardItem({ mark, spot, color, x, y, scale, vp, originY, selected, onSe
 
   const frame = useFrameCallback((info) => {
     const near = fingerX.value < EDGE || fingerX.value > vp.value.w - EDGE || fingerY.value < EDGE || fingerY.value > vp.value.h - EDGE;
-    if (!near || scale.value <= BOARD_MIN_SCALE) return;
-    const k = Math.max(BOARD_MIN_SCALE / scale.value, Math.pow(EDGE_ZOOM, (info.timeSincePreviousFrame ?? 16) / 1000));
+    if (!near || scale.value <= EDGE_MIN_SCALE) return;
+    const k = Math.max(EDGE_MIN_SCALE / scale.value, Math.pow(EDGE_ZOOM, (info.timeSincePreviousFrame ?? 16) / 1000));
     const v = boardZoomAt({ x: x.value, y: y.value, s: scale.value }, k, vp.value.w / 2, vp.value.h / 2);
     x.value = v.x;
     y.value = v.y;
@@ -392,10 +395,10 @@ function BoardItem({ mark, spot, color, x, y, scale, vp, originY, selected, onSe
     } else {
       const nx = Math.round(Math.max(-REACH, Math.min(REACH, spot.x + mx)));
       const ny = Math.round(Math.max(-REACH, Math.min(REACH, spot.y + my)));
-      libraryStore.updateBookmark(mark.id, { boardX: nx, boardY: ny, boardRot: spot.rot });
+      onEdit(mark.id, { boardX: nx, boardY: ny, boardRot: spot.rot });
     }
     if (ok) onSelect(mark.id);
-  }, [dx, dy, mark.id, onSelect, onViewChanged, spot.rot, spot.x, spot.y]);
+  }, [dx, dy, mark.id, onEdit, onSelect, onViewChanged, spot.rot, spot.x, spot.y]);
   const gesture = useMemo(() => {
     const tap = Gesture.Tap().maxDistance(8).onEnd((_, ok) => {
       if (ok) scheduleOnRN(tapped);
@@ -428,8 +431,8 @@ function BoardItem({ mark, spot, color, x, y, scale, vp, originY, selected, onSe
   // 손잡이: 폭이 바뀌면 글은 그 폭에 맞춰 다시 줄 바꿈된다. 왼쪽 위 모서리는 그대로
   const commitWidth = useCallback((nw: number) => {
     if (Math.round(nw) === spot.w) return;
-    libraryStore.updateBookmark(mark.id, boardResized(mark, spot, Math.round(nw)));
-  }, [mark, spot]);
+    onEdit(mark.id, boardResized(mark, spot, Math.round(nw)));
+  }, [mark, onEdit, spot]);
   const resizeBy = (d: number) => commitWidth(Math.max(BOARD_MIN_W, Math.min(BOARD_MAX_W, spot.w + d)));
   const resize = useMemo(() => Gesture.Pan().minDistance(1)
     .onChange((ev) => {

@@ -87,3 +87,22 @@ it('서버 기록을 저장하는 사이 사용자가 고친 같은 책을 덮�
   expect(store.get().lib.books[id].note).toBe('기기의 새 기록');
   expect((await local.captureSyncSnapshot()).lib.books[id].note).toBe('기기의 새 기록');
 });
+
+it('보드에서 한 장을 손대면 다른 자동 자리 카드는 고정되고, 손댄 카드가 맨 위이며, 폭까지 저장된다', async () => {
+  const book = store.addBook(input);
+  const a = store.addBookmark({ myBookId: book, text: '가' });
+  const b = store.addBookmark({ myBookId: book, text: '나' });
+  const c = store.addBookmark({ myBookId: book, text: '다', boardX: 5, boardY: 6, boardRot: 1 });
+  const spots = [{ id: a, x: 10, y: 20, rot: 2 }, { id: b, x: 30, y: 40, rot: -1 }, { id: c, x: 5, y: 6, rot: 1 }];
+  store.updateBoard(spots, a, { boardX: 100, boardY: 200, boardRot: 2, boardW: 320 });
+  const marks = store.get().lib.bookmarks;
+  expect(marks[a]).toMatchObject({ boardX: 100, boardY: 200, boardW: 320 });
+  expect(marks[b]).toMatchObject({ boardX: 30, boardY: 40, boardRot: -1 });
+  expect(marks[b].boardW).toBeUndefined();
+  expect(marks[c]).toMatchObject({ boardX: 5, boardY: 6 }); // 이미 자리가 있는 카드는 그대로
+  expect(marks[a].updatedAt > marks[b].updatedAt).toBe(true);
+  await store.flushPending();
+  const saved = (await local.captureSyncSnapshot()).lib.bookmarks;
+  expect(saved[a].boardW).toBe(320);
+  expect(saved[b].boardX).toBe(30);
+});

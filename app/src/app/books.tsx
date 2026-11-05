@@ -142,7 +142,8 @@ export default function AllBooks() {
         label={[book.title, book.author, subOf(item)].filter(Boolean).join(', ')}
         state={!selecting ? 'normal' : selecting === 'place' && onShelf ? 'on-shelf' : on ? 'picked' : 'free'}
         onPress={selecting ? (selecting === 'place' && onShelf ? undefined : () => toggle(book.id)) : () => router.push(`/book/${book.id}`)}
-        onLongPress={selecting ? undefined : () => startManage(book.id)}
+        // 고르는 중에도 비워 두지 않는다: 꾹 눌러 고르기가 시작된 뒤 손을 뗄 때 onPress로 번져 방금 고른 책이 풀린다(Pressability)
+        onLongPress={() => { if (!selecting) startManage(book.id); }}
       />
     );
   };

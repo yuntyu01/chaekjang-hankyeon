@@ -189,6 +189,21 @@ export const libraryStore = {
     if (!m) return;
     commit({ ...state.lib, bookmarks: { ...state.lib.bookmarks, [id]: { ...m, ...patch, updatedAt: now() } } });
   },
+  // 갈피 보드에서 카드 하나를 손댈 때: 아직 자동 자리인 다른 카드를 지금 자리에 고정하고(손댄 카드 때문에 다른 카드가 움직이지 않게) 손댄 카드를 바꾼다.
+  // 한 번에 저장하고, 손댄 카드가 맨 위에 오도록 고정한 카드보다 늦은 시각을 준다
+  updateBoard(spots: readonly { id: string; x: number; y: number; rot: number }[], id: string, patch: Partial<Pick<Bookmark, 'boardX' | 'boardY' | 'boardRot' | 'boardW'>>) {
+    const m = state.lib.bookmarks[id];
+    if (!m) return;
+    const t = now();
+    const before = new Date(Date.parse(t) - 1).toISOString();
+    const bookmarks = { ...state.lib.bookmarks };
+    for (const s of spots) {
+      const o = bookmarks[s.id];
+      if (o && s.id !== id && typeof o.boardX !== 'number') bookmarks[s.id] = { ...o, boardX: s.x, boardY: s.y, boardRot: s.rot, updatedAt: before };
+    }
+    bookmarks[id] = { ...m, ...patch, updatedAt: t };
+    commit({ ...state.lib, bookmarks });
+  },
   deleteBookmark(id: string) {
     const next = { ...state.lib.bookmarks };
     delete next[id];
