@@ -113,7 +113,9 @@ function cmix(a: C3, b: C3, t: number): C3 {
 
 // 재질 색(시안에서 보이는 색, 선형 RGB: 그림이 칠하는 색)과 실제 반사율(ALBEDO, 맨 아래 calibrate가 정한다).
 // 둘레 면의 밝기(RAD: 반사율 × 받는 빛) = 판 윗면(위를 향함), 벽(앞을 향함), 윗선반 아랫면(아래를 향함)
-export const DESIGN = { plank: linearOf(surfaces.plank), frame: linearOf(surfaces.frame), wall: linearOf(surfaces.wall), paper: linearOf(surfaces.paper) };
+// 순백 벽(#FFFFFF, 선형 1)은 톤 곡선에서 장면 밝기가 끝없이 커져(toneInv(1) = FAR) 이득이 튀고 벽 그늘이 사라진다. 대표 자리 색을 화면에 255로 보이는 가장 높은 값에서 멈춘다(그보다 어두운 벽지는 그대로)
+const WALL_TOP = 0.996;
+export const DESIGN = { plank: linearOf(surfaces.plank), frame: linearOf(surfaces.frame), wall: linearOf(surfaces.wall).map((c) => Math.min(c, WALL_TOP)) as [number, number, number], paper: linearOf(surfaces.paper) };
 export const ALBEDO = { plank: DESIGN.plank, frame: DESIGN.frame, wall: DESIGN.wall, paper: DESIGN.paper };
 // sideL·sideR: 틀 안쪽 면(왼쪽 면은 오른쪽을 향해 창빛을 못 받고, 오른쪽 면은 왼쪽을 향해 받는다)
 export const RAD = { floor: grey(0), wall: grey(0), under: grey(0), end: grey(0), sideL: grey(0), sideR: grey(0) };

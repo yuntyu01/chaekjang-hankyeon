@@ -9,7 +9,7 @@ import { scheduleOnRN, scheduleOnUI } from 'react-native-worklets';
 
 import { VIEW_PITCH_MAX, VIEW_PITCH_MIN, type Cam } from '@/domain/camera';
 import { PERF_LIGHT_KEY } from '@/scene-config/lighting';
-import { PERF_UI_BG_KEY } from '@/scene-config/palette';
+import { PERF_UI_BG_KEY, PERF_WALL_KEY } from '@/scene-config/palette';
 import { PERF_LOOK_KEY, PERF_SKIN_KEY } from '@/scene-config/skin';
 import { realLibrarySeed } from '@/domain/real-sample';
 import { DEMO_BOOT_KEY } from '@/store/boot';
@@ -47,7 +47,7 @@ export function useHomePerf({ view, pitchSV, viewGoal, savePitch, camSV, storeLo
   const [shelfView, setShelfViewState] = useState<(typeof SHELF_VIEWS)[number]>('전체');
   // 측정 번들에서만: chaekjang:///?sv=0~4 로 선반 보기를 바로 고른다(비교 캡처용)
   // lv=<그리기 단계>(예: full, cast)로 단계만 바꿔 같은 화면을 비교한다
-  const { sv, lv, sh, lt, cam: camDebug, pitch: pitchParam, slow, transit, geom, pushdbg, mark, mat, light: lightParam, skin: skinParam, look: lookParam, uibg: uiBgParam } = useLocalSearchParams<{ sv?: string; lv?: string; sh?: string; lt?: string; cam?: string; pitch?: string; slow?: string; transit?: string; geom?: string; pushdbg?: string; mark?: string; mat?: string; light?: string; skin?: string; look?: string; uibg?: string }>();
+  const { sv, lv, sh, lt, cam: camDebug, pitch: pitchParam, slow, transit, geom, pushdbg, mark, mat, light: lightParam, skin: skinParam, look: lookParam, uibg: uiBgParam, wallbg: wallBgParam } = useLocalSearchParams<{ sv?: string; lv?: string; sh?: string; lt?: string; cam?: string; pitch?: string; slow?: string; transit?: string; geom?: string; pushdbg?: string; mark?: string; mat?: string; light?: string; skin?: string; look?: string; uibg?: string; wallbg?: string }>();
   // 측정 번들: ?mark=b11,b12 처럼 고른 책을 한 가지 색(자홍, 둘째는 청록)으로만 그린다. 화면 녹화에서 그 책이 프레임마다 몇 군데에
   // 얼마나 보이는지 세어 빈 프레임·두 권 보임을 찾는다(장면에 넘기는 그림용 사본만 바꾼다. 배치 계산·저장은 그대로).
   // 측정 번들: ?geom=1 로 형상 보기(3D 상자 모서리·받침·계산상 선반)를 켜고 끈다(캡처 스크립트용)
@@ -101,6 +101,12 @@ export function useHomePerf({ view, pitchSV, viewGoal, savePitch, camSV, storeLo
     if (uiBgParam === 'off') void Storage.removeItem(PERF_UI_BG_KEY);
     else void Storage.setItem(PERF_UI_BG_KEY, `#${uiBgParam}`);
   }, [uiBgParam]);
+  // 측정 번들: ?wallbg=FFFFFF 책장 벽지 색을 저장한다(다음 실행부터, scene-config/palette). off면 지운다
+  useEffect(() => {
+    if (!PERF_ENABLED || wallBgParam === undefined) return;
+    if (wallBgParam === 'off') void Storage.removeItem(PERF_WALL_KEY);
+    else void Storage.setItem(PERF_WALL_KEY, `#${wallBgParam}`);
+  }, [wallBgParam]);
   useEffect(() => {
     if (!PERF_ENABLED || skinParam === undefined) return;
     if (skinParam === 'off') void Storage.removeItem(PERF_SKIN_KEY);

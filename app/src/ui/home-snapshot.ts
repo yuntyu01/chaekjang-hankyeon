@@ -7,7 +7,7 @@ import { type DependencyList, type RefObject, useEffect } from 'react';
 import { AppState, Dimensions, PixelRatio, type View } from 'react-native';
 
 import { captureWindow, screenCaptureAvailable } from '../../modules/screen-capture';
-import { SKIN_CHOICE, skinToString } from '@/scene-config/skin';
+import { SKIN, SKIN_CHOICE, skinToString } from '@/scene-config/skin';
 import { artIdle } from './book3d/art';
 import { PERF_ENABLED } from './perf';
 
@@ -18,7 +18,7 @@ const META = DIR ? `${DIR}meta.json` : null;
 const REV = 3; // 2: 책 제목 글꼴을 고운바탕 Bold로, 3: 함렛 SemiBold·종이·천 결 세기
 // skin: 찍을 때의 책장 스킨. 스토어에서 스킨을 바꾸면 옛 사진을 띄우지 않는다(2026-11-05: 적용한 뒤 그림이 다 될 때까지 옛 선반이 보여 안 바뀐 줄 알았다)
 type Meta = { rev: number; skin: string; file: string; w: number; h: number; scale: number; fontScale: number };
-const SKIN_NOW = skinToString(SKIN_CHOICE);
+const SKIN_NOW = `${skinToString(SKIN_CHOICE)},${SKIN.wall.color}`; // 스킨 이름이 같아도 벽지 색이 바뀌면 옛 사진을 쓰지 않는다
 
 const screenNow = () => {
   const { width, height } = Dimensions.get('window');
