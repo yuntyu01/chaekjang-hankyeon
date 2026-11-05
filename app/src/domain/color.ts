@@ -85,7 +85,7 @@ function fromHsl([h, s, l]: number[]) {
   return [f(h + 1 / 3) * 255, f(h) * 255, f(h - 1 / 3) * 255];
 }
 // ---------- 갈피 색: 책장 갈피 탭·갈피 카드 뒤 종이·테이프가 같은 색 하나에서 나온다(2026-11-05 사용자 '책등색처럼 많은 비율 색상으로', '책장 갈피도 마찬가지로') ----------
-// 색 하나 = 표지에서 흰색·검정·회색을 뺀 가장 넓은 색(rebinding accentColorOf). 표지 19권 중 14권은 가장 넓은 색이 무채색이라 그대로 쓰면 흰 종이에 묻히거나 검은 갈피가 된다.
+// 색 하나 = 표지에서 흰색·검정·회색을 뺀 가장 넓은 색, 그만한 색이 없으면 작아도 뚜렷한 색(rebinding accentColorOf). 표지 19권 중 14권은 가장 넓은 색이 무채색이라 그대로 쓰면 흰 종이에 묻히거나 검은 갈피가 된다.
 // 고를 색이 없는 표지는 차분한 세 색 중 책마다 하나. 같은 색상(hue)에서 밝기·채도만 옮긴다(벽에 묻히거나 형광처럼 튀지 않게)
 const clampTo = (v: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, v));
 const hsl = (h: number, s: number, l: number) => toHex(fromHsl([h, Math.min(1, s), clampTo(l, 0, 0.93)]));
@@ -96,6 +96,9 @@ export function isNeutralColor(hex: string) {
   const [, s, l] = toHsl(parse(hex));
   return l > 0.86 || l < 0.14 || s < 0.14;
 }
+// 작아도 표지의 색으로 볼 만큼 뚜렷한 색(거의 무채색인 어두운 색·옅은 회보라는 뺀다)
+const VIVID_SAT = 0.25;
+export const isVividColor = (hex: string) => !isNeutralColor(hex) && toHsl(parse(hex))[1] >= VIVID_SAT;
 function accentHsl(accent: string | undefined, key: string) {
   let k = 0;
   for (let i = 0; i < key.length; i++) k = (Math.imul(k, 31) + key.charCodeAt(i)) >>> 0;

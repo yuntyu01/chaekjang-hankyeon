@@ -10,17 +10,18 @@ const round = { strokeLinecap: 'round', strokeLinejoin: 'round' } as const;
 // cy: 그린 모양의 세로 가운데. 모양이 칸 가운데에 오도록 칸을 잡아 아이콘마다 키가 달라도 세로 가운데가 맞는다(2026-11-04 사용자 '높이 중앙정렬')
 const box = (size: number, w: number, cy: number, k = 1) => ({ width: (size * w * k) / BOX, height: size, viewBox: `0 ${cy - BOX / k / 2} ${w} ${BOX / k}` });
 
-// 책장: 책 세 권, 세 번째는 앞 책에 기대 있다(시안 약 18°). 윤곽선은 면 안쪽으로 그려 겉 크기가 찬 모양과 같다
+// 책장: 같은 크기의 책 세 권(2026-11-05 사용자 '책 3개 크기가 다른데'), 세 번째는 앞 책에 기대 있다(시안 약 18°). 윤곽선은 면 안쪽으로 그려 겉 크기가 찬 모양과 같다
+const SHELF_BOOK_W = 7.6;
 export function ShelfIcon({ color, size = 26, filled }: { color: string; size?: number; filled?: boolean }) {
   const inset = filled ? 0 : W / 2;
   const line = filled ? {} : { stroke: color, strokeWidth: W, ...round };
   const fill = filled ? color : 'none';
-  const bar = (x: number, w: number) => ({ x: x + inset, y: 1.1 + inset, width: w - 2 * inset, height: 24.9 - 2 * inset, rx: Math.max(0.6, 2 - inset * 0.6), fill, ...line });
+  const bar = (x: number) => ({ x: x + inset, y: 1.1 + inset, width: SHELF_BOOK_W - 2 * inset, height: 24.9 - 2 * inset, rx: Math.max(0.6, 2 - inset * 0.6), fill, ...line });
   return (
     <Svg {...box(size, 33, 13.5)}>
-      <Rect {...bar(0.6, 7.8)} />
-      <Rect {...bar(10, 8.1)} />
-      <Rect {...bar(21.2, 7)} transform="rotate(-18 24.7 13.5)" />
+      <Rect {...bar(0.6)} />
+      <Rect {...bar(9.8)} />
+      <Rect {...bar(24.46 - SHELF_BOOK_W / 2)} transform="rotate(-18 24.46 13.5)" />
     </Svg>
   );
 }

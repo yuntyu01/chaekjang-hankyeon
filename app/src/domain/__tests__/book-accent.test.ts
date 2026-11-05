@@ -1,4 +1,4 @@
-// 갈피 색 하나: 표지에서 흰색·검정·회색을 뺀 가장 넓은 색. 책장 갈피 탭·갈피 카드 뒤 종이·테이프가 모두 이 색에서 나온다(2026-11-05 사용자)
+// 갈피 색 하나: 표지에서 흰색·검정·회색을 뺀 가장 넓은 색, 그만한 색이 없으면 작아도 뚜렷한 색. 책장 갈피 탭·갈피 카드 뒤 종이·테이프가 모두 이 색에서 나온다(2026-11-05 사용자)
 import { isNeutralColor, paperColors, tabColors } from '../color';
 import { coverAccentOf, needsCoverAccent, rememberCoverAccent } from '../cover-url';
 import { accentColorOf } from '../rebinding';
@@ -14,6 +14,9 @@ const BLACK: [number, number, number] = [8, 8, 8];
 const GREY: [number, number, number] = [200, 198, 200];
 const YELLOW: [number, number, number] = [244, 189, 55];
 const BLUE: [number, number, number] = [82, 118, 180];
+const DARK_GREY: [number, number, number] = [53, 49, 46];
+const PURPLE: [number, number, number] = [123, 68, 151];
+const DUSTY: [number, number, number] = [150, 120, 105]; // 무채색은 아니지만 탁한 색
 const lightness = (hex: string) => {
   const [r, g, b] = [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16) / 255);
   return (Math.max(r, g, b) + Math.min(r, g, b)) / 2;
@@ -28,8 +31,16 @@ describe('표지에서 갈피 색 뽑기', () => {
   it('유채색이 가장 넓으면 그 색이다', () => {
     expect(accentColorOf(cover([BLUE, 60], [YELLOW, 30], [WHITE, 10]))).toBe('#5276b4');
   });
-  it('3% 미만의 작은 점은 고르지 않고, 무채색뿐이면 없음', () => {
-    expect(accentColorOf(cover([WHITE, 98], [YELLOW, 2]))).toBeNull();
+  it('3% 넘는 색이 없으면 작아도 뚜렷한 색을 쓴다(데미안: 흰색·흑백 사진에 보라 띠 1.4%, 2026-11-05 사용자)', () => {
+    expect(accentColorOf(cover([WHITE, 540], [DARK_GREY, 446], [PURPLE, 14]))).toBe('#7b4497');
+    expect(accentColorOf(cover([WHITE, 98], [YELLOW, 2]))).toBe('#f4bd37');
+  });
+  it('3% 넘는 색이 있으면 더 뚜렷한 작은 색보다 그 색이다', () => {
+    expect(accentColorOf(cover([WHITE, 90], [DUSTY, 8], [PURPLE, 2]))).toBe('#967869');
+  });
+  it('작은 색이 탁하거나(무채색에 가까우면) 잡티(0.2% 미만)면 없음, 무채색뿐이어도 없음', () => {
+    expect(accentColorOf(cover([WHITE, 98], [DUSTY, 2]))).toBeNull();
+    expect(accentColorOf(cover([WHITE, 999], [PURPLE, 1]))).toBeNull();
     expect(accentColorOf(cover([WHITE, 60], [BLACK, 40]))).toBeNull();
   });
 });

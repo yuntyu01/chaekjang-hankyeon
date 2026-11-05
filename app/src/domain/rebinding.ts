@@ -2,7 +2,7 @@
 // - 같은 입력 → 같은 출력(시간·무작위 없음. generatedAt은 호출자가 넘긴다).
 // - 썸네일은 색 추출에만 쓴다. 화면에 그리지 않고, 결과 색은 앱 팔레트 범위로 보정한다.
 // - 렌더러(ui/book3d/art.tsx)는 이 결과를 Book.art(색·모티프·조판 변형)로 받아 벡터로 그린다.
-import { contrast, isNeutralColor, rgbHex, TITLE_DARK, TITLE_LIGHT } from './color';
+import { contrast, isNeutralColor, isVividColor, rgbHex, TITLE_DARK, TITLE_LIGHT } from './color';
 import { MOTIF_SLOTS, type MotifSlotId } from './motif-slots';
 import type { HeightClass, ThicknessClass } from './types';
 
@@ -338,14 +338,17 @@ function topColor(rgba: ArrayLike<number>): { hex: string; share: number } | nul
 export function dominantColorOf(rgba: ArrayLike<number>): string | null {
   return topColor(rgba)?.hex ?? null;
 }
-// 갈피 색(domain/color tabColors·paperColors): 넓은 순서로 흰색·검정·회색이 아닌 첫 색. 아주 작은 점(3% 미만)은 표지의 색이라 보기 어렵다. 없으면 null
+// 갈피 색(domain/color tabColors·paperColors): 넓은 순서로 흰색·검정·회색이 아닌 첫 색(3% 이상).
+// 그만한 색이 없으면 작아도 뚜렷한 색 중 가장 넓은 색(2026-11-05 사용자 '데미안 보라 띠: 3%에 못 미쳐도 그 이상 띄는 게 없으면 넣는 게 낫다'). 0.2% 아래는 사진 잡티로 본다. 없으면 null
 export const ACCENT_MIN_SHARE = 0.03;
+const ACCENT_SPECK = 0.002;
 export function accentColorOf(rgba: ArrayLike<number>): string | null {
   const { bins, total } = colorBins(rgba);
   for (const bin of bins.sort((a, b) => b.n - a.n)) {
-    if (bin.n / total < ACCENT_MIN_SHARE) return null;
+    const share = bin.n / total;
+    if (share < ACCENT_SPECK) return null;
     const hex = rgbHex(bin.r / bin.n, bin.g / bin.n, bin.b / bin.n);
-    if (!isNeutralColor(hex)) return hex;
+    if (share >= ACCENT_MIN_SHARE ? !isNeutralColor(hex) : isVividColor(hex)) return hex;
   }
   return null;
 }

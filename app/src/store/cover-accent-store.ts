@@ -3,7 +3,8 @@ import Storage from 'expo-sqlite/kv-store';
 
 import { coverAccentEntries, loadCoverAccentEntries } from '@/domain/cover-url';
 
-const KEY = 'cover-accents-v1';
+// 뽑는 규칙이 바뀌면 번호를 올려 다시 잰다(v2: 작아도 뚜렷한 색, 2026-11-05)
+const KEY = 'cover-accents-v2';
 
 export async function loadCoverAccents() {
   try {
