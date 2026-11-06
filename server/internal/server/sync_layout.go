@@ -74,6 +74,120 @@ func finite(v *float64) *float64 {
 	return v
 }
 
+// 선반·책 자리·서랍 한 벌의 줄 값(지금 책장과 연도 책장이 같이 쓴다). 열 순서는 placementCols와 같다
+type layoutRows struct {
+	shelfIDs                         []string
+	shelfPos                         []int32
+	book, stackID, leanOn            []*string
+	shelf, pose                      []*string
+	position, tilt, stackOrder       []*int32
+	pos, leanAngle, leanSlide, depth []*float64
+	spin, pitch, stackDx, stackDz    []*float64
+	wallLean, flip, overhang         []bool
+}
+
+const placementCols = "shelf_id,position,pose,tilt,stack_id,stack_order,pos,lean_angle,lean_on,lean_slide,depth,spin,pitch,stack_dx,stack_dz,wall_lean,flip,overhang"
+
+// $2부터 rows.args() 순서로 받는 책 자리 줄들(p.book_id, p.<placementCols>)
+const placementUnnest = `unnest($2::text[],$3::text[],$4::int[],$5::text[],$6::smallint[],$7::text[],$8::int[],$9::float8[],$10::float8[],$11::text[],$12::float8[],$13::float8[],$14::float8[],$15::float8[],$16::float8[],$17::float8[],$18::bool[],$19::bool[],$20::bool[])
+			AS p(book_id,` + placementCols + `)`
+
+func (r *layoutRows) args() []any {
+	return []any{r.book, r.shelf, r.position, r.pose, r.tilt, r.stackID, r.stackOrder, r.pos, r.leanAngle, r.leanOn, r.leanSlide, r.depth, r.spin, r.pitch, r.stackDx, r.stackDz, r.wallLean, r.flip, r.overhang}
+}
+
+// 값 검사와 정리(쓰기 전에 다 한다). 같은 책이 두 번 나오면 먼저 나온 자리, 없는 선반을 가리키는 자리는 버린다
+func parseLayoutRows(shelves []*wireShelf, placements []*wirePlacement, drawer []*string) (*layoutRows, error) {
+	rows := &layoutRows{}
+	known := map[string]bool{}
+	for i, x := range shelves {
+		if x == nil || !validLayoutID(x.ID) {
+			return nil, bad
+		}
+		if known[x.ID] {
+			continue
+		}
+		known[x.ID] = true
+		pos := int32(i)
+		if o := roundInt(x.Order); o != nil {
+			pos = *o
+		}
+		rows.shelfIDs = append(rows.shelfIDs, x.ID)
+		rows.shelfPos = append(rows.shelfPos, pos)
+	}
+	type spot struct {
+		book                       string
+		shelf, pose, stackID       *string
+		position, tilt, stackOrder *int32
+		pos, leanAngle, leanSlide  *float64
+		leanOn                     *string
+		depth, spin, pitch, dx, dz *float64
+		wall, flip, overhang       bool
+	}
+	add := func(x spot) {
+		b := x.book
+		rows.book = append(rows.book, &b)
+		rows.shelf = append(rows.shelf, x.shelf)
+		rows.position = append(rows.position, x.position)
+		rows.pose = append(rows.pose, x.pose)
+		rows.tilt = append(rows.tilt, x.tilt)
+		rows.stackID = append(rows.stackID, x.stackID)
+		rows.stackOrder = append(rows.stackOrder, x.stackOrder)
+		rows.pos = append(rows.pos, x.pos)
+		rows.leanAngle = append(rows.leanAngle, x.leanAngle)
+		rows.leanOn = append(rows.leanOn, x.leanOn)
+		rows.leanSlide = append(rows.leanSlide, x.leanSlide)
+		rows.depth = append(rows.depth, x.depth)
+		rows.spin = append(rows.spin, x.spin)
+		rows.pitch = append(rows.pitch, x.pitch)
+		rows.stackDx = append(rows.stackDx, x.dx)
+		rows.stackDz = append(rows.stackDz, x.dz)
+		rows.wallLean = append(rows.wallLean, x.wall)
+		rows.flip = append(rows.flip, x.flip)
+		rows.overhang = append(rows.overhang, x.overhang)
+	}
+	seen := map[string]bool{}
+	for _, x := range placements {
+		if x == nil || !validLayoutID(x.BookID) || x.Pose == nil || !poses[*x.Pose] {
+			return nil, bad
+		}
+		if x.ShelfID == nil || !known[*x.ShelfID] || seen[x.BookID] {
+			continue
+		}
+		seen[x.BookID] = true
+		position := int32(0)
+		if o := roundInt(x.Order); o != nil {
+			position = *o
+		}
+		tilt := int32(0)
+		if t := roundInt(x.Tilt); t != nil && (*t == 7 || *t == -7) {
+			tilt = *t
+		}
+		r := spot{book: x.BookID, shelf: x.ShelfID, pose: x.Pose, position: &position, tilt: &tilt, stackID: x.StackID, stackOrder: roundInt(x.StackOrder), pos: finite(x.Pos),
+			depth: finite(x.Depth), spin: finite(x.Spin), pitch: finite(x.Pitch), dx: finite(x.StackDx), dz: finite(x.StackDz),
+			wall: x.WallLean != nil && *x.WallLean, flip: x.Flip != nil && *x.Flip, overhang: x.Overhang != nil && *x.Overhang}
+		if x.Lean != nil && finite(x.Lean.Angle) != nil && x.Lean.On != nil && validLayoutID(*x.Lean.On) {
+			r.leanAngle, r.leanOn, r.leanSlide = x.Lean.Angle, x.Lean.On, finite(x.Lean.Slide)
+		}
+		add(r)
+	}
+	order := int32(0)
+	for _, id := range drawer {
+		if id == nil || !validLayoutID(*id) {
+			return nil, bad
+		}
+		if seen[*id] {
+			continue
+		}
+		seen[*id] = true
+		position := order
+		order++
+		add(spot{book: *id, position: &position})
+	}
+
+	return rows, nil
+}
+
 // 올리기: 앱 시각이 더 새로우면 그 사용자의 선반·책 자리를 통째로 바꾼다. 반영하지 않았으면 false.
 func pushLayout(ctx context.Context, tx pgx.Tx, user int64, raw json.RawMessage) (bool, error) {
 	var l struct {
@@ -122,101 +236,9 @@ func pushLayout(ctx context.Context, tx pgx.Tx, user int64, raw json.RawMessage)
 		return false, bad
 	}
 
-	// 값 검사와 정리(쓰기 전에 다 한다)
-	var shelfIDs []string
-	var shelfPos []int32
-	known := map[string]bool{}
-	for i, x := range shelves {
-		if x == nil || !validLayoutID(x.ID) {
-			return false, bad
-		}
-		if known[x.ID] {
-			continue
-		}
-		known[x.ID] = true
-		pos := int32(i)
-		if o := roundInt(x.Order); o != nil {
-			pos = *o
-		}
-		shelfIDs = append(shelfIDs, x.ID)
-		shelfPos = append(shelfPos, pos)
-	}
-	var rows struct {
-		book, stackID, leanOn            []*string
-		shelf, pose                      []*string
-		position, tilt, stackOrder       []*int32
-		pos, leanAngle, leanSlide, depth []*float64
-		spin, pitch, stackDx, stackDz    []*float64
-		wallLean, flip, overhang         []bool
-	}
-	type spot struct {
-		book                       string
-		shelf, pose, stackID       *string
-		position, tilt, stackOrder *int32
-		pos, leanAngle, leanSlide  *float64
-		leanOn                     *string
-		depth, spin, pitch, dx, dz *float64
-		wall, flip, overhang       bool
-	}
-	add := func(x spot) {
-		b := x.book
-		rows.book = append(rows.book, &b)
-		rows.shelf = append(rows.shelf, x.shelf)
-		rows.position = append(rows.position, x.position)
-		rows.pose = append(rows.pose, x.pose)
-		rows.tilt = append(rows.tilt, x.tilt)
-		rows.stackID = append(rows.stackID, x.stackID)
-		rows.stackOrder = append(rows.stackOrder, x.stackOrder)
-		rows.pos = append(rows.pos, x.pos)
-		rows.leanAngle = append(rows.leanAngle, x.leanAngle)
-		rows.leanOn = append(rows.leanOn, x.leanOn)
-		rows.leanSlide = append(rows.leanSlide, x.leanSlide)
-		rows.depth = append(rows.depth, x.depth)
-		rows.spin = append(rows.spin, x.spin)
-		rows.pitch = append(rows.pitch, x.pitch)
-		rows.stackDx = append(rows.stackDx, x.dx)
-		rows.stackDz = append(rows.stackDz, x.dz)
-		rows.wallLean = append(rows.wallLean, x.wall)
-		rows.flip = append(rows.flip, x.flip)
-		rows.overhang = append(rows.overhang, x.overhang)
-	}
-	seen := map[string]bool{}
-	for _, x := range placements {
-		if x == nil || !validLayoutID(x.BookID) || x.Pose == nil || !poses[*x.Pose] {
-			return false, bad
-		}
-		if x.ShelfID == nil || !known[*x.ShelfID] || seen[x.BookID] {
-			continue
-		}
-		seen[x.BookID] = true
-		position := int32(0)
-		if o := roundInt(x.Order); o != nil {
-			position = *o
-		}
-		tilt := int32(0)
-		if t := roundInt(x.Tilt); t != nil && (*t == 7 || *t == -7) {
-			tilt = *t
-		}
-		r := spot{book: x.BookID, shelf: x.ShelfID, pose: x.Pose, position: &position, tilt: &tilt, stackID: x.StackID, stackOrder: roundInt(x.StackOrder), pos: finite(x.Pos),
-			depth: finite(x.Depth), spin: finite(x.Spin), pitch: finite(x.Pitch), dx: finite(x.StackDx), dz: finite(x.StackDz),
-			wall: x.WallLean != nil && *x.WallLean, flip: x.Flip != nil && *x.Flip, overhang: x.Overhang != nil && *x.Overhang}
-		if x.Lean != nil && finite(x.Lean.Angle) != nil && x.Lean.On != nil && validLayoutID(*x.Lean.On) {
-			r.leanAngle, r.leanOn, r.leanSlide = x.Lean.Angle, x.Lean.On, finite(x.Lean.Slide)
-		}
-		add(r)
-	}
-	order := int32(0)
-	for _, id := range drawer {
-		if id == nil || !validLayoutID(*id) {
-			return false, bad
-		}
-		if seen[*id] {
-			continue
-		}
-		seen[*id] = true
-		position := order
-		order++
-		add(spot{book: *id, position: &position})
+	rows, e := parseLayoutRows(shelves, placements, drawer)
+	if e != nil {
+		return false, e
 	}
 
 	version := 2
@@ -233,14 +255,11 @@ func pushLayout(ctx context.Context, tx pgx.Tx, user int64, raw json.RawMessage)
 	b := &pgx.Batch{}
 	b.Queue("DELETE FROM shelf_placements WHERE user_id=$1", user)
 	b.Queue("DELETE FROM shelves WHERE user_id=$1", user)
-	b.Queue("INSERT INTO shelves(user_id,id,position) SELECT $1,s.id,s.position FROM unnest($2::text[],$3::int[]) AS s(id,position)", user, shelfIDs, shelfPos)
+	b.Queue("INSERT INTO shelves(user_id,id,position) SELECT $1,s.id,s.position FROM unnest($2::text[],$3::int[]) AS s(id,position)", user, rows.shelfIDs, rows.shelfPos)
 	// 서버에 아직 없는 책을 가리키는 자리는 버린다(외래키로 올리기 전체가 멈추지 않게. 앱이 책을 올린 뒤 다음 배치 올리기에서 다시 채운다)
-	b.Queue(`INSERT INTO shelf_placements(user_id,book_id,shelf_id,position,pose,tilt,stack_id,stack_order,pos,lean_angle,lean_on,lean_slide,depth,spin,pitch,stack_dx,stack_dz,wall_lean,flip,overhang)
-		SELECT $1,p.* FROM unnest($2::text[],$3::text[],$4::int[],$5::text[],$6::smallint[],$7::text[],$8::int[],$9::float8[],$10::float8[],$11::text[],$12::float8[],$13::float8[],$14::float8[],$15::float8[],$16::float8[],$17::float8[],$18::bool[],$19::bool[],$20::bool[])
-			AS p(book_id,shelf_id,position,pose,tilt,stack_id,stack_order,pos,lean_angle,lean_on,lean_slide,depth,spin,pitch,stack_dx,stack_dz,wall_lean,flip,overhang)
-		WHERE EXISTS (SELECT 1 FROM my_books m WHERE m.user_id=$1 AND m.id=p.book_id)`,
-		user, rows.book, rows.shelf, rows.position, rows.pose, rows.tilt, rows.stackID, rows.stackOrder, rows.pos, rows.leanAngle, rows.leanOn, rows.leanSlide,
-		rows.depth, rows.spin, rows.pitch, rows.stackDx, rows.stackDz, rows.wallLean, rows.flip, rows.overhang)
+	b.Queue(`INSERT INTO shelf_placements(user_id,book_id,`+placementCols+`)
+		SELECT $1,p.* FROM `+placementUnnest+`
+		WHERE EXISTS (SELECT 1 FROM my_books m WHERE m.user_id=$1 AND m.id=p.book_id)`, append([]any{user}, rows.args()...)...)
 	if e = tx.SendBatch(ctx, b).Close(); e != nil {
 		return false, e
 	}
@@ -249,17 +268,46 @@ func pushLayout(ctx context.Context, tx pgx.Tx, user int64, raw json.RawMessage)
 
 // 받기: 선반 순서 → 선반 안 순서 → 쌓기 순서로 모은다(앱 normalize와 같은 순서). 서랍은 서랍 순서.
 func readLayout(ctx context.Context, tx pgx.Tx, user int64, version int, at time.Time) (map[string]any, error) {
-	body := layoutBody{Version: version, Shelves: []wireShelf{}, Placements: []wirePlacement{}, Drawer: []string{}}
-	rows, e := tx.Query(ctx, "SELECT id,position FROM shelves WHERE user_id=$1 ORDER BY position,id", user)
+	body, e := readLayoutBody(ctx, tx, user, nil)
 	if e != nil {
 		return nil, e
+	}
+	body.Version = version
+	layoutJSON, e := json.Marshal(body)
+	if e != nil {
+		return nil, e
+	}
+	return map[string]any{
+		"layoutJson": string(layoutJSON), "version": version, "updatedAt": at.UTC().Format(time.RFC3339Nano),
+		"shelves": body.Shelves, "placements": body.Placements, "drawer": body.Drawer,
+	}, nil
+}
+
+// 선반·책 자리를 표에서 모은다. bookcase가 있으면 그 연도 책장(bookcase_shelves·bookcase_placements), 없으면 지금 책장
+func readLayoutBody(ctx context.Context, tx pgx.Tx, user int64, bookcase *string) (layoutBody, error) {
+	body := layoutBody{Version: 2, Shelves: []wireShelf{}, Placements: []wirePlacement{}, Drawer: []string{}}
+	shelvesQ := "SELECT id,position FROM shelves WHERE user_id=$1 ORDER BY position,id"
+	placementsQ := `SELECT p.book_id,p.` + strings.ReplaceAll(placementCols, ",", ",p.") + `
+		FROM shelf_placements p LEFT JOIN shelves s ON s.user_id=p.user_id AND s.id=p.shelf_id
+		WHERE p.user_id=$1 ORDER BY p.shelf_id IS NULL, s.position, p.shelf_id, p.position, p.stack_order NULLS FIRST, p.book_id`
+	args := []any{user}
+	if bookcase != nil {
+		shelvesQ = "SELECT id,position FROM bookcase_shelves WHERE user_id=$1 AND bookcase_id=$2 ORDER BY position,id"
+		placementsQ = `SELECT p.book_id,p.` + strings.ReplaceAll(placementCols, ",", ",p.") + `
+		FROM bookcase_placements p LEFT JOIN bookcase_shelves s ON s.user_id=p.user_id AND s.bookcase_id=p.bookcase_id AND s.id=p.shelf_id
+		WHERE p.user_id=$1 AND p.bookcase_id=$2 ORDER BY p.shelf_id IS NULL, s.position, p.shelf_id, p.position, p.stack_order NULLS FIRST, p.book_id`
+		args = append(args, *bookcase)
+	}
+	rows, e := tx.Query(ctx, shelvesQ, args...)
+	if e != nil {
+		return body, e
 	}
 	for rows.Next() {
 		var x wireShelf
 		var pos int32
 		if e = rows.Scan(&x.ID, &pos); e != nil {
 			rows.Close()
-			return nil, e
+			return body, e
 		}
 		order := float64(pos)
 		x.Order = &order
@@ -267,13 +315,11 @@ func readLayout(ctx context.Context, tx pgx.Tx, user int64, version int, at time
 	}
 	rows.Close()
 	if e = rows.Err(); e != nil {
-		return nil, e
+		return body, e
 	}
-	rows, e = tx.Query(ctx, `SELECT p.book_id,p.shelf_id,p.position,p.pose,p.tilt,p.stack_id,p.stack_order,p.pos,p.lean_angle,p.lean_on,p.lean_slide,p.depth,p.spin,p.pitch,p.stack_dx,p.stack_dz,p.wall_lean,p.flip,p.overhang
-		FROM shelf_placements p LEFT JOIN shelves s ON s.user_id=p.user_id AND s.id=p.shelf_id
-		WHERE p.user_id=$1 ORDER BY p.shelf_id IS NULL, s.position, p.shelf_id, p.position, p.stack_order NULLS FIRST, p.book_id`, user)
+	rows, e = tx.Query(ctx, placementsQ, args...)
 	if e != nil {
-		return nil, e
+		return body, e
 	}
 	for rows.Next() {
 		var x wirePlacement
@@ -284,7 +330,7 @@ func readLayout(ctx context.Context, tx pgx.Tx, user int64, version int, at time
 		var wall, flip, overhang bool
 		if e = rows.Scan(&x.BookID, &x.ShelfID, &position, &x.Pose, &tilt, &x.StackID, &stackOrder, &x.Pos, &leanAngle, &leanOn, &leanSlide, &x.Depth, &x.Spin, &x.Pitch, &x.StackDx, &x.StackDz, &wall, &flip, &overhang); e != nil {
 			rows.Close()
-			return nil, e
+			return body, e
 		}
 		if x.ShelfID == nil {
 			body.Drawer = append(body.Drawer, x.BookID)
@@ -313,15 +359,5 @@ func readLayout(ctx context.Context, tx pgx.Tx, user int64, version int, at time
 		body.Placements = append(body.Placements, x)
 	}
 	rows.Close()
-	if e = rows.Err(); e != nil {
-		return nil, e
-	}
-	layoutJSON, e := json.Marshal(body)
-	if e != nil {
-		return nil, e
-	}
-	return map[string]any{
-		"layoutJson": string(layoutJSON), "version": version, "updatedAt": at.UTC().Format(time.RFC3339Nano),
-		"shelves": body.Shelves, "placements": body.Placements, "drawer": body.Drawer,
-	}, nil
+	return body, rows.Err()
 }

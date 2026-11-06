@@ -24,7 +24,7 @@ type kind struct {
 var common = []field{{"createdAt", "created_at", "time", false}, {"updatedAt", "updated_at", "time", true}}
 var kinds = []kind{
 	{"editions", "editions", []field{{"isbn13", "isbn13", "string", false}, {"title", "title", "string", true}, {"publisher", "publisher", "string", false}, {"publishedAt", "published_at", "string", false}, {"pageCount", "page_count", "number", false}, {"widthMm", "width_mm", "number", false}, {"heightMm", "height_mm", "number", false}, {"category", "category", "string", false}, {"seriesTitle", "series_title", "string", false}, {"coverUrl", "cover_url", "string", false}, {"coverFileId", "cover_file_id", "string", false}, {"coverSource", "cover_source", "string", false}, {"source", "source", "string", true}, {"sourceName", "source_name", "string", false}, {"productId", "product_id", "string", false}, {"link", "link", "string", false}, {"art.baseColor", "art_base_color", "string", false}, {"art.inkColor", "art_ink_color", "string", false}, {"art.accentColor", "art_accent_color", "string", false}, {"art.motifId", "art_motif_id", "string", false}, {"art.layoutVariant", "art_layout", "string", false}, {"art.version", "art_version", "number", false}, {"art.generatedAt", "art_generated_at", "time", false}}},
-	{"books", "my_books", []field{{"editionId", "edition_id", "string", true}, {"status", "status", "string", true}, {"rating", "rating", "number", false}, {"note", "note", "string", false}, {"ribbonColor", "ribbon_color", "string", false}, {"currentPage", "current_page", "number", false}, {"bindingId", "binding_id", "string", false}}},
+	{"books", "my_books", []field{{"editionId", "edition_id", "string", true}, {"status", "status", "string", true}, {"rating", "rating", "number", false}, {"note", "note", "string", false}, {"ribbonColor", "ribbon_color", "string", false}, {"currentPage", "current_page", "number", false}, {"bindingId", "binding_id", "string", false}, {"hiddenAt", "hidden_at", "time", false}}},
 	{"bindings", "bindings", []field{{"myBookId", "my_book_id", "string", true}, {"spineColor", "spine_color", "string", true}, {"inkColor", "ink_color", "string", false}, {"accentColor", "accent_color", "string", false}, {"motif", "motif", "string", true}, {"layout", "layout", "string", false}, {"material", "material", "string", false}, {"coverArtId", "cover_art_id", "string", false}, {"source", "source", "string", true}, {"status", "status", "string", true}, {"seed", "seed", "seed", false}, {"coverArtFileId", "cover_art_file_id", "string", false}, {"spineArtFileId", "spine_art_file_id", "string", false}}},
 	{"rounds", "rounds", []field{{"myBookId", "my_book_id", "string", true}, {"index", "idx", "number", true}, {"startedAt", "started_on", "date", false}, {"finishedAt", "finished_on", "date", false}, {"paused", "paused", "bool", false}}},
 	{"sessions", "sessions", []field{{"myBookId", "my_book_id", "string", false}, {"roundId", "round_id", "string", false}, {"startedAt", "started_at", "time", true}, {"endedAt", "ended_at", "time", true}, {"durationMs", "duration_ms", "number", true}, {"startPage", "start_page", "number", false}, {"pagesRead", "pages_read", "number", false}, {"memo", "memo", "string", false}}},
@@ -147,8 +147,16 @@ func (s *Server) push(w http.ResponseWriter, r *http.Request) error {
 			skipped = append(skipped, "layout")
 		}
 	}
+	// 연도 책장은 책·장정 뒤에(외래키)
+	if raw := body["bookcases"]; len(raw) > 0 && string(raw) != "null" {
+		n, e := pushBookcases(ctx, tx, user, raw, &skipped)
+		if e != nil {
+			return e
+		}
+		applied += n
+	}
 	var rev int64
-	e := tx.QueryRow(ctx, `SELECT COALESCE(MAX(r),0) FROM (SELECT MAX(rev) r FROM editions WHERE user_id=$1 UNION ALL SELECT MAX(rev) FROM my_books WHERE user_id=$1 UNION ALL SELECT MAX(rev) FROM bindings WHERE user_id=$1 UNION ALL SELECT MAX(rev) FROM rounds WHERE user_id=$1 UNION ALL SELECT MAX(rev) FROM sessions WHERE user_id=$1 UNION ALL SELECT MAX(rev) FROM bookmarks WHERE user_id=$1 UNION ALL SELECT MAX(rev) FROM shelf_layouts WHERE user_id=$1) t`, user).Scan(&rev)
+	e := tx.QueryRow(ctx, `SELECT COALESCE(MAX(r),0) FROM (SELECT MAX(rev) r FROM editions WHERE user_id=$1 UNION ALL SELECT MAX(rev) FROM my_books WHERE user_id=$1 UNION ALL SELECT MAX(rev) FROM bindings WHERE user_id=$1 UNION ALL SELECT MAX(rev) FROM rounds WHERE user_id=$1 UNION ALL SELECT MAX(rev) FROM sessions WHERE user_id=$1 UNION ALL SELECT MAX(rev) FROM bookmarks WHERE user_id=$1 UNION ALL SELECT MAX(rev) FROM shelf_layouts WHERE user_id=$1 UNION ALL SELECT MAX(rev) FROM bookcases WHERE user_id=$1) t`, user).Scan(&rev)
 	if e != nil {
 		return e
 	}
@@ -426,6 +434,14 @@ func (s *Server) pull(w http.ResponseWriter, r *http.Request) error {
 		if lr > max {
 			max = lr
 		}
+	}
+	bookcases, br, e := readBookcases(ctx, tx, user, since, cut)
+	if e != nil {
+		return e
+	}
+	out["bookcases"] = bookcases
+	if br > max {
+		max = br
 	}
 	out["rev"] = max
 	if err = tx.Commit(ctx); err != nil {
