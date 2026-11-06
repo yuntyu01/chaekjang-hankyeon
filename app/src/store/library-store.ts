@@ -152,6 +152,23 @@ export const libraryStore = {
   get: () => state,
   full,
   setArchived(ids: ReadonlySet<string>) { archived = ids; },
+  // 연도 책장에 있어 지우면 숨기는 책인가(화면은 '삭제' 대신 '숨기기'로 보인다)
+  hides: (id: string) => archived.has(id),
+  // 숨긴 책(오래 숨긴 순). 화면이 다시 그려질 때 함께 바뀐다(숨기기·되돌리기는 늘 state를 바꾼다)
+  hiddenBooks: (): MyBook[] => Object.values(hidden.books).sort((a, b) => (a.hiddenAt ?? '').localeCompare(b.hiddenAt ?? '')),
+  // 숨긴 책을 다시 보이게 한다: 숨긴 때만 지우면 장정·회차·갈피·독서 기록 연결이 그대로 돌아온다(책장 자리는 서랍으로, 부르는 쪽이 놓는다)
+  unhideBook(id: string) {
+    const b = hidden.books[id];
+    if (!b) return;
+    const t = now();
+    const shown: MyBook = { ...b, updatedAt: t };
+    delete shown.hiddenAt;
+    pending.push([{ kind: 'books', id, item: shown, deleted: false, at: t }]);
+    const saving = flushPending();
+    const all = full();
+    setFull({ ...all, books: { ...all.books, [id]: shown } });
+    void saving.catch(() => {});
+  },
   isReplacingWithLayout: () => replacingWithLayout,
   flushPending,
   hasPending: () => pending.length > 0,

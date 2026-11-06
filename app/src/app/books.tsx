@@ -2,6 +2,7 @@
 // 2026-11-05 사용자 시안(구조만 시안, 색은 우리 것): 뒤로·검색·더하기, 밑줄 탭(읽기 상태), '책 N권'과 '책장에 꽂기'·필터·보기 전환. 정렬과 '책장에 없는 책'은 필터 시트에.
 // '책장에 진열'을 누르면 고르는 상태: 머리줄 '취소'와 'N권 선택', 표지 모서리 고름 표시, 아래 '선택한 N권 진열'. 이미 책장에 있는 책은 고를 수 없다(같은 책이 두 번 진열되지 않는다). 책을 누르면 책 정보로.
 // 책을 꾹 누르면(2026-11-05 사용자) 어떤 책이든 고르는 상태가 되고 아래에 '삭제'와 '진열'. 진열은 고른 책 중 책장에 없는 책만 센다.
+// 고른 책이 모두 연도 책장에 있으면 '삭제' 대신 '숨기기'(2026-11-06 사용자). 숨긴 책은 필터 › 숨긴 책 보기에서 되돌린다.
 import { router, useLocalSearchParams } from 'expo-router';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { BackHandler, Pressable, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
@@ -9,7 +10,8 @@ import { BackHandler, Pressable, StyleSheet, Text, useWindowDimensions, View } f
 import { listAllBooks, memosByBook, type AllBooksRow, type AllBooksSort } from '@/features/book/all-books';
 import { BookListRow } from '@/features/book/BookListRow';
 import { BookRow } from '@/features/book/BookRow';
-import { DeleteBooksSheet } from '@/features/book/DeleteBooksSheet';
+import { DeleteBooksSheet, useDeletePlan } from '@/features/book/DeleteBooksSheet';
+import { HiddenBooksSheet } from '@/features/book/HiddenBooksSheet';
 import { MemoPopover, type MemoAnchor } from '@/features/book/MemoPopover';
 import { STATUS_LABEL } from '@/features/book/labels';
 import { placeWithChoice } from '@/features/book/place-books';
@@ -46,6 +48,7 @@ export default function AllBooks() {
   const [view, setViewState] = useState(lastView);
   const [selecting, setSelecting] = useState<null | 'place' | 'manage'>(null);
   const [deleteOpen, setDeleteOpen] = useState(false);
+  const [hiddenOpen, setHiddenOpen] = useState(false);
   const [picked, setPicked] = useState<string[]>([]);
   const [message, setMessage] = useState<string | null>(null);
   const setView = (v: 'grid' | 'list') => {
@@ -75,12 +78,16 @@ export default function AllBooks() {
     setPicked([id]);
     setMessage(null);
   };
+  // 연도 책장에 있는 책은 지우지 않고 숨긴다(library-store deleteBook). 모두 그런 책이면 '숨기기'로 보인다
+  const plan = useDeletePlan(pickedBooks);
+  const hiddenCount = libraryStore.hiddenBooks().length;
   const deleteNow = () => {
-    const n = pickedBooks.length;
+    const hid = plan.kept.length;
+    const removed = plan.removed.length;
     for (const id of pickedBooks) libraryStore.deleteBook(id);
     setDeleteOpen(false);
     stopSelecting();
-    setMessage(`${n}권을 삭제했어요.`);
+    setMessage(hid && removed ? `${removed}권을 삭제하고 ${hid}권을 숨겼어요.` : hid ? `${hid}권을 숨겼어요.` : `${removed}권을 삭제했어요.`);
   };
   // 고르는 중에 기기 뒤로를 누르면 화면을 떠나지 않고 고르기만 끝낸다
   useEffect(() => {
@@ -176,7 +183,7 @@ export default function AllBooks() {
       footer={
         selecting === 'manage' ? (
           <View style={s.footerRow}>
-            <Btn size="l" kind="danger" label={pickedBooks.length ? `삭제 ${pickedBooks.length}권` : '삭제'} disabled={!pickedBooks.length} onPress={() => setDeleteOpen(true)} style={{ flex: 1 }} />
+            <Btn size="l" kind={plan.hideOnly ? 'secondary' : 'danger'} label={`${plan.hideOnly ? '숨기기' : '삭제'}${pickedBooks.length ? ` ${pickedBooks.length}권` : ''}`} disabled={!pickedBooks.length} onPress={() => setDeleteOpen(true)} style={{ flex: 1 }} />
             <Btn size="l" label={chosen.length ? `진열 ${chosen.length}권` : '진열'} disabled={!chosen.length} onPress={() => placeNow(chosen)} style={{ flex: 1 }} />
           </View>
         ) : selecting ? (
@@ -241,7 +248,13 @@ export default function AllBooks() {
             {years.map((y) => <FilterOption key={y} label={`${y}년`} selected={year === y} onPress={() => setYear(year === y ? null : y)} />)}
           </FilterGroup>
         ) : null}
+        {hiddenCount ? (
+          <FilterGroup title="숨긴 책">
+            <FilterOption label="숨긴 책 보기" sub={`${hiddenCount}권 · 연도 책장에 남아 있는 책`} chevron onPress={() => { setFilterOpen(false); setHiddenOpen(true); }} />
+          </FilterGroup>
+        ) : null}
       </Sheet>
+      <HiddenBooksSheet visible={hiddenOpen} onClose={() => setHiddenOpen(false)} onShown={(title) => setMessage(`‘${title}’ 책을 다시 보이게 했어요. 책장에 없는 책에 있어요.`)} />
       <DeleteBooksSheet ids={pickedBooks} visible={deleteOpen} onClose={() => setDeleteOpen(false)} onConfirm={deleteNow} />
       <MemoPopover anchor={memoOf?.anchor ?? null} memos={memoOf ? memos.get(memoOf.id) ?? [] : []} onClose={() => setMemoOf(null)} />
     </Screen>

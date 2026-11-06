@@ -126,6 +126,29 @@ it('2027년에 감상·장정을 바꾸고 책을 지워도 2026년 책장은 �
   expect(Object.keys(view.sessions)).toEqual([session]);
 });
 
+it('숨긴 책을 다시 보이게 하면 갈피·독서 기록 연결이 그대로 돌아오고, 다시 켜도 보인다', async () => {
+  const { a, mark, session } = await year2026();
+  at(2027, 1, 2);
+  await cases.bookcaseStore.checkYear();
+  expect(store.hides(a)).toBe(true);
+  store.deleteBook(a);
+  await store.flushPending();
+  expect(store.hiddenBooks().map((b) => b.id)).toEqual([a]);
+  at(2027, 2, 1);
+  store.unhideBook(a);
+  await store.flushPending();
+  expect(store.hiddenBooks()).toEqual([]);
+  const lib = store.get().lib;
+  expect(lib.books[a].hiddenAt).toBeUndefined();
+  expect(lib.bookmarks[mark]).toBeDefined();
+  expect(lib.sessions[session].myBookId).toBe(a);
+  const db = await local.captureSyncSnapshot();
+  expect(db.lib.books[a].hiddenAt).toBeUndefined();
+  expect(db.dirty[`books:${a}`]).toMatchObject({ deleted: false });
+  await start();
+  expect(store.get().lib.books[a]).toBeDefined();
+});
+
 it('연도 책장에 없는 책(올해 산 책)은 예전처럼 지운다. 숨긴 책과 같은 판본이면 판본은 남긴다', async () => {
   const { a } = await year2026();
   at(2027, 1, 2);

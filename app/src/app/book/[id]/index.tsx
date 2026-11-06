@@ -14,7 +14,8 @@ import { archivedYearsOf } from '@/domain/bookcase';
 import { placementOf } from '@/domain/layout-engine';
 import { paperColors } from '@/domain/color';
 import { bookmarksOf, bookReadMs, completions, formatDuration, isDay, memoShelfBook, READ_STATUSES, roundsOf } from '@/domain/library';
-import { bookcaseStore } from '@/store/bookcase-store';
+import { useBookcases } from '@/store/bookcase-store';
+import { HIDDEN_WHERE } from '@/features/book/DeleteBooksSheet';
 import { useLibrary, libraryStore } from '@/store/library-store';
 import { placementStore, usePlacementStore } from '@/store/placement-store';
 import { uiBus } from '@/store/ui-bus';
@@ -28,6 +29,7 @@ export default function BookDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const { lib } = useLibrary();
   const place = usePlacementStore();
+  const bookcases = useBookcases();
   const [menu, setMenu] = useState(false);
   const [pageEdit, setPageEdit] = useState(false);
   const [colorOpen, setColorOpen] = useState(false);
@@ -64,19 +66,20 @@ export default function BookDetailScreen() {
     libraryStore.setStatus(id, s);
   };
 
+  // 연도 책장에 있는 책은 지우지 않고 숨긴다(library-store deleteBook, 2026-11-06 사용자 '삭제 말고 숨기기로')
+  const hideYears = archivedYearsOf(bookcases, id);
   const confirmDelete = () => {
-    // 연도 책장에 있는 책은 지금 서재에서만 빠진다(library-store deleteBook)
-    const years = archivedYearsOf(bookcaseStore.get().bookcases, id);
+    const hide = hideYears.length > 0;
     Alert.alert(
-      '책을 삭제할까요?',
-      years.length
-        ? `지금 서재에서는 빠지고, ${years.join('·')}년 책장에는 갈피·기록과 함께 그대로 남아요.\n되돌릴 수 없어요. 책장에서만 치우려면 ‘책장에서 빼기’를 쓰세요(기록은 그대로).`
+      hide ? '책을 숨길까요?' : '책을 삭제할까요?',
+      hide
+        ? `지금 서재와 책장에서는 빠지고, ${hideYears.join('·')}년 책장에는 갈피·기록과 함께 그대로 남아요.\n${HIDDEN_WHERE}`
         : `책 정보와 함께 삭제돼요: 독서 회차 ${rounds.length}개, 갈피 ${marks.length}개, 장정.\n독서 시간 기록 ${sessions}개는 ‘책 없음’으로 남아 통계에 계속 포함돼요.\n되돌릴 수 없어요. 책장에서만 치우려면 ‘책장에서 빼기’를 쓰세요(기록은 그대로).`,
       [
         { text: '취소', style: 'cancel' },
         {
-          text: '삭제',
-          style: 'destructive',
+          text: hide ? '숨기기' : '삭제',
+          style: hide ? 'default' : 'destructive',
           onPress: () => {
             libraryStore.deleteBook(id);
             router.dismissTo('/');
@@ -231,13 +234,17 @@ export default function BookDetailScreen() {
           <ListItem label="책 정보 수정" chevron={false} onPress={() => { setMenu(false); router.push(`/book/${id}/edit`); }} />
           <ListItem label="장정 편집" chevron={false} onPress={() => { setMenu(false); router.push(`/book/${id}/binding`); }} />
           {onShelf ? <ListItem label="책장 위치로 이동" chevron={false} onPress={() => { setMenu(false); uiBus.focusBook(id); router.dismissTo('/'); }} /> : null}
-          {/* 책장에서 빼기는 배치만 푼다(책 정보·장정·독서 기록·갈피 그대로). 삭제(빨간 글자)는 책 데이터 자체를 지운다 */}
+          {/* 책장에서 빼기는 배치만 푼다(책 정보·장정·독서 기록·갈피 그대로). 삭제(빨간 글자)는 책 데이터 자체를 지운다. 연도 책장에 있는 책은 숨기기 */}
           {onShelf ? (
             <ListItem label={ko.allBooks.removeFromShelf} sub={ko.allBooks.removeNote} chevron={false} onPress={() => { setMenu(false); if (placementStore.toDrawer(id)) Alert.alert(ko.allBooks.removed); }} />
           ) : (
             <ListItem label={ko.allBooks.place} chevron={false} onPress={() => { setMenu(false); placeWithChoice([id]); }} />
           )}
-          <ListItem label="책 삭제" sub="책 정보·장정·독서 회차·갈피를 지워요" danger chevron={false} onPress={() => { setMenu(false); confirmDelete(); }} />
+          {hideYears.length ? (
+            <ListItem label="책 숨기기" sub={`지금 서재에서 빼요. ${hideYears.join('·')}년 책장에는 남아요`} chevron={false} onPress={() => { setMenu(false); confirmDelete(); }} />
+          ) : (
+            <ListItem label="책 삭제" sub="책 정보·장정·독서 회차·갈피를 지워요" danger chevron={false} onPress={() => { setMenu(false); confirmDelete(); }} />
+          )}
         </ListGroup>
       </Sheet>
     </Screen>
