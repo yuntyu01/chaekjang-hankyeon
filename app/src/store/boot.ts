@@ -7,6 +7,7 @@ import { migrate, type BookMap } from '@/domain/layout-engine';
 import type { Library } from '@/domain/library';
 import { checkSampleBooks, referenceHomeBooks, type HomeReferenceProfile } from '@/domain/home-reference';
 
+import { bookcaseStore } from './bookcase-store';
 import { libraryStore } from './library-store';
 import { demoKindOf, EMPTY_LAYOUT, placementStore } from './placement-store';
 import { installReferenceHome } from './home-reference-install';
@@ -60,11 +61,18 @@ export function bootStores() {
     // 빈 서재로 계속 진행하면 읽지 못한 기존 배치를 덮어쓸 수 있다.
     if (libraryStore.get().error) throw new Error('서재를 불러오지 못했어요');
     bootMark('library-loaded', Object.keys(libraryStore.get().lib.books).length);
+    // 연도 책장: 해가 바뀌었으면 다른 저장(예시 책 정리·배치 맞추기)보다 먼저 그해 책장을 남긴다(그 저장들이 마지막 시각을 올해로 바꾼다)
+    try {
+      await bookcaseStore.load();
+      await bookcaseStore.checkYear();
+    } catch (error) {
+      console.warn('연도 책장 확인 실패(다음 시작 때 다시)', error);
+    }
     // 배치를 읽지 못하면 빈 책장으로 시작하지 않는다(기존 저장본 보호).
     const saved = (await readLayout()).json;
     if (!libraryStore.get().error) {
       try {
-        homeProfile = await installReferenceHome(libraryStore.get().lib, saved ? migrate(JSON.parse(saved)) : EMPTY_LAYOUT, {
+        homeProfile = await installReferenceHome(libraryStore.full(), saved ? migrate(JSON.parse(saved)) : EMPTY_LAYOUT, {
           getItem: async key => key === 'shelf-layout' ? (await readLayout()).json : Storage.getItem(key),
           setItem: async (key, value) => { if (key === 'shelf-layout') await saveLayout(value, new Date().toISOString()); else await Storage.setItem(key, value); },
           saveLibrary: library => libraryStore.replaceAll(library),
@@ -119,6 +127,7 @@ export function bootStores() {
       if (libraryStore.isReplacingWithLayout()) return;
       placementStore.syncBooks(shelfBooks(next));
     });
+    bookcaseStore.watch();
     void pruneCoverCache(); // 기다리지 않는다
     // 서버 동기화(서버 주소가 있을 때만): 서재·배치가 모두 불러와진 뒤 연결한다
     initSync({ reloadLayout: () => placementStore.load(shelfBooks(libraryStore.get().lib)) });

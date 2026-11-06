@@ -1,4 +1,4 @@
-// 데이터 내보내기·복원. 백업 범위: 내 서재 전부(판본·내 책·회차·세션·갈피·장정), 책장 배치, 책장 시점, 설정,
+// 데이터 내보내기·복원. 백업 범위: 내 서재 전부(판본·내 책·회차·세션·갈피·장정, 숨긴 책 포함), 책장 배치, 연도 책장, 책장 시점, 설정,
 // 그리고 앱 폴더에 보관한 사진(실제 표지 사진·갈피 페이지 사진·장정 그림). 진행 중 독서(타이머)는 넣지 않는다.
 // 파일 하나(JSON)에 사진을 base64로 담는다. 사진 주소는 'img:이름'으로 바꿔 저장해 다른 기기·재설치에서도 복원된다.
 //
@@ -9,7 +9,8 @@ import * as FS from 'expo-file-system/legacy';
 import * as Sharing from 'expo-sharing';
 import Storage from 'expo-sqlite/kv-store';
 
-import { LIB_KINDS, captureSyncSnapshot } from '@/db/local-db';
+import { LIB_KINDS, captureSyncSnapshot, readBookcases } from '@/db/local-db';
+import { bookcaseFromWire, bookcaseToWire, type Bookcase, type WireBookcase } from '@/domain/bookcase';
 import type { Library } from '@/domain/library';
 
 import { shelfBooks } from './boot';
@@ -32,6 +33,7 @@ export type Backup = {
   view: string | null;
   settings: Settings;
   images: Record<string, string>;
+  bookcases?: WireBookcase[]; // 연도 책장(2026-11-06부터). 없는 백업을 복원하면 지금 연도 책장을 그대로 둔다
 };
 
 const hasKey = (value: object, key: PropertyKey) => Object.prototype.hasOwnProperty.call(value, key);
@@ -84,6 +86,7 @@ export async function snapshot(): Promise<Backup> {
     view: await Storage.getItem(VIEW_KEY),
     settings: settingsStore.raw(),
     images,
+    bookcases: (await readBookcases()).bookcases.map(bookcaseToWire),
   };
 }
 
@@ -145,6 +148,10 @@ export function validateBackup(x: unknown): string | null {
   for (const [name, b64] of Object.entries(d.images ?? {})) {
     if (!/^[\w.-]{1,80}$/.test(name) || name === '.' || name === '..' || typeof b64 !== 'string') return '사진 목록이 깨져 있어요.';
   }
+  if (d.bookcases !== undefined) {
+    if (!Array.isArray(d.bookcases) || d.bookcases.some((c) => !bookcaseFromWire(c))) return '연도 책장이 올바르지 않아요.';
+    if (new Set(d.bookcases.map((c) => c.year)).size !== d.bookcases.length) return '연도 책장이 올바르지 않아요.';
+  }
   if (d.layout) {
     try {
       const layout = JSON.parse(d.layout) as { version?: number; shelves?: unknown; placements?: unknown; drawer?: unknown };
@@ -196,7 +203,8 @@ async function apply(data: Backup, options: { reuseFiles?: boolean; onLibrarySav
   const lib = mapImages(normalizeLibrary(data.library), uri => uri?.startsWith('img:') ? `${IMAGE_DIR}${renamed.get(uri.slice(4))}` : uri);
   // 복원은 지금의 사용자 변경이다. 백업 당시 시각을 그대로 쓰면 서버가 최신 값으로 거절한다.
   for (const kind of LIB_KINDS) for (const item of Object.values(lib[kind])) item.updatedAt = at;
-  await libraryStore.replaceAll(lib, { json: data.layout ?? JSON.stringify(EMPTY_LAYOUT), at });
+  const bookcases = data.bookcases?.map(bookcaseFromWire).filter((c): c is Bookcase => !!c);
+  await libraryStore.replaceAll(lib, { json: data.layout ?? JSON.stringify(EMPTY_LAYOUT), at }, bookcases);
   options.onLibrarySaved?.();
   if (data.view) await Storage.setItem(VIEW_KEY, data.view);
   settingsStore.set(data.settings ?? {});

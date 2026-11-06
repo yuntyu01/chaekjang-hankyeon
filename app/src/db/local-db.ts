@@ -5,6 +5,8 @@
 //  * shelves / shelf_placements: 책장 배치. 책 자리는 책마다 한 줄이라 "한 책은 선반 또는 서랍 한 곳에만"을 기본키가 보장(shelf_id 비면 서랍)
 //  * sync_outbox: 서버에 아직 못 올린 변경(종류·id마다 한 줄, revision으로 올리는 사이 다시 바뀐 것을 가린다)
 //  * sync_meta: 변경 번호, 배치의 시각·대기 표시. layout 열은 표로 읽을 수 없는 배치 저장본만 그대로 둔다(layout_stored=0)
+//  * bookcases(+ bookcase_shelves / bookcase_books / bookcase_placements, v10, 서버 V17): 연도 책장(domain/bookcase). 한 번 쓰면 바꾸지 않는다.
+//    synced=0이면 아직 서버에 올리지 않았다
 // 저장하지 않는 계산값: 판본 장정의 키·두께 분류(판형·쪽수로 계산), 배치의 선반 폭 대비 위치 x.
 // 항목 사이 참조(내 책 → 판본 등)는 색인만 두고 외래키로 막지 않는다: 동기화로 부모보다 자식이 먼저 올 수 있고,
 // 앱의 삭제 행동이 딸린 항목을 함께 정리한다(서버는 외래키로 검사). 저자·책 자리처럼 부모에 딸린 줄만 외래키(지우면 같이 지움).
@@ -12,6 +14,7 @@ import * as SQLite from 'expo-sqlite';
 import Storage from 'expo-sqlite/kv-store';
 
 import { emptyLibrary, LIB_KINDS, type Binding, type Bookmark, type Edition, type LibKind, type Library, type MyBook, type Round, type Session } from '@/domain/library';
+import type { Bookcase, BookcaseBook } from '@/domain/bookcase';
 import { migrate } from '@/domain/layout-schema';
 import { heightClassOf, thicknessClassOf, type LayoutVariant } from '@/domain/rebinding';
 import { bindingMaterialOf, type BookPlacement, type Pose, type ShelfLayout, type ShelfLayoutV1, type Tilt } from '@/domain/types';
@@ -226,10 +229,68 @@ const MIGRATIONS: Migration[] = [
   addV5Columns,
   // v9(2026-11-05, 서버 V16과 같은 열): 갈피 보드 카드 폭. 선택 값(없으면 기본 폭)
   addV5Columns,
+  // v10(2026-11-06, 서버 V17과 같은 모양): 연도 책장 표와 숨긴 책 열(my_books.hidden_at)
+  async (d) => {
+    await addV5Columns(d);
+    await d.execAsync(BOOKCASE_SCHEMA);
+  },
 ];
 
+// 연도 책장. 선반·책 자리 열은 지금 책장(shelves, shelf_placements)과 같다(열을 늘리면 둘을 함께)
+const BOOKCASE_SCHEMA = `
+CREATE TABLE bookcases (
+  id TEXT PRIMARY KEY NOT NULL,
+  year INTEGER NOT NULL UNIQUE,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  synced INTEGER NOT NULL DEFAULT 0
+);
+CREATE TABLE bookcase_shelves (
+  bookcase_id TEXT NOT NULL REFERENCES bookcases (id) ON DELETE CASCADE,
+  id TEXT NOT NULL,
+  position INTEGER NOT NULL,
+  PRIMARY KEY (bookcase_id, id)
+);
+CREATE TABLE bookcase_books (
+  bookcase_id TEXT NOT NULL REFERENCES bookcases (id) ON DELETE CASCADE,
+  book_id TEXT NOT NULL,
+  binding_id TEXT,
+  status TEXT NOT NULL,
+  rating INTEGER,
+  note TEXT,
+  ribbon_color TEXT,
+  current_page INTEGER,
+  PRIMARY KEY (bookcase_id, book_id)
+);
+CREATE TABLE bookcase_placements (
+  bookcase_id TEXT NOT NULL,
+  book_id TEXT NOT NULL,
+  shelf_id TEXT,
+  position INTEGER NOT NULL,
+  pose TEXT,
+  tilt INTEGER,
+  stack_id TEXT,
+  stack_order INTEGER,
+  pos REAL,
+  lean_angle REAL,
+  lean_on TEXT,
+  lean_slide REAL,
+  depth REAL,
+  spin REAL,
+  pitch REAL,
+  stack_dx REAL,
+  stack_dz REAL,
+  wall_lean INTEGER NOT NULL DEFAULT 0,
+  flip INTEGER NOT NULL DEFAULT 0,
+  overhang INTEGER NOT NULL DEFAULT 0,
+  PRIMARY KEY (bookcase_id, book_id),
+  FOREIGN KEY (bookcase_id, shelf_id) REFERENCES bookcase_shelves (bookcase_id, id) ON DELETE CASCADE,
+  FOREIGN KEY (bookcase_id, book_id) REFERENCES bookcase_books (bookcase_id, book_id) ON DELETE CASCADE
+);
+`;
+
 // v5 이후 더한 열(없을 때만 더한다). v3 → v4 이주도 지금 열 목록으로 기록을 옮기므로 표를 만든 직후 먼저 부른다
-const V5_COLUMNS: [string, string, string][] = [['my_books', 'ribbon_color', 'TEXT'], ['sessions', 'start_page', 'INTEGER'], ['bookmarks', 'session_id', 'TEXT'], ['bookmarks', 'saved_at', 'TEXT'], ['editions', 'product_id', 'TEXT'], ['editions', 'link', 'TEXT'], ['bookmarks', 'board_x', 'REAL'], ['bookmarks', 'board_y', 'REAL'], ['bookmarks', 'board_rot', 'REAL'], ['bookmarks', 'board_w', 'REAL']];
+const V5_COLUMNS: [string, string, string][] = [['my_books', 'ribbon_color', 'TEXT'], ['my_books', 'hidden_at', 'TEXT'], ['sessions', 'start_page', 'INTEGER'], ['bookmarks', 'session_id', 'TEXT'], ['bookmarks', 'saved_at', 'TEXT'], ['editions', 'product_id', 'TEXT'], ['editions', 'link', 'TEXT'], ['bookmarks', 'board_x', 'REAL'], ['bookmarks', 'board_y', 'REAL'], ['bookmarks', 'board_rot', 'REAL'], ['bookmarks', 'board_w', 'REAL']];
 async function addV5Columns(d: SQLite.SQLiteDatabase) {
   for (const [t, c, kind] of V5_COLUMNS) {
     const cols = (await d.getAllAsync<{ name: string }>(`PRAGMA table_info(${t})`)).map((x) => x.name);
@@ -302,7 +363,7 @@ function put<T extends object>(o: T, key: keyof T, v: Value) {
 const COLUMNS: Record<LibKind, string[]> = {
   editions: ['id', 'isbn13', 'title', 'publisher', 'published_at', 'page_count', 'width_mm', 'height_mm', 'cover_uri', 'cover_source', 'category', 'series_title', 'source', 'source_name',
     'product_id', 'link', 'art_base_color', 'art_ink_color', 'art_accent_color', 'art_motif_id', 'art_layout', 'art_version', 'art_generated_at', 'created_at', 'updated_at'],
-  books: ['id', 'edition_id', 'status', 'rating', 'note', 'ribbon_color', 'current_page', 'binding_id', 'created_at', 'updated_at'],
+  books: ['id', 'edition_id', 'status', 'rating', 'note', 'ribbon_color', 'current_page', 'binding_id', 'hidden_at', 'created_at', 'updated_at'],
   bindings: ['id', 'my_book_id', 'spine_color', 'motif', 'ink_color', 'accent_color', 'layout', 'material', 'cover_art_uri', 'cover_art_id', 'spine_art_uri', 'source', 'status', 'seed', 'created_at', 'updated_at'],
   rounds: ['id', 'my_book_id', 'idx', 'started_on', 'finished_on', 'paused', 'created_at', 'updated_at'],
   sessions: ['id', 'my_book_id', 'round_id', 'started_at', 'ended_at', 'duration_ms', 'start_page', 'pages_read', 'memo', 'created_at', 'updated_at'],
@@ -324,7 +385,7 @@ function values(kind: LibKind, item: Item): Value[] {
     }
     case 'books': {
       const b = item as MyBook;
-      return [b.id, b.editionId ?? '', b.status ?? 'want', opt(b.rating), opt(b.note), opt(b.ribbonColor), opt(b.currentPage), opt(b.bindingId), b.createdAt ?? fallback, b.updatedAt ?? fallback];
+      return [b.id, b.editionId ?? '', b.status ?? 'want', opt(b.rating), opt(b.note), opt(b.ribbonColor), opt(b.currentPage), opt(b.bindingId), opt(b.hiddenAt), b.createdAt ?? fallback, b.updatedAt ?? fallback];
     }
     case 'bindings': {
       const b = item as Binding;
@@ -403,6 +464,7 @@ function myBook(r: Row): MyBook {
   put(b, 'ribbonColor', r.ribbon_color);
   put(b, 'currentPage', r.current_page);
   put(b, 'bindingId', r.binding_id);
+  put(b, 'hiddenAt', r.hidden_at);
   return b;
 }
 
@@ -541,13 +603,17 @@ function parseLayout(json: string): ShelfLayout | null {
   }
 }
 
-// 표에서 배치를 모은다. 순서: 선반 순서 → 선반 안 순서 → 쌓기 순서, 서랍은 서랍 순서
-async function loadLayoutRows(d: SQLite.SQLiteDatabase): Promise<ShelfLayout> {
+// 표에서 배치를 모은다. 순서: 선반 순서 → 선반 안 순서 → 쌓기 순서, 서랍은 서랍 순서. bookcaseId가 있으면 그 연도 책장
+async function loadLayoutRows(d: SQLite.SQLiteDatabase, bookcaseId?: string): Promise<ShelfLayout> {
   const layout: ShelfLayout = { version: 2, shelves: [], placements: [], drawer: [] };
-  for (const s of await d.getAllAsync<{ id: string; position: number }>('SELECT id, position FROM shelves ORDER BY position, id')) layout.shelves.push({ id: s.id, order: s.position });
-  const spots = await d.getAllAsync<Spot>(
-    'SELECT p.* FROM shelf_placements p LEFT JOIN shelves s ON s.id = p.shelf_id ORDER BY p.shelf_id IS NULL, s.position, p.shelf_id, p.position, p.stack_order IS NOT NULL, p.stack_order, p.book_id',
-  );
+  const shelves = bookcaseId === undefined
+    ? await d.getAllAsync<{ id: string; position: number }>('SELECT id, position FROM shelves ORDER BY position, id')
+    : await d.getAllAsync<{ id: string; position: number }>('SELECT id, position FROM bookcase_shelves WHERE bookcase_id = ? ORDER BY position, id', bookcaseId);
+  for (const s of shelves) layout.shelves.push({ id: s.id, order: s.position });
+  const order = 'ORDER BY p.shelf_id IS NULL, s.position, p.shelf_id, p.position, p.stack_order IS NOT NULL, p.stack_order, p.book_id';
+  const spots = bookcaseId === undefined
+    ? await d.getAllAsync<Spot>(`SELECT p.* FROM shelf_placements p LEFT JOIN shelves s ON s.id = p.shelf_id ${order}`)
+    : await d.getAllAsync<Spot>(`SELECT p.* FROM bookcase_placements p LEFT JOIN bookcase_shelves s ON s.bookcase_id = p.bookcase_id AND s.id = p.shelf_id WHERE p.bookcase_id = ? ${order}`, bookcaseId);
   for (const r of spots) {
     if (r.shelf_id === null) {
       layout.drawer.push(r.book_id);
@@ -593,14 +659,54 @@ async function storeLayout(d: SQLite.SQLiteDatabase, json: string | null): Promi
   return () => { layoutCache = next; };
 }
 
+// ---------- 연도 책장 ----------
+// 한 벌을 통째로 쓴다(같은 id나 같은 해가 있으면 지우고). 책 목록에 없는 책의 자리는 뺀다(외래키)
+async function writeBookcase(d: SQLite.SQLiteDatabase, c: Bookcase, synced: boolean) {
+  await d.runAsync('DELETE FROM bookcases WHERE id = ? OR year = ?', c.id, c.year);
+  await d.runAsync('INSERT INTO bookcases (id, year, created_at, updated_at, synced) VALUES (?, ?, ?, ?, ?)', c.id, c.year, c.createdAt, c.updatedAt, synced ? 1 : 0);
+  const known = new Set<string>();
+  for (const b of c.books) {
+    if (known.has(b.bookId)) continue;
+    known.add(b.bookId);
+    await d.runAsync('INSERT INTO bookcase_books (bookcase_id, book_id, binding_id, status, rating, note, ribbon_color, current_page) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+      c.id, b.bookId, opt(b.bindingId), b.status, opt(b.rating), opt(b.note), opt(b.ribbonColor), opt(b.currentPage));
+  }
+  const rows = rowsOf({ ...c.layout, placements: c.layout.placements.filter((p) => known.has(p.bookId)), drawer: c.layout.drawer.filter((id) => known.has(id)) });
+  for (const args of rows.shelves.values()) await d.runAsync('INSERT INTO bookcase_shelves (bookcase_id, id, position) VALUES (?, ?, ?)', c.id, ...args);
+  const cols = PLACEMENT_SQL.slice(PLACEMENT_SQL.indexOf('(') + 1, PLACEMENT_SQL.indexOf(')'));
+  for (const args of rows.spots.values()) await d.runAsync(`INSERT INTO bookcase_placements (bookcase_id, ${cols}) VALUES (?, ${args.map(() => '?').join(', ')})`, c.id, ...args);
+}
+
+type BookcaseRow = { id: string; year: number; created_at: string; updated_at: string; synced: number };
+type BookcaseBookRow = { book_id: string; binding_id: string | null; status: string; rating: number | null; note: string | null; ribbon_color: string | null; current_page: number | null };
+async function readBookcaseRows(d: SQLite.SQLiteDatabase): Promise<{ bookcases: Bookcase[]; unsynced: string[] }> {
+  const bookcases: Bookcase[] = [];
+  const unsynced: string[] = [];
+  for (const r of await d.getAllAsync<BookcaseRow>('SELECT id, year, created_at, updated_at, synced FROM bookcases ORDER BY year')) {
+    const books: BookcaseBook[] = [];
+    for (const b of await d.getAllAsync<BookcaseBookRow>('SELECT * FROM bookcase_books WHERE bookcase_id = ? ORDER BY rowid', r.id)) {
+      const e: BookcaseBook = { bookId: b.book_id, status: b.status as BookcaseBook['status'] };
+      put(e, 'bindingId', b.binding_id);
+      put(e, 'rating', b.rating);
+      put(e, 'note', b.note);
+      put(e, 'ribbonColor', b.ribbon_color);
+      put(e, 'currentPage', b.current_page);
+      books.push(e);
+    }
+    bookcases.push({ id: r.id, year: r.year, createdAt: r.created_at, updatedAt: r.updated_at, layout: await loadLayoutRows(d, r.id), books });
+    if (!r.synced) unsynced.push(r.id);
+  }
+  return { bookcases, unsynced };
+}
+
 // ---------- 내 서재 ----------
 
 export async function loadLib(): Promise<Library> {
   return readLibrary(await db());
 }
 
-// 백업 복원: 서재 표를 통째로 바꾼다(한 트랜잭션)
-export function replaceLib(lib: Library, markDirty = false, layout?: { json: string | null; at: string }) {
+// 백업 복원: 서재 표를 통째로 바꾼다(한 트랜잭션). bookcases를 주면 연도 책장도 그것으로 바꾼다(주지 않으면 그대로)
+export function replaceLib(lib: Library, markDirty = false, layout?: { json: string | null; at: string }, bookcases?: Bookcase[]) {
   return serialize(async () => {
     const commit = await transaction(async (tx) => {
       const revision = markDirty ? await nextRevision(tx) : 0;
@@ -618,6 +724,10 @@ export function replaceLib(lib: Library, markDirty = false, layout?: { json: str
           if (markDirty) await putPending(tx, { kind: k, id: item.id, deleted: false, at: updated }, revision);
         }
       }
+      if (bookcases) {
+        await tx.execAsync('DELETE FROM bookcases');
+        for (const c of bookcases) await writeBookcase(tx, c, !markDirty);
+      }
       if (!layout) return null;
       const done = await storeLayout(tx, layout.json);
       await tx.runAsync('UPDATE sync_meta SET layout_at=?,layout_dirty=?,layout_revision=? WHERE id=1', layout.at, markDirty ? 1 : 0, revision);
@@ -633,7 +743,7 @@ export type LocalChange = { kind: LibKind; id: string; at: string; item?: { id: 
 export type PendingChange = { deleted: boolean; at: string; revision: number };
 export type Pending = Record<string, PendingChange>;
 export type LocalLayout = { json: string | null; at: string | null; dirty: boolean; revision: number };
-export type SyncSnapshot = { lib: Library; dirty: Pending; layout: LocalLayout };
+export type SyncSnapshot = { lib: Library; dirty: Pending; layout: LocalLayout; bookcases: Bookcase[] }; // bookcases: 아직 올리지 않은 연도 책장
 
 type Meta = { revision: number; migrated: number; layout: string | null; layout_stored: number; layout_at: string | null; layout_dirty: number; layout_revision: number };
 type OutboxRow = { kind: string; id: string; deleted: number; updated_at: string; revision: number };
@@ -788,7 +898,10 @@ export function captureSyncSnapshot(onlyPending = false) {
         if (ids.length) await readKind(tx, kind, lib[kind] as Record<string, unknown>, ids);
       }
     } else lib = await readLibrary(tx);
-    return { lib, dirty, layout: await layoutOf(tx, await meta(tx)) };
+    // 연도 책장은 그 장정 복사본과 같은 트랜잭션에 기록됐다: 같은 스냅숏에서 읽어야 함께 올라간다
+    const cases = await readBookcaseRows(tx);
+    const unsynced = new Set(cases.unsynced);
+    return { lib, dirty, layout: await layoutOf(tx, await meta(tx)), bookcases: cases.bookcases.filter((c) => unsynced.has(c.id)) };
   }));
 }
 export function readPendingState() {
@@ -817,7 +930,46 @@ export function queueAllChanges(all: Record<string, { deleted: boolean; at: stri
         await putPending(tx, { kind, id: key.slice(i + 1), ...value }, revision, true);
       }
       await tx.runAsync('UPDATE sync_meta SET layout_dirty=1,layout_revision=? WHERE id=1', revision);
+      await tx.runAsync('UPDATE bookcases SET synced=0');
     });
     changed();
+  });
+}
+
+// ---------- 연도 책장(domain/bookcase) ----------
+export function readBookcases() { return serialize(() => transaction(readBookcaseRows)); }
+
+// 이 기기에서 남긴 연도 책장: 장정 복사본(서재 항목, 올릴 변경으로 표시)과 책장을 한 트랜잭션에 쓴다
+export function createBookcase(c: Bookcase, bindings: Binding[]) {
+  return serialize(async () => {
+    await transaction(async (tx) => {
+      const revision = await nextRevision(tx);
+      for (const b of bindings) {
+        const change: LocalChange = { kind: 'bindings', id: b.id, item: b, deleted: false, at: b.updatedAt };
+        await applyChange(tx, change);
+        await putPending(tx, change, revision);
+      }
+      await writeBookcase(tx, c, false);
+    });
+    changed();
+  });
+}
+
+// 서버에서 받은 연도 책장(서버 것이 이긴다: 처음 올린 한 벌만 남는다)
+export function saveRemoteBookcases(list: Bookcase[]) {
+  return serialize(async () => {
+    if (!list.length) return;
+    await transaction(async (tx) => {
+      for (const c of list) await writeBookcase(tx, c, true);
+    });
+  });
+}
+
+export function markBookcasesSynced(ids: string[]) {
+  return serialize(async () => {
+    if (!ids.length) return;
+    await transaction(async (tx) => {
+      await tx.runAsync(`UPDATE bookcases SET synced=1 WHERE id IN (${ids.map(() => '?').join(',')})`, ...ids);
+    });
   });
 }

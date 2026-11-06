@@ -93,3 +93,31 @@ it('서재 복원 후 실패하면 원래 서재와 배치 및 사진 참조를 
   expect(after.layout.json).toBe(layout);
   expect(mockFiles[oldImage]).toBe('old image');
 });
+
+it('연도 책장과 숨긴 책을 백업에 넣고 그대로 되살린다. 연도 책장이 없는 예전 백업은 지금 연도 책장을 지우지 않는다', async () => {
+  const local = require('@/db/local-db') as typeof import('@/db/local-db');
+  const backup = require('../backup') as typeof import('../backup');
+  const { libraryStore } = require('../library-store') as typeof import('../library-store');
+  const lib = makeLib('책', 'https://cover.example/a.jpg');
+  lib.books.book = { ...lib.books.book, hiddenAt: '2027-02-01T00:00:00.000Z' } as typeof lib.books.book;
+  await libraryStore.replaceAll(lib);
+  const c = { id: 'bc-2026', year: 2026, createdAt: '2027-01-01T00:00:00.000Z', updatedAt: '2027-01-01T00:00:00.000Z', layout: { version: 2 as const, shelves: [{ id: 's1', order: 0 }], placements: [], drawer: ['book'] }, books: [{ bookId: 'book', status: 'read' as const, note: '그때 감상' }] };
+  await local.createBookcase(c, []);
+  const data = await backup.snapshot();
+  expect(data.library.books.book.hiddenAt).toBe('2027-02-01T00:00:00.000Z');
+  expect(data.bookcases).toHaveLength(1);
+  expect(backup.validateBackup(data)).toBeNull();
+  expect(backup.validateBackup({ ...data, bookcases: [{ ...data.bookcases![0], id: '' }] })).toContain('연도 책장');
+
+  // 연도 책장이 없는 예전 백업: 서재는 바뀌어도 연도 책장은 남는다
+  const { bookcases: _drop, ...old } = data;
+  await backup.restoreBackup(old as typeof data);
+  expect((await local.readBookcases()).bookcases.map((x) => x.id)).toEqual(['bc-2026']);
+  // 연도 책장이 든 백업: 그것으로 바꾸고 다시 올릴 목록에 넣는다(서버는 같은 해를 이미 가지면 건너뛴다)
+  await backup.restoreBackup({ ...data, bookcases: [{ ...data.bookcases![0], books: [{ bookId: 'book', status: 'reading' }] }] });
+  const restored = await local.readBookcases();
+  expect(restored.bookcases[0].books).toEqual([{ bookId: 'book', status: 'reading' }]);
+  expect(restored.unsynced).toEqual(['bc-2026']);
+  expect(libraryStore.get().lib.books.book).toBeUndefined(); // 숨긴 책은 화면에 없다
+  expect(libraryStore.full().books.book.hiddenAt).toBeTruthy();
+});

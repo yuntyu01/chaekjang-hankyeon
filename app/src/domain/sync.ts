@@ -7,6 +7,7 @@ import { isCoverArtworkId } from './cover-artworks';
 import type { Binding, Bookmark, Edition, Library, MyBook, Round, Session } from './library';
 import { heightClassOf, thicknessClassOf, type LayoutVariant } from './rebinding';
 import { bindingMaterialOf } from './types';
+import type { WireBookcase } from './bookcase';
 
 export type Dirty = Record<string, { deleted: boolean; at: string }>; // 키: "kind:id"
 export const dirtyKey = (kind: LibKind, id: string) => `${kind}:${id}`;
@@ -20,7 +21,7 @@ export type WireEdition = Wire & {
   art?: { baseColor: string; inkColor?: string | null; accentColor?: string | null; motifId?: string | null; layoutVariant?: string | null; version?: number | null; generatedAt?: string | null } | null;
   createdAt?: string;
 };
-export type WireBook = Wire & { editionId?: string; status?: string; rating?: number | null; note?: string | null; ribbonColor?: string | null; currentPage?: number | null; bindingId?: string | null; createdAt?: string };
+export type WireBook = Wire & { editionId?: string; status?: string; rating?: number | null; note?: string | null; ribbonColor?: string | null; currentPage?: number | null; bindingId?: string | null; hiddenAt?: string | null; createdAt?: string };
 export type WireBinding = Wire & {
   myBookId?: string; spineColor?: string; inkColor?: string | null; accentColor?: string | null; motif?: string; layout?: string | null; material?: string | null; coverArtId?: string | null; source?: string; status?: string;
   seed?: number | null; coverArtFileId?: string | null; spineArtFileId?: string | null; createdAt?: string;
@@ -34,10 +35,12 @@ export type WireLayout = { layoutJson: string; version: number; updatedAt: strin
 
 export type PushBody = {
   editions?: WireEdition[]; books?: WireBook[]; bindings?: WireBinding[]; rounds?: WireRound[]; sessions?: WireSession[]; bookmarks?: WireBookmark[]; layout?: WireLayout;
+  bookcases?: WireBookcase[]; // 연도 책장(domain/bookcase). 서버는 책·장정 뒤에 쓴다
 };
 export type PullBody = {
   rev: number; more: boolean; syncEpoch?: number; editions: WireEdition[]; books: WireBook[]; bindings: WireBinding[]; rounds: WireRound[]; sessions: WireSession[]; bookmarks: WireBookmark[];
   layout?: WireLayout | null;
+  bookcases?: WireBookcase[]; // 재배포 전 서버는 이 칸이 없다
 };
 
 // 시각 비교는 문자열이 아니라 시각으로(서버는 ...:00Z, 앱은 ...:00.000Z로 같은 시각을 달리 적을 수 있다)
@@ -64,7 +67,7 @@ export function editionToWire(e: Edition, imageDir: string): WireEdition {
     createdAt: e.createdAt, updatedAt: e.updatedAt,
   };
 }
-export const bookToWire = (b: MyBook): WireBook => ({ id: b.id, editionId: b.editionId, status: b.status, rating: b.rating, note: b.note, ribbonColor: b.ribbonColor, currentPage: b.currentPage, bindingId: b.bindingId, createdAt: b.createdAt, updatedAt: b.updatedAt });
+export const bookToWire = (b: MyBook): WireBook => ({ id: b.id, editionId: b.editionId, status: b.status, rating: b.rating, note: b.note, ribbonColor: b.ribbonColor, currentPage: b.currentPage, bindingId: b.bindingId, hiddenAt: b.hiddenAt, createdAt: b.createdAt, updatedAt: b.updatedAt });
 export const bindingToWire = (b: Binding, imageDir: string): WireBinding => ({
   id: b.id, myBookId: b.myBookId, spineColor: b.spineColor, inkColor: b.inkColor, accentColor: b.accentColor, motif: b.motif, layout: b.layout, material: b.material, coverArtId: b.coverArtId, source: b.source, status: b.status,
   seed: b.seed, coverArtFileId: fileIdOf(b.coverArtUri, imageDir), spineArtFileId: fileIdOf(b.spineArtUri, imageDir), createdAt: b.createdAt, updatedAt: b.updatedAt,
@@ -79,7 +82,7 @@ export const bookmarkToWire = (m: Bookmark, imageDir: string): WireBookmark => (
 
 // 올릴 변경 묶음: 바뀐 항목(현재 값)과 삭제 표시. 이미 사라진 항목이 dirty에 없고 삭제도 아니면 건너뛴다.
 export function buildPush(lib: Library, dirty: Dirty, imageDir: string): { body: PushBody; count: number } {
-  const body: Required<Omit<PushBody, 'layout'>> = { editions: [], books: [], bindings: [], rounds: [], sessions: [], bookmarks: [] };
+  const body: Required<Omit<PushBody, 'layout' | 'bookcases'>> = { editions: [], books: [], bindings: [], rounds: [], sessions: [], bookmarks: [] };
   let count = 0;
   for (const [key, d] of Object.entries(dirty)) {
     const i = key.indexOf(':');
@@ -122,7 +125,7 @@ export const editionFromWire = (w: WireEdition, imageDir: string): Edition => ({
     : undefined,
   createdAt: w.createdAt ?? w.updatedAt, updatedAt: w.updatedAt,
 });
-export const bookFromWire = (w: WireBook): MyBook => ({ id: w.id, editionId: w.editionId ?? '', status: (w.status as MyBook['status']) ?? 'want', rating: nz(w.rating), note: nz(w.note), ribbonColor: nz(w.ribbonColor), currentPage: nz(w.currentPage), bindingId: nz(w.bindingId), createdAt: w.createdAt ?? w.updatedAt, updatedAt: w.updatedAt });
+export const bookFromWire = (w: WireBook): MyBook => ({ id: w.id, editionId: w.editionId ?? '', status: (w.status as MyBook['status']) ?? 'want', rating: nz(w.rating), note: nz(w.note), ribbonColor: nz(w.ribbonColor), currentPage: nz(w.currentPage), bindingId: nz(w.bindingId), hiddenAt: nz(w.hiddenAt), createdAt: w.createdAt ?? w.updatedAt, updatedAt: w.updatedAt });
 export const bindingFromWire = (w: WireBinding, imageDir: string): Binding => ({
   id: w.id, myBookId: w.myBookId ?? '', spineColor: w.spineColor ?? '#8A8378', inkColor: nz(w.inkColor), accentColor: nz(w.accentColor), motif: w.motif ?? 'none', layout: nz(w.layout) as LayoutVariant | undefined,
   material: bindingMaterialOf(w.material),

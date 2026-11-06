@@ -12,7 +12,9 @@ jest.mock('expo-sqlite/kv-store', () => ({ __esModule: true, default: mockStorag
 jest.mock('@/db/local-db', () => ({ readLayout: jest.fn(async () => ({ json: null })), saveLayout: jest.fn(async () => true) }));
 jest.mock('@/domain/layout-engine', () => ({ migrate: (layout: unknown) => layout }));
 jest.mock('@/domain/home-reference', () => ({ referenceHomeBooks: () => ({}) }));
-jest.mock('../library-store', () => ({ libraryStore: { load: mockLoadLibrary, get: () => mockLibraryState, subscribe: mockSubscribe, isReplacingWithLayout: mockReplacing, replaceAll: jest.fn() } }));
+jest.mock('../library-store', () => ({ libraryStore: { load: mockLoadLibrary, get: () => mockLibraryState, full: () => mockLibraryState.lib, subscribe: mockSubscribe, isReplacingWithLayout: mockReplacing, replaceAll: jest.fn() } }));
+const mockCheckYear = jest.fn(async (): Promise<number | null> => null);
+jest.mock('../bookcase-store', () => ({ bookcaseStore: { load: jest.fn(async () => {}), checkYear: mockCheckYear, watch: jest.fn() } }));
 jest.mock('../placement-store', () => ({ EMPTY_LAYOUT: { version: 2, shelves: [], placements: [], drawer: [] }, placementStore: { load: mockLoadPlacement, syncBooks: mockSyncBooks } }));
 jest.mock('../home-reference-install', () => ({ installReferenceHome: mockInstall }));
 jest.mock('../reading-store', () => ({ readingStore: { load: mockLoadReading } }));
@@ -83,4 +85,27 @@ it('저장한 배치의 최소 두께가 지금과 같으면 다시 맞추지 �
     else expect(mockStorage.setItem).not.toHaveBeenCalledWith('real-size-layout-v1', expect.anything());
   }
   getItem.mockImplementation(async () => null);
+});
+
+it('연도 책장은 배치를 맞추거나 시안을 깔기 전에 확인한다(그 저장들이 마지막 시각을 올해로 바꾼다)', async () => {
+  jest.resetModules();
+  mockLibraryState.error = null;
+  const order: string[] = [];
+  mockCheckYear.mockImplementationOnce(async () => { order.push('year'); return null; });
+  mockInstall.mockImplementationOnce(async () => { order.push('install'); return {}; });
+  mockLoadPlacement.mockImplementationOnce(async () => { order.push('placement'); });
+  const { bootStores } = require('../boot') as typeof import('../boot');
+  await bootStores();
+  expect(order).toEqual(['year', 'install', 'placement']);
+});
+
+it('연도 책장 확인이 실패해도 앱은 열린다', async () => {
+  jest.resetModules();
+  mockLibraryState.error = null;
+  mockCheckYear.mockImplementationOnce(async () => { throw new Error('disk'); });
+  const warn = jest.spyOn(console, 'warn').mockImplementation(() => {});
+  const { bootStores } = require('../boot') as typeof import('../boot');
+  await expect(bootStores()).resolves.toBeUndefined();
+  expect(warn).toHaveBeenCalledWith('연도 책장 확인 실패(다음 시작 때 다시)', expect.any(Error));
+  warn.mockRestore();
 });

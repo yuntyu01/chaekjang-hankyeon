@@ -20,7 +20,7 @@ jest.mock('@/domain/sync', () => ({
   fullDirty: () => ({}),
   mergeRemote: () => ({ files: [], writes: [], erases: [] }),
 }));
-jest.mock('@/store/library-store', () => ({ libraryStore: { get: () => ({ lib: mockLibrary }), applyRemote: jest.fn(), flushPending: jest.fn(async () => {}), hasPending: () => false } }));
+jest.mock('@/store/library-store', () => ({ libraryStore: { get: () => ({ lib: mockLibrary }), full: () => mockLibrary, setArchived: () => {}, applyRemote: jest.fn(), flushPending: jest.fn(async () => {}), hasPending: () => false } }));
 jest.mock('@/store/files', () => ({ IMAGE_DIR: 'file://images/' }));
 
 it('업로드 중 다시 옮긴 배치를 다음 동기화에서 올린다', async () => {

@@ -26,6 +26,11 @@
 
 앱 로컬: 로컬 캐시(SQLite 등), 오프라인 열람, 동기화는 "마지막 수정 시각 우선".
 
+연도 책장(2026-11-06, 서버 V17·앱 DB v10, 규칙은 `app/src/domain/bookcase.ts`): 해가 바뀌면 그해 책장을 한 벌 남긴다(보기 전용, 한 해 한 벌, 서버는 처음 올린 것을 남김).
+- bookcases(id 'bc-<연도>', year) + bookcase_shelves·bookcase_placements(지금 책장과 같은 열) + bookcase_books(그때 상태·별점·한 줄 감상·갈피 색·읽은 쪽, 그때 장정 복사본 id)
+- 판본·회차·독서 기록·갈피는 복사하지 않고 그해 날짜로 고른다. 연도 책장에 있는 책을 지우면 my_books.hidden_at만 적고 숨긴다(갈피·기록이 남는다)
+- 남기는 때: 서재를 마지막으로 손댄 해가 올해보다 앞이고 그해 책장이 없을 때. 앱 시작(다른 저장보다 먼저)·앱 복귀·켜 둔 채 새해 자정. 보는 화면은 아직 없다
+
 Book 매핑: themeColor ← custom_theme_color ?? books.theme_color / height·thickness ← books / spineArtUri·coverArtUri ← 모티프 자산 슬롯(30개 내외 세트) / originalCoverUri ← books.cover_url.
 
 ## 4. 책 추가 흐름 (입력 3종 → 확인 1종)

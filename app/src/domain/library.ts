@@ -55,6 +55,8 @@ export type MyBook = {
   ribbonColor?: string; // 사용자가 고른 갈피 색(책장 갈피·뒤 종이·테이프). 없으면 표지에서 뽑은 색(2026-11-05)
   currentPage?: number; // 선택
   bindingId?: string;
+  // 숨긴 때: 지운 책이 연도 책장(domain/bookcase)에 있어 줄과 갈피·기록을 남기고 지금 서재에서만 뺀 책(2026-11-06). 비어 있으면 보이는 책
+  hiddenAt?: string;
   createdAt: string;
   updatedAt: string;
 };

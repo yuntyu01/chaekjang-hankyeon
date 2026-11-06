@@ -8,7 +8,9 @@ import * as WebBrowser from 'expo-web-browser';
 import { AppState } from 'react-native';
 
 import { buildPush, fullDirty, mergeRemote, type PullBody, type PushBody, type WireLayout } from '@/domain/sync';
-import { captureSyncSnapshot, readPendingState, saveLayout, type SyncSnapshot } from '@/db/local-db';
+import { captureSyncSnapshot, markBookcasesSynced, readPendingState, saveLayout, saveRemoteBookcases, type SyncSnapshot } from '@/db/local-db';
+import { bookcaseFromWire, bookcaseToWire, type Bookcase } from '@/domain/bookcase';
+import { bookcaseStore, PULL_ALL_KEY } from '@/store/bookcase-store';
 import { ApiError, createApiClient } from '@/services/api-client';
 import { IMAGE_DIR } from '@/store/files';
 import { libraryStore } from '@/store/library-store';
@@ -79,7 +81,7 @@ async function ensureToken(): Promise<string> {
   const created = await api<{ token: string }>('POST', '/auth/device', null);
   // 토큰을 마지막에 기록한다. 중간에 앱이 꺼져도 다음 시작 때 전체 올리기를 다시 준비한다.
   await libraryStore.flushPending();
-  await markAllDirty(fullDirty(libraryStore.get().lib));
+  await markAllDirty(fullDirty(libraryStore.full()));
   await Storage.setItem(REV_KEY, '0');
   await Storage.setItem(FILES_KEY, '[]');
   await Storage.setItem(TOKEN_KEY, created.token);
@@ -159,7 +161,11 @@ async function pushOnce(token: string, snapshot: SyncSnapshot) {
   const saved = snapshot.layout;
   const layout = saved.dirty && saved.json ? { layoutJson: saved.json, version: 2, updatedAt: saved.at ?? new Date().toISOString() } : undefined;
   const layoutRevision = saved.dirty ? saved.revision : null;
-  if (!count && !layout) {
+  // 연도 책장은 그 책·장정과 같은 요청이나 그 뒤 요청에 보낸다(서버 외래키).
+  // 연도 책장을 모르는 서버(재배포 전)는 그 칸을 조용히 버리므로, 받는 응답에 그 칸이 있는 서버에만 보낸다(올린 것으로 잘못 표시하지 않게)
+  const bookcases = bookcasesSupported && snapshot.bookcases.length ? snapshot.bookcases.map(bookcaseToWire) : undefined;
+  const sentCases = bookcases ? snapshot.bookcases.map((c) => c.id) : [];
+  if (!count && !layout && !bookcases) {
     await clearPushed(snapshot.dirty, layoutRevision);
     return;
   }
@@ -178,28 +184,35 @@ async function pushOnce(token: string, snapshot: SyncSnapshot) {
         await clearPushed(sent, null);
       }
     }
-    if (layout) await pushBatch(token, { layout });
+    if (layout || bookcases) await pushBatch(token, { layout, bookcases });
     await clearPushed({}, layoutRevision);
+    await markBookcasesSynced(sentCases);
     return;
   }
   await uploadFiles(token, filesIn(body));
-  await pushBatch(token, { ...body, layout });
+  await pushBatch(token, { ...body, layout, bookcases });
   await clearPushed(snapshot.dirty, layoutRevision);
+  // 서버가 같은 해를 이미 갖고 있어 건너뛰었어도 올린 것으로 친다(그 한 벌은 처음부터 다시 받을 때 내려온다: pushBatch)
+  await markBookcasesSynced(sentCases);
 }
 
 let reloadLayout: (() => Promise<void> | void) | null = null;
+let bookcasesSupported = false; // 서버 응답에 연도 책장 칸이 있었다(server V17)
 
 async function pullAll(token: string) {
   let since = Number((await Storage.getItem(REV_KEY)) ?? '0') || 0;
   let epoch = Number((await Storage.getItem(EPOCH_KEY)) ?? '0') || 0;
+  // 처음부터 받는 동안은 연도 책장을 남기지 않는다(bookcase-store). 끝까지 받으면 지운다
+  if (since === 0) await Storage.setItem(PULL_ALL_KEY, '1');
   for (let guard = 0; guard < 200; guard++) {
     const p = await api<PullBody>('GET', `/sync/pull?since=${since}&limit=500`, token);
+    if (Array.isArray(p.bookcases)) bookcasesSupported = true;
     // 새 서버에서 예전 커서가 놓쳤을 수 있는 기록을 한 번 처음부터 다시 받는다.
     if ((p.syncEpoch ?? 0) >= 2 && epoch < 2) {
       await Storage.setItem(REV_KEY, '0');
       await Storage.setItem(EPOCH_KEY, '2');
       epoch = 2;
-      if (since !== 0) { since = 0; continue; }
+      if (since !== 0) { since = 0; await Storage.setItem(PULL_ALL_KEY, '1'); continue; }
     }
     const downloaded = new Set<string>();
     let applied = false;
@@ -207,7 +220,7 @@ async function pullAll(token: string) {
       await libraryStore.flushPending();
       const pending = await readPendingState();
       if (libraryStore.hasPending()) continue;
-      const m = mergeRemote(libraryStore.get().lib, p, IMAGE_DIR, pending.dirty);
+      const m = mergeRemote(libraryStore.full(), p, IMAGE_DIR, pending.dirty);
       const files = m.files.filter(id => !downloaded.has(id));
       if (files.length) {
         await downloadFiles(token, files); // 사진을 먼저 받아 두고 서재에 반영한다.
@@ -220,10 +233,21 @@ async function pullAll(token: string) {
     }
     if (!applied) throw new Error('변경을 받아오지 못했어요. 다시 시도해 주세요');
     if (p.layout) await applyLayout(p.layout);
+    if (p.bookcases?.length) await applyBookcases(p.bookcases.map(bookcaseFromWire).filter((c): c is Bookcase => !!c));
     since = p.rev;
     await Storage.setItem(REV_KEY, String(since));
-    if (!p.more) break;
+    if (!p.more) {
+      await Storage.removeItem(PULL_ALL_KEY);
+      break;
+    }
   }
+}
+
+// 서버의 연도 책장이 이긴다(한 해 한 벌, 처음 올린 것). 장정 복사본은 서재 항목으로 함께 내려온다
+async function applyBookcases(list: Bookcase[]) {
+  if (!list.length) return;
+  await saveRemoteBookcases(list);
+  await bookcaseStore.load();
 }
 
 async function applyLayout(remote: WireLayout) {
@@ -240,7 +264,8 @@ let verifiedToken: string | null = null;
 
 async function requireSafeServer(token: string) {
   if (verifiedToken === token) return;
-  const response = await api<{ syncEpoch?: number }>('GET', '/sync/pull?since=0&limit=1', token);
+  const response = await api<{ syncEpoch?: number; bookcases?: unknown }>('GET', '/sync/pull?since=0&limit=1', token);
+  if (Array.isArray(response.bookcases)) bookcasesSupported = true;
   // 낮은 revision이 나중에 커밋되면 변경을 놓칠 수 있는 구 서버에는 쓰지 않는다.
   if ((response.syncEpoch ?? 0) < 2) throw new Error('서버 동기화 업데이트가 필요해요. 기록은 기기에 보관하고 있어요.');
   verifiedToken = token;
@@ -260,6 +285,7 @@ export async function syncNow() {
     return;
   }
   running = true;
+  bookcaseStore.setSyncBusy(true);
   let finishRunning!: () => void;
   runningDone = new Promise<void>(resolve => { finishRunning = resolve; });
   setStatus({ state: 'syncing', error: undefined });
@@ -280,7 +306,7 @@ export async function syncNow() {
           throw new Error('계정 인증이 만료됐거나 삭제되어 동기화를 중지했어요. 기기의 기록은 남아 있어요.');
         }
         if (e instanceof ApiError && e.code === 'missing_reference' && attempt === 0) {
-          await markAllDirty(fullDirty(libraryStore.get().lib)); // 부모가 서버에 없다 → 전부 올려 참조를 채운다
+          await markAllDirty(fullDirty(libraryStore.full())); // 부모가 서버에 없다 → 전부 올려 참조를 채운다
           continue;
         }
         throw e;
@@ -297,6 +323,9 @@ export async function syncNow() {
     schedule(60_000); // 연결이 안 되면 1분 뒤 다시
   } finally {
     running = false;
+    bookcaseStore.setSyncBusy(false);
+    // 동기화 중에는 연도 책장을 남기지 않았다(새 기기가 서재를 다 받은 뒤 등): 끝나면 한 번 확인한다
+    if (status.state === 'idle') void bookcaseStore.checkYear().catch(() => {});
     runningDone = null;
     finishRunning();
     if (again) {
@@ -383,7 +412,7 @@ async function linkSocial(provider: 'kakao' | 'google'): Promise<KakaoResult> {
       await Storage.setItem(REV_KEY, '0');
       await Storage.setItem(FILES_KEY, '[]');
       await libraryStore.flushPending();
-      await markAllDirty(fullDirty(libraryStore.get().lib));
+      await markAllDirty(fullDirty(libraryStore.full()));
     }
     await Storage.setItem(TOKEN_KEY, c.token);
     setAccount(c.switched ? { kakao: provider === 'kakao', google: provider === 'google', nickname: c.nickname } : { ...account, [provider]: true, nickname: c.nickname });

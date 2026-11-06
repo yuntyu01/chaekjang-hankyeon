@@ -114,7 +114,7 @@ it('v3(JSON 줄·배치 JSON) 저장본을 v4 표로 옮긴다: 서재·대기 �
   expect(snapshot.lib).toEqual(lib);
   expect(snapshot.dirty).toEqual({ 'books:m1': { deleted: false, at, revision: 5 } });
   expect(snapshot.layout).toEqual({ json: JSON.stringify({ version: 2, shelves: [{ id: 's1', order: 0 }], placements: [{ ...full, bookId: 'm1' }], drawer: [] }), at, dirty: true, revision: 5 });
-  expect(await mockDb.getFirstAsync('PRAGMA user_version')).toEqual({ user_version: 9 });
+  expect(await mockDb.getFirstAsync('PRAGMA user_version')).toEqual({ user_version: 10 });
   expect(await mockDb.getAllAsync("SELECT name FROM sqlite_master WHERE type='table' AND name LIKE 'v3_%'")).toEqual([]);
   expect(await mockDb.getAllAsync('SELECT position, name FROM edition_authors ORDER BY position')).toEqual([{ position: 0, name: '가' }, { position: 1, name: '나' }]);
 });
@@ -145,7 +145,7 @@ it('2026-10-17 앱(로컬 main 1165c16, 이미 정규화한 v3) 저장본도 지
   expect(JSON.parse(snapshot.layout.json!)).toEqual({ version: 2, shelves: [{ id: 's1', order: 0 }, { id: 's2', order: 1 }], placements: [{ bookId: 'm1', shelfId: 's1', order: 0, pose: 'spine', tilt: 0, pos: 40.5, lean: { angle: -4, on: 'm3' }, depth: 12 }], drawer: ['m2'] });
   expect(snapshot.layout).toMatchObject({ at, dirty: true });
   expect(snapshot.dirty).toEqual({ 'books:m1': { deleted: false, at, revision: 1 } });
-  expect(await mockDb.getFirstAsync('PRAGMA user_version')).toEqual({ user_version: 9 });
+  expect(await mockDb.getFirstAsync('PRAGMA user_version')).toEqual({ user_version: 10 });
   expect(await mockDb.getAllAsync("SELECT name FROM sqlite_master WHERE type='table' AND (name LIKE 'old_%' OR name = 'sync_dirty')")).toEqual([]);
   // 다시 켜도(kv 옮기기는 이미 끝난 것으로) 배치 표를 지우지 않는다
   restart();
@@ -181,4 +181,36 @@ it('v5 열(독서 시작 쪽·갈피의 기록 연결·아껴둔 때·판본 상
   expect(read.editions.e1).toMatchObject({ productId: '8759796', link: 'https://www.yes24.com/product/goods/8759796' });
   expect(read.sessions.s1).toMatchObject({ startPage: 12, pagesRead: 30, durationMs: 20_000 });
   expect(read.bookmarks.m1).toMatchObject({ sessionId: 's1', savedAt: at, boardX: 120.5, boardY: 88, boardRot: -2.5 });
+});
+
+it('v9 저장본에 연도 책장 표와 숨긴 책 열을 더한다(기록은 그대로), 숨긴 때를 담았다가 그대로 읽는다', async () => {
+  const book = { id: 'm1', editionId: 'e1', status: 'read' as const, note: '감상', createdAt: at, updatedAt: at };
+  await local.applyLocalChanges([{ kind: 'books', id: 'm1', item: book, deleted: false, at }]);
+  await mockDb.execAsync('DROP TABLE bookcase_placements; DROP TABLE bookcase_books; DROP TABLE bookcase_shelves; DROP TABLE bookcases; ALTER TABLE my_books DROP COLUMN hidden_at; PRAGMA user_version = 9;');
+  restart();
+  expect((await local.loadLib()).books.m1).toEqual(book);
+  expect(await mockDb.getFirstAsync('PRAGMA user_version')).toEqual({ user_version: 10 });
+  expect((await local.readBookcases()).bookcases).toEqual([]);
+  const hidden = { ...book, hiddenAt: '2027-02-01T00:00:00.000Z', updatedAt: '2027-02-01T00:00:00.000Z' };
+  await local.applyLocalChanges([{ kind: 'books', id: 'm1', item: hidden, deleted: false, at: hidden.updatedAt }]);
+  restart();
+  expect((await local.loadLib()).books.m1).toEqual(hidden);
+});
+
+it('연도 책장 한 벌을 표에 담았다가 같은 모양으로 읽고, 같은 해가 다시 오면 바꾼다', async () => {
+  const c = {
+    id: 'bc-2026', year: 2026, createdAt: '2027-01-01T00:00:00.000Z', updatedAt: '2027-01-01T00:00:00.000Z',
+    layout: { version: 2 as const, shelves: [{ id: 's1', order: 0 }], placements: [{ ...full, bookId: 'b1', lean: { angle: 3, on: '#wall-r' } }, { bookId: 'ghost', shelfId: 's1', order: 1, pose: 'spine' as const, tilt: 0 as const }], drawer: ['b2'] },
+    books: [{ bookId: 'b1', bindingId: 'bc-2026-b1', status: 'read' as const, rating: 4, note: '좋았다', ribbonColor: '#7B4497', currentPage: 10 }, { bookId: 'b2', status: 'want' as const }],
+  };
+  await local.createBookcase(c, []);
+  restart();
+  const read = await local.readBookcases();
+  // 책 목록에 없는 책(ghost)의 자리는 남지 않는다
+  expect(read).toEqual({ bookcases: [{ ...c, layout: { ...c.layout, placements: [c.layout.placements[0]] } }], unsynced: ['bc-2026'] });
+  await local.saveRemoteBookcases([{ ...c, id: 'bc-2026', books: [{ bookId: 'b2', status: 'reading' }], layout: { version: 2, shelves: [], placements: [], drawer: ['b2'] } }]);
+  const replaced = await local.readBookcases();
+  expect(replaced.unsynced).toEqual([]);
+  expect(replaced.bookcases[0].books).toEqual([{ bookId: 'b2', status: 'reading' }]);
+  expect(await mockDb.getAllAsync('SELECT count(*) AS n FROM bookcase_placements')).toEqual([{ n: 1 }]);
 });
