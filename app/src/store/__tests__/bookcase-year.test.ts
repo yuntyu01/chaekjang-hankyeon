@@ -72,6 +72,8 @@ it('새해 첫 확인에 그해 책장을 한 번 남기고, 장정 복사본과
   expect(c.layout.placements).toEqual([{ bookId: a, shelfId: 's2', order: 0, pose: 'spine', tilt: 7, lean: { angle: 5, on: '#wall-l' } }]);
   expect(c.layout.drawer).toEqual([b]);
   expect(c.books.find((x) => x.bookId === a)).toEqual({ bookId: a, bindingId: `bc-2026-${a}`, status: 'read', rating: 5, note: '알을 깨고 나오기' });
+  // 지울 때 안내: 연도 책장에 있는 책과 그 해
+  expect(cases.keptYears(cases.bookcaseStore.get().bookcases, [a, 'bk-new'])).toEqual({ kept: [a], years: [2026] });
 
   // 장정 복사본은 서재 항목이자 올릴 변경, 연도 책장은 같은 스냅숏에 함께
   const snap = await local.captureSyncSnapshot(true);

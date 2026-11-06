@@ -2,10 +2,11 @@
 // 확인하는 때: 앱 시작(다른 저장보다 먼저, boot), 앱으로 돌아올 때, 앱을 켜 둔 채 새해 자정이 지날 때.
 // 처음 받는 동기화가 끝나지 않았으면(새 기기에서 서재를 받는 중) 남기지 않는다: 반쯤 받은 서재로 한 해를 고정하지 않게.
 import Storage from 'expo-sqlite/kv-store';
+import { useSyncExternalStore } from 'react';
 import { AppState } from 'react-native';
 
 import { createBookcase, readBookcases, readLayout } from '@/db/local-db';
-import { archivedBookIds, snapshotBookcase, yearToArchive, type Bookcase } from '@/domain/bookcase';
+import { archivedBookIds, archivedYearsOf, snapshotBookcase, yearToArchive, type Bookcase } from '@/domain/bookcase';
 import { checkSampleBooks } from '@/domain/home-reference';
 import { migrate } from '@/domain/layout-schema';
 import type { ShelfLayout } from '@/domain/types';
@@ -103,3 +104,14 @@ export const bookcaseStore = {
     });
   },
 };
+
+export function useBookcases(): Bookcase[] {
+  return useSyncExternalStore(bookcaseStore.subscribe, () => state.bookcases);
+}
+
+// 지울 책 중 연도 책장에 있는 책의 해들(그 책들은 지우지 않고 숨긴다: library-store deleteBook)
+export function keptYears(bookcases: readonly Bookcase[], ids: readonly string[]): { kept: string[]; years: number[] } {
+  const kept = ids.filter((id) => bookcases.some((c) => c.books.some((b) => b.bookId === id)));
+  const years = [...new Set(kept.flatMap((id) => archivedYearsOf(bookcases, id)))].sort((a, b) => a - b);
+  return { kept, years };
+}

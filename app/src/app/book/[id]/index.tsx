@@ -10,9 +10,11 @@ import { RibbonColorSheet } from '@/features/bookmark/RibbonColorSheet';
 import { STATUS_LABEL, ymd } from '@/features/book/labels';
 import { placeWithChoice } from '@/features/book/place-books';
 import { ko } from '@/i18n/ko';
+import { archivedYearsOf } from '@/domain/bookcase';
 import { placementOf } from '@/domain/layout-engine';
 import { paperColors } from '@/domain/color';
 import { bookmarksOf, bookReadMs, completions, formatDuration, isDay, memoShelfBook, READ_STATUSES, roundsOf } from '@/domain/library';
+import { bookcaseStore } from '@/store/bookcase-store';
 import { useLibrary, libraryStore } from '@/store/library-store';
 import { placementStore, usePlacementStore } from '@/store/placement-store';
 import { uiBus } from '@/store/ui-bus';
@@ -63,9 +65,13 @@ export default function BookDetailScreen() {
   };
 
   const confirmDelete = () => {
+    // 연도 책장에 있는 책은 지금 서재에서만 빠진다(library-store deleteBook)
+    const years = archivedYearsOf(bookcaseStore.get().bookcases, id);
     Alert.alert(
       '책을 삭제할까요?',
-      `책 정보와 함께 삭제돼요: 독서 회차 ${rounds.length}개, 갈피 ${marks.length}개, 장정.\n독서 시간 기록 ${sessions}개는 ‘책 없음’으로 남아 통계에 계속 포함돼요.\n되돌릴 수 없어요. 책장에서만 치우려면 ‘책장에서 빼기’를 쓰세요(기록은 그대로).`,
+      years.length
+        ? `지금 서재에서는 빠지고, ${years.join('·')}년 책장에는 갈피·기록과 함께 그대로 남아요.\n되돌릴 수 없어요. 책장에서만 치우려면 ‘책장에서 빼기’를 쓰세요(기록은 그대로).`
+        : `책 정보와 함께 삭제돼요: 독서 회차 ${rounds.length}개, 갈피 ${marks.length}개, 장정.\n독서 시간 기록 ${sessions}개는 ‘책 없음’으로 남아 통계에 계속 포함돼요.\n되돌릴 수 없어요. 책장에서만 치우려면 ‘책장에서 빼기’를 쓰세요(기록은 그대로).`,
       [
         { text: '취소', style: 'cancel' },
         {

@@ -98,6 +98,11 @@ export function snapshotBookcase(lib: Library, layout: ShelfLayout, year: number
   };
 }
 
+// 그 책이 들어 있는 연도 책장의 해(오래된 순). 지울 때 안내에 쓴다
+export function archivedYearsOf(bookcases: readonly Bookcase[], bookId: string): number[] {
+  return bookcases.filter((c) => c.books.some((b) => b.bookId === bookId)).map((c) => c.year).sort((a, b) => a - b);
+}
+
 // 연도 책장에 있는 책 id
 export function archivedBookIds(bookcases: readonly Bookcase[]): Set<string> {
   const out = new Set<string>();
