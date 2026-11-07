@@ -79,6 +79,8 @@ export type CoverArt = import('./body-art.generated').CoverArt & {
 
 export type Book = {
   id: string;
+  // 무늬 씨앗(갈피 탭 색·기울기, 갈피 모양): 지난 연도 책장은 id에 해 앞머리를 붙여 그리므로 원래 책 id를 둔다(features/home/year-shelf). 없으면 id
+  seedId?: string;
   title: string;
   author?: string;
   originalCoverUri?: string; // 실제 도서 표지(상세보기 전용)

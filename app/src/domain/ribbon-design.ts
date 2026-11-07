@@ -23,7 +23,7 @@ export function ribbonDesign(book: Book): RibbonDesign {
     const t = { x: 0, width: 9.2, out: 14 };
     return { width: t.width, out: t.out, x: 0, y: 0, tabs: [t] };
   }
-  const h = seedOf(book.id);
+  const h = seedOf(book.seedId ?? book.id);
   const a = { width: 8.4, out: 15 };
   const b = { width: 7.2, out: 11.5 };
   // 길쭉한 장이 왼쪽인지 오른쪽인지는 책마다

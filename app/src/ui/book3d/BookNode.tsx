@@ -156,7 +156,7 @@ function Ribbons({ art, book, state, cam, px, sur }: { art: BookArt; book: Book;
   const matrix = useDerivedValue(() => g.value.matrix);
   const frame = useDerivedValue(() => g.value.frame);
   const hide = useDerivedValue(() => g.value.hide);
-  const seed = useMemo(() => seedOf(`${book.id}:tab`), [book.id]);
+  const seed = useMemo(() => seedOf(`${book.seedId ?? book.id}:tab`), [book.seedId, book.id]);
   return (
     <Group clip={hide} invertClip>
       <Group matrix={matrix}>

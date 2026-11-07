@@ -273,10 +273,10 @@ function rng(seed: number) {
 export function tabsOf(book: Book): Tab[] {
   const design = ribbonDesign(book);
   const tone = toneOf(book);
-  const [c1, c2] = tabColors(book.art.ribbon ?? (isNeutralColor(tone) ? undefined : tone), book.id);
+  const [c1, c2] = tabColors(book.art.ribbon ?? (isNeutralColor(tone) ? undefined : tone), book.seedId ?? book.id);
   const tall = Math.max(...design.tabs.map((t) => t.out));
   let seed = 0;
-  for (const ch of book.id) seed = (seed * 31 + ch.charCodeAt(0)) >>> 0;
+  for (const ch of book.seedId ?? book.id) seed = (seed * 31 + ch.charCodeAt(0)) >>> 0;
   return design.tabs.map((t, i) => {
     const sd = seed + i * 7919;
     return { x: design.x + t.x, width: t.width, out: t.out, color: t.out === tall ? c1 : c2, seed: sd, tilt: (rng(sd ^ 0x9e3779b9)() - 0.5) * 2 * TAB_TILT_MAX };

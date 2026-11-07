@@ -8,7 +8,7 @@ import * as Haptics from 'expo-haptics';
 import { Plus } from '@/ui/icons';
 import { DecorateIcon, FilledBookIcon, StoreIcon } from '@/ui/TabIcons';
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import { PixelRatio, Pressable, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
+import { BackHandler, PixelRatio, Pressable, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import Animated, {
   cancelAnimation,
@@ -66,6 +66,7 @@ import { useHomePerf } from './useHomePerf';
 
 import { BookSheet } from './BookSheet';
 import { STATUS_LABEL } from '@/features/book/labels';
+import { useBookcases } from '@/store/bookcase-store';
 import { libraryStore, useLibrary } from '@/store/library-store';
 import { miniTimerStore } from '@/store/mini-timer-store';
 import { surfaces } from '@/ui/lighting';
@@ -83,6 +84,8 @@ import { useRowHolds } from './useRowHolds';
 import { useShelfTransitions } from './useShelfTransitions';
 import type { Drag } from './shelf-interaction';
 import { useSceneMotions, useShelfScenes } from './useShelfSceneState';
+import { OverviewLabel, PageFrame, useYearPager, ZoomStage } from './YearPager';
+import { YearShelf } from './YearShelf';
 
 type MoveAction = 'prev' | 'next' | 'up' | 'down';
 
@@ -117,6 +120,11 @@ export function HomeScreen() {
   const selectedId = popId;
   const [debugGeom, setDebugGeom] = useState(false); // 개발용 형상 보기
   const [selectedYear, setSelectedYear] = useState<number | null>(null); // 헤더 독서 연도
+  // 지난 연도 책장(최근 해부터): 왼쪽으로 넘기면 한 해 전, 두 손가락으로 줄이면 나란히(YearPager). 꾸미는 중·끄는 중에는 넘기지 않는다
+  const bookcases = useBookcases();
+  const past = useMemo(() => [...bookcases].sort((a, b) => b.year - a.year), [bookcases]);
+  const pager = useYearPager({ count: past.length, width: winW, blocked: editing || !!drag, reduceMotion });
+  const onCurrent = pager.page === 0 && !pager.overview;
   // 머리글은 책장과 함께 스크롤된다(2026-11-04 사용자 '상단 라인은 고정이 아니야'). vpH·스크롤·콘텐츠 좌표는 머리글 아래를 기준으로 그대로 둔다:
   // 콘텐츠 y = (화면 y − 머리글 아래 끝) + 스크롤. 실제 스크롤 칸은 머리글 높이만큼 더 크고 머리글이 콘텐츠 맨 위에 있어 최대 스크롤도 같다
   const [viewportFull, setViewportFull] = useState(0);
@@ -182,7 +190,7 @@ export function HomeScreen() {
     setFocused(true);
     return () => setFocused(false);
   }, []));
-  const atRest = focused && settled && !drag && !popId && !editing && !shelfMenuOpen && !toast;
+  const atRest = focused && settled && onCurrent && !drag && !popId && !editing && !shelfMenuOpen && !toast;
   useHomeSnapshot(atRest && lockedReady, [layout, books, bookShared, appSettings, view, winW, selectedYear], () => scrollY.value < 1);
 
   // 측정 번들: 끌기 한 번 동안 JS 쪽 시간(미리보기 계산, 미리보기 → 커밋, JS 프레임 간격)
@@ -307,6 +315,7 @@ export function HomeScreen() {
   // 책 찾기에서 고른 책: 그 선반으로 옮겨 정보 상자로 강조(배치는 그대로)
   const focusRef = useRef<(id: string) => void>(() => {});
   focusRef.current = (id: string) => {
+    if (!onCurrent) pager.goTo(0);
     const p = placementOf(layout, id);
     const row = p && rows.find((r) => r.shelfId === p.shelfId);
     if (!row) return;
@@ -328,6 +337,18 @@ export function HomeScreen() {
       return () => { unsubscribe(); tasks.cancel('focus-request'); tasks.cancel('focus-book'); };
     }, []),
   );
+
+  // 지난 책장·모아 보기로 가면 지금 책장의 정보 시트는 닫고, 기기 뒤로는 지금 책장으로 돌아온다
+  useEffect(() => {
+    if (onCurrent) return;
+    closeBook();
+    const sub = BackHandler.addEventListener('hardwareBackPress', () => {
+      pager.goTo(0);
+      return true;
+    });
+    return () => sub.remove();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [onCurrent]);
 
   // ---------- 제스처 콜백(JS) ----------
   // pick: UI 스레드가 지금 보이는 자세·가림 순서로 고른 책(없으면 null)
@@ -439,6 +460,8 @@ export function HomeScreen() {
     () =>
       Gesture.Pan()
         .activateAfterLongPress(motion.longPress)
+        // 두 손가락(책장 줄이기)이면 책을 집지 않는다
+        .maxPointers(1)
         // 누른 곳에 보이는 책이 없으면(빈 벽·선반 판) 바로 포기: 길게 눌러도 스크롤·시점 끌기가 막히지 않는다
         .onTouchesDown((e, mgr) => {
           const t = e.allTouches[0];
@@ -913,6 +936,10 @@ export function HomeScreen() {
         onLayout={(e) => {
           setViewportFull(e.nativeEvent.layout.height);
         }}>
+        <GestureDetector gesture={pager.gesture}>
+        <View style={styles.pages} collapsable={false}>
+        <ZoomStage pager={pager}>
+        <PageFrame pager={pager} k={0} interactive={onCurrent}>
         <GestureDetector gesture={scrollNative}>
         <Animated.ScrollView
           ref={scrollRef}
@@ -1008,7 +1035,22 @@ export function HomeScreen() {
           </View>
         </Animated.ScrollView>
         </GestureDetector>
-        <HeaderVeil scrollY={scrollY} hidden={editing} />
+        </PageFrame>
+        {/* 지난 연도 책장: 지금 보는 쪽 양옆만 그린다(모아 보기에서는 모두). 첫 화면이 걷힌 뒤에 */}
+        {past.map((c, i) =>
+          lockedReady && (pager.wide || Math.abs(i + 1 - pager.page) <= 1) ? (
+            <PageFrame key={c.id} pager={pager} k={i + 1} interactive={pager.page === i + 1 && !pager.overview}>
+              <YearShelf bookcase={c} m={m} width={winW} viewportH={viewportFull} cam={camSV} viewPitch={view.pitch} shared={bookShared} active={pager.page === i + 1 && !pager.overview} onBack={() => pager.goTo(0)} />
+            </PageFrame>
+          ) : null,
+        )}
+        </ZoomStage>
+        {past.length ? [0, ...past.map((_, i) => i + 1)].map((k) => (
+          <OverviewLabel key={k} pager={pager} k={k} height={viewportFull} label={k === 0 ? `${new Date().getFullYear()}년 · 지금` : `${past[k - 1].year}년`} />
+        )) : null}
+        </View>
+        </GestureDetector>
+        <HeaderVeil scrollY={scrollY} hidden={editing || !onCurrent} />
         <TabBarFade color={surfaces.wall} hidden={editing} />
 
         {popId && books[popId] && placementOf(layout, popId) ? (
@@ -1049,7 +1091,7 @@ export function HomeScreen() {
         ) : null}
 
 
-        {!store.demo && !editing && !layout.placements.length ? (
+        {onCurrent && !store.demo && !editing && !layout.placements.length ? (
           <View pointerEvents="box-none" style={styles.emptyWrap}>
             <View style={styles.emptyCard}>
               <Text style={styles.emptyTitle}>{ko.empty.title}</Text>
@@ -1137,6 +1179,7 @@ export function HomeScreen() {
 
 const styles = StyleSheet.create({
   root: { flex: 1 },
+  pages: { flex: 1 },
   header: { flexDirection: 'row', alignItems: 'flex-start' }, // 탭 첫 화면 머리줄과 같은 정렬(제목 위 기준)
   actions: { flexDirection: 'row', alignItems: 'center' },
   headerIcon: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center' },

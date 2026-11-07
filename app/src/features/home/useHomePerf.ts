@@ -11,7 +11,7 @@ import { VIEW_PITCH_MAX, VIEW_PITCH_MIN, type Cam } from '@/domain/camera';
 import { PERF_LIGHT_KEY } from '@/scene-config/lighting';
 import { PERF_UI_BG_KEY, PERF_WALL_KEY } from '@/scene-config/palette';
 import { PERF_LOOK_KEY, PERF_SKIN_KEY } from '@/scene-config/skin';
-import { realLibrarySeed } from '@/domain/real-sample';
+import { REAL_LAYOUT, realBookOf, realLibrarySeed } from '@/domain/real-sample';
 import { DEMO_BOOT_KEY } from '@/store/boot';
 import { libraryStore } from '@/store/library-store';
 import { demoKindOf, placementStore } from '@/store/placement-store';
@@ -76,11 +76,27 @@ export function useHomePerf({ view, pitchSV, viewGoal, savePitch, camSV, storeLo
     },
     [camDebug],
   );
-  const { demoboot, perfrun, seedlib } = useLocalSearchParams<{ demoboot?: string; perfrun?: string; seedlib?: string }>();
+  const { demoboot, perfrun, seedlib, seedshelf } = useLocalSearchParams<{ demoboot?: string; perfrun?: string; seedlib?: string; seedshelf?: string }>();
   // 측정 번들: ?seedlib=1 로 화면 사진용 서재를 넣는다(실제 저장 경로, domain/real-sample)
   useEffect(() => {
     if (PERF_ENABLED && seedlib === '1') realLibrarySeed(libraryStore, new Date());
   }, [seedlib]);
+  // 측정 번들: ?seedshelf=1 로 서재의 실제 책을 비교 책장(REAL_LAYOUT) 자리에 꽂아 저장한다(예시 책 자리를 같은 제목의 내 책으로. 연도 책장 사진용)
+  useEffect(() => {
+    if (!PERF_ENABLED || seedshelf !== '1' || !storeLoaded) return;
+    const { lib } = libraryStore.get();
+    const byTitle = new Map(Object.values(lib.books).map((b) => [lib.editions[b.editionId]?.title, b.id]));
+    const idOf = (sample: string) => byTitle.get(realBookOf(sample)?.title);
+    const placements = REAL_LAYOUT.placements.flatMap((p) => {
+      const id = idOf(p.bookId);
+      if (!id) return [];
+      const on = p.lean && !p.lean.on.startsWith('#') ? idOf(p.lean.on) : p.lean?.on;
+      return [{ ...p, bookId: id, ...(p.lean ? (on ? { lean: { ...p.lean, on } } : { lean: undefined }) : {}) }];
+    });
+    const placed = new Set(placements.map((p) => p.bookId));
+    const ok = placementStore.commit({ version: 2, shelves: REAL_LAYOUT.shelves, placements, drawer: Object.keys(lib.books).filter((id) => !placed.has(id)) });
+    console.log(`[seedshelf] ${placements.length}권 ${ok ? '꽂음' : '실패'}`);
+  }, [seedshelf, storeLoaded]);
   // 측정 번들: ?perfrun=full 처럼 메뉴를 거치지 않고 그 단계의 시점 전환 측정을 한 번 돌린다(전후 비교 스크립트용, 같은 단계를 다시 돌리려면 full.2처럼)
   const perfRan = useRef('');
   useEffect(() => {

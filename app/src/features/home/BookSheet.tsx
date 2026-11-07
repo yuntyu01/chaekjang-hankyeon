@@ -18,19 +18,20 @@ type Props = {
   note?: string; // 한 줄 감상
   memo?: string; // 가장 최근 메모(독서 기록·갈피)
   sample?: boolean; // 표시 전용 예시 책(서재에 없음): 읽기·갈피 대신 '내 서재에 추가'(onDetail이 책 추가로 보낸다)
+  readOnly?: boolean; // 지난 연도 책장(보기 전용): 읽기·갈피 버튼이 없다. onDetail이 없으면 책 정보 버튼도 없다
   bottomInset: number;
   reduceMotion: boolean;
   onClose: () => void;
-  onDetail: () => void;
-  onRead: () => void;
-  onBookmark: () => void;
+  onDetail?: () => void;
+  onRead?: () => void;
+  onBookmark?: () => void;
   onTop?: (y: number) => void; // 시트 위 끝의 화면 y(누른 책이 시트에 가리지 않게 책장을 올린다)
 };
 
 // 시안(폭 393dp 기준) 실측: 표지 폭 약 80, 손잡이 → 표지 약 32, 표지 → 버튼 약 30, 버튼 높이 약 44, 버튼 → 보조 행동 글자 약 24
 const COVER_W = 104;
 
-export function BookSheet({ book, status, note, memo, sample, bottomInset, reduceMotion, onClose, onDetail, onRead, onBookmark, onTop }: Props) {
+export function BookSheet({ book, status, note, memo, sample, readOnly, bottomInset, reduceMotion, onClose, onDetail, onRead, onBookmark, onTop }: Props) {
   // 사진을 못 읽으면 이 시트에서만 장정으로 바꿔 보인다(저장된 표지 정보는 지우거나 바꾸지 않는다)
   const [photoOk, setPhotoOk] = useState(true);
   useEffect(() => setPhotoOk(true), [book.id]);
@@ -84,8 +85,8 @@ export function BookSheet({ book, status, note, memo, sample, bottomInset, reduc
               ) : null}
             </View>
           </View>
-          <Btn label={sample ? ko.info.sampleAdd : ko.info.detailButton} onPress={onDetail} style={styles.primary} />
-          {sample ? null : (
+          {onDetail ? <Btn label={sample ? ko.info.sampleAdd : ko.info.detailButton} onPress={onDetail} style={styles.primary} /> : null}
+          {sample || readOnly || !onRead || !onBookmark ? null : (
             <TextActions
               style={styles.actions}
               actions={[
