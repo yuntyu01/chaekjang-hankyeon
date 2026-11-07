@@ -84,7 +84,7 @@ import { useRowHolds } from './useRowHolds';
 import { useShelfTransitions } from './useShelfTransitions';
 import type { Drag } from './shelf-interaction';
 import { useSceneMotions, useShelfScenes } from './useShelfSceneState';
-import { OverviewLabel, PageFrame, useYearPager, ZoomStage } from './YearPager';
+import { HeaderFade, OverviewLabel, PageFrame, useYearPager, ZoomStage } from './YearPager';
 import { YearShelf } from './YearShelf';
 
 type MoveAction = 'prev' | 'next' | 'up' | 'down';
@@ -125,6 +125,9 @@ export function HomeScreen() {
   const past = useMemo(() => [...bookcases].sort((a, b) => b.year - a.year), [bookcases]);
   const pager = useYearPager({ count: past.length, width: winW, blocked: editing || !!drag, reduceMotion });
   const onCurrent = pager.page === 0 && !pager.overview;
+  // 지난 책장이 있으면 첫 화면이 걷히고 잠시 뒤(한가할 때) 옆 책장을 미리 그려 둔다(YearPager engaged)
+  const { engage } = pager;
+  const hasPast = past.length > 0;
   // 머리글은 책장과 함께 스크롤된다(2026-11-04 사용자 '상단 라인은 고정이 아니야'). vpH·스크롤·콘텐츠 좌표는 머리글 아래를 기준으로 그대로 둔다:
   // 콘텐츠 y = (화면 y − 머리글 아래 끝) + 스크롤. 실제 스크롤 칸은 머리글 높이만큼 더 크고 머리글이 콘텐츠 맨 위에 있어 최대 스크롤도 같다
   const [viewportFull, setViewportFull] = useState(0);
@@ -143,6 +146,11 @@ export function HomeScreen() {
   // 잠긴 칸의 흐린 책은 시작 화면이 걷힌 뒤에 그린다(책 그림 대기열에 함께 들어가 첫 화면을 늦췄다). 칸과 선반은 처음부터 있다
   const [lockedReady, setLockedReady] = useState(false);
   useEffect(() => whenStartDone(() => setLockedReady(true)), []);
+  useEffect(() => {
+    if (!lockedReady || !hasPast) return;
+    const t = setTimeout(engage, 3000);
+    return () => clearTimeout(t);
+  }, [lockedReady, hasPast, engage]);
   const { holds, holdsRef, holdRows, releaseLater } = useRowHolds(() => dragRef.current?.members ?? []);
 
   const scrollRef = useAnimatedRef<Animated.ScrollView>();
@@ -961,6 +969,7 @@ export function HomeScreen() {
             {/* 머리줄(2026-11-01): 갈피·커뮤니티 탭과 같은 자리·크기(theme.tabHeader·headerType: 위 16·좌우 24, 제목 24 Bold·연도 15).
                 오른쪽은 '전체 책'(책 아이콘)과 더하기(원 테두리 없이), 다른 탭 머리줄 아이콘과 같은 크기. 시스템 글자 확대는 1.3배까지만(선반과 겹치지 않게) */}
             {bare ? null : (
+              <HeaderFade zoom={pager.zoom}>
               <View style={[styles.header, tabHeader]}>
                 <Pressable style={{ flex: 1 }} onPress={perfMenuOn ? () => setShelfMenuOpen(true) : undefined} disabled={!perfMenuOn} accessibilityRole={perfMenuOn ? 'button' : undefined} accessibilityLabel={perfMenuOn ? ko.menu.title : undefined}>
                   <Text style={[headerType.title, { color: colors.ink }]} numberOfLines={1} maxFontSizeMultiplier={HEADER_TEXT_MAX} accessibilityRole="header">
@@ -1001,6 +1010,7 @@ export function HomeScreen() {
                   )}
                 </View>
               </View>
+              </HeaderFade>
             )}
           </View>
           <GestureDetector gesture={gesture}>
@@ -1036,17 +1046,17 @@ export function HomeScreen() {
         </Animated.ScrollView>
         </GestureDetector>
         </PageFrame>
-        {/* 지난 연도 책장: 지금 보는 쪽 양옆만 그린다(모아 보기에서는 모두). 첫 화면이 걷힌 뒤에 */}
+        {/* 지난 연도 책장: 넘기거나 줄이기 시작한 뒤에만, 지금 보는 쪽 양옆을 그린다(모아 보기에서는 모두). 첫 화면이 걷힌 뒤에 */}
         {past.map((c, i) =>
-          lockedReady && (pager.wide || Math.abs(i + 1 - pager.page) <= 1) ? (
+          lockedReady && (pager.wide || (pager.engaged && Math.abs(i + 1 - pager.page) <= 1)) ? (
             <PageFrame key={c.id} pager={pager} k={i + 1} interactive={pager.page === i + 1 && !pager.overview}>
-              <YearShelf bookcase={c} m={m} width={winW} viewportH={viewportFull} cam={camSV} viewPitch={view.pitch} shared={bookShared} active={pager.page === i + 1 && !pager.overview} onBack={() => pager.goTo(0)} />
+              <YearShelf bookcase={c} zoom={pager.zoom} m={m} width={winW} viewportH={viewportFull} cam={camSV} viewPitch={view.pitch} shared={bookShared} active={pager.page === i + 1 && !pager.overview} onBack={() => pager.goTo(0)} />
             </PageFrame>
           ) : null,
         )}
         </ZoomStage>
         {past.length ? [0, ...past.map((_, i) => i + 1)].map((k) => (
-          <OverviewLabel key={k} pager={pager} k={k} height={viewportFull} label={k === 0 ? `${new Date().getFullYear()}년 · 지금` : `${past[k - 1].year}년`} />
+          <OverviewLabel key={k} pager={pager} k={k} height={viewportFull} headerH={headerH} label={String(k === 0 ? new Date().getFullYear() : past[k - 1].year)} />
         )) : null}
         </View>
         </GestureDetector>

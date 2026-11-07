@@ -5,7 +5,7 @@ import { router } from 'expo-router';
 import { useCallback, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
-import Animated, { useAnimatedScrollHandler, useSharedValue } from 'react-native-reanimated';
+import Animated, { useAnimatedScrollHandler, useSharedValue, type SharedValue } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { scheduleOnRN } from 'react-native-worklets';
 
@@ -26,6 +26,7 @@ import { colors, headerType, navigation, press, tabHeader } from '@/ui/theme';
 
 import { BookSheet } from './BookSheet';
 import { HeaderVeil } from './HeaderVeil';
+import { HeaderFade } from './YearPager';
 import { useSceneMotions, useShelfScenes } from './useShelfSceneState';
 import { realId, yearScene } from './year-shelf';
 
@@ -37,6 +38,7 @@ const HEADER_TEXT_MAX = 1.3;
 
 type Props = {
   bookcase: Bookcase;
+  zoom: SharedValue<number>; // 줄이면 머리글이 사라진다(YearPager)
   m: ShelfMetrics;
   width: number;
   viewportH: number; // 쪽 높이(머리글 포함)
@@ -47,7 +49,7 @@ type Props = {
   onBack: () => void; // 지금 책장으로
 };
 
-export function YearShelf({ bookcase, m, width, viewportH, cam, viewPitch, shared, active, onBack }: Props) {
+export function YearShelf({ bookcase, zoom, m, width, viewportH, cam, viewPitch, shared, active, onBack }: Props) {
   const insets = useSafeAreaInsets();
   const { lib } = useLibrary(); // 판본·장정·기록이 바뀌면 다시 만든다
   const scene = useMemo(() => yearScene(libraryStore.full(), bookcase), [lib, bookcase]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -127,6 +129,7 @@ export function YearShelf({ bookcase, m, width, viewportH, cam, viewPitch, share
         <Animated.ScrollView showsVerticalScrollIndicator={false} onScroll={onScroll} scrollEventThrottle={16} onScrollBeginDrag={() => setSel(null)}>
           <View onLayout={(e) => setHeaderH(e.nativeEvent.layout.height)}>
             <HeaderWall rows={sceneRows} motions={motions} books={books} m={m} width={width} height={headerH} cam={cam} />
+            <HeaderFade zoom={zoom}>
             <View style={[st.header, tabHeader]}>
               <View style={st.titles}>
                 <Text style={[headerType.title, { color: colors.ink }]} numberOfLines={1} maxFontSizeMultiplier={HEADER_TEXT_MAX} accessibilityRole="header">
@@ -140,6 +143,7 @@ export function YearShelf({ bookcase, m, width, viewportH, cam, viewPitch, share
                 <Text style={[headerType.sub, st.backText]} maxFontSizeMultiplier={HEADER_TEXT_MAX}>지금 책장</Text>
               </Pressable>
             </View>
+            </HeaderFade>
           </View>
           <GestureDetector gesture={tap}>
             <View style={{ height: contentH }} collapsable={false}>

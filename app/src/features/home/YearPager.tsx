@@ -10,13 +10,14 @@ import Animated, { cancelAnimation, Easing, useAnimatedStyle, useSharedValue, wi
 import { scheduleOnRN } from 'react-native-worklets';
 
 import { surfaces } from '@/ui/lighting';
-import { colors, type } from '@/ui/theme';
+import { type } from '@/ui/theme';
 
-export const PAGE_GAP = 44; // 쪽 사이 벽(dp, 줄이기 전). 모아 보기에서 약 18dp
-export const OVERVIEW = 0.42; // 모아 보기 배율: 가운데 책장 양옆으로 한 해씩 보인다
+// 쪽 사이를 따로 띄우지 않는다: 흰 벽이 그대로 이어지고 책장 틀 양옆 벽이 책장 사이가 된다(2026-11-07 사용자 '흰 벽이 늘어나고 지금 책장 옆에 책장이 붙어 있는 느낌')
+export const PAGE_GAP = 0;
+export const OVERVIEW = 0.46; // 모아 보기 배율: 두 해 책장이 한 화면에 나란히
 const SLIDE_MS = 300;
 const ZOOM_MS = 320;
-const OVER_MARGIN = 16; // 모아 보기에서 맨 끝 쪽과 화면 가장자리 사이(dp)
+const OVER_MARGIN = 8; // 모아 보기에서 맨 끝 쪽과 화면 가장자리 사이(dp)
 const SWIPE_START = 14; // 가로로 이만큼 움직이면 넘기기(세로가 먼저면 스크롤)
 const VERTICAL_FAIL = 12;
 
@@ -41,6 +42,8 @@ export type YearPager = {
   page: number; // 멈춘 쪽
   overview: boolean;
   wide: boolean; // 모아 보기를 시작했거나 그 중: 모든 쪽을 그린다
+  engaged: boolean; // 옆 쪽을 그려 둘 때(첫 화면이 뜨고 한가해진 뒤 미리, 또는 넘기거나 줄이기 시작하면). 그 전에는 지금 책장만
+  engage: () => void;
   gesture: ComposedGesture;
   goTo: (k: number) => void;
 };
@@ -65,12 +68,19 @@ export function useYearPager({ count, width, blocked, reduceMotion }: { count: n
   const [page, setPage] = useState(0);
   const [overview, setOverview] = useState(false);
   const [wide, setWide] = useState(false);
+  // 옆 쪽 책장은 넘기기 전에 그려 둔다: 처음 그릴 때 줄마다 빛을 굽는 일이 화면 스레드를 잠깐 막아, 넘기기 시작할 때 그리면
+  // 손가락을 따라가지 못하고 되돌아간다(에뮬레이터에서 0.4초). 한 번 그리면 내리지 않는다
+  const [engaged, setEngaged] = useState(false);
+  const engage = useCallback(() => setEngaged(true), []);
   const settled = useCallback((k: number, over: boolean) => {
     setPage(k);
     setOverview(over);
     setWide(over);
   }, []);
-  const widen = useCallback(() => setWide(true), []);
+  const widen = useCallback(() => {
+    engage();
+    setWide(true);
+  }, [engage]);
 
   // 지난 책장이 줄면(다른 기기 동기화로 바뀌는 등) 없는 쪽에 머물지 않게
   useEffect(() => {
@@ -116,6 +126,7 @@ export function useYearPager({ count, width, blocked, reduceMotion }: { count: n
         else if (Math.abs(dx) > SWIPE_START && Math.abs(dx) > Math.abs(dy) * 1.2) mgr.activate();
       })
       .onStart(() => {
+        scheduleOnRN(engage);
         cancelAnimation(at);
         start.value = { ...start.value, a: at.value, z: zoom.value };
       })
@@ -128,10 +139,13 @@ export function useYearPager({ count, width, blocked, reduceMotion }: { count: n
       .onEnd((e) => {
         const z = start.value.z;
         const v = -e.velocityX / (stepSV.value * z); // 쪽/초
-        // 한 쪽 보기에서는 한 번에 한 해씩, 모아 보기에서는 민 만큼 미끄러진다
+        // 한 쪽 보기에서는 한 번에 한 해씩: 빠르게 밀었거나 4분의 1 넘게 밀었으면 그 쪽으로(화면이 잠깐 막혀 속도가 0으로 읽혀도 민 만큼은 따른다).
+        // 모아 보기에서는 민 만큼 미끄러진다
         if (z > 0.99) {
           const base = Math.round(start.value.a);
-          settle(clamp(Math.round(at.value + v * 0.2), base - 1, base + 1), 1);
+          const moved = at.value - base;
+          const dir = Math.abs(v) > 0.8 ? Math.sign(v) : Math.abs(moved) > 0.25 ? Math.sign(moved) : 0;
+          settle(base + dir, 1);
         } else settle(at.value + v * 0.25, OVERVIEW);
       });
     const pinch = Gesture.Pinch()
@@ -177,25 +191,26 @@ export function useYearPager({ count, width, blocked, reduceMotion }: { count: n
 
   const goTo = useCallback((k: number) => {
     const t = Math.max(0, Math.min(count, k));
+    if (t > 0) engage();
     at.value = withTiming(t, { duration: reduceMotion ? 0 : SLIDE_MS, easing: Easing.out(Easing.cubic) });
     zoom.value = withTiming(1, { duration: reduceMotion ? 0 : ZOOM_MS, easing: Easing.out(Easing.cubic) });
     settled(t, false);
-  }, [count, reduceMotion, at, zoom, settled]);
+  }, [count, reduceMotion, at, zoom, settled, engage]);
 
-  return { at, zoom, step, page, overview, wide, gesture, goTo };
+  return { at, zoom, step, page, overview, wide, engaged, engage, gesture, goTo };
 }
 
-// 줄이는 판: 모든 쪽을 화면 가운데를 기준으로 함께 줄인다. 뒤 바탕은 모아 볼 때 조금 어두워져 쪽이 판처럼 보인다
+// 줄이는 판: 모든 쪽을 화면 가운데를 기준으로 함께 줄인다. 바탕은 같은 흰 벽(홈 바탕)이라 줄이면 벽이 넓어지는 것처럼 보인다
 export function ZoomStage({ pager, children }: { pager: YearPager; children: ReactNode }) {
   const { zoom } = pager;
   const stage = useAnimatedStyle(() => (zoom.value === 1 ? { transform: [] } : { transform: [{ scale: zoom.value }] }));
-  const back = useAnimatedStyle(() => ({ opacity: clamp((1 - zoom.value) / (1 - OVERVIEW), 0, 1) }));
-  return (
-    <>
-      <Animated.View pointerEvents="none" style={[StyleSheet.absoluteFill, st.backdrop, back]} />
-      <Animated.View style={[StyleSheet.absoluteFill, stage]}>{children}</Animated.View>
-    </>
-  );
+  return <Animated.View style={[StyleSheet.absoluteFill, stage]}>{children}</Animated.View>;
+}
+
+// 줄이기 시작하면 머리글(제목·버튼)은 사라지고 벽과 책장만 남는다
+export function HeaderFade({ zoom, children }: { zoom: SharedValue<number>; children: ReactNode }) {
+  const style = useAnimatedStyle(() => (zoom.value >= 1 ? { opacity: 1 } : { opacity: clamp((zoom.value - 0.82) / 0.18, 0, 1) }));
+  return <Animated.View style={style}>{children}</Animated.View>;
 }
 
 // 한 쪽(k년 전): 지금 보이는 쪽 기준으로 옆에 놓는다
@@ -218,17 +233,18 @@ export function PageFrame({ pager, k, interactive, children }: { pager: YearPage
   );
 }
 
-// 모아 보기에서 쪽 위에 뜨는 해 이름표(줄이지 않은 글자)
-export function OverviewLabel({ pager, k, label, height }: { pager: YearPager; k: number; label: string; height: number }) {
+// 모아 보기에서 책장 위 벽에 새긴 해 숫자(시안의 머리 '2026'처럼, 줄이지 않은 글자). 머리글이 있던 띠 가운데에 둔다
+const LABEL_H = 38;
+export function OverviewLabel({ pager, k, label, height, headerH }: { pager: YearPager; k: number; label: string; height: number; headerH: number }) {
   const { at, zoom, step } = pager;
   const style = useAnimatedStyle(() => {
     const z = zoom.value;
-    const show = clamp((1 - z) / (1 - OVERVIEW), 0, 1);
+    const show = clamp((0.9 - z) / (0.9 - OVERVIEW), 0, 1);
     return {
       opacity: show,
-      transform: [{ translateX: (k - at.value) * step * z }, { translateY: (height / 2) * (1 - z) - 34 }],
+      transform: [{ translateX: (k - at.value) * step * z }, { translateY: (height / 2) * (1 - z) + (headerH * z) / 2 - LABEL_H / 2 }],
     };
-  }, [k, step, height]);
+  }, [k, step, height, headerH]);
   return (
     <Animated.View pointerEvents="none" style={[st.label, style]}>
       <Text style={st.labelText} numberOfLines={1}>{label}</Text>
@@ -237,8 +253,8 @@ export function OverviewLabel({ pager, k, label, height }: { pager: YearPager; k
 }
 
 const st = StyleSheet.create({
-  backdrop: { backgroundColor: '#E9E6E2' },
   page: { backgroundColor: surfaces.wall },
   label: { position: 'absolute', left: 0, right: 0, top: 0, alignItems: 'center' },
-  labelText: { ...type.heading, color: colors.ink },
+  // 벽보다 조금 진한 회색 + 아래 그늘 한 줄: 벽에 얕게 새긴 숫자처럼
+  labelText: { ...type.title, fontSize: 30, lineHeight: LABEL_H, letterSpacing: 0.5, color: '#C4BFB9', textShadowColor: 'rgba(60,40,20,0.12)', textShadowOffset: { width: 0, height: 1 }, textShadowRadius: 1 },
 });
