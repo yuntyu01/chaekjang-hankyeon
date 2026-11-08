@@ -3,6 +3,7 @@ import { paperColors } from '@/domain/color';
 import type { Book } from '@/domain/types';
 import { BookVisual } from '@/ui/BookVisual';
 import { RealCover } from '@/ui/kit';
+import { keepAll } from '@/ui/keep-all';
 import { colors, fonts, press } from '@/ui/theme';
 import { Bookmark } from '@/ui/icons';
 import { BookmarkPaper } from './BookmarkPaper';
@@ -23,7 +24,7 @@ export function quoteType(text: string) {
 }
 
 export function WordWrap({ text, style, maxLines }: { text: string; style: StyleProp<TextStyle>; maxLines?: number }) {
-  return <Text style={style} numberOfLines={maxLines} textBreakStrategy="highQuality">{text}</Text>;
+  return <Text style={style} numberOfLines={maxLines} textBreakStrategy="highQuality">{keepAll(text)}</Text>;
 }
 
 export function BookmarkCard({ data, showMemo, width, seed, compact = false, rasterizeBook = false, onCoverReady, onPhotoReady, onOpen, saved = false, onToggleSaved }: { data: BookmarkCardData; showMemo: boolean; width: number; seed: string; compact?: boolean; rasterizeBook?: boolean; onCoverReady?: () => void; onPhotoReady?: () => void; onOpen?: () => void; saved?: boolean; onToggleSaved?: () => void }) {

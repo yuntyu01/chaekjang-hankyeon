@@ -256,5 +256,5 @@ const st = StyleSheet.create({
   page: { backgroundColor: surfaces.wall },
   label: { position: 'absolute', left: 0, right: 0, top: 0, alignItems: 'center' },
   // 벽보다 조금 진한 회색 + 아래 그늘 한 줄: 벽에 얕게 새긴 숫자처럼
-  labelText: { ...type.title, fontSize: 30, lineHeight: LABEL_H, letterSpacing: 0.5, color: '#C4BFB9', textShadowColor: 'rgba(60,40,20,0.12)', textShadowOffset: { width: 0, height: 1 }, textShadowRadius: 1 },
+  labelText: { ...type.title, fontSize: 30, lineHeight: LABEL_H, letterSpacing: 0.5, color: '#C4BFB9', textShadowColor: 'rgba(60,40,20,0.12)', textShadowOffset: { width: 0, height: 1 }, textShadowRadius: 1 }, // 내용 색(벽에 새긴 해 숫자, 책장 장면의 일부)
 });

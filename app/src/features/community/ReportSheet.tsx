@@ -1,9 +1,10 @@
 // 신고: 사유를 고르면 바로 접수(운영자가 /admin/reports에서 확인·숨김). 두 플랫폼 모두 같은 시트
-import { Alert } from 'react-native';
+
 
 import { explainWriteError, REPORT_REASONS } from '@/features/community/actions';
 import { community, type ReportKind } from '@/services/community';
 import { ListGroup, ListItem, Muted, Sheet } from '@/ui/kit';
+import { appAlert } from '@/ui/alert';
 
 export type ReportTarget = { kind: ReportKind; id: string | number; label: string };
 
@@ -12,7 +13,7 @@ export function ReportSheet({ target, onClose }: { target: ReportTarget | null; 
     if (!target) return;
     onClose();
     void community.report(target.kind, target.id, reason)
-      .then(() => Alert.alert('신고를 접수했어요', '운영자가 확인한 뒤 처리해요.'))
+      .then(() => appAlert('신고를 접수했어요', '운영자가 확인한 뒤 처리해요.'))
       .catch((e: unknown) => explainWriteError(e, '신고하지 못했어요'));
   };
   return (

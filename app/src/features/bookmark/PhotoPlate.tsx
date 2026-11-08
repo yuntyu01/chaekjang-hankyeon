@@ -2,6 +2,7 @@
 // 사진은 가로로 긴 틀에 맞춰 자르고(cover), 눌러서 원본 비율 그대로 크게 볼 수 있다.
 import { useState } from 'react';
 import { Image, Modal, Pressable, StyleSheet, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { X } from '@/ui/icons';
 import { BookmarkPaper } from './BookmarkPaper';
@@ -11,6 +12,7 @@ export const photoFrameRatio = (r?: number) => Math.max(0.9, Math.min(1.5, r && 
 export function PhotoPlate({ uri, ratio, width, seed, compact = false, onReady }: { uri: string; ratio?: number; width: number; seed: string; compact?: boolean; onReady?: () => void }) {
   const [open, setOpen] = useState(false);
   const [failed, setFailed] = useState(false);
+  const insets = useSafeAreaInsets();
   const border = compact ? 4 : 6;
   const frameRatio = photoFrameRatio(compact ? Math.max(ratio ?? 1.35, 1.35) : ratio);
   const innerW = width - border * 2;
@@ -26,10 +28,10 @@ export function PhotoPlate({ uri, ratio, width, seed, compact = false, onReady }
       <View pointerEvents="none" style={[st.tape, { width: compact ? 62 : 92, height: compact ? 20 : 30, left: width / 2 - (compact ? 31 : 46) + 2, top: compact ? 0 : 0 }]}>
         <BookmarkPaper color="#E8E4DC" tape radius={1.5} seed={`${seed}-washi`} />
       </View>
-      <Modal visible={open} transparent animationType="fade" onRequestClose={() => setOpen(false)}>
+      <Modal visible={open} transparent animationType="fade" onRequestClose={() => setOpen(false)} statusBarTranslucent>
         <Pressable style={st.modal} onPress={() => setOpen(false)} accessibilityLabel="닫기">
           <Image source={{ uri }} style={{ width: '100%', height: '82%' }} resizeMode="contain" />
-          <View style={st.close}><X size={22} color="#FFFFFF" /></View>
+          <View style={[st.close, { top: insets.top + 12 }]}><X size={22} color="#FFFFFF" /></View>
         </Pressable>
       </Modal>
     </View>

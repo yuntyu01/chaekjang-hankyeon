@@ -1,6 +1,6 @@
 import { router, useLocalSearchParams } from 'expo-router';
 import { useEffect, useMemo, useState } from 'react';
-import { Alert, FlatList, Pressable, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
+import { FlatList, Pressable, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 import { ymd } from '@/features/book/labels';
 import { memoShelfBook } from '@/domain/library';
 import { BookmarkCard } from '@/features/bookmark/BookmarkCard';
@@ -14,6 +14,7 @@ import { Check, ChevronRight, Plus, Search, X } from '@/ui/icons';
 import { Empty, FilterGroup, FilterIcon, FilterOption, IconButton, Screen, SearchField, Sheet, Tabs, ui } from '@/ui/kit';
 import { colors, icon, press, space, type } from '@/ui/theme';
 import { TAB_CONTENT_PAD } from '@/ui/tabBar';
+import { appAlert } from '@/ui/alert';
 
 // 갈피(2026-11-05 사용자 시안, 구조만 시안이고 색은 우리 것): 머리줄 검색·추가, 밑줄 탭 '전체 갈피 | 아껴둔'과 필터 아이콘, 그 아래 '갈피 N개'.
 // 책(책 선택 시트: 내 책 검색·표지·갈피 수·체크)·유형(문장·사진)은 필터 시트에. 갈피 카드는 그대로.
@@ -46,7 +47,7 @@ export default function BookmarksTab() {
   }, [all, lib]);
   const bookTitle = book ? books.find((x) => x.id === book)?.title ?? lib.editions[lib.books[book]?.editionId ?? '']?.title : null;
   const list = all.filter((m) => (!book || m.myBookId === book) && (view !== 'saved' || savedIds.includes(m.id)) && (kind !== 'photo' || !!m.photoUri) && (kind !== 'text' || !!m.text.trim()) && (!q.trim() || m.text.includes(q.trim()) || (m.memo ?? '').includes(q.trim())));
-  const toggleSaved = (id: string) => { void bookmarkPreferencesStore.toggle(id).catch(() => Alert.alert('갈피 표시를 저장하지 못했어요', '잠시 후 다시 눌러 주세요.')); };
+  const toggleSaved = (id: string) => { void bookmarkPreferencesStore.toggle(id).catch(() => appAlert('갈피 표시를 저장하지 못했어요', '잠시 후 다시 눌러 주세요.')); };
   const closeSheet = () => { setSheet(null); setBookQ(''); setBoardPick(false); };
   const goBoard = (id: string) => { closeSheet(); router.push(`/bookmark/board/${id}`); };
   const openBoard = () => {

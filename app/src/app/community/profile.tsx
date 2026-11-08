@@ -2,13 +2,14 @@
 // 공개 활동은 Google·카카오 계정 연결이 먼저다(기기 계정만으로는 읽기만). 개인 서재 기록은 여기서 공개되지 않는다.
 import { router } from 'expo-router';
 import { useCallback, useEffect, useState } from 'react';
-import { Alert, Text } from 'react-native';
+import { Text } from 'react-native';
 
 import { explainWriteError } from '@/features/community/actions';
 import { Unavailable } from '@/features/community/Unavailable';
 import { community, communityAvailability, errorMessage, type Availability, type MyProfile } from '@/services/community';
 import { Btn, Empty, Field, ListGroup, ListItem, Loading, Screen } from '@/ui/kit';
 import { space, type } from '@/ui/theme';
+import { appAlert } from '@/ui/alert';
 
 export default function MyPublicProfile() {
   const [avail, setAvail] = useState<Availability | null>(null);
@@ -41,11 +42,11 @@ export default function MyPublicProfile() {
       setMe(m);
       setNick(m.profile?.nickname ?? '');
       setBio(m.profile?.bio ?? '');
-      Alert.alert('공개 프로필을 저장했어요');
+      appAlert('공개 프로필을 저장했어요');
     } catch (e) { explainWriteError(e, '저장하지 못했어요'); }
     finally { setSaving(false); }
   };
-  const unblock = (b: { userId: number; nickname: string }) => Alert.alert(`${b.nickname || '이 사용자'}님 차단을 풀까요?`, '서로의 공개 게시물·댓글·후기가 다시 보여요. 팔로우는 다시 해야 해요.', [
+  const unblock = (b: { userId: number; nickname: string }) => appAlert(`${b.nickname || '이 사용자'}님 차단을 풀까요?`, '서로의 공개 게시물·댓글·후기가 다시 보여요. 팔로우는 다시 해야 해요.', [
     { text: '취소', style: 'cancel' },
     { text: '차단 풀기', onPress: () => void community.block(b.userId, false).then(() => setBlocked((l) => l?.filter((x) => x.userId !== b.userId) ?? null)).catch((e: unknown) => explainWriteError(e, '풀지 못했어요')) },
   ]);

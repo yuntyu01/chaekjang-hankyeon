@@ -2,7 +2,7 @@
 // 고친 칸만 저장한다(domain/session-edit): 메모만 고치면 시작·끝 시각과 초 단위 독서 시간이 그대로 남는다.
 import { router, useLocalSearchParams } from 'expo-router';
 import { useState } from 'react';
-import { Alert, View } from 'react-native';
+import { View } from 'react-native';
 
 import { BookPicker } from '@/features/bookmark/BookPicker';
 import { formatDurationPrecise } from '@/domain/library';
@@ -11,6 +11,7 @@ import { useCommunityOpen } from '@/features/community/useCommunityOpen';
 import { libraryStore, useLibrary } from '@/store/library-store';
 import { Btn, Empty, Field, ListGroup, ListItem, Muted, Row, Screen, SelectField } from '@/ui/kit';
 import { space } from '@/ui/theme';
+import { appAlert } from '@/ui/alert';
 
 export default function EditSession() {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -64,7 +65,7 @@ export default function EditSession() {
           danger
           chevron={false}
           onPress={() =>
-            Alert.alert('이 독서 기록을 삭제할까요?', '통계에서도 빠져요. 되돌릴 수 없어요.', [
+            appAlert('이 독서 기록을 삭제할까요?', '통계에서도 빠져요. 되돌릴 수 없어요.', [
               { text: '취소', style: 'cancel' },
               {
                 text: '삭제',

@@ -4,7 +4,7 @@
 // 저장 후: 이 책에 갈피 남기기(이번 기록과 연결) · 커뮤니티에 공유하기(고른 것만, 선택) · 책 정보 · 내 기록 · 닫기.
 import { router } from 'expo-router';
 import { useEffect, useRef, useState } from 'react';
-import { Alert, StyleSheet, Text, View } from 'react-native';
+import { StyleSheet, Text, View } from 'react-native';
 
 import { hm } from '@/features/book/labels';
 import { BookPicker } from '@/features/bookmark/BookPicker';
@@ -16,6 +16,7 @@ import { readingStore, useReading } from '@/store/reading-store';
 import { Btn, Empty, Field, H2, ListGroup, ListItem, Muted, Row, Screen, SelectField, TextLink } from '@/ui/kit';
 import { colors, fonts, shape, space, type } from '@/ui/theme';
 import { useCommunityOpen } from '@/features/community/useCommunityOpen';
+import { appAlert } from '@/ui/alert';
 
 const page = (v?: string) => {
   const n = Number((v ?? '').replace(/[^\d]/g, ''));
@@ -91,13 +92,13 @@ export default function Finish() {
       ambient.stop();
       setSaved({ bookId: pending.myBookId, sessionId: pending.id });
     } catch (error) {
-      Alert.alert('저장하지 못했어요', `독서 기록을 유지하고 있어요. 다시 시도해 주세요.\n${String((error as Error)?.message ?? error)}`);
+      appAlert('저장하지 못했어요', `독서 기록을 유지하고 있어요. 다시 시도해 주세요.\n${String((error as Error)?.message ?? error)}`);
     } finally {
       setSaving(false);
     }
   };
   const discard = () =>
-    Alert.alert('이번 독서 기록을 버릴까요?', `${formatDurationPrecise(pending.durationMs)}이 저장되지 않아요.`, [
+    appAlert('이번 독서 기록을 버릴까요?', `${formatDurationPrecise(pending.durationMs)}이 저장되지 않아요.`, [
       { text: '취소', style: 'cancel' },
       {
         text: '버리기',
@@ -110,7 +111,7 @@ export default function Finish() {
           ambient.stop();
           router.dismissTo('/read');
           setTimeout(() => {
-            readingStore.clearPending().catch(() => Alert.alert('버리지 못했어요', '독서 기록을 저장소에서 지우지 못했어요. 다음에 다시 열면 다시 물어볼게요.'));
+            readingStore.clearPending().catch(() => appAlert('버리지 못했어요', '독서 기록을 저장소에서 지우지 못했어요. 다음에 다시 열면 다시 물어볼게요.'));
           }, 500);
         },
       },

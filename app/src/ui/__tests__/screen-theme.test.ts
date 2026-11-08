@@ -133,7 +133,7 @@ function files(dir: string): string[] {
   return fs.readdirSync(dir, { withFileTypes: true }).flatMap((d) => (d.isDirectory() ? (d.name === '__tests__' ? [] : files(path.join(dir, d.name))) : d.name.endsWith('.tsx') ? [path.join(dir, d.name)] : []));
 }
 // 내용 그림(갈피 종이 카드·사진 판·표지 그림)과 개발용 화면은 따로 된 재질 색을 쓴다
-const CONTENT = /(BookmarkCard|BookmarkPaper|BookmarkTape|PhotoPlate|dev-[a-z]+)\.tsx$/;
+const CONTENT = /(BookmarkCard|BookmarkPaper|BookmarkTape|PhotoPlate|BookShareCard|dev-[a-z]+)\.tsx$/;
 const screens = [...files(path.join(SRC, 'app')), ...files(path.join(SRC, 'features')), path.join(SRC, 'ui', 'kit.tsx')].filter((f) => !CONTENT.test(f));
 
 describe('화면 코드가 공통 기준을 쓴다', () => {

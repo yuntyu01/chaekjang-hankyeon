@@ -2,7 +2,7 @@
 // 게시물을 지워도 개인 서재의 독서 기록은 그대로다(공개본만 지운다).
 import { router, useLocalSearchParams } from 'expo-router';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Alert, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 
 import { newId } from '@/domain/library';
 import { explainWriteError } from '@/features/community/actions';
@@ -13,6 +13,7 @@ import { community, errorMessage, isNotFound, type Comment, type Post } from '@/
 import { MoreHorizontal } from '@/ui/icons';
 import { Btn, Divider, Empty, ListGroup, ListItem, Loading, Screen, Sheet, TextLink } from '@/ui/kit';
 import { colors, fonts, icon, press, space, type } from '@/ui/theme';
+import { appAlert } from '@/ui/alert';
 
 export default function PostScreen() {
   const { id: raw } = useLocalSearchParams<{ id: string }>();
@@ -54,19 +55,19 @@ export default function PostScreen() {
     } catch (e) { explainWriteError(e, '댓글을 남기지 못했어요'); }
     finally { setSending(false); }
   };
-  const removeComment = (c: Comment) => Alert.alert('댓글을 지울까요?', undefined, [
+  const removeComment = (c: Comment) => appAlert('댓글을 지울까요?', undefined, [
     { text: '취소', style: 'cancel' },
     { text: '지우기', style: 'destructive', onPress: () => void community.deleteComment(c.id).then(() => { setComments((l) => l.filter((x) => x.id !== c.id)); setPost((p) => (p ? { ...p, comments: Math.max(0, p.comments - 1) } : p)); }).catch((e: unknown) => explainWriteError(e, '지우지 못했어요')) },
   ]);
   const commentMenu = (c: Comment) => {
     if (c.mine) removeComment(c);
-    else Alert.alert(`${c.nickname}님의 댓글`, undefined, [{ text: '취소', style: 'cancel' }, { text: '신고', onPress: () => setReport({ kind: 'comment', id: c.id, label: '댓글' }) }]);
+    else appAlert(`${c.nickname}님의 댓글`, undefined, [{ text: '취소', style: 'cancel' }, { text: '신고', onPress: () => setReport({ kind: 'comment', id: c.id, label: '댓글' }) }]);
   };
-  const removePost = () => Alert.alert('게시물을 지울까요?', '커뮤니티에서만 지워져요. 내 서재의 독서 기록은 그대로예요.', [
+  const removePost = () => appAlert('게시물을 지울까요?', '커뮤니티에서만 지워져요. 내 서재의 독서 기록은 그대로예요.', [
     { text: '취소', style: 'cancel' },
     { text: '지우기', style: 'destructive', onPress: () => void community.deletePost(id).then(() => router.back()).catch((e: unknown) => explainWriteError(e, '지우지 못했어요')) },
   ]);
-  const blockAuthor = () => post && Alert.alert(`${post.nickname}님을 차단할까요?`, '서로의 게시물·댓글·후기가 보이지 않고 팔로우도 끊겨요. 내 공개 프로필의 차단 목록에서 풀 수 있어요.', [
+  const blockAuthor = () => post && appAlert(`${post.nickname}님을 차단할까요?`, '서로의 게시물·댓글·후기가 보이지 않고 팔로우도 끊겨요. 내 공개 프로필의 차단 목록에서 풀 수 있어요.', [
     { text: '취소', style: 'cancel' },
     { text: '차단', style: 'destructive', onPress: () => void community.block(post.userId, true).then(() => router.back()).catch((e: unknown) => explainWriteError(e, '차단하지 못했어요')) },
   ]);

@@ -5,7 +5,7 @@
 // 책은 들어올 때 고른 값을 유지하고, 책 고르기에서 새 책을 등록하면 이 화면으로 돌아와 그 책을 고른다. 쪽수·한 줄 메모는 선택(메모는 공유 이미지에 넣지 않는다).
 import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { useCallback, useRef, useState } from 'react';
-import { View } from 'react-native';
+import { useWindowDimensions, View } from 'react-native';
 
 import { BookPicker } from '@/features/bookmark/BookPicker';
 import { PhotoPlate } from '@/features/bookmark/PhotoPlate';
@@ -26,6 +26,7 @@ export default function NewBookmark() {
   // session: 독서를 끝내고 저장한 기록에서 왔을 때 그 기록 id(갈피에 선택적으로 연결). 갈피 탭에서 쓰면 없다
   const { book, text: initialText, page: initialPage, mode: initialMode, session, boardX, boardY } = useLocalSearchParams<{ boardX?: string; boardY?: string; book?: string; text?: string; page?: string; mode?: string; session?: string }>();
   const { lib } = useLibrary();
+  const { width: winW } = useWindowDimensions();
   const [bookId, setBookId] = useState<string | undefined>(book && lib.books[book] ? book : undefined);
   const [picking, setPicking] = useState(false);
   const [text, setText] = useState(initialText ?? '');
@@ -138,7 +139,7 @@ export default function NewBookmark() {
         <View style={{ marginBottom: space.l }}>
           <View style={{ alignItems: 'center' }}>
             {/* 자른 사진(눌러서 크게 보기). 사진만 저장이면 이 모양 그대로 저장된다 */}
-            <PhotoPlate uri={photo.uri} ratio={photo.ratio} width={photoOnly ? 300 : 220} seed="new" />
+            <PhotoPlate uri={photo.uri} ratio={photo.ratio} width={Math.min(photoOnly ? 300 : 220, winW - space.page * 2)} seed="new" />
             <Row style={{ marginTop: space.s, justifyContent: 'center' }}>
               <Chip label="다시 찍기" onPress={() => fromPhoto('camera')} />
               <Chip label="다른 사진" onPress={() => fromPhoto('library')} />

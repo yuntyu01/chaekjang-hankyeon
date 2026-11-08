@@ -1,8 +1,8 @@
 // 공통 화면 부품. 색·글꼴·간격은 ui/screenTheme 토큰만 쓴다(설정 시안 기준: 아이보리 바탕, 짙은 갈색 글자, 둥근 고딕, 얇은 구분선).
 // 설정·목록은 카드 대신 여백과 구분선으로 나누고, 입력창처럼 구분이 필요한 곳만 표면색을 깐다.
-import { router } from 'expo-router';
+import { router, useFocusEffect } from 'expo-router';
 import { Check, ChevronDown, ChevronLeft, ChevronRight, Search, SlidersHorizontal, Star, X } from '@/ui/icons';
-import { Fragment, useEffect, useRef, useState, type ReactNode } from 'react';
+import { Fragment, useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
 import {
   ActivityIndicator,
   Animated,
@@ -28,6 +28,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Svg, { Defs, LinearGradient, Rect, Stop } from 'react-native-svg';
 
 import { MINI_TIMER_SPACE, miniTimerStore } from '@/store/mini-timer-store';
+import { keepAll } from '@/ui/keep-all';
 import { useReading } from '@/store/reading-store';
 import { buttonHeight, colors, fonts, headerType, icon, press, shape, space, tabHeader, type } from '@/ui/theme';
 
@@ -76,8 +77,20 @@ export function Screen({
   // 진행 중 독서가 있으면 오른쪽 아래 미니 타이머가 마지막 내용을 가리지 않게 그만큼 더 내린다
   const { active } = useReading();
   const timerPad = active ? MINI_TIMER_SPACE : 0;
-  // 화면 아래 고정 버튼이 있으면 미니 타이머를 그 위에 둔다(떠날 때 되돌린다)
-  useEffect(() => () => miniTimerStore.setBottom(null), []);
+  // 화면 아래 고정 버튼이 있으면 미니 타이머를 그 위에 둔다. 보일 때마다 다시 알리고 가려지면 되돌린다(뒤로 돌아온 화면도 제자리, 2026-11-09 점검)
+  const timerOwner = useRef({}).current;
+  const footerH = useRef<number | null>(null);
+  const focused = useRef(false);
+  useFocusEffect(
+    useCallback(() => {
+      focused.current = true;
+      miniTimerStore.setBottom(footer ? footerH.current : null, timerOwner);
+      return () => {
+        focused.current = false;
+        miniTimerStore.release(timerOwner);
+      };
+    }, [!!footer, timerOwner]),
+  );
   // 정돈 변형(2026-11-01 토스식 위계): 뒤로가 있는 화면은 머리줄에 뒤로·행동만 두고, 제목은 내용 맨 위 왼쪽에 크게(24 Bold).
   // 스크롤 화면이면 제목도 내용과 함께 올라간다
   const large = back && !compact && !inline && !headerField && !!title;
@@ -147,7 +160,7 @@ export function Screen({
       <KeyboardAvoidingView style={{ flex: 1 }} behavior="padding">
         {body}
         {footer ? (
-          <View onLayout={(e) => miniTimerStore.setBottom(e.nativeEvent.layout.height)} style={[s.footer, { paddingBottom: 12 + insets.bottom }]}>
+          <View onLayout={(e) => { footerH.current = e.nativeEvent.layout.height; if (focused.current) miniTimerStore.setBottom(footerH.current, timerOwner); }} style={[s.footer, { paddingBottom: 12 + insets.bottom }]}>
             {/* 아래 고정 버튼 위 24는 흰색으로 번지게: 스크롤하다 멈춘 내용이 버튼 경계에서 뚝 잘려 가린 것처럼 보이지 않게(토스 하단 버튼처럼, 2026-11-01).
                 내용은 버튼 밑으로 들어가지 않는다(스크롤 영역이 버튼 위에서 끝난다) */}
             <Svg pointerEvents="none" width="100%" height={FOOTER_FADE} style={s.footerFade}>
@@ -257,9 +270,9 @@ export function TextLink({ label, onPress, tone = 'accent', disabled, style }: {
 }
 
 // 아이콘만 있는 버튼(머리줄의 검색·추가·더 보기, 달 넘기기): 44×44 누르는 자리, 눌리면 옅어진다. circle이면 얇은 테두리 원(갈피 '추가')
-export function IconButton({ label, onPress, children, circle, style }: { label: string; onPress: () => void; children: ReactNode; circle?: boolean; style?: StyleProp<ViewStyle> }) {
+export function IconButton({ label, onPress, children, circle, style, disabled }: { label: string; onPress: () => void; children: ReactNode; circle?: boolean; style?: StyleProp<ViewStyle>; disabled?: boolean }) {
   return (
-    <Pressable onPress={onPress} hitSlop={6} accessibilityRole="button" accessibilityLabel={label} style={({ pressed }) => [s.iconButton, pressed && press, style]}>
+    <Pressable onPress={onPress} disabled={disabled} hitSlop={6} accessibilityRole="button" accessibilityLabel={label} accessibilityState={{ disabled: !!disabled }} style={({ pressed }) => [s.iconButton, pressed && press, disabled && { opacity: 0.3 }, style]}>
       {circle ? <View style={s.iconCircle}>{children}</View> : children}
     </Pressable>
   );
@@ -644,7 +657,7 @@ export function Tabs<T extends string>({ items, value, onChange, style, fill }: 
         const on = it.id === value;
         return (
           <Pressable key={it.id} onPress={() => onChange(it.id)} hitSlop={{ left: 8, right: 8 }} style={[s.tab, fill && s.tabFill]} accessibilityRole="tab" accessibilityState={{ selected: on }}>
-            <Text style={[s.tabText, on && s.tabTextOn, fill && s.tabTextFill, fill && on && { color: colors.ink }]} numberOfLines={1}>
+            <Text style={[s.tabText, on && s.tabTextOn, fill && s.tabTextFill, fill && on && { color: colors.ink }]} numberOfLines={1} maxFontSizeMultiplier={1.25}>
               {it.label}
             </Text>
             <View style={[s.tabBar, fill && s.tabBarFill, !on && { backgroundColor: 'transparent' }]} />
@@ -812,7 +825,8 @@ export function Sheet({ visible, onClose, title, description, children, scroll =
   const drag = useSheetDrag(visible, onClose);
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose} statusBarTranslucent navigationBarTranslucent>
-      <View style={s.sheetWrap}>
+      {/* 시트 안 입력칸(책 고르기 검색 등)을 쓰면 판이 키보드 위로 올라온다(2026-11-09 점검: 화면 끝까지 그리는 창은 키보드가 열려도 줄지 않는다) */}
+      <KeyboardAvoidingView style={s.sheetWrap} behavior="padding">
       <Pressable style={[StyleSheet.absoluteFill, { backgroundColor: colors.scrim }]} onPress={onClose} accessibilityLabel="닫기" />
       <Animated.View style={[s.sheet, { paddingBottom: insets.bottom + space.item, maxHeight, transform: [{ translateY: drag.y }] }]}>
         <SheetGrip handlers={drag.handlers} compact={!!title} />
@@ -837,21 +851,21 @@ export function Sheet({ visible, onClose, title, description, children, scroll =
           children
         )}
       </Animated.View>
-      </View>
+      </KeyboardAvoidingView>
     </Modal>
   );
 }
 
-// 가운데 확인창(앱이 직접 그리는 것만. 운영체제 Alert는 그대로 쓴다)
+// 가운데 확인창(내용을 직접 넣는 것. 제목·본문·버튼만이면 ui/alert appAlert)
 export function Dialog({ visible, onClose, title, body, children }: { visible: boolean; onClose: () => void; title: string; body?: string; children?: ReactNode }) {
   return (
     <Modal transparent animationType="fade" visible={visible} onRequestClose={onClose} statusBarTranslucent navigationBarTranslucent>
       <View style={s.dialogWrap}>
         <View style={[s.dialog]} accessibilityViewIsModal>
           <Text style={type.heading} accessibilityRole="header">
-            {title}
+            {keepAll(title)}
           </Text>
-          {body ? <Text style={[type.body, { color: colors.inkSoft, marginTop: 8 }]}>{body}</Text> : null}
+          {body ? <Text style={[type.body, { color: colors.inkSoft, marginTop: 8 }]}>{keepAll(body)}</Text> : null}
           {children ? <View style={{ gap: 8, marginTop: space.xl }}>{children}</View> : null}
         </View>
       </View>

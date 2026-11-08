@@ -3,13 +3,14 @@
 // 평가하지 않은 사람은 0점으로 세지 않는다(서버 집계). ISBN이 없거나 커뮤니티를 쓸 수 없는 빌드·서버면 그리지 않는다(available false).
 // 요약은 상자 없이 큰 숫자 + 별 하나 + 'N명 평가'(사용자 '누런 상자 말고 지금처럼').
 import { useCallback, useEffect, useState } from 'react';
-import { Alert, StyleSheet, Text, View } from 'react-native';
+import { StyleSheet, Text, View } from 'react-native';
 
 import { explainWriteError } from '@/features/community/actions';
 import { community, communityAvailability, errorMessage, type BookReviews as Reviews } from '@/services/community';
 import { Btn, Field, Muted, Sheet, Stars, TextLink } from '@/ui/kit';
 import { Star } from '@/ui/icons';
 import { colors, fonts, space, type } from '@/ui/theme';
+import { appAlert } from '@/ui/alert';
 
 export type ReviewsState = { available: boolean; data: Reviews | null; error: string; load: () => Promise<void>; setData: (d: Reviews) => void };
 
@@ -66,7 +67,7 @@ export function ReviewsPane({ isbn13, title, myRating, state }: { isbn13: string
     catch (e) { explainWriteError(e, '후기를 저장하지 못했어요'); }
     finally { setBusy(false); }
   };
-  const remove = () => Alert.alert('내 공개 후기를 지울까요?', '내 별점(개인 기록)은 그대로예요.', [
+  const remove = () => appAlert('내 공개 후기를 지울까요?', '내 별점(개인 기록)은 그대로예요.', [
     { text: '취소', style: 'cancel' },
     { text: '지우기', style: 'destructive', onPress: () => void community.deleteReview(isbn13).then(setData).catch((e: unknown) => explainWriteError(e, '지우지 못했어요')) },
   ]);

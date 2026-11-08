@@ -122,7 +122,7 @@ export default function BookmarkBoard() {
   if (index < 0) {
     return (
       <View style={[st.root, { paddingTop: insets.top }]}>
-        <IconButton label="뒤로" onPress={() => router.back()}><ChevronLeft size={icon.size} color={colors.ink} strokeWidth={icon.stroke} /></IconButton>
+        <IconButton label="뒤로" onPress={() => (router.canGoBack() ? router.back() : router.replace('/bookmarks'))}><ChevronLeft size={icon.size} color={colors.ink} strokeWidth={icon.stroke} /></IconButton>
         <Empty title="책을 찾지 못했어요" />
       </View>
     );
@@ -133,7 +133,7 @@ export default function BookmarkBoard() {
     <View style={st.root}>
       <View style={[st.head, { paddingTop: insets.top + 4 }]}>
         <View style={st.titleRow}>
-          <IconButton label="뒤로" onPress={() => router.back()}><ChevronLeft size={icon.size} color={colors.ink} strokeWidth={icon.stroke} /></IconButton>
+          <IconButton label="뒤로" onPress={() => (router.canGoBack() ? router.back() : router.replace('/bookmarks'))}><ChevronLeft size={icon.size} color={colors.ink} strokeWidth={icon.stroke} /></IconButton>
           <Text style={st.title} accessibilityRole="header">갈피 보드</Text>
         </View>
       </View>
@@ -312,7 +312,7 @@ function BoardPage({ id, lib, turner }: { id: string; lib: Library; turner: Turn
           <Text style={type.rowStrong} numberOfLines={1}>{e.title}</Text>
           <Text style={type.sub} numberOfLines={1}>{[e.authors[0], `갈피 ${marks.length}개`].filter(Boolean).join(' · ')}</Text>
         </View>
-        <Btn label="목록 보기" kind="secondary" size="s" onPress={() => router.push({ pathname: '/bookmarks', params: { book: id } })} />
+        <Btn label="목록 보기" kind="secondary" size="s" onPress={() => router.dismissTo({ pathname: '/bookmarks', params: { book: id } })} />
       </View>
       <GestureDetector gesture={board}>
         <View ref={viewRef} style={st.view} collapsable={false} onLayout={(ev) => { setVp({ w: ev.nativeEvent.layout.width, h: ev.nativeEvent.layout.height }); viewRef.current?.measureInWindow((_mx, my) => { originY.value = my; }); }}>

@@ -1,13 +1,27 @@
 // 사진 찍기·고르기. 권한을 거절해도 앱은 계속 쓸 수 있게 결과로 알려 준다(화면이 대체 입력을 안내).
 import * as ImagePicker from 'expo-image-picker';
+import { Linking } from 'react-native';
+
+import { appAlert } from '@/ui/alert';
 
 export type PhotoResult = { ok: true; uri: string; width?: number; height?: number } | { ok: false; reason: 'denied' | 'canceled' | 'error'; message?: string };
 
 // crop: 찍은 뒤 문장 부분만 자를 수 있게 편집 화면을 연다(사진 갈피)
 export async function pickPhoto(from: 'camera' | 'library', choice: { crop?: boolean } = {}): Promise<PhotoResult> {
   try {
-    const perm = from === 'camera' ? await ImagePicker.requestCameraPermissionsAsync() : await ImagePicker.requestMediaLibraryPermissionsAsync();
-    if (!perm.granted) return { ok: false, reason: 'denied' };
+    // 사진 고르기는 시스템 사진 선택기라 보관함 권한이 필요 없다(안드로이드 13+·iOS 14+). 카메라만 묻는다
+    if (from === 'camera') {
+      const perm = await ImagePicker.requestCameraPermissionsAsync();
+      if (!perm.granted) {
+        // 다시 물을 수 없으면(두 번 거절·'다시 묻지 않음') 설정으로 가는 길을 준다
+        if (!perm.canAskAgain)
+          appAlert('카메라 권한이 꺼져 있어요', '설정에서 카메라를 허용하면 바로 찍을 수 있어요. 사진 보관함에서 고를 수도 있어요.', [
+            { text: '닫기', style: 'cancel' },
+            { text: '설정 열기', onPress: () => void Linking.openSettings() },
+          ]);
+        return { ok: false, reason: 'denied' };
+      }
+    }
     const opts: ImagePicker.ImagePickerOptions = { mediaTypes: ['images'], quality: 0.8, allowsEditing: !!choice.crop };
     const r = from === 'camera' ? await ImagePicker.launchCameraAsync(opts) : await ImagePicker.launchImageLibraryAsync(opts);
     if (r.canceled || !r.assets?.[0]) return { ok: false, reason: 'canceled' };

@@ -1113,7 +1113,7 @@ export function HomeScreen() {
         ) : null}
 
         {toast ? (
-          <View style={[styles.toast, { bottom: (editing ? 205 : navigation.height) + insets.bottom + 8 }]} accessibilityLiveRegion="polite">
+          <View style={[styles.toast, { bottom: editing && panelH ? panelH + 8 : (editing ? 205 : navigation.height) + insets.bottom + 8 }]} accessibilityLiveRegion="polite">
             <Text style={styles.toastText}>{toast.text}</Text>
             {toast.action ? (
               <Pressable

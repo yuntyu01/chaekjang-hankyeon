@@ -3,7 +3,7 @@
 // 게시한 뒤 개인 기록을 고치거나 지워도 공개본은 따로 남고(지우려면 게시물에서), 게시물을 지워도 개인 기록은 그대로다.
 import { router, useLocalSearchParams } from 'expo-router';
 import { useEffect, useMemo, useState } from 'react';
-import { Alert, Text, View } from 'react-native';
+import { Text, View } from 'react-native';
 
 import { defaultChoice, sharePayload, shareSourceOf, type ShareChoice } from '@/domain/community-draft';
 import { formatDurationPrecise } from '@/domain/library';
@@ -14,6 +14,7 @@ import { community, communityAvailability, type Availability, type Post } from '
 import { useLibrary } from '@/store/library-store';
 import { Btn, Choice, Empty, Field, ListGroup, ListItem, Loading, Screen, Toggle } from '@/ui/kit';
 import { space, type } from '@/ui/theme';
+import { appAlert } from '@/ui/alert';
 
 export default function ShareDraft() {
   const { session } = useLocalSearchParams<{ session: string }>();
@@ -45,7 +46,7 @@ export default function ShareDraft() {
     }
     setPosting(false);
   };
-  const confirm = () => Alert.alert('이 내용으로 게시할까요?', '다른 독자가 볼 수 있어요. 게시물은 언제든 지울 수 있고, 지워도 내 서재 기록은 그대로예요.', [
+  const confirm = () => appAlert('이 내용으로 게시할까요?', '다른 독자가 볼 수 있어요. 게시물은 언제든 지울 수 있고, 지워도 내 서재 기록은 그대로예요.', [
     { text: '취소', style: 'cancel' },
     { text: '게시', onPress: () => void post() },
   ]);

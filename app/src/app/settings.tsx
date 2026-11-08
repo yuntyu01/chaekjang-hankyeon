@@ -11,6 +11,7 @@ import { syncStatus } from '@/services/sync';
 import { Check } from '@/ui/icons';
 import { BrandFooter, Btn, ListGroup, ListItem, Screen, SectionBand, Sheet, Toggle } from '@/ui/kit';
 import { colors, icon, space, type } from '@/ui/theme';
+import { appAlert } from '@/ui/alert';
 import { TAB_CONTENT_PAD } from '@/ui/tabBar';
 import { ko } from '@/i18n/ko';
 
@@ -49,7 +50,7 @@ export function SettingsScreen({ tab = false }: { tab?: boolean }) {
 
       <SectionBand />
       <ListGroup title="앱 안내">
-        <ListItem label="문의하기" sub="yuntyu01@gmail.com" onPress={() => Linking.openURL('mailto:yuntyu01@gmail.com')} />
+        <ListItem label="문의하기" sub="yuntyu01@gmail.com" onPress={() => Linking.openURL('mailto:yuntyu01@gmail.com').catch(() => appAlert('메일 앱을 열 수 없어요', 'yuntyu01@gmail.com 으로 보내 주세요.'))} />
         <ListItem label="개인정보 처리방침" onPress={() => setPrivacy(true)} />
         <ListItem label="앱 정보" value={Constants.expoConfig?.version ?? ''} />
       </ListGroup>

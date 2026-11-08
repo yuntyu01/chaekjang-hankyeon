@@ -111,7 +111,8 @@ export function StatsScreen({ tab, initialBook }: { tab?: boolean; initialBook?:
           <ChevronLeft size={icon.size} color={colors.ink} strokeWidth={icon.stroke} />
         </IconButton>
         <Text style={st.periodText} accessibilityRole="header">{monthly ? `${y}년 ${m}월` : `${y}년`}</Text>
-        <IconButton label={monthly ? '다음 달' : '다음 해'} onPress={() => { shift(1); setPicked(null); }}>
+        {/* 오늘이 든 달(해) 다음으로는 가지 않는다(기록이 생길 수 없는 미래) */}
+        <IconButton label={monthly ? '다음 달' : '다음 해'} disabled={monthly ? y * 12 + m >= now.getFullYear() * 12 + now.getMonth() + 1 : y >= now.getFullYear()} onPress={() => { shift(1); setPicked(null); }}>
           <ChevronRight size={icon.size} color={colors.ink} strokeWidth={icon.stroke} />
         </IconButton>
       </View>

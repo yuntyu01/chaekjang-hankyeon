@@ -1,9 +1,9 @@
 // 책 상세(2026-11-05 사용자 '표지 위 가운데 박스에 책 정보·평가·내 기록 3개'): 칸마다 책 정보 / 별점·한 줄 감상·독자 후기 / 내 독서·읽기 상태·회차·갈피. 이어서 읽기와 갈피 남기기는 아래에 늘 보인다.
 // 날짜·쪽수·별점은 모두 선택 입력. 완독 여부는 사용자가 정한다(타이머로 자동 판정하지 않는다).
 import { router, useLocalSearchParams } from 'expo-router';
-import { MoreHorizontal } from '@/ui/icons';
-import { useState } from 'react';
-import { Alert, Image, Linking, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { MoreHorizontal, Share } from '@/ui/icons';
+import { useRef, useState } from 'react';
+import { Image, Linking, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 
 import { ReaderRating, ReviewsPane, useBookReviews } from '@/features/community/BookReviews';
 import { RibbonColorSheet } from '@/features/bookmark/RibbonColorSheet';
@@ -22,6 +22,7 @@ import { uiBus } from '@/store/ui-bus';
 import { Btn, Chip, Divider, Empty, Field, H2, IconButton, ListGroup, ListItem, Muted, Row, Screen, SectionBand, Segmented, Sheet, Stars, s as kit } from '@/ui/kit';
 import { colors, fonts, icon, press, shape, space, type } from '@/ui/theme';
 import { BookVisual, LibraryCover } from '@/ui/BookVisual';
+import { appAlert } from '@/ui/alert';
 
 const VIEW_TABS = [{ id: 'info', label: '책 정보' }, { id: 'rate', label: '평가' }, { id: 'mine', label: '내 기록' }] as const;
 
@@ -34,6 +35,8 @@ export default function BookDetailScreen() {
   const [pageEdit, setPageEdit] = useState(false);
   const [colorOpen, setColorOpen] = useState(false);
   const [tab, setTab] = useState<'info' | 'rate' | 'mine'>('info');
+  // 한 줄 감상은 적는 대로 잠깐 뒤 저장한다(입력 중에 칸을 바꾸거나 화면을 떠나도 남게)
+  const noteTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const b = lib.books[id];
   const e = b && lib.editions[b.editionId];
   // 독자 후기: ISBN이 있고 커뮤니티를 쓸 수 있을 때만 평가 칸 아래에 보인다
@@ -57,7 +60,7 @@ export default function BookDetailScreen() {
   const chooseStatus = (s: (typeof READ_STATUSES)[number]) => {
     if (s === b.status) return;
     if ((s === 'reading' || s === 'paused') && lastRound?.finishedAt) {
-      Alert.alert('다시 읽기를 시작할까요?', `${lastRound.index + 1}회차가 생기고 진도는 0쪽부터예요. 지난 회차의 완독일·독서 기록·갈피는 그대로 남아요.`, [
+      appAlert('다시 읽기를 시작할까요?', `${lastRound.index + 1}회차가 생기고 진도는 0쪽부터예요. 지난 회차의 완독일·독서 기록·갈피는 그대로 남아요.`, [
         { text: '취소', style: 'cancel' },
         { text: '다시 읽기', onPress: () => { libraryStore.reread(id); if (s === 'paused') libraryStore.setStatus(id, 'paused'); } },
       ]);
@@ -70,7 +73,7 @@ export default function BookDetailScreen() {
   const hideYears = archivedYearsOf(bookcases, id);
   const confirmDelete = () => {
     const hide = hideYears.length > 0;
-    Alert.alert(
+    appAlert(
       hide ? '책을 숨길까요?' : '책을 삭제할까요?',
       hide
         ? `지금 서재와 책장에서는 빠지고, ${hideYears.join('·')}년 책장에는 갈피·기록과 함께 그대로 남아요.\n${HIDDEN_WHERE}`
@@ -93,14 +96,20 @@ export default function BookDetailScreen() {
     <Screen
       compact
       right={
-        <IconButton label="더 보기" onPress={() => setMenu(true)}>
-          <MoreHorizontal size={icon.size} color={colors.ink} strokeWidth={icon.stroke} />
-        </IconButton>
+        <View style={{ flexDirection: 'row' }}>
+          {/* 책 공유(2026-11-09 사용자): 카드 이미지로 한 줄 감상·별점과 함께 */}
+          <IconButton label="책 공유" onPress={() => router.push(`/book/${id}/share`)}>
+            <Share size={icon.size} color={colors.ink} strokeWidth={icon.stroke} />
+          </IconButton>
+          <IconButton label="더 보기" onPress={() => setMenu(true)}>
+            <MoreHorizontal size={icon.size} color={colors.ink} strokeWidth={icon.stroke} />
+          </IconButton>
+        </View>
       }
       footer={
         <View style={st.actions}>
           <Btn label="갈피 남기기" kind="secondary" size="l" onPress={() => router.push({ pathname: '/bookmark/new', params: { book: id } })} style={{ flex: 1 }} />
-          <Btn label="이어서 읽기" size="l" onPress={() => router.push({ pathname: '/read', params: { book: id } })} style={{ flex: 1 }} />
+           <Btn label={b.status === 'reading' || b.status === 'paused' ? '이어서 읽기' : b.status === 'read' ? '다시 읽기' : '읽기 시작'} size="l" onPress={() => router.dismissTo({ pathname: '/read', params: { book: id } })} style={{ flex: 1 }} />
         </View>
       }>
       <Segmented items={VIEW_TABS} value={tab} onChange={setTab} style={st.tabs} />
@@ -129,7 +138,7 @@ export default function BookDetailScreen() {
         <View style={st.pane}>
           {/* 내 평가: 별점과 한 줄 감상을 선으로 나눈다(2026-11-05 사용자 '입력 박스를 만들고 위와 선으로 구분'). 나만 보는 기록 */}
           <View style={st.rateRow}>
-            <View>
+            <View style={{ flex: 1, minWidth: 0 }}>
               <Text style={type.section} accessibilityRole="header">내 평가</Text>
               <Text style={[type.caption, { marginTop: 2 }]}>나만 보는 평가예요</Text>
             </View>
@@ -142,7 +151,14 @@ export default function BookDetailScreen() {
             defaultValue={b.note}
             placeholder="이 책은 나에게…"
             placeholderTextColor={colors.inkFaint}
-            onEndEditing={(ev) => libraryStore.updateBook(id, { note: ev.nativeEvent.text.trim() || undefined })}
+            onChangeText={(t) => {
+              if (noteTimer.current) clearTimeout(noteTimer.current);
+              noteTimer.current = setTimeout(() => libraryStore.updateBook(id, { note: t.trim() || undefined }), 600);
+            }}
+            onEndEditing={(ev) => {
+              if (noteTimer.current) clearTimeout(noteTimer.current);
+              libraryStore.updateBook(id, { note: ev.nativeEvent.text.trim() || undefined });
+            }}
             style={kit.input}
             maxLength={140}
           />
@@ -179,7 +195,12 @@ export default function BookDetailScreen() {
               <Chip key={s} label={STATUS_LABEL[s]} on={b.status === s} onPress={() => chooseStatus(s)} />
             ))}
           </Row>
-          {b.status === 'read' ? <Btn label="다시 읽기 시작(새 회차)" kind="ghost" size="s" onPress={() => libraryStore.reread(id)} style={{ marginTop: space.s, alignSelf: 'flex-start', paddingHorizontal: 0 }} /> : null}
+          {b.status === 'read' ? (
+            <Row style={{ marginTop: space.s }} gap={space.l}>
+              <Btn label="완독 카드 공유" kind="ghost" size="s" onPress={() => router.push(`/book/${id}/share`)} style={{ paddingHorizontal: 0 }} />
+              <Btn label="다시 읽기 시작(새 회차)" kind="ghost" size="s" onPress={() => chooseStatus('reading')} style={{ paddingHorizontal: 0 }} />
+            </Row>
+          ) : null}
 
           <H2>내 기록</H2>
           <ListGroup>
@@ -220,7 +241,7 @@ export default function BookDetailScreen() {
                 ))}
               </ListGroup>
               <Btn label="갈피 보드로 보기" kind="secondary" onPress={() => router.push(`/bookmark/board/${id}`)} style={{ marginTop: space.m }} />
-              {marks.length > 5 ? <Btn label={`갈피 ${marks.length}개 모두 보기`} kind="ghost" onPress={() => router.push({ pathname: '/bookmarks', params: { book: id } })} /> : null}
+              {marks.length > 5 ? <Btn label={`갈피 ${marks.length}개 모두 보기`} kind="ghost" onPress={() => router.dismissTo({ pathname: '/bookmarks', params: { book: id } })} /> : null}
             </View>
           ) : (
             <Empty title="아직 남긴 갈피가 없어요" action="첫 갈피 남기기" actionKind="secondary" onAction={() => router.push({ pathname: '/bookmark/new', params: { book: id } })} />
@@ -231,12 +252,13 @@ export default function BookDetailScreen() {
       <RibbonColorSheet bookId={id} visible={colorOpen} onClose={() => setColorOpen(false)} />
       <Sheet visible={menu} onClose={() => setMenu(false)}>
         <ListGroup>
+          <ListItem label="이미지로 공유" sub="한 줄 감상·별점을 넣은 카드" chevron={false} onPress={() => { setMenu(false); router.push(`/book/${id}/share`); }} />
           <ListItem label="책 정보 수정" chevron={false} onPress={() => { setMenu(false); router.push(`/book/${id}/edit`); }} />
           <ListItem label="장정 편집" chevron={false} onPress={() => { setMenu(false); router.push(`/book/${id}/binding`); }} />
           {onShelf ? <ListItem label="책장 위치로 이동" chevron={false} onPress={() => { setMenu(false); uiBus.focusBook(id); router.dismissTo('/'); }} /> : null}
           {/* 책장에서 빼기는 배치만 푼다(책 정보·장정·독서 기록·갈피 그대로). 삭제(빨간 글자)는 책 데이터 자체를 지운다. 연도 책장에 있는 책은 숨기기 */}
           {onShelf ? (
-            <ListItem label={ko.allBooks.removeFromShelf} sub={ko.allBooks.removeNote} chevron={false} onPress={() => { setMenu(false); if (placementStore.toDrawer(id)) Alert.alert(ko.allBooks.removed); }} />
+            <ListItem label={ko.allBooks.removeFromShelf} sub={ko.allBooks.removeNote} chevron={false} onPress={() => { setMenu(false); if (placementStore.toDrawer(id)) appAlert(ko.allBooks.removed); }} />
           ) : (
             <ListItem label={ko.allBooks.place} chevron={false} onPress={() => { setMenu(false); placeWithChoice([id]); }} />
           )}

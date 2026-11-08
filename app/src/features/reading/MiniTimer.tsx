@@ -22,7 +22,7 @@ const ACTIONS_W = 112; // 펼친 왼쪽 부분(바로가기 + 재생/일시정�
 const GAP = 12;
 
 // 하단 탭이 보이는 화면: 탭 바 위에 띄운다(2026-11 커뮤니티 탭 추가. 읽기 탭은 탭 바를 숨기고 타이머가 화면에 있다)
-const TAB_PATHS = ['/', '/bookmarks', '/stats', '/community'];
+const TAB_PATHS = ['/', '/bookmarks', '/stats', '/community', '/me'];
 
 // 화면 이름: 읽기 화면에서는 숨긴다
 export function miniTimerHidden(path: string) {

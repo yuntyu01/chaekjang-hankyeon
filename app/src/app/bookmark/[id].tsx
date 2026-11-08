@@ -5,8 +5,8 @@ import { makeImageFromView } from '@shopify/react-native-skia';
 import * as FS from 'expo-file-system/legacy';
 import { router, useLocalSearchParams } from 'expo-router';
 import * as Sharing from 'expo-sharing';
-import { useMemo, useRef, useState } from 'react';
-import { ActivityIndicator, Alert, FlatList, Pressable, ScrollView, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { ActivityIndicator, BackHandler, FlatList, Pressable, ScrollView, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { ymd } from '@/features/book/labels';
@@ -22,6 +22,7 @@ import { ChevronLeft, MoreHorizontal, PenLine, Share } from '@/ui/icons';
 import { RibbonColorSheet } from '@/features/bookmark/RibbonColorSheet';
 import { Btn, Chip, Empty, Field, IconButton, ListGroup, ListItem, Muted, Row, Screen, Sheet } from '@/ui/kit';
 import { colors, fonts, icon, shape, space, type } from '@/ui/theme';
+import { appAlert } from '@/ui/alert';
 
 export function cardData(lib: Library, m: Bookmark): BookmarkCardData | null {
   const b = lib.books[m.myBookId];
@@ -49,10 +50,12 @@ export default function BookmarkDetail() {
   const { lib } = useLibrary();
   const { width, height, fontScale } = useWindowDimensions();
   const insets = useSafeAreaInsets();
-  const first = lib.bookmarks[id];
-  const list = useMemo(() => (first ? bookmarksOf(lib, first.myBookId).reverse() : []), [lib, first]);
+  // 넘기는 목록은 처음 연 갈피의 책 기준(연 갈피를 지워도 같은 책의 다른 갈피가 남는다)
+  const [bookId] = useState(() => lib.bookmarks[id]?.myBookId);
+  const list = useMemo(() => (bookId ? bookmarksOf(lib, bookId).reverse() : []), [lib, bookId]);
   const [index, setIndex] = useState(() => Math.max(0, list.findIndex((m) => m.id === id)));
-  const cur = list[index] ?? first;
+  const cur = list[Math.min(index, list.length - 1)];
+  const listRef = useRef<FlatList<Bookmark>>(null);
   const [menu, setMenu] = useState(false);
   const [colorOpen, setColorOpen] = useState(false);
   const [editing, setEditing] = useState<Bookmark | null>(null);
@@ -81,7 +84,7 @@ export default function BookmarkDetail() {
     let imageReady = false;
     try {
       if (!(await Sharing.isAvailableAsync())) {
-        Alert.alert('공유할 수 없어요', '이 기기에서 공유 창을 열 수 없어요.');
+        appAlert('공유할 수 없어요', '이 기기에서 공유 창을 열 수 없어요.');
         return;
       }
       for (let i = 0; i < 30 && curData?.book && !coverReady.current; i++) await new Promise((r) => setTimeout(r, 100));
@@ -99,7 +102,7 @@ export default function BookmarkDetail() {
       imageReady = true;
       await Sharing.shareAsync(uri, { mimeType: 'image/png', UTI: 'public.png', dialogTitle: '갈피 공유' });
     } catch (e) {
-      Alert.alert(imageReady ? '공유 창을 열지 못했어요' : '공유 이미지를 만들지 못했어요', String((e as Error)?.message ?? e));
+      appAlert(imageReady ? '공유 창을 열지 못했어요' : '공유 이미지를 만들지 못했어요', String((e as Error)?.message ?? e));
     } finally {
       setShare(null);
       setBusy(false);
@@ -110,7 +113,7 @@ export default function BookmarkDetail() {
   return (
     <View style={{ flex: 1, backgroundColor: PAGE_BG, paddingTop: insets.top }}>
       <View style={st.header}>
-        <IconButton label="뒤로" onPress={() => router.back()}>
+        <IconButton label="뒤로" onPress={() => (router.canGoBack() ? router.back() : router.replace('/bookmarks'))}>
           <ChevronLeft size={28} color={colors.ink} strokeWidth={icon.stroke} />
         </IconButton>
         <Text style={type.title} accessibilityRole="header">갈피</Text>
@@ -120,6 +123,7 @@ export default function BookmarkDetail() {
       </View>
 
       <FlatList
+        ref={listRef}
         data={list}
         keyExtractor={(m) => m.id}
         horizontal
@@ -189,15 +193,22 @@ export default function BookmarkDetail() {
             chevron={false}
             onPress={() => {
               setMenu(false);
-              Alert.alert('갈피를 삭제할까요?', '되돌릴 수 없어요.', [
+              appAlert('갈피를 삭제할까요?', '되돌릴 수 없어요.', [
                 { text: '취소', style: 'cancel' },
                 {
                   text: '삭제',
                   style: 'destructive',
                   onPress: () => {
                     libraryStore.deleteBookmark(cur.id);
-                    if (list.length <= 1) router.back();
-                    else setIndex(Math.max(0, index - 1));
+                    if (list.length <= 1) {
+                      if (router.canGoBack()) router.back();
+                      else router.replace('/bookmarks');
+                      return;
+                    }
+                    // 지운 자리의 다음 갈피(마지막이었으면 앞 갈피)로 넘김 위치와 index를 함께 맞춘다
+                    const next = Math.min(index, list.length - 2);
+                    setIndex(next);
+                    requestAnimationFrame(() => listRef.current?.scrollToOffset({ offset: next * width, animated: false }));
                   },
                 },
               ]);
@@ -211,6 +222,15 @@ export default function BookmarkDetail() {
 
 function EditBookmark({ m, onDone }: { m: Bookmark; onDone: () => void }) {
   const { lib } = useLibrary();
+  const { width } = useWindowDimensions();
+  // 수정은 같은 화면 안의 단계라 뒤로(머리줄·기기)는 갈피 보기로 돌아온다(화면 전체를 나가지 않게, 2026-11-09 점검)
+  useEffect(() => {
+    const sub = BackHandler.addEventListener('hardwareBackPress', () => {
+      onDone();
+      return true;
+    });
+    return () => sub.remove();
+  }, [onDone]);
   const ed = lib.editions[lib.books[m.myBookId]?.editionId];
   const bookLine = ed ? [ed.title, ed.authors.join(', ')].filter(Boolean).join(' · ') : '';
   const [text, setText] = useState(m.text);
@@ -218,6 +238,7 @@ function EditBookmark({ m, onDone }: { m: Bookmark; onDone: () => void }) {
   const [memo, setMemo] = useState(m.memo ?? '');
   const [photo, setPhoto] = useState<{ uri?: string; ratio?: number; changed: boolean }>({ uri: m.photoUri, ratio: m.photoRatio, changed: false });
   const [msg, setMsg] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
   const isPhoto = !!photo.uri;
   const swap = async (from: 'camera' | 'library') => {
     const r = await pickPhoto(from, { crop: true });
@@ -231,18 +252,32 @@ function EditBookmark({ m, onDone }: { m: Bookmark; onDone: () => void }) {
   return (
     <Screen
       title={isPhoto ? '사진 갈피 수정' : '갈피 수정'}
+      left={
+        <IconButton label="수정 그만두기" onPress={onDone} style={{ marginLeft: 8 - space.page }}>
+          <ChevronLeft size={28} color={colors.ink} strokeWidth={icon.stroke} />
+        </IconButton>
+      }
       footer={
         <Btn
           label="저장"
+          busy={saving}
           disabled={!text.trim() && !photo.uri}
           onPress={async () => {
-            const n = Number(page);
-            let photoUri = photo.uri;
-            if (photo.changed) {
-              photoUri = photo.uri ? await keepImage(photo.uri, 'page') : undefined;
+            // 사진을 앱 안으로 옮기는 동안 두 번 눌리지 않게, 실패하면 알린다(2026-11-09 점검)
+            if (saving) return;
+            setSaving(true);
+            try {
+              const n = Number(page);
+              let photoUri = photo.uri;
+              if (photo.changed) {
+                photoUri = photo.uri ? await keepImage(photo.uri, 'page') : undefined;
+              }
+              libraryStore.updateBookmark(m.id, { text: text.trim(), page: Number.isFinite(n) && n > 0 ? Math.round(n) : undefined, memo: memo.trim() || undefined, photoUri, photoRatio: photoUri ? photo.ratio : undefined });
+              onDone();
+            } catch (e) {
+              setSaving(false);
+              appAlert('저장하지 못했어요', `사진을 옮기지 못했어요. 다시 눌러 주세요.\n${String((e as Error)?.message ?? e)}`);
             }
-            libraryStore.updateBookmark(m.id, { text: text.trim(), page: Number.isFinite(n) && n > 0 ? Math.round(n) : undefined, memo: memo.trim() || undefined, photoUri, photoRatio: photoUri ? photo.ratio : undefined });
-            onDone();
           }}
         />
       }>
@@ -250,7 +285,7 @@ function EditBookmark({ m, onDone }: { m: Bookmark; onDone: () => void }) {
       {bookLine ? <Text style={[type.sub, { marginTop: space.page }]} numberOfLines={1}>{bookLine}</Text> : null}
       {photo.uri ? (
         <View style={{ alignItems: 'center', marginTop: space.group + 8, marginBottom: space.group + 8 }}>
-          <PhotoPlate uri={photo.uri} ratio={photo.ratio} width={300} seed={m.id} />
+          <PhotoPlate uri={photo.uri} ratio={photo.ratio} width={Math.min(300, width - space.page * 2)} seed={m.id} />
           <Row style={{ marginTop: 10 }}>
             <Chip label="다시 찍기" onPress={() => swap('camera')} />
             <Chip label="다른 사진" onPress={() => swap('library')} />

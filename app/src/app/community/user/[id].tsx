@@ -2,7 +2,7 @@
 // 공개로 올린 것만 보인다(그 사람의 개인 서재·기록은 볼 수 없다).
 import { router, useLocalSearchParams } from 'expo-router';
 import { useCallback, useEffect, useState } from 'react';
-import { Alert, StyleSheet, Text, View } from 'react-native';
+import { StyleSheet, Text, View } from 'react-native';
 
 import { explainWriteError } from '@/features/community/actions';
 import { Avatar } from '@/features/community/Avatar';
@@ -12,6 +12,7 @@ import { community, errorMessage, isNotFound, type UserPage } from '@/services/c
 import { MoreHorizontal } from '@/ui/icons';
 import { Btn, Divider, Empty, IconButton, ListGroup, ListItem, Loading, Screen, Sheet, Stars, Tabs } from '@/ui/kit';
 import { colors, icon, space, type } from '@/ui/theme';
+import { appAlert } from '@/ui/alert';
 
 export default function UserScreen() {
   const { id: raw } = useLocalSearchParams<{ id: string }>();
@@ -39,7 +40,7 @@ export default function UserScreen() {
     } catch (e) { explainWriteError(e, '팔로우를 바꾸지 못했어요'); }
     finally { setBusy(false); }
   };
-  const block = () => page && Alert.alert(`${page.profile.nickname}님을 차단할까요?`, '서로의 게시물·댓글·후기가 보이지 않고 팔로우도 끊겨요. 내 공개 프로필의 차단 목록에서 풀 수 있어요.', [
+  const block = () => page && appAlert(`${page.profile.nickname}님을 차단할까요?`, '서로의 게시물·댓글·후기가 보이지 않고 팔로우도 끊겨요. 내 공개 프로필의 차단 목록에서 풀 수 있어요.', [
     { text: '취소', style: 'cancel' },
     { text: '차단', style: 'destructive', onPress: () => void community.block(id, true).then(() => router.back()).catch((e: unknown) => explainWriteError(e, '차단하지 못했어요')) },
   ]);

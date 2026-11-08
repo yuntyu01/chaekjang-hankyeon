@@ -6,7 +6,7 @@
 import { router, useFocusEffect } from 'expo-router';
 import { BookOpen, AudioLines, Check, ChevronDown, ChevronLeft, Timer, Volume2, VolumeX } from '@/ui/icons';
 import { useCallback, useEffect, useState, type ReactNode } from 'react';
-import { AccessibilityInfo, Alert, AppState, Image, Pressable, ScrollView, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
+import { AccessibilityInfo, AppState, Image, Pressable, ScrollView, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Svg, { Defs, LinearGradient, Path, Rect, Stop } from 'react-native-svg';
 
@@ -22,6 +22,7 @@ import { LibraryCover } from '@/ui/BookVisual';
 import { BookPicker } from '@/features/bookmark/BookPicker';
 import { Btn, Choice, Sheet, Slider } from '@/ui/kit';
 import { StatusBar } from 'expo-status-bar';
+import { appAlert } from '@/ui/alert';
 
 const LIGHT = night.ink;
 const GOALS = [15, 30, 60] as const;
@@ -106,10 +107,10 @@ export function ReadingScreen({ initialBookId, soundOnly = false, inTab = false 
     const cur = readingStore.get().active;
     if (!cur) return;
     const title = (id?: string) => (id ? bookTitle(lib, id) : undefined) ?? '책 없음';
-    Alert.alert('읽는 책을 바꿀까요?', `지금 ‘${title(cur.myBookId)}’를 읽는 중이에요.`, [
+    appAlert('읽는 책을 바꿀까요?', `지금 ‘${title(cur.myBookId)}’를 읽는 중이에요.`, [
       { text: '계속 읽기', style: 'cancel' },
       { text: '이 기록의 책을 바꾸기', onPress: () => { setDraftBookId(nextId); readingStore.setBook(nextId, nextId ? lib.books[nextId]?.currentPage : undefined); } },
-      { text: `지금까지 저장하고 새로 읽기`, onPress: () => { setDraftBookId(nextId); void saveAndStartOther(nextId).catch((err) => Alert.alert('저장하지 못했어요', String((err as Error)?.message ?? err))); } },
+      { text: `지금까지 저장하고 새로 읽기`, onPress: () => { setDraftBookId(nextId); void saveAndStartOther(nextId).catch((err) => appAlert('저장하지 못했어요', String((err as Error)?.message ?? err))); } },
     ]);
   };
 
@@ -202,7 +203,7 @@ export function ReadingScreen({ initialBookId, soundOnly = false, inTab = false 
               )}
             </View>
             {audio.error ? <Text style={st.error}>{audio.error}</Text> : null}
-            {soundOnly ? <Btn label="지금부터 독서 기록" kind="ghost" onPress={() => { start(); router.replace('/read'); }} style={{ marginTop: space.s }} /> : null}
+            {soundOnly ? <Btn label="지금부터 독서 기록" kind="ghost" onPress={() => { start(); router.dismissTo('/read'); }} style={{ marginTop: space.s }} /> : null}
           </ScrollView>
         </View>
       {/* 접었을 때: 장면 아래쪽을 어둡게 물들이고 그 위에 밝은 시간과 재생·일시정지만. 시간을 누르면 조작부가 다시 열린다 */}

@@ -3,7 +3,7 @@
 // 검색 결과·표지·쪽수가 없어도 직접 입력과 기본 장정으로 끝낼 수 있다. 추정 크기를 확인된 정보처럼 저장하지 않는다.
 import { router, useLocalSearchParams } from 'expo-router';
 import { useEffect, useRef, useState } from 'react';
-import { Alert, Linking, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Linking, Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { BindingEditor, type BindingDraft } from '@/features/book/BindingEditor';
 import { buildBookArt, type BookArtParams, type PaletteEntry } from '@/domain/rebinding';
@@ -23,6 +23,7 @@ import { LibraryCover } from '@/ui/BookVisual';
 import { ChevronDown, ChevronUp } from '@/ui/icons';
 import { Btn, Chip, Empty, Field, H2, Loading, Muted, Notice, RealCover, Row, Screen, SearchField, Sheet, TextLink } from '@/ui/kit';
 import { colors, fonts, icon, press, shape, space, type } from '@/ui/theme';
+import { appAlert } from '@/ui/alert';
 
 type Step = 'find' | 'confirm' | 'binding' | 'done';
 
@@ -108,7 +109,7 @@ export default function AddBook() {
   const confirmDuplicate = (isbn: string, go: () => void) => {
     const dup = existingOf(isbn);
     if (!dup) return go();
-    Alert.alert('이미 내 서재에 있는 책이에요', '같은 ISBN의 책이 있어요. 다시 읽으려면 그 책에서 ‘다시 읽기’를 하면 지난 기록이 그대로 이어져요. 같은 책을 한 권 더 가지고 있다면 별도 소장본으로 추가할 수 있어요.', [
+    appAlert('이미 내 서재에 있는 책이에요', '같은 ISBN의 책이 있어요. 다시 읽으려면 그 책에서 ‘다시 읽기’를 하면 지난 기록이 그대로 이어져요. 같은 책을 한 권 더 가지고 있다면 별도 소장본으로 추가할 수 있어요.', [
       { text: '취소', style: 'cancel' },
       { text: '기존 책 보기', onPress: () => router.replace(`/book/${dup.id}`) },
       { text: '별도 소장본으로 추가', onPress: go },

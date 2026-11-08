@@ -95,7 +95,7 @@ export default function EditBook() {
           <Field label="판형 세로(mm)" value={f.height} onChangeText={(t) => setF({ ...f, height: t })} keyboardType="number-pad" />
         </View>
       </Row>
-      <Muted>크기를 바꾸면 책장에서 책 크기도 바뀌어요. 자리가 모자라면 그 선반 끝 책이 서랍으로 옮겨질 수 있어요.</Muted>
+      <Muted>크기를 바꾸면 책장에서 책 크기도 바뀌어요. 자리가 모자라면 그 선반 끝 책이 책장에서 빠질 수 있어요(전체 책에는 그대로 있어요).</Muted>
     </Screen>
   );
 }
