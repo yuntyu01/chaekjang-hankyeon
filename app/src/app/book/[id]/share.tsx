@@ -1,12 +1,13 @@
 // 책 공유(2026-11-09 사용자 '책 공유할 때 밑에 한줄평이랑 별점이랑'): 카드 미리보기 → 넣을 것 고르기 → 이미지로 공유.
-// 한 줄 감상·별점은 여기서 바로 적을 수 있고 책 기록(평가 칸)에 그대로 저장된다. 이미지는 폭 360 카드를 화면 뒤에 따로 그려 뜬다(기기 화면 폭과 상관없이 같은 모양)
+// 한 줄 감상·별점은 여기서 바로 적을 수 있고 책 기록(평가 칸)에 그대로 저장된다. 이미지는 미리보기와 같은 그림을 폭 1080px로 따로 그린다(기기 화면 폭과 상관없이 같은 모양)
 import { router, useLocalSearchParams } from 'expo-router';
 import { useMemo, useRef, useState } from 'react';
 import { ScrollView, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 
-import { ALL_PARTS, bookShareData, type ShareParts } from '@/features/book/book-share';
+import { bookShareData, DEFAULT_PARTS, type ShareParts } from '@/features/book/book-share';
 import { BookShareCard } from '@/features/book/BookShareCard';
-import { ShareImageError, shareViewPng } from '@/services/share-image';
+import { renderShareCardBase64, shareInputOf, useShareScene } from '@/features/book/useShareScene';
+import { ShareImageError, sharePngBase64 } from '@/services/share-image';
 import { libraryStore, useLibrary } from '@/store/library-store';
 import { usePlacementStore } from '@/store/placement-store';
 import { appAlert } from '@/ui/alert';
@@ -19,19 +20,21 @@ const PART_LABEL: Record<keyof ShareParts, string> = { note: '한 줄 감상', r
 
 export default function BookShareScreen() {
   // shot=1(측정 번들 전용): 내보내는 카드를 폭 360 그대로 화면에 띄운다(에뮬레이터 화면 사진 = 내보내는 그림과 같은 화소)
-  const { id, shot } = useLocalSearchParams<{ id: string; shot?: string }>();
+  // shot의 note·rating: 시안과 같은 내용으로 비교 사진을 찍을 때 덮어쓴다(측정 번들만, note의 '|'는 줄바꿈)
+  const { id, shot, note: noteQ, rating: ratingQ } = useLocalSearchParams<{ id: string; shot?: string; note?: string; rating?: string }>();
   const { lib } = useLibrary();
   const place = usePlacementStore();
   const { width } = useWindowDimensions();
   const b = lib.books[id];
   const [note, setNote] = useState(b?.note ?? '');
-  const [parts, setParts] = useState<ShareParts>(ALL_PARTS);
+  const [parts, setParts] = useState<ShareParts>(DEFAULT_PARTS);
   const [busy, setBusy] = useState(false);
-  const [exporting, setExporting] = useState(false);
-  const shotRef = useRef<View>(null);
-  const ready = useRef(false);
   const placed = place.books[id];
   const base = useMemo(() => bookShareData(lib, id, placed), [lib, id, placed]);
+  // 그림 재료(바탕·오버레이·글꼴·표지)는 한 번 불러 미리보기와 내보내기가 함께 쓴다. 표지를 기다리는 동안 내보내기는 잠깐 기다린다
+  const scene = useShareScene(base?.book);
+  const sceneRef = useRef(scene);
+  sceneRef.current = scene;
   if (PERF_ENABLED) console.log('[share] open', id);
   if (!b || !base)
     return (
@@ -43,7 +46,7 @@ export default function BookShareScreen() {
   if (PERF_ENABLED && shot === '1')
     return (
       <ScrollView style={{ flex: 1, backgroundColor: colors.bg }}>
-        <BookShareCard data={data} parts={parts} width={EXPORT_W} />
+        <BookShareCard data={{ ...data, ...(noteQ ? { note: noteQ.replace(/\|/g, '\n') } : null), ...(ratingQ ? { rating: Number(ratingQ) } : null) }} parts={parts} width={EXPORT_W} scene={scene} />
       </ScrollView>
     );
   const has: Record<keyof ShareParts, boolean> = { note: !!data.note, rating: !!data.rating, time: !!data.readTime, period: !!data.period };
@@ -55,15 +58,17 @@ export default function BookShareScreen() {
     if (busy) return;
     saveNote();
     setBusy(true);
-    ready.current = false;
-    setExporting(true);
     try {
-      await shareViewPng(shotRef, { name: 'chaekjang_book', dialogTitle: '책 공유', ready: () => ready.current });
+      // 표지를 받는 중이면 잠깐(최대 6초) 기다린다. 끝내 없으면 표지 색으로 그린다
+      for (let t = 0; t < 6000 && (!sceneRef.current.assets || sceneRef.current.coverWaiting); t += 150) await new Promise((r) => setTimeout(r, 150));
+      const A = sceneRef.current.assets;
+      const png = A ? renderShareCardBase64(A, shareInputOf(data, parts)) : null;
+      if (!png) throw new ShareImageError('image', '카드 이미지를 만들지 못했어요. 다시 눌러 주세요.');
+      await sharePngBase64(png, { name: 'chaekjang_book', dialogTitle: '책 공유' });
     } catch (e) {
       const err = e as ShareImageError;
       appAlert(err.stage === 'share' ? '공유 창을 열지 못했어요' : err.stage === 'unavailable' ? '공유할 수 없어요' : '공유 이미지를 만들지 못했어요', err.message);
     } finally {
-      setExporting(false);
       setBusy(false);
     }
   };
@@ -74,7 +79,7 @@ export default function BookShareScreen() {
       <Screen title="책 공유" compact footer={<Btn label={busy ? '이미지 만드는 중' : '이미지로 공유'} size="l" disabled={busy} onPress={share} />}>
         <View style={st.previewWrap}>
           <View style={st.preview}>
-            <BookShareCard data={data} parts={parts} width={previewW} />
+            <BookShareCard data={data} parts={parts} width={previewW} scene={scene} />
           </View>
         </View>
 
@@ -93,14 +98,6 @@ export default function BookShareScreen() {
         </View>
         <Field label="한 줄 감상" value={note} onChangeText={setNote} onEndEditing={saveNote} placeholder="이 책은 나에게…" maxLength={140} multiline submitBehavior="blurAndSubmit" returnKeyType="done" style={{ minHeight: 56 }} />
       </Screen>
-      {/* 공유 이미지용(화면 뒤에 같은 카드를 폭 360으로) */}
-      {exporting ? (
-        <View pointerEvents="none" style={st.shot}>
-          <View ref={shotRef} collapsable={false}>
-            <BookShareCard data={data} parts={parts} width={EXPORT_W} onReady={() => { ready.current = true; }} />
-          </View>
-        </View>
-      ) : null}
     </View>
   );
 }
@@ -110,5 +107,4 @@ const st = StyleSheet.create({
   // 바탕이 흰색이라 카드 가장자리를 옅은 선과 그림자로 보인다(내보내는 그림에는 없다)
   preview: { borderRadius: 14, overflow: 'hidden', borderWidth: StyleSheet.hairlineWidth, borderColor: colors.line, boxShadow: [{ offsetX: 0, offsetY: 6, blurRadius: 20, color: 'rgba(25,31,40,0.08)' }] },
   rateRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', minHeight: space.touch, marginBottom: space.m },
-  shot: { position: 'absolute', left: 0, top: 0, zIndex: -1 },
 });

@@ -1,4 +1,4 @@
-// 책 공유 카드의 내용(그리기와 따로 시험할 수 있게): 읽기 상태·제목·저자·한 줄 감상·별점·독서 시간·읽은 기간
+// 책 공유 카드의 내용(그리기와 따로 시험할 수 있게): 제목·저자·한 줄 감상·별점·독서 시간·읽은 기간(읽기 상태는 2026-11-10 시안부터 카드에 넣지 않는다)
 import { bookReadMs, formatDuration, memoShelfBook, roundsOf, type Library } from '@/domain/library';
 import type { Book } from '@/domain/types';
 import { STATUS_LABEL } from './labels';
@@ -6,6 +6,8 @@ import { STATUS_LABEL } from './labels';
 export type BookShareData = { id: string; book: Book; title: string; author?: string; status: string; note?: string; rating?: number; readTime?: string; period?: string };
 export type ShareParts = { note: boolean; rating: boolean; time: boolean; period: boolean };
 export const ALL_PARTS: ShareParts = { note: true, rating: true, time: true, period: true };
+// 처음 고른 것(2026-11-10 시안: 한 줄 감상과 별점만). 독서 시간·읽은 기간은 칩으로 더한다
+export const DEFAULT_PARTS: ShareParts = { note: true, rating: true, time: false, period: false };
 
 const dot = (d: string) => d.slice(0, 10).replace(/-/g, '.');
 // 읽은 기간: 첫 회차 시작 — 마지막 완독(같은 해면 끝은 월.일만). 읽는 중이면 '부터', 시작일 없이 완독만 있으면 완독일

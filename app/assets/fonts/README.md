@@ -16,3 +16,8 @@
 - `Hahmlet-SemiBold.ttf` — 함렛 SemiBold(Copyright 2020 The Hahmlet Project Authors, https://github.com/hyper-type/hahmlet). SIL OFL 1.1: `Hahmlet-OFL.txt`. 책 그림(표지·책등) 제목 글꼴(`src/ui/book3d/art.tsx`).
   2026-10-31 사용자가 함렛을 골랐다. 같은 날 책장 시안 지시로 Medium으로 낮췄다가, 사용자가 '제목 글자도'(더 또렷하게) 해서 SemiBold로 되돌렸다(Medium 파일은 지웠다).
   파일은 npm `@expo-google-fonts/hahmlet@0.4.1`의 `600SemiBold/Hahmlet_600SemiBold.ttf` 그대로다(라이선스 전문은 google/fonts ofl/hahmlet/OFL.txt).
+
+- `MaruBuri-{Regular,SemiBold}.ttf` — 마루부리(© NAVER Corp. © NAVER Cultural Foundation Corp., https://hangeul.naver.com/fonts). SIL OFL 1.1: `MaruBuri-OFL.txt`.
+  책 공유 카드의 제목(SemiBold)·한 줄 감상(Regular) 글꼴(2026-11-10 사용자 시안에 맞춤: 함렛·고운바탕보다 붓 끝 모양과 잉크 양이 시안과 가장 가깝다). `src/features/book/useShareScene.ts`에서 Skia 글꼴로만 등록한다.
+  파일은 네이버 한글 웹폰트 배포 주소(hangeul.pstatic.net/hangeul_static/webfont/MaruBuri/) 그대로다.
+
