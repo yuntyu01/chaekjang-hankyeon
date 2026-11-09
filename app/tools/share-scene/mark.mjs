@@ -1,0 +1,23 @@
+// 갈피 공유 그림을 CanvasKit으로: node --experimental-strip-types mark.mjs <page|note> <out.png> [json]
+import { createRequire } from 'module'; import fs from 'fs'; import path from 'path'; import { fileURLToPath } from 'url';
+const require = createRequire(import.meta.url);
+const HERE = path.dirname(fileURLToPath(import.meta.url));
+const APP = process.env.APP || path.resolve(HERE, '../..');
+const CK = await require(APP + '/node_modules/canvaskit-wasm/bin/full/canvaskit.js')({ locateFile: (f) => APP + '/node_modules/canvaskit-wasm/bin/full/' + f });
+const Skia = require(APP + '/node_modules/@shopify/react-native-skia/lib/commonjs/skia/web/JsiSkia.js').JsiSkApi(CK);
+const scene = await import(APP + '/src/features/bookmark/bookmark-scene.ts');
+const tf = (p) => Skia.Typeface.MakeFreeTypeFaceFromData(Skia.Data.fromBytes(new Uint8Array(fs.readFileSync(p))));
+const img = (p) => Skia.Image.MakeImageFromEncoded(Skia.Data.fromBytes(new Uint8Array(fs.readFileSync(p))));
+const fonts = Skia.TypefaceFontProvider.Make();
+fonts.registerFont(tf(APP + '/assets/fonts/MaruBuri-Regular.ttf'), 'MarkQuote');
+fonts.registerFont(tf(APP + '/assets/fonts/Pretendard-Regular.otf'), 'MarkUI');
+fonts.registerFont(tf(APP + '/assets/fonts/Pretendard-SemiBold.otf'), 'MarkUIBold');
+fonts.registerFont(tf(APP + '/assets/fonts/NotoSerifKR-Regular.otf'), 'MarkSerif');
+const [style, out, json] = process.argv.slice(2);
+const input = Object.assign({ text: '누구에게나\n자기 자신에게로\n가는 길이 있다.', title: '데미안', author: '헤르만 헤세', page: 62 }, json ? JSON.parse(json) : {});
+const plate = img(process.env.PLATE || (APP + (style === 'page' ? '/assets/share/bookmark-page.png' : '/assets/share/bookmark-note.png')));
+const surf = Skia.Surface.Make(941, 1672);
+scene.drawMarkScene(Skia, surf.getCanvas(), 941, style, plate, fonts, input);
+surf.flush();
+fs.writeFileSync(out, Buffer.from(surf.makeImageSnapshot().encodeToBytes()));
+console.log('wrote', out);

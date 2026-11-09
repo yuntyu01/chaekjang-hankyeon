@@ -1,6 +1,6 @@
 // 갈피 상세(문학잡지형): 같은 책의 갈피를 좌우로 넘기며 읽는다. 카드는 길면 세로로 스크롤.
 // 아래 막대: 책장한켠 · 수정 · 공유. 오른쪽 위 더 보기: 연결된 책 열기 · 삭제.
-// 공유는 같은 카드를 이미지로 만들어 기기의 공유창을 바로 연다. 개인 메모는 기본 제외.
+// 공유는 두 모양(책 페이지·종이 메모, 2026-11-10 시안) 중 하나를 골라 이미지로 보낸다(features/bookmark/MarkShare). 문장 없는 사진 갈피와 '메모 포함해 공유'는 같은 카드를 이미지로 뜬다. 개인 메모는 기본 제외.
 import { makeImageFromView } from '@shopify/react-native-skia';
 import * as FS from 'expo-file-system/legacy';
 import { router, useLocalSearchParams } from 'expo-router';
@@ -23,6 +23,10 @@ import { RibbonColorSheet } from '@/features/bookmark/RibbonColorSheet';
 import { Btn, Chip, Empty, Field, IconButton, ListGroup, ListItem, Muted, Row, Screen, Sheet } from '@/ui/kit';
 import { colors, fonts, icon, shape, space, type } from '@/ui/theme';
 import { appAlert } from '@/ui/alert';
+import { PERF_ENABLED } from '@/ui/perf';
+import { ShareImageError, sharePngBase64 } from '@/services/share-image';
+import { MarkCard, MarkShareSheet, renderMarkBase64, useMarkAssets } from '@/features/bookmark/MarkShare';
+import type { MarkInput, MarkStyle } from '@/features/bookmark/bookmark-scene';
 
 export function cardData(lib: Library, m: Bookmark): BookmarkCardData | null {
   const b = lib.books[m.myBookId];
@@ -46,7 +50,8 @@ export function cardData(lib: Library, m: Bookmark): BookmarkCardData | null {
 const SHARE_W = 380;
 
 export default function BookmarkDetail() {
-  const { id } = useLocalSearchParams<{ id: string }>();
+  // shot=page|note(측정 번들 전용): 공유 그림을 폭 360 그대로 띄운다(에뮬레이터 화면 사진 = 내보내는 그림과 같은 비율)
+  const { id, shot } = useLocalSearchParams<{ id: string; shot?: string }>();
   const { lib } = useLibrary();
   const { width, height, fontScale } = useWindowDimensions();
   const insets = useSafeAreaInsets();
@@ -65,10 +70,38 @@ export default function BookmarkDetail() {
   const shotRef = useRef<View>(null);
   const coverReady = useRef(false);
   const photoReady = useRef(false);
+  const markAssets = useMarkAssets();
+  if (PERF_ENABLED) console.log('[mark] open', id);
+  const [markOpen, setMarkOpen] = useState(false);
+  const [markBusy, setMarkBusy] = useState<MarkStyle | null>(null);
 
   if (!cur) return <Screen title="갈피"><Empty title="갈피를 찾을 수 없어요" /></Screen>;
   if (editing) return <EditBookmark m={editing} onDone={() => setEditing(null)} />;
   const curData = cardData(lib, cur);
+  const markInput: MarkInput | null = curData && curData.text.trim() ? { text: curData.text, title: curData.title, author: curData.author, page: curData.page } : null;
+  if (PERF_ENABLED && (shot === 'page' || shot === 'note') && markInput)
+    return (
+      <ScrollView style={{ flex: 1, backgroundColor: colors.bg }}>
+        <MarkCard assets={markAssets} style={shot} input={markInput} width={360} />
+      </ScrollView>
+    );
+  // 두 모양 중 하나를 골라 공유(폭 1080px로 따로 그린다)
+  const shareMark = async (style: MarkStyle) => {
+    if (!markInput || markBusy || !markAssets) return;
+    setMarkBusy(style);
+    try {
+      await new Promise((r) => setTimeout(r, 30));
+      const png = renderMarkBase64(markAssets, style, markInput);
+      if (!png) throw new ShareImageError('image', '갈피 이미지를 만들지 못했어요. 다시 눌러 주세요.');
+      await sharePngBase64(png, { name: 'gallpi', dialogTitle: '갈피 공유' });
+      setMarkOpen(false);
+    } catch (e) {
+      const err = e as ShareImageError;
+      appAlert(err.stage === 'share' ? '공유 창을 열지 못했어요' : err.stage === 'unavailable' ? '공유할 수 없어요' : '공유 이미지를 만들지 못했어요', err.message);
+    } finally {
+      setMarkBusy(null);
+    }
+  };
   // 넘김 점은 이 책의 갈피 색(2026-11-05 사용자). 지금 칸은 크고 진하게, 나머지는 같은 색을 옅게
   const dotColor = tabColors(curData?.color, cur.myBookId)[0];
 
@@ -163,7 +196,7 @@ export default function BookmarkDetail() {
             <PenLine size={icon.size} color={colors.ink} strokeWidth={icon.stroke} />
             <Text style={st.barText}>수정</Text>
           </Pressable>
-          <Pressable onPress={() => shoot(false)} disabled={busy} hitSlop={6} accessibilityRole="button" accessibilityLabel={busy ? '공유 준비 중' : '이미지로 공유'} accessibilityState={{ disabled: busy, busy }} style={st.barBtn}>
+          <Pressable onPress={() => (markInput ? setMarkOpen(true) : void shoot(false))} disabled={busy} hitSlop={6} accessibilityRole="button" accessibilityLabel={busy ? '공유 준비 중' : '이미지로 공유'} accessibilityState={{ disabled: busy, busy }} style={st.barBtn}>
             {busy ? <ActivityIndicator size="small" color={colors.accent} /> : <Share size={icon.size} color={colors.ink} strokeWidth={icon.stroke} />}
             <Text style={st.barText}>{busy ? '준비 중' : '공유'}</Text>
           </Pressable>
@@ -180,6 +213,7 @@ export default function BookmarkDetail() {
         </View>
       ) : null}
 
+      {markInput ? <MarkShareSheet visible={markOpen} onClose={() => setMarkOpen(false)} input={markInput} assets={markAssets} busy={markBusy} onPick={(st2) => void shareMark(st2)} width={width} /> : null}
       <RibbonColorSheet bookId={cur.myBookId} visible={colorOpen} onClose={() => setColorOpen(false)} />
       <Sheet visible={menu} onClose={() => setMenu(false)}>
         <ListGroup>
