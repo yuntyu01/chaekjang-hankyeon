@@ -10,7 +10,9 @@ export const YEAR_SIZE = 34; // 시안: 숫자 높이 약 24dp
 export const HEADER_ICON = 36; // 아이콘 칸(시안 아이콘 간격 약 35dp). 누르는 곳은 hitSlop으로 48
 export const HEADER_ICON_SLOP = 6;
 const RIGHT_PULL = 11; // 아이콘 묶음을 머리줄 오른쪽 여백(24) 밖으로 당긴다: 맨 끝 아이콘 그림이 화면 끝에서 약 19dp(시안)
-const GAP = 8; // 숫자와 아이콘 묶음 사이 최소 간격
+const GAP = 4; // 숫자 상자(좌우 4 여백 포함)와 아이콘 묶음 사이 최소 간격. 411dp 폭에서 숫자가 정확히 가운데(8이면 3dp 왼쪽으로 비켰다)
+// 시안 자리: 해 숫자 가운데가 상태 표시줄 아래 약 28dp(탭 머리줄 기본 위 여백 16이면 10dp 아래였다, 2026-11-09 에뮬 비교)
+const TOP = 6;
 
 type Props = {
   year: number;
@@ -26,7 +28,7 @@ export function YearHeader({ year, a11yLabel, width, actionsW, onPressYear, chil
   const groupLeft = width - (tabHeader.paddingHorizontal - RIGHT_PULL) - actionsW;
   const shift = Math.min(0, groupLeft - GAP - (width + w) / 2);
   return (
-    <View style={[st.row, tabHeader, { minHeight: engravedHeight(YEAR_SIZE) + tabHeader.paddingTop + tabHeader.paddingBottom }]}>
+    <View style={[st.row, tabHeader, { paddingTop: TOP, minHeight: engravedHeight(YEAR_SIZE) + TOP + tabHeader.paddingBottom }]}>
       <View pointerEvents="box-none" style={[st.center, { transform: [{ translateX: shift }] }]}>
         {/* 누를 수 있을 때만 Pressable(아니면 화면 읽기가 빈 단추와 제목을 따로 읽는다) */}
         {onPressYear ? (
@@ -46,7 +48,7 @@ export function YearHeader({ year, a11yLabel, width, actionsW, onPressYear, chil
 
 const st = StyleSheet.create({
   row: { flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-end' },
-  center: { position: 'absolute', left: 0, right: 0, top: tabHeader.paddingTop, bottom: tabHeader.paddingBottom, alignItems: 'center', justifyContent: 'center' }, // 아이콘과 같은 세로 가운데(머리줄 위아래 여백 안)
+  center: { position: 'absolute', left: 0, right: 0, top: TOP, bottom: tabHeader.paddingBottom, alignItems: 'center', justifyContent: 'center' }, // 아이콘과 같은 세로 가운데(머리줄 위아래 여백 안)
   actions: { flexDirection: 'row', alignItems: 'center', minHeight: 44 },
   icon: { width: HEADER_ICON, height: 44, alignItems: 'center', justifyContent: 'center' },
 });
