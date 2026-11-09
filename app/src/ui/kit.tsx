@@ -897,9 +897,9 @@ export function BrandFooter({ style }: { style?: StyleProp<ViewStyle> }) {
 }
 
 export const s = StyleSheet.create({
-  header: { minHeight: 60, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingTop: 4 },
+  header: { minHeight: 60, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingTop: 4, width: '100%', maxWidth: CONTENT_MAX + space.page * 2, alignSelf: 'center' }, // 태블릿에서 머리줄도 내용 폭 안에
   // 제목은 위 기준(부제가 있든 없든 같은 높이), 오른쪽 아이콘(44)은 제목 줄(32) 가운데에 오게 -6
-  headerLeft: { ...tabHeader, flexDirection: 'row', alignItems: 'flex-start' },
+  headerLeft: { ...tabHeader, flexDirection: 'row', alignItems: 'flex-start', width: '100%', maxWidth: CONTENT_MAX + space.page * 2, alignSelf: 'center' },
   titleCenter: { position: 'absolute', left: 64, right: 64, top: 4, bottom: 0, alignItems: 'center', justifyContent: 'center' },
   back: { width: space.touch, height: space.touch, alignItems: 'center', justifyContent: 'center', marginLeft: 8 },
   left: { minHeight: space.touch, justifyContent: 'center', marginLeft: space.page },

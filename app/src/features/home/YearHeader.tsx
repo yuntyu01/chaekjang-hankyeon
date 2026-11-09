@@ -28,9 +28,16 @@ export function YearHeader({ year, a11yLabel, width, actionsW, onPressYear, chil
   return (
     <View style={[st.row, tabHeader, { minHeight: engravedHeight(YEAR_SIZE) + tabHeader.paddingTop + tabHeader.paddingBottom }]}>
       <View pointerEvents="box-none" style={[st.center, { transform: [{ translateX: shift }] }]}>
-        <Pressable onPress={onPressYear} disabled={!onPressYear} onLayout={(e) => setW(e.nativeEvent.layout.width)}>
-          <EngravedYear label={String(year)} size={YEAR_SIZE} a11yLabel={a11yLabel} header />
-        </Pressable>
+        {/* 누를 수 있을 때만 Pressable(아니면 화면 읽기가 빈 단추와 제목을 따로 읽는다) */}
+        {onPressYear ? (
+          <Pressable onPress={onPressYear} onLayout={(e) => setW(e.nativeEvent.layout.width)} accessibilityRole="button" accessibilityLabel={a11yLabel}>
+            <EngravedYear label={String(year)} size={YEAR_SIZE} a11yLabel={a11yLabel} />
+          </Pressable>
+        ) : (
+          <View onLayout={(e) => setW(e.nativeEvent.layout.width)}>
+            <EngravedYear label={String(year)} size={YEAR_SIZE} a11yLabel={a11yLabel} header />
+          </View>
+        )}
       </View>
       <View style={[st.actions, { marginRight: -RIGHT_PULL }]}>{children}</View>
     </View>
