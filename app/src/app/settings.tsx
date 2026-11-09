@@ -1,4 +1,4 @@
-// 설정(2026-10-26 설정 시안): 독서 환경(진동·효과음·움직임 줄이기) / 내 기록(백업 및 복원 → 따로 된 화면) / 앱 안내(문의·개인정보·앱 정보).
+// 설정(2026-10-26 설정 시안): 독서 환경(진동·움직임 줄이기. 효과음은 소리를 내는 곳이 아직 없어 줄을 숨겼다 2026-11-09, 값 settings.sound는 그대로) / 내 기록(백업 및 복원 → 따로 된 화면) / 앱 안내(문의·개인정보·앱 정보).
 // 2026-11-04 당근·토스 종합: 흰 바탕, 줄 사이 선 없음, 묶음 사이 화면 끝까지 닿는 1dp 선. 설명은 한 줄. 다른 화면으로 가는 줄에만 화살표. 백업·복원·동기화는 app/backup.tsx(기능은 그대로 옮겼다).
 import Constants from 'expo-constants';
 import { router } from 'expo-router';
@@ -38,7 +38,6 @@ export function SettingsScreen({ tab = false }: { tab?: boolean }) {
     <Screen title={tab ? ko.tabs.me : '설정'} back={!tab} bottomPad={tab ? TAB_CONTENT_PAD - space.section : 0}>
       <ListGroup title="독서 환경">
         <ListItem label="진동" right={<Toggle label="진동" value={s.haptics} onValueChange={(v) => settingsStore.set({ haptics: v })} />} />
-        <ListItem label="효과음" sub="책장 효과음 · 준비 중이에요" right={<Toggle label="효과음" value={s.sound} onValueChange={(v) => settingsStore.set({ sound: v })} />} />
         <ListItem label="움직임 줄이기" value={MOTION.find((m) => m.id === s.reduceMotion)?.short} onPress={() => setMotion(true)} />
       </ListGroup>
 

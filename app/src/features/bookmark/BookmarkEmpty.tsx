@@ -2,13 +2,13 @@
 // 예시 카드는 갈피 탭 목록과 같은 카드 부품(BookmarkCard)이다: 첫 갈피를 남기면 이 모양으로 쌓인다(2026-11-04 사용자 '예시 그림 우리 저거 아니잖아').
 // 예시 문장은 화면 표현용이다(사용자 데이터에 저장하지 않는다). 작은 화면·글자 확대에서도 버튼까지 스크롤된다.
 import { router } from 'expo-router';
-import { ScrollView, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
+import { ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { BookmarkCard } from '@/features/bookmark/BookmarkCard';
 import { MINI_TIMER_SPACE } from '@/store/mini-timer-store';
 import { useReading } from '@/store/reading-store';
-import { Btn, ui } from '@/ui/kit';
+import { Btn, ui, useContentWidth } from '@/ui/kit';
 import { colors, fonts, type } from '@/ui/theme';
 import { navigation } from '@/ui/theme';
 
@@ -19,7 +19,7 @@ const SAMPLE_BOOK = { title: '채식주의자', coverUri: 'https://image.yes24.c
 export function BookmarkEmpty() {
   const insets = useSafeAreaInsets();
   const { active } = useReading();
-  const { width } = useWindowDimensions();
+  const cardW = useContentWidth(); // 태블릿에서는 내용 폭(640)까지
   const now = new Date();
   return (
     <ScrollView
@@ -28,7 +28,7 @@ export function BookmarkEmpty() {
       showsVerticalScrollIndicator={false}>
       <Text style={st.tag}>예시</Text>
       <View accessible accessibilityLabel={`예시 갈피. ${SAMPLE.replace(/\n/g, ' ')}`} pointerEvents="none">
-        <BookmarkCard compact showMemo={false} width={width - ui.pad * 2} seed="sample" data={{ text: SAMPLE, title: SAMPLE_BOOK.title, page: 12, date: `${now.getMonth() + 1}월 ${now.getDate()}일`, color: SAMPLE_BOOK.color, coverUri: SAMPLE_BOOK.coverUri }} />
+        <BookmarkCard compact showMemo={false} width={cardW} seed="sample" data={{ text: SAMPLE, title: SAMPLE_BOOK.title, page: 12, date: `${now.getMonth() + 1}월 ${now.getDate()}일`, color: SAMPLE_BOOK.color, coverUri: SAMPLE_BOOK.coverUri }} />
       </View>
       <Text style={st.title} accessibilityRole="header">
         첫 갈피를 남겨보세요

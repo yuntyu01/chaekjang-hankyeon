@@ -1,6 +1,6 @@
 import { router, useLocalSearchParams } from 'expo-router';
 import { useEffect, useMemo, useState } from 'react';
-import { FlatList, Pressable, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
+import { FlatList, Pressable, StyleSheet, Text, View } from 'react-native';
 import { ymd } from '@/features/book/labels';
 import { memoShelfBook } from '@/domain/library';
 import { BookmarkCard } from '@/features/bookmark/BookmarkCard';
@@ -11,7 +11,7 @@ import { useReading } from '@/store/reading-store';
 import { bookmarkPreferencesStore, useBookmarkPreferences } from '@/store/bookmark-preferences-store';
 import { LinkedCover } from '@/ui/BookVisual';
 import { Check, ChevronRight, Plus, Search, X } from '@/ui/icons';
-import { Empty, FilterGroup, FilterIcon, FilterOption, IconButton, Screen, SearchField, Sheet, Tabs, ui } from '@/ui/kit';
+import { Empty, FilterGroup, FilterIcon, FilterOption, IconButton, Screen, SearchField, Sheet, Tabs, ui, useContentWidth } from '@/ui/kit';
 import { colors, icon, press, space, type } from '@/ui/theme';
 import { TAB_CONTENT_PAD } from '@/ui/tabBar';
 import { appAlert } from '@/ui/alert';
@@ -28,7 +28,7 @@ export default function BookmarksTab() {
   const { lib, loaded } = useLibrary();
   const { active } = useReading();
   const { ids: savedIds } = useBookmarkPreferences();
-  const { width } = useWindowDimensions();
+  const cardW = useContentWidth(); // 태블릿에서는 내용 폭(640)까지
   const [q, setQ] = useState('');
   const [searching, setSearching] = useState(false);
   const [view, setView] = useState<'all' | 'saved'>('all');
@@ -82,7 +82,7 @@ export default function BookmarksTab() {
     <FlatList data={list} keyExtractor={(m) => m.id} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled" initialNumToRender={4} windowSize={5} style={{ marginHorizontal: -ui.pad }} contentContainerStyle={{ paddingHorizontal: ui.pad, paddingBottom: TAB_CONTENT_PAD + (active ? MINI_TIMER_SPACE : 0) }}
       // 갈피는 있지만 검색·거르기 결과만 없을 때: 조작부는 그대로 두고 안내만
       ListEmptyComponent={<Empty title={emptyTitle} body={emptyBody} />}
-      renderItem={({ item: m }) => { const b = lib.books[m.myBookId]; const e = lib.editions[b.editionId]; if (!e) return null; return <BookmarkCard compact showMemo={false} width={width - ui.pad * 2} seed={m.id} onOpen={() => router.push(`/bookmark/${m.id}`)} saved={savedIds.includes(m.id)} onToggleSaved={() => toggleSaved(m.id)} data={{ text: m.text, title: e.title, author: e.authors.join(', '), page: m.page, date: ymd(m.createdAt), color: memoShelfBook(lib, b.id)?.art.ribbon, coverUri: e.coverUri, book: memoShelfBook(lib, b.id) ?? undefined, photoUri: m.photoUri, photoRatio: m.photoRatio }} />; }} />
+      renderItem={({ item: m }) => { const b = lib.books[m.myBookId]; const e = lib.editions[b.editionId]; if (!e) return null; return <BookmarkCard compact showMemo={false} width={cardW} seed={m.id} onOpen={() => router.push(`/bookmark/${m.id}`)} saved={savedIds.includes(m.id)} onToggleSaved={() => toggleSaved(m.id)} data={{ text: m.text, title: e.title, author: e.authors.join(', '), page: m.page, date: ymd(m.createdAt), color: memoShelfBook(lib, b.id)?.art.ribbon, coverUri: e.coverUri, book: memoShelfBook(lib, b.id) ?? undefined, photoUri: m.photoUri, photoRatio: m.photoRatio }} />; }} />
     <Sheet visible={sheet === 'filter'} onClose={closeSheet} title="필터">
       <FilterGroup title="책" first>
         <FilterOption label={bookTitle ?? '모든 책'} chevron onPress={() => setSheet('book')} />

@@ -17,6 +17,7 @@ import { libraryStore, useLibrary } from '@/store/library-store';
 import { uiBus } from '@/store/ui-bus';
 import { Btn, Chip, Field, ListItem, Loading, Muted, Notice, Row, Screen, SelectField, Toggle } from '@/ui/kit';
 import { space } from '@/ui/theme';
+import { useLeaveGuard } from '@/ui/leave-guard';
 import type { OcrResult } from '../../../modules/text-recognition';
 
 type Photo = { uri: string; ratio?: number };
@@ -45,6 +46,8 @@ export default function NewBookmark() {
   const e = bookId ? lib.editions[lib.books[bookId]?.editionId] : undefined;
   const asPhoto = !!photo && photoOnly;
   const canSave = !!bookId && !saving && (asPhoto ? true : !!text.trim());
+  // 적은 문장·메모·사진이 있으면 나가기 전에 묻는다(2026-11-09). 저장하고 갈피 화면으로 바꿀 때는 풀어 둔다(상태가 아니라 ref라 화면을 바꾼 뒤에도 안전)
+  const release = useLeaveGuard(!!text.trim() || !!memo.trim() || !!photo);
 
   // 책 고르기 → 새 책 등록 → 돌아오면 그 책을 고른다
   useFocusEffect(
@@ -107,6 +110,7 @@ export default function NewBookmark() {
       await libraryStore.flushPending();
       // 화면을 바꾼 뒤에는 이 화면의 상태를 건드리지 않는다: 사라지는 화면 갱신과 새 화면 붙이기가 한 프레임에 겹치면
       // 새 구조(Fabric)가 'The specified child already has a parent'로 앱을 죽였다(2026-11-01 에뮬 재현)
+      release();
       router.replace(`/bookmark/${id}`);
     } catch (err) {
       // 적은 글·사진은 이 화면에 그대로 있다

@@ -20,10 +20,11 @@ import { deleteNote } from '@/features/book/all-books';
 import { useLibrary, libraryStore } from '@/store/library-store';
 import { placementStore, usePlacementStore } from '@/store/placement-store';
 import { uiBus } from '@/store/ui-bus';
-import { Btn, Chip, Divider, Empty, Field, H2, IconButton, ListGroup, ListItem, Muted, Row, Screen, SectionBand, Segmented, Sheet, Stars, s as kit } from '@/ui/kit';
+import { Btn, Chip, Divider, Empty, H2, IconButton, ListGroup, ListItem, Muted, Row, Screen, SectionBand, Segmented, Sheet, Stars, s as kit } from '@/ui/kit';
 import { colors, fonts, icon, press, shape, space, type } from '@/ui/theme';
 import { BookVisual, LibraryCover } from '@/ui/BookVisual';
 import { appAlert } from '@/ui/alert';
+import { DateField, todayKey } from '@/ui/pickers';
 
 const VIEW_TABS = [{ id: 'info', label: '책 정보' }, { id: 'rate', label: '평가' }, { id: 'mine', label: '내 기록' }] as const;
 
@@ -274,13 +275,12 @@ export default function BookDetailScreen() {
   );
 }
 
-// 회차 하나: 위 구분선 + '1회차 · 읽는 중' + 시작일·완독일 입력(형식이 틀리면 저장하지 않고 아래에 안내)
+// 회차 하나: 위 구분선 + '1회차 · 읽는 중' + 시작일·완독일(2026-11-09: 손으로 치던 칸을 달력 고르기로).
+// 있는 날짜만, 완독일은 시작일 이후·시작일은 완독일 이전만 고를 수 있다(잘못된 값이 올라가면 서버가 거부해 동기화가 통째로 막힌다). 고르면 바로 저장
 function RoundCard({ idx, startedAt, finishedAt, paused, onSave }: { idx: number; startedAt?: string; finishedAt?: string; paused?: boolean; onSave: (p: { startedAt?: string; finishedAt?: string }) => void }) {
-  const [s, setS] = useState(startedAt ?? '');
-  const [f, setF] = useState(finishedAt ?? '');
-  // 달력에 있는 날짜만, 완독일은 시작일 이후만 저장한다(잘못된 값이 올라가면 서버가 거부해 동기화가 통째로 막힌다)
-  const bad = (v: string) => !!v && !isDay(v);
-  const reversed = !!s && !!f && !bad(s) && !bad(f) && f < s;
+  const s = startedAt && isDay(startedAt) ? startedAt : '';
+  const f = finishedAt && isDay(finishedAt) ? finishedAt : '';
+  const today = todayKey();
   return (
     <View style={st.round}>
       <Text style={type.rowStrong}>
@@ -288,12 +288,8 @@ function RoundCard({ idx, startedAt, finishedAt, paused, onSave }: { idx: number
         <Text style={type.sub}>{finishedAt ? '   완독' : paused ? '   보류' : '   읽는 중'}</Text>
       </Text>
       <Row style={{ marginTop: space.m, flexWrap: 'nowrap', alignItems: 'flex-start' }} gap={space.m}>
-        <View style={{ flex: 1 }}>
-          <Field label="시작일" value={s} onChangeText={setS} placeholder="YYYY-MM-DD" onEndEditing={() => !bad(s) && !reversed && onSave({ startedAt: s || undefined })} error={bad(s) ? '있는 날짜를 YYYY-MM-DD로 적어 주세요' : undefined} keyboardType="numbers-and-punctuation" />
-        </View>
-        <View style={{ flex: 1 }}>
-          <Field label="완독일" value={f} onChangeText={setF} placeholder={finishedAt ? 'YYYY-MM-DD' : '완독하면'} editable={!!finishedAt} onEndEditing={() => !bad(f) && !reversed && f && onSave({ finishedAt: f })} error={bad(f) ? '있는 날짜를 YYYY-MM-DD로 적어 주세요' : reversed ? '시작일 이후로 적어 주세요' : undefined} keyboardType="numbers-and-punctuation" />
-        </View>
+        <DateField label="시작일" value={s} max={f || today} clearable onChange={(v) => onSave({ startedAt: v || undefined })} style={{ flex: 1 }} />
+        <DateField label="완독일" value={f} min={s || undefined} max={today} placeholder="완독하면" disabled={!finishedAt} onChange={(v) => v && onSave({ finishedAt: v })} style={{ flex: 1 }} />
       </Row>
     </View>
   );

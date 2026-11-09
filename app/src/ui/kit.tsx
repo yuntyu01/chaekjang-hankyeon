@@ -16,6 +16,7 @@ import {
   StyleSheet,
   Text,
   TextInput,
+  useWindowDimensions,
   View,
   type DimensionValue,
   type FlatListProps,
@@ -44,6 +45,17 @@ export const ui = {
 
 // 화면 틀: 위 안전 영역 + 머리줄(뒤로·가운데 제목·오른쪽 행동) + 스크롤 본문 + 아래 고정 버튼(footer).
 // 뒤로가 없는 화면(탭 첫 화면·완료 화면)은 제목을 왼쪽에 둔다. 키보드가 열리면 아래 고정 버튼이 키보드 위로 올라온다.
+// 태블릿·가로 화면에서 글·카드가 화면 끝까지 늘어나지 않게 내용 폭을 묶는다(2026-11-09 UX 점검: supportsTablet인데 갈피 카드가 약 980dp였다).
+// 휴대폰(약 430dp까지)은 그대로다. 시트·확인창도 가운데로 모은다
+export const CONTENT_MAX = 640;
+const SHEET_MAX = 560;
+const DIALOG_MAX = 420;
+// 화면 좌우 여백을 뺀 내용 폭(카드·격자 폭 계산용)
+export function useContentWidth() {
+  const { width } = useWindowDimensions();
+  return Math.min(width - space.page * 2, CONTENT_MAX);
+}
+
 export function Screen({
   left,
   headerField,
@@ -117,14 +129,14 @@ export function Screen({
     </View>
   ) : null;
   const body = scroll ? (
-    <ScrollView contentContainerStyle={{ paddingHorizontal: pad, paddingBottom: space.section + bottomPad + timerPad + (footer ? 0 : insets.bottom) }} keyboardShouldPersistTaps="handled">
+    <ScrollView contentContainerStyle={{ paddingHorizontal: pad, paddingBottom: space.section + bottomPad + timerPad + (footer ? 0 : insets.bottom), width: '100%', maxWidth: CONTENT_MAX + pad * 2, alignSelf: 'center' }} keyboardShouldPersistTaps="handled">
       {/* 탭 첫 화면 제목도 내용과 함께 올라간다(2026-11-04 사용자 '상단 라인은 고정이 아니야') */}
       {!back && title ? <View style={{ marginHorizontal: -pad }}>{tabHead}</View> : null}
       {largeTitle}
       {children}
     </ScrollView>
   ) : (
-    <View style={{ flex: 1, paddingHorizontal: pad }}>
+    <View style={{ flex: 1, paddingHorizontal: pad, width: '100%', maxWidth: CONTENT_MAX + pad * 2, alignSelf: 'center' }}>
       {largeTitle}
       {children}
     </View>
@@ -172,7 +184,7 @@ export function Screen({
               </Defs>
               <Rect x="0" y="0" width="100%" height={FOOTER_FADE} fill="url(#screenFooterFade)" />
             </Svg>
-            {footer}
+            <View style={s.footerInner}>{footer}</View>
           </View>
         ) : null}
       </KeyboardAvoidingView>
@@ -309,7 +321,7 @@ function splitLabel(label: string) {
 function LabelRow({ name, tag }: { name: string; tag?: string }) {
   return (
     <View style={[s.labelRow]}>
-      <Text style={type.label}>{name}</Text>
+      <Text style={[type.label, { flexShrink: 1 }]}>{name}</Text>
       {tag ? <Text style={[s.labelTag]}>{tag}</Text> : null}
     </View>
   );
@@ -358,19 +370,20 @@ export function Field({ label, hint, error, unit, ...p }: TextInputProps & { lab
 }
 
 // 고르는 칸(연결할 책 등): 입력칸과 같은 모양, 누르면 고르는 시트가 열린다
-export function SelectField({ label, value, placeholder, sub, onPress }: { label: string; value?: string; placeholder: string; sub?: string; onPress: () => void }) {
+// 눌러서 고르는 칸(책 고르기·날짜·시각). disabled면 화살표 없이 값만 보인다(완독 전의 완독일)
+export function SelectField({ label, value, placeholder, sub, onPress, disabled, style }: { label: string; value?: string; placeholder: string; sub?: string; onPress: () => void; disabled?: boolean; style?: StyleProp<ViewStyle> }) {
   const { name, tag } = splitLabel(label);
   return (
-    <View style={[s.field]}>
+    <View style={[s.field, style]}>
       <LabelRow name={name} tag={tag} />
-      <Pressable onPress={onPress} accessibilityRole="button" accessibilityLabel={`${label}, ${value ?? placeholder}`} style={({ pressed }) => [s.select, pressed && { borderColor: colors.border }]}>
-        <View style={{ flex: 1 }}>
+      <Pressable onPress={onPress} disabled={disabled} accessibilityRole="button" accessibilityLabel={`${label}, ${value ?? placeholder}`} accessibilityState={{ disabled: !!disabled }} style={({ pressed }) => [s.select, pressed && { borderColor: colors.border }]}>
+        <View style={{ flex: 1, minWidth: 0 }}>
           <Text style={[type.input, { color: value ? colors.ink : colors.inkFaint }]} numberOfLines={2}>
             {value ?? placeholder}
           </Text>
           {sub ? <Text style={[type.caption, { marginTop: 2 }]} numberOfLines={1}>{sub}</Text> : null}
         </View>
-        <ChevronRight size={20} color={colors.inkSoft} strokeWidth={icon.stroke} />
+        {disabled ? null : <ChevronRight size={20} color={colors.inkSoft} strokeWidth={icon.stroke} />}
       </Pressable>
     </View>
   );
@@ -893,6 +906,7 @@ export const s = StyleSheet.create({
   headerField: { flex: 1, marginLeft: 2, marginRight: space.s },
   right: { flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-end', minWidth: space.touch, marginRight: 10 },
   footer: { paddingHorizontal: space.page, paddingTop: 12, backgroundColor: colors.bg },
+  footerInner: { width: '100%', maxWidth: CONTENT_MAX, alignSelf: 'center' }, // 태블릿에서 아래 버튼도 내용 폭으로
   footerFade: { position: 'absolute', left: 0, right: 0, top: -FOOTER_FADE }, // 시안: 버튼은 입력칸보다 좌우로 조금 넓다(19~20)
   muted: { ...type.sub },
   btn: { minHeight: 46, borderRadius: shape.button, paddingHorizontal: 20, paddingVertical: 14, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, backgroundColor: 'transparent' },
@@ -908,7 +922,7 @@ export const s = StyleSheet.create({
   textActionRule: { width: 1, height: 18, backgroundColor: colors.line },
   btnText: { ...type.button, flexShrink: 1, textAlign: 'center' },
   field: { marginBottom: space.xl }, // 갈피 수정 시안: 칸 아래 → 다음 이름 글자 위 약 30
-  labelRow: { flexDirection: 'row', alignItems: 'baseline', gap: 8, marginBottom: space.s },
+  labelRow: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'baseline', columnGap: 8, marginBottom: space.s }, // 좁은 칸·큰 글자에서는 '선택'이 다음 줄로(옆 칸으로 넘치지 않게, 2026-11-09)
   label: type.label,
   labelTag: { ...type.caption, color: colors.inkSoft },
   unit: { position: 'absolute', right: 16, top: 0, bottom: 0, justifyContent: 'center' },
@@ -965,7 +979,7 @@ export const s = StyleSheet.create({
   track: { width: TRACK_W, height: TRACK_H, borderRadius: TRACK_H / 2, padding: 3, justifyContent: 'center' },
   knob: { width: KNOB, height: KNOB, borderRadius: KNOB / 2, backgroundColor: colors.white, shadowColor: '#3B2A24', shadowOpacity: 0.18, shadowRadius: 2, shadowOffset: { width: 0, height: 1 }, elevation: 2 },
   sheetWrap: { flex: 1, justifyContent: 'flex-end' },
-  sheet: { flexShrink: 1, backgroundColor: colors.raised, borderTopLeftRadius: shape.sheet, borderTopRightRadius: shape.sheet, paddingHorizontal: space.page, paddingTop: 8 },
+  sheet: { flexShrink: 1, width: '100%', maxWidth: SHEET_MAX, alignSelf: 'center', backgroundColor: colors.raised, borderTopLeftRadius: shape.sheet, borderTopRightRadius: shape.sheet, paddingHorizontal: space.page, paddingTop: 8 },
   grip: { alignSelf: 'stretch', marginTop: -10, paddingTop: 10 },
   handle: { width: 36, height: 4, borderRadius: 2, backgroundColor: colors.track, alignSelf: 'center', marginBottom: 16 },
   sheetHead: { flexDirection: 'row', alignItems: 'center', minHeight: space.touch, gap: 8 },
@@ -976,7 +990,7 @@ export const s = StyleSheet.create({
   sliderKnob: { position: 'absolute', top: 10, width: 24, height: 24, borderRadius: 12, backgroundColor: colors.white, borderWidth: 2, ...shape.floatShadow },
   sheetClose: { width: space.touch, height: space.touch, marginRight: -10, alignItems: 'center', justifyContent: 'center' },
   dialogWrap: { flex: 1, backgroundColor: colors.scrim, justifyContent: 'center', padding: space.page },
-  dialog: { backgroundColor: colors.raised, borderRadius: shape.dialog, padding: space.page },
+  dialog: { width: '100%', maxWidth: DIALOG_MAX, alignSelf: 'center', backgroundColor: colors.raised, borderRadius: shape.dialog, padding: space.page },
   largeTitle: { paddingTop: 4, paddingBottom: 24 },
   btnInner: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8 },
   btnTextSmall: { ...type.button, fontSize: 16, lineHeight: 22, flexShrink: 1, textAlign: 'center' },

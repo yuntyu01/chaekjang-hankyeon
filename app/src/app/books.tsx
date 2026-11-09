@@ -5,7 +5,7 @@
 // 고른 책이 모두 연도 책장에 있으면 '삭제' 대신 '숨기기'(2026-11-06 사용자). 숨긴 책은 필터 › 숨긴 책 보기에서 되돌린다.
 import { router, useLocalSearchParams } from 'expo-router';
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { BackHandler, Pressable, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
+import { BackHandler, Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { listAllBooks, memosByBook, type AllBooksRow, type AllBooksSort } from '@/features/book/all-books';
 import { BookListRow } from '@/features/book/BookListRow';
@@ -23,12 +23,12 @@ import { libraryStore, useLibrary } from '@/store/library-store';
 import { usePlacementStore } from '@/store/placement-store';
 import { BookVisual, coverRect } from '@/ui/BookVisual';
 import { Check, LayoutGrid, ListIcon, Plus } from '@/ui/icons';
-import { Btn, Empty, FilterGroup, FilterIcon, FilterOption, IconButton, Muted, Screen, ScreenList, SearchField, Sheet, Tabs, TextLink, Toggle, ui } from '@/ui/kit';
+import { Btn, Empty, FilterGroup, FilterIcon, FilterOption, IconButton, Muted, Screen, ScreenList, SearchField, Sheet, Tabs, TextLink, Toggle, ui, useContentWidth } from '@/ui/kit';
 import { colors, icon, press, space, type } from '@/ui/theme';
 
 const TABS = [{ id: 'all', label: '전체' }, ...READ_STATUSES.map((st) => ({ id: st, label: STATUS_LABEL[st] }))] as const satisfies readonly { id: ReadStatus | 'all'; label: string }[];
 const SORT_LABEL: Record<AllBooksSort, string> = { recent: '최근순', title: '제목순' };
-const COLS = 3;
+const CELL_MIN = 96; // 격자 칸 최소 폭: 휴대폰은 3칸, 넓은 화면은 칸을 늘린다(2026-11-09 점검: 태블릿에서 표지가 약 300dp였다)
 const GAP = 14; // 격자 칸 사이(가로)
 // 보기 방식은 앱을 켜 둔 동안 기억한다(다시 들어와도 고른 보기 그대로)
 let lastView: 'grid' | 'list' = 'grid';
@@ -37,7 +37,6 @@ export default function AllBooks() {
   const params = useLocalSearchParams<{ filter?: string }>();
   const place = usePlacementStore();
   const { lib } = useLibrary();
-  const { width } = useWindowDimensions();
   const [q, setQ] = useState('');
   const [status, setStatus] = useState<ReadStatus | 'all'>('all');
   const [offShelfOnly, setOffShelfOnly] = useState(params.filter === 'off');
@@ -66,7 +65,9 @@ export default function AllBooks() {
   const pickedBooks = picked.filter((id) => lib.books[id]);
   // 진열할 책: 고른 책 중 책장에 없는 책(그사이 놓인 책도 뺀다)
   const chosen = pickedBooks.filter((id) => !placementOf(place.layout, id));
-  const cellW = (width - ui.pad * 2 - GAP * (COLS - 1)) / COLS;
+  const contentW = useContentWidth();
+  const cols = Math.max(3, Math.floor((contentW + GAP) / (CELL_MIN + GAP)));
+  const cellW = (contentW - GAP * (cols - 1)) / cols;
 
   const toggle = (id: string) => setPicked((p) => (p.includes(id) ? p.filter((x) => x !== id) : [...p, id]));
   const stopSelecting = () => {
@@ -191,11 +192,11 @@ export default function AllBooks() {
         ) : undefined
       }>
       <ScreenList
-        key={view /* 열 수가 바뀌면 목록을 새로 만든다(FlatList 제약) */}
+        key={`${view}-${grid ? cols : 1}` /* 열 수가 바뀌면(보기 바꾸기·화면 돌리기) 목록을 새로 만든다(FlatList 제약) */}
         data={rows}
         keyExtractor={(r) => r.book.id}
         renderItem={grid ? gridCell : listRow}
-        numColumns={grid ? COLS : 1}
+        numColumns={grid ? cols : 1}
         columnWrapperStyle={grid ? s.gridRow : undefined}
         {...(grid ? { ItemSeparatorComponent: null } : {}) /* 목록 보기는 ScreenList 기본 구분선 그대로 */}
         extraData={`${selecting}:${picked.join()}`}
@@ -256,7 +257,20 @@ export default function AllBooks() {
       </Sheet>
       <HiddenBooksSheet visible={hiddenOpen} onClose={() => setHiddenOpen(false)} onShown={(title) => setMessage(`‘${title}’ 책을 다시 보이게 했어요. 책장에 없는 책에 있어요.`)} />
       <DeleteBooksSheet ids={pickedBooks} visible={deleteOpen} onClose={() => setDeleteOpen(false)} onConfirm={deleteNow} />
-      <MemoPopover anchor={memoOf?.anchor ?? null} memos={memoOf ? memos.get(memoOf.id) ?? [] : []} onClose={() => setMemoOf(null)} />
+      <MemoPopover
+        anchor={memoOf?.anchor ?? null}
+        memos={memoOf ? memos.get(memoOf.id) ?? [] : []}
+        onClose={() => setMemoOf(null)}
+        onOpen={(m) => {
+          setMemoOf(null);
+          router.push(m.kind === 'bookmark' ? `/bookmark/${m.id}` : `/session/${m.id}`);
+        }}
+        onMore={() => {
+          const id = memoOf?.id;
+          setMemoOf(null);
+          if (id) router.push(`/book/${id}`);
+        }}
+      />
     </Screen>
   );
 }

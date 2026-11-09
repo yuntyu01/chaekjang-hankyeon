@@ -7,6 +7,7 @@ import { pickPhoto, deniedMessage } from '@/services/photos';
 import { keepImage } from '@/store/files';
 import { libraryStore, useLibrary } from '@/store/library-store';
 import { Btn, Empty, Field, H2, Muted, RealCover, Row, Screen } from '@/ui/kit';
+import { useLeaveGuard } from '@/ui/leave-guard';
 import { colors, space } from '@/ui/theme';
 
 const num = (v: string) => {
@@ -19,7 +20,7 @@ export default function EditBook() {
   const { lib } = useLibrary();
   const b = lib.books[id];
   const e = b && lib.editions[b.editionId];
-  const [f, setF] = useState(() => ({
+  const [f0] = useState(() => ({
     title: e?.title ?? '',
     authors: e?.authors.join(', ') ?? '',
     publisher: e?.publisher ?? '',
@@ -31,7 +32,11 @@ export default function EditBook() {
     coverUri: e?.coverUri,
     coverSource: e?.coverSource,
   }));
+  const [f, setF] = useState(f0);
   const [msg, setMsg] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
+  // 고친 칸이 있으면 나가기 전에 묻는다(2026-11-09). 저장하고 닫을 때는 풀어 둔다
+  const release = useLeaveGuard(JSON.stringify(f) !== JSON.stringify(f0), '고친 내용');
   if (!b || !e)
     return (
       <Screen title="책 정보 수정">
@@ -39,9 +44,18 @@ export default function EditBook() {
       </Screen>
     );
   const save = async () => {
+    if (saving) return;
     let coverUri = f.coverUri;
     if (coverUri !== e.coverUri && f.coverSource === 'photo' && coverUri) {
-      coverUri = await keepImage(coverUri, 'cover');
+      // 사진을 앱 안으로 옮기는 동안 두 번 눌리지 않게, 실패하면 알린다(2026-11-09 점검: 조용히 멈췄다)
+      setSaving(true);
+      try {
+        coverUri = await keepImage(coverUri, 'cover');
+      } catch {
+        setSaving(false);
+        setMsg('표지 사진을 저장하지 못했어요. 다시 골라 주세요.');
+        return;
+      }
     }
     const w = num(f.width);
     const h = num(f.height);
@@ -56,10 +70,11 @@ export default function EditBook() {
       coverUri,
       coverSource: coverUri ? f.coverSource : undefined,
     });
+    release();
     router.back();
   };
   return (
-    <Screen title="책 정보 수정" footer={<Btn label="저장" onPress={save} disabled={!f.title.trim()} />}>
+    <Screen title="책 정보 수정" footer={<Btn label="저장" onPress={save} busy={saving} disabled={!f.title.trim()} />}>
       {/* 책 추가 '책 확인'과 같은 짜임: 표지 96 · 사이 16 · 작은 보조 버튼 */}
       <Row style={{ flexWrap: 'nowrap', alignItems: 'flex-start', marginTop: space.m }} gap={space.l}>
         <RealCover uri={f.coverUri} title={f.title} color={colors.input} width={96} />

@@ -20,7 +20,7 @@ import { realReadingLibrary } from '@/domain/real-sample';
 import { useLibrary } from '@/store/library-store';
 import { PERF_ENABLED } from '@/ui/perf';
 import { LinkedCover } from '@/ui/BookVisual';
-import { Chip, FilterButton, IconButton, ListGroup, ListItem, RealCover, Screen, SectionBand, Segmented, Sheet } from '@/ui/kit';
+import { Chip, Empty, FilterButton, IconButton, ListGroup, ListItem, RealCover, Screen, SectionBand, Segmented, Sheet } from '@/ui/kit';
 import { colors, fonts, icon, press, space, type } from '@/ui/theme';
 
 const TABS = [{ id: 'calendar', label: '캘린더' }, { id: 'records', label: '기록' }] as const;
@@ -221,7 +221,20 @@ export function StatsScreen({ tab, initialBook }: { tab?: boolean; initialBook?:
                   ))}
             </View>
             </>
-          ) : null}
+          ) : (
+            // 기록이 없는 달(2026-11-09 UX 점검: 달력 아래가 비어 있었다). 이번 달이면 바로 읽으러 간다(타이머가 돌고 있으면 미니 타이머가 있다)
+            <Empty
+              title={`${periodName}에는 독서 기록이 없어요`}
+              body={book && title(book) ? `${title(book)} 기준이에요.` : thisPeriod ? '책을 읽으면 그날이 달력에 칠해져요.' : undefined}
+              action={thisPeriod && !active ? '읽기 시작' : undefined}
+              actionKind="secondary"
+              onAction={() => {
+                const to = book ? { pathname: '/read' as const, params: { book } } : '/read';
+                if (tab) router.navigate(to);
+                else router.dismissTo(to);
+              }}
+            />
+          )}
         </>
       )}
 
