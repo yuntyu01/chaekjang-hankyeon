@@ -4,13 +4,13 @@
 // 지난 책장이 없으면 제스처는 모두 꺼져 지금 홈과 똑같다. 꾸미는 중·책을 끄는 중에는 넘기지 않는다(blocked).
 // 책을 꾹 눌러 끌기(길게 누르기로 시작)와는 먼저 시작한 쪽이 이긴다: 가로로 먼저 움직이면 넘기기, 가만히 누르고 있으면 끌기.
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
-import { StyleSheet, Text } from 'react-native';
+import { StyleSheet } from 'react-native';
 import { Gesture, type ComposedGesture } from 'react-native-gesture-handler';
 import Animated, { cancelAnimation, Easing, useAnimatedStyle, useSharedValue, withTiming, type SharedValue } from 'react-native-reanimated';
 import { scheduleOnRN } from 'react-native-worklets';
 
+import { EngravedYear, engravedHeight } from '@/ui/EngravedYear';
 import { surfaces } from '@/ui/lighting';
-import { type } from '@/ui/theme';
 
 // 쪽 사이를 따로 띄우지 않는다: 흰 벽이 그대로 이어지고 책장 틀 양옆 벽이 책장 사이가 된다(2026-11-07 사용자 '흰 벽이 늘어나고 지금 책장 옆에 책장이 붙어 있는 느낌')
 export const PAGE_GAP = 0;
@@ -233,8 +233,9 @@ export function PageFrame({ pager, k, interactive, children }: { pager: YearPage
   );
 }
 
-// 모아 보기에서 책장 위 벽에 새긴 해 숫자(시안의 머리 '2026'처럼, 줄이지 않은 글자). 머리글이 있던 띠 가운데에 둔다
-const LABEL_H = 38;
+// 모아 보기에서 책장 위 벽에 새긴 해 숫자(머리줄의 '2026'과 같은 새김, 줄이지 않은 글자). 머리글이 있던 띠 가운데에 둔다
+const LABEL_SIZE = 30;
+const LABEL_H = engravedHeight(LABEL_SIZE);
 export function OverviewLabel({ pager, k, label, height, headerH }: { pager: YearPager; k: number; label: string; height: number; headerH: number }) {
   const { at, zoom, step } = pager;
   const style = useAnimatedStyle(() => {
@@ -247,7 +248,7 @@ export function OverviewLabel({ pager, k, label, height, headerH }: { pager: Yea
   }, [k, step, height, headerH]);
   return (
     <Animated.View pointerEvents="none" style={[st.label, style]}>
-      <Text style={st.labelText} numberOfLines={1}>{label}</Text>
+      <EngravedYear label={label} size={LABEL_SIZE} />
     </Animated.View>
   );
 }
@@ -255,6 +256,4 @@ export function OverviewLabel({ pager, k, label, height, headerH }: { pager: Yea
 const st = StyleSheet.create({
   page: { backgroundColor: surfaces.wall },
   label: { position: 'absolute', left: 0, right: 0, top: 0, alignItems: 'center' },
-  // 벽보다 조금 진한 회색 + 아래 그늘 한 줄: 벽에 얕게 새긴 숫자처럼
-  labelText: { ...type.title, fontSize: 30, lineHeight: LABEL_H, letterSpacing: 0.5, color: '#C4BFB9', textShadowColor: 'rgba(60,40,20,0.12)', textShadowOffset: { width: 0, height: 1 }, textShadowRadius: 1 }, // 내용 색(벽에 새긴 해 숫자, 책장 장면의 일부)
 });

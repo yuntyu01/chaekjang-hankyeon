@@ -1,5 +1,6 @@
 import { snapshotBookcase } from '@/domain/bookcase';
 import { emptyLibrary, type Library, type MyBook } from '@/domain/library';
+import { computeShelf } from '@/domain/shelf-scene';
 import type { ShelfLayout } from '@/domain/types';
 
 import { prefixLayout, realId, yearPrefix, yearScene } from '../year-shelf';
@@ -70,4 +71,36 @@ describe('지난 연도 책장 장면', () => {
     expect(scene.count).toBe(3);
     expect(scene.finished).toBe(1);
   });
+
+  it('남긴 모습 그대로 그린다: 빠진 예시 책 자리는 비고, 거기 기대 있던 책도 그 각 그대로(기대기를 다시 풀지 않는다)', () => {
+    const lib = library();
+    // 'x'는 표시 전용 예시 책(서재에 없음). a가 x에 기대 있었다
+    const l: ShelfLayout = {
+      version: 2,
+      shelves: [{ id: 's1', order: 0 }],
+      placements: [
+        { bookId: 'x', shelfId: 's1', order: 0, pose: 'spine', tilt: 0, pos: 400 },
+        { bookId: 'a', shelfId: 's1', order: 1, pose: 'spine', tilt: -7, pos: 700, lean: { angle: -12.5, on: 'x', slide: 3 } },
+        { bookId: 'b', shelfId: 's1', order: 2, pose: 'spine', tilt: 0, pos: 1200 },
+      ],
+      drawer: ['c'],
+    };
+    const bookcase = { id: 'bc-2026', year: 2026, createdAt: local(2027, 1, 1), updatedAt: local(2027, 1, 1), layout: l, books: ['a', 'b', 'c'].map((bookId) => ({ bookId, status: 'reading' as const })) };
+    const scene = yearScene(lib, bookcase);
+    const p = yearPrefix(2026);
+    const placed = scene.layout.placements;
+    expect(placed.map((q) => q.bookId)).toEqual([`${p}a`, `${p}b`]);
+    expect(placed[0].pos).toBe(700); // 자리를 다시 맞추지 않는다
+    expect(placed[0].lean).toEqual({ angle: -12.5, on: `${p}x`, slide: 3 });
+    const frozen = computeShelf(scene.layout, scene.books, `${p}s1`, true).frames.find((f) => f.bookId === `${p}a`)!;
+    expect(frozen.box.angle).toBe(-12.5);
+    expect(frozen.leanOn).toBe(`${p}x`);
+    // 지금 책장 규칙(기대기를 다시 푼다)이면 받침이 없어 그 각에 머물지 못한다
+    const solved = computeShelf(scene.layout, scene.books, `${p}s1`).frames.find((f) => f.bookId === `${p}a`)!;
+    expect(solved.box.angle).not.toBe(-12.5);
+    // 미끄러진 발만큼 기우는 반대쪽(오른쪽)으로 옮긴 상자
+    const upright = computeShelf({ ...scene.layout, placements: placed.map((q) => ({ ...q, tilt: 0, lean: undefined })) }, scene.books, `${p}s1`, true).frames.find((f) => f.bookId === `${p}a`)!;
+    expect(frozen.box.x - upright.box.x).toBeCloseTo(3);
+  });
 });
+

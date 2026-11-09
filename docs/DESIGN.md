@@ -101,7 +101,7 @@
 | 화면 UI 전체 | Pretendard Regular·Medium·SemiBold (`assets/fonts/Pretendard-*.otf`) | `fonts.ui`, `fonts.uiMedium`, `fonts.uiBold` |
 | 갈피 문장·갈피 카드 | Noto Serif KR Regular·Medium·SemiBold | `fonts.serif*`(ReadingSerif) |
 | 책 그림(표지·책등) 제목 | 함렛 SemiBold (`assets/fonts/Hahmlet-SemiBold.ttf`, Skia로 그림. 책장·책 정보 시트·책 상세·목록이 같은 그리기) | `ui/book3d/art.tsx` |
-| 홈 머리글('나의 책장'·연도·'전체 책') | Pretendard SemiBold·Regular (2026-10-31 시안 글자 그림·나눔스퀘어라운드에서 바꿈) | `screenTheme.fonts.uiBold`·`ui` |
+| 홈 머리글(새긴 해 숫자) | Pretendard Bold (Skia 글자, 2026-11-09) | `ui/EngravedYear` |
 | 대체 표지 글자 | 본명조 | `fonts.serif` |
 
 - 굵기는 글꼴 파일로 고른다. `fontWeight`를 함께 주지 않는다(Android가 가짜 굵게를 덧입힌다) **[코드, 시험으로 검사]**.
@@ -133,16 +133,15 @@
 
 | 자리 | 글꼴·굵기 | 크기/줄 높이 | 자간 | 색 |
 |---|---|---|---|---|
-| '나의 책장' | Pretendard SemiBold | 23.5/29 DU(예전 시안 글자 그림과 같은 잉크 폭 86DU, 기기에서 약 24) | −0.2 DU | `homeTitle` #303030 |
-| 연도('2026년') | Pretendard Regular | 13.5/18 DU | 0 | `homeSummary` #707070 |
-| '전체 책'(머리글 글자 버튼) | Pretendard Regular | 15 DU | 0 | #303030 |
+| 머리 해 숫자('2026', 2026-11-09 홈 시안) | Pretendard Bold | 34(숫자 높이 약 24dp), 화면 가운데 | 0 | 벽에 새긴 글자: 속 #B4AEAA + 안쪽 그늘(위 어둡게·아래 밝게), `ui/EngravedYear` |
 | 시트 책 제목 | Pretendard Medium | 20/27 | −0.2 | `ink` |
 | 시트 읽기 상태 | Pretendard Regular | 14/20 | 0 | `inkSoft` |
 | '꾸민 표지' | Pretendard Regular | 13/18 | 0 | `inkSoft` |
 | 주요 버튼('책 정보 보기') | Pretendard Medium | 16/22 | 0 | `ink`, 흰 바탕 + `border` 테두리 |
 | 보조 행동('읽기 시작'·'갈피 남기기') | Pretendard Regular | 15/21 | 0 | `ink` |
 
-- 홈 머리글은 높이가 선반 배치에 묶여 있어 시스템 글자 확대를 1.3배까지만 따른다(`HEADER_TEXT_MAX`). 시트는 본문이 스크롤돼 제한하지 않는다.
+- 홈 머리글은 높이가 선반 배치에 묶여 있어 시스템 글자 확대를 1.3배까지만 따른다(`EngravedYear` TEXT_MAX). 시트는 본문이 스크롤돼 제한하지 않는다.
+- 홈 머리줄(2026-11-09 시안 '머리에 큰 2026만'): '나의 책장'·완독 해 고르기는 없앴다. 해 숫자는 화면 가운데, 좁은 화면에서 오른쪽 아이콘 묶음에 닿을 때만 왼쪽으로 비킨다(`features/home/YearHeader`). 지난 책장 머리·모아 보기 이름표도 같은 새김 숫자.
 - 책등·표지 제목: 함렛 SemiBold. 세로쓰기는 글자를 세워 한 칸씩(돌리지 않는다). 글자 간격(글자 크기 배수)은 짧은 제목 1.22 → 1.16 → 1.1 → 1.04, 긴 제목 1.16 → 1.1 → 1.05 → 1.0 중 **들어가는 가장 넉넉한 값**(긴 제목만 좁히고, 짧은 제목을 책 높이에 맞춰 벌리지 않는다, `domain/title-layout.ts`).
 - 책등 제목 색: 밝은 크림 #F7EEDC 또는 짙은 남색 먹 #2F3944. 밝은 글자가 3:1에 못 미치면 대비가 큰 쪽(`domain/color.ts titleInk`). 장정에서 고를 수 있는 모든 색에서 3:1 이상(시험).
 
@@ -329,7 +328,7 @@
 
 - **움푹 파인 책장**(2026-11-04 사용자 시안, `scene-config/skin.ts`): 선반·틀·벽지를 스킨으로 나눴다. 시안 구도는 `LOOK`(거리 3300, 눈높이 150, 판 19mm). 맞닿는 면은 모서리에서 투명하게 번져 밑면으로 넘어간다(`softEdge`, 폭 3mm, 뒷벽 꼭지점 6mm). 틀 없는 전 책장은 `pine,none,white`로 그대로 켤 수 있다.
 - **잠긴 선반**(2026-11-04 사용자 시안, `features/home/LockedShelves.tsx`, `domain/locked-preview.ts`): 기본 3칸 아래 2칸(`SHELF_SLOTS` 5). 보통 줄과 같은 빛으로 색만 있는 예시 책을 세우고 책만 흐리게 한다(벽의 그림자는 또렷). 자물쇠(`#3F4347`), 누르면 구매 시트. 연 칸은 보통 선반으로 배치에 저장된다. **결제는 아직 연결하지 않아 '무료로 열기'로 표시한다.**
-- **홈 머리글 오른쪽 아이콘**(2026-11-04 사용자 '좀 회색 느낌으로'): 스토어(`StoreIcon`), 속이 찬 책(`FilledBookIcon`), 굵은 더하기, `iconSoft` #858585.
+- **홈 머리글 오른쪽 아이콘**(2026-11-04 사용자 '좀 회색 느낌으로'): 스토어(`StoreIcon`), 속이 찬 책(`FilledBookIcon`), 굵은 더하기, `iconSoft` #858585. 칸 36dp(시안 간격 약 35dp, 누르는 곳은 hitSlop으로 48), 맨 끝 아이콘 그림이 화면 끝에서 약 19dp(2026-11-09).
 - **스토어**(2026-11-04, `app/store.tsx`): 선반·벽지·벽을 고르고 적용하면 앱을 다시 켠다(스킨은 시작할 때 정해지는 값이다, `scene-config/skin SKIN_KEY`). 기본이 아닌 스킨은 처음 한 번 빛을 맞추고 저장한다.
 - **꾸미기 진입**(2026-11-05 사용자): 책장 메뉴 시트를 없애고 머리줄 오른쪽 붓 아이콘(`DecorateIcon`)으로 바로 들어간다. 순서는 스토어·꾸미기·전체 책·추가. 제목은 누르는 곳이 아니다(측정 빌드 `?perfmenu=1`만 측정 메뉴). '빈 선반 정리'는 빈 선반이 있을 때만 꾸미기 패널에 나온다. 내 책 찾기 화면은 전체 책 검색과 겹쳐 지웠고 완독한 해 거르기는 전체 책 필터로 옮겼다(2026-11-05 사용자 '왜 있어').
 - **전체 책 목록 보기**(2026-11-05 사용자 시안, `BookListRow`): 표지 + 제목 + '저자 · 상태' + 한 줄 감상 두 줄(줄 끝까지). 메모(독서 기록·갈피의 메모)가 있으면 제목 줄 오른쪽에 메모 아이콘, 누르면 아이콘에서 작은 상자가 커지며 최근 5개를 보여 준다(`MemoPopover`, 바깥 누르면 닫힘). 줄마다 진열 버튼은 두지 않는다(위 '책장에 진열', 꾹 누르기).

@@ -49,7 +49,8 @@ function frameOf(p: Placed, bookId: string, itemKey: string, shelfId: string, ti
 }
 
 // 선반 한 칸의 상자 배치와 프레임. 충돌·기대기는 선반 공간(가로·깊이·회전).
-export function computeShelf(layout: ShelfLayout, books: BookMap, shelfId: string) {
+// frozen: 지난 연도 책장(보기 전용)처럼 저장된 모습을 그대로 그릴 때. 기대기를 다시 풀지 않는다(frozenLeans)
+export function computeShelf(layout: ShelfLayout, books: BookMap, shelfId: string, frozen = false) {
   const positions = itemPositions(shelfItems(layout, shelfId), layout, books);
   const frames: BookFrame[] = [];
   const items: ItemFrame[] = [];
@@ -60,7 +61,22 @@ export function computeShelf(layout: ShelfLayout, books: BookMap, shelfId: strin
       frames.push(frameOf(box, box.bookId, item.key, shelfId, item.stacked || p.pose !== 'spine' ? 0 : p.tilt, item.stacked ? i : 0));
     });
   }
-  return { frames: solveBoth(frames, layout), items };
+  return { frames: frozen ? frozenLeans(frames, layout) : solveBoth(frames, layout), items };
+}
+
+// 지난 연도 책장(2026-11-09 사용자 '예시 책이 빠진 거는 그냥 없는 상태로 고정해, 옛날은 물리법칙 구현할 필요도 없어'):
+// 남긴 때 저장된 기대기 각·발 미끄러짐을 그대로 쓴다. 빠진 책(표시 전용 예시 책)에 기대 있던 책도 그 각 그대로 두고 빈자리는 비운다
+function frozenLeans(frames: BookFrame[], layout: ShelfLayout): BookFrame[] {
+  for (const f of frames) {
+    if (f.pose !== 'spine' || f.stackIndex !== 0 || !f.tilt) continue;
+    const s = placementOf(layout, f.bookId)?.lean;
+    if (!s || !s.angle || Math.sign(s.angle) !== Math.sign(f.tilt)) continue;
+    // 발이 미끄러진 만큼 기운 상자를 기우는 반대쪽으로 옮긴다(solveLeans의 set과 같은 규칙)
+    const d = Math.sign(f.tilt);
+    const slide = s.slide ?? 0;
+    Object.assign(f, { box: { ...f.box, x: f.box.x - d * slide, angle: s.angle }, slide: slide || undefined, leanOn: s.on });
+  }
+  return frames;
 }
 
 // 왼쪽·오른쪽으로 기대는 책이 함께 있으면 두 순서(왼쪽으로 기대는 책 먼저 / 오른쪽 먼저)로 모두 풀고 좌우와 상관없는 기준으로 고른다:

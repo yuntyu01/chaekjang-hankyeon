@@ -1,12 +1,13 @@
 // 지난 연도 책장을 그릴 장면 입력(2026-11-07 사용자 '왼쪽으로 넘기면 전년도 책장, 양손으로 줄이면 옆에 보이게').
-// 그해 서재(domain/bookcase bookcaseLibrary)로 책 모양을 만들고, 남긴 배치를 지금 책장과 같은 복원 규칙으로 맞춘다.
+// 그해 서재(domain/bookcase bookcaseLibrary)로 책 모양을 만들고, 남긴 배치를 그대로 쓴다(2026-11-09 사용자 '옛날은 물리법칙 구현할 필요도 없어'):
+// 서재에 없는 책(표시 전용 예시 책)의 자리만 빼고 맞추기·기대기 다시 풀기는 하지 않는다. 빈자리는 빈 채로 둔다(그리기는 computeShelf frozen).
 // 책장 그림의 UI 상태(올라간 캔버스·경로·구운 그림)는 책 id·선반 id로 전역에 모인다(ui/shelf/scene presentSV, planner, 그림 보관 키).
 // 지난 책장도 같은 책·같은 선반 id를 쓰므로 그대로 그리면 지금 책장과 섞인다: 해마다 앞머리를 붙인 id로 그린다.
 import { bookcaseLibrary, type Bookcase } from '@/domain/bookcase';
 import { toShelfBook, type Library } from '@/domain/library';
 import type { BookMap } from '@/domain/layout-schema';
 import type { ShelfLayout } from '@/domain/types';
-import { restore } from '@/store/placement-store';
+import { repair } from '@/store/placement-store';
 
 export const yearPrefix = (year: number) => `y${year}~`;
 export const realId = (prefix: string, id: string) => (id.startsWith(prefix) ? id.slice(prefix.length) : id);
@@ -45,7 +46,7 @@ export function yearScene(full: Library, c: Bookcase): YearScene {
     const b = toShelfBook(lib, id);
     if (b) raw[id] = b;
   }
-  const { layout } = restore(c.layout, raw);
+  const layout = repair(c.layout, raw);
   const prefix = yearPrefix(c.year);
   const books: BookMap = {};
   for (const [id, b] of Object.entries(raw)) books[prefix + id] = { ...b, id: prefix + id, seedId: id };

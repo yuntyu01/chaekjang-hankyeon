@@ -22,10 +22,11 @@ import { flushApply } from '@/ui/shelf/planner';
 import type { CamSV } from '@/ui/shelf/ShelfMotion';
 import { pickAt, type Pick, type SceneGeo } from '@/ui/shelf/scene';
 import { HeaderWall, SHELF_CAST_EXTENT, ShelfScene, type SceneRowProps } from '@/ui/shelf/ShelfScene';
-import { colors, headerType, navigation, press, tabHeader } from '@/ui/theme';
+import { colors, headerType, navigation, press } from '@/ui/theme';
 
 import { BookSheet } from './BookSheet';
 import { HeaderVeil } from './HeaderVeil';
+import { YearHeader } from './YearHeader';
 import { HeaderFade } from './YearPager';
 import { useSceneMotions, useShelfScenes } from './useShelfSceneState';
 import { realId, yearScene } from './year-shelf';
@@ -61,9 +62,10 @@ export function YearShelf({ bookcase, zoom, m, width, viewportH, cam, viewPitch,
     return out;
   }, [scene, layout]);
   const [headerH, setHeaderH] = useState(0);
+  const [backW, setBackW] = useState(88);
   const vpH = Math.max(0, viewportH - headerH);
   const shelves = useMemo(() => sortedShelves(layout), [layout]);
-  const frames = useShelfScenes(layout, books);
+  const frames = useShelfScenes(layout, books, true); // 저장된 모습 그대로(물리 다시 풀지 않음)
   const rows = useMemo(() => computeRows(layout, m.scale, vpH, navigation.shelfReserve + insets.bottom), [layout, m.scale, vpH, insets.bottom]);
   const motions = useSceneMotions(useMemo(() => shelves.map((s) => s.id), [shelves]), frames);
   const geoOf = (): SceneGeo => ({ rows: rows.map((r) => ({ shelfId: r.shelfId, baseline: r.baseline, dy: rows.length ? (r.baseline - rows[0].baseline) / m.scale : 0, space: r.space })), s: m.scale, originX: m.originX });
@@ -130,19 +132,12 @@ export function YearShelf({ bookcase, zoom, m, width, viewportH, cam, viewPitch,
           <View onLayout={(e) => setHeaderH(e.nativeEvent.layout.height)}>
             <HeaderWall rows={sceneRows} motions={motions} books={books} m={m} width={width} height={headerH} cam={cam} />
             <HeaderFade zoom={zoom}>
-            <View style={[st.header, tabHeader]}>
-              <View style={st.titles}>
-                <Text style={[headerType.title, { color: colors.ink }]} numberOfLines={1} maxFontSizeMultiplier={HEADER_TEXT_MAX} accessibilityRole="header">
-                  {scene.year}년 책장
-                </Text>
-                <Text style={[headerType.sub, st.sub]} numberOfLines={1} maxFontSizeMultiplier={HEADER_TEXT_MAX}>
-                  {scene.count}권 · 그해 완독 {scene.finished}권
-                </Text>
-              </View>
-              <Pressable onPress={onBack} hitSlop={8} accessibilityRole="button" accessibilityLabel="지금 책장으로 돌아가기" style={({ pressed }) => [st.back, pressed && press]}>
+            {/* 머리줄은 지금 책장과 같다(새긴 해 숫자 가운데). 오른쪽은 지금 책장으로 돌아가기 */}
+            <YearHeader year={scene.year} a11yLabel={`${scene.year}년 책장, ${scene.count}권, 그해 완독 ${scene.finished}권`} width={width} actionsW={backW}>
+              <Pressable onPress={onBack} hitSlop={8} accessibilityRole="button" accessibilityLabel="지금 책장으로 돌아가기" onLayout={(e) => setBackW(e.nativeEvent.layout.width)} style={({ pressed }) => [st.back, pressed && press]}>
                 <Text style={[headerType.sub, st.backText]} maxFontSizeMultiplier={HEADER_TEXT_MAX}>지금 책장</Text>
               </Pressable>
-            </View>
+            </YearHeader>
             </HeaderFade>
           </View>
           <GestureDetector gesture={tap}>
@@ -196,9 +191,6 @@ export function YearShelf({ bookcase, zoom, m, width, viewportH, cam, viewPitch,
 }
 
 const st = StyleSheet.create({
-  header: { flexDirection: 'row', alignItems: 'flex-start' },
-  titles: { flex: 1, minWidth: 0 },
-  sub: { color: colors.inkSoft, marginTop: 4 },
-  back: { minHeight: 44, justifyContent: 'center', paddingLeft: 12, marginTop: -6 },
+  back: { minHeight: 44, justifyContent: 'center', paddingHorizontal: 11 }, // 오른쪽 여백은 머리줄이 당긴 만큼(아이콘 칸과 같은 끝)
   backText: { color: colors.inkSoft },
 });

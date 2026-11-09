@@ -7,7 +7,8 @@ import { makeMotion, type Motion, type SceneMotion } from '@/ui/shelf/scene';
 import { retainSceneMotions } from './scene-motion-cache';
 
 // 선반별 프레임(3D 상자)을 캐시해서 바뀐 선반만 다시 그린다. 보기 각과 상관없다.
-export function useShelfScenes(layout: ShelfLayout, books: Parameters<typeof computeShelf>[1]) {
+// frozen: 지난 연도 책장(저장된 모습 그대로, 기대기를 다시 풀지 않는다)
+export function useShelfScenes(layout: ShelfLayout, books: Parameters<typeof computeShelf>[1], frozen = false) {
   const cache = useRef(new Map<string, { sig: string; rowBooks: unknown[]; frames: BookFrame[] }>());
   const next = useMemo(() => {
     const out = new Map<string, BookFrame[]>();
@@ -23,12 +24,12 @@ export function useShelfScenes(layout: ShelfLayout, books: Parameters<typeof com
         entries.set(s.id, hit);
         continue;
       }
-      const frames = computeShelf(layout, books, s.id).frames;
+      const frames = computeShelf(layout, books, s.id, frozen).frames;
       entries.set(s.id, { sig, rowBooks, frames });
       out.set(s.id, frames);
     }
     return { out, entries };
-  }, [layout, books]);
+  }, [layout, books, frozen]);
   // 중단되거나 재시도된 렌더가 확정된 선반 캐시를 바꾸지 않게 한다.
   useLayoutEffect(() => { cache.current = next.entries; }, [next]);
   return next.out;
