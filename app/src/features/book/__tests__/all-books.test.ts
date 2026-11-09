@@ -3,7 +3,7 @@ import { emptyLibrary, type Library, type MyBook, type ReadStatus } from '@/doma
 import { SAMPLE_BOOKS } from '@/domain/test-fixtures/interaction-books';
 import type { ShelfLayout } from '@/domain/types';
 
-import { deleteSummary, listAllBooks, memosByBook } from '../all-books';
+import { deleteNote, deleteSummary, listAllBooks, memosByBook } from '../all-books';
 
 const [a, b, c] = SAMPLE_BOOKS;
 const books = { [a.id]: a, [b.id]: b, [c.id]: c };
@@ -71,4 +71,11 @@ it('삭제하면 지워지는 것과 남는 것을 고른 책만 센다', () => 
   };
   expect(deleteSummary(l, [a.id, b.id])).toEqual({ rounds: 2, marks: 1, sessions: 1 });
   expect(deleteSummary(l, [])).toEqual({ rounds: 0, marks: 0, sessions: 0 });
+});
+
+test('삭제 문구: 0개는 빼고 한 줄에 한 문장', () => {
+  expect(deleteNote({ rounds: 1, marks: 3, sessions: 2 })).toBe('갈피 3개와 읽은 기록 1회도 지워져요.\n독서 시간은 통계에 남아요.\n되돌릴 수 없어요.');
+  expect(deleteNote({ rounds: 2, marks: 0, sessions: 0 })).toBe('읽은 기록 2회도 지워져요.\n되돌릴 수 없어요.');
+  expect(deleteNote({ rounds: 0, marks: 0, sessions: 1 })).toBe('독서 시간은 통계에 남아요.\n되돌릴 수 없어요.');
+  expect(deleteNote({ rounds: 0, marks: 0, sessions: 0 })).toBe('되돌릴 수 없어요.');
 });

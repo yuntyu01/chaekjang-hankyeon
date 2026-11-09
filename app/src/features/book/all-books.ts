@@ -51,3 +51,10 @@ export function deleteSummary(lib: Library, ids: readonly string[]) {
     sessions: Object.values(lib.sessions).filter((s) => s.myBookId && set.has(s.myBookId)).length,
   };
 }
+
+// 삭제 확인 문구(2026-11-09 사용자 '책 삭제도 설명이 깔끔하지 않아'): 0개인 것·용어(장정·회차)·괄호 안내는 빼고
+// 한 줄에 한 문장: 함께 지워지는 것 → 남는 것(독서 시간) → 되돌릴 수 없음
+export function deleteNote(n: { rounds: number; marks: number; sessions: number }) {
+  const gone = [n.marks ? `갈피 ${n.marks}개` : null, n.rounds ? `읽은 기록 ${n.rounds}회` : null].filter(Boolean).join('와 ');
+  return [gone ? `${gone}도 지워져요.` : null, n.sessions ? '독서 시간은 통계에 남아요.' : null, '되돌릴 수 없어요.'].filter(Boolean).join('\n');
+}

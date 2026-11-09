@@ -16,6 +16,7 @@ import { paperColors } from '@/domain/color';
 import { bookmarksOf, bookReadMs, completions, formatDuration, isDay, memoShelfBook, READ_STATUSES, roundsOf } from '@/domain/library';
 import { useBookcases } from '@/store/bookcase-store';
 import { HIDDEN_WHERE } from '@/features/book/DeleteBooksSheet';
+import { deleteNote } from '@/features/book/all-books';
 import { useLibrary, libraryStore } from '@/store/library-store';
 import { placementStore, usePlacementStore } from '@/store/placement-store';
 import { uiBus } from '@/store/ui-bus';
@@ -76,8 +77,8 @@ export default function BookDetailScreen() {
     appAlert(
       hide ? '책을 숨길까요?' : '책을 삭제할까요?',
       hide
-        ? `지금 서재와 책장에서는 빠지고, ${hideYears.join('·')}년 책장에는 갈피·기록과 함께 그대로 남아요.\n${HIDDEN_WHERE}`
-        : `책 정보와 함께 삭제돼요: 독서 회차 ${rounds.length}개, 갈피 ${marks.length}개, 장정.\n독서 시간 기록 ${sessions}개는 ‘책 없음’으로 남아 통계에 계속 포함돼요.\n되돌릴 수 없어요. 책장에서만 치우려면 ‘책장에서 빼기’를 쓰세요(기록은 그대로).`,
+        ? `지금 책장과 책 목록에서 빠지고, ${hideYears.join('·')}년 책장에는 그대로 남아요.\n${HIDDEN_WHERE}`
+        : deleteNote({ rounds: rounds.length, marks: marks.length, sessions }),
       [
         { text: '취소', style: 'cancel' },
         {
@@ -263,9 +264,9 @@ export default function BookDetailScreen() {
             <ListItem label={ko.allBooks.place} chevron={false} onPress={() => { setMenu(false); placeWithChoice([id]); }} />
           )}
           {hideYears.length ? (
-            <ListItem label="책 숨기기" sub={`지금 서재에서 빼요. ${hideYears.join('·')}년 책장에는 남아요`} chevron={false} onPress={() => { setMenu(false); confirmDelete(); }} />
+            <ListItem label="책 숨기기" sub={`${hideYears.join('·')}년 책장에는 남아요`} chevron={false} onPress={() => { setMenu(false); confirmDelete(); }} />
           ) : (
-            <ListItem label="책 삭제" sub="책 정보·장정·독서 회차·갈피를 지워요" danger chevron={false} onPress={() => { setMenu(false); confirmDelete(); }} />
+            <ListItem label="책 삭제" sub="갈피·읽은 기록까지 지워요" danger chevron={false} onPress={() => { setMenu(false); confirmDelete(); }} />
           )}
         </ListGroup>
       </Sheet>
