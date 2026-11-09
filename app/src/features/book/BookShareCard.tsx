@@ -39,7 +39,9 @@ function noteSize(text: string) {
 const INK = { title: '#313233', author: '#5F6167', note: '#272629', meta: '#75767B', rule: '#DCDCDE', foot: '#86868A' };
 
 // 장면 자리(폭 360 기준 dp, 시안 941px에서 잼): 칸 안쪽 왼쪽·오른쪽·위, 판 윗면 시작·앞면 시작·아래 끝, 판 아래 그늘 길이, 장면 높이
-const SC = { l: 19.5, r: 340.5, top: 50, ledge: 322, face: 326.5, bottom: 345, under: 18, h: 368 };
+const SC = { l: 19.5, r: 340.5, top: 50, ledge: 322, face: 326.5, bottom: 345, under: 22, h: 372 };
+// 칸 안쪽 면이 보이는 폭(dp, 시안): 천장 11, 왼쪽 10, 오른쪽 11.5
+const NF = { ceil: 11, left: 10, right: 11.5 };
 
 export function BookShareCard({ data, parts = ALL_PARTS, width, onReady }: { data: BookShareData; parts?: ShareParts; width: number; onReady?: () => void }) {
   const k = width / 360;
@@ -94,13 +96,27 @@ function mul(hex: string, m: [number, number, number]) {
 
 // 고른 스킨(선반·틀·벽지) 색에서 칸·판 색을 만든다. 흰 틀·밝은 나무 판일 때 시안 값과 같다
 function sceneColors() {
-  const frame = SKIN.frame?.color ?? shade(SKIN.wall.color, -0.07);
+  // 칸 안은 무채에 가깝다(시안 뒷벽 R≈B): 틀 색을 같은 밝기의 회색 쪽으로 75% 당긴다
+  const f = SKIN.frame?.color ?? shade(SKIN.wall.color, -0.07);
+  const n = parseInt(f.slice(1, 7), 16);
+  const c = [(n >> 16) & 255, (n >> 8) & 255, n & 255];
+  const avg = (c[0] + c[1] + c[2]) / 3;
+  const frame = `#${c.map((v) => Math.round(v * 0.25 + avg * 0.75).toString(16).padStart(2, '0')).join('')}`;
   const p = SKIN.plank.color;
   const wood = SKIN.plank.mat === 'wood';
   return {
     wall: SKIN.wall.color,
-    backL: shade(frame, -0.02),
-    backR: shade(frame, 0.22),
+    // 뒷벽(왼쪽 → 오른쪽 밝게)
+    backL: shade(frame, -0.015),
+    backM: shade(frame, 0.02),
+    backR: shade(frame, 0.2),
+    // 안쪽 면: 천장(앞 → 뒤 짙게), 왼쪽(앞 밝음 → 안 모서리 짙게), 오른쪽(안 모서리 → 앞, 창빛에 밝게)
+    ceilFront: shade(frame, -0.065),
+    ceilBack: shade(frame, -0.1),
+    leftFront: shade(frame, 0.0),
+    leftBack: shade(frame, -0.065),
+    rightBack: shade(frame, 0.02),
+    rightFront: shade(frame, 0.45),
     dark: '#5E4C46',
     warm: mul(p, [0.97, 0.82, 0.7]),
     topBack: mul(p, [0.996, 0.986, 1.005]),
@@ -226,19 +242,17 @@ function ShareScene({ book: raw, tab, width, onReady }: { book: Book; tab: strin
         <Rect x={0} y={0} width={width} height={H} color={col.wall} />
         {/* 칸 안 뒷벽: 왼쪽 앞에서 오는 창빛이라 오른쪽이 밝다 */}
         <Rect x={L} y={T} width={W} height={back}>
-          <LinearGradient start={vec(L, 0)} end={vec(R, 0)} colors={[col.backL, col.backL, col.backR]} positions={[0, 0.35, 1]} />
+          <LinearGradient start={vec(L, 0)} end={vec(R, 0)} colors={[col.backL, col.backM, col.backR]} positions={[0, 0.45, 1]} />
         </Rect>
-        {/* 천장 아래 그늘: 칸 맨 위(천장 면)는 조금 밝고 바로 아래가 가장 어둡다가 풀린다 */}
-        <Rect x={L} y={T} width={W} height={u(62)}>
-          <LinearGradient start={vec(0, T)} end={vec(0, T + u(62))} colors={[0.05, 0.17, 0.2, 0.14, 0.09, 0.05, 0].map((a) => shadeA(col.dark, a))} positions={[0, 0.1, 0.18, 0.37, 0.5, 0.68, 1]} />
+        {/* 뒷벽 안 모서리 그늘(천장 아래가 가장 짙고, 양옆은 옅게): 면 경계에서 시작해 부드럽게 풀린다 */}
+        <Rect x={L} y={T + u(NF.ceil)} width={W} height={u(36)}>
+          <LinearGradient start={vec(0, T + u(NF.ceil))} end={vec(0, T + u(NF.ceil + 36))} colors={[0.11, 0.07, 0.035, 0.012, 0].map((a) => shadeA(col.dark, a))} positions={[0, 0.25, 0.55, 0.8, 1]} />
         </Rect>
-        {/* 왼쪽 안 모서리 그늘 */}
-        <Rect x={L} y={T} width={u(34)} height={back}>
-          <LinearGradient start={vec(L, 0)} end={vec(L + u(34), 0)} colors={[0, 0.05, 0.09, 0.04, 0].map((a) => shadeA(col.dark, a))} positions={[0, 0.15, 0.33, 0.6, 1]} />
+        <Rect x={L + u(NF.left)} y={T} width={u(18)} height={back}>
+          <LinearGradient start={vec(L + u(NF.left), 0)} end={vec(L + u(NF.left + 18), 0)} colors={[0.05, 0.02, 0].map((a) => shadeA(col.dark, a))} positions={[0, 0.45, 1]} />
         </Rect>
-        {/* 오른쪽 안 면: 창빛을 정면으로 받아 밝다(안 모서리는 살짝 어둡게) */}
-        <Rect x={R - u(28)} y={T} width={u(28)} height={back}>
-          <LinearGradient start={vec(R - u(28), 0)} end={vec(R, 0)} colors={[shadeA(col.dark, 0), shadeA(col.dark, 0.04), 'rgba(255,255,255,0)', 'rgba(255,255,255,0.55)']} positions={[0, 0.48, 0.55, 1]} />
+        <Rect x={R - u(NF.right + 14)} y={T} width={u(14)} height={back}>
+          <LinearGradient start={vec(R - u(NF.right + 14), 0)} end={vec(R - u(NF.right), 0)} colors={[0, 0.02, 0.045].map((a) => shadeA(col.dark, a))} positions={[0, 0.55, 1]} />
         </Rect>
         {/* 판 가까이: 나무에서 튄 따뜻한 빛, 판과 맞닿은 줄은 조금 어둡게 */}
         <Rect x={L} y={u(SC.ledge - 44)} width={W} height={u(44)}>
@@ -247,6 +261,23 @@ function ShareScene({ book: raw, tab, width, onReady }: { book: Book; tab: strin
         <Rect x={L} y={u(SC.ledge - 7)} width={W} height={u(7)}>
           <LinearGradient start={vec(0, u(SC.ledge - 7))} end={vec(0, u(SC.ledge))} colors={[shadeA(col.dark, 0), shadeA(col.dark, 0.07)]} />
         </Rect>
+
+        {/* 안쪽 면 세 개(경계가 또렷한 띠, 모서리는 비스듬히 만난다): 양옆 → 천장 순서 */}
+        <Path path={facePath([[L, T], [L + u(NF.left), T + u(NF.ceil)], [L + u(NF.left), u(SC.ledge)], [L, u(SC.ledge)]])}>
+          <LinearGradient start={vec(L, 0)} end={vec(L + u(NF.left), 0)} colors={[col.leftFront, col.leftBack]} />
+        </Path>
+        <Path path={facePath([[R, T], [R - u(NF.right), T + u(NF.ceil)], [R - u(NF.right), u(SC.ledge)], [R, u(SC.ledge)]])}>
+          <LinearGradient start={vec(R - u(NF.right), 0)} end={vec(R, 0)} colors={[col.rightBack, col.rightFront]} />
+        </Path>
+        <Path path={facePath([[L, T], [R, T], [R - u(NF.right), T + u(NF.ceil)], [L + u(NF.left), T + u(NF.ceil)]])}>
+          <LinearGradient start={vec(0, T)} end={vec(0, T + u(NF.ceil))} colors={[col.ceilFront, col.ceilBack]} />
+        </Path>
+        {/* 양옆 면 아래쪽도 판에서 튄 따뜻한 빛 */}
+        {[[L, u(NF.left)], [R - u(NF.right), u(NF.right)]].map(([x, w]) => (
+          <Rect key={x} x={x} y={u(SC.ledge - 44)} width={w} height={u(44)}>
+            <LinearGradient start={vec(0, u(SC.ledge - 44))} end={vec(0, u(SC.ledge))} colors={[shadeA(col.warm, 0), shadeA(col.warm, 0.1)]} />
+          </Rect>
+        ))}
 
         {/* 책이 뒷벽에 드리운 그늘(오른쪽으로 길게, 머리 위로는 거의 없다) */}
         <RoundedRect x={b.x + u(13)} y={b.y + u(12)} width={b.w} height={b.h - u(12)} r={u(4)} color={shadeA(col.dark, 0.5)}>
@@ -268,7 +299,7 @@ function ShareScene({ book: raw, tab, width, onReady }: { book: Book; tab: strin
         <Rect x={L} y={u(SC.face) - u(0.4)} width={W} height={u(0.8)} color={col.topFront} />
         <Rect x={L} y={u(SC.bottom) - u(0.9)} width={W} height={u(0.9)} color={col.edge} opacity={0.8} />
         <Rect x={L} y={u(SC.bottom)} width={W} height={u(SC.under)}>
-          <LinearGradient start={vec(0, u(SC.bottom))} end={vec(0, u(SC.bottom + SC.under))} colors={[0.36, 0.25, 0.16, 0.08, 0.03, 0].map((a) => shadeA(col.dark, a))} positions={[0, 0.2, 0.38, 0.62, 0.82, 1]} />
+          <LinearGradient start={vec(0, u(SC.bottom))} end={vec(0, u(SC.bottom + SC.under))} colors={[0.34, 0.24, 0.15, 0.08, 0.03, 0].map((a) => shadeA(col.dark, a))} positions={[0, 0.16, 0.33, 0.56, 0.8, 1]} />
         </Rect>
 
         {/* 책 발밑 닿는 그늘 */}
@@ -286,6 +317,14 @@ function ShareScene({ book: raw, tab, width, onReady }: { book: Book; tab: strin
       {uri ? <Image source={{ uri }} resizeMode="stretch" style={StyleSheet.absoluteFill} onLoad={onReady} /> : null}
     </View>
   );
+}
+
+// 꼭짓점 목록 → 닫힌 경로
+function facePath(pts: [number, number][]) {
+  const b = Skia.PathBuilder.Make();
+  pts.forEach(([x, y], i) => (i ? b.lineTo(x, y) : b.moveTo(x, y)));
+  b.close();
+  return b.detach();
 }
 
 // 색에 진하기를 준 rgba
