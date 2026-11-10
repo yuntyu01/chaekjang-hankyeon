@@ -3,7 +3,7 @@
  */
 // 빛 셰이더(SkSL)가 컴파일되고, 같은 점에서 JS 빛 모델(domain/light-model)과 같은 값을 내는지(CanvasKit으로 실제로 그려 읽는다).
 import type { Book3, Vec3 } from '@/domain/book3';
-import { bakedLossAt, boxOf, coveNormal, DESIGN, ENV_NX, ENV_NY, EREF, FAR, GRID_N, GRID_PASSES, KEY_C, KEY_DIRS, lightWithLoss, skyIrradiance, ROUGH, linearOf, packBoxes, skyLossAt, solveGrid, toEye, toneDodge, toneMul, toneSpec, GAMMA, withCovers, type BoxBuf, type C3, type Env } from '@/domain/light-model';
+import { bakedLossAt, boxOf, coveNormal, DESIGN, ENV_NX, ENV_NY, EREF, FAR, GRID_N, GRID_PASSES, KEY_C, KEY_DIRS, lightSet, lightWithLoss, skyIrradiance, ROUGH, linearOf, packBoxes, skyLossAt, solveGrid, toEye, toneDodge, toneMul, toneSpec, GAMMA, withCovers, type BoxBuf, type C3, type Env } from '@/domain/light-model';
 import { MAT_UNIFORMS, matSample, WOOD_FLAT, type MatUniforms } from '@/domain/surface-pattern';
 import { RIM_R, FRAME_X1, FRAME_X0, FRAME_FRONT, SHELF_DEPTH, SHELF_X0, SHELF_X1 } from '@/domain/geometry';
 import { bakeSource, bookSource, GRID_SCALE, gridSource, litSource, lossDecode, lossEncode, lossStep, LOSS_RN, LOSS_RP, planeFrame } from '../scene-light-sksl';
@@ -28,7 +28,8 @@ function uniformArray(effect: CK, values: Record<string, number | number[]>) {
   const out: number[] = [];
   for (let i = 0; i < effect.getUniformCount(); i++) {
     const name = effect.getUniformName(i);
-    const v = values[name];
+    // 맞추기 값(ECAM·RADF 등)은 앱처럼 light-model lightSet().u에서
+    const v = values[name] ?? (lightSet().u as Record<string, number[]>)[name];
     if (v === undefined) throw new Error(`missing uniform ${name}`);
     const slot = effect.getUniform(i).slot;
     const next = i + 1 < effect.getUniformCount() ? effect.getUniform(i + 1).slot : effect.getUniformFloatCount();

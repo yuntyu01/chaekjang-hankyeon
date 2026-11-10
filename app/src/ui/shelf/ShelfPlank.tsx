@@ -17,7 +17,7 @@ import { darkening, DESIGN, EREF, FAR, NEGLIGIBLE, shadowAlpha, SOFT_DEPTH, SREF
 import { hull } from '@/domain/shadow-shape';
 import type { Point } from '@/domain/shelf-scene';
 import { faceTextureMatrix, quadFace, shelfFaces } from '@/domain/shelf-geom';
-import { BACK_COLOR, FRAME_ON } from '@/scene-config/skin';
+import { FRAME_ON } from '@/scene-config/skin';
 import { SCENE_PAD } from '@/ui/shelf/metrics';
 import { SHOW } from '@/ui/shelf/shadow-debug';
 import { clipConvexBy, roundedPolygon } from '@/ui/book3d/face-geometry';
@@ -143,7 +143,7 @@ export function ShelfWall({ cam, px, y0, y1, z = SHELF_DEPTH, top = y1, bottom =
   return (
     <Group zIndex={zIndex}>
       {LIGHT_ON.wall ? (
-        <BakedPlane path={path} cam={cam} px={px} plane={area.plane} env={env} atlas={atlas} akey={akey} matrix={matrix} albedo={DESIGN.wall} eref={EREF.wall} sref={SREF.wall} mat={surfaceMats.wall} color={z === SHELF_DEPTH ? BACK_COLOR : surfaces.wall} keyShadow={keyShadow} soft={soft} />
+        <BakedPlane path={path} cam={cam} px={px} plane={area.plane} env={env} atlas={atlas} akey={akey} matrix={matrix} albedo={DESIGN.wall} eref={EREF.wall} sref={SREF.wall} mat={surfaceMats.wall} color={surfaces.wall} keyShadow={keyShadow} soft={soft} />
       ) : (
         <Path path={path} color={surfaces.wall} />
       )}

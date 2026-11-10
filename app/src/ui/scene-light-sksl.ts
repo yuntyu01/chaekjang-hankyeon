@@ -6,7 +6,7 @@
 import { EDGE_R, GROOVE, PLANK_EDGE_R, RIM_CORNER, SEAM_R, SPINE_CURVE } from '@/domain/book-parts';
 import { FIBER_L, FIBER_W, WOOD_FINE_SCALE, WOOD_FLAT } from '@/domain/surface-pattern';
 import { FRAME_FRONT, FRAME_X0, FRAME_X1, RIM_R, SHELF_DEPTH, SHELF_FRONT, SHELF_THICK, SHELF_X0, SHELF_X1 } from '@/domain/geometry';
-import { ALBEDO, BOX_MAX, BOX_VEC, CONTACT_H, CONTACT_MIN_NY, DESIGN, ENV_COLS, ENV_NY, CAM, EREF, CORNER_K, COVE_NARROW, COVE_R, COVE_WIDE, EXPOSURE, FAR, GAMMA, GRID_N, JOINT_BACK, JOINT_H, JOINT_K, JOINT_SIDE, KEY_BANDS, ROOF_SIDE_K, SIDE_FLOOR_K, SIDE_FRONT, SIDE_H, SIDE_K, SOFT_DEPTH, KEY_C, KEY_DIRS, L_ELEV, L_UNIT, RAD, SKY_C, TONE, TOUCH, type C3 } from '@/domain/light-model';
+import { BOX_MAX, BOX_VEC, CONTACT_H, CONTACT_MIN_NY, DESIGN, ENV_COLS, ENV_NY, CORNER_K, COVE_NARROW, COVE_R, COVE_WIDE, EXPOSURE, FAR, GAMMA, GRID_N, JOINT_BACK, JOINT_H, JOINT_K, JOINT_SIDE, KEY_BANDS, ROOF_SIDE_K, SIDE_FLOOR_K, SIDE_FRONT, SIDE_H, SIDE_K, SOFT_DEPTH, KEY_C, KEY_DIRS, L_ELEV, L_UNIT, SKY_C, TONE, TOUCH, type C3 } from '@/domain/light-model';
 import type { Affine, Cam, Vec3 } from '@/domain/camera';
 import { F0, light } from '@/ui/lighting';
 
@@ -94,8 +94,9 @@ function header() {
   // 방 빛 하늘 가림 세기(light.occlusion, 모든 곳 같은 비율)
   const float OCC = ${f(light.occlusion)};
   const float3 LU = ${v3(L_UNIT)};
+  // 맞추기 값(스킨마다 다르다: 스토어에서 색을 고르면 셰이더를 다시 만들지 않고 값만 바꾼다, light-model lightSet().u)
   // 카메라 기준 빛(벽 대표 자리 빛 / 노출 기준 CAM.gain, 반사광을 장면 밝기로)
-  const float3 ECAM = ${c3(EREF.wall.map((v) => v / CAM.gain) as C3)};
+  uniform float3 ECAM;
   const float LELEV = ${f(L_ELEV)};
   const float LRAD = ${f(light.radius)};
   const float LAZ = ${f(Math.atan2(L_UNIT.x, -L_UNIT.z))};
@@ -111,14 +112,14 @@ function header() {
   const float FFRONT = ${f(FRAME_FRONT)};
   const int ENV_COLS = ${ENV_COLS};
   const float FARV = ${f(FAR)};
-  // 둘레 면 밝기(선형 RGB: 반사율 × 받는 빛)와 속지 반사율(되비침), 속지 색(그림이 칠하는 색)
-  const float3 RADF = ${c3(RAD.floor)};
-  const float3 RADU = ${c3(RAD.under)};
-  const float3 RADW = ${c3(RAD.wall)};
-  const float3 RADE = ${c3(RAD.end)};
-  const float3 RADSL = ${c3(RAD.sideL)};
-  const float3 RADSR = ${c3(RAD.sideR)};
-  const float3 PAPER = ${c3(ALBEDO.paper)};
+  // 둘레 면 밝기(선형 RGB: 반사율 × 받는 빛)와 속지 반사율(되비침): 맞추기 값. 속지 색(그림이 칠하는 색)은 스킨과 상관없다
+  uniform float3 RADF;
+  uniform float3 RADU;
+  uniform float3 RADW;
+  uniform float3 RADE;
+  uniform float3 RADSL;
+  uniform float3 RADSR;
+  uniform float3 PAPER;
   const float3 PAPER_COLOR = ${c3(DESIGN.paper)};
   const float EDGER = ${f(EDGE_R)};
   const float SEAMR = ${f(SEAM_R)};
@@ -519,8 +520,8 @@ function gridCode() {
   const float ENY = ${ENV_NY}.0;
   const float GSCALE = ${f(GRID_SCALE)};
   const float ENVL = ${f(SHELF_FRONT + SHELF_DEPTH)};
-  const float3 ALB_WALL = ${c3(ALBEDO.wall)};
-  const float3 ALB_PLANK = ${c3(ALBEDO.plank)};
+  uniform float3 ALB_WALL;   // 맞추기 값(벽·판 반사율)
+  uniform float3 ALB_PLANK;
   float chebIndex(float t, float n) { return (n - 1.0) * acos(1.0 - 2.0 * clamp(t, 0.0, 1.0)) / PI; }
   // 블록 (bx, by)의 칸 좌표 (su, sv) 겹선형 값(칸 가운데 사이를 그림의 선형 읽기로)
   float3 gridAt(float bx, float by, float su, float sv, float nu, float nv) {
@@ -1405,7 +1406,7 @@ ${envCode(false)}
 ${materialCode()}
 ${shadeCode(dodge === 'spec' ? 3 : dodge ? 1 : 0, split)}
   const float CURVE = ${f(SPINE_CURVE)};
-  const float3 EREF_PAPER = ${c3(EREF.paper)};
+  uniform float3 EREF_PAPER; // 맞추기 값(속지 대표 자리 빛)
   const float4 GRV = float4(${f(GROOVE.at)}, ${f(GROOVE.width)}, ${f(GROOVE.slope)}, 0.0);
   float3 toRow(float3 l) { return bX * l.x + bY * l.y + bZ * l.z; }
 

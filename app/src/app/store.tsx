@@ -1,15 +1,17 @@
-// 스토어(2026-11-04 사용자 '우상단 스토어 아이콘, 선반·벽지·벽 여부를 골라 바꾸게'): 부품을 고르고 '적용하기'를 누르면 앱을 다시 켜 책장 전체에 반영한다.
-// 스킨은 시작할 때 정해지는 값이다(카메라·빛 맞추기·그림 재료가 모두 여기서 나온다). 고른 값은 시작 설정에 저장한다(scene-config/skin SKIN_KEY).
+// 스토어(2026-11-04 사용자 '선반·벽지·벽 여부를 골라 바꾸게'): 부품을 고르면 위 미리보기(홈 책장과 같은 그림, 선반 한 칸 + 예시 책 두 권)가 그 자리에서 바뀌고,
+// '적용하기'를 누르면 홈 책장에 바로 반영된다(2026-11-10 사용자 '실시간으로', ui/skin-live). 고르기만 하고 나가면 원래 스킨으로 되돌린다.
+// 벽 있음 ↔ '벽 없이 선반만'은 카메라·판 모양·빛 배치가 달라 실행 중에 못 바꾼다: 미리보기 대신 안내를 띄우고, 적용하면 앱을 다시 켠다.
 import { reloadAppAsync } from 'expo';
-import { useState } from 'react';
-import { StyleSheet, View } from 'react-native';
+import { router } from 'expo-router';
+import { useEffect, useRef, useState } from 'react';
+import { StyleSheet, Text, View } from 'react-native';
 
-import { FRAME_SKINS, PLANK_SKINS, SKIN_CHOICE, SKIN_KEY, skinToString, WALL_SKINS, type SkinChoice } from '@/scene-config/skin';
-import { writeBootSetting } from '@/scene-config/boot-store';
-import { dropHomeSnapshot } from '@/ui/home-snapshot';
+import { SkinPreview, skinPreviewHeight } from '@/features/store/SkinPreview';
+import { FRAME_SKINS, PLANK_SKINS, savedSkin, SKIN_CHOICE, skinToString, WALL_SKINS, type SkinChoice } from '@/scene-config/skin';
 import { ko } from '@/i18n/ko';
-import { Btn, Choice, H2, Muted, Screen } from '@/ui/kit';
-import { colors, shape, space } from '@/ui/theme';
+import { Btn, Choice, H2, Muted, Screen, useContentWidth } from '@/ui/kit';
+import { skinLive, useSkinKey } from '@/ui/skin-live';
+import { colors, shape, space, type } from '@/ui/theme';
 
 type Part = keyof SkinChoice;
 
@@ -28,41 +30,44 @@ function Options<K extends string>({ part, table, value, onPick, noneLabel }: { 
   );
 }
 
-// 고른 색으로 그린 작은 책장(실제 그림은 적용한 뒤 빛까지 계산된다)
-function Preview({ choice }: { choice: SkinChoice }) {
-  const plank = PLANK_SKINS[choice.plank].color;
-  const frame = FRAME_SKINS[choice.frame];
-  const wall = WALL_SKINS[choice.wall].color;
-  const row = (key: string, books: [number, string][]) => (
-    <View key={key} style={st.previewRow}>
-      <View style={st.previewBooks}>
-        {books.map(([h, c], i) => <View key={i} style={{ width: 12, height: h, backgroundColor: c, borderRadius: 1 }} />)}
-      </View>
-      <View style={[st.previewPlank, { backgroundColor: plank }]} />
-    </View>
-  );
-  return (
-    <View style={[st.preview, { backgroundColor: wall }]} accessible accessibilityLabel={ko.store.preview}>
-      <View style={[st.previewNiche, frame ? { borderColor: frame.color, borderWidth: 6, backgroundColor: wall } : null]}>
-        {row('a', [[44, colors.chipOn], [52, '#D9A7A8'], [38, '#2F7D5B']])}
-        {row('b', [[48, '#7D95BF'], [40, '#D8D5CC'], [52, '#5276B3']])}
-      </View>
-    </View>
-  );
-}
-
 export default function StoreScreen() {
-  const [choice, setChoice] = useState<SkinChoice>(SKIN_CHOICE);
-  const changed = skinToString(choice) !== skinToString(SKIN_CHOICE);
-  const pick = (part: Part, k: string) => setChoice((c) => ({ ...c, [part]: k }));
-  const apply = () => {
-    writeBootSetting(SKIN_KEY, skinToString(choice));
-    dropHomeSnapshot();
-    void reloadAppAsync('스킨 적용');
+  const [saved] = useState(savedSkin);
+  const [choice, setChoice] = useState<SkinChoice>(() => ({ ...SKIN_CHOICE }));
+  const live = useSkinKey(); // 미리보기는 스킨이 바뀌면 새로 그린다
+  const width = useContentWidth();
+  const applied = useRef(false);
+  // 고르기만 하고 나가면 원래 스킨으로
+  useEffect(() => () => {
+    if (!applied.current) skinLive.revert();
+  }, []);
+  const canLive = skinLive.canLive(choice);
+  const changed = skinToString(choice) !== skinToString(saved);
+  const pick = (part: Part, k: string) => {
+    const next = { ...choice, [part]: k } as SkinChoice;
+    setChoice(next);
+    if (skinLive.canLive(next)) skinLive.preview(next);
   };
+  const apply = () => {
+    applied.current = true;
+    if (skinLive.apply(choice) === 'restart') {
+      void reloadAppAsync('스킨 적용');
+      return;
+    }
+    router.back();
+  };
+  const h = skinPreviewHeight(width);
   return (
-    <Screen title={ko.store.title} footer={<Btn label={ko.store.apply} size="l" disabled={!changed} onPress={apply} />}>
-      <Preview choice={choice} />
+    <Screen title={ko.store.title} footer={<Btn label={canLive ? ko.store.apply : ko.store.applyRestart} size="l" disabled={!changed} onPress={apply} />}>
+      <View style={[st.preview, { height: h }]} accessible accessibilityLabel={ko.store.preview}>
+        {canLive ? (
+          <SkinPreview key={live} width={width} />
+        ) : (
+          <View style={st.restart}>
+            <Text style={st.restartTitle}>{choice.frame === 'none' ? ko.store.noFrame : ko.store.withFrame}</Text>
+            <Muted style={st.restartBody}>{ko.store.restartNote}</Muted>
+          </View>
+        )}
+      </View>
       <H2>{ko.store.plank}</H2>
       <Options part="plank" table={PLANK_SKINS} value={choice.plank} onPick={pick} />
       <H2>{ko.store.wall}</H2>
@@ -79,9 +84,8 @@ const st = StyleSheet.create({
   cell: { width: '48%' },
   swatch: { height: 28, borderRadius: shape.tag, marginBottom: space.s, borderWidth: shape.hairline, borderColor: colors.border },
   swatchNone: { backgroundColor: colors.bg, borderStyle: 'dashed', borderWidth: shape.border },
-  preview: { height: 190, borderRadius: shape.sheet, padding: space.m, alignItems: 'center', justifyContent: 'center', borderWidth: shape.hairline, borderColor: colors.border, overflow: 'hidden' },
-  previewNiche: { width: '72%', height: '100%', borderRadius: 8, paddingHorizontal: 10, paddingTop: 6, justifyContent: 'space-around' },
-  previewRow: { justifyContent: 'flex-end' },
-  previewBooks: { flexDirection: 'row', alignItems: 'flex-end', gap: 3, paddingLeft: 6 },
-  previewPlank: { height: 6, borderRadius: 1 },
+  preview: { borderRadius: shape.sheet, overflow: 'hidden', borderWidth: shape.hairline, borderColor: colors.border, backgroundColor: colors.bg },
+  restart: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: space.l, gap: space.s },
+  restartTitle: { ...type.heading, textAlign: 'center' },
+  restartBody: { textAlign: 'center' },
 });

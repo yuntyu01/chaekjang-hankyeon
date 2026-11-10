@@ -14,7 +14,7 @@ import { useDerivedValue, type SharedValue } from 'react-native-reanimated';
 import { faceNormal, rot, toWorld, type Book3, type Cam, type FaceId, type Vec3 } from '@/domain/book3';
 import { lightPanel, rigOf } from '@/domain/book-parts';
 import { camAt, VIEW_PITCH_MAX, VIEW_PITCH_MIN, type Affine } from '@/domain/camera';
-import { bookEref, bookSref, ENV_NX, ENV_NY, GRID_N, GRID_PASSES, SPEC_K, SREF, type BoxBuf, type C3, type Env } from '@/domain/light-model';
+import { bookEref, bookSref, ENV_NX, ENV_NY, GRID_N, GRID_PASSES, lightSet, SPEC_K, SREF, type BoxBuf, type C3, type Env } from '@/domain/light-model';
 import type { Recv3 } from '@/domain/received3';
 import { MAT_UNIFORMS, type MatUniforms } from '@/domain/surface-pattern';
 import type { BookSurface } from '@/domain/types';
@@ -155,8 +155,9 @@ function solveGridImage(env: Env, bx: BoxBuf): SkImage | null {
   const paint = Skia.Paint();
   let img: SkImage | null = null;
   const prev: SkImage[] = [];
+  const cal = lightSet().u;
   for (let k = 0; k < GRID_PASSES; k++) {
-    const u = { env: envOf(env), box: bx.v, nBox, gridOn: img ? 1 : 0, gridNx: nBox || env.side ? ENV_NX : 1 };
+    const u = { ...cal, env: envOf(env), box: bx.v, nBox, gridOn: img ? 1 : 0, gridNx: nBox || env.side ? ENV_NX : 1 };
     paint.setShader(GRID.makeShaderWithChildren(processUniforms(GRID, u), [linearShader(img ?? EMPTY)]));
     canvas.drawRect(Skia.XYWHRect(0, 0, W, H), paint);
     // 스냅숏은 표면을 다시 그리기 전에 떠 둔다(GPU 순서는 Skia가 지킨다: 되풀이마다 기다리지 않는다)
@@ -220,6 +221,7 @@ export function bakeAtlas(items: BakeItem[], key: string): Atlas {
   if (!surf) return NO_ATLAS;
   const canvas = surf.getCanvas();
   const paint = Skia.Paint();
+  const cal = lightSet().u; // 맞추기 값(스킨마다)
   // 줄 둘레·상자 목록마다 빛 격자 한 장(가리개 면 밝기)
   const grids: { env: Env; bx: BoxBuf; img: SkImage | null }[] = [];
   let gridMs = 0;
@@ -239,6 +241,7 @@ export function bakeAtlas(items: BakeItem[], key: string): Atlas {
     const r = at[it.key];
     const g = gridOf(it.env, it.bx);
     const u = {
+      ...cal,
       O: arr(it.O), Ux: arr(it.U), Vy: arr(it.V), tN: arr(it.n), cells: [it.w, it.h], env: envOf(it.env), box: it.bx.v, nBox: it.bx.list.length, selfIdx: it.self,
       gridOn: g ? 1 : 0, gridNx: it.bx.list.length || it.env?.side ? ENV_NX : 1,
     };
@@ -445,6 +448,7 @@ export function BookLight({ dims: d, state, cam, px, outline, albedo, material =
     const e = c.eye;
     const ev = env ? env.value : null;
     return {
+      ...lightSet().u,
       cam4: e ? [e.x, e.y, e.z, e.dist] : [c.kx, c.ky, 0, 0],
       pxa: [px.s, px.tx, px.ty],
       bO: arr(b.t),
@@ -517,6 +521,7 @@ export function BakedPlane({ path, cam, px, plane, env, atlas, akey, matrix, alb
     const c = cam.value;
     return {
       ...BASE,
+      ...lightSet().u,
       ...planeFrame(c, px, plane),
       tN: arr(plane.n),
       bev0: edgeOf(plane.edges?.[0]),
@@ -570,7 +575,7 @@ export function TabLight({ path, frame, albedo, s, seed }: { path: SkPath; frame
   const mat = matOf(MAT_UNIFORMS.paper, seed);
   const uniforms = useDerivedValue<Uniforms>(() => {
     const f = frame.value;
-    return { pxa: [s, 0, 0], root: arr(f.root), axR: arr(f.axR), axU: arr(f.axU), nrm: arr(f.n), loss: f.loss, cam4: f.cam4, keyOn: 1, albedo, eref: bookEref('paper'), sref: bookSref('paper'), env: envOf(f.env), ...mat };
+    return { ...lightSet().u, pxa: [s, 0, 0], root: arr(f.root), axR: arr(f.axR), axU: arr(f.axU), nrm: arr(f.n), loss: f.loss, cam4: f.cam4, keyOn: 1, albedo, eref: bookEref('paper'), sref: bookSref('paper'), env: envOf(f.env), ...mat };
   });
   return (
     <>

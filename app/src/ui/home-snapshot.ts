@@ -20,7 +20,8 @@ const REV = 3; // 2: 책 제목 글꼴을 고운바탕 Bold로, 3: 함렛 SemiBo
 // skin: 찍을 때의 책장 스킨. 스토어에서 스킨을 바꾸면 옛 사진을 띄우지 않는다(2026-11-05: 적용한 뒤 그림이 다 될 때까지 옛 선반이 보여 안 바뀐 줄 알았다)
 type Meta = { rev: number; skin: string; file: string; w: number; h: number; scale: number; fontScale: number };
 // 스킨 이름이 같아도 벽지 색·책등 모양(측정 번들 비교)이 바뀌면 옛 사진을 쓰지 않는다
-const SKIN_NOW = `${skinToString(SKIN_CHOICE)},${SKIN.wall.color}${spineLook === 'color' ? '' : `,${spineLook}`}`;
+// 스토어에서 색을 고르면 실행 중에 바뀌므로 읽을 때마다 만든다(ui/skin-live)
+const skinNow = () => `${skinToString(SKIN_CHOICE)},${SKIN.wall.color}${spineLook === 'color' ? '' : `,${spineLook}`}`;
 
 const screenNow = () => {
   const { width, height } = Dimensions.get('window');
@@ -33,7 +34,7 @@ export async function loadHomeSnapshot(): Promise<string | null> {
   try {
     const meta = JSON.parse(await FS.readAsStringAsync(META)) as Meta;
     const now = screenNow();
-    const same = meta.rev === REV && meta.skin === SKIN_NOW && Math.abs(meta.w - now.w) < 1 && Math.abs(meta.h - now.h) < 1 && meta.scale === now.scale && meta.fontScale === now.fontScale;
+    const same = meta.rev === REV && meta.skin === skinNow() && Math.abs(meta.w - now.w) < 1 && Math.abs(meta.h - now.h) < 1 && meta.scale === now.scale && meta.fontScale === now.fontScale;
     return same ? DIR + meta.file : null;
   } catch {
     return null;
@@ -105,7 +106,7 @@ async function capture() {
       await captureWindow(DIR + file, rect, 92);
       // 찍는 동안 바뀌었으면 버린다(다음 차례에 다시 찍는다)
       if (gen !== staleGen) return FS.deleteAsync(DIR + file, { idempotent: true });
-      const meta: Meta = { rev: REV, skin: SKIN_NOW, file, ...screenNow() };
+      const meta: Meta = { rev: REV, skin: skinNow(), file, ...screenNow() };
       await FS.writeAsStringAsync(META, JSON.stringify(meta));
       metaOnDisk = true;
       dirty = false;

@@ -42,14 +42,34 @@ export function parseSkin(saved: string | null): SkinChoice | null {
   const [plank, frame, wall] = saved ? saved.split(',') : [];
   return plank in PLANK_SKINS && frame in FRAME_SKINS && wall in WALL_SKINS ? ({ plank, frame, wall } as SkinChoice) : null;
 }
+// 늘 새 객체(지금 스킨 SKIN_CHOICE는 실행 중에 값이 바뀌므로 기본값 객체를 그대로 쓰면 기본값까지 바뀐다)
 function chosen(): SkinChoice {
-  return parseSkin(readPerfSetting(PERF_SKIN_KEY)) ?? parseSkin(readBootSetting(SKIN_KEY)) ?? DEFAULT_SKIN;
+  return { ...(parseSkin(readPerfSetting(PERF_SKIN_KEY)) ?? parseSkin(readBootSetting(SKIN_KEY)) ?? DEFAULT_SKIN) };
 }
 
-export const SKIN_CHOICE = chosen();
-export const SKIN = { plank: PLANK_SKINS[SKIN_CHOICE.plank] as SkinPart, frame: FRAME_SKINS[SKIN_CHOICE.frame] as SkinPart | null, wall: WALL_SKINS[SKIN_CHOICE.wall] as SkinPart };
-// 틀이 있으면 빛 모델의 둘레에 구멍 안쪽 면이 들어가고, 없으면 판만 벽에 달린다
+// 지금 스킨(시작할 때 고른 값으로 정하고, 스토어에서 색을 고르면 그 자리에서 바뀐다: setSkinChoice). 객체는 그대로 두고 값만 바꾼다(가져간 곳이 같은 객체를 본다)
+export const SKIN_CHOICE: SkinChoice = chosen();
+const partsOf = (c: SkinChoice) => ({ plank: PLANK_SKINS[c.plank] as SkinPart, frame: FRAME_SKINS[c.frame] as SkinPart | null, wall: WALL_SKINS[c.wall] as SkinPart });
+export const SKIN = partsOf(SKIN_CHOICE);
+// 틀이 있는지는 시작할 때 정해진다: 틀이 있으면 빛 모델의 둘레에 구멍 안쪽 면이 들어가고, 없으면 판만 벽에 달린다(카메라·판 모양·빛 배치가 달라 바꾸면 앱을 다시 켠다)
 export const FRAME_ON = SKIN.frame !== null;
+export const frameOnOf = (c: SkinChoice) => FRAME_SKINS[c.frame] !== null;
+// 실행 중에 바꿀 수 있는 스킨(틀 여부가 지금과 같은 것: 색·재질만 다르다)
+export const liveSkinOK = (c: SkinChoice) => frameOnOf(c) === FRAME_ON;
+// 스킨 색·재질을 바꾼다(빛 맞추기·장면 면 색은 domain/light-model switchSkin이 함께 바꾼다). 틀 여부가 다르면 바꾸지 않는다
+export function setSkinChoice(c: SkinChoice) {
+  if (!liveSkinOK(c)) return false;
+  Object.assign(SKIN_CHOICE, { plank: c.plank, frame: c.frame, wall: c.wall });
+  Object.assign(SKIN, partsOf(SKIN_CHOICE));
+  return true;
+}
+// 시작 설정에 저장된 스킨(적용한 값). 미리보기로 바꾼 뒤 적용하지 않고 나가면 이 값으로 되돌린다
+export function savedSkin(): SkinChoice {
+  return chosen();
+}
+export const ALL_SKINS: SkinChoice[] = (Object.keys(PLANK_SKINS) as SkinChoice['plank'][]).flatMap((plank) =>
+  (Object.keys(FRAME_SKINS) as SkinChoice['frame'][]).flatMap((frame) => (Object.keys(WALL_SKINS) as SkinChoice['wall'][]).map((wall) => ({ plank, frame, wall }))),
+);
 
 // 움푹 파인 책장의 구도와 모서리(2026-11-04 사용자 '천장이 시안과 다르다, 모서리 부드러움, 선반 붙은 측면'). 시안(841px)에서 잰 값에 맞췄다.
 // - dist·eyeY: 줄 카메라 거리와 판 위 눈높이(DU). 시안의 안쪽 면 폭 약 19px, 판 윗면 약 15px, 천장 띠 약 6px가 같은 카메라로 나오는 자리다. 눈이 천장보다 낮아야 천장이 보인다(전 책장의 눈높이 344는 줄 간격 약 200보다 높아 천장이 안 보인다)
@@ -74,5 +94,3 @@ export const PERF_LOOK_KEY = 'perf-look';
     console.log('[look] 적용', saved);
   }
 }
-// 뒷벽의 보이는 색 = 벽지 색
-export const BACK_COLOR = SKIN.wall.color;

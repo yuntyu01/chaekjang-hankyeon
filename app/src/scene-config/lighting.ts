@@ -140,9 +140,15 @@ export type MaterialName = keyof typeof materials;
 
 // 장면 면의 재질 색(반사율은 선형 RGB, light-model linearOf): 선반 판·틀·벽은 스킨(scene-config/skin), 책 속지(시안 책 머리의 속지 약 (253, 243, 226))
 // paper: 책 속지(머리·꼬리·책배 종이). 2026-11-03 사용자 '페이지 쪽은 흰색, 너무 밝은 흰색 말고': 살구빛 크림 #FBF2E2 → 은은한 미색
+// 스토어에서 색을 고르면 그 자리에서 바뀐다(syncSurfaces, 객체는 그대로)
 export const surfaces = { plank: SKIN.plank.color, frame: SKIN.frame?.color ?? SKIN.plank.color, wall: SKIN.wall.color, paper: '#F1EEE6' };
 // 부품의 재질 이름(materials의 열쇠): 스킨이 정한다
-export const surfaceMats = { plank: SKIN.plank.mat, frame: SKIN.frame?.mat ?? SKIN.plank.mat, wall: SKIN.wall.mat } as const;
+export const surfaceMats: { plank: MaterialName; frame: MaterialName; wall: MaterialName } = { plank: SKIN.plank.mat, frame: SKIN.frame?.mat ?? SKIN.plank.mat, wall: SKIN.wall.mat };
+// 지금 스킨(scene-config/skin SKIN)으로 면 색·재질을 다시 맞춘다
+export function syncSurfaces() {
+  Object.assign(surfaces, { plank: SKIN.plank.color, frame: SKIN.frame?.color ?? SKIN.plank.color, wall: SKIN.wall.color });
+  Object.assign(surfaceMats, { plank: SKIN.plank.mat, frame: SKIN.frame?.mat ?? SKIN.plank.mat, wall: SKIN.wall.mat });
+}
 // 반사율 상한(물리): 실제 흰 재질(흰 종이·크림색 벽 페인트)의 반사율은 0.7~0.85다. 맞추기(light-model setAlbedo)는 어느 재질의 반사율도
 // 이 값을 넘지 않게 카메라 이득을 정한다. 1에 가깝게 두면 벽·판·책 사이에서 여러 번 튄 빛이 너무 세서 그늘이 크림 벽·연어색 책의 색으로
 // 짙게 물든다(판 아래 R이 G보다 8%, 연어색 책 옆 17% 넘쳤다). 2026-11-04 0.7 → 0.85: 흰 칠 벽의 실제 값이고, 움푹 파인 안쪽은 튄 빛으로 밝아진다. 물드는 정도는 사진으로 확인

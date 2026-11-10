@@ -226,7 +226,7 @@ export function PageFrame({ pager, k, interactive, children }: { pager: YearPage
       pointerEvents={interactive ? 'auto' : 'none'}
       accessibilityElementsHidden={!interactive}
       importantForAccessibility={interactive ? 'auto' : 'no-hide-descendants'}
-      style={[StyleSheet.absoluteFill, st.page, style]}
+      style={[StyleSheet.absoluteFill, { backgroundColor: surfaces.wall }, style]}
       collapsable={false}>
       {children}
     </Animated.View>
@@ -254,6 +254,5 @@ export function OverviewLabel({ pager, k, label, height, headerH }: { pager: Yea
 }
 
 const st = StyleSheet.create({
-  page: { backgroundColor: surfaces.wall },
   label: { position: 'absolute', left: 0, right: 0, top: 0, alignItems: 'center' },
 });
