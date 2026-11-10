@@ -3,7 +3,7 @@
 // 숨긴 책(지금 서재에서 뺀 책)은 '책 정보 보기'가 없다(지금 서재에 없는 책이라 열 화면이 없다).
 import { router } from 'expo-router';
 import { useCallback, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { Pressable, useWindowDimensions, View } from 'react-native';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import Animated, { useAnimatedScrollHandler, useSharedValue, type SharedValue } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -14,7 +14,9 @@ import { withSharpCover } from '@/domain/cover-url';
 import { sortedShelves } from '@/domain/layout-engine';
 import { memosByBook } from '@/features/book/all-books';
 import { STATUS_LABEL } from '@/features/book/labels';
+import { shareErrorTitle, shareWindowArea, windowShareAvailable } from '@/services/share-image';
 import { libraryStore, useLibrary } from '@/store/library-store';
+import { appAlert } from '@/ui/alert';
 import type { Shared } from '@/ui/book3d/art';
 import { TAB_FADE, tabBarBlock } from '@/ui/tabBar';
 import { CONTENT_TOP, computeRows, type ShelfMetrics } from '@/ui/shelf/metrics';
@@ -22,11 +24,12 @@ import { flushApply } from '@/ui/shelf/planner';
 import type { CamSV } from '@/ui/shelf/ShelfMotion';
 import { pickAt, type Pick, type SceneGeo } from '@/ui/shelf/scene';
 import { HeaderWall, SHELF_CAST_EXTENT, ShelfScene, type SceneRowProps } from '@/ui/shelf/ShelfScene';
-import { colors, headerType, navigation, press } from '@/ui/theme';
+import { Share } from '@/ui/icons';
+import { colors, navigation, press } from '@/ui/theme';
 
 import { BookSheet } from './BookSheet';
 import { HeaderVeil } from './HeaderVeil';
-import { YearHeader } from './YearHeader';
+import { HEADER_ICON, HEADER_ICON_SLOP, headerIconStyle, YearHeader } from './YearHeader';
 import { HeaderFade } from './YearPager';
 import { useSceneMotions, useShelfScenes } from './useShelfSceneState';
 import { realId, yearScene } from './year-shelf';
@@ -35,7 +38,6 @@ const NONE: string[] = [];
 const NO_ROWS: never[] = [];
 const NO_LEAVING: { id: string; from: string }[] = [];
 const SLOP_DU = 3;
-const HEADER_TEXT_MAX = 1.3;
 
 type Props = {
   bookcase: Bookcase;
@@ -47,10 +49,9 @@ type Props = {
   viewPitch: number;
   shared: Shared;
   active: boolean; // 지금 보이는 쪽(시트는 이때만)
-  onBack: () => void; // 지금 책장으로
 };
 
-export function YearShelf({ bookcase, zoom, m, width, viewportH, cam, viewPitch, shared, active, onBack }: Props) {
+export function YearShelf({ bookcase, zoom, m, width, viewportH, cam, viewPitch, shared, active }: Props) {
   const insets = useSafeAreaInsets();
   const { lib } = useLibrary(); // 판본·장정·기록이 바뀌면 다시 만든다
   const scene = useMemo(() => yearScene(libraryStore.full(), bookcase), [lib, bookcase]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -62,7 +63,6 @@ export function YearShelf({ bookcase, zoom, m, width, viewportH, cam, viewPitch,
     return out;
   }, [scene, layout]);
   const [headerH, setHeaderH] = useState(0);
-  const [backW, setBackW] = useState(88);
   const vpH = Math.max(0, viewportH - headerH);
   const shelves = useMemo(() => sortedShelves(layout), [layout]);
   const frames = useShelfScenes(layout, books, true); // 저장된 모습 그대로(물리 다시 풀지 않음)
@@ -125,6 +125,24 @@ export function YearShelf({ bookcase, zoom, m, width, viewportH, cam, viewPitch,
   // 지금 서재에 보이는 책이면 책 정보로 갈 수 있다(숨긴 책은 화면용 서재 lib에 없다)
   const open = id && lib.books[id] ? id : null;
 
+  // 공유: 상태 표시줄 아래부터 탭 바 위까지 보이는 책장을 찍어 보낸다
+  const { height: winH } = useWindowDimensions();
+  const [shooting, setShooting] = useState(false);
+  const share = async () => {
+    setSel(null);
+    setShooting(true);
+    try {
+      // 아이콘·시트가 화면에서 걷힌 뒤에 찍는다
+      await new Promise<void>((r) => requestAnimationFrame(() => requestAnimationFrame(() => setTimeout(r, 50))));
+      const top = insets.top;
+      await shareWindowArea({ x: 0, y: top, w: width, h: winH - top - tabBarBlock(insets.bottom) }, { name: `bookcase_${scene.year}`, dialogTitle: `${scene.year}년 책장`, onShot: () => setShooting(false) });
+    } catch (e) {
+      appAlert(shareErrorTitle(e), (e as Error).message);
+    } finally {
+      setShooting(false);
+    }
+  };
+
   return (
     <>
       <GestureDetector gesture={scroll}>
@@ -132,11 +150,14 @@ export function YearShelf({ bookcase, zoom, m, width, viewportH, cam, viewPitch,
           <View onLayout={(e) => setHeaderH(e.nativeEvent.layout.height)}>
             <HeaderWall rows={sceneRows} motions={motions} books={books} m={m} width={width} height={headerH} cam={cam} />
             <HeaderFade zoom={zoom}>
-            {/* 머리줄은 지금 책장과 같다(새긴 해 숫자 가운데). 오른쪽은 지금 책장으로 돌아가기 */}
-            <YearHeader year={scene.year} a11yLabel={`${scene.year}년 책장, ${scene.count}권, 그해 완독 ${scene.finished}권`} width={width} actionsW={backW}>
-              <Pressable onPress={onBack} hitSlop={8} accessibilityRole="button" accessibilityLabel="지금 책장으로 돌아가기" onLayout={(e) => setBackW(e.nativeEvent.layout.width)} style={({ pressed }) => [st.back, pressed && press]}>
-                <Text style={[headerType.sub, st.backText]} maxFontSizeMultiplier={HEADER_TEXT_MAX}>지금 책장</Text>
-              </Pressable>
+            {/* 머리줄: 벽에 새긴 그해 숫자 가운데(2026-11-10 사용자 '2026 같은 건 작년 책장에 파서'), 오른쪽 위는 공유 아이콘 하나(사용자 '2025는 우측 상단에 공유 아이콘만').
+                지금 책장으로는 오른쪽으로 밀어 돌아간다. 공유는 보이는 책장을 그대로 찍는다(찍는 동안 아이콘은 숨긴다) */}
+            <YearHeader year={scene.year} a11yLabel={`${scene.year}년 책장, ${scene.count}권, 그해 완독 ${scene.finished}권`} width={width} actionsW={windowShareAvailable ? HEADER_ICON : 0}>
+              {windowShareAvailable ? (
+                <Pressable onPress={share} disabled={shooting} hitSlop={HEADER_ICON_SLOP} accessibilityRole="button" accessibilityLabel={`${scene.year}년 책장 공유`} style={({ pressed }) => [headerIconStyle, pressed && press, shooting && HIDDEN]}>
+                  <Share size={24} color={colors.iconSoft} />
+                </Pressable>
+              ) : null}
             </YearHeader>
             </HeaderFade>
           </View>
@@ -190,7 +211,4 @@ export function YearShelf({ bookcase, zoom, m, width, viewportH, cam, viewPitch,
   );
 }
 
-const st = StyleSheet.create({
-  back: { minHeight: 44, justifyContent: 'center', paddingHorizontal: 11 }, // 오른쪽 여백은 머리줄이 당긴 만큼(아이콘 칸과 같은 끝)
-  backText: { color: colors.inkSoft },
-});
+const HIDDEN = { opacity: 0 };

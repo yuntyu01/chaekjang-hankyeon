@@ -1,5 +1,6 @@
 // 화면 문자열(ko 우선). 영어는 자리만 둔다.
 export const ko = {
+  title: '나의 책장',
   yearA11y: (year: number, count: number) => `${year}년 책장, 올해 완독 ${count}권`,
   add: '책 추가',
   lockedShelf: { a11y: '잠긴 선반, 눌러서 열기', title: '선반 한 칸 더 열기', body: '책을 더 진열할 수 있는 선반이 한 칸 늘어나요. 한 번 열면 계속 쓸 수 있어요.', buy: '무료로 열기', done: '선반을 열었어요.' },

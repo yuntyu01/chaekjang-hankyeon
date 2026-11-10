@@ -48,7 +48,12 @@ async function check(now: Date): Promise<number | null> {
   const full = libraryStore.full();
   const year = yearToArchive(full, at, state.bookcases.map((c) => c.year), now);
   if (year === null) return null;
-  // 손대지 않은 예시 책(시작 때 서재에서 빠질 책)은 남기지 않는다
+  return keep(json, year, now);
+}
+
+// 지금 서재·배치(json)를 그해 책장으로 남긴다. 손대지 않은 예시 책(시작 때 서재에서 빠질 책)은 남기지 않는다
+async function keep(json: string | null, year: number, now: Date): Promise<number | null> {
+  const full = libraryStore.full();
   const skip = new Set(checkSampleBooks(full).filter((c) => c.pure).map((c) => c.id));
   const { bookcase, bindings } = snapshotBookcase(full, storedLayout(json), year, now.toISOString(), skip);
   if (!bookcase.books.length) return null;
@@ -88,6 +93,14 @@ export const bookcaseStore = {
   checkYear(now: Date = new Date()): Promise<number | null> {
     checking ??= check(now).finally(() => { checking = null; });
     return checking;
+  },
+
+  // 측정 번들 전용(useHomePerf ?seedyear=2025): 지금 책장을 지난 해 책장으로 남긴다(지난 책장 화면 사진용, 측정 번들은 서버가 없다). 그해 책장이 있으면 그대로 둔다
+  async seedYear(year: number): Promise<number | null> {
+    if (state.bookcases.some((c) => c.year === year)) return null;
+    await libraryStore.flushPending();
+    const { json } = await readLayout();
+    return keep(json, year, new Date());
   },
 
   // 동기화가 도는 동안은 확인하지 않는다(받는 도중의 서재로 남기지 않게)

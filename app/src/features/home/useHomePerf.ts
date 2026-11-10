@@ -14,6 +14,7 @@ import { PERF_LOOK_KEY, PERF_SKIN_KEY } from '@/scene-config/skin';
 import { PERF_SPINE_KEY } from '@/scene-config/spine-look';
 import { REAL_LAYOUT, realBookOf, realLibrarySeed } from '@/domain/real-sample';
 import { DEMO_BOOT_KEY } from '@/store/boot';
+import { bookcaseStore } from '@/store/bookcase-store';
 import { libraryStore } from '@/store/library-store';
 import { demoKindOf, placementStore } from '@/store/placement-store';
 import { viewStore } from '@/store/view-store';
@@ -77,7 +78,7 @@ export function useHomePerf({ view, pitchSV, viewGoal, savePitch, camSV, storeLo
     },
     [camDebug],
   );
-  const { demoboot, perfrun, seedlib, seedshelf } = useLocalSearchParams<{ demoboot?: string; perfrun?: string; seedlib?: string; seedshelf?: string }>();
+  const { demoboot, perfrun, seedlib, seedshelf, seedyear } = useLocalSearchParams<{ demoboot?: string; perfrun?: string; seedlib?: string; seedshelf?: string; seedyear?: string }>();
   // 측정 번들: ?seedlib=1 로 화면 사진용 서재를 넣는다(실제 저장 경로, domain/real-sample)
   useEffect(() => {
     if (PERF_ENABLED && seedlib === '1') realLibrarySeed(libraryStore, new Date());
@@ -98,6 +99,12 @@ export function useHomePerf({ view, pitchSV, viewGoal, savePitch, camSV, storeLo
     const ok = placementStore.commit({ version: 2, shelves: REAL_LAYOUT.shelves, placements, drawer: Object.keys(lib.books).filter((id) => !placed.has(id)) });
     console.log(`[seedshelf] ${placements.length}권 ${ok ? '꽂음' : '실패'}`);
   }, [seedshelf, storeLoaded]);
+  // 측정 번들: ?seedyear=2025 로 지금 책장을 그해(지난 해) 책장으로 남긴다(지난 책장 화면 사진용)
+  useEffect(() => {
+    const year = Number(seedyear);
+    if (!PERF_ENABLED || !storeLoaded || !Number.isInteger(year) || year >= new Date().getFullYear()) return;
+    bookcaseStore.seedYear(year).then((y) => console.log(`[seedyear] ${y ?? '이미 있음'}`), (e) => console.warn('seedyear 실패', e));
+  }, [seedyear, storeLoaded]);
   // 측정 번들: ?perfrun=full 처럼 메뉴를 거치지 않고 그 단계의 시점 전환 측정을 한 번 돌린다(전후 비교 스크립트용, 같은 단계를 다시 돌리려면 full.2처럼)
   const perfRan = useRef('');
   useEffect(() => {

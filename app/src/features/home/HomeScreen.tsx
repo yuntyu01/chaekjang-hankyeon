@@ -6,9 +6,8 @@
 import { router, useFocusEffect, useLocalSearchParams, useNavigation } from 'expo-router';
 import * as Haptics from 'expo-haptics';
 import { Plus } from '@/ui/icons';
-import { DecorateIcon, FilledBookIcon, StoreIcon } from '@/ui/TabIcons';
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import { BackHandler, PixelRatio, Pressable, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
+import { BackHandler, Image, PixelRatio, Pressable, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import Animated, {
   cancelAnimation,
@@ -57,7 +56,7 @@ import { HANDLE_HIT, handlePoint, HeaderWall, SHELF_CAST_EXTENT, ShelfScene, typ
 import { ANIM, PERF_ENABLED, TL, tl, tlu } from '@/ui/perf';
 import { colors, motion, navigation } from '@/ui/theme';
 // 책장 밖 UI(메뉴 시트·알림·빈 책장 안내)는 화면 공통 토큰을 쓴다(책장 장면·머리글은 theme.ts 그대로)
-import { colors as ui, icon, press, shape, space, type } from '@/ui/theme';
+import { colors as ui, headerType, icon, press, shape, space, tabHeader, type } from '@/ui/theme';
 import { Btn, TextLink } from '@/ui/kit';
 import { ShelfMenuSheet } from './ShelfMenuSheet';
 import { memosByBook } from '@/features/book/all-books';
@@ -85,7 +84,7 @@ import { useShelfTransitions } from './useShelfTransitions';
 import type { Drag } from './shelf-interaction';
 import { useSceneMotions, useShelfScenes } from './useShelfSceneState';
 import { HeaderFade, OverviewLabel, PageFrame, useYearPager, ZoomStage } from './YearPager';
-import { HEADER_ICON, HEADER_ICON_SLOP, headerIconStyle, YearHeader } from './YearHeader';
+import { HEADER_ICON_SLOP } from './YearHeader';
 import { YearShelf } from './YearShelf';
 
 type MoveAction = 'prev' | 'next' | 'up' | 'down';
@@ -96,6 +95,16 @@ type Toast = { text: string; action?: 'undo' | 'retry' | 'retry-library' | 'retr
 const EMPTY_IDS: readonly string[] = [];
 const FRONT_HIT = 48;
 const FRONT_PAD = 10;
+const HEADER_TEXT_MAX = 1.3; // 머리줄 글자는 시스템 확대를 1.3배까지만(선반과 겹치지 않게)
+// 머리줄 오른쪽 아이콘(2026-11-10 사용자가 준 입체 아이콘 그림, assets/header: 투명 바탕 1·2·3배). 시안: 그림 약 20dp, 간격 약 33dp, 맨 끝 그림이 화면 끝에서 약 15dp
+const HEADER_ART = 22;
+const HEADER_CELL = 34;
+const HEADER_ICONS = {
+  store: require('../../../assets/header/store.png'),
+  decorate: require('../../../assets/header/decorate.png'),
+  books: require('../../../assets/header/books.png'),
+  add: require('../../../assets/header/add.png'),
+};
 
 
 export function HomeScreen() {
@@ -963,32 +972,38 @@ export function HomeScreen() {
             <HeaderWall rows={sceneRows} motions={motions} books={sceneBooks} m={m} width={winW} height={headerH} cam={camSV} />
             {bare ? null : (
               <HeaderFade zoom={pager.zoom}>
-                {/* 머리줄(2026-11-09 홈 시안): 벽에 새긴 큰 해 숫자만 가운데에. 오른쪽은 스토어·꾸미기·전체 책·더하기(회색 아이콘).
-                    꾸미기를 끌며 시작한 동안(머리글을 아직 숨기기 전)에는 아이콘을 숨긴다 */}
-                <YearHeader
-                  year={thisYear}
-                  a11yLabel={ko.yearA11y(thisYear, finishedThisYear)}
-                  width={winW}
-                  actionsW={4 * HEADER_ICON}
-                  onPressYear={perfMenuOn ? () => setShelfMenuOpen(true) : undefined}>
+                {/* 머리줄(2026-11-10 사용자 시안): 왼쪽에 '나의 책장'과 그 밑 해(예전 글씨체·색: 제목 headerType.title·ink, 해 headerType.sub·inkSoft),
+                    오른쪽은 스토어·꾸미기·전체 책·더하기(회색 아이콘). 벽에 새긴 큰 해 숫자는 지난 책장에만(YearShelf).
+                    꾸미기를 끌며 시작한 동안(머리글을 아직 숨기기 전)에는 아이콘을 숨긴다. 시스템 글자 확대는 1.3배까지만(선반과 겹치지 않게) */}
+                <View style={[styles.header, tabHeader]}>
+                  <Pressable style={styles.titles} onPress={perfMenuOn ? () => setShelfMenuOpen(true) : undefined} disabled={!perfMenuOn} accessibilityRole={perfMenuOn ? 'button' : 'header'} accessibilityLabel={`${ko.title}, ${ko.yearA11y(thisYear, finishedThisYear)}`}>
+                    <Text style={[headerType.title, { color: colors.ink }]} numberOfLines={1} maxFontSizeMultiplier={HEADER_TEXT_MAX}>
+                      {ko.title}
+                    </Text>
+                    <Text style={[headerType.sub, styles.year]} numberOfLines={1} maxFontSizeMultiplier={HEADER_TEXT_MAX}>
+                      {thisYear}
+                    </Text>
+                  </Pressable>
+                  <View style={styles.actions}>
                   {editing ? null : (
                     <>
-                      <Pressable onPress={() => router.push('/store')} hitSlop={HEADER_ICON_SLOP} accessibilityRole="button" accessibilityLabel={ko.store.a11y} style={({ pressed }) => [headerIconStyle, pressed && press]}>
-                        <StoreIcon size={24} color={colors.iconSoft} />
+                      <Pressable onPress={() => router.push('/store')} hitSlop={HEADER_ICON_SLOP} accessibilityRole="button" accessibilityLabel={ko.store.a11y} style={({ pressed }) => [styles.headerIcon, pressed && press]}>
+                        <Image source={HEADER_ICONS.store} style={styles.headerArt} />
                       </Pressable>
-                      <Pressable onPress={startDecorating} hitSlop={HEADER_ICON_SLOP} accessibilityRole="button" accessibilityLabel={ko.decorate} style={({ pressed }) => [headerIconStyle, pressed && press]}>
-                        <DecorateIcon size={24} color={colors.iconSoft} />
+                      <Pressable onPress={startDecorating} hitSlop={HEADER_ICON_SLOP} accessibilityRole="button" accessibilityLabel={ko.decorate} style={({ pressed }) => [styles.headerIcon, pressed && press]}>
+                        <Image source={HEADER_ICONS.decorate} style={styles.headerArt} />
                       </Pressable>
                       {/* 등록한 모든 책(책장에 없는 책 포함)을 보고 골라 책장에 놓는 곳 */}
-                      <Pressable onPress={() => router.push('/books')} hitSlop={HEADER_ICON_SLOP} accessibilityRole="button" accessibilityLabel={ko.allBooks.title} style={({ pressed }) => [headerIconStyle, pressed && press]}>
-                        <FilledBookIcon size={24} color={colors.iconSoft} />
+                      <Pressable onPress={() => router.push('/books')} hitSlop={HEADER_ICON_SLOP} accessibilityRole="button" accessibilityLabel={ko.allBooks.title} style={({ pressed }) => [styles.headerIcon, pressed && press]}>
+                        <Image source={HEADER_ICONS.books} style={styles.headerArt} />
                       </Pressable>
-                      <Pressable onPress={() => router.push('/book/add')} hitSlop={HEADER_ICON_SLOP} accessibilityRole="button" accessibilityLabel={ko.add} style={({ pressed }) => [headerIconStyle, pressed && press]}>
-                        <Plus size={28} color={colors.iconSoft} strokeWidth={2.6} />
+                      <Pressable onPress={() => router.push('/book/add')} hitSlop={HEADER_ICON_SLOP} accessibilityRole="button" accessibilityLabel={ko.add} style={({ pressed }) => [styles.headerIcon, pressed && press]}>
+                        <Image source={HEADER_ICONS.add} style={styles.headerArt} />
                       </Pressable>
                     </>
                   )}
-                </YearHeader>
+                  </View>
+                </View>
               </HeaderFade>
             )}
           </View>
@@ -1029,7 +1044,7 @@ export function HomeScreen() {
         {past.map((c, i) =>
           lockedReady && (pager.wide || (pager.engaged && Math.abs(i + 1 - pager.page) <= 1)) ? (
             <PageFrame key={c.id} pager={pager} k={i + 1} interactive={pager.page === i + 1 && !pager.overview}>
-              <YearShelf bookcase={c} zoom={pager.zoom} m={m} width={winW} viewportH={viewportFull} cam={camSV} viewPitch={view.pitch} shared={bookShared} active={pager.page === i + 1 && !pager.overview} onBack={() => pager.goTo(0)} />
+              <YearShelf bookcase={c} zoom={pager.zoom} m={m} width={winW} viewportH={viewportFull} cam={camSV} viewPitch={view.pitch} shared={bookShared} active={pager.page === i + 1 && !pager.overview} />
             </PageFrame>
           ) : null,
         )}
@@ -1169,6 +1184,13 @@ export function HomeScreen() {
 const styles = StyleSheet.create({
   root: { flex: 1 },
   pages: { flex: 1 },
+  header: { flexDirection: 'row', alignItems: 'flex-start' }, // 탭 첫 화면 머리줄과 같은 정렬(제목 위 기준)
+  titles: { flex: 1, minWidth: 0 },
+  year: { color: colors.inkSoft, marginTop: 4 },
+  // 아이콘 가운데는 제목 줄(34) 가운데보다 약 6dp 아래(시안), 맨 끝 그림은 화면 끝에서 약 15dp(머리줄 좌우 여백 24에서 당긴다)
+  actions: { flexDirection: 'row', alignItems: 'center', marginTop: 1, marginRight: -(tabHeader.paddingHorizontal - 15 - (HEADER_CELL - HEADER_ART) / 2) },
+  headerIcon: { width: HEADER_CELL, height: 44, alignItems: 'center', justifyContent: 'center' },
+  headerArt: { width: HEADER_ART, height: HEADER_ART },
   toast: {
     position: 'absolute',
     left: 16,

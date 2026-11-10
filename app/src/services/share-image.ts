@@ -1,10 +1,13 @@
 // 그린 PNG를 기기의 공유창으로 보내거나 사진첩에 저장한다(책 공유 카드·갈피 공유)
 import * as FS from 'expo-file-system/legacy';
 import * as Sharing from 'expo-sharing';
+import { PixelRatio } from 'react-native';
 
-import { gallerySaveAvailable, saveImageToGallery } from '../../modules/screen-capture';
+import { captureWindow, gallerySaveAvailable, saveImageToGallery, screenCaptureAvailable } from '../../modules/screen-capture';
 
 export { gallerySaveAvailable };
+// 화면 일부를 찍어 공유할 수 있는지(Android 창 사진 모듈. iOS·Expo Go는 없다)
+export const windowShareAvailable = screenCaptureAvailable;
 
 export class ShareImageError extends Error {
   constructor(public stage: 'unavailable' | 'image' | 'share' | 'save', message: string) {
@@ -25,6 +28,25 @@ export async function sharePngBase64(base64: string, opts: { name: string; dialo
   return uri;
 }
 
+// 창 안 영역(dp)을 찍어 JPEG로 공유창을 연다(지난 책장 공유: 보이는 그대로)
+export async function shareWindowArea(rect: { x: number; y: number; w: number; h: number }, opts: { name: string; dialogTitle: string; onShot?: () => void }) {
+  if (!windowShareAvailable || !(await Sharing.isAvailableAsync())) throw new ShareImageError('unavailable', '이 기기에서 공유 창을 열 수 없어요.');
+  const px = PixelRatio.get();
+  const uri = `${FS.cacheDirectory}${opts.name}_${Date.now().toString(36)}.jpg`;
+  try {
+    await captureWindow(uri, { x: rect.x * px, y: rect.y * px, w: rect.w * px, h: rect.h * px }, 92);
+  } catch (e) {
+    throw new ShareImageError('image', String((e as Error)?.message ?? e));
+  } finally {
+    opts.onShot?.(); // 찍는 동안 숨긴 것을 공유창이 뜨기 전에 되돌린다
+  }
+  try {
+    await Sharing.shareAsync(uri, { mimeType: 'image/jpeg', UTI: 'public.jpeg', dialogTitle: opts.dialogTitle });
+  } catch (e) {
+    throw new ShareImageError('share', String((e as Error)?.message ?? e));
+  }
+  return uri;
+}
 
 // 이미 그린 PNG(base64)를 사진첩 Pictures/책장한켠에 저장한다(Android 10+). 임시 파일은 저장 뒤 지운다
 export async function savePngBase64(base64: string, opts: { name: string }) {

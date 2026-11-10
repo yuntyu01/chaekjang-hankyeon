@@ -1,5 +1,5 @@
-// 홈 머리줄(2026-11-09 홈 시안: 머리에 큰 '2026'만): 벽에 새긴 해 숫자를 화면 가운데에, 오른쪽에 아이콘.
-// 지금 책장과 지난 책장(YearShelf)이 같이 쓴다. 좁은 화면이라 숫자가 아이콘 묶음에 닿으면 닿지 않을 만큼만 왼쪽으로 비킨다.
+// 지난 책장 머리줄(2026-11-09 홈 시안의 벽에 새긴 큰 해 숫자, 2026-11-10 사용자 '2026 같은 건 작년 책장에 파서'): 해 숫자를 화면 가운데에, 오른쪽에 아이콘(공유).
+// 지금 책장 머리줄은 '나의 책장'과 해 글자(HomeScreen). 좁은 화면이라 숫자가 아이콘 묶음에 닿으면 닿지 않을 만큼만 옆으로 비킨다.
 import { useState, type ReactNode } from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
 
@@ -9,7 +9,7 @@ import { tabHeader } from '@/ui/theme';
 export const YEAR_SIZE = 34; // 시안: 숫자 높이 약 24dp
 export const HEADER_ICON = 36; // 아이콘 칸(시안 아이콘 간격 약 35dp). 누르는 곳은 hitSlop으로 48
 export const HEADER_ICON_SLOP = 6;
-const RIGHT_PULL = 11; // 아이콘 묶음을 머리줄 오른쪽 여백(24) 밖으로 당긴다: 맨 끝 아이콘 그림이 화면 끝에서 약 19dp(시안)
+export const RIGHT_PULL = 11; // 아이콘 묶음을 머리줄 오른쪽 여백(24) 밖으로 당긴다: 맨 끝 아이콘 그림이 화면 끝에서 약 19dp(시안)
 const GAP = 4; // 숫자 상자(좌우 4 여백 포함)와 아이콘 묶음 사이 최소 간격. 411dp 폭에서 숫자가 정확히 가운데(8이면 3dp 왼쪽으로 비켰다)
 // 시안 자리: 해 숫자 가운데가 상태 표시줄 아래 약 28dp(탭 머리줄 기본 위 여백 16이면 10dp 아래였다, 2026-11-09 에뮬 비교)
 const TOP = 6;
