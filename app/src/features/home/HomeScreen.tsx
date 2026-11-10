@@ -96,8 +96,9 @@ const EMPTY_IDS: readonly string[] = [];
 const FRONT_HIT = 48;
 const FRONT_PAD = 10;
 const HEADER_TEXT_MAX = 1.3; // 머리줄 글자는 시스템 확대를 1.3배까지만(선반과 겹치지 않게)
-// 머리줄 오른쪽 아이콘(2026-11-10 사용자가 준 입체 아이콘 그림, assets/header: 투명 바탕 1·2·3배). 시안: 그림 약 20dp, 간격 약 33dp, 맨 끝 그림이 화면 끝에서 약 15dp
-const HEADER_ART = 22;
+// 머리줄 오른쪽 아이콘(2026-11-10 사용자가 준 입체 아이콘 그림, assets/header: 투명 바탕 1·2·3배, 시안 회백색으로 맞춤). 시안(화면 폭 대비): 그림 약 5.6%(411dp에서 23dp),
+// 간격 8.3%(34dp), 맨 끝 그림이 화면 끝에서 3.3%(14dp)
+const HEADER_ART = 25;
 const HEADER_CELL = 34;
 const HEADER_ICONS = {
   store: require('../../../assets/header/store.png'),
@@ -1187,8 +1188,8 @@ const styles = StyleSheet.create({
   header: { flexDirection: 'row', alignItems: 'flex-start' }, // 탭 첫 화면 머리줄과 같은 정렬(제목 위 기준)
   titles: { flex: 1, minWidth: 0 },
   year: { color: colors.inkSoft, marginTop: 4 },
-  // 아이콘 가운데는 제목 줄(34) 가운데보다 약 6dp 아래(시안), 맨 끝 그림은 화면 끝에서 약 15dp(머리줄 좌우 여백 24에서 당긴다)
-  actions: { flexDirection: 'row', alignItems: 'center', marginTop: 1, marginRight: -(tabHeader.paddingHorizontal - 15 - (HEADER_CELL - HEADER_ART) / 2) },
+  // 아이콘 가운데는 제목 줄(34) 가운데보다 약 6dp 아래(시안), 맨 끝 그림은 화면 끝에서 약 14dp: 머리줄 좌우 여백 24에서 칸 끝을 14 − (칸 − 그림)/2 자리까지 당긴다
+  actions: { flexDirection: 'row', alignItems: 'center', marginTop: 1, marginRight: -(tabHeader.paddingHorizontal - 14 + (HEADER_CELL - HEADER_ART) / 2) },
   headerIcon: { width: HEADER_CELL, height: 44, alignItems: 'center', justifyContent: 'center' },
   headerArt: { width: HEADER_ART, height: HEADER_ART },
   toast: {
