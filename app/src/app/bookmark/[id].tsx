@@ -24,8 +24,8 @@ import { Btn, Chip, Empty, Field, IconButton, ListGroup, ListItem, Muted, Row, S
 import { colors, fonts, icon, shape, space, type } from '@/ui/theme';
 import { appAlert } from '@/ui/alert';
 import { PERF_ENABLED } from '@/ui/perf';
-import { ShareImageError, sharePngBase64 } from '@/services/share-image';
-import { MarkCard, MarkShareSheet, renderMarkBase64, useMarkAssets } from '@/features/bookmark/MarkShare';
+import { gallerySaveAvailable, savePngBase64, shareErrorTitle, ShareImageError, sharePngBase64 } from '@/services/share-image';
+import { MarkCard, MarkShareSheet, renderMarkBase64, useMarkAssets, type MarkAction } from '@/features/bookmark/MarkShare';
 import type { MarkInput, MarkStyle } from '@/features/bookmark/bookmark-scene';
 
 export function cardData(lib: Library, m: Bookmark): BookmarkCardData | null {
@@ -73,7 +73,13 @@ export default function BookmarkDetail() {
   const markAssets = useMarkAssets();
   if (PERF_ENABLED) console.log('[mark] open', id);
   const [markOpen, setMarkOpen] = useState(false);
-  const [markBusy, setMarkBusy] = useState<MarkStyle | null>(null);
+  const [markBusy, setMarkBusy] = useState<MarkAction | null>(null);
+  const [markSaved, setMarkSaved] = useState(false);
+  useEffect(() => {
+    if (!markSaved) return;
+    const t = setTimeout(() => setMarkSaved(false), 2400);
+    return () => clearTimeout(t);
+  }, [markSaved]);
 
   if (!cur) return <Screen title="갈피"><Empty title="갈피를 찾을 수 없어요" /></Screen>;
   if (editing) return <EditBookmark m={editing} onDone={() => setEditing(null)} />;
@@ -85,19 +91,23 @@ export default function BookmarkDetail() {
         <MarkCard assets={markAssets} style={shot} input={markInput} width={360} />
       </ScrollView>
     );
-  // 두 모양 중 하나를 골라 공유(폭 1080px로 따로 그린다)
-  const shareMark = async (style: MarkStyle) => {
+  // 고른 모양을 사진첩에 저장하거나 공유창으로 보낸다(폭 1080px로 따로 그린다)
+  const markAction = async (action: MarkAction, style: MarkStyle) => {
     if (!markInput || markBusy || !markAssets) return;
-    setMarkBusy(style);
+    setMarkBusy(action);
     try {
       await new Promise((r) => setTimeout(r, 30));
       const png = renderMarkBase64(markAssets, style, markInput);
       if (!png) throw new ShareImageError('image', '갈피 이미지를 만들지 못했어요. 다시 눌러 주세요.');
-      await sharePngBase64(png, { name: 'gallpi', dialogTitle: '갈피 공유' });
-      setMarkOpen(false);
+      if (action === 'save') {
+        await savePngBase64(png, { name: 'gallpi' });
+        setMarkSaved(true);
+      } else {
+        await sharePngBase64(png, { name: 'gallpi', dialogTitle: '갈피 공유' });
+        setMarkOpen(false);
+      }
     } catch (e) {
-      const err = e as ShareImageError;
-      appAlert(err.stage === 'share' ? '공유 창을 열지 못했어요' : err.stage === 'unavailable' ? '공유할 수 없어요' : '공유 이미지를 만들지 못했어요', err.message);
+      appAlert(shareErrorTitle(e), (e as Error).message);
     } finally {
       setMarkBusy(null);
     }
@@ -213,7 +223,7 @@ export default function BookmarkDetail() {
         </View>
       ) : null}
 
-      {markInput ? <MarkShareSheet visible={markOpen} onClose={() => setMarkOpen(false)} input={markInput} assets={markAssets} busy={markBusy} onPick={(st2) => void shareMark(st2)} width={width} /> : null}
+      {markInput ? <MarkShareSheet visible={markOpen} onClose={() => setMarkOpen(false)} input={markInput} assets={markAssets} busy={markBusy} saved={markSaved} canSave={gallerySaveAvailable} onAction={(a, s2) => void markAction(a, s2)} width={width} height={height} /> : null}
       <RibbonColorSheet bookId={cur.myBookId} visible={colorOpen} onClose={() => setColorOpen(false)} />
       <Sheet visible={menu} onClose={() => setMenu(false)}>
         <ListGroup>

@@ -17,17 +17,16 @@ const COVER_MAX_W = 520; // 아주 넓은 책은 이 폭에 맞춰 높이를 줄
 const PAGE_K = 0.57; // 속지 띠 폭 = 표지 높이 × 두께/높이 × 이 값(시안: 아몬드 두께/높이 0.07 → 24.6px)
 const SHELF_TOP = 827; // 선반 윗면 뒤 끝
 const SHELF_FRONT = 853; // 선반 윗면 앞 끝(앞면 시작)
-// 벽 그림자(시안에서 맞춘 값, 밝기 오차 약 1%): 책 모양을 옮겨 흐린 세 겹(바로 옆 짙은 그늘 · 중간 · 멀리 옅게)
-const SHADOW = [
-  { a: 0.137, dx: 6.73, dy: 19.98, s: 11.27 },
-  { a: 0.088, dx: 39.94, dy: 34.07, s: 11.88 },
-  { a: 0.067, dx: 92.84, dy: 72.4, s: 20.01 },
-];
+// 벽 그림자(2026-11-10 사용자 댓글 '그림자 좀 안 맞음'): 시안 벽의 빛·그늘을 바탕에 대한 비로 뜬 지도(assets/share/book-shade.png,
+// tools/share-scene/shadow_map.py)를 책 가장자리에 붙여 곱한다. 왼쪽 반은 책 왼쪽 끝, 오른쪽 반은 책 오른쪽 끝(속지 띠 끝)에 맞춰 옮기고,
+// 책이 낮으면(아주 넓은 책) 표지 아래 끝을 기준으로 세로를 늘인다. 시안 책 자리(239~699)에서는 시안 벽과 같다
+const SHADE_MAP = { x: 200, y: 180, w: 680, h: 647 }; // 지도 자리(시안 화소)
+const REF_BOOK = { left: 239, right: 699 }; // 시안 책 왼쪽 끝·오른쪽 끝(속지 띠 끝)
 // 표지 색감(시안 책은 실제 표지보다 채도가 높고 검정이 따뜻한 회색으로 뜬 무광 종이)
 // 실제 아몬드 표지와 시안 표지의 분홍·빨강·검정 11곳을 짝지어 맞춘 값: 채도 1.42배, 감마 1.015, 밝기 0.978배, 검정을 따뜻한 회색(16,15,13)으로 띄움
 export const GRADE = { sat: 1.42, gamma: 1.015, gain: 0.978, lift: [15.8, 15.0, 12.6] as [number, number, number] };
 
-export const SHARE_FONTS = { title: 'ShareTitle', note: 'ShareNote', ui: 'ShareUI', uiMedium: 'ShareUIMedium' };
+export const SHARE_FONTS = { title: 'ShareTitle', note: 'ShareNote', ui: 'ShareUI' };
 
 export type ShareSceneAssets = {
   plate: SkImage; // 바탕(941×1671)
@@ -36,6 +35,7 @@ export type ShareSceneAssets = {
   pages: SkImage; // 속지 띠(RGBA, 시안에서 잘라 냄)
   shelfRight: SkImage; // 선반 윗면 책 오른쪽 그늘(곱하기, 200×27, 책 오른쪽 끝에 붙인다)
   shelfFront: SkImage; // 선반 윗면 책 앞 닿는 그늘(곱하기, 64×13, 책 폭에 맞춰 늘인다)
+  shade: SkImage; // 벽 빛·그늘 지도(회색 v, 곱하는 값 = 0.5 + v/400, SHADE_MAP 자리)
   cover: SkImage | null;
   fonts: SkTypefaceFontProvider;
 };
@@ -64,7 +64,7 @@ type Layout = {
 };
 
 // 글자(시안에서 잰 크기·색, 화소)
-const INK = { title: '#1B1B1B', author: '#5E5D5E', note: '#1E1E1E', star: '#7E7C7C', meta: '#7D7C7D', foot: '#161516', rule: '#D8D8D7' };
+const INK = { title: '#1B1B1B', author: '#5E5D5E', note: '#1E1E1E', star: '#7E7C7C', meta: '#7D7C7D', foot: '#333233', rule: '#D8D8D7' };
 const TEXT_X = 89;
 // 종이에 찍힌 글자처럼 아래로 아주 옅은 그늘(시안 글자 둘레)
 export const TEXT_SHADOW = { a: 0.14, dy: 1.5, blur: 2 };
@@ -105,7 +105,8 @@ export function layoutShareScene(Skia: typeof SkiaApi, input: ShareSceneInput, f
   const note = input.note ? para(Skia, fonts, input.note, SHARE_FONTS.note, 48, INK.note, 70) : null;
   const metaText = [input.rating ? input.rating.toFixed(1) : null, ...(input.extra ?? [])].filter(Boolean).join('   ');
   const meta = metaText ? para(Skia, fonts, metaText, SHARE_FONTS.ui, 36, INK.meta) : null;
-  const foot = para(Skia, fonts, '책장 한켠', SHARE_FONTS.uiMedium, 33, INK.foot);
+  // '책장 한켠'(2026-11-10 사용자 댓글 '글씨 좀 진함'): Medium → Regular, 색을 조금 옅게(시안과 잉크 양이 같은 값보다 한 단계 옅게. 기기 글자가 컴퓨터보다 진하게 찍힌다)
+  const foot = para(Skia, fonts, '책장 한켠', SHARE_FONTS.ui, 33, INK.foot);
   // 세로 흐름(시안에서 잰 간격, 글자 문단 위 끝): 제목 1017 → 12 → 저자 → 47 → 감상 → 60 → 별점 줄 → 152 → '책장 한켠'(시안 자리보다 위로는 올라가지 않는다)
   const y = { title: 1017, author: 0, note: 0, stars: 0, foot: 0 };
   let bottom = y.title + title.getHeight();
@@ -143,7 +144,25 @@ half4 main(float2 p) {
   return half4(clamp(cc * m + a, 0.0, 1.0), 1.0);
 }`;
 
+// 바탕 × 벽 그림자 지도(책 가장자리에 붙여 옮긴 자리에서 읽는다). 지도 밖은 바탕 그대로
+const SHADE_SKSL = `
+uniform shader plate;
+uniform shader shade;
+uniform float4 map;
+uniform float split;
+uniform float2 shift;
+uniform float bottom;
+uniform float vs;
+half4 main(float2 p) {
+  half4 c = plate.eval(p);
+  float2 q = float2(p.x - (p.x > split ? shift.y : shift.x), bottom - (bottom - p.y) * vs) - map.xy;
+  half t = 1.0;
+  if (q.x >= 0.0 && q.y >= 0.0 && q.x < map.z && q.y < map.w) t = 0.5 + shade.eval(q).r * 0.6375;
+  return half4(c.rgb * t, 1.0);
+}`;
+
 let coverEffect: ReturnType<typeof SkiaApi.RuntimeEffect.Make> | null = null;
+let shadeEffect: ReturnType<typeof SkiaApi.RuntimeEffect.Make> | null = null;
 
 // 5각 별(시안 별: 끝이 조금 둥근 회색 별)
 function starPath(Skia: typeof SkiaApi, cx: number, cy: number, R: number) {
@@ -183,30 +202,18 @@ export function drawShareScene(Skia: typeof SkiaApi, canvas: SkCanvas, width: nu
   const c = L.cover;
   const R = c.x + c.w;
   const pw = L.pageW;
-  // 책 모양(표지 + 속지 띠): 그림자에 쓴다
-  const sil = Skia.PathBuilder.Make();
-  sil.moveTo(c.x, c.y);
-  sil.lineTo(R, c.y);
-  sil.lineTo(R + pw, c.y + 3 + pw * 0.65);
-  sil.lineTo(R + pw, c.y + c.h - pw * 0.43);
-  sil.lineTo(R, c.y + c.h);
-  sil.lineTo(c.x, c.y + c.h);
-  sil.close();
-  const silPath = sil.detach();
-  // 2) 책 그림자(벽): 선반 윗면 뒤 끝 위로만
-  canvas.save();
-  canvas.clipRect(Skia.XYWHRect(0, 0, SCENE_W, SHELF_TOP), 1, true);
-  for (const s of SHADOW) {
+  // 2) 벽 빛·그늘(선반 윗면 뒤 끝 위로만): 바탕을 지도와 곱해 다시 그린다
+  if (!shadeEffect) shadeEffect = Skia.RuntimeEffect.Make(SHADE_SKSL);
+  if (shadeEffect) {
     const sp = Skia.Paint();
-    sp.setAntiAlias(true);
-    sp.setColor(Skia.Color(`rgba(0,0,0,${s.a})`));
-    sp.setMaskFilter(Skia.MaskFilter.MakeBlur(0, s.s, true));
-    canvas.save();
-    canvas.translate(s.dx, s.dy);
-    canvas.drawPath(silPath, sp);
-    canvas.restore();
+    sp.setShader(
+      shadeEffect.makeShaderWithChildren(
+        [SHADE_MAP.x, SHADE_MAP.y, SHADE_MAP.w, SHADE_MAP.h, c.x + (c.w + pw) / 2, c.x - REF_BOOK.left, R + pw - REF_BOOK.right, COVER_BOTTOM, COVER_H / c.h],
+        [A.plate.makeShaderOptions(0, 0, 1, 0), A.shade.makeShaderOptions(0, 0, 1, 0)],
+      ),
+    );
+    canvas.drawRect(Skia.XYWHRect(0, 0, SCENE_W, SHELF_TOP), sp);
   }
-  canvas.restore();
   // 선반 윗면 그늘(시안에서 뜬 그림을 곱한다): 책 오른쪽 + 책 앞
   const mp = Skia.Paint();
   mp.setBlendMode(24); // Multiply

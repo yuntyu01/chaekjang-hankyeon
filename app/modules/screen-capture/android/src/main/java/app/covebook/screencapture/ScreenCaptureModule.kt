@@ -1,9 +1,12 @@
 package app.covebook.screencapture
 
+import android.content.ContentValues
 import android.graphics.Bitmap
 import android.graphics.Rect
 import android.net.Uri
 import android.os.Build
+import android.os.Environment
+import android.provider.MediaStore
 import android.os.Handler
 import android.os.HandlerThread
 import android.view.PixelCopy
@@ -24,6 +27,31 @@ class ScreenCaptureModule : Module() {
 
     // JS 시작 화면이 같은 사진을 그렸다: 네이티브 시작 사진을 걷는다
     Function("hideStartPhoto") { StartPhoto.hide() }
+
+    // 공유 그림을 사진첩(Pictures/책장한켠)에 저장한다(2026-11-10 사용자 '밑에 다운로드 공유'). Android 10+는 MediaStore로 권한 없이 쓴다.
+    // 그보다 낮으면 ERR_UNSUPPORTED(JS는 저장 버튼을 숨기고 공유창만 쓴다). 돌려주는 값: 저장된 content:// 주소
+    AsyncFunction("saveImageToGallery") { path: String, name: String, promise: Promise ->
+      if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) return@AsyncFunction promise.reject("ERR_UNSUPPORTED", "Saving to gallery needs Android 10", null)
+      val resolver = appContext.reactContext?.contentResolver ?: return@AsyncFunction promise.reject("ERR_NO_CONTEXT", "No context", null)
+      val src = File(if (path.startsWith("file:")) Uri.parse(path).path!! else path)
+      val values = ContentValues().apply {
+        put(MediaStore.Images.Media.DISPLAY_NAME, name)
+        put(MediaStore.Images.Media.MIME_TYPE, "image/png")
+        put(MediaStore.Images.Media.RELATIVE_PATH, Environment.DIRECTORY_PICTURES + "/책장한켠")
+        put(MediaStore.Images.Media.IS_PENDING, 1)
+      }
+      val uri = resolver.insert(MediaStore.Images.Media.getContentUri(MediaStore.VOLUME_EXTERNAL_PRIMARY), values)
+        ?: return@AsyncFunction promise.reject("ERR_SAVE", "MediaStore insert failed", null)
+      try {
+        val out = resolver.openOutputStream(uri) ?: throw IllegalStateException("No output stream")
+        out.use { o -> src.inputStream().use { it.copyTo(o) } }
+        resolver.update(uri, ContentValues().apply { put(MediaStore.Images.Media.IS_PENDING, 0) }, null, null)
+        promise.resolve(uri.toString())
+      } catch (e: Exception) {
+        resolver.delete(uri, null, null)
+        promise.reject("ERR_SAVE", e.message ?: "save failed", e)
+      }
+    }
 
     // path: 저장할 파일(file:// 주소 또는 경로), x·y·w·h: 창 안 영역(물리 픽셀), quality: JPEG 품질 0~100
     AsyncFunction("captureWindow") { path: String, x: Int, y: Int, w: Int, h: Int, quality: Int, promise: Promise ->

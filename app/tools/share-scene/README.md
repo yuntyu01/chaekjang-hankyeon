@@ -9,13 +9,14 @@
 | `book-mul.png`, `book-add.png` | `overlay.py` | 책 오버레이. 표지 색 c에 `c·M + A`. M=곱하는 빛(큰 기울기 2차 곡면·책등 홈·가장자리 그늘·종이 결, 값×128), A=더하는 빛(왼쪽 위 은은한 빛·가장자리 반사, 값+64). 책등 홈은 분홍·검은 띠 짝으로 M·A를 함께 풀었다 |
 | `book-pages.png` | `overlay.py` | 오른쪽 속지 띠(시안에서 잘라 냄, 위·아래 기운 끝은 투명) |
 | `shelf-right.png`, `shelf-front.png` | (fit 메모 참고) | 선반 윗면 책 오른쪽 그늘·책 앞 닿는 그늘(곱하기) |
+| `book-shade.png` | `shadow_map.py` (plate 다음) | 벽 빛·그늘 지도 T = 흐린 시안 / 흐린 바탕(책 화소 빼고). 회색 v=(T−0.5)×400, 자리 (200,180) 680×647. 그릴 때 왼쪽 반은 책 왼쪽 끝, 오른쪽 반은 책 오른쪽 끝에 붙여 곱한다 |
 
-- 벽 그림자 세 겹(`fit_shadow.py`): 책 모양을 옮겨 흐린 그늘, 밝기 오차 약 1%. 값은 `share-scene.ts` SHADOW.
+- 벽 그림자(11-10 댓글 '그림자 좀 안 맞음'): 처음엔 책 모양을 옮겨 흐린 세 겹 그늘로 맞췄으나 윗선이 책 머리에서 평평하게 퍼져 시안의 비스듬한 윗선·책 오른쪽 위 밝은 벽을 못 그렸다. 시안 벽을 그대로 뜬 지도(`book-shade.png`)로 바꿔 책 둘레 99.2→99.7%.
 - 표지 색감(GRADE): 실제 아몬드 표지와 시안 표지 11곳을 짝지어 맞춤(채도 1.42, 감마 1.015, 밝기 0.978, 검정을 따뜻한 회색으로).
-- 글꼴: 제목 마루부리 SemiBold 67px, 감상 마루부리 Regular 48px(줄 70), 저자·별점 숫자 Pretendard Regular 36px, '책장 한켠' Pretendard Medium 33px.
+- 글꼴: 제목 마루부리 SemiBold 67px, 감상 마루부리 Regular 48px(줄 70), 저자·별점 숫자 Pretendard Regular 36px, '책장 한켠' Pretendard Regular 33px #333233(11-10 댓글 '글씨 좀 진함'으로 Medium에서 바꿈).
 
 비교(`node --experimental-strip-types render.mjs <표지.jpg> out.png '{"coverAspect":0.703}'` → `python3 compare2.py out.png '{"x":239,"y":224,"w":433,"h":616}'`):
-빛·그늘 SSIM(흐리게 본 밝기) 벽 99.99%, 책 둘레·그림자 99.2%, 선반 99.7%, 글자 96.5%, 전체 98.4%. 표지 그림 안쪽은 시안이 다시 그린 표지라 비교에서 뺀다.
+빛·그늘 SSIM(흐리게 본 밝기) 벽 99.99%, 책 둘레·그림자 99.7%, 선반 99.7%, 글자 96.6%, 전체 98.5%. 표지 그림 안쪽은 시안이 다시 그린 표지라 비교에서 뺀다.
 파이썬은 numpy·opencv·scipy·Pillow, 노드는 22(type stripping).
 
 ## 갈피 공유 두 모양

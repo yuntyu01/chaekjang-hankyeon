@@ -1,11 +1,12 @@
-// 갈피 공유 두 모양(2026-11-10 사용자 시안): '책 페이지'와 '종이 메모'. 미리보기 둘 중 하나를 누르면 그 모양을 폭 1080px로 그려 공유창을 연다.
+// 갈피 공유 두 모양(2026-11-10 사용자 시안): '책 페이지'와 '종이 메모'. 위에서 모양을 고르면 가운데 큰 미리보기가 바뀌고,
+// 아래 '저장'(사진첩)·'공유'(공유창)를 누르면 그 모양을 폭 1080px로 그려 보낸다(11-10 댓글 '가운데 박스, 밑쪽에 다운로드 공유')
 // 그림은 bookmark-scene 한 곳(시안에서 글자를 지운 바탕 + 같은 자리·글꼴의 글자)
 import { Canvas, Picture, Skia, createPicture, useFonts, useImage, type SkImage, type SkTypefaceFontProvider } from '@shopify/react-native-skia';
-import { useMemo } from 'react';
-import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
+import { useEffect, useMemo, useState } from 'react';
+import { StyleSheet, View } from 'react-native';
 
-import { Sheet } from '@/ui/kit';
-import { colors, press, space, type } from '@/ui/theme';
+import { Btn, Segmented, Sheet } from '@/ui/kit';
+import { colors, space } from '@/ui/theme';
 import { drawMarkScene, MARK_H, MARK_W, type MarkInput, type MarkStyle } from './bookmark-scene';
 
 const FONT_SOURCES = {
@@ -52,34 +53,61 @@ export function MarkCard({ assets, style, input, width }: { assets: MarkAssets |
   );
 }
 
-const LABEL: Record<MarkStyle, string> = { page: '책 페이지', note: '종이 메모' };
+const STYLES = [
+  { id: 'page', label: '책 페이지' },
+  { id: 'note', label: '종이 메모' },
+] as const;
 
-export function MarkShareSheet({ visible, onClose, input, assets, busy, onPick, width }: { visible: boolean; onClose: () => void; input: MarkInput; assets: MarkAssets | null; busy: MarkStyle | null; onPick: (s: MarkStyle) => void; width: number }) {
-  const w = Math.min(170, (width - space.page * 2 - space.m) / 2);
+export type MarkAction = 'save' | 'share';
+
+export function MarkShareSheet({
+  visible,
+  onClose,
+  input,
+  assets,
+  busy,
+  saved,
+  canSave,
+  onAction,
+  width,
+  height,
+}: {
+  visible: boolean;
+  onClose: () => void;
+  input: MarkInput;
+  assets: MarkAssets | null;
+  busy: MarkAction | null;
+  saved: boolean; // 방금 저장함(버튼 글자 '저장했어요')
+  canSave: boolean; // 사진첩 저장을 쓸 수 있는 기기
+  onAction: (a: MarkAction, s: MarkStyle) => void;
+  width: number;
+  height: number;
+}) {
+  const [style, setStyle] = useState<MarkStyle>('page');
+  useEffect(() => {
+    if (visible) setStyle('page');
+  }, [visible]);
+  // 가운데 미리보기: 시트 안 폭과, 화면 높이에서 머리·고르기·버튼 자리를 뺀 높이 중 작은 쪽
+  const pw = Math.max(160, Math.min(width - space.page * 2, ((height * 0.9 - 250) * MARK_W) / MARK_H, 320));
   return (
-    <Sheet visible={visible} onClose={onClose} title="갈피 공유" description="모양을 고르면 이미지로 공유해요">
-      <View style={st.row}>
-        {(['page', 'note'] as const).map((s) => (
-          <Pressable key={s} onPress={busy ? undefined : () => onPick(s)} accessibilityRole="button" accessibilityLabel={`${LABEL[s]} 모양으로 공유`} accessibilityState={{ busy: busy === s }} style={({ pressed }) => [st.item, pressed && press]}>
-            <View style={st.thumb}>
-              <MarkCard assets={assets} style={s} input={input} width={w} />
-              {busy === s ? (
-                <View style={st.busy}>
-                  <ActivityIndicator color={colors.accent} />
-                </View>
-              ) : null}
-            </View>
-            <Text style={[type.row, { textAlign: 'center', marginTop: space.s }]}>{LABEL[s]}</Text>
-          </Pressable>
-        ))}
+    <Sheet visible={visible} onClose={onClose} title="갈피 공유">
+      <Segmented items={STYLES} value={style} onChange={setStyle} />
+      <View style={st.center}>
+        <View style={st.preview}>
+          <MarkCard assets={assets} style={style} input={input} width={pw} />
+        </View>
+      </View>
+      <View style={st.actions}>
+        {canSave ? <Btn label={saved ? '저장했어요' : '저장'} kind="secondary" busy={busy === 'save'} disabled={!!busy && busy !== 'save'} onPress={() => onAction('save', style)} style={st.action} /> : null}
+        <Btn label="공유" busy={busy === 'share'} disabled={!!busy && busy !== 'share'} onPress={() => onAction('share', style)} style={st.action} />
       </View>
     </Sheet>
   );
 }
 
 const st = StyleSheet.create({
-  row: { flexDirection: 'row', justifyContent: 'center', gap: space.m, paddingBottom: space.s },
-  item: { alignItems: 'center' },
-  thumb: { borderRadius: 10, overflow: 'hidden', borderWidth: StyleSheet.hairlineWidth, borderColor: colors.line },
-  busy: { position: 'absolute', left: 0, right: 0, top: 0, bottom: 0, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(255,255,255,0.5)' },
+  center: { alignItems: 'center', paddingVertical: space.l },
+  preview: { borderRadius: 12, overflow: 'hidden', borderWidth: StyleSheet.hairlineWidth, borderColor: colors.line, boxShadow: [{ offsetX: 0, offsetY: 6, blurRadius: 20, color: 'rgba(25,31,40,0.08)' }] },
+  actions: { flexDirection: 'row', gap: space.s },
+  action: { flex: 1 },
 });

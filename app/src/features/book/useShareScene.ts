@@ -13,7 +13,6 @@ const FONT_SOURCES = {
   ShareTitle: [require('../../../assets/fonts/MaruBuri-SemiBold.ttf')],
   ShareNote: [require('../../../assets/fonts/MaruBuri-Regular.ttf')],
   ShareUI: [require('../../../assets/fonts/Pretendard-Regular.otf')],
-  ShareUIMedium: [require('../../../assets/fonts/Pretendard-Medium.otf')],
 };
 
 export type ShareScene = { assets: ShareSceneAssets | null; coverWaiting: boolean };
@@ -25,12 +24,13 @@ export function useShareScene(book: Book | undefined): ShareScene {
   const pages = useImage(require('../../../assets/share/book-pages.png'));
   const shelfRight = useImage(require('../../../assets/share/shelf-right.png'));
   const shelfFront = useImage(require('../../../assets/share/shelf-front.png'));
+  const shade = useImage(require('../../../assets/share/book-shade.png'));
   const fonts = useFonts(FONT_SOURCES);
   const uri = coverAtSize(book?.coverArtUri ?? book?.originalCoverUri, 'XL') ?? null;
   const cover = useCoverImage(uri);
   const assets = useMemo(
-    () => (plate && mul && add && pages && shelfRight && shelfFront && fonts ? { plate, mul, add, pages, shelfRight, shelfFront, fonts, cover: cover.image } : null),
-    [plate, mul, add, pages, shelfRight, shelfFront, fonts, cover.image],
+    () => (plate && mul && add && pages && shelfRight && shelfFront && shade && fonts ? { plate, mul, add, pages, shelfRight, shelfFront, shade, fonts, cover: cover.image } : null),
+    [plate, mul, add, pages, shelfRight, shelfFront, shade, fonts, cover.image],
   );
   return { assets, coverWaiting: !!uri && !cover.image };
 }
