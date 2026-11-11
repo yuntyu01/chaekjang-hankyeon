@@ -1,4 +1,4 @@
-// 읽기 탭(2026-11-11 사용자 시안: 공부 타이머 앱처럼 과목 대신 책). 맨 위 오늘 날짜와 오늘 읽은 시간, 아래 책마다 [재생 단추 · 책 이름 · 오늘 읽은 시간 · ⋮].
+// 읽기 탭(2026-11-11 사용자 시안: 공부 타이머 앱처럼 과목 대신 책). 맨 위 오늘 날짜와 오늘 읽은 시간, 아래 책마다 [표지·재생 단추 · 책 이름(밑에 지은이) · 오늘 읽은 시간 · ⋮].
 // 재생을 누르면 그 책으로 타이머가 시작되고 분위기 장면(창가의 빗소리 같은 ASMR 화면, /reading/session)으로 넘어간다.
 // 장면에서 뒤로 나오면 이 목록이다(타이머는 계속 돈다): 재는 책 줄은 일시정지 단추와 흐르는 시간, 줄을 누르면 장면으로 돌아간다.
 // 다른 책을 재는 중에 재생을 누르면 묻는다(앞 책 시간이 설명 없이 새 책으로 옮겨 가지 않게: 장면의 책 바꾸기와 같은 규칙).
@@ -88,16 +88,21 @@ export function ReadList() {
     const isActive = !!active && active.myBookId === id;
     const playing = isActive && running;
     const title = id ? bookTitle(lib, id) ?? '' : '책 없이 읽기';
+    const ed = id ? lib.editions[lib.books[id]?.editionId ?? ''] : undefined;
+    const author = ed?.authors.length ? ed.authors.join(', ') : '';
     const ms = id ? msOf(id) : saved.noBook + (noBookActive ? activeToday : 0);
     return (
-      <Pressable key={id ?? '~none'} onPress={() => tapRow(id)} style={({ pressed }) => [st.row, pressed && press]} accessibilityRole="button" accessibilityLabel={`${title}, 오늘 ${hms(ms)}${isActive ? (playing ? ', 읽는 중' : ', 일시정지') : ''}`}>
+      <Pressable key={id ?? '~none'} onPress={() => tapRow(id)} style={({ pressed }) => [st.row, pressed && press]} accessibilityRole="button" accessibilityLabel={`${title}${author ? `, ${author}` : ''}, 오늘 ${hms(ms)}${isActive ? (playing ? ', 읽는 중' : ', 일시정지') : ''}`}>
         <Pressable onPress={() => begin(id)} hitSlop={8} style={({ pressed }) => [st.coverBox, pressed && st.playPressed]} accessibilityRole="button" accessibilityLabel={playing ? `${title} 일시정지` : `${title} 읽기 시작`}>
           {id ? <LinkedCover lib={lib} id={id} width={COVER_W} /> : <View style={st.noCover}><BookOpen size={icon.size} color={colors.inkSoft} strokeWidth={icon.stroke} /></View>}
           <View style={[st.badge, playing && st.badgeOn]} pointerEvents="none">
             {playing ? <PauseIcon width={3.5} height={11} gap={3.5} color={colors.onAccent} /> : <PlayIcon size={15} color={colors.onAccent} />}
           </View>
         </Pressable>
-        <Text style={[st.title, isActive && st.titleActive]} numberOfLines={1}>{title}</Text>
+        <View style={st.names}>
+          <Text style={[type.row, isActive && st.titleActive]} numberOfLines={1}>{title}</Text>
+          {author ? <Text style={st.author} numberOfLines={1}>{author}</Text> : null}
+        </View>
         <Text style={[st.rowTime, ms === 0 && !isActive && { color: colors.inkSoft }]}>{hms(ms)}</Text>
         {id ? (
           <Pressable onPress={() => setMenu(id)} hitSlop={6} style={({ pressed }) => [st.more, pressed && press]} accessibilityRole="button" accessibilityLabel={`${title} 더 보기`}>
@@ -172,7 +177,10 @@ const st = StyleSheet.create({
   badgeOn: { backgroundColor: colors.accent },
   playPressed: { opacity: 0.7 },
   addBox: { width: COVER_W + 6, alignItems: 'flex-start', paddingLeft: 9 },
+  names: { flex: 1, minWidth: 0 },
   title: { ...type.row, flex: 1 },
+  // 제목 밑 지은이(2026-11-11 사용자 '작가 이름도 연한 회색으로'): 앱의 다른 지은이 글자와 같은 보조 회색, 한 단계 작게
+  author: { fontFamily: fonts.ui, fontSize: 14, lineHeight: 20, color: colors.inkSoft, marginTop: 2 },
   titleActive: { fontFamily: fonts.uiBold },
   rowTime: { fontFamily: fonts.ui, fontSize: 18, lineHeight: 26, color: colors.ink, fontVariant: ['tabular-nums'], includeFontPadding: false },
   more: { width: 28, height: space.touch, alignItems: 'center', justifyContent: 'center', marginLeft: -space.s, marginRight: -space.s },
