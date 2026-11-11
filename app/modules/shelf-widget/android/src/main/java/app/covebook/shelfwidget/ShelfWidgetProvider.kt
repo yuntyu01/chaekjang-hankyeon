@@ -9,6 +9,7 @@ import android.content.Intent
 import android.os.Bundle
 import android.util.Log
 import android.widget.RemoteViews
+import java.io.File
 
 // 홈 화면 위젯 세 가지(2026-11-11 사용자 시안·요청). 그림은 앱이 홈을 찍을 때 함께 떠 둔 책장(ShelfWidgetModule.update)이고,
 // 위젯 크기가 바뀌면 그 크기에 맞춰 다시 그린다. 누르면 앱이 열린다.
@@ -32,14 +33,52 @@ class ShelfWidgetProvider : ShelfWidgetBase(ShelfWidgetKind.FILL) {
     private const val TAG = "ShelfWidget"
     internal const val PREFS = "shelf_widget"
 
-    fun save(context: Context, path: String, cutPath: String?, bottoms: List<Int>, year: Int) {
+    const val MAX_ROWS = 4
+
+    // 칸 하나(그림·오려 낸 그림·열쇠·책장 콘텐츠 기준 위 끝 px·높이 px)
+    data class Row(val path: String, val cut: String, val key: String, val top: Int, val height: Int)
+
+    fun saveRow(context: Context, index: Int, path: String, cutPath: String, key: String, top: Int, height: Int) {
       context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
-        .putString("path", path)
-        .putString("cut", cutPath)
-        .putString("bottoms", bottoms.joinToString(","))
-        .putInt("year", year)
+        .putString("row$index", listOf(path, cutPath, key, top, height).joinToString("|"))
         .putLong("at", System.currentTimeMillis())
         .apply()
+    }
+
+    // 지금 책장 칸의 열쇠(keys)와 다른 칸, 칸 수보다 아래 칸은 버린다. 남은 칸이 쓰지 않는 파일도 지운다(뜨는 중인 band-…는 두고)
+    fun keepRows(context: Context, keys: List<String>) {
+      val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+      val edit = prefs.edit()
+      // 예전 판(두 칸 한 장) 값은 버린다
+      edit.remove("path").remove("cut").remove("bottoms").remove("year")
+      val used = mutableSetOf<String>()
+      for (i in 0 until MAX_ROWS) {
+        val r = rowOf(prefs.getString("row$i", null))
+        if (r == null || i >= keys.size || keys[i] != r.key) edit.remove("row$i")
+        else { used += File(r.path).name; used += File(r.cut).name }
+      }
+      edit.commit()
+      // JS가 쓰는 폴더(expo documentDirectory = filesDir)
+      File(context.filesDir, "shelf-widget").listFiles()?.forEach { f -> if (f.name !in used && !f.name.startsWith("band-")) f.delete() }
+    }
+
+    // 위 칸부터 끊김 없이 이어진 칸들(파일이 있는 것만)
+    fun rows(context: Context): List<Row> {
+      val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+      val out = mutableListOf<Row>()
+      for (i in 0 until MAX_ROWS) {
+        val r = rowOf(prefs.getString("row$i", null)) ?: break
+        if (!File(r.path).exists() || !File(r.cut).exists()) break
+        if (out.isNotEmpty() && kotlin.math.abs(r.top - (out.last().top + out.last().height)) > 8) break
+        out += r
+      }
+      return out
+    }
+
+    private fun rowOf(v: String?): Row? {
+      val p = v?.split("|") ?: return null
+      if (p.size < 5) return null
+      return Row(p[0], p[1], p[2], p[3].toIntOrNull() ?: return null, p[4].toIntOrNull() ?: return null)
     }
 
     // 놓인 위젯(세 가지 모두)을 다시 그린다(놓인 수)
@@ -69,7 +108,7 @@ class ShelfWidgetProvider : ShelfWidgetBase(ShelfWidgetKind.FILL) {
           ShelfWidgetKind.CUT -> ShelfWidgetRenderer.renderCut(context, wDp, hDp)
         }
         views.setImageViewBitmap(R.id.shelf_widget_image, bitmap)
-        val year = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getInt("year", java.util.Calendar.getInstance().get(java.util.Calendar.YEAR))
+        val year = java.util.Calendar.getInstance().get(java.util.Calendar.YEAR)
         views.setContentDescription(R.id.shelf_widget_image, "${context.getString(R.string.shelf_widget_label)}, $year")
         context.packageManager.getLaunchIntentForPackage(context.packageName)?.let { launch ->
           launch.flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_RESET_TASK_IF_NEEDED

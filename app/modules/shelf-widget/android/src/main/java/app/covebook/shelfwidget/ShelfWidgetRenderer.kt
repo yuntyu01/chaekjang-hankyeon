@@ -11,7 +11,6 @@ import android.graphics.Rect
 import android.graphics.RectF
 import android.os.Build
 import java.io.File
-import java.io.FileOutputStream
 import kotlin.math.abs
 import kotlin.math.max
 import kotlin.math.min
@@ -21,7 +20,8 @@ import kotlin.math.roundToInt
 // - 꽉 찬 위젯: 글자 없이 책장 구멍(틀 포함)이 위젯을 채운다. 카드 바탕은 책장 벽 색이라 남는 자리는 벽처럼 보인다.
 // - 벽 없는 위젯: 구멍 가장자리(벽이 시작하는 곳)가 곧 위젯 경계. 구멍 밖 평평한 벽은 그리지 않는다('저 벽이 그 경계선인 걸로').
 // - 투명 위젯: 선반 판과 책만(벽·틀은 투명). 앱이 넘긴 모양(책·판 외곽, 갈피 띠)으로 홈 사진을 오려 낸 PNG를 쓴다.
-// 보일 칸 수는 위젯을 가장 넓게 채우는 쪽(4×2는 한 칸, 세로로 늘리면 두 칸).
+// 칸 그림은 칸마다 따로 떠 둔 것(ShelfWidgetModule)을 위에서부터 이어 붙인다(최대 4칸).
+// 보일 칸 수는 위젯을 가장 넓게 채우는 쪽: 위젯 모양(가로세로 비율)을 따른다(넓으면 1단, 정사각형에 가까우면 2단, 좁고 길면 3·4단).
 internal object ShelfWidgetRenderer {
   private const val MAX_W = 1000 // 그림 폭 상한(px): 위젯 그림은 RemoteViews로 넘어가 메모리 한도가 있다
   private val HINT = Color.rgb(150, 140, 135)
@@ -35,9 +35,28 @@ internal object ShelfWidgetRenderer {
     return Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
   }
 
-  private fun prefs(context: Context) = context.getSharedPreferences(ShelfWidgetProvider.PREFS, Context.MODE_PRIVATE)
-  private fun bottomsOf(context: Context) = prefs(context).getString("bottoms", "")!!.split(",").mapNotNull { it.trim().toIntOrNull() }.filter { it > 0 }
   private fun load(path: String?) = path?.let { p -> if (File(p).exists()) runCatching { BitmapFactory.decodeFile(p) }.getOrNull() else null }
+
+  // 떠 둔 칸을 위에서부터 이어 붙인 그림과 칸마다 아래 끝(그림 px). cut이면 투명 위젯용으로 오려 낸 칸들
+  private fun stitched(context: Context, cut: Boolean): Pair<Bitmap, List<Int>>? {
+    val rows = ShelfWidgetProvider.rows(context)
+    if (rows.isEmpty()) return null
+    val top0 = rows[0].top
+    val bottoms = rows.map { it.top + it.height - top0 }
+    var out: Bitmap? = null
+    var canvas: Canvas? = null
+    for (r in rows) {
+      val b = load(if (cut) r.cut else r.path)
+      if (b == null) { out?.recycle(); return null }
+      if (out == null) {
+        out = Bitmap.createBitmap(b.width, bottoms.last(), Bitmap.Config.ARGB_8888)
+        canvas = Canvas(out)
+      }
+      canvas!!.drawBitmap(b, 0f, (r.top - top0).toFloat(), null)
+      b.recycle()
+    }
+    return out?.let { it to bottoms }
+  }
 
   // 위젯 안에 내용(box) 한 칸·두 칸 중 위젯을 가장 넓게 채우는 것을 골라 비율 그대로 가운데에(남는 자리는 비운다)
   private fun place(W: Float, H: Float, boxes: List<RectF>): Pair<RectF, RectF>? {
@@ -67,8 +86,7 @@ internal object ShelfWidgetRenderer {
     val canvas = Canvas(out)
     val W = out.width.toFloat()
     val H = out.height.toFloat()
-    val shelf = load(prefs(context).getString("path", null))
-    val bottoms = bottomsOf(context)
+    val (shelf, bottoms) = stitched(context, false) ?: (null to emptyList())
     // 카드: 책장 벽과 같은 색(그림 맨 위 가운데)이라 그림 가장자리가 보이지 않는다
     val card = shelf?.getPixel(shelf.width / 2, 1) ?: CARD
     val radius = if (Build.VERSION.SDK_INT >= 31) runCatching { context.resources.getDimension(android.R.dimen.system_app_widget_background_radius) }.getOrDefault(0.048f * W) else 0.048f * W
@@ -94,8 +112,7 @@ internal object ShelfWidgetRenderer {
     val canvas = Canvas(out)
     val W = out.width.toFloat()
     val H = out.height.toFloat()
-    val shelf = load(prefs(context).getString("path", null))
-    val bottoms = bottomsOf(context)
+    val (shelf, bottoms) = stitched(context, false) ?: (null to emptyList())
     if (shelf == null || bottoms.isEmpty()) { hint(canvas, W, H); return out }
     val wall = shelf.getPixel(shelf.width / 2, 1)
     // wallRows는 벽 2줄을 남기고 돌려준다: 구멍 첫 줄부터
@@ -115,8 +132,7 @@ internal object ShelfWidgetRenderer {
     val canvas = Canvas(out)
     val W = out.width.toFloat()
     val H = out.height.toFloat()
-    val cut = load(prefs(context).getString("cut", null))
-    val bottoms = bottomsOf(context)
+    val (cut, bottoms) = stitched(context, true) ?: (null to emptyList())
     if (cut == null || bottoms.isEmpty()) { hint(canvas, W, H); return out }
     // 내용(불투명 화소)이 있는 범위만: 위 끝·왼쪽·오른쪽은 오려 낸 그림에서 잰다
     val bounds = opaqueBounds(cut) ?: return out
@@ -130,7 +146,7 @@ internal object ShelfWidgetRenderer {
   // 홈 사진에서 책·갈피·선반 판만 남기고 나머지를 투명하게(PNG). 책과 판은 외곽 다각형 그대로(가장자리 부드럽게),
   // 갈피 띠 안에서는 색이 있는 화소(벽은 흰·회색)만 남긴다.
   // 판을 나무 색 화소로 고르면 윗면·앞면 사이 어두운 모서리 줄이 빠져 판이 갈라져 보였다(2026-11-11 사용자): 판도 앱이 그린 윤곽으로 오린다
-  fun makeCut(src: Bitmap, books: List<List<Double>>, ribbons: List<List<Double>>, boards: List<List<Double>>, file: File) {
+  fun cutOf(src: Bitmap, books: List<List<Double>>, ribbons: List<List<Double>>, boards: List<List<Double>>): Bitmap {
     val w = src.width
     val h = src.height
     val mask = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
@@ -171,10 +187,7 @@ internal object ShelfWidgetRenderer {
       }
       px[i] = (a shl 24) or (px[i] and 0xFFFFFF)
     }
-    val out = Bitmap.createBitmap(px, w, h, Bitmap.Config.ARGB_8888)
-    file.parentFile?.mkdirs()
-    FileOutputStream(file).use { out.compress(Bitmap.CompressFormat.PNG, 100, it) }
-    out.recycle()
+    return Bitmap.createBitmap(px, w, h, Bitmap.Config.ARGB_8888)
   }
 
   private fun hsv(c: Int): FloatArray { val v = FloatArray(3); Color.colorToHSV(c, v); return v }

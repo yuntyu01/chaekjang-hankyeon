@@ -7,8 +7,8 @@ import { type DependencyList, type RefObject, useEffect, useRef } from 'react';
 import { AppState, Dimensions, PixelRatio, type View } from 'react-native';
 
 import { captureWindow, screenCaptureAvailable } from '../../modules/screen-capture';
-import { shelfWidgetAvailable, updateShelfWidget } from '../../modules/shelf-widget';
-import type { CutShapes } from './shelf-widget-shapes';
+import { shelfWidgetAvailable, updateShelfWidget, type BandRow, type CutPx } from '../../modules/shelf-widget';
+import type { WidgetRow } from './shelf-widget-shapes';
 import { SKIN, SKIN_CHOICE, skinToString } from '@/scene-config/skin';
 import { spineLook } from '@/scene-config/spine-look';
 import { artIdle } from './book3d/art';
@@ -94,40 +94,64 @@ const rootRect = () =>
     root.current.measureInWindow((x, y, w, h) => resolve(w > 0 && h > 0 ? { x: x * px, y: y * px, w: w * px, h: h * px } : null));
   });
 
-// 홈 화면 위젯(2026-11-11): 홈 사진을 찍을 때 책장 첫 한두 칸도 떠서 위젯에 넘긴다(modules/shelf-widget이 위젯 크기에 맞춰 그린다).
-// view: 책장 보기(창 안 위치를 잰다), top: 그 안에서 책장 내용이 시작하는 높이(머리글 아래), bottoms: 같은 기준으로 선반 한 칸·두 칸이 끝나는 높이(dp)
-// cut: 투명 위젯용 책·갈피·판 모양(같은 기준 dp, ui/shelf-widget-shapes)
-export type WidgetSource = { view: View | null; top: number; bottoms: number[]; cut?: CutShapes };
+// 홈 화면 위젯(2026-11-11): 책장 첫 네 칸을 칸마다 떠서 위젯에 넘긴다(modules/shelf-widget이 칸을 이어 붙여 위젯 크기에 맞춰 그린다).
+// 홈이 가만히 있을 때(스크롤 위치는 어디든) 화면에 다 보이는 칸 중 아직 안 떴거나 바뀐 칸만 한 장으로 뜬다. 4단째처럼 첫 화면에서
+// 하단바에 가리는 칸은 사용자가 스크롤해 다 보일 때 뜬다. 바뀐 칸을 아직 못 떴으면 네이티브가 그 칸부터 버린다(낡은 그림을 잇지 않게).
+// view: 책장 보기(창 안 위치를 잰다), scrollY: 지금 스크롤(dp), clearH: 보기 위에서 하단바·하단바 위 옅어짐이 시작하는 곳까지(dp),
+// rows: 칸마다 콘텐츠 dp 범위·열쇠·오려 낼 모양(ui/shelf-widget-shapes widgetRows)
+export type WidgetSource = { view: View | null; scrollY: number; clearH: number; rows: WidgetRow[] };
 const WIDGET_DIR = shelfWidgetAvailable && FS.documentDirectory ? `${FS.documentDirectory}shelf-widget/` : null;
 // 선반 판 밑 그늘까지 담는 여유(dp). 더 내리면 다음 칸 벽이 띠처럼 비친다(6dp일 때 보였다)
 const WIDGET_SHADOW = 1.5;
+// 이번 실행에서 뜬 칸의 열쇠(같으면 다시 뜨지 않는다)
+const widgetDone = new Map<number, string>();
 
-async function captureWidget(src: WidgetSource) {
-  if (!WIDGET_DIR || !src.view || !src.bottoms.length) return;
+async function captureWidget(src: WidgetSource, again: () => WidgetSource | null) {
+  if (!WIDGET_DIR || !src.view || !src.rows.length) return;
+  const sy = src.scrollY;
+  const keys = src.rows.map((r) => r.key);
+  // 다 보이는 칸 중 새로 떠야 할 칸(이어진 범위)
+  const want = src.rows.map((r, i) => ({ r, i })).filter(({ r, i }) => r.top - sy >= 0 && r.bottom + WIDGET_SHADOW - sy <= src.clearH && widgetDone.get(i) !== r.key);
+  if (!want.length) {
+    // 뜰 칸이 없어도 열쇠가 바뀐 칸은 네이티브가 버리게 알린다(한 번만)
+    if (keysSent !== keys.join()) {
+      keysSent = keys.join();
+      await updateShelfWidget(null, [], keys, EMPTY_CUT);
+    }
+    return;
+  }
   const px = PixelRatio.get();
   const box = await new Promise<{ x: number; y: number; w: number } | null>((resolve) => src.view!.measureInWindow((x, y, w, h) => resolve(w > 0 && h > 0 ? { x, y, w } : null)));
   if (!box) return;
-  const last = src.bottoms[src.bottoms.length - 1] + WIDGET_SHADOW;
-  const rect = { x: box.x * px, y: (box.y + src.top) * px, w: box.w * px, h: (last - src.top) * px };
+  const first = want[0].r.top;
+  const last = want[want.length - 1].r.bottom + WIDGET_SHADOW;
+  const rect = { x: box.x * px, y: (box.y + first - sy) * px, w: box.w * px, h: (last - first) * px };
   const stamp = String(Date.now());
-  const file = `shelf-${stamp}.jpg`;
+  const file = `band-${stamp}.jpg`;
   await FS.makeDirectoryAsync(WIDGET_DIR, { intermediates: true }).catch(() => undefined);
   await captureWindow(WIDGET_DIR + file, rect, 92);
-  // 모양은 그림 기준 px로(그림 위 끝 = 책장 내용 위 끝)
+  // 뜨는 동안 움직였거나 칸이 바뀌었으면 버린다(다음 차례에 다시)
+  const now = again();
+  if (!now || Math.abs(now.scrollY - sy) > 0.5 || now.rows.map((r) => r.key).join() !== keys.join()) return FS.deleteAsync(WIDGET_DIR + file, { idempotent: true });
+  // 모양은 그림 기준 px로(그림 위 끝 = 첫 칸 위 끝)
   const X = (v: number) => v * px;
-  const Y = (v: number) => (v - src.top) * px;
-  const cut = src.cut ?? { books: [], ribbons: [], boards: [] };
-  await updateShelfWidget(WIDGET_DIR + file, src.bottoms.map((b) => (b + WIDGET_SHADOW - src.top) * px), new Date().getFullYear(), {
-    books: cut.books.map((f) => f.map((v, i) => (i % 2 ? Y(v) : X(v)))),
-    ribbons: cut.ribbons.map(([x, y, w, h]) => [X(x), Y(y), X(w), h * px]),
-    boards: cut.boards.map((f) => f.map((v, i) => (i % 2 ? Y(v) : X(v)))),
-  });
-  // 위젯이 새 그림을 읽은 뒤 옛 그림을 지운다(읽는 도중에 덮어쓰지 않게 이름을 바꿔 가며 쓴다. 같은 때 만든 투명 그림 cut-…png는 남긴다)
-  const names = await FS.readDirectoryAsync(WIDGET_DIR);
-  await Promise.all(names.filter((n) => !n.includes(stamp)).map((n) => FS.deleteAsync(WIDGET_DIR + n, { idempotent: true })));
+  const Y = (v: number) => (v - first) * px;
+  const cut: CutPx = { books: [], ribbons: [], boards: [] };
+  for (const { r } of want) {
+    const c = r.cut();
+    cut.books.push(...c.books.map((f) => f.map((v, i) => (i % 2 ? Y(v) : X(v)))));
+    cut.ribbons.push(...c.ribbons.map(([x, y, w, h]) => [X(x), Y(y), X(w), h * px]));
+    cut.boards.push(...c.boards.map((f) => f.map((v, i) => (i % 2 ? Y(v) : X(v)))));
+  }
+  const band: BandRow[] = want.map(({ r, i }) => ({ index: i, key: r.key, y0: Y(r.top), y1: Y(r.bottom + WIDGET_SHADOW), top: r.top * px }));
+  await updateShelfWidget(WIDGET_DIR + file, band, keys, cut);
+  keysSent = keys.join();
+  for (const b of band) widgetDone.set(b.index, b.key);
 }
+let keysSent = '';
+const EMPTY_CUT: CutPx = { books: [], ribbons: [], boards: [] };
 
-async function capture(widget?: () => WidgetSource | null) {
+async function capture() {
   if (!DIR || !META || capturing) return;
   capturing = true;
   const gen = staleGen;
@@ -149,9 +173,6 @@ async function capture(widget?: () => WidgetSource | null) {
       await Promise.all(names.filter((n) => n !== file && n !== 'meta.json').map((n) => FS.deleteAsync(DIR + n, { idempotent: true })));
     });
     if (PERF_ENABLED) console.log(`[snapshot] total=${Date.now() - t0}ms rect=${rect.w}x${rect.h}`);
-    // 위젯 그림은 홈 사진이 그대로 쓰였을 때만(찍는 동안 바뀌었으면 다음 차례에)
-    const src = !dirty && widget?.();
-    if (src) await captureWidget(src).catch((e) => console.warn('shelf widget capture failed', String((e as Error)?.message ?? e)));
   } catch (e) {
     console.warn('home snapshot failed', String((e as Error)?.message ?? e));
   } finally {
@@ -161,10 +182,27 @@ async function capture(widget?: () => WidgetSource | null) {
 
 // 홈 화면: deps(책장·책·설정처럼 홈 그림을 바꾸는 값)가 바뀌면 사진이 낡은 것. rest(가만히 있음)인 동안 낡았으면 잠깐 뒤에 찍는다.
 // ready: 찍기 직전 확인(맨 위로 스크롤돼 있는지 등). 아니면 조금 뒤 다시 본다
-// widget: 위젯에 넘길 책장 칸(WidgetSource). 렌더마다 새 함수여도 되고, 찍을 때 가장 최근 것을 쓴다
+// widget: 위젯에 넘길 책장 칸(WidgetSource). 렌더마다 새 함수여도 되고, 뜰 때 가장 최근 것을 쓴다.
+// 위젯 칸은 홈 사진과 따로, 가만히 있는 동안 1.5초마다 스크롤이 멈춰 있는지 보고 뜰 칸이 있으면 뜬다
 export function useHomeSnapshot(rest: boolean, deps: DependencyList, ready: () => boolean, widget?: () => WidgetSource | null) {
   const latest = useRef({ ready, widget });
   latest.current = { ready, widget };
+  useEffect(() => {
+    if (!rest || !WIDGET_DIR) return;
+    let lastY = NaN;
+    const id = setInterval(() => {
+      const src = latest.current.widget?.();
+      if (!src) return;
+      const still = Math.abs(src.scrollY - lastY) < 0.5;
+      lastY = src.scrollY;
+      if (!still || capturing || !shown || AppState.currentState !== 'active' || !artIdle()) return;
+      capturing = true;
+      captureWidget(src, () => latest.current.widget?.() ?? null)
+        .catch((e) => console.warn('shelf widget capture failed', String((e as Error)?.message ?? e)))
+        .finally(() => { capturing = false; });
+    }, 1500);
+    return () => clearInterval(id);
+  }, [rest]);
   useEffect(() => {
     markStale();
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -176,7 +214,7 @@ export function useHomeSnapshot(rest: boolean, deps: DependencyList, ready: () =
     const later = () => {
       t = setTimeout(async () => {
         if (!alive || !dirty) return;
-        if (shown && AppState.currentState === 'active' && artIdle() && latest.current.ready()) await capture(latest.current.widget);
+        if (shown && AppState.currentState === 'active' && artIdle() && latest.current.ready()) await capture();
         if (alive && dirty) later();
       }, 1500);
     };
