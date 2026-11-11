@@ -1,12 +1,14 @@
 // 독서 실행 화면: 장면이 화면 대부분, 아래 조작부는 위에서부터 연결된 책 · 시간 · [분위기 | 재생/일시정지 | 목표] 한 줄.
 // 분위기 = 장면+환경음 한 세트(하나로 고른다). 조작부 높이는 예전(2026-10-31 사용자 '하단부 높이 낮춰줘') 수준을 지킨다.
-// 조작부를 접으면 밝은 시간과 재생·일시정지만 남는다(다시 열어도 타이머는 멈추지 않는다).
+// 조작부를 접으면 [스피커 · 밝은 시간 · 재생·일시정지]가 남는다(다시 열어도 타이머는 멈추지 않는다). 스피커를 누르면 위로 세로 소리 막대가 열리고,
+// 한 번 더 누르거나 막대를 맨 아래까지 내리면 음소거(2026-11-11 사용자 '시간 왼쪽에 스피커, 누르면 위로 크기 조절, 한 번 더 누르거나 맨 밑이면 음소거').
+// 장면은 옆으로 밀어 바꾼다(접었을 때 아래 점이 지금 장면, 2026-11-11 사용자 '내린 거에 소리 크기랑 옆으로 넘기기').
 // 2026-10-31 일반 UI 정돈: 조작부·시트는 정돈 변형(Tidy). 배경 장면(그림·영상)과 독서 세션 동작은 그대로.
 // 소리만 듣기(sound=1)는 타이머 없이 소리만: 독서 시간으로 기록하지 않는다.
 import { router, useFocusEffect } from 'expo-router';
 import { BookOpen, AudioLines, Check, ChevronDown, ChevronLeft, Timer, Volume2, VolumeX } from '@/ui/icons';
-import { useCallback, useEffect, useState, type ReactNode } from 'react';
-import { AccessibilityInfo, AppState, Image, Pressable, ScrollView, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
+import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
+import { AccessibilityInfo, AppState, Image, PanResponder, Pressable, ScrollView, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Svg, { Defs, LinearGradient, Path, Rect, Stop } from 'react-native-svg';
 
@@ -74,6 +76,10 @@ export function ReadingScreen({ initialBookId, soundOnly = false, inTab = false 
   const posterW = tileW - 16 - 3;
   const bigText = fontScale >= 1.6 || width < 330;
   const [dragVolume, setDragVolume] = useState<number | null>(null);
+  // 접었을 때 스피커 위 세로 소리 막대(열림)와 그 자리(접힌 조작 묶음 안 줄 위치·묶음 높이)
+  const [volOpen, setVolOpen] = useState(false);
+  const [dockH, setDockH] = useState(0);
+  const [rowBox, setRowBox] = useState<{ x: number; y: number } | null>(null);
   const [viewportHeight, setViewportHeight] = useState(height);
   const [panelHeight, setPanelHeight] = useState(310);
   const [appActive, setAppActive] = useState(AppState.currentState === 'active');
@@ -100,6 +106,7 @@ export function ReadingScreen({ initialBookId, soundOnly = false, inTab = false 
     router.setParams({ book: undefined });
   }, [initialBookId, lib.books, active]);
   useEffect(() => { if (!active && !soundOnly && !audio.playing) setOpen(true); }, [active, soundOnly, audio.playing]);
+  useEffect(() => { if (open) setVolOpen(false); }, [open]);
 
   // 읽는 중에 다른 책을 골랐을 때: '이 기록의 책 정정'(같은 독서를 다른 책으로 바로잡기)과 '다른 책 읽기 시작'(지금까지 저장 후 새 타이머)을 나눈다.
   // 앞 책에서 잰 시간이 설명 없이 새 책으로 옮겨 가지 않게
@@ -139,6 +146,27 @@ export function ReadingScreen({ initialBookId, soundOnly = false, inTab = false 
     settingsStore.set({ scene: id });
     if (audio.playing) void ambient.play(id);
   };
+  // 옆으로 밀어 장면 바꾸기: 왼쪽으로 밀면 다음 장면, 끝에서는 처음으로 돈다. 장면 칸 어디서나(조작부·버튼 위는 제외)
+  const stepScene = (dir: 1 | -1) => {
+    const i = SCENES.findIndex((x) => x.id === settingsStore.get().scene);
+    chooseScene(SCENES[(i + dir + SCENES.length) % SCENES.length].id);
+  };
+  const stepRef = useRef(stepScene);
+  stepRef.current = stepScene;
+  const [swipe] = useState(() => PanResponder.create({
+    onMoveShouldSetPanResponder: (_, g) => Math.abs(g.dx) > 16 && Math.abs(g.dx) > Math.abs(g.dy) * 1.5,
+    onPanResponderRelease: (_, g) => { if (Math.abs(g.dx) > 60 || Math.abs(g.vx) > 0.5) stepRef.current(g.dx < 0 ? 1 : -1); },
+  }));
+  // 스피커: 닫혀 있으면 막대를 연다(음소거였으면 소리를 켠다), 열려 있으면 음소거하고 닫는다
+  const tapSpeaker = () => {
+    if (!volOpen) {
+      if (settings.muted) settingsStore.set({ muted: false });
+      setVolOpen(true);
+    } else {
+      settingsStore.set({ muted: true });
+      setVolOpen(false);
+    }
+  };
   const pickGoal = (min: number | null) => {
     settingsStore.set({ goalMin: min });
     setControls(null);
@@ -152,6 +180,7 @@ export function ReadingScreen({ initialBookId, soundOnly = false, inTab = false 
     <View onLayout={(e) => setViewportHeight(e.nativeEvent.layout.height)} style={{ flex: 1, backgroundColor: '#182C44' }}>
       {focused ? <StatusBar style="light" /> : null}
       <Scene id={scene} animate={focused && appActive && !reduce} height={open ? Math.max(viewportHeight * 0.3, viewportHeight - panelHeight + 22) : viewportHeight} />
+      <View style={StyleSheet.absoluteFill} {...swipe.panHandlers} />
       <View style={[st.top, { paddingTop: insets.top + 6 }]}>
         <View style={st.topRow}>
           <Pressable onPress={leave} style={st.topButton} accessibilityRole="button" accessibilityLabel={active ? '나가기(독서는 계속)' : '책장으로'}><ChevronLeft size={28} color={LIGHT} strokeWidth={icon.stroke} /></Pressable>
@@ -207,10 +236,10 @@ export function ReadingScreen({ initialBookId, soundOnly = false, inTab = false 
             {soundOnly ? <Btn label="지금부터 독서 기록" kind="ghost" onPress={() => { start(); router.replace('/reading/session'); }} style={{ marginTop: space.s }} /> : null}
           </ScrollView>
         </View>
-      {/* 접었을 때: 장면 아래쪽을 어둡게 물들이고 그 위에 밝은 시간과 재생·일시정지만. 시간을 누르면 조작부가 다시 열린다 */}
+      {/* 접었을 때: 장면 아래쪽을 어둡게 물들이고 그 위에 장면 점, [스피커 · 밝은 시간 · 재생·일시정지]. 시간을 누르면 조작부가 다시 열린다 */}
       {!open ? (
         <>
-          <Svg pointerEvents="none" width="100%" height={Math.round(viewportHeight * 0.34)} style={st.fade}>
+          <Svg pointerEvents="none" width="100%" height={Math.round(viewportHeight * 0.42)} style={st.fade}>
             <Defs>
               <LinearGradient id="foldFade" x1="0" y1="0" x2="0" y2="1">
                 <Stop offset="0" stopColor={night.fade} stopOpacity={0} />
@@ -220,14 +249,43 @@ export function ReadingScreen({ initialBookId, soundOnly = false, inTab = false 
             </Defs>
             <Rect x="0" y="0" width="100%" height="100%" fill="url(#foldFade)" />
           </Svg>
-          <View style={[st.dock, { bottom: insets.bottom + 26 }]} pointerEvents="box-none">
-            <Pressable onPress={() => setOpen(true)} hitSlop={12} accessibilityRole="button" accessibilityLabel="조작부 열기" style={st.dockTime}>
-              <Text style={st.dockTimeText}>{soundOnly ? '조작부 열기' : <Elapsed running={ticking}>{clock}</Elapsed>}</Text>
-            </Pressable>
-            <Pressable onPress={playPause} hitSlop={12} accessibilityRole="button" accessibilityLabel={playLabel} style={st.dockPlay}>
-              {playing ? <PauseIcon width={5} height={24} gap={6} color={night.ink} /> : <PlayIcon size={30} color={night.ink} />}
-            </Pressable>
+          {/* 소리 막대가 열린 동안 장면을 누르면 닫는다 */}
+          {volOpen ? <Pressable style={StyleSheet.absoluteFill} onPress={() => setVolOpen(false)} accessibilityLabel="소리 크기 닫기" /> : null}
+          <View style={[st.dock, { bottom: insets.bottom + 18 }]} pointerEvents="box-none" onLayout={(e) => setDockH(e.nativeEvent.layout.height)}>
+            {/* 장면 점(지금 장면). 점을 눌러도 바뀌고, 화면 읽기에서는 위아래로 넘긴다 */}
+            <View style={st.dots} accessible accessibilityRole="adjustable" accessibilityLabel={`장면, ${sceneName(scene)}`} accessibilityHint="옆으로 밀어 장면을 바꿔요" accessibilityActions={[{ name: 'increment' }, { name: 'decrement' }]} onAccessibilityAction={(e) => stepScene(e.nativeEvent.actionName === 'increment' ? 1 : -1)}>
+              {SCENES.map((sc) => (
+                <Pressable key={sc.id} onPress={() => chooseScene(sc.id)} hitSlop={10} importantForAccessibility="no">
+                  <View style={[st.dot, sc.id === scene && st.dotOn]} />
+                </Pressable>
+              ))}
+            </View>
+            <View style={st.dockRow} onLayout={(e) => setRowBox({ x: e.nativeEvent.layout.x, y: e.nativeEvent.layout.y })}>
+              <Pressable onPress={tapSpeaker} hitSlop={12} accessibilityRole="button" accessibilityState={{ expanded: volOpen }} accessibilityLabel={settings.muted ? '소리 꺼짐, 눌러서 소리 켜기' : volOpen ? `소리 ${Math.round(settings.volume * 100)}%, 눌러서 음소거` : `소리 ${Math.round(settings.volume * 100)}%, 눌러서 크기 조절`} style={st.dockPlay}>
+                {settings.muted ? <VolumeX size={26} color={night.inkSoft} strokeWidth={icon.stroke} /> : <Volume2 size={26} color={night.ink} strokeWidth={icon.stroke} />}
+              </Pressable>
+              <Pressable onPress={() => { setVolOpen(false); setOpen(true); }} hitSlop={12} accessibilityRole="button" accessibilityLabel="조작부 열기" style={st.dockTime}>
+                <Text style={st.dockTimeText}>{soundOnly ? '조작부 열기' : <Elapsed running={ticking}>{clock}</Elapsed>}</Text>
+              </Pressable>
+              <Pressable onPress={playPause} hitSlop={12} accessibilityRole="button" accessibilityLabel={playLabel} style={st.dockPlay}>
+                {playing ? <PauseIcon width={5} height={24} gap={6} color={night.ink} /> : <PlayIcon size={30} color={night.ink} />}
+              </Pressable>
+            </View>
           </View>
+          {/* 세로 소리 막대: 스피커 바로 위(분위기 시트의 막대와 같은 값). 맨 아래까지 내리면 음소거, 올리면 다시 켠다 */}
+          {volOpen && rowBox ? (
+            <VolumeColumn
+              style={{ left: rowBox.x + (space.touch - VOL_W) / 2, bottom: insets.bottom + 18 + dockH - rowBox.y + 8 }}
+              value={dragVolume ?? (settings.muted ? 0 : settings.volume)}
+              valueText={volumeText}
+              onChange={(v) => { setDragVolume(v); ambient.preview(v); }}
+              onCommit={(v) => {
+                setDragVolume(null);
+                if (v <= 0.02) settingsStore.set({ muted: true });
+                else settingsStore.set({ volume: Math.round(v * 100) / 100, muted: false });
+              }}
+            />
+          ) : null}
         </>
       ) : null}
       <BookPicker lib={lib} visible={bookPicker} allowNone onClose={() => setBookPicker(false)} onPick={(id) => { setBookPicker(false); if (active && active.myBookId !== id) askSwitch(id); else setDraftBookId(id); }} />
@@ -282,6 +340,46 @@ export function ReadingScreen({ initialBookId, soundOnly = false, inTab = false 
 
 // 어두운 장면 위 머리줄은 밝은 글자(night)에 옅은 그늘을 깔아 대비를 지킨다. 아래 조작판은 화면 공통 토큰.
 const shade = { textShadowColor: night.shade, textShadowOffset: { width: 0, height: 1 }, textShadowRadius: 6 };
+// 세로 소리 막대(접은 화면의 스피커 위). 아래가 0, 위가 1. 막대 어디를 눌러도 그 높이로, 끌면 따라간다
+const VOL_W = 44;
+const VOL_H = 176;
+const VOL_PAD = 18; // 막대 위아래 여백(손잡이 반지름 + 여유)
+function VolumeColumn({ value, valueText, onChange, onCommit, style }: { value: number; valueText: string; onChange: (v: number) => void; onCommit: (v: number) => void; style: object }) {
+  const span = VOL_H - VOL_PAD * 2;
+  const start = useRef(0);
+  const last = useRef(value);
+  const cb = useRef({ onChange, onCommit });
+  cb.current = { onChange, onCommit };
+  const [pan] = useState(() => {
+    const at = (y: number) => Math.min(1, Math.max(0, 1 - (y - VOL_PAD) / span));
+    return PanResponder.create({
+      onStartShouldSetPanResponder: () => true,
+      onMoveShouldSetPanResponder: () => true,
+      onPanResponderTerminationRequest: () => false,
+      onPanResponderGrant: (e) => { start.current = e.nativeEvent.locationY; last.current = at(start.current); cb.current.onChange(last.current); },
+      onPanResponderMove: (_, g) => { last.current = at(start.current + g.dy); cb.current.onChange(last.current); },
+      onPanResponderRelease: () => cb.current.onCommit(last.current),
+      onPanResponderTerminate: () => cb.current.onCommit(last.current),
+    });
+  });
+  const fillH = span * value;
+  return (
+    <View
+      {...pan.panHandlers}
+      style={[st.vol, style]}
+      accessible
+      accessibilityRole="adjustable"
+      accessibilityLabel="소리 크기"
+      accessibilityValue={{ min: 0, max: 100, now: Math.round(value * 100), text: valueText }}
+      accessibilityActions={[{ name: 'increment' }, { name: 'decrement' }]}
+      onAccessibilityAction={(e) => onCommit(Math.min(1, Math.max(0, Math.round((value + (e.nativeEvent.actionName === 'increment' ? 0.1 : -0.1)) * 10) / 10)))}>
+      <View pointerEvents="none" style={[st.volTrack, { top: VOL_PAD, height: span, backgroundColor: night.line }]} />
+      <View pointerEvents="none" style={[st.volTrack, { top: VOL_PAD + span - fillH, height: fillH, backgroundColor: night.ink }]} />
+      <View pointerEvents="none" style={[st.volKnob, { top: VOL_PAD + span - fillH - 10 }]} />
+    </View>
+  );
+}
+
 // 1초마다 바뀌는 시간 글자만 다시 그린다(장면·조작부·책 고르기 창까지 화면 전체를 매초 다시 그리지 않게)
 function Elapsed({ running, children }: { running: boolean; children: (ms: number) => ReactNode }) {
   const ms = useElapsed(running);
@@ -328,7 +426,14 @@ const st = StyleSheet.create({
   soundBlock: { marginTop: space.xl, paddingTop: space.xl, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.line },
   error: { ...type.sub, color: colors.danger, marginTop: space.m },
   fade: { position: 'absolute', left: 0, right: 0, bottom: 0 },
-  dock: { position: 'absolute', alignSelf: 'center', flexDirection: 'row', alignItems: 'center', gap: space.xl },
+  dock: { position: 'absolute', left: 0, right: 0, alignItems: 'center', gap: space.s },
+  dockRow: { flexDirection: 'row', alignItems: 'center', gap: space.xl },
+  dots: { flexDirection: 'row', gap: 10, paddingVertical: 6 },
+  dot: { width: 7, height: 7, borderRadius: 3.5, backgroundColor: 'rgba(246,239,230,0.42)' },
+  dotOn: { backgroundColor: night.ink },
+  vol: { position: 'absolute', width: VOL_W, height: VOL_H, borderRadius: VOL_W / 2, backgroundColor: 'rgba(16,13,11,0.62)', alignItems: 'center' },
+  volTrack: { position: 'absolute', width: 6, borderRadius: 3, left: (VOL_W - 6) / 2 },
+  volKnob: { position: 'absolute', width: 20, height: 20, borderRadius: 10, left: (VOL_W - 20) / 2, backgroundColor: night.ink },
   dockTime: { minHeight: space.touch, justifyContent: 'center' },
   dockTimeText: { fontFamily: fonts.ui, fontSize: 34, lineHeight: 42, color: night.ink, fontVariant: ['tabular-nums'], includeFontPadding: false, ...shade },
   dockPlay: { width: space.touch, height: space.touch, alignItems: 'center', justifyContent: 'center' },
