@@ -23,10 +23,11 @@ import { LoadingScreen } from '@/ui/LoadingScreen';
 import { colors } from '@/ui/theme';
 import { colors as screenColors } from '@/ui/theme';
 
-// 화면 UI 글꼴: G마켓 산스 Medium·Bold(2026-11-11 사용자 시안 CSS, 홈 머리글 포함). assets/fonts/README.md
-// Pretendard 파일은 Skia로 그리는 공유 그림·새긴 해에서만 쓴다(여기 등록하지 않는다)
-const GmarketSansMedium = require('../../assets/fonts/GmarketSans-Medium.ttf');
-const GmarketSansBold = require('../../assets/fonts/GmarketSans-Bold.ttf');
+// 화면 UI 글꼴: Pretendard R·M·SB(시안과 같은 글꼴, 홈 머리글 포함). assets/fonts/README.md
+const PretendardRegular = require('../../assets/fonts/Pretendard-Regular.otf');
+const PretendardMedium = require('../../assets/fonts/Pretendard-Medium.otf');
+const PretendardSemiBold = require('../../assets/fonts/Pretendard-SemiBold.otf');
+const PretendardBold = require('../../assets/fonts/Pretendard-Bold.otf');
 const ReadingSerif = require('../../assets/fonts/NotoSerifKR-Regular.otf');
 
 startProfile();
@@ -34,7 +35,7 @@ bootMark('js-layout-module');
 void SplashScreen.preventAutoHideAsync();
 
 export default function RootLayout() {
-  const [loaded, error] = useFonts({ GmarketSansMedium, GmarketSansBold, ReadingSerif });
+  const [loaded, error] = useFonts({ PretendardRegular, PretendardMedium, PretendardSemiBold, PretendardBold, ReadingSerif });
   const [booted, setBooted] = useState(false);
   const [bootError, setBootError] = useState(false);
   const [bootAttempt, setBootAttempt] = useState(0);

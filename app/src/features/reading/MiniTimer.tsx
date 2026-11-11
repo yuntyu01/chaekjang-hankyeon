@@ -14,7 +14,6 @@ import { MINI_TIMER_SIZE, useMiniTimerPlace } from '@/store/mini-timer-store';
 import { settingsStore } from '@/store/settings-store';
 import { BookOpen, Play } from '@/ui/icons';
 import { colors, fonts, icon, shape } from '@/ui/theme';
-import { FixedDigits } from '@/ui/FixedDigits';
 import { navigation } from '@/ui/theme';
 
 import { clock, useElapsed } from './ActiveReading';
@@ -126,7 +125,9 @@ export function MiniTimer() {
           accessibilityRole="button"
           accessibilityState={{ expanded: open }}
           accessibilityLabel={`독서 시간 ${speak(ms)}${running ? '' : ', 일시정지'}. 눌러서 ${open ? '접기' : '펼치기'}`}>
-          <FixedDigits text={label} style={st.timeText} />
+          <Text style={st.timeText} numberOfLines={1}>
+            {label}
+          </Text>
         </Pressable>
       </View>
     </View>
@@ -150,7 +151,7 @@ const st = StyleSheet.create({
   action: { width: 52, height: MINI_TIMER_SIZE, alignItems: 'center', justifyContent: 'center' },
   divider: { width: shape.hairline * 2, height: 22, backgroundColor: colors.line },
   time: { height: MINI_TIMER_SIZE, alignItems: 'center', justifyContent: 'center' },
-  timeText: { fontFamily: fonts.uiBold, fontSize: 15, color: colors.ink, includeFontPadding: false },
+  timeText: { fontFamily: fonts.uiBold, fontSize: 15, color: colors.ink, fontVariant: ['tabular-nums'], includeFontPadding: false },
   pause: { flexDirection: 'row', gap: 5 },
   pauseBar: { width: 3.5, height: 16, borderRadius: 1.5, backgroundColor: colors.ink },
 });

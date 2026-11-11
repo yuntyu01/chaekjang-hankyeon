@@ -37,18 +37,17 @@ export const colors = {
   dropRange: 'rgba(196, 128, 64, 0.85)', // 끄는 동안 선반 앞턱에 놓일 가로 범위
 };
 
-// 글꼴: UI는 G마켓 산스 한 가족(2026-11-11 사용자 시안 CSS `--font-sans: "Gmarket Sans"`. 그전은 Pretendard). 한글 11,172자·영문·숫자가 모두 있어 섞이지 않는다.
-// 굵기는 Medium·Bold 두 파일뿐이라 웹 글꼴 맞춤 규칙처럼 보통·중간은 Medium, 반굵게·굵게는 Bold.
-// 숫자 폭이 서로 다르고 tnum이 없다: 1초마다 바뀌는 시간은 ui/FixedDigits(글자마다 같은 폭 칸)로 그린다. 가만히 있는 숫자는 그대로.
+// 글꼴: UI는 Pretendard 한 가족(2026-10-26 시안과 같은 글꼴: 한글은 본고딕 뼈대, 영문·숫자는 Inter 모양. 한글 11,172자·영문·숫자가 모두 있어 섞이지 않는다).
+// 숫자는 폭이 달라 시간처럼 바뀌는 숫자에는 fontVariant tabular-nums(글꼴의 tnum)를 쓴다.
 // 굵기는 글꼴 파일로 고른다(fontWeight를 함께 주면 안드로이드가 가짜 굵게를 덧입힌다).
 // 갈피 문장·책 표지 같은 내용 글꼴은 명조(reading/serif)를 따로 쓴다.
 export const fonts = {
   // 갈피 카드 본문: 시안과 같은 본명조(Noto Serif KR, app/_layout에서 ReadingSerif로 등록)
   reading: 'ReadingSerif',
-  ui: 'GmarketSansMedium',
-  uiMedium: 'GmarketSansMedium',
-  uiBold: 'GmarketSansBold',
-  uiTitle: 'GmarketSansBold', // 일반 화면의 큰 제목(2026-11-01 '제목 키워', 토스식 위계)
+  ui: 'PretendardRegular',
+  uiMedium: 'PretendardMedium',
+  uiBold: 'PretendardSemiBold', // 시안의 굵은 글자는 Bold보다 한 단계 가벼운 SemiBold
+  uiTitle: 'PretendardBold', // 일반 화면의 큰 제목만(2026-11-01 '제목 키워', 토스식 위계)
   serif: 'ReadingSerif',
 };
 
