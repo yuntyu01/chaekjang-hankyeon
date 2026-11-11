@@ -1,5 +1,10 @@
 # 앱에 넣은 글꼴
 
+- `GmarketSans-{Medium,Bold}.ttf` — G마켓 산스(Copyright © 2019 eBay Korea Co., Ltd., https://corp.gmarket.com/fonts/). SIL OFL 1.1: `GmarketSans-OFL.txt`(글꼴 파일 안 라이선스 그대로).
+  2026-11-11부터 화면 UI 글꼴(사용자 시안 CSS `--font-sans: "Gmarket Sans", ...`). 굵기는 Light·Medium·Bold 셋뿐이라 CSS 굵기 맞춤 규칙대로 보통(400)·중간(500)은 Medium, 600·700은 Bold로 쓴다(Light는 넣지 않았다).
+  숫자 폭이 서로 다르고 tnum이 없어, 1초마다 바뀌는 시간 숫자는 `ui/FixedDigits`가 글자마다 같은 폭 칸에 둔다.
+  파일은 공식 배포본 `GmarketSansTTF.zip`의 `GmarketSansTTF{Medium,Bold}.ttf` 그대로다(이름만 바꿈).
+
 - `Pretendard-{Regular,Medium,SemiBold,Bold}.otf` — Pretendard 1.3.9 (길형진, https://github.com/orioncactus/pretendard). SIL OFL 1.1: `Pretendard-OFL.txt`.
   화면 UI 글꼴(2026-10-26 시안과 같은 글꼴): Regular 본문·목록·입력칸, Medium 예비, SemiBold 제목·버튼·입력칸 이름. 토큰은 `src/ui/screenTheme.ts`의 `fonts.ui`·`fonts.uiMedium`·`fonts.uiBold`·`type`.
   한글 11,172자(본고딕 뼈대)·영문·숫자(Inter 모양). 숫자 폭이 서로 달라 바뀌는 시간 숫자에는 `fontVariant: ['tabular-nums']`(글꼴의 tnum)를 쓴다.

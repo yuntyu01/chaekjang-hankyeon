@@ -108,16 +108,16 @@ describe('글자·간격 범위(제목 24~28, 본문·메뉴 16~18, 보조 14~16
     expect(space.touch).toBeGreaterThanOrEqual(44);
     expect(space.row).toBeGreaterThanOrEqual(48);
   });
-  it('UI 글자는 모두 UI 글꼴(R·M·SB) 가족', () => {
+  it('UI 글자는 모두 UI 글꼴(Medium·Bold) 가족', () => {
     for (const t of Object.values(type)) expect([fonts.ui, fonts.uiMedium, fonts.uiBold, fonts.uiTitle]).toContain(t.fontFamily);
   });
 });
 
 describe('글꼴 파일·등록', () => {
-  it('UI 글꼴(Pretendard) 이름마다 assets 파일이 있고 루트 레이아웃 useFonts에 등록돼 있다', () => {
+  it('UI 글꼴(G마켓 산스) 이름마다 assets 파일이 있고 루트 레이아웃 useFonts에 등록돼 있다', () => {
     const layout = fs.readFileSync(path.join(SRC, 'app', '_layout.tsx'), 'utf8');
     const useFonts = layout.slice(layout.indexOf('useFonts({'));
-    const files: Record<string, string> = { PretendardRegular: 'Pretendard-Regular.otf', PretendardMedium: 'Pretendard-Medium.otf', PretendardSemiBold: 'Pretendard-SemiBold.otf', PretendardBold: 'Pretendard-Bold.otf' };
+    const files: Record<string, string> = { GmarketSansMedium: 'GmarketSans-Medium.ttf', GmarketSansBold: 'GmarketSans-Bold.ttf' };
     for (const name of [fonts.ui, fonts.uiMedium, fonts.uiBold, fonts.uiTitle]) {
       expect(files[name]).toBeDefined();
       expect(fs.existsSync(path.join(SRC, '..', 'assets', 'fonts', files[name]))).toBe(true);

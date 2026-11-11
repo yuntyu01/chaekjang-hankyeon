@@ -14,6 +14,7 @@ import { MINI_TIMER_SIZE, useMiniTimerPlace } from '@/store/mini-timer-store';
 import { settingsStore } from '@/store/settings-store';
 import { BookOpen, Play } from '@/ui/icons';
 import { colors, fonts, icon, shape } from '@/ui/theme';
+import { FixedDigits } from '@/ui/FixedDigits';
 import { navigation } from '@/ui/theme';
 
 import { clock, useElapsed } from './ActiveReading';
@@ -21,7 +22,7 @@ import { clock, useElapsed } from './ActiveReading';
 const ACTIONS_W = 112; // 펼친 왼쪽 부분(바로가기 + 재생/일시정지)
 const GAP = 12;
 
-// 하단 탭이 보이는 화면: 탭 바 위에 띄운다(2026-11 커뮤니티 탭 추가. 읽기 탭은 탭 바를 숨기고 타이머가 화면에 있다)
+// 하단 탭이 보이는 화면: 탭 바 위에 띄운다(2026-11 커뮤니티 탭 추가. 읽기 탭은 책마다 흐르는 시간이 보여 띄우지 않는다)
 const TAB_PATHS = ['/', '/bookmarks', '/stats', '/community', '/me'];
 
 // 화면 이름: 읽기 화면에서는 숨긴다
@@ -125,9 +126,7 @@ export function MiniTimer() {
           accessibilityRole="button"
           accessibilityState={{ expanded: open }}
           accessibilityLabel={`독서 시간 ${speak(ms)}${running ? '' : ', 일시정지'}. 눌러서 ${open ? '접기' : '펼치기'}`}>
-          <Text style={st.timeText} numberOfLines={1}>
-            {label}
-          </Text>
+          <FixedDigits text={label} style={st.timeText} />
         </Pressable>
       </View>
     </View>
@@ -151,7 +150,7 @@ const st = StyleSheet.create({
   action: { width: 52, height: MINI_TIMER_SIZE, alignItems: 'center', justifyContent: 'center' },
   divider: { width: shape.hairline * 2, height: 22, backgroundColor: colors.line },
   time: { height: MINI_TIMER_SIZE, alignItems: 'center', justifyContent: 'center' },
-  timeText: { fontFamily: fonts.uiBold, fontSize: 15, color: colors.ink, fontVariant: ['tabular-nums'], includeFontPadding: false },
+  timeText: { fontFamily: fonts.uiBold, fontSize: 15, color: colors.ink, includeFontPadding: false },
   pause: { flexDirection: 'row', gap: 5 },
   pauseBar: { width: 3.5, height: 16, borderRadius: 1.5, backgroundColor: colors.ink },
 });
