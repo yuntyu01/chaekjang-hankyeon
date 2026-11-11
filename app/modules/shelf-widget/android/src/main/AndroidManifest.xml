@@ -1,0 +1,16 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+  <application>
+    <!-- 홈 화면 위젯 '나의 책장'. 그림은 앱이 홈 사진을 찍을 때 함께 떠 둔 책장(filesDir/shelf-widget) -->
+    <receiver
+      android:name="app.covebook.shelfwidget.ShelfWidgetProvider"
+      android:exported="false"
+      android:label="@string/shelf_widget_label">
+      <intent-filter>
+        <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+      </intent-filter>
+      <meta-data
+        android:name="android.appwidget.provider"
+        android:resource="@xml/shelf_widget_info" />
+    </receiver>
+  </application>
+</manifest>

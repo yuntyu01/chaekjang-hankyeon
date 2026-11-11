@@ -1,0 +1,16 @@
+// 홈 화면 위젯 '나의 책장'(Android 전용): 앱이 떠 둔 책장 그림 위에 머리글을 얹어 그린다
+plugins {
+  id 'com.android.library'
+  id 'expo-module-gradle-plugin'
+}
+
+group = 'app.covebook.shelfwidget'
+version = '0.1.0'
+
+android {
+  namespace "app.covebook.shelfwidget"
+  defaultConfig {
+    versionCode 1
+    versionName '0.1.0'
+  }
+}

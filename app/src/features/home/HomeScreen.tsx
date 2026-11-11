@@ -208,7 +208,8 @@ export function HomeScreen() {
     return () => setFocused(false);
   }, []));
   const atRest = focused && settled && onCurrent && !drag && !popId && !editing && !shelfMenuOpen && !toast;
-  useHomeSnapshot(atRest && lockedReady, [layout, books, bookShared, appSettings, view, winW], () => scrollY.value < 1);
+  // 홈 화면 위젯(2026-11-11): 같은 때 책장 첫 두 칸도 떠 둔다(머리글 아래부터 선반 판 끝까지, 책장 보기 기준 dp)
+  useHomeSnapshot(atRest && lockedReady, [layout, books, bookShared, appSettings, view, winW], () => scrollY.value < 1, () => ({ view: viewportRef.current, top: headerH, bottoms: rowsRef.current.slice(0, 2).map((r) => headerH + r.top + r.height) }));
 
   // 측정 번들: 끌기 한 번 동안 JS 쪽 시간(미리보기 계산, 미리보기 → 커밋, JS 프레임 간격)
   const dragJs = useRef({ preview: [] as number[], commit: [] as number[], js: [] as number[], commitStart: 0, raf: 0, last: 0 });
