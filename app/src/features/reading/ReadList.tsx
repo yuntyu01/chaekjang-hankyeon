@@ -2,6 +2,7 @@
 // 재생을 누르면 그 책으로 타이머가 시작되고 분위기 장면(창가의 빗소리 같은 ASMR 화면, /reading/session)으로 넘어간다.
 // 장면에서 뒤로 나오면 이 목록이다(타이머는 계속 돈다): 재는 책 줄은 일시정지 단추와 흐르는 시간, 줄을 누르면 장면으로 돌아간다.
 // 다른 책을 재는 중에 재생을 누르면 묻는다(앞 책 시간이 설명 없이 새 책으로 옮겨 가지 않게: 장면의 책 바꾸기와 같은 규칙).
+// 맨 아래 '+ 책 추가'는 여러 권을 골라 '완료'하면 목록에 더하기만 한다(시작은 재생 단추로, 2026-11-11 사용자). 추가해 둔 책은 기기에 남고 ⋮에서 뺀다.
 // 이름 왼쪽은 그 책 실물 표지(사진이 없는 책은 책장 장정 그림, 2026-11-11 사용자 '책 실물 사진으로'), 표지 오른쪽 아래 작은 재생·일시정지 단추. 표지를 눌러도 같다.
 import { router, useLocalSearchParams } from 'expo-router';
 import { useEffect, useMemo, useState } from 'react';
@@ -11,12 +12,12 @@ import { bookTitle, useElapsed } from '@/features/reading/ActiveReading';
 import { PauseIcon, PlayIcon } from '@/features/reading/ReadingScreen';
 import { BookPicker } from '@/features/bookmark/BookPicker';
 import { today } from '@/domain/library';
-import { hms, readListIds, todayRead } from '@/domain/reading-list';
+import { hms, NO_BOOK, readListIds, todayRead } from '@/domain/reading-list';
 import { ambient } from '@/services/ambient';
 import { saveAndStartOther } from '@/store/finish-reading';
 import { useLibrary } from '@/store/library-store';
 import { readingStore, useReading } from '@/store/reading-store';
-import { settingsStore } from '@/store/settings-store';
+import { settingsStore, useSettings } from '@/store/settings-store';
 import { appAlert } from '@/ui/alert';
 import { LinkedCover } from '@/ui/BookVisual';
 import { AudioLines, BookOpen, MoreVertical, Plus } from '@/ui/icons';
@@ -31,6 +32,7 @@ export function ReadList() {
   const { book: handoff } = useLocalSearchParams<{ book?: string }>();
   const { lib } = useLibrary();
   const { active } = useReading();
+  const { readList: added } = useSettings();
   const [focusId, setFocusId] = useState<string | undefined>();
   const [menu, setMenu] = useState<string | null>(null);
   const [picker, setPicker] = useState(false);
@@ -40,20 +42,29 @@ export function ReadList() {
   const now = new Date();
   const day = today(now);
 
-  // 책 정보·책장·기록에서 '읽기'로 넘겨받은 책은 목록 맨 앞에 둔다(시작은 재생을 눌러서: 들르기만 해서 타이머가 생기지 않게)
+  // 책 정보·책장·기록에서 '읽기'로 넘겨받은 책은 목록 맨 앞에 두고 추가해 둔다(시작은 재생을 눌러서: 들르기만 해서 타이머가 생기지 않게)
   useEffect(() => {
     if (!handoff) return;
-    if (lib.books[handoff]) setFocusId(handoff);
+    if (lib.books[handoff]) {
+      setFocusId(handoff);
+      if (lib.books[handoff].status !== 'reading') addToList([handoff]);
+    }
     router.setParams({ book: undefined });
   }, [handoff, lib.books]);
 
   const saved = useMemo(() => todayRead(lib, day), [lib, day]);
-  const ids = useMemo(() => readListIds(lib, { day, activeId: active?.myBookId, focusId }), [lib, day, active?.myBookId, focusId]);
+  const ids = useMemo(() => readListIds(lib, { day, activeId: active?.myBookId, focusId, added }), [lib, day, active?.myBookId, focusId, added]);
   // 지금 재는 시간은 시작한 날의 몫으로 더한다(자정을 넘겨도 끝낼 때 시작 날짜로 저장되는 것과 같게)
   const activeToday = active && today(new Date(active.startedAt)) === day ? liveMs : 0;
   const total = saved.total + activeToday;
   const msOf = (id: string) => (saved.byBook.get(id) ?? 0) + (active?.myBookId === id ? activeToday : 0);
 
+  // 목록에 더하기(이미 있는 것은 그대로, 고른 순서대로 끝에)
+  const addToList = (more: string[]) => {
+    const cur = settingsStore.get().readList;
+    const next = [...cur, ...more.filter((id) => !cur.includes(id))];
+    if (next.length !== cur.length) settingsStore.set({ readList: next });
+  };
   const openScene = () => router.push('/reading/session');
   const startNew = (id: string | undefined) => {
     readingStore.start(id, id ? lib.books[id]?.currentPage : undefined);
@@ -82,7 +93,13 @@ export function ReadList() {
   const tapRow = (id: string | undefined) => (active && active.myBookId === id ? openScene() : begin(id));
 
   const noBookActive = !!active && !active.myBookId;
-  const showNoBook = noBookActive || saved.noBook > 0;
+  const showNoBook = noBookActive || saved.noBook > 0 || added.includes(NO_BOOK);
+  // 목록에서 빼기: 추가해 둔 줄만(읽는 중인 책·오늘 읽은 책·재는 책은 그 까닭으로 목록에 있어 빼도 남는다)
+  const removable = (id: string) => added.includes(id) && (id === NO_BOOK ? !noBookActive && saved.noBook === 0 : lib.books[id]?.status !== 'reading' && !saved.byBook.has(id) && active?.myBookId !== id);
+  const removeFromList = (id: string) => {
+    settingsStore.set({ readList: settingsStore.get().readList.filter((x) => x !== id) });
+    if (focusId === id) setFocusId(undefined);
+  };
 
   const row = (id: string | undefined) => {
     const isActive = !!active && active.myBookId === id;
@@ -104,8 +121,8 @@ export function ReadList() {
           {author ? <Text style={st.author} numberOfLines={1}>{author}</Text> : null}
         </View>
         <Text style={[st.rowTime, ms === 0 && !isActive && { color: colors.inkSoft }]}>{hms(ms)}</Text>
-        {id ? (
-          <Pressable onPress={() => setMenu(id)} hitSlop={6} style={({ pressed }) => [st.more, pressed && press]} accessibilityRole="button" accessibilityLabel={`${title} 더 보기`}>
+        {id || removable(NO_BOOK) ? (
+          <Pressable onPress={() => setMenu(id ?? NO_BOOK)} hitSlop={6} style={({ pressed }) => [st.more, pressed && press]} accessibilityRole="button" accessibilityLabel={`${title} 더 보기`}>
             <MoreVertical size={22} color={colors.inkSoft} strokeWidth={icon.stroke} />
           </Pressable>
         ) : <View style={st.more} />}
@@ -138,23 +155,26 @@ export function ReadList() {
         </View>
       ) : (
         <View style={st.empty}>
-          <Text style={type.heading}>읽는 중인 책이 없어요</Text>
-          <Text style={[type.sub, { marginTop: space.s, textAlign: 'center' }]}>책을 고르면 바로 시간을 잴 수 있어요.</Text>
+          <Text style={type.heading}>타이머에 책을 추가해 보세요</Text>
+          <Text style={[type.sub, { marginTop: space.s, textAlign: 'center' }]}>읽을 책을 여러 권 골라 두고{'\n'}재생 단추로 시간을 재요.</Text>
         </View>
       )}
-      {/* 목록에 없는 책(읽을 책·다 읽은 책)이나 책 없이 읽기 */}
+      {/* 목록에 없는 책(읽을 책·다 읽은 책)이나 책 없이 읽기를 여러 개 골라 더한다 */}
       {ids.length || showNoBook ? (
-        <Pressable onPress={() => setPicker(true)} style={({ pressed }) => [st.row, pressed && press]} accessibilityRole="button" accessibilityLabel="다른 책 고르기">
+        <Pressable onPress={() => setPicker(true)} style={({ pressed }) => [st.row, pressed && press]} accessibilityRole="button" accessibilityLabel="책 추가">
           <View style={st.addBox}><Plus size={22} color={colors.inkSoft} strokeWidth={icon.stroke} /></View>
-          <Text style={[st.title, { color: colors.inkSoft }]}>다른 책 고르기</Text>
+          <Text style={[st.title, { color: colors.inkSoft }]}>책 추가</Text>
         </Pressable>
       ) : (
-        <Btn label="책 고르기" onPress={() => setPicker(true)} style={{ marginTop: space.l }} />
+        <Btn label="책 추가" onPress={() => setPicker(true)} style={{ marginTop: space.l }} />
       )}
-      <BookPicker lib={lib} visible={picker} allowNone onClose={() => setPicker(false)} onPick={(id) => { setPicker(false); if (id) setFocusId(id); begin(id); }} />
-      <Sheet visible={!!menu} onClose={() => setMenu(null)} title={menu ? bookTitle(lib, menu) : undefined}>
-        <ListItem label="책 정보" chevron onPress={() => { const id = menu; setMenu(null); router.push(`/book/${id}`); }} />
-        <ListItem label="이 책 독서 기록" chevron onPress={() => { const id = menu; setMenu(null); router.push(`/book/${id}/stats`); }} />
+      <BookPicker lib={lib} visible={picker} allowNone onClose={() => setPicker(false)} multi={{ fixed: showNoBook ? [...ids, NO_BOOK] : ids, none: NO_BOOK, onDone: (picked) => { setPicker(false); addToList(picked); } }} />
+      <Sheet visible={!!menu} onClose={() => setMenu(null)} title={menu ? (menu === NO_BOOK ? '책 없이 읽기' : bookTitle(lib, menu)) : undefined}>
+        {menu && menu !== NO_BOOK ? <>
+          <ListItem label="책 정보" chevron onPress={() => { const id = menu; setMenu(null); router.push(`/book/${id}`); }} />
+          <ListItem label="이 책 독서 기록" chevron onPress={() => { const id = menu; setMenu(null); router.push(`/book/${id}/stats`); }} />
+        </> : null}
+        {menu && removable(menu) ? <ListItem label="목록에서 빼기" onPress={() => { const id = menu; setMenu(null); removeFromList(id); }} /> : null}
       </Sheet>
     </Screen>
   );

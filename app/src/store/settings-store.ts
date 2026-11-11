@@ -12,10 +12,13 @@ export type Settings = {
   scene: SceneId;
   volume: number; // 0~1
   muted: boolean;
+  // 읽기 탭에 사용자가 추가해 둔 책(2026-11-11 사용자 '고르면 바로 시작보다 그냥 추가되고, 여러 권 고른 다음 완료').
+  // 책 id, '~none'은 책 없이 읽기 줄(domain/reading-list NO_BOOK). 읽는 중인 책·오늘 읽은 책은 따로 넣지 않아도 목록에 오른다
+  readList: string[];
 };
 
 const KEY = 'app-settings:v1';
-export const DEFAULT_SETTINGS: Settings = { sound: true, haptics: true, reduceMotion: 'system', goalMin: null, scene: 'rain', volume: 0.6, muted: false };
+export const DEFAULT_SETTINGS: Settings = { sound: true, haptics: true, reduceMotion: 'system', goalMin: null, scene: 'rain', volume: 0.6, muted: false, readList: [] };
 
 // 예전에 있던 장면('room' 등)이 저장·백업에 남아 있으면 빗소리로 돌린다
 const fixScene = <T extends Partial<Settings>>(s: T): T => (s.scene === undefined || s.scene === 'rain' || s.scene === 'fire' ? s : { ...s, scene: 'rain' });

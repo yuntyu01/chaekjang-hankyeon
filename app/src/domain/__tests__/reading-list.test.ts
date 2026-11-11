@@ -53,6 +53,12 @@ describe('읽기 탭 목록', () => {
     expect(readListIds(l, { day: '2026-11-11', focusId: 'h' })).toEqual(['a', 'c', 'b']);
   });
 
+  it('추가해 둔 책은 시작하지 않아도 목록 끝에 추가한 순서로(이미 있는 책·숨긴 책·없는 책은 한 번만·빠진다)', () => {
+    const l2 = lib([...books, book('e', 'want')], sessions);
+    expect(readListIds(l2, { day: '2026-11-11', added: ['e', 'd', 'a', 'h', 'zz'] })).toEqual(['a', 'c', 'b', 'e', 'd']);
+    expect(readListIds(l2, { day: '2026-11-11', activeId: 'd', added: ['e', 'd'] })).toEqual(['d', 'a', 'c', 'b', 'e']);
+  });
+
   it('시간 글자는 늘 시:분:초', () => {
     expect(hms(0)).toBe('0:00:00');
     expect(hms(61_500)).toBe('0:01:01');
