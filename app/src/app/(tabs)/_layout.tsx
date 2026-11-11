@@ -47,7 +47,6 @@ export default function TabsLayout() {
       <Tabs.Screen
         name="read"
         options={{
-          tabBarStyle: { display: 'none' },
           title: ko.tabs.read,
           tabBarAccessibilityLabel: ko.tabs.read,
           tabBarIcon: ({ color, focused }) => <ReadTabIcon color={String(color)} bg={colors.bg} size={ICON} filled={focused} />,

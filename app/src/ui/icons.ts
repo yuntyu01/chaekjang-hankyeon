@@ -10,6 +10,7 @@ export { default as ChevronRight } from 'lucide-react-native/icons/chevron-right
 export { default as ChevronUp } from 'lucide-react-native/icons/chevron-up';
 export { default as Eraser } from 'lucide-react-native/icons/eraser';
 export { default as MoreHorizontal } from 'lucide-react-native/icons/ellipsis';
+export { default as MoreVertical } from 'lucide-react-native/icons/ellipsis-vertical';
 export { default as Paintbrush } from 'lucide-react-native/icons/paintbrush';
 export { default as PenLine } from 'lucide-react-native/icons/pen-line';
 export { default as Play } from 'lucide-react-native/icons/play';

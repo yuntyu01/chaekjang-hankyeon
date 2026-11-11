@@ -23,6 +23,7 @@ import { BookPicker } from '@/features/bookmark/BookPicker';
 import { Btn, Choice, Sheet, Slider } from '@/ui/kit';
 import { StatusBar } from 'expo-status-bar';
 import { appAlert } from '@/ui/alert';
+import { FixedDigits } from '@/ui/FixedDigits';
 
 const LIGHT = night.ink;
 const GOALS = [15, 30, 60] as const;
@@ -30,7 +31,7 @@ const GOALS = [15, 30, 60] as const;
 const sceneName = (id: string) => (id === 'rain' ? '창가의 빗소리' : SCENES.find((s) => s.id === id)?.name ?? '');
 
 // 재생 삼각형: 모서리를 둥글게(같은 색 굵은 둥근 이음 윤곽). 눈으로 가운데 보이게 오른쪽으로 조금
-function PlayIcon({ size, color }: { size: number; color: string }) {
+export function PlayIcon({ size, color }: { size: number; color: string }) {
   return (
     <Svg width={size} height={size} viewBox="0 0 24 24" style={{ marginLeft: size * 0.08 }}>
       <Path d="M8.6 7v10l8.2-5z" fill={color} stroke={color} strokeWidth={5} strokeLinejoin="round" />
@@ -38,7 +39,7 @@ function PlayIcon({ size, color }: { size: number; color: string }) {
   );
 }
 // 일시정지: 끝이 둥근 두 막대
-function PauseIcon({ height, width, gap, color }: { height: number; width: number; gap: number; color: string }) {
+export function PauseIcon({ height, width, gap, color }: { height: number; width: number; gap: number; color: string }) {
   return (
     <View style={{ flexDirection: 'row', gap }}>
       <View style={{ width, height, borderRadius: width / 2, backgroundColor: color }} />
@@ -177,7 +178,7 @@ export function ReadingScreen({ initialBookId, soundOnly = false, inTab = false 
             {/* 2) 시간(가장 크게, 숫자 폭 고정). 아래 한 줄은 자리를 늘 지켜(일시정지·목표) 멈춰도 시간이 위아래로 흔들리지 않는다 */}
             {!soundOnly ? <Pressable onPress={() => setControls('goal')} accessibilityRole="button" accessibilityLabel={`목표 시간 설정, ${settings.goalMin ? settings.goalMin + '분' : '자유롭게 시간 재기'}`} style={st.timeArea}>
               <Elapsed running={ticking}>{(ms) => <>
-                <Text style={st.time} accessibilityLabel={`읽은 시간 ${clock(ms)}`}>{clock(ms)}</Text>
+                <FixedDigits text={clock(ms)} style={st.time} accessibilityLabel={`읽은 시간 ${clock(ms)}`} />
                 {/* 상태 글은 시간 아래 여백 안에 겹쳐 둔다: 나타나도 시간이 움직이지 않고, 없을 때 시간 위아래 여백이 같다(2026-11-05 사용자 '위아래 여백이 애매') */}
                 <Text style={st.status}>{active && !running ? '일시정지' : goalMs ? (ms >= goalMs ? `목표 ${settings.goalMin}분을 채웠어요` : `목표 ${settings.goalMin}분`) : ' '}</Text>
               </>}</Elapsed>
@@ -203,7 +204,8 @@ export function ReadingScreen({ initialBookId, soundOnly = false, inTab = false 
               )}
             </View>
             {audio.error ? <Text style={st.error}>{audio.error}</Text> : null}
-            {soundOnly ? <Btn label="지금부터 독서 기록" kind="ghost" onPress={() => { start(); router.dismissTo('/read'); }} style={{ marginTop: space.s }} /> : null}
+            {/* 소리만 듣다가 기록 시작: 같은 장면에 타이머를 띄운다(읽기 탭은 2026-11-11부터 책 목록이라 그쪽으로 돌아가지 않는다) */}
+            {soundOnly ? <Btn label="지금부터 독서 기록" kind="ghost" onPress={() => { start(); router.replace('/reading/session'); }} style={{ marginTop: space.s }} /> : null}
           </ScrollView>
         </View>
       {/* 접었을 때: 장면 아래쪽을 어둡게 물들이고 그 위에 밝은 시간과 재생·일시정지만. 시간을 누르면 조작부가 다시 열린다 */}
@@ -221,7 +223,7 @@ export function ReadingScreen({ initialBookId, soundOnly = false, inTab = false 
           </Svg>
           <View style={[st.dock, { bottom: insets.bottom + 26 }]} pointerEvents="box-none">
             <Pressable onPress={() => setOpen(true)} hitSlop={12} accessibilityRole="button" accessibilityLabel="조작부 열기" style={st.dockTime}>
-              <Text style={st.dockTimeText}>{soundOnly ? '조작부 열기' : <Elapsed running={ticking}>{clock}</Elapsed>}</Text>
+              {soundOnly ? <Text style={st.dockTimeText}>조작부 열기</Text> : <Elapsed running={ticking}>{(ms) => <FixedDigits text={clock(ms)} style={st.dockTimeText} />}</Elapsed>}
             </Pressable>
             <Pressable onPress={playPause} hitSlop={12} accessibilityRole="button" accessibilityLabel={playLabel} style={st.dockPlay}>
               {playing ? <PauseIcon width={5} height={24} gap={6} color={night.ink} /> : <PlayIcon size={30} color={night.ink} />}
@@ -304,8 +306,8 @@ const st = StyleSheet.create({
   fold: { alignItems: 'center', gap: 2, minWidth: space.touch, minHeight: 48, justifyContent: 'center' },
   foldText: type.caption,
   timeArea: { alignItems: 'center', paddingTop: space.l, paddingBottom: space.l },
-  // 시간: 숫자 폭 고정(tabular-nums), 자간은 글꼴 기본값
-  time: { fontFamily: fonts.ui, fontSize: 48, lineHeight: 56, color: colors.ink, fontVariant: ['tabular-nums'], includeFontPadding: false },
+  // 시간: 숫자 폭 고정(FixedDigits 칸), 자간은 글꼴 기본값
+  time: { fontFamily: fonts.ui, fontSize: 48, lineHeight: 56, color: colors.ink, includeFontPadding: false },
   status: { ...type.caption, textAlign: 'center', position: 'absolute', bottom: -3, left: 0, right: 0 },
   controls: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: space.xs },
   // 양옆 칸은 재생 단추를 뺀 폭을 반씩(글자 확대에서도 '창가의 빗소리'가 잘리지 않게, 넘치면 두 줄)
@@ -329,6 +331,6 @@ const st = StyleSheet.create({
   fade: { position: 'absolute', left: 0, right: 0, bottom: 0 },
   dock: { position: 'absolute', alignSelf: 'center', flexDirection: 'row', alignItems: 'center', gap: space.xl },
   dockTime: { minHeight: space.touch, justifyContent: 'center' },
-  dockTimeText: { fontFamily: fonts.ui, fontSize: 34, lineHeight: 42, color: night.ink, fontVariant: ['tabular-nums'], includeFontPadding: false, ...shade },
+  dockTimeText: { fontFamily: fonts.ui, fontSize: 34, lineHeight: 42, color: night.ink, includeFontPadding: false, ...shade },
   dockPlay: { width: space.touch, height: space.touch, alignItems: 'center', justifyContent: 'center' },
 });
