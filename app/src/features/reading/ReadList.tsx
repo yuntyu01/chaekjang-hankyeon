@@ -2,7 +2,7 @@
 // 재생을 누르면 그 책으로 타이머가 시작되고 분위기 장면(창가의 빗소리 같은 ASMR 화면, /reading/session)으로 넘어간다.
 // 장면에서 뒤로 나오면 이 목록이다(타이머는 계속 돈다): 재는 책 줄은 일시정지 단추와 흐르는 시간, 줄을 누르면 장면으로 돌아간다.
 // 다른 책을 재는 중에 재생을 누르면 묻는다(앞 책 시간이 설명 없이 새 책으로 옮겨 가지 않게: 장면의 책 바꾸기와 같은 규칙).
-// 재생 단추 색은 책장 갈피 색(책마다 다른 뚜렷한 색, 없으면 테마색).
+// 이름 왼쪽은 그 책 실물 표지(사진이 없는 책은 책장 장정 그림, 2026-11-11 사용자 '책 실물 사진으로'), 표지 오른쪽 아래 작은 재생·일시정지 단추. 표지를 눌러도 같다.
 import { router, useLocalSearchParams } from 'expo-router';
 import { useEffect, useMemo, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
@@ -10,8 +10,7 @@ import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { bookTitle, useElapsed } from '@/features/reading/ActiveReading';
 import { PauseIcon, PlayIcon } from '@/features/reading/ReadingScreen';
 import { BookPicker } from '@/features/bookmark/BookPicker';
-import { luminance } from '@/domain/color';
-import { memoShelfBook, today } from '@/domain/library';
+import { today } from '@/domain/library';
 import { hms, readListIds, todayRead } from '@/domain/reading-list';
 import { ambient } from '@/services/ambient';
 import { saveAndStartOther } from '@/store/finish-reading';
@@ -19,16 +18,14 @@ import { useLibrary } from '@/store/library-store';
 import { readingStore, useReading } from '@/store/reading-store';
 import { settingsStore } from '@/store/settings-store';
 import { appAlert } from '@/ui/alert';
-import { FixedDigits } from '@/ui/FixedDigits';
-import { AudioLines, MoreVertical, Plus } from '@/ui/icons';
+import { LinkedCover } from '@/ui/BookVisual';
+import { AudioLines, BookOpen, MoreVertical, Plus } from '@/ui/icons';
 import { Btn, IconButton, ListItem, Screen, Sheet } from '@/ui/kit';
 import { colors, fonts, icon, press, space, type } from '@/ui/theme';
 
 const WEEK = ['일', '월', '화', '수', '목', '금', '토'];
-const PLAY = 46; // 재생 단추 지름(시안 과목 줄의 원)
-
-// 흰 세모가 바탕과 2.5:1 이상 대비일 때만 흰색(밝기 0.37 이하), 아니면 짙은 글자색(연보라·하늘색·연회청 갈피)
-const glyphOn = (bg: string) => (luminance(bg) > 0.37 ? colors.ink : colors.onAccent);
+const COVER_W = 42; // 표지 폭(높이는 표지 비율대로 약 62)
+const BADGE = 26; // 표지 위 재생 단추 지름
 
 export function ReadList() {
   const { book: handoff } = useLocalSearchParams<{ book?: string }>();
@@ -91,15 +88,17 @@ export function ReadList() {
     const isActive = !!active && active.myBookId === id;
     const playing = isActive && running;
     const title = id ? bookTitle(lib, id) ?? '' : '책 없이 읽기';
-    const tint = id ? memoShelfBook(lib, id)?.art.ribbon ?? colors.accent : colors.track;
     const ms = id ? msOf(id) : saved.noBook + (noBookActive ? activeToday : 0);
     return (
       <Pressable key={id ?? '~none'} onPress={() => tapRow(id)} style={({ pressed }) => [st.row, pressed && press]} accessibilityRole="button" accessibilityLabel={`${title}, 오늘 ${hms(ms)}${isActive ? (playing ? ', 읽는 중' : ', 일시정지') : ''}`}>
-        <Pressable onPress={() => begin(id)} hitSlop={8} style={({ pressed }) => [st.play, { backgroundColor: tint }, pressed && st.playPressed]} accessibilityRole="button" accessibilityLabel={playing ? `${title} 일시정지` : `${title} 읽기 시작`}>
-          {playing ? <PauseIcon width={5} height={18} gap={6} color={glyphOn(tint)} /> : <PlayIcon size={24} color={glyphOn(tint)} />}
+        <Pressable onPress={() => begin(id)} hitSlop={8} style={({ pressed }) => [st.coverBox, pressed && st.playPressed]} accessibilityRole="button" accessibilityLabel={playing ? `${title} 일시정지` : `${title} 읽기 시작`}>
+          {id ? <LinkedCover lib={lib} id={id} width={COVER_W} /> : <View style={st.noCover}><BookOpen size={icon.size} color={colors.inkSoft} strokeWidth={icon.stroke} /></View>}
+          <View style={[st.badge, playing && st.badgeOn]} pointerEvents="none">
+            {playing ? <PauseIcon width={3.5} height={11} gap={3.5} color={colors.onAccent} /> : <PlayIcon size={15} color={colors.onAccent} />}
+          </View>
         </Pressable>
         <Text style={[st.title, isActive && st.titleActive]} numberOfLines={1}>{title}</Text>
-        <FixedDigits text={hms(ms)} style={[st.rowTime, ms === 0 && !isActive && { color: colors.inkSoft }]} />
+        <Text style={[st.rowTime, ms === 0 && !isActive && { color: colors.inkSoft }]}>{hms(ms)}</Text>
         {id ? (
           <Pressable onPress={() => setMenu(id)} hitSlop={6} style={({ pressed }) => [st.more, pressed && press]} accessibilityRole="button" accessibilityLabel={`${title} 더 보기`}>
             <MoreVertical size={22} color={colors.inkSoft} strokeWidth={icon.stroke} />
@@ -123,7 +122,7 @@ export function ReadList() {
       </View>
       {/* 오늘 읽은 시간(모든 책 + 책 없이) */}
       <View style={st.totalBox}>
-        <FixedDigits text={hms(total)} style={st.total} accessibilityLabel={`오늘 읽은 시간 ${hms(total)}`} />
+        <Text style={st.total} accessibilityLabel={`오늘 읽은 시간 ${hms(total)}`}>{hms(total)}</Text>
         <Text style={st.totalLabel}>{active ? (running ? '읽는 중' : '일시정지') : '오늘 읽은 시간'}</Text>
       </View>
       <View style={st.line} />
@@ -141,7 +140,7 @@ export function ReadList() {
       {/* 목록에 없는 책(읽을 책·다 읽은 책)이나 책 없이 읽기 */}
       {ids.length || showNoBook ? (
         <Pressable onPress={() => setPicker(true)} style={({ pressed }) => [st.row, pressed && press]} accessibilityRole="button" accessibilityLabel="다른 책 고르기">
-          <View style={[st.play, st.addCircle]}><Plus size={22} color={colors.inkSoft} strokeWidth={icon.stroke} /></View>
+          <View style={st.addBox}><Plus size={22} color={colors.inkSoft} strokeWidth={icon.stroke} /></View>
           <Text style={[st.title, { color: colors.inkSoft }]}>다른 책 고르기</Text>
         </Pressable>
       ) : (
@@ -161,17 +160,21 @@ const st = StyleSheet.create({
   headSide: { width: 56 },
   date: { ...type.navTitle, flex: 1, textAlign: 'center' },
   totalBox: { alignItems: 'center', paddingTop: space.xl, paddingBottom: space.xxl },
-  total: { fontFamily: fonts.uiBold, fontSize: 56, lineHeight: 64, color: colors.ink, includeFontPadding: false },
+  total: { fontFamily: fonts.uiTitle, fontSize: 56, lineHeight: 64, color: colors.ink, fontVariant: ['tabular-nums'], includeFontPadding: false },
   totalLabel: { ...type.caption, marginTop: space.s },
   line: { height: StyleSheet.hairlineWidth, backgroundColor: colors.line, marginHorizontal: -space.page },
   list: { paddingTop: space.s },
-  row: { flexDirection: 'row', alignItems: 'center', gap: space.l, minHeight: 72 },
-  play: { width: PLAY, height: PLAY, borderRadius: PLAY / 2, alignItems: 'center', justifyContent: 'center' },
-  playPressed: { transform: [{ scale: 0.94 }], opacity: 0.85 },
-  addCircle: { backgroundColor: colors.surface },
+  row: { flexDirection: 'row', alignItems: 'center', gap: space.m, minHeight: 84 },
+  coverBox: { width: COVER_W + 6, alignItems: 'flex-start' },
+  noCover: { width: COVER_W, height: Math.round(COVER_W / 0.68), borderRadius: 4, backgroundColor: colors.surface, alignItems: 'center', justifyContent: 'center' },
+  // 재생 단추: 표지 오른쪽 아래에 걸친 작은 원(짙은 반투명 + 흰 테두리라 어느 표지 위에서도 보인다), 읽는 중이면 테마색
+  badge: { position: 'absolute', right: 0, bottom: -4, width: BADGE, height: BADGE, borderRadius: BADGE / 2, backgroundColor: 'rgba(25,31,40,0.78)', borderWidth: 2, borderColor: colors.white, alignItems: 'center', justifyContent: 'center' },
+  badgeOn: { backgroundColor: colors.accent },
+  playPressed: { opacity: 0.7 },
+  addBox: { width: COVER_W + 6, alignItems: 'flex-start', paddingLeft: 9 },
   title: { ...type.row, flex: 1 },
   titleActive: { fontFamily: fonts.uiBold },
-  rowTime: { fontFamily: fonts.ui, fontSize: 18, lineHeight: 26, color: colors.ink, includeFontPadding: false },
+  rowTime: { fontFamily: fonts.ui, fontSize: 18, lineHeight: 26, color: colors.ink, fontVariant: ['tabular-nums'], includeFontPadding: false },
   more: { width: 28, height: space.touch, alignItems: 'center', justifyContent: 'center', marginLeft: -space.s, marginRight: -space.s },
   empty: { alignItems: 'center', paddingTop: space.xxl, paddingBottom: space.m },
 });
