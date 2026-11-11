@@ -13,6 +13,18 @@
         android:name="android.appwidget.provider"
         android:resource="@xml/shelf_widget_info" />
     </receiver>
+    <!-- '나의 책장(벽 없이)': 책장 구멍 가장자리가 위젯 경계(바깥 벽 없음) -->
+    <receiver
+      android:name="app.covebook.shelfwidget.ShelfNicheWidgetProvider"
+      android:exported="false"
+      android:label="@string/shelf_widget_niche_label">
+      <intent-filter>
+        <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+      </intent-filter>
+      <meta-data
+        android:name="android.appwidget.provider"
+        android:resource="@xml/shelf_widget_niche_info" />
+    </receiver>
     <!-- '나의 책장(투명)': 선반 판과 책만, 뒤는 투명 -->
     <receiver
       android:name="app.covebook.shelfwidget.ShelfCutWidgetProvider"

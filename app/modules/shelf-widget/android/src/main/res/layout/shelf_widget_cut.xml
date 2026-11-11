@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- 투명 위젯: 바탕 없이 그림 한 장(선반 판·책만 불투명, ShelfWidgetRenderer.renderCut) -->
+<!-- 바탕 없는 위젯(벽 없이·투명): 그림 한 장(ShelfWidgetRenderer.renderNiche·renderCut), 그림 밖은 투명 -->
 <FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
   android:layout_width="match_parent"
   android:layout_height="match_parent">

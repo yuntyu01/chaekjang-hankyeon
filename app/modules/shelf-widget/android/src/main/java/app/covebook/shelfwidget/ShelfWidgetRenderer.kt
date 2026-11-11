@@ -17,9 +17,10 @@ import kotlin.math.max
 import kotlin.math.min
 import kotlin.math.roundToInt
 
-// 위젯 그림 두 가지(2026-11-11 사용자):
+// 위젯 그림 세 가지(2026-11-11 사용자):
 // - 꽉 찬 위젯: 글자 없이 책장 구멍(틀 포함)이 위젯을 채운다. 카드 바탕은 책장 벽 색이라 남는 자리는 벽처럼 보인다.
-// - 투명 위젯: 선반 판과 책만(벽·틀은 투명). 앱이 넘긴 모양(책 외곽·갈피 띠·판 띠)으로 홈 사진을 오려 낸 PNG를 쓴다.
+// - 벽 없는 위젯: 구멍 가장자리(벽이 시작하는 곳)가 곧 위젯 경계. 구멍 밖 평평한 벽은 그리지 않는다('저 벽이 그 경계선인 걸로').
+// - 투명 위젯: 선반 판과 책만(벽·틀은 투명). 앱이 넘긴 모양(책·판 외곽, 갈피 띠)으로 홈 사진을 오려 낸 PNG를 쓴다.
 // 보일 칸 수는 위젯을 가장 넓게 채우는 쪽(4×2는 한 칸, 세로로 늘리면 두 칸).
 internal object ShelfWidgetRenderer {
   private const val MAX_W = 1000 // 그림 폭 상한(px): 위젯 그림은 RemoteViews로 넘어가 메모리 한도가 있다
@@ -87,6 +88,28 @@ internal object ShelfWidgetRenderer {
     return out
   }
 
+  // 벽 없는 위젯: 구멍 위 끝·옆 끝(벽 색이 끝나는 곳)부터 선반 한두 칸 아래 끝까지만 옮긴다. 남는 자리는 투명
+  fun renderNiche(context: Context, wDp: Int, hDp: Int): Bitmap {
+    val out = bitmapFor(context, wDp, hDp)
+    val canvas = Canvas(out)
+    val W = out.width.toFloat()
+    val H = out.height.toFloat()
+    val shelf = load(prefs(context).getString("path", null))
+    val bottoms = bottomsOf(context)
+    if (shelf == null || bottoms.isEmpty()) { hint(canvas, W, H); return out }
+    val wall = shelf.getPixel(shelf.width / 2, 1)
+    // wallRows는 벽 2줄을 남기고 돌려준다: 구멍 첫 줄부터
+    val top = min(wallRows(shelf, wall, bottoms.first()) + 2, bottoms.first() - 1)
+    val mid = top + (bottoms.first() - top) / 2
+    val left = wallCols(shelf, wall, mid)
+    val right = shelf.width - wallColsRight(shelf, wall, mid)
+    val boxes = bottoms.map { b -> RectF(left.toFloat(), top.toFloat(), right.toFloat(), min(b, shelf.height).toFloat()) }
+    val (src, dst) = place(W, H, boxes) ?: return out
+    canvas.drawBitmap(shelf, Rect(src.left.toInt(), src.top.toInt(), src.right.toInt(), src.bottom.toInt()), dst, Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG))
+    shelf.recycle()
+    return out
+  }
+
   fun renderCut(context: Context, wDp: Int, hDp: Int): Bitmap {
     val out = bitmapFor(context, wDp, hDp)
     val canvas = Canvas(out)
@@ -104,15 +127,16 @@ internal object ShelfWidgetRenderer {
     return out
   }
 
-  // 홈 사진에서 책·갈피·선반 판만 남기고 나머지를 투명하게(PNG). 책은 외곽 다각형 그대로(가장자리 부드럽게),
-  // 갈피 띠 안에서는 색이 있는 화소(벽은 흰·회색), 판 띠 안에서는 나무 색 화소(노란 주황 색조)만 남긴다.
+  // 홈 사진에서 책·갈피·선반 판만 남기고 나머지를 투명하게(PNG). 책과 판은 외곽 다각형 그대로(가장자리 부드럽게),
+  // 갈피 띠 안에서는 색이 있는 화소(벽은 흰·회색)만 남긴다.
+  // 판을 나무 색 화소로 고르면 윗면·앞면 사이 어두운 모서리 줄이 빠져 판이 갈라져 보였다(2026-11-11 사용자): 판도 앱이 그린 윤곽으로 오린다
   fun makeCut(src: Bitmap, books: List<List<Double>>, ribbons: List<List<Double>>, boards: List<List<Double>>, file: File) {
     val w = src.width
     val h = src.height
     val mask = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
     val mc = Canvas(mask)
     val fill = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.WHITE; style = Paint.Style.FILL }
-    for (poly in books) {
+    for (poly in books + boards) {
       if (poly.size < 6) continue
       val path = Path()
       path.moveTo(poly[0].toFloat(), poly[1].toFloat())
@@ -132,11 +156,6 @@ internal object ShelfWidgetRenderer {
       val x0 = r[0].toInt().coerceIn(0, w); val y0 = r[1].toInt().coerceIn(0, h)
       val x1 = (r[0] + r[2]).toInt().coerceIn(0, w); val y1 = (r[1] + r[3]).toInt().coerceIn(0, h)
       for (y in y0 until y1) for (x in x0 until x1) if (colorful(px[y * w + x])) keep[y * w + x] = 1
-    }
-    for (b in boards) {
-      if (b.size < 2) continue
-      val y0 = b[0].toInt().coerceIn(0, h); val y1 = b[1].toInt().coerceIn(0, h)
-      for (y in y0 until y1) for (x in 0 until w) if (woody(px[y * w + x])) keep[y * w + x] = 1
     }
     for (i in 0 until w * h) {
       var a = Color.alpha(alpha[i])
@@ -161,8 +180,6 @@ internal object ShelfWidgetRenderer {
   private fun hsv(c: Int): FloatArray { val v = FloatArray(3); Color.colorToHSV(c, v); return v }
   // 갈피: 벽(흰·회색, 책 색이 조금 번진 정도)보다 뚜렷한 색
   private fun colorful(c: Int): Boolean { val v = hsv(c); return v[1] > 0.16f && v[2] > 0.25f }
-  // 판: 노란 주황 색조의 나무 색(밝은 앞면부터 책 그늘이 진 윗면까지)
-  private fun woody(c: Int): Boolean { val v = hsv(c); return v[0] in 18f..52f && v[1] > 0.12f && v[2] > 0.35f }
 
   // 그림 위쪽에서 벽 색만 있는 줄 수(책장 구멍 위 끝까지). 가운데 90%를 8px 간격으로 본다
   private fun wallRows(img: Bitmap, wall: Int, limit: Int): Int {
@@ -181,6 +198,12 @@ internal object ShelfWidgetRenderer {
   private fun wallCols(img: Bitmap, wall: Int, y: Int): Int {
     val yy = y.coerceIn(0, img.height - 1)
     for (x in 0 until img.width / 4) if (differs(img.getPixel(x, yy), wall)) return x
+    return 0
+  }
+  // 오른쪽에서 벽 색만 있는 열 수
+  private fun wallColsRight(img: Bitmap, wall: Int, y: Int): Int {
+    val yy = y.coerceIn(0, img.height - 1)
+    for (i in 0 until img.width / 4) if (differs(img.getPixel(img.width - 1 - i, yy), wall)) return i
     return 0
   }
   private fun differs(c: Int, wall: Int) = abs(Color.red(c) - Color.red(wall)) + abs(Color.green(c) - Color.green(wall)) + abs(Color.blue(c) - Color.blue(wall)) > 24

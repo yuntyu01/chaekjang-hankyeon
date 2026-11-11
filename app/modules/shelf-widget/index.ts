@@ -1,8 +1,8 @@
-// 홈 화면 위젯 '나의 책장'·'나의 책장(투명)'(Android 전용) JS 쪽. 네이티브 모듈이 없는 곳(iOS·Expo Go)에서는 아무것도 하지 않는다.
+// 홈 화면 위젯 '나의 책장'·'나의 책장(벽 없이)'·'나의 책장(투명)'(Android 전용) JS 쪽. 네이티브 모듈이 없는 곳(iOS·Expo Go)에서는 아무것도 하지 않는다.
 import { requireOptionalNativeModule } from 'expo';
 import { Platform } from 'react-native';
 
-// 투명 위젯용 모양(그림 기준 px): 책 외곽 [x0,y0,x1,y1,…], 갈피 띠 [x,y,w,h], 판 띠 [y0,y1]
+// 투명 위젯용 모양(그림 기준 px): 책 외곽 [x0,y0,x1,y1,…], 갈피 띠 [x,y,w,h], 판 외곽 [x0,y0,x1,y1,…]
 export type CutPx = { books: number[][]; ribbons: number[][]; boards: number[][] };
 
 type Native = {

@@ -120,7 +120,7 @@ async function captureWidget(src: WidgetSource) {
   await updateShelfWidget(WIDGET_DIR + file, src.bottoms.map((b) => (b + WIDGET_SHADOW - src.top) * px), new Date().getFullYear(), {
     books: cut.books.map((f) => f.map((v, i) => (i % 2 ? Y(v) : X(v)))),
     ribbons: cut.ribbons.map(([x, y, w, h]) => [X(x), Y(y), X(w), h * px]),
-    boards: cut.boards.map(([a, b]) => [Y(a), Y(b)]),
+    boards: cut.boards.map((f) => f.map((v, i) => (i % 2 ? Y(v) : X(v)))),
   });
   // 위젯이 새 그림을 읽은 뒤 옛 그림을 지운다(읽는 도중에 덮어쓰지 않게 이름을 바꿔 가며 쓴다. 같은 때 만든 투명 그림 cut-…png는 남긴다)
   const names = await FS.readDirectoryAsync(WIDGET_DIR);
