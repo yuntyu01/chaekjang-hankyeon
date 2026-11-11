@@ -16,7 +16,7 @@ import kotlin.math.min
 import kotlin.math.roundToInt
 
 // 위젯 한 장 그리기. 비율은 사용자 시안(2026-11-11, 카드 폭 W 기준)에서 잰 값:
-// 머리글 가운데 높이 0.0525W, 좌우 여백 0.0558W, '나의 책장' Bold 0.0478W(짙은 회색), 해 Medium 0.0286W(옅은 갈회색),
+// 머리글 가운데 높이 0.0525W, 좌우 여백 0.0558W, '나의 책장' Medium 0.0478W(짙은 회색: 시안 글자 잉크 양이 Medium 36px과 같다), 해 Medium 0.0286W(옅은 갈회색),
 // 책장 구멍 위 끝 0.106W, 맨 아래 선반 밑 여백 0.045W. 글꼴은 앱 화면과 같은 G마켓 산스(위젯에 쓰는 글자만 떼어 낸 파일).
 // 책장 그림은 위 끝(벽만 있는 줄)을 걷어 내고 카드 폭에 꽉 차게 둔다. 들어가는 만큼(두 칸 → 한 칸) 보이고, 한 칸도 안 들어가면 줄여서 가운데.
 internal object ShelfWidgetRenderer {
@@ -27,13 +27,9 @@ internal object ShelfWidgetRenderer {
   private val HINT = Color.rgb(150, 140, 135)
   private val CARD = Color.rgb(246, 244, 242) // 그림이 없을 때 카드 바탕
 
-  private var bold: Typeface? = null
   private var medium: Typeface? = null
-  private fun fonts(context: Context): Pair<Typeface, Typeface> {
-    val b = bold ?: runCatching { Typeface.createFromAsset(context.assets, "shelf-widget/GmarketSansBold.ttf") }.getOrDefault(Typeface.DEFAULT_BOLD).also { bold = it }
-    val m = medium ?: runCatching { Typeface.createFromAsset(context.assets, "shelf-widget/GmarketSansMedium.ttf") }.getOrDefault(Typeface.DEFAULT).also { medium = it }
-    return b to m
-  }
+  private fun fonts(context: Context): Typeface =
+    medium ?: runCatching { Typeface.createFromAsset(context.assets, "shelf-widget/GmarketSansMedium.ttf") }.getOrDefault(Typeface.DEFAULT).also { medium = it }
 
   fun render(context: Context, wDp: Int, hDp: Int): Bitmap {
     val density = context.resources.displayMetrics.density
@@ -55,10 +51,10 @@ internal object ShelfWidgetRenderer {
     canvas.drawRoundRect(RectF(0f, 0f, W, h.toFloat()), radius, radius, fill)
 
     // 머리글: 두 글자의 세로 가운데를 같은 높이에
-    val (b, m) = fonts(context)
+    val m = fonts(context)
     val pad = 0.0558f * W
     val midY = 0.0525f * W
-    val title = Paint(Paint.ANTI_ALIAS_FLAG).apply { typeface = b; textSize = 0.0478f * W; color = TITLE }
+    val title = Paint(Paint.ANTI_ALIAS_FLAG).apply { typeface = m; textSize = 0.0478f * W; color = TITLE }
     val yearPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { typeface = m; textSize = 0.0286f * W; color = YEAR; textAlign = Paint.Align.RIGHT }
     canvas.drawText("나의 책장", pad, centerBaseline(title, "나의 책장", midY), title)
     canvas.drawText(year.toString(), W - pad, centerBaseline(yearPaint, year.toString(), midY), yearPaint)
