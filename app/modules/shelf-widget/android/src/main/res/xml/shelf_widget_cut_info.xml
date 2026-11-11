@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 투명 위젯(선반·책만). 크기 규칙은 나의 책장과 같다 -->
+<appwidget-provider xmlns:android="http://schemas.android.com/apk/res/android"
+  android:minWidth="250dp"
+  android:minHeight="110dp"
+  android:minResizeWidth="180dp"
+  android:minResizeHeight="100dp"
+  android:targetCellWidth="4"
+  android:targetCellHeight="2"
+  android:resizeMode="horizontal|vertical"
+  android:updatePeriodMillis="0"
+  android:initialLayout="@layout/shelf_widget_cut"
+  android:previewImage="@drawable/shelf_widget_cut_preview"
+  android:description="@string/shelf_widget_cut_description"
+  android:widgetCategory="home_screen" />

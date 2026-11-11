@@ -2,4 +2,6 @@
 <resources>
   <string name="shelf_widget_label">나의 책장</string>
   <string name="shelf_widget_description">책장 한두 칸을 홈 화면에 둬요</string>
+  <string name="shelf_widget_cut_label">나의 책장(투명)</string>
+  <string name="shelf_widget_cut_description">선반과 책만, 배경 없이 둬요</string>
 </resources>

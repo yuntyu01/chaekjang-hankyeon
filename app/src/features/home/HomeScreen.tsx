@@ -49,6 +49,7 @@ import { bootMark, watchResponsive } from '@/ui/boot-trace';
 import { placementStore, usePlacementStore } from '@/store/placement-store';
 import { useShelfShared } from '@/ui/book3d/art';
 import { useHomeSnapshot, whenStartDone } from '@/ui/home-snapshot';
+import { shelfCutShapes } from '@/ui/shelf-widget-shapes';
 import { CONTENT_TOP, computeRows, LAYOUT, lockedRowsAfter, toContent, useShelfMetrics, type RowGeom } from '@/ui/shelf/metrics';
 import { flushApply, PULL_MS, WAIT_MAX } from '@/ui/shelf/planner';
 import { liveSV, pickAt, plankFrontBand, rowPx, TRANSIT_ROW, warmSV, type Pick, type SceneGeo } from '@/ui/shelf/scene';
@@ -208,8 +209,8 @@ export function HomeScreen() {
     return () => setFocused(false);
   }, []));
   const atRest = focused && settled && onCurrent && !drag && !popId && !editing && !shelfMenuOpen && !toast;
-  // 홈 화면 위젯(2026-11-11): 같은 때 책장 첫 두 칸도 떠 둔다(머리글 아래부터 선반 판 끝까지, 책장 보기 기준 dp)
-  useHomeSnapshot(atRest && lockedReady, [layout, books, bookShared, appSettings, view, winW], () => scrollY.value < 1, () => ({ view: viewportRef.current, top: headerH, bottoms: rowsRef.current.slice(0, 2).map((r) => headerH + r.top + r.height) }));
+  // 홈 화면 위젯(2026-11-11): 같은 때 책장 첫 두 칸도 떠 둔다(머리글 아래부터 선반 판 끝까지, 책장 보기 기준 dp). cut: 투명 위젯이 책·판만 오려 낼 모양
+  useHomeSnapshot(atRest && lockedReady, [layout, books, bookShared, appSettings, view, winW], () => scrollY.value < 1, () => ({ view: viewportRef.current, top: headerH, bottoms: rowsRef.current.slice(0, 2).map((r) => headerH + r.top + r.height), cut: shelfCutShapes(rowsRef.current.slice(0, 2), frames, books, m, view.pitch, headerH) }));
 
   // 측정 번들: 끌기 한 번 동안 JS 쪽 시간(미리보기 계산, 미리보기 → 커밋, JS 프레임 간격)
   const dragJs = useRef({ preview: [] as number[], commit: [] as number[], js: [] as number[], commitStart: 0, raf: 0, last: 0 });

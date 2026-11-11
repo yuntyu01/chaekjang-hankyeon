@@ -1,6 +1,7 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
   <application>
-    <!-- 홈 화면 위젯 '나의 책장'. 그림은 앱이 홈 사진을 찍을 때 함께 떠 둔 책장(filesDir/shelf-widget) -->
+    <!-- 홈 화면 위젯. 그림은 앱이 홈 사진을 찍을 때 함께 떠 둔 책장(filesDir/shelf-widget) -->
+    <!-- '나의 책장': 책장(틀 포함)이 위젯을 채운다 -->
     <receiver
       android:name="app.covebook.shelfwidget.ShelfWidgetProvider"
       android:exported="false"
@@ -11,6 +12,18 @@
       <meta-data
         android:name="android.appwidget.provider"
         android:resource="@xml/shelf_widget_info" />
+    </receiver>
+    <!-- '나의 책장(투명)': 선반 판과 책만, 뒤는 투명 -->
+    <receiver
+      android:name="app.covebook.shelfwidget.ShelfCutWidgetProvider"
+      android:exported="false"
+      android:label="@string/shelf_widget_cut_label">
+      <intent-filter>
+        <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+      </intent-filter>
+      <meta-data
+        android:name="android.appwidget.provider"
+        android:resource="@xml/shelf_widget_cut_info" />
     </receiver>
   </application>
 </manifest>

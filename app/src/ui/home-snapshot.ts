@@ -8,6 +8,7 @@ import { AppState, Dimensions, PixelRatio, type View } from 'react-native';
 
 import { captureWindow, screenCaptureAvailable } from '../../modules/screen-capture';
 import { shelfWidgetAvailable, updateShelfWidget } from '../../modules/shelf-widget';
+import type { CutShapes } from './shelf-widget-shapes';
 import { SKIN, SKIN_CHOICE, skinToString } from '@/scene-config/skin';
 import { spineLook } from '@/scene-config/spine-look';
 import { artIdle } from './book3d/art';
@@ -93,9 +94,10 @@ const rootRect = () =>
     root.current.measureInWindow((x, y, w, h) => resolve(w > 0 && h > 0 ? { x: x * px, y: y * px, w: w * px, h: h * px } : null));
   });
 
-// 홈 화면 위젯 '나의 책장'(2026-11-11): 홈 사진을 찍을 때 책장 첫 한두 칸도 떠서 위젯에 넘긴다(modules/shelf-widget이 머리글을 얹어 그린다).
+// 홈 화면 위젯(2026-11-11): 홈 사진을 찍을 때 책장 첫 한두 칸도 떠서 위젯에 넘긴다(modules/shelf-widget이 위젯 크기에 맞춰 그린다).
 // view: 책장 보기(창 안 위치를 잰다), top: 그 안에서 책장 내용이 시작하는 높이(머리글 아래), bottoms: 같은 기준으로 선반 한 칸·두 칸이 끝나는 높이(dp)
-export type WidgetSource = { view: View | null; top: number; bottoms: number[] };
+// cut: 투명 위젯용 책·갈피·판 모양(같은 기준 dp, ui/shelf-widget-shapes)
+export type WidgetSource = { view: View | null; top: number; bottoms: number[]; cut?: CutShapes };
 const WIDGET_DIR = shelfWidgetAvailable && FS.documentDirectory ? `${FS.documentDirectory}shelf-widget/` : null;
 // 선반 판 밑 그늘까지 담는 여유(dp). 더 내리면 다음 칸 벽이 띠처럼 비친다(6dp일 때 보였다)
 const WIDGET_SHADOW = 1.5;
@@ -107,13 +109,22 @@ async function captureWidget(src: WidgetSource) {
   if (!box) return;
   const last = src.bottoms[src.bottoms.length - 1] + WIDGET_SHADOW;
   const rect = { x: box.x * px, y: (box.y + src.top) * px, w: box.w * px, h: (last - src.top) * px };
-  const file = `shelf-${Date.now()}.jpg`;
+  const stamp = String(Date.now());
+  const file = `shelf-${stamp}.jpg`;
   await FS.makeDirectoryAsync(WIDGET_DIR, { intermediates: true }).catch(() => undefined);
   await captureWindow(WIDGET_DIR + file, rect, 92);
-  await updateShelfWidget(WIDGET_DIR + file, src.bottoms.map((b) => (b + WIDGET_SHADOW - src.top) * px), new Date().getFullYear());
-  // 위젯이 새 그림을 읽은 뒤 옛 그림을 지운다(읽는 도중에 덮어쓰지 않게 이름을 바꿔 가며 쓴다)
+  // 모양은 그림 기준 px로(그림 위 끝 = 책장 내용 위 끝)
+  const X = (v: number) => v * px;
+  const Y = (v: number) => (v - src.top) * px;
+  const cut = src.cut ?? { books: [], ribbons: [], boards: [] };
+  await updateShelfWidget(WIDGET_DIR + file, src.bottoms.map((b) => (b + WIDGET_SHADOW - src.top) * px), new Date().getFullYear(), {
+    books: cut.books.map((f) => f.map((v, i) => (i % 2 ? Y(v) : X(v)))),
+    ribbons: cut.ribbons.map(([x, y, w, h]) => [X(x), Y(y), X(w), h * px]),
+    boards: cut.boards.map(([a, b]) => [Y(a), Y(b)]),
+  });
+  // 위젯이 새 그림을 읽은 뒤 옛 그림을 지운다(읽는 도중에 덮어쓰지 않게 이름을 바꿔 가며 쓴다. 같은 때 만든 투명 그림 cut-…png는 남긴다)
   const names = await FS.readDirectoryAsync(WIDGET_DIR);
-  await Promise.all(names.filter((n) => n !== file).map((n) => FS.deleteAsync(WIDGET_DIR + n, { idempotent: true })));
+  await Promise.all(names.filter((n) => !n.includes(stamp)).map((n) => FS.deleteAsync(WIDGET_DIR + n, { idempotent: true })));
 }
 
 async function capture(widget?: () => WidgetSource | null) {
