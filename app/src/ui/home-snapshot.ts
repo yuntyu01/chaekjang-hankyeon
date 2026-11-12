@@ -116,6 +116,7 @@ async function captureWidget(src: WidgetSource, again: () => WidgetSource | null
     // 뜰 칸이 없어도 열쇠가 바뀐 칸은 네이티브가 버리게 알린다(한 번만)
     if (keysSent !== keys.join()) {
       keysSent = keys.join();
+      if (PERF_ENABLED) console.log(`[widget] keys ${keys.join(' ')} sy=${Math.round(sy)}`);
       await updateShelfWidget(null, [], keys, EMPTY_CUT);
     }
     return;
@@ -143,7 +144,8 @@ async function captureWidget(src: WidgetSource, again: () => WidgetSource | null
     cut.ribbons.push(...c.ribbons.map(([x, y, w, h]) => [X(x), Y(y), X(w), h * px]));
     cut.boards.push(...c.boards.map((f) => f.map((v, i) => (i % 2 ? Y(v) : X(v)))));
   }
-  const band: BandRow[] = want.map(({ r, i }) => ({ index: i, key: r.key, y0: Y(r.top), y1: Y(r.bottom + WIDGET_SHADOW), top: r.top * px }));
+  const band: BandRow[] = want.map(({ r, i }) => ({ index: i, key: r.key, y0: Y(r.top), y1: Y(r.bottom + WIDGET_SHADOW), top: r.rel * px }));
+  if (PERF_ENABLED) console.log(`[widget] band ${band.map((b) => `${b.index}:${b.key}`).join(' ')} keys ${keys.join(' ')} sy=${Math.round(sy)}`);
   await updateShelfWidget(WIDGET_DIR + file, band, keys, cut);
   keysSent = keys.join();
   for (const b of band) widgetDone.set(b.index, b.key);

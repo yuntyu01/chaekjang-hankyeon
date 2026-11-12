@@ -21,7 +21,7 @@ import kotlin.math.roundToInt
 // - 벽 없는 위젯: 구멍 가장자리(벽이 시작하는 곳)가 곧 위젯 경계. 구멍 밖 평평한 벽은 그리지 않는다('저 벽이 그 경계선인 걸로').
 // - 투명 위젯: 선반 판과 책만(벽·틀은 투명). 앱이 넘긴 모양(책·판 외곽, 갈피 띠)으로 홈 사진을 오려 낸 PNG를 쓴다.
 // 칸 그림은 칸마다 따로 떠 둔 것(ShelfWidgetModule)을 위에서부터 이어 붙인다(최대 4칸).
-// 보일 칸 수는 위젯을 가장 넓게 채우는 쪽: 위젯 모양(가로세로 비율)을 따른다(넓으면 1단, 정사각형에 가까우면 2단, 좁고 길면 3·4단).
+// 위젯 가로를 늘 꽉 채우고, 보일 칸 수는 높이를 따른다(세로로 늘릴수록 한 단씩, place).
 internal object ShelfWidgetRenderer {
   private const val MAX_W = 1000 // 그림 폭 상한(px): 위젯 그림은 RemoteViews로 넘어가 메모리 한도가 있다
   private val HINT = Color.rgb(150, 140, 135)
@@ -58,22 +58,28 @@ internal object ShelfWidgetRenderer {
     return out?.let { it to bottoms }
   }
 
-  // 위젯 안에 내용(box) 한 칸·두 칸 중 위젯을 가장 넓게 채우는 것을 골라 비율 그대로 가운데에(남는 자리는 비운다)
+  // 위젯 가로를 꽉 채우고 단 수는 높이를 따른다(2026-11-12 사용자 '위젯은 가로를 꽉 채우는 거야, 단 수에 맞게 세로를 늘리는 거고'):
+  // 칸 k개 그림(box, 위 칸부터 k=1..)을 위젯 폭에 맞췄을 때 높이가 위젯 높이(+CROP)에 들어가는 것 중 칸이 가장 많은 것.
+  // 조금 넘치면 위쪽(구멍 위 벽·책 위 빈 곳)을 잘라 맞추고, 남으면 위아래 가운데(꽉 찬 위젯은 벽 색 카드, 나머지는 투명).
+  // 한 칸도 폭에 맞춰 들어가지 않는 낮은 위젯은 한 칸을 높이에 맞춘다(양옆이 조금 빈다).
+  private const val CROP = 0.08f
   private fun place(W: Float, H: Float, boxes: List<RectF>): Pair<RectF, RectF>? {
-    var best: Pair<RectF, RectF>? = null
-    var bestArea = -1f
-    for (src in boxes) {
-      if (src.width() <= 0f || src.height() <= 0f) continue
-      val s = min(W / src.width(), H / src.height())
-      val dw = src.width() * s
-      val dh = src.height() * s
-      val area = dw * dh
-      if (area > bestArea * 1.03f) { // 거의 같으면 칸이 적은 쪽(먼저 본 쪽)
-        bestArea = area
-        best = src to RectF((W - dw) / 2f, (H - dh) / 2f, (W + dw) / 2f, (H + dh) / 2f)
-      }
+    val ok = boxes.filter { it.width() > 0f && it.height() > 0f }
+    if (ok.isEmpty()) return null
+    val heightAt = { b: RectF -> b.height() * W / b.width() }
+    val src = ok.lastOrNull { heightAt(it) <= H * (1 + CROP) }
+    if (src == null) {
+      val one = ok.first()
+      val s = min(W / one.width(), H / one.height())
+      val dw = one.width() * s
+      val dh = one.height() * s
+      return one to RectF((W - dw) / 2f, (H - dh) / 2f, (W + dw) / 2f, (H + dh) / 2f)
     }
-    return best
+    val dh = heightAt(src)
+    if (dh <= H) return src to RectF(0f, (H - dh) / 2f, W, (H + dh) / 2f)
+    // 조금 높다: 위쪽을 잘라 위젯 높이에 맞춘다(아래 판은 그대로)
+    val keep = src.height() * H / dh
+    return RectF(src.left, src.bottom - keep, src.right, src.bottom) to RectF(0f, 0f, W, H)
   }
 
   private fun hint(canvas: Canvas, W: Float, H: Float) {
@@ -97,10 +103,11 @@ internal object ShelfWidgetRenderer {
     val side = wallCols(shelf, card, top + (bottoms.first() - top) / 2).toFloat()
     val boxes = bottoms.map { b -> RectF(0f, top - side, shelf.width.toFloat(), min(b, shelf.height) + side) }
     val (src, dst) = place(W, H, boxes) ?: return out
-    // 그림 밖(위·아래 여백)은 카드 색 그대로: 그림 안쪽만 옮긴다
-    val s = dst.width() / src.width()
-    val inner = Rect(0, max(0, src.top.toInt()), shelf.width, min(shelf.height, src.bottom.toInt()))
-    val innerDst = RectF(dst.left, dst.top + (inner.top - src.top) * s, dst.right, dst.top + (inner.bottom - src.top) * s)
+    // 그림 밖(위·아래 벽 여백)은 카드 색 그대로: 그림 안쪽만 옮긴다(양옆을 조금 잘랐으면 그만큼)
+    val sx = dst.width() / src.width()
+    val sy = dst.height() / src.height()
+    val inner = Rect(max(0, src.left.toInt()), max(0, src.top.toInt()), min(shelf.width, src.right.toInt()), min(shelf.height, src.bottom.toInt()))
+    val innerDst = RectF(dst.left + (inner.left - src.left) * sx, dst.top + (inner.top - src.top) * sy, dst.left + (inner.right - src.left) * sx, dst.top + (inner.bottom - src.top) * sy)
     canvas.drawBitmap(shelf, inner, innerDst, Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG))
     shelf.recycle()
     return out
