@@ -31,7 +31,7 @@ import Svg, { Defs, LinearGradient, Rect, Stop } from 'react-native-svg';
 import { MINI_TIMER_SPACE, miniTimerStore } from '@/store/mini-timer-store';
 import { keepAll } from '@/ui/keep-all';
 import { useReading } from '@/store/reading-store';
-import { buttonHeight, colors, fonts, headerType, icon, press, shape, space, tabHeader, type } from '@/ui/theme';
+import { buttonHeight, colors, fonts, headerType, icon, night, press, shape, space, tabHeader, type } from '@/ui/theme';
 
 const FOOTER_FADE = 24;
 
@@ -560,7 +560,8 @@ export function Toggle({ value, onValueChange, label }: { value: boolean; onValu
 // 트랙 위치는 터치 시작 지점(locationX)과 이동량(dx)으로 계산한다(시트가 올라오는 중이어도 좌표가 어긋나지 않게).
 // 접근성: 조절 가능한 요소(위·아래로 쓸면 10%씩). dim이면 활성 트랙·손잡이를 회색으로(음소거처럼 값은 지키되 꺼진 상태)
 const SLIDER_PAD = 14;
-export function Slider({ value, onChange, onCommit, label, valueText, dim }: { value: number; onChange?: (v: number) => void; onCommit: (v: number) => void; label: string; valueText?: string; dim?: boolean }) {
+// tone 'night': 어두운 장면 위(독서 타이머를 접었을 때 소리 크기). 밝은 크림색 막대와 손잡이
+export function Slider({ value, onChange, onCommit, label, valueText, dim, tone }: { value: number; onChange?: (v: number) => void; onCommit: (v: number) => void; label: string; valueText?: string; dim?: boolean; tone?: 'night' }) {
   const [w, setW] = useState(0);
   const start = useRef(0);
   const last = useRef(value);
@@ -593,7 +594,8 @@ export function Slider({ value, onChange, onCommit, label, valueText, dim }: { v
   });
   const pct = Math.round(value * 100);
   const span = Math.max(0, w - SLIDER_PAD * 2);
-  const fill = dim ? colors.inkFaint : colors.accent;
+  const nightTone = tone === 'night';
+  const fill = nightTone ? (dim ? night.line : night.ink) : dim ? colors.inkFaint : colors.accent;
   return (
     <View
       onLayout={(e) => setW(e.nativeEvent.layout.width)}
@@ -605,9 +607,9 @@ export function Slider({ value, onChange, onCommit, label, valueText, dim }: { v
       accessibilityValue={{ min: 0, max: 100, now: pct, text: valueText ?? `${pct}%` }}
       accessibilityActions={[{ name: 'increment' }, { name: 'decrement' }]}
       onAccessibilityAction={(e) => onCommit(Math.min(1, Math.max(0, Math.round((value + (e.nativeEvent.actionName === 'increment' ? 0.1 : -0.1)) * 10) / 10)))}>
-      <View pointerEvents="none" style={[s.sliderTrack, { left: SLIDER_PAD, right: SLIDER_PAD }]} />
+      <View pointerEvents="none" style={[s.sliderTrack, { left: SLIDER_PAD, right: SLIDER_PAD }, nightTone && { backgroundColor: 'rgba(246,239,230,0.32)' }]} />
       <View pointerEvents="none" style={[s.sliderTrack, { left: SLIDER_PAD, width: span * value, backgroundColor: fill }]} />
-      <View pointerEvents="none" style={[s.sliderKnob, { left: SLIDER_PAD + span * value - 12, borderColor: fill }]} />
+      <View pointerEvents="none" style={[s.sliderKnob, { left: SLIDER_PAD + span * value - 12, borderColor: fill }, nightTone && { backgroundColor: night.ink, borderWidth: 0 }]} />
     </View>
   );
 }
