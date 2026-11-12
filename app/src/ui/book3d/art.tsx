@@ -6,7 +6,7 @@
 // - 갈피: 머리 뒤에서 나오는 끈(원점 = 아래 가운데)
 import { ColorMatrix, ColorType, AlphaType, Group, Image as SkiaImage, PaintStyle, StrokeJoin, Path, Picture, Skia, Text, drawAsPicture, useImage, useTypeface, type SkFont, type SkImage, type SkPaint, type SkPath, type SkPicture, type SkTypeface } from '@shopify/react-native-skia';
 import { FilterMode, MipmapMode } from '@shopify/react-native-skia';
-import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
+import { createContext, useContext, useEffect, useMemo, useState, useSyncExternalStore, type ReactNode } from 'react';
 
 import { displayInk, isNeutralColor, modernInk, rgbHex, tabColors, TITLE_LIGHT, titleInk } from '@/domain/color';
 import { COVER_ARTWORKS } from '@/domain/cover-artworks';
@@ -22,7 +22,7 @@ import { ReferenceCover } from './ReferenceCover';
 import { ReferenceBinding } from './ReferenceBinding';
 import { bookTone, referenceBinding, saturationMatrix } from '@/domain/binding-material';
 import { PHOTO_SATURATION } from '@/scene-config/lighting';
-import { spineLook } from '@/scene-config/spine-look';
+import { spineLookStore, type SpineLook } from '@/scene-config/spine-look';
 import { useLibrary } from '@/store/library-store';
 import { placementStore } from '@/store/placement-store';
 import { TL, tl } from '@/ui/perf';
@@ -444,7 +444,7 @@ function coverEdgeStripe(image: SkImage): { image: SkImage; ink: (f0: number, f1
   return img ? { image: img, ink } : null;
 }
 
-async function buildArt(book: Book, s: number, dims: { T: number; H: number; W: number }, shared: Shared, coverImg: SkImage | null, made: MadeArt): Promise<BookArt> {
+async function buildArt(book: Book, s: number, dims: { T: number; H: number; W: number }, shared: Shared, coverImg: SkImage | null, made: MadeArt, spineLook: SpineLook): Promise<BookArt> {
   const regular = shared.regular!;
   const face = faceOf(book);
   const ink = inkOf(book);
@@ -522,13 +522,14 @@ export function useBookArt(book: Book, s: number, dims: { T: number; H: number; 
   const coverImg = book.art.plainCover || vector ? null : cover.sourceRect ? shared.original : cover.artworkId ? shared.artworks[cover.artworkId] ?? null : customCoverImg;
   // 실제 표지·책등 그림(주소). 책은 네트워크를 기다리지 않는다: 기기에 있으면 그것으로, 없거나 못 받으면 코드로 그리는 장정으로 그리고 받는 대로 바꾼다(services/cover-cache)
   const madeCoverUri = book.coverArtUri ?? null;
-  // 책등 사진 안(scene-config/spine-look 'photo')에서는 YES24 책등 사진을 받는다
+  // 측면 모양(스토어에서 고른 것, scene-config/spine-look). 실물 측면('photo')에서는 YES24 책등 사진을 받는다
+  const spineLook = useSyncExternalStore(spineLookStore.subscribe, spineLookStore.get);
   const madeSpineUri = book.spineArtUri ?? (spineLook === 'photo' ? spineOfCover(book.coverArtUri, 'XL') : undefined) ?? null;
   const { image: madeCover, pending: coverPending } = useCoverImage(madeCoverUri);
   const { image: madeSpine, pending: spinePending } = useCoverImage(madeSpineUri);
   const ready = shared.regular && shared.original && (!needCover || coverImg) && !coverPending && !spinePending;
   // 장정(책 색·모티프)·저자가 바뀌면 다시 기록한다(같은 책 id라도)
-  const key = bookArtKey(book, s, dims, cover, madeCover ? madeCoverUri : null, madeSpine ? madeSpineUri : null);
+  const key = bookArtKey(book, s, dims, cover, madeCover ? madeCoverUri : null, madeSpine ? madeSpineUri : null, spineLook);
   const [art, setArt] = useState<{ key: string; art: BookArt } | null>(() => {
     const hit = artCache.peek(key);
     return hit ? { key, art: hit } : null;
@@ -545,7 +546,7 @@ export function useBookArt(book: Book, s: number, dims: { T: number; H: number; 
       const task = queue.then(async () => {
         const t0 = Date.now();
         if (TL.on) tl(`art-start ${book.id}`);
-        const a = await buildArt(book, s, dims, shared, coverImg, { cover: madeCover, spine: madeSpine });
+        const a = await buildArt(book, s, dims, shared, coverImg, { cover: madeCover, spine: madeSpine }, spineLook);
         artMs += Date.now() - t0;
         if (TL.on) tl(`art-end ${book.id} ${Date.now() - t0}ms`);
         builtArt++;

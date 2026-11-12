@@ -10,7 +10,7 @@ import { captureWindow, screenCaptureAvailable } from '../../modules/screen-capt
 import { shelfWidgetAvailable, updateShelfWidget, type BandRow, type CutPx } from '../../modules/shelf-widget';
 import type { WidgetRow } from './shelf-widget-shapes';
 import { SKIN, SKIN_CHOICE, skinToString } from '@/scene-config/skin';
-import { spineLook } from '@/scene-config/spine-look';
+import { spineLookStore } from '@/scene-config/spine-look';
 import { artIdle } from './book3d/art';
 import { PERF_ENABLED } from './perf';
 
@@ -23,7 +23,7 @@ const REV = 3; // 2: 책 제목 글꼴을 고운바탕 Bold로, 3: 함렛 SemiBo
 type Meta = { rev: number; skin: string; file: string; w: number; h: number; scale: number; fontScale: number };
 // 스킨 이름이 같아도 벽지 색·책등 모양(측정 번들 비교)이 바뀌면 옛 사진을 쓰지 않는다
 // 스토어에서 색을 고르면 실행 중에 바뀌므로 읽을 때마다 만든다(ui/skin-live)
-const skinNow = () => `${skinToString(SKIN_CHOICE)},${SKIN.wall.color}${spineLook === 'color' ? '' : `,${spineLook}`}`;
+const skinNow = () => `${skinToString(SKIN_CHOICE)},${SKIN.wall.color}${spineLookStore.get() === 'color' ? '' : `,${spineLookStore.get()}`}`;
 
 const screenNow = () => {
   const { width, height } = Dimensions.get('window');

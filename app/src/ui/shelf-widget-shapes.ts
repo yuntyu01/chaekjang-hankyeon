@@ -10,6 +10,7 @@ import { SHELF } from '@/domain/geometry';
 import { hasRibbon, ribbonDesign } from '@/domain/ribbon-design';
 import { outlineOf, type BookFrame } from '@/domain/shelf-scene';
 import type { Book } from '@/domain/types';
+import { spineLookStore } from '@/scene-config/spine-look';
 import type { RowGeom, ShelfMetrics } from '@/ui/shelf/metrics';
 import { plankShape } from '@/ui/shelf/ShelfPlank';
 
@@ -60,7 +61,7 @@ function hash(str: string) {
   return (h >>> 0).toString(36);
 }
 
-// 칸 그림이 같은지 가리는 열쇠: 칸 크기·자리(머리글 아래 기준), 보기 각·폭, 책 자리와 그림에 영향을 주는 책 값만.
+// 칸 그림이 같은지 가리는 열쇠: 칸 크기·자리(머리글 아래 기준), 보기 각·폭, 측면 모양, 책 자리와 그림에 영향을 주는 책 값만.
 // 실행마다 달라질 수 있는 값(머리글 높이, 그림 캐시 주소 같은 책의 나머지 값)은 넣지 않는다: 넣으면 화면 밖 칸(4단째)이 다시 켤 때마다 버려진다(2026-11-12)
 function bookSig(b: Book | undefined) {
   if (!b) return null;
@@ -70,7 +71,7 @@ function bookSig(b: Book | undefined) {
 export function widgetRows(rows: RowGeom[], frames: Map<string, BookFrame[]>, books: Record<string, Book>, m: ShelfMetrics, pitch: number, top: number, width: number): WidgetRow[] {
   return rows.slice(0, WIDGET_ROWS).map((row, i) => {
     const fs = frames.get(row.shelfId) ?? [];
-    const sig = JSON.stringify([i, Math.round(row.top), Math.round(row.height), pitch, Math.round(width), Math.round(m.scale * 1000), Math.round(m.originX), fs.map((f) => [f.bookId, f.box]), fs.map((f) => bookSig(books[f.bookId]))]);
+    const sig = JSON.stringify([i, Math.round(row.top), Math.round(row.height), pitch, Math.round(width), Math.round(m.scale * 1000), Math.round(m.originX), spineLookStore.get(), fs.map((f) => [f.bookId, f.box]), fs.map((f) => bookSig(books[f.bookId]))]);
     return {
       key: hash(sig),
       top: i === 0 ? top : top + row.top,

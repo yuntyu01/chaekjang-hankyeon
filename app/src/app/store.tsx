@@ -1,6 +1,7 @@
 // 스토어(2026-11-04 사용자 '선반·벽지·벽 여부를 골라 바꾸게'): 부품을 고르면 위 미리보기(홈 책장과 같은 그림, 선반 한 칸 + 예시 책 두 권)가 그 자리에서 바뀌고,
 // '적용하기'를 누르면 홈 책장에 바로 반영된다(2026-11-10 사용자 '실시간으로', ui/skin-live). 고르기만 하고 나가면 원래 스킨으로 되돌린다.
 // 벽 있음 ↔ '벽 없이 선반만'은 카메라·판 모양·빛 배치가 달라 실행 중에 못 바꾼다: 미리보기 대신 안내를 띄우고, 적용하면 앱을 다시 켠다.
+// 책 측면(2026-11-12 사용자 '측면 선택지': 색 한 가지 · 실물 측면 · 표지 이어 쌓기)도 여기서 고른다. 실제 표지가 있는 책에만 쓰여 미리보기(예시 책)에는 안 보이고, 적용하면 책장에서 바로 바뀐다.
 import { reloadAppAsync } from 'expo';
 import { router } from 'expo-router';
 import { useEffect, useRef, useState } from 'react';
@@ -8,8 +9,10 @@ import { StyleSheet, Text, View } from 'react-native';
 
 import { SkinPreview, skinPreviewHeight } from '@/features/store/SkinPreview';
 import { FRAME_SKINS, PLANK_SKINS, savedSkin, SKIN_CHOICE, skinToString, WALL_SKINS, type SkinChoice } from '@/scene-config/skin';
+import { SPINE_LOOKS, spineLookStore, type SpineLook } from '@/scene-config/spine-look';
 import { ko } from '@/i18n/ko';
 import { Btn, Choice, H2, Muted, Screen, useContentWidth } from '@/ui/kit';
+import { dropHomeSnapshot } from '@/ui/home-snapshot';
 import { skinLive, useSkinKey } from '@/ui/skin-live';
 import { colors, shape, space, type } from '@/ui/theme';
 
@@ -33,6 +36,7 @@ function Options<K extends string>({ part, table, value, onPick, noneLabel }: { 
 export default function StoreScreen() {
   const [saved] = useState(savedSkin);
   const [choice, setChoice] = useState<SkinChoice>(() => ({ ...SKIN_CHOICE }));
+  const [spine, setSpine] = useState<SpineLook>(spineLookStore.get);
   const live = useSkinKey(); // 미리보기는 스킨이 바뀌면 새로 그린다
   const width = useContentWidth();
   const applied = useRef(false);
@@ -41,7 +45,9 @@ export default function StoreScreen() {
     if (!applied.current) skinLive.revert();
   }, []);
   const canLive = skinLive.canLive(choice);
-  const changed = skinToString(choice) !== skinToString(saved);
+  const skinChanged = skinToString(choice) !== skinToString(saved);
+  const spineChanged = spine !== spineLookStore.get();
+  const changed = skinChanged || spineChanged;
   const pick = (part: Part, k: string) => {
     const next = { ...choice, [part]: k } as SkinChoice;
     setChoice(next);
@@ -49,7 +55,11 @@ export default function StoreScreen() {
   };
   const apply = () => {
     applied.current = true;
-    if (skinLive.apply(choice) === 'restart') {
+    if (spineChanged) {
+      spineLookStore.set(spine);
+      dropHomeSnapshot();
+    }
+    if (skinChanged && skinLive.apply(choice) === 'restart') {
       void reloadAppAsync('스킨 적용');
       return;
     }
@@ -57,7 +67,7 @@ export default function StoreScreen() {
   };
   const h = skinPreviewHeight(width);
   return (
-    <Screen title={ko.store.title} footer={<Btn label={canLive ? ko.store.apply : ko.store.applyRestart} size="l" disabled={!changed} onPress={apply} />}>
+    <Screen title={ko.store.title} footer={<Btn label={canLive || !skinChanged ? ko.store.apply : ko.store.applyRestart} size="l" disabled={!changed} onPress={apply} />}>
       <View style={[st.preview, { height: h }]} accessible accessibilityLabel={ko.store.preview}>
         {canLive ? (
           <SkinPreview key={live} width={width} />
@@ -74,6 +84,13 @@ export default function StoreScreen() {
       <Options part="wall" table={WALL_SKINS} value={choice.wall} onPick={pick} />
       <H2>{ko.store.frame}</H2>
       <Options part="frame" table={FRAME_SKINS} value={choice.frame} onPick={pick} noneLabel={ko.store.noFrame} />
+      <H2>{ko.store.spine}</H2>
+      <View style={{ gap: space.s }}>
+        {SPINE_LOOKS.map((k) => (
+          <Choice key={k} label={ko.store.spines[k][0]} sub={ko.store.spines[k][1]} selected={spine === k} onPress={() => setSpine(k)} />
+        ))}
+      </View>
+      <Muted style={{ marginTop: space.s }}>{ko.store.spineNote}</Muted>
       <Muted style={{ marginTop: space.l }}>{ko.store.note}</Muted>
     </Screen>
   );

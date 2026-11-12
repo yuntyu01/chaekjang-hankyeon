@@ -11,7 +11,7 @@ import { VIEW_PITCH_MAX, VIEW_PITCH_MIN, type Cam } from '@/domain/camera';
 import { PERF_LIGHT_KEY } from '@/scene-config/lighting';
 import { PERF_UI_BG_KEY, PERF_WALL_KEY } from '@/scene-config/palette';
 import { PERF_LOOK_KEY, PERF_SKIN_KEY } from '@/scene-config/skin';
-import { PERF_SPINE_KEY } from '@/scene-config/spine-look';
+import { spineLookStore } from '@/scene-config/spine-look';
 import { REAL_LAYOUT, realBookOf, realLibrarySeed } from '@/domain/real-sample';
 import { DEMO_BOOT_KEY } from '@/store/boot';
 import { bookcaseStore } from '@/store/bookcase-store';
@@ -131,11 +131,10 @@ export function useHomePerf({ view, pitchSV, viewGoal, savePitch, camSV, storeLo
     if (wallBgParam === 'off') void Storage.removeItem(PERF_WALL_KEY);
     else void Storage.setItem(PERF_WALL_KEY, `#${wallBgParam}`);
   }, [wallBgParam]);
-  // 측정 번들: ?spine=photo|stripe|color 실제 책의 책등 모양을 저장한다(다음 실행부터, scene-config/spine-look). off면 지운다
+  // 측정 번들: ?spine=photo|stripe|color 실제 책의 측면 모양을 바꾼다(스토어에서 고르는 것과 같다, scene-config/spine-look). off는 기본(color)
   useEffect(() => {
     if (!PERF_ENABLED || spineParam === undefined) return;
-    if (spineParam === 'off') void Storage.removeItem(PERF_SPINE_KEY);
-    else void Storage.setItem(PERF_SPINE_KEY, spineParam);
+    spineLookStore.set(spineParam === 'photo' || spineParam === 'stripe' ? spineParam : 'color');
   }, [spineParam]);
   useEffect(() => {
     if (!PERF_ENABLED || skinParam === undefined) return;

@@ -4,7 +4,7 @@ export const ko = {
   yearA11y: (year: number, count: number) => `${year}년 책장, 올해 완독 ${count}권`,
   add: '책 추가',
   lockedShelf: { a11y: '잠긴 선반, 눌러서 열기', title: '선반 한 칸 더 열기', body: '책을 더 진열할 수 있는 선반이 한 칸 늘어나요. 한 번 열면 계속 쓸 수 있어요.', buy: '무료로 열기', done: '선반을 열었어요.' },
-  store: { title: '스토어', preview: '고른 선반·벽지로 그린 책장 한 칸', plank: '선반', wall: '벽지', frame: '벽', noFrame: '벽 없이 선반만', withFrame: '벽에 파인 책장', apply: '적용하기', applyRestart: '적용하고 다시 켜기', restartNote: '벽 모양을 바꾸면 카메라와 빛이 달라져서 앱을 다시 켜서 보여 드려요.', note: '선반·벽지 색은 바로 바뀌어요. 벽 모양을 바꿀 때만 앱이 다시 켜져요. 책과 기록은 그대로예요.', a11y: '스토어' },
+  store: { title: '스토어', preview: '고른 선반·벽지로 그린 책장 한 칸', plank: '선반', wall: '벽지', frame: '벽', spine: '책 측면', spineNote: '실제 표지가 있는 책에만 쓰여요. 적용하면 책장에서 바로 바뀌어요.', spines: { color: ['색 한 가지', '표지에서 뽑은 색으로 칠하고 제목을 써요'], photo: ['실물 측면', '실제 책 측면 사진이에요. 사진이 없는 책은 색 한 가지로'], stripe: ['표지 이어 쌓기', '표지 가장자리 색을 측면까지 줄무늬로 이어요'] }, noFrame: '벽 없이 선반만', withFrame: '벽에 파인 책장', apply: '적용하기', applyRestart: '적용하고 다시 켜기', restartNote: '벽 모양을 바꾸면 카메라와 빛이 달라져서 앱을 다시 켜서 보여 드려요.', note: '선반·벽지 색은 바로 바뀌어요. 벽 모양을 바꿀 때만 앱이 다시 켜져요. 책과 기록은 그대로예요.', a11y: '스토어' },
   menu: { title: '책장 메뉴', prune: '빈 선반 정리', pruned: '빈 선반을 정리했어요.', shelfFail: '지금은 바꿀 수 없어요.' },
   empty: { title: '첫 책을 진열해 보세요', body: '읽은 책, 읽고 있는 책, 읽고 싶은 책 모두 좋아요.' },
   addSoon: '책 추가는 다음 단계에서 열려요',
