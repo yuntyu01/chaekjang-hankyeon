@@ -833,7 +833,7 @@ export function SheetGrip({ handlers, compact }: { handlers: ReturnType<typeof u
 
 // 하단 시트: 어두운 덮개 + 위쪽만 둥근 판(손잡이·머리줄·내용). 바깥을 누르거나 뒤로 가면, 손잡이를 끌어 내리면 닫힌다.
 // 덮개는 판 뒤까지 깐다: 판 윗선에서 끝나면 둥글게 깎인 모서리로 밝은 화면이 비쳐 흰 바탕에서 모서리가 각져 보인다
-// 제목이 있는 시트는 머리줄 오른쪽에 닫기 단추(2026-11: 분위기·목표 시간·책 고르기 공통. 아래쪽 '닫기' 글자 대신).
+// 닫기 단추(X)는 두지 않는다(2026-11-12 사용자 '빼': 아래로 끌기·바깥 누르기·뒤로 가기로 닫힌다. 화면 읽기에서는 덮개의 '닫기'를 쓴다).
 // description은 제목 바로 아래 짧은 안내. 높이는 내용만큼(maxHeight를 넘으면 scroll 시트의 본문이 스크롤된다)
 export function Sheet({ visible, onClose, title, description, children, scroll = false, maxHeight }: { visible: boolean; onClose: () => void; title?: string; description?: string; children: ReactNode; scroll?: boolean; maxHeight?: DimensionValue }) {
   const insets = useSafeAreaInsets();
@@ -851,9 +851,6 @@ export function Sheet({ visible, onClose, title, description, children, scroll =
               <Text style={[type.heading, { flex: 1 }]} accessibilityRole="header">
                 {title}
               </Text>
-              <Pressable onPress={onClose} hitSlop={6} style={({ pressed }) => [s.sheetClose, pressed && press]} accessibilityRole="button" accessibilityLabel={`${title} 닫기`}>
-                <X size={icon.size} color={colors.inkSoft} strokeWidth={icon.stroke} />
-              </Pressable>
             </View>
             {description ? <Text style={[type.sub, { marginTop: 2 }]}>{description}</Text> : null}
           </View>
@@ -990,7 +987,6 @@ export const s = StyleSheet.create({
   slider: { height: 44, justifyContent: 'center', flex: 1 },
   sliderTrack: { position: 'absolute', height: 6, borderRadius: 3, backgroundColor: colors.track, top: 19 },
   sliderKnob: { position: 'absolute', top: 10, width: 24, height: 24, borderRadius: 12, backgroundColor: colors.white, borderWidth: 2, ...shape.floatShadow },
-  sheetClose: { width: space.touch, height: space.touch, marginRight: -10, alignItems: 'center', justifyContent: 'center' },
   dialogWrap: { flex: 1, backgroundColor: colors.scrim, justifyContent: 'center', padding: space.page },
   dialog: { width: '100%', maxWidth: DIALOG_MAX, alignSelf: 'center', backgroundColor: colors.raised, borderRadius: shape.dialog, padding: space.page },
   largeTitle: { paddingTop: 4, paddingBottom: 24 },
