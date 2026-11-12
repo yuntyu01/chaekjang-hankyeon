@@ -24,7 +24,7 @@ import { faceVisible } from '@/ui/book3d/face-geometry';
 import { PERF_ENABLED } from './perf';
 import { keepLatest } from './retained-images';
 export { keepLatest } from './retained-images';
-import { bakeSource, bookSource, gridSource, litSource, planeFrame, tabSource, type Plane } from './scene-light-sksl';
+import { bakeSource, bookSource, gridSource, litSource, passOf, planeFrame, tabSource, type Plane } from './scene-light-sksl';
 
 export type { Plane } from './scene-light-sksl';
 type RO<T> = Readonly<SharedValue<T>>;
@@ -36,15 +36,29 @@ const make = (src: string) => {
 };
 const BAKE = make(bakeSource());
 const GRID = make(gridSource());
-// 곱하기 · 컬러 닷지: 평면, 책
-const LIT = [make(litSource(false)), make(litSource(true))];
-// 단색 재질(벽)은 재질 색 × 빛을 한 번에(대상 색을 읽는 겹치기가 없다)
-const LIT_DIRECT = make(litSource('direct'));
-const BOOK = [make(bookSource(false)), make(bookSource(true))];
-// 그림 표지 책: 곱하기·닷지는 확산 몫만, 반사광은 더하기 겹으로(어두운 그림 위에도 반사광이 보이게, shadeCode split)
-const BOOK_ART = [make(bookSource(false, true)), make(bookSource(true, true)), make(bookSource('spec'))];
-const TAB = [make(tabSource(false)), make(tabSource(true))];
+// 평면(벽·판)·책·갈피 탭: 프로그램은 하나씩이고 겹(곱하기·컬러 닷지·한 번에·반사광 더하기)은 uniform으로 고른다(passOf).
+// 겹마다 셰이더를 따로 두면 첫 실행 GPU 컴파일이 그만큼 늘었다(2026-11-12 새로 설치한 S23에서 시작 화면 1분+)
+const LIT = make(litSource());
+const BOOK = make(bookSource());
+const TAB = make(tabSource());
 const BLEND = ['multiply', 'colorDodge', 'plus'] as const;
+// 겹 uniform: plain 곱하기·닷지, art 그림 표지 책(곱하기·닷지는 확산 몫만, 반사광은 더하기 겹: 어두운 그림 위에도 반사광이 보이게),
+// direct 단색 재질(벽)을 재질 색 × 빛으로 한 번에(대상 색을 읽는 겹치기가 없다)
+type PassKind = 'plain' | 'art' | 'direct';
+const PASSES: Record<PassKind, ReturnType<typeof passOf>[]> = {
+  plain: [passOf(false), passOf(true)],
+  art: [passOf(false, true), passOf(true, true), passOf('spec')],
+  direct: [passOf('direct')],
+};
+const NO_PASS: Uniforms = {};
+// 겹마다 uniform 객체(같은 값 + DODGE·SPLIT). 겹 수가 바뀌어도 훅 수는 같게 셋을 둔다. base는 겹 2만 읽지만 선언돼 있어 늘 넣는다
+function usePasses(uniforms: RO<Uniforms>, kind: PassKind): RO<Uniforms>[] {
+  const list = PASSES[kind];
+  const a = useDerivedValue<Uniforms>(() => ({ base: ZERO3, ...uniforms.value, ...list[0] }), [list]);
+  const b = useDerivedValue<Uniforms>(() => (list.length > 1 ? { base: ZERO3, ...uniforms.value, ...list[1] } : NO_PASS), [list]);
+  const c = useDerivedValue<Uniforms>(() => (list.length > 2 ? { base: ZERO3, ...uniforms.value, ...list[2] } : NO_PASS), [list]);
+  return [a, b, c].slice(0, list.length);
+}
 
 const ZERO3 = [0, 0, 0];
 const NO_EDGE = [0, 0, 0, 1e9];
@@ -281,17 +295,17 @@ function prevSampleOf(a: Atlas, key: string, M: (w: number, h: number) => number
   return { sample: s, mix: s.live ? 1 : a.mix ?? 1 };
 }
 
-// 두 겹(곱하기·닷지)으로 영역(path)을 다시 칠한다. fx: [곱하기, 닷지] 셰이더, sample: 셰이더 자식(구운 그림과 행렬), prev: 앞 굽기
-function Relit({ path, fx, uniforms, sample, prev, keyImage }: { path: RO<SkPath> | SkPath; fx: SkRuntimeEffect[]; uniforms: RO<Uniforms>; sample: RO<Sample>; prev: RO<Sample>; keyImage: RO<SkImage> }) {
+// 두 겹(곱하기·닷지)으로 영역(path)을 다시 칠한다. fx: 셰이더, passes: 겹마다 uniform(usePasses), sample: 셰이더 자식(구운 그림과 행렬), prev: 앞 굽기
+function Relit({ path, fx, passes, sample, prev, keyImage }: { path: RO<SkPath> | SkPath; fx: SkRuntimeEffect; passes: RO<Uniforms>[]; sample: RO<Sample>; prev: RO<Sample>; keyImage: RO<SkImage> }) {
   const image = useDerivedValue(() => sample.value.image);
   const matrix = useDerivedValue(() => sample.value.matrix);
   const image2 = useDerivedValue(() => prev.value.image);
   const matrix2 = useDerivedValue(() => prev.value.matrix);
   return (
     <>
-      {fx.map((e, i) => (
+      {passes.map((u, i) => (
         <Path key={i} path={path} blendMode={BLEND[i]}>
-          <Shader source={e} uniforms={uniforms}>
+          <Shader source={fx} uniforms={u}>
             <ImageShader image={image} tx="clamp" ty="clamp" sampling={LINEAR} matrix={matrix} />
             <ImageShader image={keyImage} tx="decal" ty="decal" sampling={LINEAR} />
             <ImageShader image={image2} tx="clamp" ty="clamp" sampling={LINEAR} matrix={matrix2} />
@@ -471,11 +485,12 @@ export function BookLight({ dims: d, state, cam, px, outline, albedo, material =
   const matrix = useDerivedValue(() => sample.value.matrix);
   const keyImage = useDerivedValue(() => (keyShadow ? keyShadow.value : NO_BOOK_KEY).image);
   const image2 = useDerivedValue(() => prev.value.image);
+  const passes = usePasses(uniforms, picture ? 'art' : 'plain');
   return (
     <>
-      {(picture ? BOOK_ART : BOOK).map((e, i) => (
+      {passes.map((u, i) => (
         <Path key={i} path={outline} blendMode={BLEND[i]}>
-          <Shader source={e} uniforms={uniforms}>
+          <Shader source={BOOK} uniforms={u}>
             <ImageShader image={image} tx="clamp" ty="clamp" sampling={LINEAR} matrix={matrix} />
             <ImageShader image={keyImage} tx="decal" ty="decal" sampling={LINEAR} />
             <ImageShader image={image2} tx="clamp" ty="clamp" sampling={LINEAR} matrix={IDENTITY} />
@@ -543,8 +558,9 @@ export function BakedPlane({ path, cam, px, plane, env, atlas, akey, matrix, alb
       ...(base ? { base } : null),
     };
   });
-  if (base) return <Direct path={path} uniforms={uniforms} sample={sample} prev={prev} keyImage={keyImage} />;
-  return <Relit path={path} fx={LIT} uniforms={uniforms} sample={sample} prev={prev} keyImage={keyImage} />;
+  const passes = usePasses(uniforms, base ? 'direct' : 'plain');
+  if (base) return <Direct path={path} uniforms={passes[0]} sample={sample} prev={prev} keyImage={keyImage} />;
+  return <Relit path={path} fx={LIT} passes={passes} sample={sample} prev={prev} keyImage={keyImage} />;
 }
 function Direct({ path, uniforms, sample, prev, keyImage }: { path: RO<SkPath> | SkPath; uniforms: RO<Uniforms>; sample: RO<Sample>; prev: RO<Sample>; keyImage: RO<SkImage> }) {
   const image = useDerivedValue(() => sample.value.image);
@@ -553,7 +569,7 @@ function Direct({ path, uniforms, sample, prev, keyImage }: { path: RO<SkPath> |
   const matrix2 = useDerivedValue(() => prev.value.matrix);
   return (
     <Path path={path}>
-      <Shader source={LIT_DIRECT} uniforms={uniforms}>
+      <Shader source={LIT} uniforms={uniforms}>
         <ImageShader image={image} tx="clamp" ty="clamp" sampling={LINEAR} matrix={matrix} />
         <ImageShader image={keyImage} tx="decal" ty="decal" sampling={LINEAR} />
         <ImageShader image={image2} tx="clamp" ty="clamp" sampling={LINEAR} matrix={matrix2} />
@@ -577,11 +593,12 @@ export function TabLight({ path, frame, albedo, s, seed }: { path: SkPath; frame
     const f = frame.value;
     return { ...lightSet().u, pxa: [s, 0, 0], root: arr(f.root), axR: arr(f.axR), axU: arr(f.axU), nrm: arr(f.n), loss: f.loss, cam4: f.cam4, keyOn: 1, albedo, eref: bookEref('paper'), sref: bookSref('paper'), env: envOf(f.env), ...mat };
   });
+  const passes = usePasses(uniforms, 'plain');
   return (
     <>
-      {TAB.map((e, i) => (
+      {passes.map((u, i) => (
         <Path key={i} path={path} blendMode={BLEND[i]}>
-          <Shader source={e} uniforms={uniforms} />
+          <Shader source={TAB} uniforms={u} />
         </Path>
       ))}
     </>

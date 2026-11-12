@@ -6,7 +6,7 @@ import type { Book3, Vec3 } from '@/domain/book3';
 import { bakedLossAt, boxOf, coveNormal, DESIGN, ENV_NX, ENV_NY, EREF, FAR, GRID_N, GRID_PASSES, KEY_C, KEY_DIRS, lightSet, lightWithLoss, skyIrradiance, ROUGH, linearOf, packBoxes, skyLossAt, solveGrid, toEye, toneDodge, toneMul, toneSpec, GAMMA, withCovers, type BoxBuf, type C3, type Env } from '@/domain/light-model';
 import { MAT_UNIFORMS, matSample, WOOD_FLAT, type MatUniforms } from '@/domain/surface-pattern';
 import { RIM_R, FRAME_X1, FRAME_X0, FRAME_FRONT, SHELF_DEPTH, SHELF_X0, SHELF_X1 } from '@/domain/geometry';
-import { bakeSource, bookSource, GRID_SCALE, gridSource, litSource, lossDecode, lossEncode, lossStep, LOSS_RN, LOSS_RP, planeFrame } from '../scene-light-sksl';
+import { bakeSource, bookSource, GRID_SCALE, gridSource, litSource, lossDecode, lossEncode, lossStep, LOSS_RN, LOSS_RP, passOf, planeFrame } from '../scene-light-sksl';
 import { EDGE_R, GROOVE, rigOf } from '@/domain/book-parts';
 import { camAt, toPx } from '@/domain/camera';
 import { light } from '../lighting';
@@ -118,9 +118,10 @@ const solid = (g: number[]) => CK.Shader.MakeColor(CK.Color4f(g[0], g[1], g[2], 
 function shaderLit(P: Vec3, n: Vec3, env: Env | null, dodge: boolean | 'direct', albedo: C3, base?: number[], mat = PLAIN, k = 1e-3, kx = 0, bake?: Bake, rim = [1, 0, 0, 0], soft = { box: [0, 0, 0, 0], r: [0, 0] }) {
   const { U, V } = axes(n);
   return draw(
-    litSource(dodge),
+    litSource(),
     {
-      ...(base ? { base } : null),
+      base: base ?? [0, 0, 0],
+      ...passOf(dodge),
       ...mat,
       kU: [0, 0, 0],
       kV: [0, 0, 0],
@@ -193,7 +194,7 @@ describe('하늘 가림 그림 값(양쪽 제곱근 곡선)', () => {
 
 describe('빛 셰이더 = JS 빛 모델', () => {
   it('셰이더가 컴파일된다', () => {
-    for (const src of [bakeSource(), gridSource(), litSource(false), litSource(true), litSource('direct'), bookSource(false), bookSource(true)]) {
+    for (const src of [bakeSource(), gridSource(), litSource(), bookSource()]) {
       const err: string[] = [];
       const e = CK.RuntimeEffect.Make(src, (m: string) => err.push(m));
       expect(err.join('\n')).toBe('');
@@ -490,8 +491,9 @@ describe('책 광선 셰이더 = 광선 기하 + JS 빛', () => {
   // kx: 책등 면이 받는 창빛 그림자(그림자 그림 자리를 고른 알파로)
   const shader = (Q: Vec3, dodge: boolean | 'spec', kx = 0, split = false) =>
     draw(
-      bookSource(dodge, split),
+      bookSource(),
       {
+        ...passOf(dodge, split),
         kRect: kx > 0 ? [0, 0, 1, 1, ...new Array(20).fill(0)] : new Array(24).fill(0),
         cam4: CAM4, pxa: pxaOf(Q), bO: [bO.x, bO.y, bO.z], bX: [1, 0, 0], bY: [0, 1, 0], bZ: [0, 0, 1],
         dims: [d.T, d.H, d.W], rig: [bd, sp, sq], rect: new Array(24).fill(0), rect2: new Array(24).fill(0), mixT: 1, keyOn: 1, albedo: tone,

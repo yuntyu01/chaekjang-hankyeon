@@ -218,8 +218,11 @@ function header() {
     if (env.x < 0.5) return 0.0;
     float zf = p.z + FRONT;
     float k = 0.0;
-    if (env.z < FARV) k += plankBlock(p, env.z, env.z + THICK, zf);
-    if (env.y > -FARV) k += plankBlock(p, env.y - THICK, env.y, zf);
+    // 두 판을 한 반복문으로(plankBlock 몸체가 한 번만 펼쳐지게, 차례는 위 판 → 아래 판 그대로)
+    for (int i = 0; i < 2; i++) {
+      if (i == 0 ? env.z >= FARV : env.y <= -FARV) continue;
+      k += plankBlock(p, i == 0 ? env.z : env.y - THICK, i == 0 ? env.z + THICK : env.y, zf);
+    }
     k = min(1.0, k);
     return env.x > 1.5 ? 1.0 - (1.0 - k) * (1.0 - sideBlock(p)) : k;
   }
@@ -390,24 +393,28 @@ function envCode(grid: boolean) {
   return `
   // 판 끝 창(light-model windowPlanes·acrossPlanes): 판 끝 평면 x = X 너머의 면은 p에서 그 평면을 지나는 높이가 판 윗면 ~ 위 판 아랫면
   // 사이일 때만 보인다. p 기준 다각형을 p와 판 끝 모서리(x = X, y = 판 윗면·아랫면)를 지나는 평면으로 자른다. 걸칠 때만 자른다
-  void clipSide(inout float3 Q[${NV}], inout int qc, float3 w) {
-    if (qc < 3) return;
-    float sd = sideOf(Q, qc, w);
+  // 평면 하나로 자르기. always면 늘 자르고(반구), 아니면 걸칠 때만(판 끝 창·구역 변: 밖이면 비운다).
+  // 2026-11-12: 자르기를 부르는 곳이 여러 갈래로 늘어 GPU 컴파일러가 펼친 사본이 수백 개가 되어, 새로 설치한 S23에서 첫 굽기 컴파일이 1분 넘게 UI를 막았다.
+  // 그래서 자르는 곳마다 평면을 반복문으로 넘겨 이 몸체(와 clipPoly)가 셰이더마다 한두 번만 나오게 한다
+  void clipPlane(inout float3 Q[${NV}], inout int qc, float3 w, float off, bool always) {
+    if (!always && qc < 3) return;
+    float sd = always ? 0.0 : sideOf(Q, qc, w);
     if (sd < -0.5) { qc = 0; return; }
-    if (sd < 0.5) clipPoly(Q, qc, w, 0.0);
+    if (sd < 0.5) clipPoly(Q, qc, w, off);
   }
-  void clipWindow(inout float3 Q[${NV}], inout int qc, float3 p, float X) {
-    float Xr = X - p.x;
+  // 판 끝 창 평면 i(0~7 = 창 넷 × 판 윗면·위 판 아랫면). 면 부분(part 0 판 범위, 1 왼쪽 끝 너머 벽, 2 오른쪽 끝 너머 벽)이 p에서 판 끝 창을
+  // 지나야 보이면 그 창으로(판 범위를 통째로 건너면 두 끝 모두). 창 순서: X1(part 0·1, p가 X1 오른쪽), X0(part 1), X0(part 0·2, p가 X0 왼쪽), X1(part 2). 쓰지 않으면 false
+  bool acrossPlane(int i, float3 p, int part, out float3 w) {
+    w = float3(0.0);
+    int wi = i / 2;
+    bool on = wi == 0 ? ((part == 1 || part == 0) && p.x > X1) : (wi == 1 ? (part == 1 && p.x > X0) : (wi == 2 ? ((part == 2 || part == 0) && p.x < X0) : (part == 2 && p.x < X1)));
+    if (!on) return false;
+    bool lower = i == wi * 2;
+    if (lower ? env.y <= -FARV : env.z >= FARV) return false;
+    float Xr = (wi == 1 || wi == 2 ? X0 : X1) - p.x;
     float sg = Xr >= 0.0 ? 1.0 : -1.0;
-    if (env.y > -FARV) clipSide(Q, qc, float3(-(env.y - p.y) * sg, Xr * sg, 0.0));
-    if (env.z < FARV) clipSide(Q, qc, float3((env.z - p.y) * sg, -Xr * sg, 0.0));
-  }
-  // 면 부분(part 0 판 범위, 1 왼쪽 끝 너머 벽, 2 오른쪽 끝 너머 벽)이 p에서 판 끝 창을 지나야 보이면 그 창으로(판 범위를 통째로 건너면 두 끝 모두)
-  void clipAcross(inout float3 Q[${NV}], inout int qc, float3 p, int part) {
-    if ((part == 1 || part == 0) && p.x > X1) clipWindow(Q, qc, p, X1);
-    if (part == 1 && p.x > X0) clipWindow(Q, qc, p, X0);
-    if ((part == 2 || part == 0) && p.x < X0) clipWindow(Q, qc, p, X0);
-    if (part == 2 && p.x < X1) clipWindow(Q, qc, p, X1);
+    w = lower ? float3(-(env.y - p.y) * sg, Xr * sg, 0.0) : float3((env.z - p.y) * sg, -Xr * sg, 0.0);
+    return true;
   }
   // 판 범위 둘레 사각형 k(light-model envQuads part 'in'): 0 벽(이 줄 높이), 1 판 윗면, 2 위 판 아랫면, 가로 xa ~ xb(판 범위 안).
   // 면의 앞쪽(빛을 받는 쪽)에서만 보인다. 받는 점 p 기준 꼭짓점과 밝기, 없으면 false
@@ -435,74 +442,90 @@ function envCode(grid: boolean) {
     rad = top ? RADF : RADU;
     return true;
   }
-  // 사각형 하나(꼭짓점 a~d: 받는 점 기준)의 보이는 넓이: 반구로 자르고, 판 끝 너머 면이면 판 끝 창으로(part: clipAcross)
+  // 사각형 하나(꼭짓점 a~d: 받는 점 기준)의 보이는 넓이: 반구로 자르고, 판 끝 너머 면이면 판 끝 창으로(part: acrossPlane)
   float4 quadVF(float3 a, float3 b, float3 c, float3 d, float3 n, float3 p, int part) {
     float3 v[${NV}];
     for (int i = 0; i < ${NV}; i++) v[i] = float3(0.0);
     v[0] = a; v[1] = b; v[2] = c; v[3] = d;
     int cnt = 4;
-    clipPoly(v, cnt, n, HORIZON);
-    clipAcross(v, cnt, p, part);
+    // 반구(늘 자름) 다음 판 끝 창 평면 여덟(clipPlane 한 곳)
+    for (int i = 0; i < 9; i++) {
+      float3 w = n;
+      if (i > 0 && !acrossPlane(i - 1, p, part, w)) continue;
+      clipPlane(v, cnt, w, i == 0 ? HORIZON : 0.0, i == 0);
+    }
     if (cnt < 3) return float4(0.0);
     return moments(v, cnt, n);
+  }
+  // 둘레 사각형 하나(t: 판 범위 면 3 × 가로 칸 ${grid ? 'ENV_COLS' : '1'}, 그다음 틀 안쪽 면 둘, 판 끝 너머 벽 둘, 판 끝면 넷). 받는 점 p 기준 꼭짓점·밝기·면 부분,
+  // 판 범위 면이면 which(0 벽, 1 판 윗면, 2 위 판 아랫면)와 칸 col. 쓰지 않는 사각형이면 false. envLoss와 behindOf(구역, whole: 판 범위 통째 X0 ~ X1)가 같이 쓴다
+  const int SECT_IN = ${grid ? 'ENV_COLS' : '1'};
+  bool envSector(int t, float3 p, int ncol, bool whole, out float3 a, out float3 b, out float3 c, out float3 d, out float3 rad, out int part, out int which, out int col) {
+    a = float3(0.0); b = float3(0.0); c = float3(0.0); d = float3(0.0); rad = float3(0.0); part = 3; which = -1; col = -1;
+    if (t < 3 * SECT_IN) {
+      int k = t / SECT_IN;
+      int j = t - k * SECT_IN;
+      if (j >= ncol) return false;
+      float xa = whole ? X0 : X0 + (X1 - X0) * float(j) / float(ncol);
+      float xb = whole ? X1 : X0 + (X1 - X0) * float(j + 1) / float(ncol);
+      part = 0; which = k; col = k * ${grid ? 'NCOL' : '0'} + j + 1;
+      return envQuad(k, p, xa, xb, a, b, c, d, rad);
+    }
+    float z = DEPTH - p.z;
+    float zf = -FRONT - p.z;
+    int s = t - 3 * SECT_IN;
+    if (s < 2) {
+      // 틀 안쪽 면 둘(앞 끝 ~ 벽, light-model envQuads part 'side'): 틀이 있을 때만
+      if (env.x <= 1.5) return false;
+      float X = s == 0 ? X0 : X1;
+      if (s == 0 ? p.x <= X : p.x >= X) return false;
+      float zs = -FFRONT - p.z;
+      float y0 = max(env.y, -FARV) - p.y;
+      float y1 = min(env.z, FARV) - p.y;
+      float x = X - p.x;
+      a = float3(x, y0, z); b = float3(x, y0, zs); c = float3(x, y1, zs); d = float3(x, y1, z);
+      rad = s == 0 ? RADSL : RADSR;
+      return true;
+    }
+    // 틀이 있으면 판 끝 너머는 없다
+    if (env.x > 1.5) return false;
+    if (s < 4) {
+      // 판 끝 너머 벽: 판이 없어 위아래로 열려 있다(가림 없는 벽 밝기)
+      if (z <= 0.0) return false;
+      int side = s - 2;
+      float xa = (side == 0 ? -FARV : X1) - p.x;
+      float xb = (side == 0 ? X0 : FARV) - p.x;
+      a = float3(xa, -FARV, z); b = float3(xb, -FARV, z); c = float3(xb, FARV, z); d = float3(xa, FARV, z);
+      rad = RADW; part = side + 1; which = 0; col = side == 0 ? 0 : ${grid ? 'NCOL' : '2'} - 1;
+      return true;
+    }
+    // 판 끝면(판 끝 너머에서만 보인다): 아래 판(판 윗면 아래 두께), 위 판(위 판 아랫면 위 두께)
+    int pl = (s - 4) / 2;
+    int side = s - 4 - pl * 2;
+    if (pl == 0 ? env.y <= -FARV : env.z >= FARV) return false;
+    float X = side == 0 ? X0 : X1;
+    if (side == 0 ? p.x >= X : p.x <= X) return false;
+    float ya = pl == 0 ? env.y - THICK : env.z;
+    float yb = pl == 0 ? env.y : env.z + THICK;
+    float x = X - p.x;
+    a = float3(x, ya - p.y, z); b = float3(x, ya - p.y, zf); c = float3(x, yb - p.y, zf); d = float3(x, yb - p.y, z);
+    rad = RADE;
+    return true;
   }
   float3 envLoss(float3 p, float3 n) {
     ${grid ? 'clearCols();' : ''}
     if (env.x < 0.5) return float3(0.0);
     float3 loss = float3(0.0);
     ${grid ? 'int ncol = gridOn > 0.5 && gridNx > 1.5 ? ENV_COLS : 1;' : 'int ncol = 1;'}
-    // 판 범위 면: 가로 ncol칸(격자가 있으면 칸마다 대표 점으로 읽는다)
-    for (int k = 0; k < 3; k++) {
-      for (int j = 0; j < ${grid ? 'ENV_COLS' : '1'}; j++) {
-        if (j >= ncol) break;
-        float xa = X0 + (X1 - X0) * float(j) / float(ncol);
-        float xb = X0 + (X1 - X0) * float(j + 1) / float(ncol);
-        float3 a; float3 b; float3 c; float3 d; float3 rad;
-        if (envQuad(k, p, xa, xb, a, b, c, d, rad)) {
-          float4 q = quadVF(a, b, c, d, n, p, 0);
-          ${grid ? 'if (q.x > 0.0) { float3 r = envRad(k, p, q, rad); putCol(k * NCOL + j + 1, r); loss += skyOf(q) - r * q.x; }' : 'if (q.x > 0.0) loss += skyOf(q) - rad * q.x;'}
-        }
-      }
-    }
-    float z = DEPTH - p.z;
-    float zf = -FRONT - p.z;
-    // 틀 안쪽 면 둘(앞 끝 ~ 벽, light-model envQuads part 'side')
-    if (env.x > 1.5) {
-      float zs = -FFRONT - p.z;
-      float y0 = max(env.y, -FARV) - p.y;
-      float y1 = min(env.z, FARV) - p.y;
-      for (int side = 0; side < 2; side++) {
-        float X = side == 0 ? X0 : X1;
-        if (side == 0 ? p.x <= X : p.x >= X) continue;
-        float x = X - p.x;
-        float4 q = quadVF(float3(x, y0, z), float3(x, y0, zs), float3(x, y1, zs), float3(x, y1, z), n, p, 3);
-        if (q.x > 0.0) loss += skyOf(q) - (side == 0 ? RADSL : RADSR) * q.x;
-      }
-      return loss;
-    }
-    // 판 끝 너머 벽: 판이 없어 위아래로 열려 있다(가림 없는 벽 밝기)
-    if (z > 0.0) {
-      for (int side = 0; side < 2; side++) {
-        float xa = (side == 0 ? -FARV : X1) - p.x;
-        float xb = (side == 0 ? X0 : FARV) - p.x;
-        float4 q = quadVF(float3(xa, -FARV, z), float3(xb, -FARV, z), float3(xb, FARV, z), float3(xa, FARV, z), n, p, side + 1);
-        if (q.x > 0.0) {
-          ${grid ? 'putCol(side == 0 ? 0 : NCOL - 1, RADW);' : ''}
-          loss += skyOf(q) - RADW * q.x;
-        }
-      }
-    }
-    // 판 끝면(판 끝 너머에서만 보인다): 아래 판(판 윗면 아래 두께), 위 판(위 판 아랫면 위 두께)
-    for (int pl = 0; pl < 2; pl++) {
-      float ya = pl == 0 ? env.y - THICK : env.z;
-      float yb = pl == 0 ? env.y : env.z + THICK;
-      if (pl == 0 ? env.y <= -FARV : env.z >= FARV) continue;
-      for (int side = 0; side < 2; side++) {
-        float X = side == 0 ? X0 : X1;
-        if (side == 0 ? p.x >= X : p.x <= X) continue;
-        float x = X - p.x;
-        float4 q = quadVF(float3(x, ya - p.y, z), float3(x, ya - p.y, zf), float3(x, yb - p.y, zf), float3(x, yb - p.y, z), n, p, 3);
-        if (q.x > 0.0) loss += skyOf(q) - RADE * q.x;
+    // 판 범위 면(가로 ncol칸: 격자가 있으면 칸마다 대표 점으로 읽는다), 틀 안쪽 면, 판 끝 너머 벽, 판 끝면 차례로(quadVF 한 곳)
+    for (int t = 0; t < 3 * SECT_IN + 8; t++) {
+      float3 a; float3 b; float3 c; float3 d; float3 rad; int part; int which; int col;
+      if (!envSector(t, p, ncol, false, a, b, c, d, rad, part, which, col)) continue;
+      float4 q = quadVF(a, b, c, d, n, p, part);
+      if (q.x > 0.0) {
+        ${grid ? `float3 r = part == 0 ? envRad(which, p, q, rad) : rad;
+        if (col >= 0) putCol(col, r);` : 'float3 r = rad;'}
+        loss += skyOf(q) - r * q.x;
       }
     }
     return loss;
@@ -606,73 +629,33 @@ function boxCode() {
     for (int k = 0; k < ${NV}; k++) Q[k] = P[k];
     int qc = cnt;
     float3 m = (a + b + c + d) * 0.25;
-    for (int e = 0; e < 4; e++) {
-      float3 u = e == 0 ? a : (e == 1 ? b : (e == 2 ? c : d));
-      float3 v = e == 0 ? b : (e == 1 ? c : (e == 2 ? d : a));
-      float3 w = cross(u, v);
-      clipSide(Q, qc, dot(w, m) >= 0.0 ? w : -w);
+    // 구역 변 넷, 그다음 판 끝 창 평면 여덟(clipPlane 한 곳)
+    for (int i = 0; i < 12; i++) {
+      float3 w = float3(0.0);
+      if (i < 4) {
+        float3 u = i == 0 ? a : (i == 1 ? b : (i == 2 ? c : d));
+        float3 v = i == 0 ? b : (i == 1 ? c : (i == 2 ? d : a));
+        w = cross(u, v);
+        w = dot(w, m) >= 0.0 ? w : -w;
+      } else if (!acrossPlane(i - 4, p, part, w)) continue;
+      clipPlane(Q, qc, w, 0.0, false);
     }
-    clipAcross(Q, qc, p, part);
     if (qc < 3) return float4(0.0);
     return moments(Q, qc, n);
   }
-  // 구역: 판 범위의 판 윗면·벽·위 판 아랫면, 판 끝 너머 벽(양쪽), 판 끝면(판 끝 너머에서). 나머지는 하늘. 판 범위 구역 밝기는 빛 격자의 대표 점에서
+  // 구역: 판 범위의 판 윗면·벽·위 판 아랫면, 틀 안쪽 면, 판 끝 너머 벽(양쪽), 판 끝면(판 끝 너머에서). 나머지는 하늘. 판 범위 구역·판 끝 너머 벽 밝기는 빛 격자의 대표 점에서.
+  // 구역은 envSector와 같은 차례(판 범위는 칸 없이 통째), coneVF 한 곳
   float3 behindOf(float3 p, float3 n, float3 P[${NV}], int cnt, float4 total) {
     if (env.x < 0.5) return skyOf(total);
     float4 rest = total;
     float3 sum = float3(0.0);
-    for (int k = 0; k < 3; k++) {
-      float3 a; float3 b; float3 c; float3 d; float3 rad;
-      if (envQuad(k, p, X0, X1, a, b, c, d, rad)) {
-        float4 q = coneVF(P, cnt, n, p, a, b, c, d, 0);
-        if (q.x > 0.0) {
-          sum += behindRad(k, p, q, rad) * q.x;
-          rest -= q;
-        }
-      }
-    }
-    float z = DEPTH - p.z;
-    float zf = -FRONT - p.z;
-    if (env.x > 1.5) {
-      float zs = -FFRONT - p.z;
-      float y0 = max(env.y, -FARV) - p.y;
-      float y1 = min(env.z, FARV) - p.y;
-      for (int side = 0; side < 2; side++) {
-        float X = side == 0 ? X0 : X1;
-        if (side == 0 ? p.x <= X : p.x >= X) continue;
-        float x = X - p.x;
-        float4 q = coneVF(P, cnt, n, p, float3(x, y0, z), float3(x, y0, zs), float3(x, y1, zs), float3(x, y1, z), 3);
-        if (q.x > 0.0) {
-          sum += (side == 0 ? RADSL : RADSR) * q.x;
-          rest -= q;
-        }
-      }
-      return sum + skyOf(rest);
-    }
-    if (z > 0.0) {
-      for (int side = 0; side < 2; side++) {
-        float xa = (side == 0 ? -FARV : X1) - p.x;
-        float xb = (side == 0 ? X0 : FARV) - p.x;
-        float4 q = coneVF(P, cnt, n, p, float3(xa, -FARV, z), float3(xb, -FARV, z), float3(xb, FARV, z), float3(xa, FARV, z), side + 1);
-        if (q.x > 0.0) {
-          sum += behindRad(0, p, q, RADW) * q.x;
-          rest -= q;
-        }
-      }
-    }
-    for (int pl = 0; pl < 2; pl++) {
-      float ya = pl == 0 ? env.y - THICK : env.z;
-      float yb = pl == 0 ? env.y : env.z + THICK;
-      if (pl == 0 ? env.y <= -FARV : env.z >= FARV) continue;
-      for (int side = 0; side < 2; side++) {
-        float X = side == 0 ? X0 : X1;
-        if (side == 0 ? p.x >= X : p.x <= X) continue;
-        float x = X - p.x;
-        float4 q = coneVF(P, cnt, n, p, float3(x, ya - p.y, z), float3(x, ya - p.y, zf), float3(x, yb - p.y, zf), float3(x, yb - p.y, z), 3);
-        if (q.x > 0.0) {
-          sum += RADE * q.x;
-          rest -= q;
-        }
+    for (int t = 0; t < 11; t++) {
+      float3 a; float3 b; float3 c; float3 d; float3 rad; int part; int which; int col;
+      if (!envSector(t < 3 ? t * SECT_IN : t - 3 + 3 * SECT_IN, p, 1, true, a, b, c, d, rad, part, which, col)) continue;
+      float4 q = coneVF(P, cnt, n, p, a, b, c, d, part);
+      if (q.x > 0.0) {
+        sum += (which >= 0 ? behindRad(which, p, q, rad) : rad) * q.x;
+        rest -= q;
       }
     }
     return sum + skyOf(rest);
@@ -987,7 +970,13 @@ ${boxCode()}
       // 판은 원반을 자른 활꼴, 책은 판이 막지 않은 원반 위 방향들(light-model KEY_DIRS) 가운데 막힌 몫(합집합, light-model gridKeyFree)
       float kopen = 0.0;
       float kfree = 0.0;
-      ${KEY_DIRS.map((w) => `{ float o = 1.0 - plankHit(P, ${v3(w)}); kopen += o; kfree += o > 0.5 ? keyFree(P, ${v3(w)}, self, skipA, skipB) : 0.0; }`).join(' ')}
+      // 방향마다 같은 몸체를 펼쳐 쓰면 GPU 컴파일러가 상자 반복(keyFree)을 방향 수만큼 복사한다: 반복문 하나로(차례·값은 같다)
+      for (int i = 0; i < ${KEY_DIRS.length}; i++) {
+        float3 w = ${KEY_DIRS.map((w, i) => (i < KEY_DIRS.length - 1 ? `i == ${i} ? ${v3(w)} : (` : v3(w))).join('')}${')'.repeat(KEY_DIRS.length - 1)};
+        float o = 1.0 - plankHit(P, w);
+        kopen += o;
+        kfree += o > 0.5 ? keyFree(P, w, self, skipA, skipB) : 0.0;
+      }
       key = DIFF * nl * (1.0 - plankKeyOf(P)) * (kopen > 0.5 ? kfree / kopen : 1.0);
     }
     float3 lossE = envLoss(P, n);
@@ -1109,10 +1098,12 @@ function materialCode() {
 // mode 0 곱하기, 1 닷지, 2 한 번에, 3 반사광(더하기 겹: 감마 공간 반사광 몫).
 // split: 곱하기·닷지가 확산 몫만 칠한다(반사광은 mode 3 더하기 겹이 따로). 닷지는 밑 색에 비례해 올리므로 어두운 그림 위에서는
 // 반사광이 거의 안 보인다. 반사광은 밑 색과 상관없이 더해지는 빛이라 그림 표지는 따로 더한다(단색 면은 split이어도 같은 색)
-function shadeCode(mode: 0 | 1 | 2 | 3, split = false) {
+// 겹(DODGE)·split은 uniform이다(passOf). 겹마다 상수로 박은 셰이더를 따로 두면 GPU 컴파일이 겹 수만큼 늘어,
+// 새로 설치한 S23에서 첫 실행 컴파일이 1분 넘게 UI를 막았다(2026-11-12). 겹 차이는 마지막 출력 몇 줄뿐이라 같은 프로그램에서 고른다
+function shadeCode() {
   return `
-  const float DODGE = ${mode}.0;
-  const float SPLIT = ${split ? 1 : 0}.0;
+  uniform float DODGE;      // 겹: 0 곱하기 · 1 닷지 · 2 한 번에(단색 재질) · 3 반사광 더하기
+  uniform float SPLIT;      // 1이면 곱하기·닷지가 확산 몫만(반사광은 겹 3)
   float plankKey(float3 p) { return keyOn < 0.5 ? 0.0 : plankKeyOf(p); }
   // 카메라: 노출과 필름형 톤 곡선(light-model tone·toneInv)
   const float EXPO = ${f(EXPOSURE)};
@@ -1220,21 +1211,26 @@ function shadeCode(mode: 0 | 1 | 2 | 3, split = false) {
 `;
 }
 
+// 겹 하나의 uniform(shadeCode DODGE·SPLIT): 곱하기 false · 닷지 true · 한 번에 'direct' · 반사광 더하기 'spec'
+export function passOf(dodge: boolean | 'direct' | 'spec', split = false) {
+  'worklet';
+  return { DODGE: dodge === 'direct' ? 2 : dodge === 'spec' ? 3 : dodge ? 1 : 0, SPLIT: split ? 1 : 0 };
+}
+
 // 평면(벽·판): 캔버스 px p → 평면 위 점 P = (O + p.x·Ux + p.y·Vy) / (Hw·(p, 1)), 법선은 판 모서리 둥글기까지.
 // 하늘 가림은 구운 그림(tex: 캔버스 px로 읽히게 행렬을 붙인 것), 없으면(liveEnv) 둘레만 그 자리에서.
 // 책이 움직이는 동안은 앞 굽기(tex2, 움직이기 전 자리)에서 새 굽기(tex, 도착 자리)로 mixT만큼 섞는다
-// mode 2(단색 재질 base를 한 번에): 출력 = base × 이득(채널마다 1에서 자름). 곱하기·닷지 두 겹(대상 색 읽기)이 필요 없다
+// 겹 2(단색 재질 base를 한 번에, passOf('direct')): 출력 = base × 이득(채널마다 1에서 자름). 곱하기·닷지 두 겹(대상 색 읽기)이 필요 없다
 // 틀 면을 구운 범위 밖에서 읽을 때 범위 끝에서 물러나는 거리: 칸 간격(ShelfPlank DEEP_TEXEL 12, SceneLight BAKE_TEXEL 2)의 반 + 조금. 칸 끝을 읽으면 옆 칸과 섞인다
 const DEEP_HALF = 6.5;
 const BAKE_HALF = 1.5;
-export function litSource(dodge: boolean | 'direct') {
-  const mode = dodge === 'direct' ? 2 : dodge ? 1 : 0;
+export function litSource() {
   return `
   uniform shader tex;
   uniform shader keyTex;    // 책이 이 면에서 창빛 원반을 가리는 몫(알파, 평면 좌표 그림: 그림 px = (P·kU, P·kV) + kO)
   uniform shader tex2;      // 앞 굽기(움직이기 전 자리의 하늘 가림, tex와 같은 캔버스 px로 읽힌다)
   uniform float mixT;       // 새 굽기 몫(1이면 tex만)
-  ${mode === 2 ? 'uniform float3 base;     // 재질 색(감마 sRGB)' : ''}
+  uniform float3 base;      // 재질 색(감마 sRGB): 겹 2(한 번에)만 쓴다
   uniform float3 O;
   uniform float3 Ux;
   uniform float3 Vy;
@@ -1266,7 +1262,7 @@ ${header()}
 ${polyCode()}
 ${envCode(false)}
 ${materialCode()}
-${shadeCode(mode)}
+${shadeCode()}
   // 안쪽 모서리 곡면(light-model coveNormal): 벽·틀·판이 맞닿는 곳에서 면 법선이 맞닿은 면 법선 쪽으로 돈다
   float jointF2(float h) {
     float d = max(0.0, h);
@@ -1357,7 +1353,11 @@ ${shadeCode(mode)}
     if (liveEnv < 0.5 && mixT < 1.0) loss = mix(lossDec(float3(tex2.eval(pb).rgb), skyIrr(tN)), loss, mixT);
     if (rimLoss > 0.0) loss += rimLoss * (skyIrr(tN) + KEYC * (DIFF * max(0.0, dot(tN, LU)))) / OCC;
     half4 g = shade(P, n, tN, normalize(float3(cam4.x, cam4.y, cam4.z - cam4.w) - P), loss, albedo, eref, ms.w, ms.z, float(keyTex.eval(float2(dot(P, kU), dot(P, kV)) + kO).a), sref, kS);
-    ${mode === 2 ? 'float softA = softR.y > 0.0 ? softEdge(P) : 1.0;\n    return half4(half3(min(base * float3(g.rgb), float3(1.0))) * softA, softA);' : 'return g;'}
+    if (DODGE > 1.5) {
+      float softA = softR.y > 0.0 ? softEdge(P) : 1.0;
+      return half4(half3(min(base * float3(g.rgb), float3(1.0))) * softA, softA);
+    }
+    return g;
   }
 `;
 }
@@ -1367,8 +1367,8 @@ ${shadeCode(mode)}
 // 하늘 가림은 그 면의 구운 칸(rect, 줄 아틀라스 그림 px, 면 평면 좌표로 읽는다), 없으면 둘레만 그 자리에서.
 // 책이 움직이는 동안은 앞 굽기의 칸(tex2·rect2)에서 새 굽기로 mixT만큼 섞는다(앞 굽기에 없던 면은 새 굽기만).
 // 면 좌표(book-parts lightPanel과 같은 틀): 가로 u, 세로 v(DU), 면 번호 0 책등 1 표지 2 뒤표지 3 머리 4 꼬리 5 책배
-// dodge: false 곱하기, true 닷지, 'spec' 반사광 더하기 겹. split: 곱하기·닷지에서 반사광을 빼고 더하기 겹으로(그림 표지 책, shadeCode)
-export function bookSource(dodge: boolean | 'spec', split = false) {
+// 겹(passOf): 곱하기·닷지, 그림 표지 책은 split(곱하기·닷지에서 반사광을 빼고) + 반사광 더하기 겹(shadeCode)
+export function bookSource() {
   return `
   uniform shader tex;       // 줄 아틀라스(그림 px 그대로 읽는다)
   uniform shader keyTex;    // 이 책 면이 받는 창빛 그림자(다른 책이 창빛 원반을 가리는 몫, 알파): 면마다 칸(kRect)
@@ -1404,7 +1404,7 @@ ${header()}
 ${polyCode()}
 ${envCode(false)}
 ${materialCode()}
-${shadeCode(dodge === 'spec' ? 3 : dodge ? 1 : 0, split)}
+${shadeCode()}
   const float CURVE = ${f(SPINE_CURVE)};
   uniform float3 EREF_PAPER; // 맞추기 값(속지 대표 자리 빛)
   const float4 GRV = float4(${f(GROOVE.at)}, ${f(GROOVE.width)}, ${f(GROOVE.slope)}, 0.0);
@@ -1539,7 +1539,8 @@ ${shadeCode(dodge === 'spec' ? 3 : dodge ? 1 : 0, split)}
     float3 JY = tk * (dpy - dl * dot(nh, dpy) / dn);
     float2 fp = float2(max(abs(dot(JX, Au)), abs(dot(JY, Au))), max(abs(dot(JX, Av)), abs(dot(JY, Av))));
     float2 uv = float2(dot(Lp, Au), dot(Lp, Av)) + mSeed;
-    float4 ms = page ? matSample(uv, fp, pR, pB, pG, pS) : matSample(uv, fp, mR, mB, mG, mS);
+    // 재질 무늬는 한 번만 부른다(두 곳에서 부르면 GPU 컴파일러가 몸체를 두 벌 펼친다)
+    float4 ms = matSample(uv, fp, page ? pR : mR, page ? pB : mB, page ? pG : mG, page ? pS : mS);
     n = normalize(n - ms.x * Au - ms.y * Av);
     float3 P = bO + toRow(Lp);
     float3 nw3 = normalize(toRow(n));
@@ -1591,7 +1592,7 @@ ${shadeCode(dodge === 'spec' ? 3 : dodge ? 1 : 0, split)}
 // 갈피(종이 탭): 책 머리에서 위로 나온 평평한 종이(책등과 같은 법선 nrm). 탭 그림 좌표(뿌리가 원점, px, 아래로 +)의 점을
 // 탭 평면 점(뿌리 root + 가로 axR · x + 위 axU · 높이)으로 옮겨 화소마다 같은 빛(재질 무늬·반사광)을 계산한다.
 // 하늘 가림(loss)은 탭 가운데 한 점의 값(탭은 작아 가림이 거의 고르다)
-export function tabSource(dodge: boolean) {
+export function tabSource() {
   return `
   uniform float3 pxa;       // 캔버스 배율 (s, 0, 0)
   uniform float3 root;      // 뿌리(줄 공간)
@@ -1611,7 +1612,7 @@ export function tabSource(dodge: boolean) {
   uniform float2 mSeed;
 ${header()}
 ${materialCode()}
-${shadeCode(dodge ? 1 : 0)}
+${shadeCode()}
   half4 main(float2 p) {
     // 탭 좌표(DU): 가로 x, 아래로 y(그림 좌표 그대로: 셰이더는 그리는 Group의 좌표를 받는다)
     float2 l = p / pxa.x;
