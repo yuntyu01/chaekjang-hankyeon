@@ -306,8 +306,9 @@ function header() {
 function polyCode() {
   return `
   // ---------- 볼록 다각형(받는 점 기준 꼭짓점 배열 v, 개수 cnt) ----------
+  // 배열 끝에 넣기(SkSL은 반복문 번호로만 배열을 고를 수 있다)
   void push(inout float3 o[${NV}], inout int oc, float3 x) {
-    ${Array.from({ length: NV }, (_, i) => `${i ? 'else ' : ''}if (oc == ${i}) o[${i}] = x;`).join(' ')}
+    for (int j = 0; j < ${NV}; j++) { if (j == oc) o[j] = x; }
     oc++;
   }
   // x·w ≥ off 쪽만 남긴다(서덜랜드–호지먼)
@@ -322,11 +323,11 @@ function polyCode() {
       float3 b = v[k];
       float da = dot(a, w) - off;
       float db = dot(b, w) - off;
-      if (db >= 0.0) {
-        if (da < 0.0) push(o, oc, a + (b - a) * (da / (da - db)));
-        push(o, oc, b);
-      } else if (da >= 0.0) {
-        push(o, oc, a + (b - a) * (da / (da - db)));
+      // 변이 평면을 건너면 교점, 그다음 b가 안쪽이면 b(차례 그대로). push를 부르는 곳을 하나로(GPU 컴파일러가 몸체를 펼치는 수를 줄인다)
+      bool crosses = (da >= 0.0) != (db >= 0.0);
+      float3 cut = crosses ? a + (b - a) * (da / (da - db)) : b;
+      for (int e = 0; e < 2; e++) {
+        if (e == 0 ? crosses : db >= 0.0) push(o, oc, e == 0 ? cut : b);
       }
       a = b;
     }

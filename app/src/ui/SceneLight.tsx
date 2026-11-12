@@ -8,13 +8,15 @@
 // 보이는 면을 찾는다), 벽·판은 평면마다(BakedPlane).
 // 구운 값이 없는 면(줄 밖에서 움직이는 책, 막 들어온 책)은 둘레가 가린 하늘만 그 자리에서 계산한다(다른 책은 뺀다).
 import { AlphaType, BlurStyle, ColorType, FilterMode, ImageShader, MipmapMode, Path, processUniforms, Shader, Skia, TileMode, type SkImage, type SkPath, type SkRuntimeEffect, type SkShader, type Uniforms } from '@shopify/react-native-skia';
+import { useRef } from 'react';
 import { Platform } from 'react-native';
-import { useDerivedValue, type SharedValue } from 'react-native-reanimated';
+import { isSharedValue, useDerivedValue, type SharedValue } from 'react-native-reanimated';
+import { scheduleOnUI } from 'react-native-worklets';
 
 import { faceNormal, rot, toWorld, type Book3, type Cam, type FaceId, type Vec3 } from '@/domain/book3';
 import { lightPanel, rigOf } from '@/domain/book-parts';
 import { camAt, VIEW_PITCH_MAX, VIEW_PITCH_MIN, type Affine } from '@/domain/camera';
-import { bookEref, bookSref, ENV_NX, ENV_NY, GRID_N, GRID_PASSES, lightSet, SPEC_K, SREF, type BoxBuf, type C3, type Env } from '@/domain/light-model';
+import { bookEref, bookSref, ENV_NX, ENV_NY, GRID_N, GRID_PASSES, lightSet, NO_BOXES, SPEC_K, SREF, type BoxBuf, type C3, type Env } from '@/domain/light-model';
 import type { Recv3 } from '@/domain/received3';
 import { MAT_UNIFORMS, type MatUniforms } from '@/domain/surface-pattern';
 import type { BookSurface } from '@/domain/types';
@@ -22,6 +24,7 @@ import { materials, type MaterialName, type SurfaceMaterial } from '@/ui/lightin
 import { faceVisible } from '@/ui/book3d/face-geometry';
 
 import { PERF_ENABLED } from './perf';
+import { lightAllSV, lightOpenSV, takeLightSlot } from './light-stage';
 import { keepLatest } from './retained-images';
 export { keepLatest } from './retained-images';
 import { bakeSource, bookSource, gridSource, litSource, passOf, planeFrame, tabSource, type Plane } from './scene-light-sksl';
@@ -58,6 +61,20 @@ function usePasses(uniforms: RO<Uniforms>, kind: PassKind): RO<Uniforms>[] {
   const b = useDerivedValue<Uniforms>(() => (list.length > 1 ? { base: ZERO3, ...uniforms.value, ...list[1] } : NO_PASS), [list]);
   const c = useDerivedValue<Uniforms>(() => (list.length > 2 ? { base: ZERO3, ...uniforms.value, ...list[2] } : NO_PASS), [list]);
   return [a, b, c].slice(0, list.length);
+}
+// 첫 화면 빛(ui/light-stage): 겹마다 처음 그려지는 차례 번호를 받고, 그 번호가 열리기 전에는 빈 경로(Skia가 그리기를 건너뛰어
+// 그 셰이더·도형 방식을 아직 컴파일하지 않는다). 시작 화면이 걷힌 뒤에는 그대로 넘긴다. 겹 수(n, 많아야 셋)만큼 번호를 받는다
+const NO_PATH = Skia.Path.Make();
+function useStagedPaths(path: RO<SkPath> | SkPath, n: number): RO<SkPath>[] {
+  const slots = useRef<number[] | null>(null);
+  if (!slots.current) slots.current = [0, 1, 2].map((i) => (i < n ? takeLightSlot() : 0));
+  const [s0, s1, s2] = slots.current;
+  const sv = isSharedValue(path) ? (path as RO<SkPath>) : null;
+  const fixed = sv ? null : (path as SkPath);
+  const a = useDerivedValue(() => (lightAllSV.value || lightOpenSV.value >= s0 ? (sv ? sv.value : fixed!) : NO_PATH), [sv, fixed, s0]);
+  const b = useDerivedValue(() => (lightAllSV.value || lightOpenSV.value >= s1 ? (sv ? sv.value : fixed!) : NO_PATH), [sv, fixed, s1]);
+  const c = useDerivedValue(() => (lightAllSV.value || lightOpenSV.value >= s2 ? (sv ? sv.value : fixed!) : NO_PATH), [sv, fixed, s2]);
+  return [a, b, c];
 }
 
 const ZERO3 = [0, 0, 0];
@@ -205,6 +222,8 @@ function cachedGrid(env: Env, bx: BoxBuf): SkImage | null {
   return img;
 }
 
+// 미리 굽기(warmLight)의 그림 열쇠
+const WARM_KEY = 'light-warm';
 export function bakeAtlas(items: BakeItem[], key: string): Atlas {
   'worklet';
   // 굽기는 UI 스레드에서만(파생 값은 마운트 직후 UI에서 다시 돈다)
@@ -275,6 +294,25 @@ export function bakeAtlas(items: BakeItem[], key: string): Atlas {
   return { image, at };
 }
 
+// 시작할 때 굽기 셰이더(빛 격자·굽기)를 미리 컴파일한다(2026-11-12). GPU 컴파일은 처음 그릴 때 UI 스레드를 막는데, 앱이 서재를 읽는 동안은
+// JS 스레드만 바쁘고 UI 스레드는 시작 화면만 띄운다: 그 시간에 겹친다. 실제 굽기와 같은 함수·같은 화면 밖 표면·같은 자식 그림이라 같은 GPU 프로그램을
+// 다시 쓴다. 빛 격자와 굽기는 프레임을 나눈다(한 번에 오래 막지 않게). 결과 그림은 쓰지 않는다
+// 둘레 값은 실제 줄과 겹치지 않게(빛 격자 캐시 cachedGrid 열쇠가 둘레 높이로 고른다)
+const WARM_ENV: Env = { floor: -54321, ceil: -54121 };
+const WARM_ITEM: BakeItem = { key: WARM_KEY, O: { x: 0, y: 0, z: 100 }, U: { x: 1, y: 0, z: 0 }, V: { x: 0, y: -1, z: 0 }, w: 2, h: 2, n: { x: 0, y: 0, z: -1 }, env: WARM_ENV, bx: NO_BOXES, self: -1 };
+let warmed = false;
+export function warmLight() {
+  if (warmed) return;
+  warmed = true;
+  scheduleOnUI(() => {
+    'worklet';
+    cachedGrid(WARM_ENV, NO_BOXES);
+    requestAnimationFrame(() => {
+      bakeAtlas([WARM_ITEM], WARM_KEY);
+    });
+  });
+}
+
 // 아틀라스에서 면 key의 그림 읽기: 그림 px → 그리는 좌표 행렬. M: 그 면의 칸 → 그리는 좌표(3×3 행 우선)
 export type Sample = { image: SkImage; matrix: number[]; live: number };
 const NO_SAMPLE: Sample = { image: EMPTY, matrix: IDENTITY, live: 1 };
@@ -297,6 +335,7 @@ function prevSampleOf(a: Atlas, key: string, M: (w: number, h: number) => number
 
 // 두 겹(곱하기·닷지)으로 영역(path)을 다시 칠한다. fx: 셰이더, passes: 겹마다 uniform(usePasses), sample: 셰이더 자식(구운 그림과 행렬), prev: 앞 굽기
 function Relit({ path, fx, passes, sample, prev, keyImage }: { path: RO<SkPath> | SkPath; fx: SkRuntimeEffect; passes: RO<Uniforms>[]; sample: RO<Sample>; prev: RO<Sample>; keyImage: RO<SkImage> }) {
+  const paths = useStagedPaths(path, passes.length);
   const image = useDerivedValue(() => sample.value.image);
   const matrix = useDerivedValue(() => sample.value.matrix);
   const image2 = useDerivedValue(() => prev.value.image);
@@ -304,7 +343,7 @@ function Relit({ path, fx, passes, sample, prev, keyImage }: { path: RO<SkPath> 
   return (
     <>
       {passes.map((u, i) => (
-        <Path key={i} path={path} blendMode={BLEND[i]}>
+        <Path key={i} path={paths[i]} blendMode={BLEND[i]}>
           <Shader source={fx} uniforms={u}>
             <ImageShader image={image} tx="clamp" ty="clamp" sampling={LINEAR} matrix={matrix} />
             <ImageShader image={keyImage} tx="decal" ty="decal" sampling={LINEAR} />
@@ -486,10 +525,11 @@ export function BookLight({ dims: d, state, cam, px, outline, albedo, material =
   const keyImage = useDerivedValue(() => (keyShadow ? keyShadow.value : NO_BOOK_KEY).image);
   const image2 = useDerivedValue(() => prev.value.image);
   const passes = usePasses(uniforms, picture ? 'art' : 'plain');
+  const paths = useStagedPaths(outline, 3);
   return (
     <>
       {passes.map((u, i) => (
-        <Path key={i} path={outline} blendMode={BLEND[i]}>
+        <Path key={i} path={paths[i]} blendMode={BLEND[i]}>
           <Shader source={BOOK} uniforms={u}>
             <ImageShader image={image} tx="clamp" ty="clamp" sampling={LINEAR} matrix={matrix} />
             <ImageShader image={keyImage} tx="decal" ty="decal" sampling={LINEAR} />
@@ -567,8 +607,9 @@ function Direct({ path, uniforms, sample, prev, keyImage }: { path: RO<SkPath> |
   const matrix = useDerivedValue(() => sample.value.matrix);
   const image2 = useDerivedValue(() => prev.value.image);
   const matrix2 = useDerivedValue(() => prev.value.matrix);
+  const paths = useStagedPaths(path, 1);
   return (
-    <Path path={path}>
+    <Path path={paths[0]}>
       <Shader source={LIT} uniforms={uniforms}>
         <ImageShader image={image} tx="clamp" ty="clamp" sampling={LINEAR} matrix={matrix} />
         <ImageShader image={keyImage} tx="decal" ty="decal" sampling={LINEAR} />
@@ -594,10 +635,11 @@ export function TabLight({ path, frame, albedo, s, seed }: { path: SkPath; frame
     return { ...lightSet().u, pxa: [s, 0, 0], root: arr(f.root), axR: arr(f.axR), axU: arr(f.axU), nrm: arr(f.n), loss: f.loss, cam4: f.cam4, keyOn: 1, albedo, eref: bookEref('paper'), sref: bookSref('paper'), env: envOf(f.env), ...mat };
   });
   const passes = usePasses(uniforms, 'plain');
+  const paths = useStagedPaths(path, 2);
   return (
     <>
       {passes.map((u, i) => (
-        <Path key={i} path={path} blendMode={BLEND[i]}>
+        <Path key={i} path={paths[i]} blendMode={BLEND[i]}>
           <Shader source={TAB} uniforms={u} />
         </Path>
       ))}

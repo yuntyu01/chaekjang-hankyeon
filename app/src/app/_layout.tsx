@@ -2,7 +2,7 @@ import { useFonts } from 'expo-font';
 import { Stack } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import { StatusBar } from 'expo-status-bar';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
@@ -16,6 +16,8 @@ import { backfillCoverColors } from '@/services/cover-color-backfill';
 import { bootMark } from '@/ui/boot-trace';
 import { startProfile } from '@/ui/profile';
 import { BookArtProvider } from '@/ui/book3d/art';
+import { finishLightStages, lightStage, setLightArtReady, startLightStages } from '@/ui/light-stage';
+import { warmLight } from '@/ui/SceneLight';
 import { setSnapshotRoot, setSnapshotShown } from '@/ui/home-snapshot';
 import { hideStartPhoto } from '../../modules/screen-capture';
 import { PaperBackground } from '@/ui/PaperBackground';
@@ -43,6 +45,8 @@ export default function RootLayout() {
   const finishLoading = useCallback(() => {
     setSnapshotShown();
     setLoadingVisible(false);
+    // 시작 화면이 걷혔다: 이제부터 새로 붙는 빛 겹은 차례를 기다리지 않는다(ui/light-stage)
+    finishLightStages();
   }, []);
   // 홈 사진(다음 실행의 시작 화면)을 찍을 화면: 시작 화면을 뺀 앱 전체
   const shotRoot = useRef<View>(null);
@@ -50,6 +54,8 @@ export default function RootLayout() {
   useEffect(() => {
     // 저장소를 다 불러온 뒤 첫 화면을 그린다(빈 책장이 잠깐 보였다가 책이 나타나지 않게)
     let active = true;
+    // 굽기 셰이더를 서재를 읽는 동안 미리 컴파일한다(UI 스레드가 노는 때, SceneLight warmLight)
+    warmLight();
     bootStores().then(() => {
       if (!active) return;
       bootMark('stores-ready');
@@ -74,6 +80,18 @@ export default function RootLayout() {
   useEffect(() => {
     if (!ready) return;
     const t = setTimeout(() => setArtReady(true), 15000);
+    return () => clearTimeout(t);
+  }, [ready]);
+  // 첫 화면 빛은 시작 화면 뒤에서 겹마다 차례로 처음 그린다(ui/light-stage: 셰이더 컴파일이 한 프레임에 몰리지 않게).
+  // 붙은 겹을 모두 연 뒤에 시작 화면을 걷는다(빛 없는 책이 비치지 않게). 책은 그림이 다 된 뒤 붙으므로 그때까지는 끝내지 않는다.
+  // 빛 겹이 없는 화면으로 시작하면(딥 링크) 조금 뒤 그냥 끝낸다
+  const lightDone = useSyncExternalStore(lightStage.subscribe, lightStage.done);
+  useEffect(() => {
+    if (artReady) setLightArtReady();
+  }, [artReady]);
+  useEffect(() => {
+    if (!ready) return;
+    const t = setTimeout(startLightStages, 1500);
     return () => clearTimeout(t);
   }, [ready]);
   useEffect(() => {
@@ -104,7 +122,7 @@ export default function RootLayout() {
               <Text style={styles.retryText}>다시 시도</Text>
             </Pressable>
           </View>
-        ) : loadingVisible ? <LoadingScreen ready={ready && artReady} step={!ready ? 1 : !artReady ? 2 : 3} onFinished={finishLoading} /> : null}
+        ) : loadingVisible ? <LoadingScreen ready={ready && artReady && lightDone} step={!ready ? 1 : !(artReady && lightDone) ? 2 : 3} onFinished={finishLoading} /> : null}
       </SafeAreaProvider>
     </GestureHandlerRootView>
   );
