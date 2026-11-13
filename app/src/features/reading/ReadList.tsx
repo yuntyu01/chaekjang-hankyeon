@@ -112,7 +112,7 @@ export function ReadList() {
       <Pressable key={id ?? '~none'} onPress={() => tapRow(id)} style={({ pressed }) => [st.row, pressed && press]} accessibilityRole="button" accessibilityLabel={`${title}${author ? `, ${author}` : ''}, 오늘 ${hms(ms)}${isActive ? (playing ? ', 읽는 중' : ', 일시정지') : ''}`}>
         <Pressable onPress={() => begin(id)} hitSlop={8} style={({ pressed }) => [st.coverBox, pressed && st.playPressed]} accessibilityRole="button" accessibilityLabel={playing ? `${title} 일시정지` : `${title} 읽기 시작`}>
           {id ? <LinkedCover lib={lib} id={id} width={COVER_W} /> : <View style={st.noCover}><BookOpen size={icon.size} color={colors.inkSoft} strokeWidth={icon.stroke} /></View>}
-          <View style={[st.badge, playing && st.badgeOn]} pointerEvents="none">
+          <View style={st.badge} pointerEvents="none">
             {playing ? <PauseIcon width={3.5} height={11} gap={3.5} color={colors.onAccent} /> : <PlayIcon size={15} color={colors.onAccent} />}
           </View>
         </Pressable>
@@ -192,9 +192,8 @@ const st = StyleSheet.create({
   row: { flexDirection: 'row', alignItems: 'center', gap: space.m, minHeight: 84 },
   coverBox: { width: COVER_W + 6, alignItems: 'flex-start' },
   noCover: { width: COVER_W, height: Math.round(COVER_W / 0.68), borderRadius: 4, backgroundColor: colors.surface, alignItems: 'center', justifyContent: 'center' },
-  // 재생 단추: 표지 오른쪽 아래에 걸친 작은 원(짙은 반투명 + 흰 테두리라 어느 표지 위에서도 보인다), 읽는 중이면 테마색
-  badge: { position: 'absolute', right: 0, bottom: -4, width: BADGE, height: BADGE, borderRadius: BADGE / 2, backgroundColor: 'rgba(25,31,40,0.78)', borderWidth: 2, borderColor: colors.white, alignItems: 'center', justifyContent: 'center' },
-  badgeOn: { backgroundColor: colors.accent },
+  // 재생 단추: 표지 오른쪽 아래에 걸친 작은 원(대표색 + 흰 테두리라 어느 표지 위에서도 보인다, 2026-11-14 사용자 '대표색으로'). 재생·일시정지는 안의 모양으로 가른다
+  badge: { position: 'absolute', right: 0, bottom: -4, width: BADGE, height: BADGE, borderRadius: BADGE / 2, backgroundColor: colors.accent, borderWidth: 2, borderColor: colors.white, alignItems: 'center', justifyContent: 'center' },
   playPressed: { opacity: 0.7 },
   addBox: { width: COVER_W + 6, alignItems: 'flex-start', paddingLeft: 9 },
   names: { flex: 1, minWidth: 0 },

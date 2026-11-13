@@ -232,7 +232,7 @@ class _ReadListState extends State<ReadList> {
                                 child: const Center(child: LucideIcon('BookOpen', color: AppColors.inkSoft)),
                               ),
                       ),
-                      // 재생 단추: 표지 오른쪽 아래에 걸친 작은 원(짙은 반투명 + 흰 테두리), 읽는 중이면 테마색
+                      // 재생 단추: 표지 오른쪽 아래에 걸친 작은 원(대표색 + 흰 테두리, 2026-11-14 사용자 '대표색으로'). 재생·일시정지는 안의 모양으로 가른다
                       Positioned(
                         right: 0,
                         bottom: -4,
@@ -241,7 +241,7 @@ class _ReadListState extends State<ReadList> {
                           height: _badge,
                           decoration: BoxDecoration(
                             shape: BoxShape.circle,
-                            color: playing ? AppColors.accent : const Color.fromRGBO(25, 31, 40, 0.78),
+                            color: AppColors.accent,
                             border: Border.all(color: AppColors.white, width: 2),
                           ),
                           child: Center(
