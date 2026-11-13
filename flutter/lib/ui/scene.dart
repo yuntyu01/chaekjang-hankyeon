@@ -151,7 +151,7 @@ ui.FragmentShader planeShader({
   vec('softBox', const [0, 0, 0, 0]);
   vec('softR', const [0, 0]);
   vec('cam4', [c.eye.x, c.eye.y, c.eye.z, viewDist]);
-  one('keyOn', 0);
+  one('keyOn', 1);
   one('liveEnv', 0);
   one('mixT', 1);
   vec('albedo', surface.albedo.list);
@@ -380,7 +380,7 @@ void drawBook(
     vec('rect2', noRects);
     vec('kRect', noRects);
     one('mixT', 1);
-    one('keyOn', 0);
+    one('keyOn', 1);
     vec('albedo', albedo.list);
     vec('erefB', bookFine.eref.list);
     vec('srefB', bookFine.sref.list);
