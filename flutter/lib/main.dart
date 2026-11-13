@@ -15,6 +15,8 @@ import 'ui/bake_cache.dart';
 import 'ui/plane_key.dart';
 import 'store/library_store.dart';
 import 'store/seed.dart';
+import 'services/cover_cache.dart';
+import 'ui/cover_photo.dart';
 import 'ui/glyph_metrics.dart';
 import 'ui/metrics.dart';
 import 'ui/outline.dart';
@@ -80,6 +82,9 @@ class _GatePageState extends State<GatePage> {
   final List<double> _spaces = [];
   final List<({PlaneKey wall, PlaneKey floor})> _keys = [];
   String _state = '준비 중…';
+
+  /// 받아 온 표지 사진(주소 → 그림). 받는 대로 다시 그린다(그 전까지는 코드로 그린 장정)
+  Map<String, CoverPhoto> _photos = const {};
   bool _busy = false;
   BakeCase? _case;
   ShaderSlots? _gridSlots;
@@ -102,6 +107,7 @@ class _GatePageState extends State<GatePage> {
     // 서재(SQLite)에서 책과 자리를 읽어 줄을 만든다. 비어 있으면 보기 책을 넣는다
     await seedIfEmpty();
     final lib = await loadLibrary();
+    _loadCovers([for (final b in lib.books) ?b.coverArtUri]);
     final shelves = placeShelves(lib);
     final c = _case ??= BakeCase([
       for (var i = 0; i < shelves.length; i++)
@@ -193,6 +199,30 @@ class _GatePageState extends State<GatePage> {
     });
   }
 
+  /// 표지 사진을 받는다(기기에 있으면 바로). 하나 올 때마다 다시 그린다
+  bool _pruned = false;
+  void _loadCovers(List<String> uris) {
+    if (!_pruned) {
+      _pruned = true;
+      pruneCoverCache();
+    }
+    final t0 = DateTime.now();
+    var left = uris.toSet().length;
+    for (final uri in uris.toSet()) {
+      if (_photos.containsKey(uri)) {
+        left--;
+        continue;
+      }
+      loadCover(uri).then((img) async {
+        if (img != null && mounted) {
+          final photo = await CoverPhoto.of(img);
+          setState(() => _photos = {..._photos, uri: photo});
+        }
+        if (--left == 0) debugPrint('[flcover] ${uris.length} covers ${DateTime.now().difference(t0).inMilliseconds}ms got ${_photos.length}');
+      });
+    }
+  }
+
   /// 구운 그림의 자국: 평균 R,G,B와 고른 칸 여덟
   Future<String> _stamp(ui.Image img) async {
     final data = await img.toByteData(format: ui.ImageByteFormat.rawRgba);
@@ -238,6 +268,7 @@ class _GatePageState extends State<GatePage> {
                     atlases: _atlases,
                     rowSpots: _rowSpots,
                     spaces: _spaces,
+                    photos: _photos,
                     keys: _keys,
                   ),
                 ),
@@ -284,7 +315,8 @@ class _GatePageState extends State<GatePage> {
 
 /// 구운 줄들을 실제 책장처럼 쌓아 그린다(지금은 뒷벽만, ui/scene). 줄마다 카메라가 따로다
 class ShelfPainter extends CustomPainter {
-  ShelfPainter({required this.rows, required this.atlases, required this.rowSpots, required this.spaces, required this.keys});
+  ShelfPainter({required this.rows, required this.atlases, required this.rowSpots, required this.spaces, required this.keys, this.photos = const {}});
+  final Map<String, CoverPhoto> photos;
   final List<RowCase> rows;
   final List<ui.Image> atlases;
   final List<List<Spot>> rowSpots;
@@ -323,13 +355,13 @@ class ShelfPainter extends CustomPainter {
       final area = Path()..addRect(Rect.fromLTRB(0, contentY + y0, size.width, contentY + y1));
       final up = i > 0 ? plankOutlinePath((v) => toPx(cam, pxOf(geo[i - 1]), v), m.scale) : null;
       canvas.clipPath(up == null ? area : Path.combine(PathOperation.difference, area, up));
-      drawRow(canvas, lit, book, cam, px, rows[i], rowSpots[i], atlases[i], r.space, keys[i], glyphs: _glyphs);
+      drawRow(canvas, lit, book, cam, px, rows[i], rowSpots[i], atlases[i], r.space, keys[i], glyphs: _glyphs, photos: photos);
       canvas.restore();
       if (contentY + y0 > size.height) break;
     }
   }
 
   @override
-  bool shouldRepaint(ShelfPainter old) => old.atlases != atlases;
+  bool shouldRepaint(ShelfPainter old) => old.atlases != atlases || old.photos != photos;
 }
 

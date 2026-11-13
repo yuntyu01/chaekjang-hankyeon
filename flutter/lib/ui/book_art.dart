@@ -14,6 +14,7 @@ import '../domain/geometry.dart';
 import '../domain/shelf_geom.dart';
 import '../domain/title_layout.dart';
 import '../domain/vec3.dart';
+import 'cover_photo.dart';
 import 'glyph_metrics.dart';
 import 'outline.dart';
 
@@ -78,7 +79,7 @@ List<ui.Offset> _hull(List<ui.Offset> pts) {
 
 /// 책 한 권의 바탕을 그린다(윤곽 안은 호출하는 쪽이 이미 잘라 둔다)
 void drawBookArt(ui.Canvas canvas, Book3 b, BookLook look, GlyphMetrics glyphs, Eye eye, ui.Offset Function(Vec3) project,
-    double s) {
+    double s, {CoverPhoto? photo}) {
   final tone = _color(look.tone);
   // 몸체: 윤곽 전체를 재질 색으로(판 두 장·책등·판 끝이 모두 같은 색)
   canvas.drawPath(pathOf(silhouette(project, b, s)), ui.Paint()..color = tone);
@@ -116,7 +117,10 @@ void drawBookArt(ui.Canvas canvas, Book3 b, BookLook look, GlyphMetrics glyphs, 
     // 면 그림 좌표: (0, 0) = 그림 왼쪽 위, (w, h) = 오른쪽 아래(DU)
     canvas.transform(toM44(m));
     canvas.scale(1 / pn.w, 1 / pn.h);
-    if (look.title.isNotEmpty) {
+    // 표지 사진이 있으면 앞표지는 사진만(제목은 사진 안에 있다)
+    if (f == FaceId.cover && photo != null) {
+      drawPhotoCover(canvas, photo, pn.w, pn.h);
+    } else if (look.title.isNotEmpty) {
       if (f == FaceId.spine) {
         final op = titleOpacity(b.roll);
         if (op.v > 0.001) _verticalTitle(canvas, look, b.dims, glyphs, op.v);

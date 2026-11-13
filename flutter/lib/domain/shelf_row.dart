@@ -12,6 +12,7 @@ import 'camera.dart';
 import 'types.dart';
 import 'geometry.dart';
 import 'binding_material.dart';
+import 'book_light.dart';
 import 'book_look.dart';
 import 'color.dart';
 import 'shelf_parts.dart';
@@ -157,9 +158,9 @@ RowCase rowFromBooks(List<Book3> books, List<Book> meta, double space, {bool top
     for (final b in books)
       byId[b.id] != null ? lookOf(byId[b.id]!) : BookLook('', '#8F6E55', bookToneOf('#8F6E55'), displayInk(null, '#8F6E55')),
   ];
-  final tones = [for (final l in looks) linearOf(rgbOf(l.tone))];
-  final row = buildRow(books, space, tones: tones, top: top, last: last);
+  // 굽기 상자 색 = 장정 색의 실제 반사율(되비침), 그리는 빛의 반사율 = 재질 색(사진 책은 회색: 색은 그림이 낸다)
+  final row = buildRow(books, space, tones: [for (final l in looks) bookAlbedo(l.tone)], top: top, last: last);
   row.looks = looks;
-  row.tones = tones;
+  row.tones = [for (final l in looks) l.photo ? pictureAlbedo : linearOf(rgbOf(l.tone))];
   return row;
 }

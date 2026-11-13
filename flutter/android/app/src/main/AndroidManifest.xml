@@ -1,4 +1,6 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- 표지 사진(YES24)·서버 -->
+    <uses-permission android:name="android.permission.INTERNET"/>
     <application
         android:label="chaekjang"
         android:name="${applicationName}"

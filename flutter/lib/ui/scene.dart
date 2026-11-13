@@ -17,6 +17,7 @@ import '../gen/light_uniforms.g.dart' as cal;
 import '../gen/scene_uniforms.g.dart';
 import 'bake.dart';
 import 'book_art.dart';
+import 'cover_photo.dart';
 import 'glyph_metrics.dart';
 import '../domain/book_look.dart';
 import 'outline.dart';
@@ -232,6 +233,7 @@ void drawRow(
   double space,
   ({PlaneKey wall, PlaneKey floor}) keys, {
   GlyphMetrics? glyphs,
+  Map<String, CoverPhoto> photos = const {},
 }) {
   Spot? spotOf(String key) {
     final i = row.indexOf(key);
@@ -344,7 +346,8 @@ void drawRow(
     };
     final albedo = row.tones.length > i ? row.tones[i] : const C3(0.3, 0.25, 0.2);
     final look = row.looks.length > i ? row.looks[i] : null;
-    drawBook(canvas, book, c, px, row, b, albedo, spots3, atlas, seedOf(b.id), look: look, glyphs: glyphs);
+    final photo = look?.coverUri == null ? null : photos[look!.coverUri];
+    drawBook(canvas, book, c, px, row, b, albedo, spots3, atlas, seedOf(b.id), look: look, glyphs: glyphs, photo: photo);
   }
 }
 
@@ -454,6 +457,7 @@ void drawBook(
   List<double> seed, {
   BookLook? look,
   GlyphMetrics? glyphs,
+  CoverPhoto? photo,
 }) {
   ui.Offset project(Vec3 v) => px.at(c.project(v));
   // 책 윤곽(둥근 모서리): 바탕·빛 모두 이 안에만(Flutter 경로 자르기는 가장자리를 부드럽게 한다)
@@ -462,11 +466,15 @@ void drawBook(
   canvas.clipPath(path);
   // 바탕: 재질 색 + 속지 구멍 + 책등·표지 제목(빛 두 겹이 그 위에 곱하고 더한다)
   if (look != null && glyphs != null) {
-    drawBookArt(canvas, b, look, glyphs, Eye(c.eye.x, c.eye.y, viewDist), project, px.s);
+    drawBookArt(canvas, b, look, glyphs, Eye(c.eye.x, c.eye.y, viewDist), project, px.s, photo: photo);
   } else {
     canvas.drawPath(path, ui.Paint()..color = srgbOf(albedo));
   }
-  for (final dodge in [0.0, 1.0]) {
+  // 겹(지금 앱 passOf): 보통 책은 곱하기·닷지, 사진 책은 곱하기·닷지(반사광 뺌) + 반사광 더하기
+  final passes = look?.photo == true
+      ? const [(0.0, 1.0, ui.BlendMode.multiply), (1.0, 1.0, ui.BlendMode.colorDodge), (3.0, 0.0, ui.BlendMode.plus)]
+      : const [(0.0, 0.0, ui.BlendMode.multiply), (1.0, 0.0, ui.BlendMode.colorDodge)];
+  for (final (dodge, split, blend) in passes) {
     final sh = bookSlots.shader();
     void vec(String name, List<double> v) {
       final at = bookSlots.at(name);
@@ -537,23 +545,20 @@ void drawBook(
     vec('PAPER', cal.PAPER.list);
     vec('EREF_PAPER', cal.EREF_PAPER.list);
     one('DODGE', dodge);
-    one('SPLIT', 0);
+    one('SPLIT', split);
     canvas.drawPath(
       path,
       ui.Paint()
         ..shader = sh
-        ..blendMode = dodge > 0.5 ? ui.BlendMode.colorDodge : ui.BlendMode.multiply,
+        ..blendMode = blend,
     );
   }
   canvas.restore();
 }
 
-/// 선형 RGB → 화면 색(sRGB 전달 곡선)
+/// 선형 RGB → 화면 색(linearOf의 거꾸로: 감마 2.2)
 ui.Color srgbOf(C3 c) {
-  int ch(double v) {
-    final x = v <= 0.0031308 ? v * 12.92 : 1.055 * math.pow(v, 1 / 2.4) - 0.055;
-    return (x.clamp(0.0, 1.0) * 255).round();
-  }
+  int ch(double v) => (math.pow(v.clamp(0.0, 1.0), 1 / gamma) * 255).round();
 
   return ui.Color.fromARGB(255, ch(c.r), ch(c.g), ch(c.b));
 }

@@ -4,6 +4,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:chaekjang/domain/binding_material.dart';
+import 'package:chaekjang/domain/book_light.dart';
 import 'package:chaekjang/domain/color.dart';
 import 'package:chaekjang/domain/title_layout.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -60,6 +61,12 @@ void main() {
       expect([a, b], strs(c['tabs']), reason: '$color 갈피 색');
       final (a2, b2) = tabColors(null, 'k$color');
       expect([a2, b2], strs(c['tabsNone']), reason: '$color 기본 갈피 색');
+      expect(bookToneOf(jacketColor(color), photo: true).toUpperCase(), (c['photoTone'] as String).toUpperCase(), reason: '$color 사진 책 재질 색');
+      for (final (key, hex) in [('albedo', bookToneOf(jacketColor(color))), ('albedoPhoto', bookToneOf(jacketColor(color), photo: true))]) {
+        final want = (c[key] as List).map((e) => (e as num).toDouble()).toList();
+        final got = bookAlbedo(hex);
+        expect([got.r, got.g, got.b], [for (final w in want) closeTo(w, 1e-9)], reason: '$color $key 반사율');
+      }
     }
   });
 }

@@ -53,12 +53,11 @@ class C3 {
   String toString() => '[$r, $g, $b]';
 }
 
-/// 16진 색(0xRRGGBB) → 선형 RGB. sRGB 전달 곡선을 푼다
-C3 linearOf(int hex) {
-  double ch(int v) {
-    final s = v / 255;
-    return s <= 0.04045 ? s / 12.92 : math.pow((s + 0.055) / 1.055, 2.4).toDouble();
-  }
+/// 화면 감마(지금 앱 light-model GAMMA): 색 ↔ 선형은 이 거듭제곱 하나다(sRGB 구간 곡선이 아니다)
+const gamma = 2.2;
 
+/// 16진 색(0xRRGGBB) → 선형 RGB(지금 앱 linearOf)
+C3 linearOf(int hex) {
+  double ch(int v) => math.pow(v / 255, gamma).toDouble();
   return C3(ch((hex >> 16) & 0xFF), ch((hex >> 8) & 0xFF), ch(hex & 0xFF));
 }

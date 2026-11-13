@@ -6,7 +6,7 @@ import 'color.dart';
 import 'types.dart';
 
 class BookLook {
-  const BookLook(this.title, this.face, this.tone, this.ink, {this.titleTop});
+  const BookLook(this.title, this.face, this.tone, this.ink, {this.titleTop, this.coverUri});
   final String title;
 
   /// 장정 색(제목 색을 고르는 바탕), 재질 색(몸체·책등·표지와 빛 셰이더의 반사율), 제목 색(모두 #rrggbb)
@@ -16,10 +16,15 @@ class BookLook {
 
   /// 장정 판짜기가 정한 책등 제목 위치(책 높이 비율, 없으면 자동)
   final double? titleTop;
+
+  /// 표지 사진 주소(있으면 사진 책: 재질 색은 사진 채도로, 빛 셰이더는 회색 반사율 + 그림 겹)
+  final String? coverUri;
+  bool get photo => coverUri != null;
 }
 
-/// 표지 사진이 없는 책(벡터 장정): 장정 색 = 책 색, 재질 색 = 장정 띠 가운데 색, 제목 색 = 저장된 색 또는 자동
+/// 장정 색 = 책 색, 재질 색 = 장정 띠 가운데 색(표지 사진 책은 사진 채도로), 제목 색 = 저장된 색 또는 자동(지금 앱 faceOf·bookTone·inkOf)
 BookLook lookOf(Book b) {
   final face = jacketColor(hexOf(b.themeColor));
-  return BookLook(b.title, face, bookToneOf(face), displayInk(b.inkColor, face));
+  final photo = b.coverArtUri != null;
+  return BookLook(b.title, face, bookToneOf(face, photo: photo), displayInk(b.inkColor, face), coverUri: b.coverArtUri);
 }

@@ -30,12 +30,12 @@ import type { Book as AppBook, ShelfLayout } from '@/domain/types';
 import { coverTitleLayout, lyingTitleLayout, spineTitleLayout } from '@/domain/title-layout';
 import { displayInk, tabColors, titleInk } from '@/domain/color';
 import { jacketColor } from '@/domain/book-design';
-import { bindingSurfaceTone } from '@/domain/binding-material';
+import { bindingSurfaceTone, bookTone } from '@/domain/binding-material';
 import bindingProfiles from '@/scene-config/reference-bindings.generated.json';
 import { frameParts, FRONT_AREA, FRONT_KEY, rowEnv, TOP_AREA, TOP_KEY, wallArea } from '@/ui/shelf/ShelfPlank';
 import { areaItem, BAKE_TEXEL, bookItems, type BakeItem } from '@/ui/SceneLight';
 import { FRAME_ON } from '@/scene-config/skin';
-import { bookEref, bookSref, DESIGN, EREF, SPEC_K, SREF } from '@/domain/light-model';
+import { bookAlbedo, bookEref, bookSref, DESIGN, EREF, SPEC_K, SREF, TONE } from '@/domain/light-model';
 import { MAT_UNIFORMS } from '@/domain/surface-pattern';
 import { surfaceMats, surfaces } from '@/scene-config/lighting';
 
@@ -150,6 +150,8 @@ ${calDart}
   const colorCases = colors.map((c) => ({
     color: c, jacket: jacketColor(c), titleInk: titleInk(c), displayInkNone: displayInk(undefined, c), displayInkLegacy: displayInk('#2F3944', c),
     displayInkCustom: displayInk('#AA3311', c), tone: bindingSurfaceTone(jacketColor(c)), tabs: tabColors(c, 'book-1'), tabsNone: tabColors(undefined, `k${c}`),
+    photoTone: bookTone({ themeColor: c, coverArtUri: 'x' } as AppBook), albedo: bookAlbedo(bindingSurfaceTone(jacketColor(c))),
+    albedoPhoto: bookAlbedo(bookTone({ themeColor: c, coverArtUri: 'x' } as AppBook)),
   }));
   write(join(ROOT, 'test', 'fixtures'), 'book_art_cases.json', `${JSON.stringify({ note: '지금 앱 함수 결과(tool/dump_sksl.test.ts). 손으로 고치지 말 것', titleCases, colorCases })}\n`);
   // ---- 배치(지금 앱 computeShelf): 실제 책 비교 책장 넷과 변형(위치 없는 예전 저장본·기대는 방향 뒤집기) ----
@@ -198,6 +200,27 @@ const realSampleShelves = [${REAL_LAYOUT.shelves.map((s) => `(id: ${q(s.id)}, or
 const realSamplePlacements = [
 ${realPlacements}
 ];
+`);
+
+  // 책 반사율(되비침): 장정 색 → 실제 반사율(light-model bookAlbedo)에 쓰는 값
+  const L = lightSet();
+  write(join(ROOT, 'lib', 'gen'), 'book_light.g.dart', `// 책 장정 색 → 반사율(지금 앱 light-model bookAlbedo)에 쓰는 값. tool/gen_shaders.sh 가 만든다 — 손으로 고치지 말 것
+library;
+
+import '../domain/vec3.dart';
+
+/// 화면 톤 곡선(발끝·어깨)
+const toneToe = ${TONE.toe};
+const toneK = ${TONE.k};
+const toneShoulder = ${TONE.shoulder};
+
+/// 카메라 이득과 벽 대표 자리 빛
+const camGain = ${L.gain};
+const erefWall = C3(${L.eref.wall.join(', ')});
+
+/// 장정 재질마다 대표 자리 빛·반사광(고운 종이·린넨·무광·줄무늬 종이)
+const bookErefOf = {${(['fine', 'linen', 'matte', 'laid'] as const).map((m) => `'${m}': C3(${bookEref(m).join(', ')})`).join(', ')}};
+const bookSrefOf = {${(['fine', 'linen', 'matte', 'laid'] as const).map((m) => `'${m}': C3(${bookSref(m).join(', ')})`).join(', ')}};
 `);
 
   // 장정 재질 띠(reference-bindings): 책 색 → 재질 색에 쓴다. Dart 상수로
