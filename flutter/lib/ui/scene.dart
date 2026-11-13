@@ -96,12 +96,15 @@ ui.FragmentShader planeShader({
   required Plane plane,
   required RowCase row,
   required Surface surface,
-  required ui.Image atlas,
-  required Spot spot,
+  required ui.Image? atlas,
+  required Spot? spot,
   required List<double> cellToPx,
   PlaneKey key = PlaneKey.none,
   List<double> seed = const [0, 0],
   ({List<double> box, List<double> r})? soft,
+  List<double>? env,
+  List<double>? rim,
+  double rimCeil = 1e9,
 }) {
   final sh = u.shader();
   void vec(String name, List<double> v) {
@@ -114,19 +117,21 @@ ui.FragmentShader planeShader({
   void one(String name, double v) => sh.setFloat(u.at(name), v);
 
   // 아틀라스 안 이 면의 자리까지 더한 행렬(칸 → px), 그 거꾸로가 셰이더가 쓰는 px → 칸
-  final sx = spot.x.toDouble(), sy = spot.y.toDouble();
+  // 구운 값이 없는 면(구멍 밖 평평한 벽)은 셰이더가 그 자리에서 둘레를 계산한다(liveEnv)
+  final live = atlas == null || spot == null;
+  final sx = live ? 0.0 : spot.x.toDouble(), sy = live ? 0.0 : spot.y.toDouble();
   final m = <double>[
     cellToPx[0], cellToPx[1], cellToPx[2] - cellToPx[0] * sx - cellToPx[1] * sy,
     cellToPx[3], cellToPx[4], cellToPx[5] - cellToPx[3] * sx - cellToPx[4] * sy,
     cellToPx[6], cellToPx[7], cellToPx[8] - cellToPx[6] * sx - cellToPx[7] * sy,
   ];
 
-  sh.setImageSampler(0, atlas, filterQuality: ui.FilterQuality.low);
+  sh.setImageSampler(0, atlas ?? emptyImage, filterQuality: ui.FilterQuality.low);
   final keyImg = key.image;
   sh.setImageSampler(1, keyImg ?? emptyImage, filterQuality: ui.FilterQuality.low);
   sh.setImageSampler(2, emptyImage, filterQuality: ui.FilterQuality.low);
-  vec('texSize', [atlas.width.toDouble(), atlas.height.toDouble()]);
-  vec('texMat', toMat3(invert3(m)));
+  vec('texSize', [(atlas?.width ?? 1).toDouble(), (atlas?.height ?? 1).toDouble()]);
+  vec('texMat', toMat3(live ? _ident : invert3(m)));
   one('texDecal', 0);
   // 창빛 그림자는 셰이더가 평면 점 P로 칸을 직접 구한다(kU·kV·kO). 행렬은 그대로 두고 크기만 준다
   vec('keyTexSize', [(keyImg?.width ?? 1).toDouble(), (keyImg?.height ?? 1).toDouble()]);
@@ -145,14 +150,14 @@ ui.FragmentShader planeShader({
   vec('bev0', plane.edges.isNotEmpty ? plane.edges[0].u : _noEdge);
   vec('bev1', plane.edges.length > 1 ? plane.edges[1].u : _noEdge);
   one('endR', plane.endR);
-  vec('rim', _noRim);
-  one('rimCeil', 1e9);
+  vec('rim', rim ?? _noRim);
+  one('rimCeil', rimCeil);
   one('kS', 1);
   vec('softBox', soft?.box ?? const [0, 0, 0, 0]);
   vec('softR', soft?.r ?? const [0, 0]);
   vec('cam4', [c.eye.x, c.eye.y, c.eye.z, viewDist]);
   one('keyOn', 1);
-  one('liveEnv', 0);
+  one('liveEnv', live ? 1 : 0);
   one('mixT', 1);
   vec('albedo', surface.albedo.list);
   vec('eref', surface.eref.list);
@@ -165,7 +170,7 @@ ui.FragmentShader planeShader({
   vec('mG', surface.mat.grain);
   vec('mS', surface.mat.gsize);
   vec('mSeed', seed);
-  vec('env', row.env.u);
+  vec('env', env ?? row.env.u);
   vec('ECAM', cal.ECAM.list);
   vec('RADF', cal.RADF.list);
   vec('RADU', cal.RADU.list);
@@ -282,6 +287,14 @@ void drawRow(
     );
   }
 
+  // 구멍 밖 평평한 벽(움푹 파인 책장): 줄 높이에서 구멍만 뺀 면. 구멍 가장자리 rimR 안은 둥근 테(셰이더가 법선을 안쪽 면 쪽으로 돌린다)
+  if (frameOn) {
+    final roofed = row.top;
+    final topY = row.top ? space + shelfThick + headDu : space + shelfThick / 2;
+    final bottomY = row.last ? -shelfThick - shelfCastExtent : -shelfThick;
+    _flatWall(canvas, lit, c, px, row, topY, bottomY, roofed ? space : null, row.last ? -shelfThick + holeBottomOver : null, space);
+  }
+
   // 판(윗면·앞면, 둥근 모서리는 셰이더가 법선을 돌린다)
   final faces = shelfFaces(project);
   final seed = [space * 7.3 % 97, space * 3.1 % 89];
@@ -317,6 +330,52 @@ void drawRow(
     drawBook(canvas, book, c, px, row, b, albedo, spots3, atlas, [i * 13.7 % 61, i * 7.1 % 53],
         title: row.titles.length > i ? row.titles[i] : '');
   }
+}
+
+/// 구멍 밖 평평한 벽 평면(z = −frameFront)
+final _flatPlane = wallPlane(-frameFront);
+
+/// 맨 아랫줄 구멍 아래로 평평한 벽이 더 내려오는 깊이(지금 앱 SHELF_CAST_EXTENT, 움푹 파인 책장)
+final shelfCastExtent = rimR + 8;
+
+/// 맨 아랫줄 구멍 아래 끝이 판 아랫면보다 위인 몫(판이 구멍 끝을 덮게, 지금 앱 HOLE_BOTTOM_OVER)
+const holeBottomOver = 0.6;
+
+/// 평평한 벽: 높이 bottomY ~ topY의 띠에서 둥근 사각형 구멍을 뺀다(지금 앱 ShelfFlatWall).
+/// openTop·openBottom: 구멍의 위·아래 끝 높이(이 줄 밖까지 이어지면 null)
+void _flatWall(ui.Canvas canvas, ShaderSlots lit, Cam c, Affine px, RowCase row, double topY, double bottomY,
+    double? openTop, double? openBottom, double ceilY) {
+  double y(double v) => toPx(c, px, Vec3(0, v, -frameFront)).dy;
+  // 뒷벽·앞으로 늘린 틀 면의 위 끝도 함께 덮는다(카메라 기울기로 화면에서 더 위에 온다)
+  final ya = math.min(y(topY),
+      math.min(toPx(c, px, Vec3(0, topY, shelfDepth)).dy - 1, toPx(c, px, Vec3(0, topY, -frameFront - sideAhead)).dy - 1));
+  final yb = y(bottomY);
+  final xl = toPx(c, px, Vec3(frameX0, 0, -frameFront)).dx;
+  final xr = toPx(c, px, Vec3(frameX1, 0, -frameFront)).dx;
+  final r = look.rimCorner * px.s;
+  // 줄 밖으로 이어지는 쪽은 둥글기가 보이지 않게 더 늘렸다가 이 띠로 자른다
+  final oa = openTop == null ? ya - 4 * r : y(openTop);
+  final ob = openBottom == null ? yb + 4 * r : y(openBottom);
+  final band = ui.Path()..addRect(ui.Rect.fromLTRB(-far, ya, far, yb));
+  final hole = ui.Path()..addRRect(ui.RRect.fromLTRBR(xl, oa, xr, ob, ui.Radius.circular(r)));
+  canvas.drawPath(
+    ui.Path.combine(ui.PathOperation.difference, band, hole),
+    ui.Paint()
+      ..shader = planeShader(
+        u: lit,
+        c: c,
+        px: px,
+        plane: _flatPlane,
+        row: row,
+        surface: wallSurface,
+        atlas: null,
+        spot: null,
+        cellToPx: _ident,
+        env: const [0, 0, 0],
+        rim: [frameX0, frameX1, openBottom ?? -far, openTop ?? far],
+        rimCeil: ceilY,
+      ),
+  );
 }
 
 /// 줄 하나가 화면에서 차지하는 높이(판 아랫면부터 위 판까지)
