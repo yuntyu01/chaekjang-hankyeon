@@ -310,9 +310,9 @@ class _BookScreenState extends State<BookScreen> {
             Padding(
               padding: const EdgeInsets.only(top: Space.s),
               child: Row(children: [
-                TextLink(label: '완독 카드 공유', onPress: () => _pending(context, '완독 카드 공유')),
+                Btn(label: '완독 카드 공유', kind: 'ghost', size: 's', onPress: () => _pending(context, '완독 카드 공유')),
                 const SizedBox(width: Space.l),
-                TextLink(label: '다시 읽기 시작(새 회차)', onPress: () => _chooseStatus(b, last, ReadStatus.reading)),
+                Btn(label: '다시 읽기 시작(새 회차)', kind: 'ghost', size: 's', onPress: () => _chooseStatus(b, last, ReadStatus.reading)),
               ]),
             ),
           const H2('내 기록'),
