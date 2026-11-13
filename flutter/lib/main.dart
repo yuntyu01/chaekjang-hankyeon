@@ -111,7 +111,7 @@ class _GatePageState extends State<GatePage> {
       grid.dispose();
       images.add(atlas.image);
       if (!probe) {
-        spots.add(atlas.at.take(3).toList()); // 면 0 = 뒷벽, 1 = 판 윗면, 2 = 판 앞면
+        spots.add(atlas.at); // 면 0 = 뒷벽, 1 = 판 윗면, 2 = 판 앞면, 3부터 책 면
         spaces.add(r.env.ceil);
       }
       final run = RowRun(r.items.length, atlas.w, atlas.h, gridMs, bakeMs);
@@ -223,16 +223,19 @@ class ShelfPainter extends CustomPainter {
   final List<double> spaces;
 
   static ShaderSlots? _lit;
+  static ShaderSlots? _book;
 
-  /// 벽 셰이더는 한 번만 올린다(미리 컴파일돼 있다)
+  /// 그리기 셰이더는 한 번만 올린다(미리 컴파일돼 있다)
   static Future<void> load() async {
     _lit ??= ShaderSlots(await ui.FragmentProgram.fromAsset('shaders/lit.frag'), litUniformNames);
+    _book ??= ShaderSlots(await ui.FragmentProgram.fromAsset('shaders/book.frag'), bookUniformNames);
   }
 
   @override
   void paint(Canvas canvas, Size size) {
     final lit = _lit;
-    if (lit == null) return;
+    final book = _book;
+    if (lit == null || book == null) return;
     final m = metricsOf(size.width);
     final cam = Cam(viewPitchMin);
     var y = 0.0;
@@ -242,7 +245,7 @@ class ShelfPainter extends CustomPainter {
       final h = rowHeightPx(cam, px, space);
       canvas.save();
       canvas.clipRect(Rect.fromLTWH(0, y, size.width, h));
-      drawRow(canvas, lit, cam, px, rows[i], rowSpots[i], atlases[i], space);
+      drawRow(canvas, lit, book, cam, px, rows[i], rowSpots[i], atlases[i], space);
       canvas.restore();
       y += h;
       if (y > size.height) break;

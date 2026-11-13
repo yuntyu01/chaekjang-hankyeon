@@ -13,7 +13,7 @@ import { VIEW_CX, VIEW_DIST } from '@/domain/camera';
 import { lightPanel } from '@/domain/book-parts';
 import { faceNormal, rot, toWorld, type Book3, type FaceId, type Vec3 } from '@/domain/book3';
 import { FRAME_ON } from '@/scene-config/skin';
-import { DESIGN, EREF, SREF } from '@/domain/light-model';
+import { bookEref, bookSref, DESIGN, EREF, SPEC_K, SREF } from '@/domain/light-model';
 import { MAT_UNIFORMS } from '@/domain/surface-pattern';
 import { surfaceMats, surfaces } from '@/scene-config/lighting';
 
@@ -170,6 +170,19 @@ class Surface {
   final Mat mat;
   final int color;
 }
+
+/// 책 장정 하나: 대표 자리 빛 · 반사광 · 거울 반사 세기 · 장정 표면 · 속지 표면 · 속지 반사광
+class BookSurface {
+  const BookSurface(this.eref, this.sref, this.specK, this.mat, this.pages, this.srefPaper);
+  final C3 eref;
+  final C3 sref;
+  final double specK;
+  final Mat mat;
+  final Mat pages;
+  final C3 srefPaper;
+}
+
+const bookFine = BookSurface(${c3(bookEref('fine'))}, ${c3(bookSref('fine'))}, ${SPEC_K.fine}, ${matOf('fine')}, ${matOf('pages')}, ${c3(SREF.paper)});
 
 const wallSurface = ${surf('wall')};
 const plankSurface = ${surf('plank')};

@@ -28,3 +28,4 @@ flutter:
     - shaders/grid.frag
     - shaders/bake.frag
     - shaders/lit.frag
+    - shaders/book.frag

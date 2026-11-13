@@ -54,10 +54,14 @@ final wallX1 = viewCx + (designWidth - sideMargin + scenePad - viewCx) * _wallD;
 
 /// 줄 하나(책 목록과 줄 높이) → 굽기 입력
 class RowCase {
-  RowCase(this.env, this.bx, this.items);
+  RowCase(this.env, this.bx, this.items, {this.books = const [], this.space = 0});
   final Env env;
   final BoxBuf bx;
   final List<BakeItem> items;
+
+  /// 이 줄의 책(그릴 때 쓴다). 면 차례는 items에서 면 3부터 책마다 bakeFaces 순서다
+  final List<Book3> books;
+  final double space;
 
   int get cells => items.fold(0, (t, it) => t + it.w * it.h);
 }
@@ -96,7 +100,7 @@ RowCase buildRow(List<Book3> books, double space, {List<C3>? tones}) {
       items.add(BakeItem(toWorld(b, pn.o), u * (1 / w), v * (1 / h), turn(faceNormal(f)), w, h, i.toDouble()));
     }
   }
-  return RowCase(env, bx, items);
+  return RowCase(env, bx, items, books: books, space: space);
 }
 
 /// 지금 앱의 줄과 같은 양이 되도록 만든 보기 줄(측정·시험용). tool/dump_sksl.test.ts의 rowOf와 같다
@@ -119,5 +123,5 @@ RowCase probeRow() {
   final r = buildRow(sampleBooks(3, 190), 190);
   return RowCase(r.env, r.bx, [
     for (final it in r.items.take(5)) BakeItem(it.o, it.u, it.v, it.n, 24, 18, it.self),
-  ]);
+  ], books: r.books, space: r.space);
 }
