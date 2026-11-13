@@ -37,10 +37,19 @@ abstract final class AppFonts {
 TextStyle _text(String family, double size, double line, Color color) =>
     TextStyle(fontFamily: family, fontSize: size, height: line / size, color: color, leadingDistribution: TextLeadingDistribution.even);
 
-/// 글자 위계(큰 제목 26 Bold, 보조 16)
+/// 글자 위계(토스 TDS): 큰 제목 26 Bold, 시트·묶음 제목 21, 구역 제목 19, 본문 17~18, 보조 16, 작은 메타 15
 abstract final class AppType {
   static final title = _text(AppFonts.uiTitle, 26, 34, AppColors.ink);
+  static final navTitle = _text(AppFonts.uiBold, 18, 25, AppColors.ink);
+  static final heading = _text(AppFonts.uiBold, 21, 29, AppColors.ink);
+  static final section = _text(AppFonts.uiBold, 19, 27, AppColors.ink);
+  static final row = _text(AppFonts.ui, 18, 26, AppColors.ink);
+  static final rowStrong = _text(AppFonts.uiBold, 18, 26, AppColors.ink);
+  static final body = _text(AppFonts.ui, 17, 27, AppColors.ink);
   static final sub = _text(AppFonts.ui, 16, 23, AppColors.inkSoft);
+  static final caption = _text(AppFonts.ui, 15, 21, AppColors.inkSoft);
+  static final button = _text(AppFonts.uiBold, 17, 24, AppColors.ink);
+  static final label = _text(AppFonts.uiMedium, 16, 22, AppColors.ink);
 }
 
 /// 탭 첫 화면 머리줄

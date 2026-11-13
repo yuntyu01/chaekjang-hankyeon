@@ -251,6 +251,29 @@ const bookErefOf = {${(['fine', 'linen', 'matte', 'laid'] as const).map((m) => `
 const bookSrefOf = {${(['fine', 'linen', 'matte', 'laid'] as const).map((m) => `'${m}': C3(${bookSref(m).join(', ')})`).join(', ')}};
 `);
 
+  // 화면 아이콘(지금 앱 ui/icons.ts가 가져오는 lucide 아이콘만): SVG 마크업 그대로. {c} 색, {w} 선 굵기
+  {
+    const appRoot = join(ROOT, '..', 'app');
+    const iconsTs = require('fs').readFileSync(join(process.cwd(), 'src', 'ui', 'icons.ts'), 'utf8') as string;
+    const entries = [...iconsTs.matchAll(/export \{ default as (\w+) \} from 'lucide-react-native\/icons\/([\w-]+)';/g)].map((m) => [m[1], m[2]]);
+    const esc = (v: string) => v.replace(/&/g, '&amp;').replace(/"/g, '&quot;');
+    const lines = entries.map(([name, file]) => {
+      const src = require('fs').readFileSync(join(process.cwd(), 'node_modules', 'lucide-react-native', 'dist', 'esm', 'icons', `${file}.mjs`), 'utf8') as string;
+      const node = (new Function(`return ${/const __iconData = (\{[\s\S]*?\n\});\n__iconData\.node;/.exec(src)![1]}`)() as { node: [string, Record<string, string | number>][] }).node;
+      const body = node.map(([tag, attrs]) => `<${tag} ${Object.entries(attrs).filter(([k]) => k !== 'key').map(([k, v]) => `${k}="${esc(String(v))}"`).join(' ')}/>`).join('');
+      return `  '${name}': '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="{c}" stroke-width="{w}" stroke-linecap="round" stroke-linejoin="round">${body}</svg>',`;
+    });
+    void appRoot;
+    write(join(ROOT, 'lib', 'gen'), 'lucide.g.dart', `// 지금 앱 ui/icons.ts가 쓰는 lucide 아이콘(ISC). tool/gen_shaders.sh 가 만든다 — 손으로 고치지 말 것
+library;
+
+/// 이름 → SVG({c} 색, {w} 선 굵기)
+const lucideSvg = <String, String>{
+${lines.join('\n')}
+};
+`);
+  }
+
   // 장정 재질 띠(reference-bindings): 책 색 → 재질 색에 쓴다. Dart 상수로
   write(join(ROOT, 'lib', 'gen'), 'reference_bindings.g.dart', `// 장정 재질 띠(지금 앱 scene-config/reference-bindings.generated.json). tool/gen_shaders.sh 가 만든다 — 손으로 고치지 말 것
 // ignore_for_file: constant_identifier_names
