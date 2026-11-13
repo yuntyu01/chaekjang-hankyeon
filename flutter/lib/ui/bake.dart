@@ -134,6 +134,9 @@ void _setCommon(ui.FragmentShader sh, ShaderSlots u, BakeCase c, RowCase r, {req
 
 late ui.Image _empty;
 
+/// 1×1 회색 그림(자식 그림 자리를 채울 때)
+ui.Image get emptyImage => _empty;
+
 /// 1×1 회색 그림(빛 격자가 아직 없을 때 자리만 채운다. 그때 셰이더는 읽지 않는다)
 Future<void> initBake() async {
   final done = Completer<ui.Image>();

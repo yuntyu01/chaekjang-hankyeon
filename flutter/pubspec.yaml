@@ -27,3 +27,4 @@ flutter:
   shaders:
     - shaders/grid.frag
     - shaders/bake.frag
+    - shaders/lit.frag

@@ -13,6 +13,9 @@ import { VIEW_CX, VIEW_DIST } from '@/domain/camera';
 import { lightPanel } from '@/domain/book-parts';
 import { faceNormal, rot, toWorld, type Book3, type FaceId, type Vec3 } from '@/domain/book3';
 import { FRAME_ON } from '@/scene-config/skin';
+import { DESIGN, EREF, SREF } from '@/domain/light-model';
+import { MAT_UNIFORMS } from '@/domain/surface-pattern';
+import { surfaceMats, surfaces } from '@/scene-config/lighting';
 
 const ROOT = join(__dirname, '..');
 const SKSL = join(ROOT, 'build', 'sksl');
@@ -134,6 +137,44 @@ ${calDart}
     rows,
   };
   write(ASSETS, 'bake_case.json', `${JSON.stringify(caseJson)}\n`);
+
+  // 장면 그리기에 쓰는 값(재질 색·대표 자리 빛·반사광·표면 재질). light-model calibrate·surface-pattern을 옮기기 전까지 여기서 받는다
+  const c3 = (v: readonly number[]) => `C3(${v.map((x) => (Number.isInteger(x) ? `${x}.0` : x)).join(', ')})`;
+  const nums = (v: readonly number[]) => `[${v.map((x) => (Number.isInteger(x) ? `${x}.0` : x)).join(', ')}]`;
+  const matOf = (name: keyof typeof MAT_UNIFORMS) => {
+    const m = MAT_UNIFORMS[name];
+    return `Mat(${nums(m.mRough)}, ${nums(m.mBump)}, ${nums(m.mGrain)}, ${nums(m.mGsize)})`;
+  };
+  const surf = (k: 'wall' | 'plank' | 'frame') => `Surface(${c3(DESIGN[k])}, ${c3(EREF[k])}, ${c3(SREF[k])}, ${matOf(surfaceMats[k])}, 0x${surfaces[k].slice(1).toUpperCase()})`;
+  write(join(ROOT, 'lib', 'gen'), 'scene_uniforms.g.dart', `// 장면을 그리는 데 쓰는 값(재질 색 DESIGN · 대표 자리 빛 EREF · 반사광 SREF · 표면 재질 materials · 보이는 색 surfaces).
+// tool/gen_shaders.sh 가 만든다 — 손으로 고치지 말 것. 빛 설정이나 스킨이 바뀌면 다시 만들어야 한다
+library;
+
+import '../domain/vec3.dart';
+
+/// 표면 재질 uniform(거칠기·법선 무늬·반사율 무늬·무늬 크기)
+class Mat {
+  const Mat(this.rough, this.bump, this.grain, this.gsize);
+  final List<double> rough;
+  final List<double> bump;
+  final List<double> grain;
+  final List<double> gsize;
+}
+
+/// 한 부품: 재질 색(반사율) · 대표 자리 빛 · 반사광 · 표면 · 보이는 색
+class Surface {
+  const Surface(this.albedo, this.eref, this.sref, this.mat, this.color);
+  final C3 albedo;
+  final C3 eref;
+  final C3 sref;
+  final Mat mat;
+  final int color;
+}
+
+const wallSurface = ${surf('wall')};
+const plankSurface = ${surf('plank')};
+const frameSurface = ${surf('frame')};
+`);
 
   expect(rows.length).toBe(7);
   const cells = rows.reduce((s2, r) => s2 + r.items.reduce((t, it) => t + it.w * it.h, 0), 0);

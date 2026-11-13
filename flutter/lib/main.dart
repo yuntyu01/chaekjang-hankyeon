@@ -5,8 +5,11 @@ import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
 
+import 'domain/camera.dart';
+import 'domain/geometry.dart';
 import 'domain/shelf_row.dart';
 import 'ui/bake.dart';
+import 'ui/scene.dart';
 
 /// 앱이 깨어난 때(켜고 책장이 다 될 때까지를 재려고 되도록 이른 곳에서 잡는다).
 /// Dart의 최상위 final은 처음 읽을 때 만들어지므로 main에서 바로 읽어 둔다
@@ -58,6 +61,8 @@ class GatePage extends StatefulWidget {
 class _GatePageState extends State<GatePage> {
   final List<Run> _runs = [];
   final List<ui.Image> _atlases = [];
+  final List<Spot> _wallSpots = [];
+  final List<double> _spaces = [];
   String _state = '준비 중…';
   bool _busy = false;
   BakeCase? _case;
@@ -85,12 +90,15 @@ class _GatePageState extends State<GatePage> {
         buildRow(sampleBooks(n, space), space),
       probeRow(),
     ]);
+    await ShelfPainter.load();
     final gridSlots = _gridSlots ??= ShaderSlots(await ui.FragmentProgram.fromAsset('shaders/grid.frag'), gridUniformNames);
     final bakeSlots = _bakeSlots ??= ShaderSlots(await ui.FragmentProgram.fromAsset('shaders/bake.frag'), bakeUniformNames);
     final loadMs = DateTime.now().difference(t0).inMilliseconds;
 
     final rows = <RowRun>[];
     final images = <ui.Image>[];
+    final spots = <Spot>[];
+    final spaces = <double>[];
     for (var ri = 0; ri < c.rows.length; ri++) {
       final r = c.rows[ri];
       final probe = ri == c.rows.length - 1; // 맨 뒤는 값 확인용(시간에 넣지 않는다)
@@ -102,6 +110,10 @@ class _GatePageState extends State<GatePage> {
       final bakeMs = DateTime.now().difference(t2).inMilliseconds;
       grid.dispose();
       images.add(atlas.image);
+      if (!probe) {
+        spots.add(atlas.at[0]); // 면 0 = 뒷벽
+        spaces.add(r.env.ceil);
+      }
       final run = RowRun(r.items.length, atlas.w, atlas.h, gridMs, bakeMs);
       if (!probe) rows.add(run);
       // ignore: avoid_print
@@ -128,6 +140,12 @@ class _GatePageState extends State<GatePage> {
       _atlases
         ..clear()
         ..addAll(images);
+      _wallSpots
+        ..clear()
+        ..addAll(spots);
+      _spaces
+        ..clear()
+        ..addAll(spaces);
       _runs.add(run);
       _state = '${_runs.length}번째';
       _busy = false;
@@ -177,18 +195,15 @@ class _GatePageState extends State<GatePage> {
             const SizedBox(height: 12),
             FilledButton(onPressed: _busy ? null : _run, child: const Text('다시 굽기')),
             const SizedBox(height: 16),
-            for (final img in _atlases)
-              Padding(
-                padding: const EdgeInsets.only(bottom: 8),
-                child: SizedBox(
-                  height: 90,
-                  child: FittedBox(
-                    alignment: Alignment.topLeft,
-                    child: SizedBox(
-                      width: img.width.toDouble(),
-                      height: img.height.toDouble(),
-                      child: CustomPaint(painter: _AtlasPainter(img)),
-                    ),
+            if (_atlases.length > 1 && _wallSpots.length == _spaces.length)
+              SizedBox(
+                height: 420,
+                child: CustomPaint(
+                  painter: ShelfPainter(
+                    rows: _case!.rows,
+                    atlases: _atlases,
+                    wallSpots: _wallSpots,
+                    spaces: _spaces,
                   ),
                 ),
               ),
@@ -199,13 +214,42 @@ class _GatePageState extends State<GatePage> {
   }
 }
 
-class _AtlasPainter extends CustomPainter {
-  _AtlasPainter(this.image);
-  final ui.Image image;
+/// 구운 줄들을 실제 책장처럼 쌓아 그린다(지금은 뒷벽만, ui/scene). 줄마다 카메라가 따로다
+class ShelfPainter extends CustomPainter {
+  ShelfPainter({required this.rows, required this.atlases, required this.wallSpots, required this.spaces});
+  final List<RowCase> rows;
+  final List<ui.Image> atlases;
+  final List<Spot> wallSpots;
+  final List<double> spaces;
+
+  static ShaderSlots? _lit;
+
+  /// 벽 셰이더는 한 번만 올린다(미리 컴파일돼 있다)
+  static Future<void> load() async {
+    _lit ??= ShaderSlots(await ui.FragmentProgram.fromAsset('shaders/lit.frag'), litUniformNames);
+  }
 
   @override
-  void paint(Canvas canvas, Size size) => canvas.drawImage(image, Offset.zero, Paint());
+  void paint(Canvas canvas, Size size) {
+    final lit = _lit;
+    if (lit == null) return;
+    final m = metricsOf(size.width);
+    final cam = Cam(viewPitchMin);
+    var y = 0.0;
+    for (var i = 0; i < wallSpots.length && i < atlases.length; i++) {
+      final space = spaces[i];
+      final px = Affine(m.scale, m.originX, y + (space + shelfThick) * m.scale);
+      final h = rowHeightPx(cam, px, space);
+      canvas.save();
+      canvas.clipRect(Rect.fromLTWH(0, y, size.width, h));
+      drawRow(canvas, lit, cam, px, rows[i], wallSpots[i], atlases[i], emptyImage, space);
+      canvas.restore();
+      y += h;
+      if (y > size.height) break;
+    }
+  }
 
   @override
-  bool shouldRepaint(_AtlasPainter old) => old.image != image;
+  bool shouldRepaint(ShelfPainter old) => old.atlases != atlases;
 }
+
