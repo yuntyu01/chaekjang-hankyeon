@@ -45,7 +45,7 @@ Future<Library> loadLibrary() async {
   final db = await openLibrary();
   final rows = await db.rawQuery('''
     SELECT b.id, e.title, e.width_mm, e.height_mm, e.page_count, e.cover_uri,
-           bd.spine_color,
+           bd.spine_color, bd.ink_color,
            (SELECT COUNT(*) FROM bookmarks m WHERE m.my_book_id = b.id) AS quotes,
            (SELECT name FROM edition_authors a WHERE a.edition_id = e.id ORDER BY a.position LIMIT 1) AS author
       FROM my_books b
@@ -67,6 +67,7 @@ Future<Library> loadLibrary() async {
           pages: (r['page_count'] as num?)?.toInt(),
         ),
         coverUri: r['cover_uri'] as String?,
+        inkColor: r['ink_color'] as String?,
         quotes: ((r['quotes'] as num?) ?? 0).toInt(),
       ),
   ];

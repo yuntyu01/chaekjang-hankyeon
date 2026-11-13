@@ -17,6 +17,8 @@ import '../gen/light_uniforms.g.dart' as cal;
 import '../gen/scene_uniforms.g.dart';
 import 'bake.dart';
 import 'book_art.dart';
+import 'glyph_metrics.dart';
+import '../domain/book_look.dart';
 import 'outline.dart';
 import 'plane_key.dart';
 
@@ -228,8 +230,9 @@ void drawRow(
   List<Spot> spots,
   ui.Image atlas,
   double space,
-  ({PlaneKey wall, PlaneKey floor}) keys,
-) {
+  ({PlaneKey wall, PlaneKey floor}) keys, {
+  GlyphMetrics? glyphs,
+}) {
   Spot? spotOf(String key) {
     final i = row.indexOf(key);
     return i >= 0 && i < spots.length ? spots[i] : null;
@@ -340,8 +343,8 @@ void drawRow(
       for (final f in FaceId.values) f: ?spotOf(faceKey(b.id, f)),
     };
     final albedo = row.tones.length > i ? row.tones[i] : const C3(0.3, 0.25, 0.2);
-    drawBook(canvas, book, c, px, row, b, albedo, spots3, atlas, seedOf(b.id),
-        title: row.titles.length > i ? row.titles[i] : '');
+    final look = row.looks.length > i ? row.looks[i] : null;
+    drawBook(canvas, book, c, px, row, b, albedo, spots3, atlas, seedOf(b.id), look: look, glyphs: glyphs);
   }
 }
 
@@ -449,12 +452,20 @@ void drawBook(
   Map<FaceId, Spot> faceSpots,
   ui.Image atlas,
   List<double> seed, {
-  String title = '',
-  ui.Color titleInk = const ui.Color(0xFFF2EEE6),
+  BookLook? look,
+  GlyphMetrics? glyphs,
 }) {
-  final path = bookOutline(c, px, b);
-  // 바탕: 장정 색 + 책등·표지 제목(빛 두 겹이 그 위에 곱하고 더한다)
-  drawBookArt(canvas, b, albedo, title, titleInk, (v) => px.at(c.project(v)));
+  ui.Offset project(Vec3 v) => px.at(c.project(v));
+  // 책 윤곽(둥근 모서리): 바탕·빛 모두 이 안에만(Flutter 경로 자르기는 가장자리를 부드럽게 한다)
+  final path = pathOf(silhouette(project, b, px.s));
+  canvas.save();
+  canvas.clipPath(path);
+  // 바탕: 재질 색 + 속지 구멍 + 책등·표지 제목(빛 두 겹이 그 위에 곱하고 더한다)
+  if (look != null && glyphs != null) {
+    drawBookArt(canvas, b, look, glyphs, Eye(c.eye.x, c.eye.y, viewDist), project, px.s);
+  } else {
+    canvas.drawPath(path, ui.Paint()..color = srgbOf(albedo));
+  }
   for (final dodge in [0.0, 1.0]) {
     final sh = bookSlots.shader();
     void vec(String name, List<double> v) {
@@ -534,6 +545,7 @@ void drawBook(
         ..blendMode = dodge > 0.5 ? ui.BlendMode.colorDodge : ui.BlendMode.multiply,
     );
   }
+  canvas.restore();
 }
 
 /// 선형 RGB → 화면 색(sRGB 전달 곡선)

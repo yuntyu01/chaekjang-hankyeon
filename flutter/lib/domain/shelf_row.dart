@@ -11,6 +11,9 @@ import 'boxes.dart';
 import 'camera.dart';
 import 'types.dart';
 import 'geometry.dart';
+import 'binding_material.dart';
+import 'book_look.dart';
+import 'color.dart';
 import 'shelf_parts.dart';
 import 'vec3.dart';
 
@@ -50,8 +53,8 @@ class RowCase {
   /// 틀 안쪽 면(움푹 파인 책장)
   final List<FramePart> frame;
 
-  /// 책 제목·장정 색(그릴 때만 쓴다. 굽기에는 들어가지 않는다)
-  List<String> titles = const [];
+  /// 책 그림 재료(제목·재질 색·제목 색)와 빛 셰이더의 반사율(재질 색의 선형 값). 그릴 때만 쓴다(굽기에는 상자 색이 들어간다)
+  List<BookLook> looks = const [];
   List<C3> tones = const [];
 
   int get cells => items.fold(0, (t, it) => t + it.w * it.h);
@@ -111,7 +114,13 @@ RowCase buildRow(List<Book3> books, double space, {List<C3>? tones, bool top = f
     for (var i = 0; i < books.length; i++) ...bookItems(books[i], i),
   ];
   return RowCase(env, bx, items, books: books, space: space, top: top, last: last, frame: frame)
-    ..titles = [for (var i = 0; i < books.length; i++) sampleTitles[i % sampleTitles.length]]
+    ..looks = [
+      for (var i = 0; i < books.length; i++)
+        () {
+          final face = i % 2 == 1 ? '#8D4F4E' : '#4B6080';
+          return BookLook(sampleTitles[i % sampleTitles.length], face, bookToneOf(face), displayInk(null, face));
+        }(),
+    ]
     ..tones = [for (var i = 0; i < list.length; i++) list[i].tone];
 }
 
@@ -141,14 +150,16 @@ RowCase probeRow() {
   ], books: r.books, space: r.space);
 }
 
-/// 서재에서 읽은 책들로 줄 하나를 만든다(책 색·제목까지)
+/// 서재에서 읽은 책들로 줄 하나를 만든다(그림 재료·재질 색까지). 상자 색(굽기의 색 번짐)도 재질 색으로
 RowCase rowFromBooks(List<Book3> books, List<Book> meta, double space, {bool top = false, bool last = false}) {
   final byId = {for (final b in meta) b.id: b};
-  final tones = [
-    for (final b in books) linearOf(byId[b.id]?.themeColor ?? 0x8F6E55),
+  final looks = [
+    for (final b in books)
+      byId[b.id] != null ? lookOf(byId[b.id]!) : BookLook('', '#8F6E55', bookToneOf('#8F6E55'), displayInk(null, '#8F6E55')),
   ];
+  final tones = [for (final l in looks) linearOf(rgbOf(l.tone))];
   final row = buildRow(books, space, tones: tones, top: top, last: last);
-  row.titles = [for (final b in books) byId[b.id]?.title ?? ''];
+  row.looks = looks;
   row.tones = tones;
   return row;
 }

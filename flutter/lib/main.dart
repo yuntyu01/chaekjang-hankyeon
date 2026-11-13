@@ -15,6 +15,7 @@ import 'ui/bake_cache.dart';
 import 'ui/plane_key.dart';
 import 'store/library_store.dart';
 import 'store/seed.dart';
+import 'ui/glyph_metrics.dart';
 import 'ui/metrics.dart';
 import 'ui/outline.dart';
 import 'ui/scene.dart';
@@ -292,11 +293,13 @@ class ShelfPainter extends CustomPainter {
 
   static ShaderSlots? _lit;
   static ShaderSlots? _book;
+  static GlyphMetrics? _glyphs;
 
   /// 그리기 셰이더는 한 번만 올린다(미리 컴파일돼 있다)
   static Future<void> load() async {
     _lit ??= ShaderSlots(await ui.FragmentProgram.fromAsset('shaders/lit.frag'), litUniformNames);
     _book ??= ShaderSlots(await ui.FragmentProgram.fromAsset('shaders/book.frag'), bookUniformNames);
+    _glyphs ??= await GlyphMetrics.load(titleFontAsset);
   }
 
   @override
@@ -320,7 +323,7 @@ class ShelfPainter extends CustomPainter {
       final area = Path()..addRect(Rect.fromLTRB(0, contentY + y0, size.width, contentY + y1));
       final up = i > 0 ? plankOutlinePath((v) => toPx(cam, pxOf(geo[i - 1]), v), m.scale) : null;
       canvas.clipPath(up == null ? area : Path.combine(PathOperation.difference, area, up));
-      drawRow(canvas, lit, book, cam, px, rows[i], rowSpots[i], atlases[i], r.space, keys[i]);
+      drawRow(canvas, lit, book, cam, px, rows[i], rowSpots[i], atlases[i], r.space, keys[i], glyphs: _glyphs);
       canvas.restore();
       if (contentY + y0 > size.height) break;
     }

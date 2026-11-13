@@ -24,6 +24,11 @@ import { bakeSource, bookSource, gridSource, litSource, tabSource } from '@/ui/s
 import { boxOf, ENV_NX, ENV_NY, GRID_N, GRID_PASSES, lightSet, packBoxes, withCovers, type Env } from '@/domain/light-model';
 import { SHELF_THICK } from '@/domain/geometry';
 import { type Book3 } from '@/domain/book3';
+import { coverTitleLayout, lyingTitleLayout, spineTitleLayout } from '@/domain/title-layout';
+import { displayInk, tabColors, titleInk } from '@/domain/color';
+import { jacketColor } from '@/domain/book-design';
+import { bindingSurfaceTone } from '@/domain/binding-material';
+import bindingProfiles from '@/scene-config/reference-bindings.generated.json';
 import { frameParts, FRONT_AREA, FRONT_KEY, rowEnv, TOP_AREA, TOP_KEY, wallArea } from '@/ui/shelf/ShelfPlank';
 import { areaItem, BAKE_TEXEL, bookItems, type BakeItem } from '@/ui/SceneLight';
 import { FRAME_ON } from '@/scene-config/skin';
@@ -124,6 +129,36 @@ ${calDart}
     rows,
   };
   write(ASSETS, 'bake_case.json', `${JSON.stringify(caseJson)}\n`);
+
+  // ---- 책 그림 규칙(제목 조판·제목 색·재질 색): Dart 시험이 지금 앱 결과와 견준다 ----
+  const titles = ['느린 계절', '여름의 숲', '어린 왕자', '문장 수집', '아주 보통의 하루', '좋은 문장은 이렇게 온다', '찰나의 마음', '고요한 우연',
+    '아무튼, 독서', '너라는 계절', '우리가 빛의 속도로 갈 수 없다면', '코스모스', 'COSMOS', '82년생 김지영', '데미안', '불편한 편의점',
+    '달러구트 꿈 백화점', '사피엔스', '소년이 온다', '이처럼 사소한 것들', '아주 아주 아주 아주 긴 제목이 들어가면 어떻게 되는지 보는 제목', '책'];
+  const sizes = [[30, 132, 92], [41.75, 160, 110], [22, 140, 100], [55, 175, 128], [28, 200, 140]];
+  const titleCases = titles.flatMap((title) => sizes.map(([T, H, W]) => ({
+    title, T, H, W,
+    spine: spineTitleLayout(title, H, T * 0.94, 0.88, 1.0),
+    spine79: spineTitleLayout(title, H, T * 0.94, 0.79, 0.91),
+    lying: lyingTitleLayout(title, H, T),
+    cover: coverTitleLayout(title, W, H),
+  })));
+  const colors = ['#4B6080', '#CF886E', '#627260', '#FDD594', '#8CA5BA', '#FEF1DF', '#3D5F57', '#A7AF95', '#9FA568', '#819AB1',
+    '#CE886F', '#8D4F4E', '#F4BF9C', '#191F28', '#FFFFFF', '#000000', '#7D9CC0', '#E3A857', '#5B8C7A', '#B57BA6', '#C0C0C0', '#123456'];
+  const colorCases = colors.map((c) => ({
+    color: c, jacket: jacketColor(c), titleInk: titleInk(c), displayInkNone: displayInk(undefined, c), displayInkLegacy: displayInk('#2F3944', c),
+    displayInkCustom: displayInk('#AA3311', c), tone: bindingSurfaceTone(jacketColor(c)), tabs: tabColors(c, 'book-1'), tabsNone: tabColors(undefined, `k${c}`),
+  }));
+  write(join(ROOT, 'test', 'fixtures'), 'book_art_cases.json', `${JSON.stringify({ note: '지금 앱 함수 결과(tool/dump_sksl.test.ts). 손으로 고치지 말 것', titleCases, colorCases })}\n`);
+  // 장정 재질 띠(reference-bindings): 책 색 → 재질 색에 쓴다. Dart 상수로
+  write(join(ROOT, 'lib', 'gen'), 'reference_bindings.g.dart', `// 장정 재질 띠(지금 앱 scene-config/reference-bindings.generated.json). tool/gen_shaders.sh 가 만든다 — 손으로 고치지 말 것
+// ignore_for_file: constant_identifier_names
+library;
+
+/// 색(대문자 #RRGGBB) → 띠(색들·자리들·가로 여부)
+const referenceBindingProfiles = <String, ({List<String> colors, List<double> positions, bool horizontal})>{
+${Object.entries(bindingProfiles as Record<string, { colors: string[]; positions: number[]; horizontal: boolean }>).map(([k, b]) => `  '${k}': (colors: [${b.colors.map((c) => `'${c}'`).join(', ')}], positions: [${b.positions.map((x) => (Number.isInteger(x) ? `${x}.0` : x)).join(', ')}], horizontal: ${b.horizontal}),`).join('\n')}
+};
+`);
 
   // 장면 그리기에 쓰는 값(재질 색·대표 자리 빛·반사광·표면 재질). light-model calibrate·surface-pattern을 옮기기 전까지 여기서 받는다
   const c3 = (v: readonly number[]) => `C3(${v.map((x) => (Number.isInteger(x) ? `${x}.0` : x)).join(', ')})`;

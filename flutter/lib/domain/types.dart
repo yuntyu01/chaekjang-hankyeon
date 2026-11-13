@@ -29,6 +29,7 @@ class Book {
     this.coverAspectRatio = 0.68,
     this.physical,
     this.coverUri,
+    this.inkColor,
     this.quotes = 0,
     this.startedAt,
     this.finishedAt,
@@ -47,6 +48,9 @@ class Book {
   final double coverAspectRatio;
   final Physical? physical;
   final String? coverUri;
+
+  /// 장정에 저장된 제목 색(#rrggbb, 없으면 자동)
+  final String? inkColor;
 
   /// 저장된 문장 수(갈피 표시)
   final int quotes;

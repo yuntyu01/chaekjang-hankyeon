@@ -145,7 +145,7 @@ class Panel {
 /// 판 끝 여유(양장 표지 판이 속지보다 나온 길이, 실제 2~3mm)
 final square = mm(2.5);
 
-Panel _facePanel(Dims d, FaceId f) {
+Panel facePanel(Dims d, FaceId f) {
   if (f == FaceId.spine) return Panel(Vec3(0, d.h, 0), Vec3(d.t, 0, 0), Vec3(0, -d.h, 0), d.t, d.h);
   if (f == FaceId.cover) return Panel(Vec3(d.t, d.h, 0), Vec3(0, 0, d.w), Vec3(0, -d.h, 0), d.w, d.h);
   return Panel(Vec3(0, d.h, d.w), Vec3(0, 0, -d.w), Vec3(0, -d.h, 0), d.w, d.h);
@@ -153,7 +153,52 @@ Panel _facePanel(Dims d, FaceId f) {
 
 /// 빛을 계산할 면 틀(바깥 평면 전체). 책등·표지·뒤표지는 면 그대로, 머리·꼬리·책배는 판 끝 평면
 Panel lightPanel(Dims d, FaceId f) {
-  if (f == FaceId.spine || f == FaceId.cover || f == FaceId.back) return _facePanel(d, f);
+  if (f == FaceId.spine || f == FaceId.cover || f == FaceId.back) return facePanel(d, f);
   if (f == FaceId.fore) return Panel(Vec3(0, d.h, d.w), Vec3(d.t, 0, 0), Vec3(0, -d.h, 0), d.t, d.h);
   return Panel(Vec3(0, f == FaceId.head ? d.h : 0, 0), Vec3(d.t, 0, 0), Vec3(0, 0, d.w), d.t, d.w);
+}
+
+/// 속지 면(머리·꼬리·책배)의 모양: 종이가 보이는 구멍, 판 끝 테(둘 또는 셋), 판 끝에서 종이까지 안쪽 벽(지금 앱 pageFace)
+class PageFace {
+  const PageFace(this.opening, this.rims, this.walls);
+  final List<Vec3> opening;
+  final List<List<Vec3>> rims;
+  final List<({List<Vec3> pts, Vec3 n})> walls;
+}
+
+PageFace pageFace(Dims d, FaceId f) {
+  final t = d.t, h = d.h, w = d.w;
+  final r = rigOf(d);
+  final sq = square;
+  final x0 = r.bd, x1 = t - r.bd, sp = r.sp;
+  if (f == FaceId.fore) {
+    final z = w, zi = w - sq;
+    return PageFace(
+      [Vec3(x0, h, z), Vec3(x1, h, z), Vec3(x1, 0, z), Vec3(x0, 0, z)],
+      [
+        [Vec3(0, h, z), Vec3(x0, h, z), Vec3(x0, 0, z), Vec3(0, 0, z)],
+        [Vec3(x1, h, z), Vec3(t, h, z), Vec3(t, 0, z), Vec3(x1, 0, z)],
+      ],
+      [
+        (pts: [Vec3(x0, h, zi), Vec3(x0, h, z), Vec3(x0, 0, z), Vec3(x0, 0, zi)], n: const Vec3(1, 0, 0)),
+        (pts: [Vec3(x1, h, zi), Vec3(x1, h, z), Vec3(x1, 0, z), Vec3(x1, 0, zi)], n: const Vec3(-1, 0, 0)),
+      ],
+    );
+  }
+  final top = f == FaceId.head;
+  final y = top ? h : 0.0;
+  final yi = top ? h - sq : sq;
+  return PageFace(
+    [Vec3(x0, y, sp), Vec3(x1, y, sp), Vec3(x1, y, w), Vec3(x0, y, w)],
+    [
+      [Vec3(0, y, 0), Vec3(x0, y, 0), Vec3(x0, y, w), Vec3(0, y, w)],
+      [Vec3(x1, y, 0), Vec3(t, y, 0), Vec3(t, y, w), Vec3(x1, y, w)],
+      [Vec3(x0, y, 0), Vec3(x1, y, 0), Vec3(x1, y, sp), Vec3(x0, y, sp)],
+    ],
+    [
+      (pts: [Vec3(x0, yi, sp), Vec3(x0, y, sp), Vec3(x0, y, w), Vec3(x0, yi, w)], n: const Vec3(1, 0, 0)),
+      (pts: [Vec3(x1, yi, sp), Vec3(x1, y, sp), Vec3(x1, y, w), Vec3(x1, yi, w)], n: const Vec3(-1, 0, 0)),
+      (pts: [Vec3(x0, yi, sp), Vec3(x1, yi, sp), Vec3(x1, y, sp), Vec3(x0, y, sp)], n: const Vec3(0, 0, 1)),
+    ],
+  );
 }
