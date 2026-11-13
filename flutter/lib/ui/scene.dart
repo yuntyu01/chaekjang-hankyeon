@@ -17,6 +17,7 @@ import '../gen/light_uniforms.g.dart' as cal;
 import '../gen/scene_uniforms.g.dart';
 import 'bake.dart';
 import 'book_art.dart';
+import 'book_key.dart';
 import 'cover_photo.dart';
 import 'glyph_metrics.dart';
 import '../domain/book_look.dart';
@@ -236,6 +237,7 @@ void drawRow(
   GlyphMetrics? glyphs,
   Map<String, CoverPhoto> photos = const {},
   ShaderSlots? tab,
+  Map<String, BookKey> bookKeys = const {},
 }) {
   Spot? spotOf(String key) {
     final i = row.indexOf(key);
@@ -349,7 +351,7 @@ void drawRow(
     final albedo = row.tones.length > i ? row.tones[i] : const C3(0.3, 0.25, 0.2);
     final look = row.looks.length > i ? row.looks[i] : null;
     final photo = look?.coverUri == null ? null : photos[look!.coverUri];
-    drawBook(canvas, book, c, px, row, b, albedo, spots3, atlas, seedOf(b.id), look: look, glyphs: glyphs, photo: photo);
+    drawBook(canvas, book, c, px, row, b, albedo, spots3, atlas, seedOf(b.id), look: look, glyphs: glyphs, photo: photo, key: bookKeys[b.id]);
     // 갈피 탭(책 위에, 같은 차례)
     if (tab != null && look != null) drawRibbons(canvas, tab, c, px, row, b, look, row.tabLoss[b.id]);
   }
@@ -462,6 +464,7 @@ void drawBook(
   BookLook? look,
   GlyphMetrics? glyphs,
   CoverPhoto? photo,
+  BookKey? key,
 }) {
   ui.Offset project(Vec3 v) => px.at(c.project(v));
   // 책 윤곽(둥근 모서리): 바탕·빛 모두 이 안에만(Flutter 경로 자르기는 가장자리를 부드럽게 한다)
@@ -490,12 +493,13 @@ void drawBook(
     void one(String name, double v) => sh.setFloat(bookSlots.at(name), v);
 
     sh.setImageSampler(0, atlas, filterQuality: ui.FilterQuality.low);
-    sh.setImageSampler(1, emptyImage, filterQuality: ui.FilterQuality.low);
+    // 받는 창빛 그림자(다른 책): 면 칸 그림, 칸 밖은 비운다(지금 앱 ImageShader decal)
+    sh.setImageSampler(1, key?.image ?? emptyImage, filterQuality: ui.FilterQuality.low);
     sh.setImageSampler(2, emptyImage, filterQuality: ui.FilterQuality.low);
     vec('texSize', [atlas.width.toDouble(), atlas.height.toDouble()]);
     vec('texMat', toMat3(_ident));
     one('texDecal', 0);
-    vec('keyTexSize', [1, 1]);
+    vec('keyTexSize', [(key?.image.width ?? 1).toDouble(), (key?.image.height ?? 1).toDouble()]);
     vec('keyTexMat', toMat3(_ident));
     one('keyTexDecal', 1);
     vec('tex2Size', [1, 1]);
@@ -521,7 +525,7 @@ void drawBook(
     }
     vec('rect', rects);
     vec('rect2', noRects);
-    vec('kRect', noRects);
+    vec('kRect', key?.rects ?? noRects);
     one('mixT', 1);
     one('keyOn', 1);
     vec('albedo', albedo.list);

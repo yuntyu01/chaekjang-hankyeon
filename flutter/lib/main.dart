@@ -17,6 +17,8 @@ import 'store/library_store.dart';
 import 'store/seed.dart';
 import 'services/cover_cache.dart';
 import 'ui/cover_photo.dart';
+import 'domain/received3.dart';
+import 'ui/book_key.dart';
 import 'ui/glyph_metrics.dart';
 import 'ui/metrics.dart';
 import 'ui/ribbons.dart';
@@ -83,6 +85,9 @@ class _GatePageState extends State<GatePage> {
   final List<double> _spaces = [];
   final List<({PlaneKey wall, PlaneKey floor})> _keys = [];
   String _state = '준비 중…';
+
+  /// 줄마다 책이 받는 창빛 그림자(책 id → 면 칸 그림)
+  List<Map<String, BookKey>> _bookKeys = const [];
 
   /// 받아 온 표지 사진(주소 → 그림). 받는 대로 다시 그린다(그 전까지는 코드로 그린 장정)
   Map<String, CoverPhoto> _photos = const {};
@@ -170,6 +175,17 @@ class _GatePageState extends State<GatePage> {
       // ignore: avoid_print
       print('[flpix] row $ri ${atlas.w}x${atlas.h} ${await _stamp(atlas.image)}');
     }
+    // 책 면이 받는 창빛 그림자(다른 책이 가리는 몫): 줄마다 책마다(위 판이 막는 부분은 뺀 가리개)
+    final bookKeys = <Map<String, BookKey>>[];
+    for (var ri = 0; ri < c.rows.length - 1; ri++) {
+      final r = c.rows[ri];
+      final keysOf = <String, BookKey>{};
+      for (final b in r.books) {
+        final key = await bookKeyImage(b, receivedShadow3(b, occludersIn(r.books, b, r.space), _shadowScale), _shadowScale);
+        if (key != null) keysOf[b.id] = key;
+      }
+      bookKeys.add(keysOf);
+    }
     final run = Run(rows, loadMs, DateTime.now().difference(bootAt).inMilliseconds);
     // ignore: avoid_print
     print('[fltotal] rows ${rows.length} bake ${run.bakeTotal}ms (grid ${run.gridTotal}) load ${run.loadMs}ms sinceBoot ${run.sinceBoot}ms');
@@ -196,6 +212,7 @@ class _GatePageState extends State<GatePage> {
       _keys
         ..clear()
         ..addAll(keys);
+      _bookKeys = bookKeys;
       _runs.add(run);
       _state = '${_runs.length}번째';
       _busy = false;
@@ -272,6 +289,7 @@ class _GatePageState extends State<GatePage> {
                     rowSpots: _rowSpots,
                     spaces: _spaces,
                     photos: _photos,
+                    bookKeys: _bookKeys,
                     keys: _keys,
                   ),
                 ),
@@ -318,8 +336,9 @@ class _GatePageState extends State<GatePage> {
 
 /// 구운 줄들을 실제 책장처럼 쌓아 그린다(지금은 뒷벽만, ui/scene). 줄마다 카메라가 따로다
 class ShelfPainter extends CustomPainter {
-  ShelfPainter({required this.rows, required this.atlases, required this.rowSpots, required this.spaces, required this.keys, this.photos = const {}});
+  ShelfPainter({required this.rows, required this.atlases, required this.rowSpots, required this.spaces, required this.keys, this.photos = const {}, this.bookKeys = const []});
   final Map<String, CoverPhoto> photos;
+  final List<Map<String, BookKey>> bookKeys;
   final List<RowCase> rows;
   final List<ui.Image> atlases;
   final List<List<Spot>> rowSpots;
@@ -360,13 +379,13 @@ class ShelfPainter extends CustomPainter {
       final area = Path()..addRect(Rect.fromLTRB(0, contentY + y0, size.width, contentY + y1));
       final up = i > 0 ? plankOutlinePath((v) => toPx(cam, pxOf(geo[i - 1]), v), m.scale) : null;
       canvas.clipPath(up == null ? area : Path.combine(PathOperation.difference, area, up));
-      drawRow(canvas, lit, book, cam, px, rows[i], rowSpots[i], atlases[i], r.space, keys[i], glyphs: _glyphs, photos: photos, tab: _tab);
+      drawRow(canvas, lit, book, cam, px, rows[i], rowSpots[i], atlases[i], r.space, keys[i], glyphs: _glyphs, photos: photos, tab: _tab, bookKeys: i < bookKeys.length ? bookKeys[i] : const {});
       canvas.restore();
       if (contentY + y0 > size.height) break;
     }
   }
 
   @override
-  bool shouldRepaint(ShelfPainter old) => old.atlases != atlases || old.photos != photos;
+  bool shouldRepaint(ShelfPainter old) => old.atlases != atlases || old.photos != photos || old.bookKeys != bookKeys;
 }
 

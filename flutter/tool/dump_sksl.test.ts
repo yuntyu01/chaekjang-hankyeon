@@ -25,6 +25,10 @@ import { boxOf, ENV_NX, ENV_NY, GRID_N, GRID_PASSES, lightSet, packBoxes, withCo
 import { SHELF_THICK } from '@/domain/geometry';
 import { type Book3 } from '@/domain/book3';
 import { computeShelf } from '@/domain/shelf-scene';
+import { receivedShadow3, REACH_L, REACH_R } from '@/domain/received3';
+import { underCeil } from '@/domain/cast-shadow';
+import { corners as corners3, fromPlaced as fromPlaced3 } from '@/domain/book3';
+import { BOOK_MAX_H } from '@/domain/geometry';
 import { REAL_BEFORE, REAL_BOOKS, REAL_FRONT_BOOKS, REAL_FRONT_LAYOUT, REAL_LAYOUT, REAL_SIDE_BOOKS, REAL_SIDE_LAYOUT } from '@/domain/real-sample';
 import type { Book as AppBook, ShelfLayout } from '@/domain/types';
 import { coverTitleLayout, lyingTitleLayout, spineTitleLayout } from '@/domain/title-layout';
@@ -178,6 +182,20 @@ ${calDart}
     layoutCase('real-nopos', REAL_BOOKS, noPos(REAL_LAYOUT)),
     layoutCase('real-flipped', REAL_BOOKS, flipped(REAL_LAYOUT)),
   ];
+  // ---- 책 면이 받는 창빛 그림자(received3): 실사 책장 줄마다 책마다(ui/shelf/ShelfMotion occludersIn과 같은 가리개 고르기) ----
+  const ceil = BOOK_MAX_H + 15 + 10; // ui/shelf/metrics ROW_SPACE(움푹 파인 책장은 맨 윗줄도 천장이 있다)
+  const xr = (b: Book3) => { const xs = corners3(b).map((c) => c.x); return { lo: Math.min(...xs), hi: Math.max(...xs) }; };
+  const recvCases = layoutCases.filter((c) => c.name === 'real' || c.name === 'real-side').flatMap((c) => Object.entries(c.frames).flatMap(([shelfId, fs]) => {
+    const bodies = fs.map((f) => fromPlaced3(f.box as never));
+    return bodies.map((b) => {
+      const me = xr(b);
+      const occ = bodies.filter((o) => o.id !== b.id).map((o) => underCeil(o, ceil)).filter((o): o is Book3 => !!o).filter((o) => { const r = xr(o); return !(r.hi < me.lo - REACH_L || r.lo > me.hi + REACH_R); });
+      const r = receivedShadow3(b, occ, 2);
+      return { layout: c.name, shelfId, bookId: b.id, faces: r ? r.faces.map((f) => ({ f: f.f, bands: f.bands.map((band) => band.map((l) => ({ poly: l.poly.map((q) => [q.x, q.y, q.z]), sigma: l.sigma, w: l.w }))) })) : [] };
+    });
+  }));
+  write(join(ROOT, 'test', 'fixtures'), 'received_cases.json', `${JSON.stringify({ note: '지금 앱 receivedShadow3 결과(tool/dump_sksl.test.ts). 손으로 고치지 말 것', ceil, recvCases })}\n`);
+
   write(join(ROOT, 'test', 'fixtures'), 'layout_cases.json', `${JSON.stringify({ note: '지금 앱 computeShelf 결과(tool/dump_sksl.test.ts). 손으로 고치지 말 것', layoutCases })}\n`);
 
   // 실제 책 비교 책장(지금 앱 real-sample): Flutter 앱이 비어 있을 때 넣는 보기 서재. 표지는 YES24에서 받는다
