@@ -15,6 +15,7 @@ import '../domain/vec3.dart';
 import '../gen/light_uniforms.g.dart' as cal;
 import '../gen/scene_uniforms.g.dart';
 import 'bake.dart';
+import 'plane_key.dart';
 
 /// 보는 눈: 줄 앞 viewDist만큼 떨어진 자리. 보기 각이 높을수록 눈이 올라간다
 class Cam {
@@ -103,6 +104,7 @@ ui.FragmentShader planeShader({
   required ui.Image atlas,
   required Spot spot,
   required List<double> cellToPx,
+  PlaneKey key = PlaneKey.none,
   List<double> seed = const [0, 0],
 }) {
   final sh = u.shader();
@@ -124,12 +126,14 @@ ui.FragmentShader planeShader({
   ];
 
   sh.setImageSampler(0, atlas, filterQuality: ui.FilterQuality.low);
-  sh.setImageSampler(1, emptyImage, filterQuality: ui.FilterQuality.low);
+  final keyImg = key.image;
+  sh.setImageSampler(1, keyImg ?? emptyImage, filterQuality: ui.FilterQuality.low);
   sh.setImageSampler(2, emptyImage, filterQuality: ui.FilterQuality.low);
   vec('texSize', [atlas.width.toDouble(), atlas.height.toDouble()]);
   vec('texMat', toMat3(invert3(m)));
   one('texDecal', 0);
-  vec('keyTexSize', [1, 1]);
+  // 창빛 그림자는 셰이더가 평면 점 P로 칸을 직접 구한다(kU·kV·kO). 행렬은 그대로 두고 크기만 준다
+  vec('keyTexSize', [(keyImg?.width ?? 1).toDouble(), (keyImg?.height ?? 1).toDouble()]);
   vec('keyTexMat', toMat3(_ident));
   one('keyTexDecal', 1);
   vec('tex2Size', [1, 1]);
@@ -157,9 +161,9 @@ ui.FragmentShader planeShader({
   vec('albedo', surface.albedo.list);
   vec('eref', surface.eref.list);
   vec('sref', surface.sref.list);
-  vec('kU', const [0, 0, 0]);
-  vec('kV', const [0, 0, 0]);
-  vec('kO', const [-8, -8]);
+  vec('kU', key.kU);
+  vec('kV', key.kV);
+  vec('kO', key.kO);
   vec('mR', surface.mat.rough);
   vec('mB', surface.mat.bump);
   vec('mG', surface.mat.grain);
@@ -213,6 +217,7 @@ void drawRow(
   List<Spot> spots,
   ui.Image atlas,
   double space,
+  ({PlaneKey wall, PlaneKey floor}) keys,
 ) {
   // 뒷벽(면 0)
   final top = toPx(c, px, Vec3(0, space + shelfThick, shelfDepth));
@@ -232,6 +237,7 @@ void drawRow(
         atlas: atlas,
         spot: spots[0],
         cellToPx: _wallCellToPx(c, px, spots[0], space),
+        key: keys.wall,
       ),
   );
 
@@ -267,6 +273,7 @@ void drawRow(
           atlas: atlas,
           spot: spot,
           cellToPx: faceTextureMatrix(face, spot.w, spot.h, 1, 0, 0),
+          key: i == 1 ? keys.floor : PlaneKey.none,
           seed: seed,
         ),
     );

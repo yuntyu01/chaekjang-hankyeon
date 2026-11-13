@@ -11,6 +11,7 @@ import 'domain/geometry.dart';
 import 'domain/shelf_row.dart';
 import 'ui/bake.dart';
 import 'ui/bake_cache.dart';
+import 'ui/plane_key.dart';
 import 'ui/scene.dart';
 
 /// 앱이 깨어난 때(켜고 책장이 다 될 때까지를 재려고 되도록 이른 곳에서 잡는다).
@@ -53,6 +54,9 @@ class Run {
   int get gridTotal => rows.fold(0, (t, r) => t + r.gridMs);
 }
 
+/// 창빛 그림자 그림의 배율(설계 단위 → 그림 칸). 지금 앱은 화면 배율을 쓴다
+const _shadowScale = 2.0;
+
 class GatePage extends StatefulWidget {
   const GatePage({super.key});
 
@@ -65,6 +69,7 @@ class _GatePageState extends State<GatePage> {
   final List<ui.Image> _atlases = [];
   final List<List<Spot>> _rowSpots = [];
   final List<double> _spaces = [];
+  final List<({PlaneKey wall, PlaneKey floor})> _keys = [];
   String _state = '준비 중…';
   bool _busy = false;
   BakeCase? _case;
@@ -102,6 +107,7 @@ class _GatePageState extends State<GatePage> {
     final images = <ui.Image>[];
     final spots = <List<Spot>>[];
     final spaces = <double>[];
+    final keys = <({PlaneKey wall, PlaneKey floor})>[];
     for (var ri = 0; ri < c.rows.length; ri++) {
       final r = c.rows[ri];
       final probe = ri == c.rows.length - 1; // 맨 뒤는 값 확인용(시간에 넣지 않는다)
@@ -114,6 +120,7 @@ class _GatePageState extends State<GatePage> {
         if (!probe) {
           spots.add(pack.at);
           spaces.add(r.env.ceil);
+          keys.add(await rowKeys(r, _shadowScale));
           rows.add(RowRun(r.items.length, pack.w, pack.h, 0, 0));
         }
         // ignore: avoid_print
@@ -132,6 +139,7 @@ class _GatePageState extends State<GatePage> {
       if (!probe) {
         spots.add(atlas.at); // 면 0 = 뒷벽, 1 = 판 윗면, 2 = 판 앞면, 3부터 책 면
         spaces.add(r.env.ceil);
+        keys.add(await rowKeys(r, _shadowScale));
       }
       final run = RowRun(r.items.length, atlas.w, atlas.h, gridMs, bakeMs);
       if (!probe) rows.add(run);
@@ -165,6 +173,9 @@ class _GatePageState extends State<GatePage> {
       _spaces
         ..clear()
         ..addAll(spaces);
+      _keys
+        ..clear()
+        ..addAll(keys);
       _runs.add(run);
       _state = '${_runs.length}번째';
       _busy = false;
@@ -222,6 +233,7 @@ class _GatePageState extends State<GatePage> {
                     rows: _case!.rows,
                     atlases: _atlases,
                     rowSpots: _rowSpots,
+                    keys: _keys,
                     spaces: _spaces,
                   ),
                 ),
@@ -235,11 +247,12 @@ class _GatePageState extends State<GatePage> {
 
 /// 구운 줄들을 실제 책장처럼 쌓아 그린다(지금은 뒷벽만, ui/scene). 줄마다 카메라가 따로다
 class ShelfPainter extends CustomPainter {
-  ShelfPainter({required this.rows, required this.atlases, required this.rowSpots, required this.spaces});
+  ShelfPainter({required this.rows, required this.atlases, required this.rowSpots, required this.spaces, required this.keys});
   final List<RowCase> rows;
   final List<ui.Image> atlases;
   final List<List<Spot>> rowSpots;
   final List<double> spaces;
+  final List<({PlaneKey wall, PlaneKey floor})> keys;
 
   static ShaderSlots? _lit;
   static ShaderSlots? _book;
@@ -264,7 +277,7 @@ class ShelfPainter extends CustomPainter {
       final h = rowHeightPx(cam, px, space);
       canvas.save();
       canvas.clipRect(Rect.fromLTWH(0, y, size.width, h));
-      drawRow(canvas, lit, book, cam, px, rows[i], rowSpots[i], atlases[i], space);
+      drawRow(canvas, lit, book, cam, px, rows[i], rowSpots[i], atlases[i], space, keys[i]);
       canvas.restore();
       y += h;
       if (y > size.height) break;
