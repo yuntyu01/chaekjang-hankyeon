@@ -5,6 +5,7 @@ import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
 
+import 'domain/shelf_row.dart';
 import 'ui/bake.dart';
 
 /// 앱이 깨어난 때(켜고 책장이 다 될 때까지를 재려고 되도록 이른 곳에서 잡는다).
@@ -77,7 +78,13 @@ class _GatePageState extends State<GatePage> {
     });
     final t0 = DateTime.now();
     // 셰이더는 빌드할 때 미리 컴파일돼 있다(impellerc). 여기서는 읽어 올리기만 한다
-    final c = _case ??= await BakeCase.load();
+    // 줄은 Dart에서 만든다(지금 앱의 빛 모델을 옮긴 domain/shelf_row). 지금 앱 로그의 줄들과 같은 양:
+    // 면 3 + 책×4 → 3 · 23 · 19 · 19 · 31 · 19면, 맨 뒤는 값 확인용 작은 줄
+    final c = _case ??= BakeCase([
+      for (final (n, space) in const [(0, 190.0), (5, 190.0), (4, 205.0), (4, 205.0), (7, 215.0), (4, 205.0)])
+        buildRow(sampleBooks(n, space), space),
+      probeRow(),
+    ]);
     final gridSlots = _gridSlots ??= ShaderSlots(await ui.FragmentProgram.fromAsset('shaders/grid.frag'), gridUniformNames);
     final bakeSlots = _bakeSlots ??= ShaderSlots(await ui.FragmentProgram.fromAsset('shaders/bake.frag'), bakeUniformNames);
     final loadMs = DateTime.now().difference(t0).inMilliseconds;

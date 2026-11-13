@@ -6,74 +6,28 @@
 library;
 
 import 'dart:async';
-import 'dart:convert';
 import 'dart:typed_data';
 import 'dart:ui' as ui;
 
-import 'package:flutter/services.dart' show rootBundle;
+import '../domain/shelf_row.dart';
+import '../domain/vec3.dart';
+import '../gen/light_uniforms.g.dart' as cal;
 
-/// 굽는 면 하나: 면 위 칸 격자(O에서 U·V만큼씩 w × h칸)와 바깥 법선 n, 이 면의 책(self, 없으면 −1)
-class BakeItem {
-  BakeItem.fromJson(Map<String, dynamic> j)
-      : o = _v(j['O']),
-        u = _v(j['U']),
-        v = _v(j['V']),
-        n = _v(j['n']),
-        w = j['w'] as int,
-        h = j['h'] as int,
-        self = (j['self'] as num).toDouble();
-
-  final List<double> o;
-  final List<double> u;
-  final List<double> v;
-  final List<double> n;
-  final int w;
-  final int h;
-  final double self;
-}
-
-List<double> _v(Object? x) => (x as List).map((e) => (e as num).toDouble()).toList();
-
-/// 줄 하나의 굽기 입력(둘레·상자 목록·구울 면들)
-class BakeRow {
-  BakeRow.fromJson(Map<String, dynamic> j)
-      : env = _v(j['env']),
-        nBox = j['nBox'] as int,
-        box = _v(j['box']),
-        items = (j['items'] as List).map((x) => BakeItem.fromJson(x as Map<String, dynamic>)).toList();
-
-  final List<double> env;
-  final int nBox;
-  final List<double> box;
-  final List<BakeItem> items;
-
-  int get cells => items.fold(0, (t, it) => t + it.w * it.h);
-}
-
+/// 굽기에 쓰는 값(지금은 줄마다 둘레·상자·면. 맞추기 값은 lib/gen/light_uniforms.g.dart)
 class BakeCase {
-  BakeCase.fromJson(Map<String, dynamic> j)
-      : gridPasses = j['gridPasses'] as int,
-        gridN = j['gridN'] as int,
-        envNy = j['envNy'] as int,
-        envNx = j['envNx'] as int,
-        cal = (j['cal'] as Map<String, dynamic>).map((k, x) => MapEntry(k, _v(x))),
-        rows = (j['rows'] as List).map((x) => BakeRow.fromJson(x as Map<String, dynamic>)).toList();
+  const BakeCase(this.rows);
+  final List<RowCase> rows;
 
-  final int gridPasses;
-  final int gridN;
-  final int envNx;
-  final int envNy;
-  final Map<String, List<double>> cal;
-  final List<BakeRow> rows;
+  /// 빛 격자를 푸는 되풀이 수(지금 앱 light-model GRID_PASSES)
+  static const gridPasses = 6;
 
-  /// 빛 격자 그림 크기(scene-light-sksl GRID_SCALE 배치)
-  int gridW() => 6 * gridN;
-  int gridH(BakeRow r) => r.nBox * gridN + 3 * envNy;
+  /// 빛 격자 칸(GRID_N)과 둘레 칸(ENV_NY·ENV_NX)
+  static const gridN = 8;
+  static const envNy = 16;
+  static const envNx = 6 * gridN;
 
-  static Future<BakeCase> load() async {
-    final text = await rootBundle.loadString('assets/bake_case.json');
-    return BakeCase.fromJson(jsonDecode(text) as Map<String, dynamic>);
-  }
+  int get gridW => 6 * gridN;
+  int gridH(RowCase r) => r.bx.list.length * gridN + 3 * envNy;
 }
 
 /// 면마다 아틀라스에서의 자리(칸). 둘레에 한 칸씩 더 굽는다(겹선형 읽기가 옆 면으로 새지 않게)
@@ -142,6 +96,11 @@ const _itemNames = ['O', 'Ux', 'Vy', 'tN', 'cells', 'selfIdx'];
 const bakeUniformNames = [..._itemNames, ..._commonNames];
 const gridUniformNames = _commonNames;
 
+final _calValues = <String, C3>{
+  'ECAM': cal.ECAM, 'RADF': cal.RADF, 'RADU': cal.RADU, 'RADW': cal.RADW, 'RADE': cal.RADE,
+  'RADSL': cal.RADSL, 'RADSR': cal.RADSR, 'PAPER': cal.PAPER, 'ALB_WALL': cal.ALB_WALL, 'ALB_PLANK': cal.ALB_PLANK,
+};
+
 void _setVec(ui.FragmentShader sh, int at, List<double> v) {
   for (var i = 0; i < v.length; i++) {
     sh.setFloat(at + i, v[i]);
@@ -149,19 +108,20 @@ void _setVec(ui.FragmentShader sh, int at, List<double> v) {
 }
 
 /// 두 셰이더가 함께 읽는 값(둘레·맞추기 값·상자 목록·빛 격자 그림)
-void _setCommon(ui.FragmentShader sh, ShaderSlots u, BakeCase c, BakeRow r, {required ui.Image? grid}) {
-  _setVec(sh, u.at('env'), r.env);
+void _setCommon(ui.FragmentShader sh, ShaderSlots u, BakeCase c, RowCase r, {required ui.Image? grid}) {
+  _setVec(sh, u.at('env'), r.env.u);
   for (final name in _calNames) {
-    _setVec(sh, u.at(name), c.cal[name]!);
+    _setVec(sh, u.at(name), _calValues[name]!.list);
   }
   final box = u.at('box');
-  for (var i = 0; i < r.box.length; i++) {
-    sh.setFloat(box + i, r.box[i]);
+  for (var i = 0; i < r.bx.v.length; i++) {
+    sh.setFloat(box + i, r.bx.v[i]);
   }
-  sh.setFloat(u.at('nBox'), r.nBox.toDouble());
+  final nBox = r.bx.list.length;
+  sh.setFloat(u.at('nBox'), nBox.toDouble());
   sh.setFloat(u.at('gridOn'), grid != null ? 1 : 0);
-  sh.setFloat(u.at('gridNx'), r.nBox > 0 || r.env[0] > 1.5 ? c.envNx.toDouble() : 1);
-  _setVec(sh, u.at('gridSize'), [c.gridW().toDouble(), c.gridH(r).toDouble()]);
+  sh.setFloat(u.at('gridNx'), nBox > 0 || r.env.side ? BakeCase.envNx.toDouble() : 1);
+  _setVec(sh, u.at('gridSize'), [c.gridW.toDouble(), c.gridH(r).toDouble()]);
   // 칸 사이는 선형으로, 끝은 늘려 읽는다(지금 앱 linearShader와 같다)
   sh.setImageSampler(0, grid ?? _empty, filterQuality: ui.FilterQuality.low);
 }
@@ -204,12 +164,12 @@ Future<ui.Image> _draw(int w, int h, ui.FragmentShader sh) async {
 }
 
 /// 빛 격자(되비침)를 gridPasses번 풀어 그림 한 장으로. 첫 번은 가리개를 가림 없는 받는 빛으로 본다
-Future<ui.Image> solveGrid(ShaderSlots u, BakeCase c, BakeRow r) async {
+Future<ui.Image> solveGrid(ShaderSlots u, BakeCase c, RowCase r) async {
   ui.Image? img;
-  for (var k = 0; k < c.gridPasses; k++) {
+  for (var k = 0; k < BakeCase.gridPasses; k++) {
     final sh = u.shader();
     _setCommon(sh, u, c, r, grid: img);
-    final next = await _draw(c.gridW(), c.gridH(r), sh);
+    final next = await _draw(c.gridW, c.gridH(r), sh);
     sh.dispose();
     img?.dispose();
     img = next;
@@ -221,7 +181,7 @@ Future<ui.Image> solveGrid(ShaderSlots u, BakeCase c, BakeRow r) async {
 Future<({ui.Image image, List<Spot> at, int w, int h})> bakeAtlas(
   ShaderSlots u,
   BakeCase c,
-  BakeRow r,
+  RowCase r,
   ui.Image grid,
 ) async {
   final pack = packAtlas(r.items);
@@ -231,10 +191,10 @@ Future<({ui.Image image, List<Spot> at, int w, int h})> bakeAtlas(
     final it = r.items[i];
     final sp = pack.at[i];
     final sh = u.shader();
-    _setVec(sh, u.at('O'), it.o);
-    _setVec(sh, u.at('Ux'), it.u);
-    _setVec(sh, u.at('Vy'), it.v);
-    _setVec(sh, u.at('tN'), it.n);
+    _setVec(sh, u.at('O'), it.o.list);
+    _setVec(sh, u.at('Ux'), it.u.list);
+    _setVec(sh, u.at('Vy'), it.v.list);
+    _setVec(sh, u.at('tN'), it.n.list);
     _setVec(sh, u.at('cells'), [it.w.toDouble(), it.h.toDouble()]);
     sh.setFloat(u.at('selfIdx'), it.self);
     _setCommon(sh, u, c, r, grid: grid);

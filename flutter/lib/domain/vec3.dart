@@ -25,6 +25,8 @@ class Vec3 {
     return l > 0 ? Vec3(x / l, y / l, z / l) : zero;
   }
 
+  List<double> get list => [x, y, z];
+
   @override
   String toString() => '($x, $y, $z)';
 }

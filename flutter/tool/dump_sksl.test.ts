@@ -43,7 +43,8 @@ test('dump sksl + bake case', () => {
 
   // ---- 줄 여섯(지금 앱이 실제 굽는 줄과 면 수·칸 수를 맞춘다: 로그의 5·26·21·19·31·20면) ----
   // 책 수가 다른 줄을 만들어 같은 양을 굽게 한다. 기댄 책(돌아간 상자)도 줄마다 하나씩 둔다
-  const faces: FaceId[] = ['front', 'back', 'spine', 'fore', 'head', 'tail'];
+  // 책 한 권에 굽는 면(지금 앱은 보이는 면만 고른다. 여기서는 네 면 고정)
+  const faces: FaceId[] = ['cover', 'back', 'spine', 'fore'];
   const book = (x: number, T = 30, H = 174, W = 120): Book3 => ({ id: `b${x}`, dims: { T, H, W }, roll: 0, yaw: 0, t: { x, y: 0, z: 0 } });
 
   function rowOf(nBooks: number, space: number) {
@@ -73,7 +74,7 @@ test('dump sksl + bake case', () => {
     items.push(area({ x: SHELF_X0, y: 0, z: -70 }, { x: 1, y: 0, z: 0 }, { x: 0, y: -1, z: 0 }, SHELF_X1 - SHELF_X0, SHELF_THICK, { x: 0, y: 0, z: 1 }));
     // 책 면(ui/SceneLight bookItems와 같다: 보이는 면만 고르는 것은 빼고 책마다 네 면 — 앞·책등·머리·배)
     books.forEach((b, i) => {
-      for (const f of faces.slice(0, 4)) {
+      for (const f of faces) {
         const pn = lightPanel(b.dims, f);
         const w = Math.max(1, Math.ceil(pn.w / BAKE_TEXEL));
         const h = Math.max(1, Math.ceil(pn.h / BAKE_TEXEL));
@@ -107,6 +108,21 @@ test('dump sksl + bake case', () => {
   ];
 
   const cal = lightSet().u as Record<string, number | number[]>;
+  // 맞추기 값은 Dart 상수로도 쓴다(앱이 JSON 없이 굽게). light-model calibrate를 옮기기 전까지 여기서 받는다
+  const calDart = Object.keys(cal).sort().map((k) => {
+    const v = cal[k];
+    const a = typeof v === 'number' ? [v] : v;
+    return a.length === 1 ? `const double ${k} = ${a[0]};` : `const ${k} = C3(${a.map((x) => (Number.isInteger(x) ? `${x}.0` : x)).join(', ')});`;
+  }).join('\n');
+  write(join(ROOT, 'lib', 'gen'), 'light_uniforms.g.dart', `// 지금 앱의 빛 맞추기 값(light-model lightSet().u). tool/gen_shaders.sh 가 만든다 — 손으로 고치지 말 것.
+// 재질 색(시안 색)에서 거꾸로 구한 반사율·카메라 기준 빛이라, 빛 설정이나 스킨이 바뀌면 다시 만들어야 한다
+// ignore_for_file: constant_identifier_names
+library;
+
+import '../domain/vec3.dart';
+
+${calDart}
+`);
   const caseJson = {
     note: '지금 앱의 빛 모델에서 뽑은 줄 여섯의 굽기 입력(flutter/tool/dump_sksl.test.ts). 손으로 고치지 말 것',
     gridPasses: GRID_PASSES,

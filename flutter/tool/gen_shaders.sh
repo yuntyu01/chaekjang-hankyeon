@@ -12,7 +12,7 @@ FLUTTER_BIN=${FLUTTER_BIN:-$HOME/flutter/bin}
 echo "== SkSL 뽑기 (jest)"
 cd "$ROOT/../app"
 PATH=$NODE_BIN:$PATH npx jest --silent=false \
-  --config '{"preset":"jest-expo","rootDir":".","testEnvironment":"node","modulePaths":["<rootDir>/node_modules"],"roots":["../flutter/tool"],"moduleNameMapper":{"^@/(.*)$":"<rootDir>/src/$1"}}' \
+  --config '{"preset":"jest-expo","rootDir":".","testEnvironment":"node","modulePaths":["<rootDir>/node_modules"],"roots":["../flutter/tool"],"testMatch":["**/dump_sksl.test.ts"],"moduleNameMapper":{"^@/(.*)$":"<rootDir>/src/$1"}}' \
   2>&1 | grep -E "^\s+(console.log|\[dump\])|✓|✕|Tests:" | sed 's/^ *//'
 
 echo "== GLSL 로 바꾸기"
