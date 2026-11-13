@@ -11,6 +11,8 @@ import 'package:flutter_svg/flutter_svg.dart';
 
 import '../gen/lucide.g.dart';
 import '../services/cover_cache.dart';
+import '../store/mini_timer_store.dart';
+import '../store/reading_store.dart';
 import 'theme.dart';
 
 /// 간격: 화면 좌우 24, 4·8·12·16·28·40 단계
@@ -183,11 +185,16 @@ class Screen extends StatelessWidget {
         ),
       ),
     );
+    // 독서 중이면 작은 타이머에 마지막 내용이 가리지 않게 아래를 더 비운다
     final body = scroll
-        ? SingleChildScrollView(
-            padding: EdgeInsets.only(bottom: Space.section + bottomPad + (footer != null ? 0 : insets.bottom)),
-            keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
-            child: content,
+        ? ListenableBuilder(
+            listenable: ReadingStore.instance,
+            builder: (context, _) => SingleChildScrollView(
+              padding: EdgeInsets.only(
+                  bottom: Space.section + bottomPad + (ReadingStore.instance.active != null ? miniTimerSpace : 0) + (footer != null ? 0 : insets.bottom)),
+              keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+              child: content,
+            ),
           )
         : fixed;
     // Material: 글자 기본 모양·잉크 효과의 바탕(밀어 넣은 화면에서도 글자 밑에 노란 줄이 생기지 않게)

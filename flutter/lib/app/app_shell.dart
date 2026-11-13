@@ -10,6 +10,7 @@ import '../features/home/home_screen.dart';
 import '../features/reading/finish_screen.dart';
 import '../features/reading/reading_screen.dart';
 import '../store/library_model.dart';
+import '../store/mini_timer_store.dart';
 import '../store/reading_store.dart';
 import '../ui/alert.dart';
 import '../features/reading/read_list.dart';
@@ -41,6 +42,9 @@ final _tabs = <_Tab>[
   _Tab('내 정보', (c, f) => profileTabIcon(c, size: TabBarStyle.icon, filled: f), (_) => const _Pending('내 정보')),
 ];
 
+/// 탭마다 지금 앱 경로(작은 타이머 자리·숨김을 정한다)
+const _tabPaths = ['/', '/bookmarks', '/read', '/stats', '/me'];
+
 class _AppShellState extends State<AppShell> {
   int _index = 0;
 
@@ -67,7 +71,7 @@ class _AppShellState extends State<AppShell> {
       appAlert(context, '저장하지 않은 독서 기록이 있어요', '지난번에 끝낸 ${formatDuration(pending.durationMs)} 기록을 아직 저장하거나 버리지 않았어요.', [
         AlertButton('기록 확인하기', onPress: () {
           reading.ackPendingRestored();
-          Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => const FinishScreen()));
+          Navigator.of(context).push(MaterialPageRoute<void>(settings: const RouteSettings(name: '/reading/finish'), builder: (_) => const FinishScreen()));
         }),
         AlertButton('나중에', style: AlertStyle.cancel, onPress: reading.ackPendingRestored),
       ], true, true);
@@ -87,7 +91,7 @@ class _AppShellState extends State<AppShell> {
         }),
         AlertButton('$hm에 끝낸 것으로 기록하기', onPress: () {
           reading.finish(it.lastBeat);
-          Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => const FinishScreen()));
+          Navigator.of(context).push(MaterialPageRoute<void>(settings: const RouteSettings(name: '/reading/finish'), builder: (_) => const FinishScreen()));
         }),
         AlertButton('나중에 정하기(일시정지로 둠)', style: AlertStyle.cancel, onPress: reading.dismissInterrupted),
       ],
@@ -133,6 +137,7 @@ class _AppShellState extends State<AppShell> {
                             onTap: () => setState(() {
                               _index = i;
                               _opened.add(i);
+                              MiniTimerPlace.instance.setTab(_tabPaths[i]);
                             }),
                             child: Center(child: _tabs[i].icon(i == _index ? AppColors.tabInk : AppColors.tabInkSoft, i == _index)),
                           ),

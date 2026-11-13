@@ -8,6 +8,8 @@ import 'package:flutter/material.dart';
 
 import '../../domain/library.dart';
 import '../../store/library_model.dart';
+import '../../store/mini_timer_store.dart';
+import '../../store/reading_store.dart';
 import '../../ui/kit.dart';
 import '../../ui/theme.dart';
 import '../book/labels.dart';
@@ -46,12 +48,14 @@ class _BookmarksScreenState extends State<BookmarksScreen> {
     super.initState();
     _book = widget.initialBook;
     _model.addListener(_changed);
+    ReadingStore.instance.addListener(_changed);
     _model.load();
   }
 
   @override
   void dispose() {
     _model.removeListener(_changed);
+    ReadingStore.instance.removeListener(_changed);
     super.dispose();
   }
 
@@ -190,7 +194,7 @@ class _BookmarksScreenState extends State<BookmarksScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final bottomPad = TabBarStyle.height + 40 + MediaQuery.paddingOf(context).bottom;
+    final bottomPad = TabBarStyle.height + 40 + MediaQuery.paddingOf(context).bottom + (ReadingStore.instance.active != null ? miniTimerSpace : 0);
     if (!_model.loaded) return const Screen(title: '갈피', back: false, scroll: false, children: []);
     final all = _all;
     if (all.isEmpty) {

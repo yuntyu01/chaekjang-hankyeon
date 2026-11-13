@@ -163,7 +163,9 @@ Library libraryFromRows(Map<String, List<DbRow>> t) {
 const libraryTables = ['editions', 'edition_authors', 'my_books', 'rounds', 'sessions', 'bookmarks', 'bindings'];
 
 /// 서재 전체를 읽는다(지금 앱 loadLib)
+/// 표들을 한 트랜잭션에서 읽는다(읽는 사이에 다른 쓰기가 끼어 판본 없이 책만 읽히는 일이 없게)
 Future<Library> loadFullLibrary([Database? d]) async {
   final db = d ?? await openLibrary();
-  return libraryFromRows({for (final t in libraryTables) t: await db.rawQuery('SELECT * FROM $t')});
+  final rows = await db.transaction((t) async => {for (final name in libraryTables) name: await t.rawQuery('SELECT * FROM $name')});
+  return libraryFromRows(rows);
 }

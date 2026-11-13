@@ -9,6 +9,7 @@ import '../domain/color.dart';
 import '../domain/library.dart';
 import '../domain/reading.dart';
 import 'library_read.dart';
+import 'seed.dart';
 
 class LibraryModel extends ChangeNotifier {
   LibraryModel._();
@@ -20,7 +21,8 @@ class LibraryModel extends ChangeNotifier {
   Future<void>? _loading;
   Future<void> _writes = Future.value();
 
-  Future<void> load() => _loading ??= loadFullLibrary().then((l) {
+  // 예시 서재(빈 서재에만 넣는다)를 다 넣은 뒤에 읽는다
+  Future<void> load() => _loading ??= seedIfEmpty().then((_) => loadFullLibrary()).then((l) {
         lib = l;
         loaded = true;
         notifyListeners();

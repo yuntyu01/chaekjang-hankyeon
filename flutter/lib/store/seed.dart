@@ -26,7 +26,11 @@ void rememberSampleSpineRatios() {
   }
 }
 
-Future<void> seedIfEmpty() async {
+/// 한 번만 넣는다(여러 곳에서 불러도 같은 작업을 기다린다)
+Future<void>? _seeding;
+Future<void> seedIfEmpty() => _seeding ??= _seed();
+
+Future<void> _seed() async {
   rememberSampleSpineRatios();
   final db = await openLibrary();
   final n = (await db.rawQuery('SELECT COUNT(*) c FROM my_books')).first['c'] as int? ?? 0;

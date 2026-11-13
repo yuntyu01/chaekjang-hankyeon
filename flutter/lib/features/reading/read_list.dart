@@ -122,7 +122,7 @@ class _ReadListState extends State<ReadList> {
   // 재생 단추(책마다): 재는 책이면 일시정지·다시 시작, 아니면 그 책으로 시작하고 장면으로
   void _begin(String? id) {
     if (_reading.pending != null) {
-      Navigator.of(context, rootNavigator: true).push(MaterialPageRoute<void>(builder: (_) => const FinishScreen())); // 끝냈지만 저장하지 않은 기록부터
+      Navigator.of(context, rootNavigator: true).push(MaterialPageRoute<void>(settings: const RouteSettings(name: '/reading/finish'), builder: (_) => const FinishScreen())); // 끝냈지만 저장하지 않은 기록부터
       return;
     }
     final cur = _reading.active;

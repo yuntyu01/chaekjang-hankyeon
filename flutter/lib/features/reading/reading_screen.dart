@@ -37,7 +37,10 @@ const _videos = {'rain': 'assets/scenes/rain-window.mp4', 'fire': 'assets/scenes
 
 /// 장면 화면 열기(앱 맨 위에 꽉 차게)
 Future<void> openReadingScene(BuildContext context, {String? bookId, bool soundOnly = false}) =>
-    Navigator.of(context, rootNavigator: true).push(MaterialPageRoute<void>(builder: (_) => ReadingScreen(initialBookId: bookId, soundOnly: soundOnly)));
+    Navigator.of(context, rootNavigator: true).push(MaterialPageRoute<void>(
+      settings: const RouteSettings(name: '/reading/session'),
+      builder: (_) => ReadingScreen(initialBookId: bookId, soundOnly: soundOnly),
+    ));
 
 class ReadingScreen extends StatefulWidget {
   const ReadingScreen({super.key, this.initialBookId, this.soundOnly = false});
@@ -124,14 +127,14 @@ class _ReadingScreenState extends State<ReadingScreen> with WidgetsBindingObserv
   void _finish() {
     if (_reading.active == null) return;
     _reading.finish();
-    Navigator.of(context).pushReplacement(MaterialPageRoute<void>(builder: (_) => const FinishScreen()));
+    Navigator.of(context).pushReplacement(MaterialPageRoute<void>(settings: const RouteSettings(name: '/reading/finish'), builder: (_) => const FinishScreen()));
   }
 
   void _leave() => Navigator.of(context).maybePop();
 
   void _start() {
     if (_reading.active != null || _reading.pending != null) {
-      if (_reading.pending != null) Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => const FinishScreen()));
+      if (_reading.pending != null) Navigator.of(context).push(MaterialPageRoute<void>(settings: const RouteSettings(name: '/reading/finish'), builder: (_) => const FinishScreen()));
       return;
     }
     final id = _draftBookId != null && lib.books[_draftBookId] != null ? _draftBookId : null;
@@ -565,7 +568,7 @@ class _ReadingScreenState extends State<ReadingScreen> with WidgetsBindingObserv
                     kind: 'ghost',
                     onPress: () {
                       _start();
-                      Navigator.of(context).pushReplacement(MaterialPageRoute<void>(builder: (_) => const ReadingScreen()));
+                      Navigator.of(context).pushReplacement(MaterialPageRoute<void>(settings: const RouteSettings(name: '/reading/session'), builder: (_) => const ReadingScreen()));
                     },
                   ),
                 ),
