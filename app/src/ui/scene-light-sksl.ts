@@ -43,9 +43,6 @@ export function planeFrame(c: Cam, px: Affine, pl: Plane) {
 const f = (v: number) => (Number.isFinite(v) ? v.toPrecision(9) : '1e9');
 const v3 = (v: { x: number; y: number; z: number }) => `float3(${f(v.x)}, ${f(v.y)}, ${f(v.z)})`;
 const c3 = (c: C3) => `float3(${f(c[0])}, ${f(c[1])}, ${f(c[2])})`;
-// 잘린 다각형 꼭짓점 최대 수: 사각형 4 + 반구 1 + 구역 평면 넷(볼록 다각형은 평면 하나에 꼭짓점이 많아야 하나 는다. 구역 평면은 걸칠 때만 자른다)
-const NV = 9;
-
 // 하늘 가림 그림: 선형 RGB 채널마다 남은 하늘 빛 R = sky − 가림(sky = 그 면이 받는 하늘 빛 AMB + SKYTILT·n, n = 구운 면 법선)을
 // 0을 가운데(그림 값 LOSS_G0)로 양쪽 제곱근 곡선에 담는다: R ≥ 0이면 g = G0 + (1 − G0)·√(R/RP), R < 0이면 g = G0 − G0·√(−R/RN).
 // 받는 빛이 작은 그늘일수록 단계가 촘촘하다(R 0.02에서 한 단계 0.0018, 하늘 그대로 0.3에서 0.0069. 가림을 그대로 담으면 어디서나 0.0075라
@@ -302,109 +299,16 @@ function header() {
 `;
 }
 
-// 볼록 다각형 잘라 내기와 (F, M) 적분(하늘 가림 계산 공통)
+// 볼록 영역의 (F, M) 적분(하늘 가림 계산 공통). 2026-11-13: 꼭짓점 배열 없이 경계 변마다 적분을 더한다.
+// 예전에는 다각형을 꼭짓점 배열(float3[9])로 잘라 냈다(서덜랜드–호지먼). 배열을 함수에 넘기고 복사할 때마다 폰 GPU(S23 Adreno)는 그 배열을
+// 레지스터에 두지 못하고 느린 메모리로 내보내, 같은 굽기가 PC GPU보다 100배 넘게 느렸다(한 줄 2.5~6초, 켤 때마다 GPU를 1분 가까이 씀).
+// 볼록 사각형을 평면 몇 개로 잘라 낸 볼록 다각형의 경계는 사각형 변(다른 평면들 안 부분)과, 자른 평면이 사각형을 지나는 선분(다른 평면들 안 부분)뿐이다.
+// 그 선분마다 매개변수 구간만 좁혀 변 적분을 더하면 잘라 낸 다각형의 적분과 같다(light-model moments와 같은 식, 입체각만 n을 꼭짓점으로 한 부채꼴 합)
 function polyCode() {
   return `
-  // ---------- 볼록 다각형(받는 점 기준 꼭짓점 배열 v, 개수 cnt) ----------
-  // 배열 끝에 넣기(SkSL은 반복문 번호로만 배열을 고를 수 있다)
-  void push(inout float3 o[${NV}], inout int oc, float3 x) {
-    for (int j = 0; j < ${NV}; j++) { if (j == oc) o[j] = x; }
-    oc++;
-  }
-  // x·w ≥ off 쪽만 남긴다(서덜랜드–호지먼)
-  void clipPoly(inout float3 v[${NV}], inout int cnt, float3 w, float off) {
-    float3 o[${NV}];
-    for (int k = 0; k < ${NV}; k++) o[k] = float3(0.0);
-    int oc = 0;
-    float3 a = v[0];
-    for (int k = 0; k < ${NV}; k++) { if (k == cnt - 1) a = v[k]; }
-    for (int k = 0; k < ${NV}; k++) {
-      if (k >= cnt) break;
-      float3 b = v[k];
-      float da = dot(a, w) - off;
-      float db = dot(b, w) - off;
-      // 변이 평면을 건너면 교점, 그다음 b가 안쪽이면 b(차례 그대로). push를 부르는 곳을 하나로(GPU 컴파일러가 몸체를 펼치는 수를 줄인다)
-      bool crosses = (da >= 0.0) != (db >= 0.0);
-      float3 cut = crosses ? a + (b - a) * (da / (da - db)) : b;
-      for (int e = 0; e < 2; e++) {
-        if (e == 0 ? crosses : db >= 0.0) push(o, oc, e == 0 ? cut : b);
-      }
-      a = b;
-    }
-    for (int k = 0; k < ${NV}; k++) v[k] = o[k];
-    cnt = oc;
-  }
-  // 반공간 x·w ≥ 0 안(1), 밖(−1), 걸침(0)
-  float sideOf(float3 v[${NV}], int cnt, float3 w) {
-    bool pos = false;
-    bool neg = false;
-    for (int k = 0; k < ${NV}; k++) {
-      if (k >= cnt) break;
-      float d = dot(v[k], w);
-      if (d > 1e-9) pos = true;
-      else if (d < -1e-9) neg = true;
-    }
-    return pos && neg ? 0.0 : (neg ? -1.0 : 1.0);
-  }
-  // (F, M): F = (1/π)∫cosθ dω, M = (1/π)∫ω cosθ dω (light-model moments)
-  float4 moments(float3 v[${NV}], int cnt, float3 n) {
-    if (cnt < 3) return float4(0.0);
-    float3 a = v[0];
-    for (int k = 0; k < ${NV}; k++) { if (k == cnt - 1) a = v[k]; }
-    float3 u0 = normalize(a);
-    float fsum = 0.0;
-    float turn = 0.0;
-    float3 S = float3(0.0);
-    float3 mFirst = float3(0.0);
-    float3 mPrev = float3(0.0);
-    float edges = 0.0;
-    for (int k = 0; k < ${NV}; k++) {
-      if (k >= cnt) break;
-      float3 u1 = normalize(v[k]);
-      float c = clamp(dot(u0, u1), -1.0, 1.0);
-      float3 cr = cross(u0, u1);
-      float sn = length(cr);
-      if (sn > 1e-7) {
-        float th = atan(sn, c);
-        float3 m = cr / sn;
-        fsum += th * dot(m, n);
-        float3 W = u0 * sn + (u1 - c * u0) * ((1.0 - c) / sn);
-        S += m * dot(n, W) + W * dot(m, n);
-        if (edges > 0.5) turn += acos(clamp(dot(mPrev, m), -1.0, 1.0));
-        else mFirst = m;
-        mPrev = m;
-        edges += 1.0;
-      }
-      u0 = u1;
-    }
-    if (edges < 2.5) return float4(0.0);
-    turn += acos(clamp(dot(mPrev, mFirst), -1.0, 1.0));
-    float omega = max(0.0, 2.0 * PI - turn);
-    float sg = fsum < 0.0 ? -1.0 : 1.0;
-    float3 M = (n * omega / 3.0 + S * (sg / 6.0)) / PI;
-    return float4(abs(fsum) / (2.0 * PI), M);
-  }
-
-`;
-}
-
-// 둘레가 가린 하늘(light-model envLoss). GPU 컴파일러는 함수를 모두 펼치므로 무거운 몸체는 한 번만 나오게 반복문으로 쓴다.
-// grid: 빛 격자를 읽는 셰이더(굽기·격자 풀기, gridCode 뒤에 둔다). 둘레 면 밝기를 격자의 대표 점에서, 둘레 면을 가로 구간으로 나눠
-function envCode(grid: boolean) {
-  return `
-  // 판 끝 창(light-model windowPlanes·acrossPlanes): 판 끝 평면 x = X 너머의 면은 p에서 그 평면을 지나는 높이가 판 윗면 ~ 위 판 아랫면
-  // 사이일 때만 보인다. p 기준 다각형을 p와 판 끝 모서리(x = X, y = 판 윗면·아랫면)를 지나는 평면으로 자른다. 걸칠 때만 자른다
-  // 평면 하나로 자르기. always면 늘 자르고(반구), 아니면 걸칠 때만(판 끝 창·구역 변: 밖이면 비운다).
-  // 2026-11-12: 자르기를 부르는 곳이 여러 갈래로 늘어 GPU 컴파일러가 펼친 사본이 수백 개가 되어, 새로 설치한 S23에서 첫 굽기 컴파일이 1분 넘게 UI를 막았다.
-  // 그래서 자르는 곳마다 평면을 반복문으로 넘겨 이 몸체(와 clipPoly)가 셰이더마다 한두 번만 나오게 한다
-  void clipPlane(inout float3 Q[${NV}], inout int qc, float3 w, float off, bool always) {
-    if (!always && qc < 3) return;
-    float sd = always ? 0.0 : sideOf(Q, qc, w);
-    if (sd < -0.5) { qc = 0; return; }
-    if (sd < 0.5) clipPoly(Q, qc, w, off);
-  }
   // 판 끝 창 평면 i(0~7 = 창 넷 × 판 윗면·위 판 아랫면). 면 부분(part 0 판 범위, 1 왼쪽 끝 너머 벽, 2 오른쪽 끝 너머 벽)이 p에서 판 끝 창을
   // 지나야 보이면 그 창으로(판 범위를 통째로 건너면 두 끝 모두). 창 순서: X1(part 0·1, p가 X1 오른쪽), X0(part 1), X0(part 0·2, p가 X0 왼쪽), X1(part 2). 쓰지 않으면 false
+  // (판 끝 너머의 면은 p에서 판 끝 평면 x = X를 지나는 높이가 판 윗면 ~ 위 판 아랫면 사이일 때만 보인다: p와 판 끝 모서리를 지나는 평면, light-model windowPlanes·acrossPlanes)
   bool acrossPlane(int i, float3 p, int part, out float3 w) {
     w = float3(0.0);
     int wi = i / 2;
@@ -417,6 +321,123 @@ function envCode(grid: boolean) {
     w = lower ? float3(-(env.y - p.y) * sg, Xr * sg, 0.0) : float3((env.z - p.y) * sg, -Xr * sg, 0.0);
     return true;
   }
+  // 면 부분 part가 p에서 판 끝 창을 지날 수 있는가(acrossPlane이 하나라도 참일 수 있는가: 아니면 창 평면 여덟을 보지 않는다)
+  bool acrossAny(float3 p, int part) {
+    return ((part == 0 || part == 1) && p.x > X1) || (part == 1 && p.x > X0) || ((part == 0 || part == 2) && p.x < X0) || (part == 2 && p.x < X1);
+  }
+  // 구역 사각형 sa~sd(p 기준)의 변 k(0~3)와 p를 지나는 평면, 구역 안쪽이 + (light-model sectorsOf)
+  float3 sectorPlane(int k, float3 sa, float3 sb, float3 sc, float3 sd) {
+    float3 u = k == 0 ? sa : (k == 1 ? sb : (k == 2 ? sc : sd));
+    float3 v = k == 0 ? sb : (k == 1 ? sc : (k == 2 ? sd : sa));
+    float3 g = cross(u, v);
+    return dot(g, sa + sb + sc + sd) >= 0.0 ? g : -g;
+  }
+  // 자르는 평면 j: g·x ≥ off 쪽만 남긴다(x: 받는 점 p 기준). 0 반구(x·n ≥ HORIZON, 늘), 1~4 구역 평면 g1~g4(mode 1, sectorPlane),
+  // 5~12 판 끝 창(across일 때만, 면 부분 part). 쓰지 않으면 false
+  bool cutPlane(int j, float3 n, int mode, float3 g1, float3 g2, float3 g3, float3 g4, bool across, float3 p, int part, out float3 g, out float off) {
+    g = float3(0.0);
+    off = 0.0;
+    if (j == 0) {
+      g = n;
+      off = HORIZON;
+      return true;
+    }
+    if (j < 5) {
+      g = j == 1 ? g1 : (j == 2 ? g2 : (j == 3 ? g3 : g4));
+      return mode > 0;
+    }
+    return across && acrossPlane(j - 5, p, part, g);
+  }
+  // 볼록 사각형 a~d(p 기준 꼭짓점) ∩ 자르는 평면들(mode −1 반구만, 0 반구·판 끝 창, 1 반구·구역 평면 g1~g4·판 끝 창)의
+  // (F, M): F = (1/π)∫cosθ dω, M = (1/π)∫ω cosθ dω (light-model moments). 경계 선분 L: 0~3 사각형 변, 4~16 자르는 평면 L − 4가 사각형을 지나는 선분
+  float4 regionVF(float3 a, float3 b, float3 c, float3 d, float3 n, int mode, float3 g1, float3 g2, float3 g3, float3 g4, float3 p, int part) {
+    bool across = mode >= 0 && acrossAny(p, part);
+    // 쓰는 자르는 평면 수(반구 1, 구역 평면 넷, 판 끝 창 여덟)
+    int nc = across ? 13 : (mode > 0 ? 5 : 1);
+    // 사각형이 감기는 쪽(경계 선분은 영역이 왼쪽에 오게 감는다)
+    float3 N = cross(b - a, c - b);
+    float fsum = 0.0;
+    float3 S = float3(0.0);
+    float om = 0.0;
+    float edges = 0.0;
+    for (int L = 0; L < 17; L++) {
+      if (L >= 4 + nc) break;
+      float3 x0 = L == 0 ? a : (L == 1 ? b : (L == 2 ? c : d));
+      float3 x1 = L == 0 ? b : (L == 1 ? c : (L == 2 ? d : a));
+      int own = -1;
+      if (L >= 4) {
+        own = L - 4;
+        float3 g;
+        float off;
+        if (!cutPlane(own, n, mode, g1, g2, g3, g4, across, p, part, g, off)) continue;
+        // 사각형 변 위 두 교점(0은 안쪽으로 센다: 볼록 사각형이라 많아야 둘), 방향은 g × N(영역 쪽이 왼쪽)
+        int got = 0;
+        for (int e = 0; e < 4; e++) {
+          float3 e0 = e == 0 ? a : (e == 1 ? b : (e == 2 ? c : d));
+          float3 e1 = e == 0 ? b : (e == 1 ? c : (e == 2 ? d : a));
+          float s0 = dot(g, e0) - off;
+          float s1 = dot(g, e1) - off;
+          if ((s0 < 0.0) != (s1 < 0.0)) {
+            float3 y = e0 + (e1 - e0) * (s0 / (s0 - s1));
+            if (got == 0) x0 = y; else x1 = y;
+            got++;
+          }
+        }
+        if (got < 2) continue;
+        if (dot(x1 - x0, cross(g, N)) < 0.0) {
+          float3 y = x0;
+          x0 = x1;
+          x1 = y;
+        }
+      }
+      // 다른 자르는 평면들 안 부분 [t0, t1]
+      float t0 = 0.0;
+      float t1 = 1.0;
+      for (int k = 0; k < 13; k++) {
+        if (k >= nc) break;
+        if (k == own) continue;
+        float3 g;
+        float off;
+        if (!cutPlane(k, n, mode, g1, g2, g3, g4, across, p, part, g, off)) continue;
+        float s0 = dot(g, x0) - off;
+        float s1 = dot(g, x1) - off;
+        if (s0 < 0.0 && s1 < 0.0) {
+          t1 = -1.0;
+          break;
+        }
+        if (s0 < 0.0) t0 = max(t0, s0 / (s0 - s1));
+        else if (s1 < 0.0) t1 = min(t1, s0 / (s0 - s1));
+      }
+      if (t1 <= t0) continue;
+      // 변 적분(light-model moments): 꼭짓점 방향 u0 → u1
+      float3 u0 = normalize(x0 + (x1 - x0) * t0);
+      float3 u1 = normalize(x0 + (x1 - x0) * t1);
+      float cs = clamp(dot(u0, u1), -1.0, 1.0);
+      float3 cr = cross(u0, u1);
+      float sn = length(cr);
+      if (sn > 1e-7) {
+        float th = atan(sn, cs);
+        float3 m = cr / sn;
+        fsum += th * dot(m, n);
+        float3 W = u0 * sn + (u1 - cs * u0) * ((1.0 - cs) / sn);
+        S += m * dot(n, W) + W * dot(m, n);
+        // 입체각: n을 꼭짓점으로 한 구면 삼각형(n, u0, u1)의 부호 있는 넓이 합(영역이 반구 안이라 n은 늘 같은 쪽)
+        om += 2.0 * atan(dot(n, cr), 1.0 + dot(n, u0) + cs + dot(n, u1));
+        edges += 1.0;
+      }
+    }
+    if (edges < 2.5) return float4(0.0);
+    float sg = fsum < 0.0 ? -1.0 : 1.0;
+    float3 M = (n * abs(om) / 3.0 + S * (sg / 6.0)) / PI;
+    return float4(abs(fsum) / (2.0 * PI), M);
+  }
+`;
+}
+
+// 둘레가 가린 하늘(light-model envLoss). GPU 컴파일러는 함수를 모두 펼치므로 무거운 몸체는 한 번만 나오게 반복문으로 쓴다.
+// grid: 빛 격자를 읽는 셰이더(굽기·격자 풀기, gridCode 뒤에 둔다). 둘레 면 밝기를 격자의 대표 점에서, 둘레 면을 가로 구간으로 나눠
+function envCode(grid: boolean) {
+  return `
   // 판 범위 둘레 사각형 k(light-model envQuads part 'in'): 0 벽(이 줄 높이), 1 판 윗면, 2 위 판 아랫면, 가로 xa ~ xb(판 범위 안).
   // 면의 앞쪽(빛을 받는 쪽)에서만 보인다. 받는 점 p 기준 꼭짓점과 밝기, 없으면 false
   bool envQuad(int k, float3 p, float xa, float xb, out float3 a, out float3 b, out float3 c, out float3 d, out float3 rad) {
@@ -445,18 +466,7 @@ function envCode(grid: boolean) {
   }
   // 사각형 하나(꼭짓점 a~d: 받는 점 기준)의 보이는 넓이: 반구로 자르고, 판 끝 너머 면이면 판 끝 창으로(part: acrossPlane)
   float4 quadVF(float3 a, float3 b, float3 c, float3 d, float3 n, float3 p, int part) {
-    float3 v[${NV}];
-    for (int i = 0; i < ${NV}; i++) v[i] = float3(0.0);
-    v[0] = a; v[1] = b; v[2] = c; v[3] = d;
-    int cnt = 4;
-    // 반구(늘 자름) 다음 판 끝 창 평면 여덟(clipPlane 한 곳)
-    for (int i = 0; i < 9; i++) {
-      float3 w = n;
-      if (i > 0 && !acrossPlane(i - 1, p, part, w)) continue;
-      clipPlane(v, cnt, w, i == 0 ? HORIZON : 0.0, i == 0);
-    }
-    if (cnt < 3) return float4(0.0);
-    return moments(v, cnt, n);
+    return regionVF(a, b, c, d, n, 0, float3(0.0), float3(0.0), float3(0.0), float3(0.0), p, part);
   }
   // 둘레 사각형 하나(t: 판 범위 면 3 × 가로 칸 ${grid ? 'ENV_COLS' : '1'}, 그다음 틀 안쪽 면 둘, 판 끝 너머 벽 둘, 판 끝면 넷). 받는 점 p 기준 꼭짓점·밝기·면 부분,
   // 판 범위 면이면 which(0 벽, 1 판 윗면, 2 위 판 아랫면)와 칸 col. 쓰지 않는 사각형이면 false. envLoss와 behindOf(구역, whole: 판 범위 통째 X0 ~ X1)가 같이 쓴다
@@ -514,7 +524,6 @@ function envCode(grid: boolean) {
     return true;
   }
   float3 envLoss(float3 p, float3 n) {
-    ${grid ? 'clearCols();' : ''}
     if (env.x < 0.5) return float3(0.0);
     float3 loss = float3(0.0);
     ${grid ? 'int ncol = gridOn > 0.5 && gridNx > 1.5 ? ENV_COLS : 1;' : 'int ncol = 1;'}
@@ -524,14 +533,33 @@ function envCode(grid: boolean) {
       if (!envSector(t, p, ncol, false, a, b, c, d, rad, part, which, col)) continue;
       float4 q = quadVF(a, b, c, d, n, p, part);
       if (q.x > 0.0) {
-        ${grid ? `float3 r = part == 0 ? envRad(which, p, q, rad) : rad;
-        if (col >= 0) putCol(col, r);` : 'float3 r = rad;'}
+        float3 r = ${grid ? 'part == 0 ? envRad(which, p, q, rad) : rad' : 'rad'};
         loss += skyOf(q) - r * q.x;
       }
     }
     return loss;
   }
-`;
+${grid ? `  // 가려진 부분(구역 which의 조각 q, 받는 점 p·법선 n)의 밝기: 그 대표 점이 든 둘레 면 구간을 envLoss가 읽은 값(light-model colRad), 그 구간이 보이지 않으면 envRad.
+  // 가리개 뒤에 가려진 부분도 같은 구간 밝기로 빼야 둘레 면 몫과 정확히 상쇄된다(깊은 틈). 2026-11-13: 구간마다 값을 담아 두던 표(float3 60칸)를 없애고
+  // 그 구간 하나를 envLoss와 같은 계산으로 다시 구한다(표는 폰 GPU에서 레지스터에 못 들어가 느린 메모리로 나갔다. 값은 같다)
+  float3 behindRad(int which, float3 p, float3 n, float4 q, float3 fallback) {
+    if (gridOn < 0.5) return fallback;
+    bool ok;
+    float3 X = envRep(which, p, q, ok);
+    if (!ok) return fallback;
+    // 판 끝 너머 벽은 열린 벽
+    if (which == 0 && (X.x < X0 || X.x > X1)) return fallback;
+    // 구간 번호(colOf) → envLoss의 사각형 차례: 판 범위 칸, 판 끝 바로 위(x = X1)는 오른쪽 끝 너머 벽
+    int ci = colOf(X.x);
+    int t = ci >= 1 && ci <= ENV_COLS ? which * SECT_IN + ci - 1 : (which == 0 && ci == NCOL - 1 ? 3 * SECT_IN + 3 : -1);
+    float3 a; float3 b; float3 c; float3 d; float3 rad; int part; int wh; int col;
+    if (t >= 0 && envSector(t, p, gridNx > 1.5 ? ENV_COLS : 1, false, a, b, c, d, rad, part, wh, col)) {
+      float4 qc = quadVF(a, b, c, d, n, p, part);
+      if (qc.x > 0.0) return part == 0 ? envRad(wh, p, qc, rad) : rad;
+    }
+    return (which == 0 ? ALB_WALL : ALB_PLANK) * envGridE(which, X);
+  }
+` : ''}`;
 }
 
 // 빛 격자 읽기(light-model envGridE·boxGridE·envRad): 굽기·격자 풀기 셰이더만. 상자 유니폼(boxUniforms) 뒤에 둔다
@@ -578,29 +606,13 @@ function gridCode() {
     if (!ok) return fallback;
     return (which == 0 ? ALB_WALL : ALB_PLANK) * envGridE(which, X);
   }
-  // 받는 점마다 둘레 면 구간 밝기(light-model envLossCols): 가리개 뒤에 가려진 부분도 같은 구간 밝기로 뺀다(둘레 면 몫과 정확히 상쇄)
+  // 둘레 면 구간 번호(light-model colOf): 0 왼쪽 끝 너머, 1~ENV_COLS 판 범위 칸, NCOL − 1 오른쪽 끝 너머(가리개 뒤 밝기 behindRad)
   const int NCOL = ENV_COLS + 2;
-  float3 colRad[3 * NCOL];
-  bool colSet[3 * NCOL];
-  void clearCols() { for (int i = 0; i < 3 * NCOL; i++) { colRad[i] = float3(0.0); colSet[i] = false; } }
-  void putCol(int i, float3 v) { for (int k = 0; k < 3 * NCOL; k++) { if (k == i) { colRad[k] = v; colSet[k] = true; } } }
   int colOf(float x) {
     if (x < X0) return 0;
     if (x >= X1) return NCOL - 1;
     if (gridNx < 1.5) return 1;
     return 1 + int(min(float(ENV_COLS - 1), floor((x - X0) / (X1 - X0) * float(ENV_COLS))));
-  }
-  // 가려진 부분(구역 which의 조각 q)의 밝기: 그 대표 점이 든 구간 밝기, 없으면 envRad
-  float3 behindRad(int which, float3 p, float4 q, float3 fallback) {
-    if (gridOn < 0.5) return fallback;
-    bool ok;
-    float3 X = envRep(which, p, q, ok);
-    if (!ok) return fallback;
-    // 판 끝 너머 벽은 열린 벽
-    if (which == 0 && (X.x < X0 || X.x > X1)) return fallback;
-    int i = which * NCOL + colOf(X.x);
-    for (int k = 0; k < 3 * NCOL; k++) { if (k == i && colSet[k]) return colRad[k]; }
-    return (which == 0 ? ALB_WALL : ALB_PLANK) * envGridE(which, X);
   }
   // 상자 i(가운데 c, 면 위 두 축 au·av와 반 길이)의 면 f 위 점 X가 받는 빛
   float3 boxGridE(float i, float f, float3 c, float3 au, float hu, float3 av, float hv, float3 X) {
@@ -623,137 +635,177 @@ function boxUniforms() {
 // 책 상자가 가린 하늘(light-model boxLoss): 굽기·격자 풀기 셰이더만(gridCode 뒤). 상자 × 면 × 띠 × 구역을 반복문으로(몸체는 한 번씩)
 function boxCode() {
   return `
-  // ---------- 가리개 뒤에 보였을 것(light-model behindOf) ----------
-  // 구역 하나(light-model sectorsOf): p 기준 볼록 사각형 a~d가 보이는 방향들(변과 p를 지나는 평면) ∩ 판 끝 창. 다각형 P의 그 안 몫
-  float4 coneVF(float3 P[${NV}], int cnt, float3 n, float3 p, float3 a, float3 b, float3 c, float3 d, int part) {
-    float3 Q[${NV}];
-    for (int k = 0; k < ${NV}; k++) Q[k] = P[k];
-    int qc = cnt;
-    float3 m = (a + b + c + d) * 0.25;
-    // 구역 변 넷, 그다음 판 끝 창 평면 여덟(clipPlane 한 곳)
-    for (int i = 0; i < 12; i++) {
-      float3 w = float3(0.0);
-      if (i < 4) {
-        float3 u = i == 0 ? a : (i == 1 ? b : (i == 2 ? c : d));
-        float3 v = i == 0 ? b : (i == 1 ? c : (i == 2 ? d : a));
-        w = cross(u, v);
-        w = dot(w, m) >= 0.0 ? w : -w;
-      } else if (!acrossPlane(i - 4, p, part, w)) continue;
-      clipPlane(Q, qc, w, 0.0, false);
-    }
-    if (qc < 3) return float4(0.0);
-    return moments(Q, qc, n);
-  }
-  // 구역: 판 범위의 판 윗면·벽·위 판 아랫면, 틀 안쪽 면, 판 끝 너머 벽(양쪽), 판 끝면(판 끝 너머에서). 나머지는 하늘. 판 범위 구역·판 끝 너머 벽 밝기는 빛 격자의 대표 점에서.
-  // 구역은 envSector와 같은 차례(판 범위는 칸 없이 통째), coneVF 한 곳
-  float3 behindOf(float3 p, float3 n, float3 P[${NV}], int cnt, float4 total) {
-    if (env.x < 0.5) return skyOf(total);
-    float4 rest = total;
-    float3 sum = float3(0.0);
-    for (int t = 0; t < 11; t++) {
-      float3 a; float3 b; float3 c; float3 d; float3 rad; int part; int which; int col;
-      if (!envSector(t < 3 ? t * SECT_IN : t - 3 + 3 * SECT_IN, p, 1, true, a, b, c, d, rad, part, which, col)) continue;
-      float4 q = coneVF(P, cnt, n, p, a, b, c, d, part);
-      if (q.x > 0.0) {
-        sum += (which >= 0 ? behindRad(which, p, q, rad) : rad) * q.x;
-        rest -= q;
-      }
-    }
-    return sum + skyOf(rest);
-  }
-
   // ---------- 책 상자가 가린 하늘(light-model boxLoss) ----------
-  // 면 위 사각형 r(u0, u1, v0, v1) 하나: 보이는 부분의 (뒤에 보였을 밝기 − 면 밝기). 면 밝기: 빛 격자가 있으면 대표 점에서(반사율 alb × 받는 빛),
-  // 없으면 open(가림 없는 받는 빛). gi = (상자 번호, 면 번호 f), fc·nf: 면 가운데·바깥 법선, c·hu·hv: 상자 가운데·면 위 반 길이
+  // 면 위 사각형 r(u0, u1, v0, v1) 하나: 보이는 부분(반구로 자른 사각형)의 (뒤에 보였을 밝기 − 면 밝기). 면 밝기: 빛 격자가 있으면 대표 점에서(반사율 alb × 받는 빛),
+  // 없으면 open(가림 없는 받는 빛). gi = (상자 번호, 면 번호 f), fc·nf: 면 가운데·바깥 법선, c·hu·hv: 상자 가운데·면 위 반 길이.
+  // 뒤에 보였을 것(light-model behindOf): 구역(light-model sectorsOf: 판 범위 판 윗면·벽·위 판 아랫면 통째, 틀 안쪽 면, 판 끝 너머 벽, 판 끝면)마다
+  // 보이는 부분이 그 구역(구역 사각형 변과 p를 지나는 평면 ∩ 판 끝 창) 안에 든 몫 × 그 밝기(판 범위는 빛 격자의 대표 점에서), 나머지는 하늘.
+  // t = −1이 보이는 부분 전체, 0~10이 구역(regionVF를 부르는 곳 하나). 사각형 꼭짓점이 구역 평면 하나 밖에 모두 있으면 0, 모든 평면 안이면 보이는 부분 전체
   float3 stripLoss(float3 p, float3 n, float3 fc, float3 nf, float3 au, float hu, float3 av, float hv, float3 c, float4 r, float3 open, float3 alb, float2 gi) {
     if (r.y <= r.x || r.w <= r.z) return float3(0.0);
     float3 o = fc - p;
-    float3 v[${NV}];
-    for (int k = 0; k < ${NV}; k++) v[k] = float3(0.0);
-    v[0] = o + au * r.x + av * r.z;
-    v[1] = o + au * r.y + av * r.z;
-    v[2] = o + au * r.y + av * r.w;
-    v[3] = o + au * r.x + av * r.w;
-    int cnt = 4;
-    clipPoly(v, cnt, n, HORIZON);
-    float4 q = moments(v, cnt, n);
-    if (q.x <= 0.0) return float3(0.0);
+    float3 a = o + au * r.x + av * r.z;
+    float3 b = o + au * r.y + av * r.z;
+    float3 e = o + au * r.y + av * r.w;
+    float3 d = o + au * r.x + av * r.w;
+    float4 total = float4(0.0);
+    float4 rest = float4(0.0);
+    float3 sum = float3(0.0);
+    for (int t = -1; t < 11; t++) {
+      float3 sa = float3(0.0);
+      float3 sb = float3(0.0);
+      float3 sc = float3(0.0);
+      float3 sd = float3(0.0);
+      float3 rad = float3(0.0);
+      int part = 3;
+      int which = -1;
+      int col = -1;
+      int mode = -1;
+      if (t >= 0) {
+        if (env.x < 0.5) break;
+        if (!envSector(t < 3 ? t * SECT_IN : t - 3 + 3 * SECT_IN, p, 1, true, sa, sb, sc, sd, rad, part, which, col)) continue;
+        mode = 1;
+        float3 g1 = sectorPlane(0, sa, sb, sc, sd);
+        float3 g2 = sectorPlane(1, sa, sb, sc, sd);
+        float3 g3 = sectorPlane(2, sa, sb, sc, sd);
+        float3 g4 = sectorPlane(3, sa, sb, sc, sd);
+        sa = g1;
+        sb = g2;
+        sc = g3;
+        sd = g4;
+        bool across = acrossAny(p, part);
+        bool inside = true;
+        bool outside = false;
+        for (int j = 1; j < 13; j++) {
+          if (j >= 5 && !across) break;
+          float3 g;
+          float off;
+          if (!cutPlane(j, n, 1, g1, g2, g3, g4, across, p, part, g, off)) continue;
+          float lo = min(min(dot(g, a), dot(g, b)), min(dot(g, e), dot(g, d)));
+          float hi = max(max(dot(g, a), dot(g, b)), max(dot(g, e), dot(g, d)));
+          if (hi < 0.0) {
+            outside = true;
+            break;
+          }
+          if (lo < 0.0) inside = false;
+        }
+        if (outside) continue;
+        if (inside) mode = 2;
+      }
+      float4 q = mode == 2 ? total : regionVF(a, b, e, d, n, mode, sa, sb, sc, sd, p, part);
+      if (t < 0) {
+        if (q.x <= 0.0) return float3(0.0);
+        total = q;
+        rest = q;
+      } else if (q.x > 0.0) {
+        sum += (which >= 0 ? behindRad(which, p, n, q, rad) : rad) * q.x;
+        rest -= q;
+      }
+    }
+    float3 behind = env.x < 0.5 ? skyOf(total) : sum + skyOf(rest);
     float3 rad = open;
-    float den = dot(q.yzw, nf);
-    if (gridOn > 0.5 && abs(den) > 1e-12) rad = alb * boxGridE(gi.x, gi.y, c, au, hu, av, hv, p + q.yzw * (dot(o, nf) / den));
-    return behindOf(p, n, v, cnt, q) - q.x * rad;
+    float den = dot(total.yzw, nf);
+    if (gridOn > 0.5 && abs(den) > 1e-12) rad = alb * boxGridE(gi.x, gi.y, c, au, hu, av, hv, p + total.yzw * (dot(o, nf) / den));
+    return behind - total.x * rad;
   }
   // 축 k 방향 s 면의 반사율(light-model faceAlbedo): 표지·책등 = 장정(tone), 머리·꼬리·책배 = 장정과 속지를 속지 넓이 비(fr.x 머리, fr.y 책배)로
   float3 faceAlbedo(float3 tone, float2 fr, float k, float s) { return k < 0.5 ? tone : (k < 1.5 ? mix(tone, PAPER, fr.x) : (s < 0.0 ? tone : mix(tone, PAPER, fr.y))); }
-  // 상자 bi의 면(축 a, 반 길이 h, 면 번호 k) 하나. 마주 보는 이웃 면(덮개)이 가리는 부분은 뺀 띠 넷으로
-  float3 faceLoss(float3 p, float3 n, float bi, float3 c, float3 a, float h, float3 au, float hu, float3 av, float hv, float3 tone, float2 fr, float k, float4 cc, float4 r0, float4 r1) {
-    float dk = dot(p - c, a);
-    if (abs(dk) <= h) return float3(0.0);
-    float s = dk > 0.0 ? 1.0 : -1.0;
-    float code = k + (s > 0.0 ? 3.0 : 0.0);
-    float4 R = float4(-hu, hu, -hv, hv);
-    float4 E = float4(0.0, -1.0, 0.0, -1.0);
-    float4 S0 = R;
-    float4 S1 = E;
-    float4 S2 = E;
-    float4 S3 = E;
-    float g = -1.0;
-    float4 cr = R;
-    if (abs(cc.x - code) < 0.5) { g = cc.y; cr = r0; }
-    else if (abs(cc.z - code) < 0.5) { g = cc.w; cr = r1; }
-    float D = s * dk - h;
-    if (g >= 0.0 && D > g) {
-      float m = D / (D - g);
-      float pu = dot(p - c, au);
-      float pv = dot(p - c, av);
-      float u0 = max(R.x, pu + (cr.x - pu) * m);
-      float u1 = min(R.y, pu + (cr.y - pu) * m);
-      float v0 = max(R.z, pv + (cr.z - pv) * m);
-      float v1 = min(R.w, pv + (cr.w - pv) * m);
-      if (u1 > u0 && v1 > v0) {
-        S0 = u0 > R.x ? float4(R.x, u0, R.z, R.w) : E;
-        S1 = u1 < R.y ? float4(u1, R.y, R.z, R.w) : E;
-        S2 = v0 > R.z ? float4(u0, u1, R.z, v0) : E;
-        S3 = v1 < R.w ? float4(u0, u1, v1, R.w) : E;
-      }
-    }
-    float3 nf = a * s;
-    float3 fc = c + nf * h;
-    float3 alb = faceAlbedo(tone, fr, k, s);
-    float3 open = alb * irr(nf);
-    float3 loss = float3(0.0);
-    for (int j = 0; j < 4; j++) loss += stripLoss(p, n, fc, nf, au, hu, av, hv, c, j == 0 ? S0 : (j == 1 ? S1 : (j == 2 ? S2 : S3)), open, alb, float2(bi, code));
-    return loss;
-  }
-  // 상자들이 가린 하늘. 뺄 상자: self(받는 점의 책), skipA·skipB(격자점을 덮은 책), 없으면 −1
+  // 상자들이 가린 하늘. 뺄 상자: self(받는 점의 책), skipA·skipB(격자점을 덮은 책), 없으면 −1.
+  // 상자 × 면(축 k) × 띠(j) 를 한 반복문으로 돈다(2026-11-13): 세 겹 반복을 GPU 컴파일러가 펼치면 stripLoss 몸체가 12벌 복사돼
+  // S23(Adreno)에서 컴파일과 실행이 모두 크게 느렸다. 면마다 띠 넷의 합(fsum)을 따로 모아 더하는 차례는 예전 faceLoss와 같다.
+  // 면(상자 bi의 축 a, 반 길이 h, 면 번호 k)마다 마주 보는 이웃 면(덮개)이 가리는 부분은 뺀 띠 넷으로
   float3 boxesLoss(float3 p, float3 n, float self, float skipA, float skipB) {
     float3 loss = float3(0.0);
-    for (int i = 0; i < ${BOX_MAX}; i++) {
+    float3 fsum = float3(0.0);
+    bool faceOn = false;
+    float4 S0 = float4(0.0);
+    float4 S1 = float4(0.0);
+    float4 S2 = float4(0.0);
+    float4 S3 = float4(0.0);
+    float3 c = float3(0.0);
+    float3 au = float3(0.0);
+    float hu = 0.0;
+    float3 av = float3(0.0);
+    float hv = 0.0;
+    float3 nf = float3(0.0);
+    float3 fc = float3(0.0);
+    float3 alb = float3(0.0);
+    float3 open = float3(0.0);
+    float fi = 0.0;
+    float code = 0.0;
+    for (int t = 0; t < ${BOX_MAX} * 12; t++) {
+      int i = t / 12;
+      int r = t - i * 12;
+      int k = r / 4;
+      int j = r - k * 4;
       if (float(i) >= nBox) break;
-      float fi = float(i);
-      if (abs(fi - self) > 0.5 && abs(fi - skipA) > 0.5 && abs(fi - skipB) > 0.5) {
-        float4 b0 = box[i * ${BOX_VEC}];
-        float4 b1 = box[i * ${BOX_VEC} + 1];
-        float4 b2 = box[i * ${BOX_VEC} + 2];
-        float4 b3 = box[i * ${BOX_VEC} + 3];
-        float4 cc = box[i * ${BOX_VEC} + 4];
-        float4 r0 = box[i * ${BOX_VEC} + 5];
-        float4 r1 = box[i * ${BOX_VEC} + 6];
-        float4 b7 = box[i * ${BOX_VEC} + 7];
-        float3 tone = float3(b0.w, b7.xy);
-        float2 fr = b7.zw;
-        // 받는 면 평면 뒤에 통째로 있는 상자는 보이지 않는다
-        float front = dot(b0.xyz - p, n) + b1.w * abs(dot(b1.xyz, n)) + b2.w * abs(dot(b2.xyz, n)) + b3.w * abs(dot(b3.xyz, n));
-        if (front > 0.0) {
-          // 면 축 k와 그 면 위의 두 축(k + 1, k + 2)
-          for (int k = 0; k < 3; k++) {
+      if (j == 0) {
+        faceOn = false;
+        fsum = float3(0.0);
+        fi = float(i);
+        if (abs(fi - self) > 0.5 && abs(fi - skipA) > 0.5 && abs(fi - skipB) > 0.5) {
+          // 배열 번호는 반복 변수 t로 바로(SkSL ES2: 상수·반복 변수 식만)
+          float4 b0 = box[(t / 12) * ${BOX_VEC}];
+          float4 b1 = box[(t / 12) * ${BOX_VEC} + 1];
+          float4 b2 = box[(t / 12) * ${BOX_VEC} + 2];
+          float4 b3 = box[(t / 12) * ${BOX_VEC} + 3];
+          // 받는 면 평면 뒤에 통째로 있는 상자는 보이지 않는다
+          float front = dot(b0.xyz - p, n) + b1.w * abs(dot(b1.xyz, n)) + b2.w * abs(dot(b2.xyz, n)) + b3.w * abs(dot(b3.xyz, n));
+          if (front > 0.0) {
+            float4 cc = box[(t / 12) * ${BOX_VEC} + 4];
+            float4 r0 = box[(t / 12) * ${BOX_VEC} + 5];
+            float4 r1 = box[(t / 12) * ${BOX_VEC} + 6];
+            float4 b7 = box[(t / 12) * ${BOX_VEC} + 7];
+            float3 tone = float3(b0.w, b7.xy);
+            float2 fr = b7.zw;
+            // 면 축 k와 그 면 위의 두 축(k + 1, k + 2)
             float4 A = k == 0 ? b1 : (k == 1 ? b2 : b3);
             float4 U = k == 0 ? b2 : (k == 1 ? b3 : b1);
             float4 V = k == 0 ? b3 : (k == 1 ? b1 : b2);
-            loss += faceLoss(p, n, fi, b0.xyz, A.xyz, A.w, U.xyz, U.w, V.xyz, V.w, tone, fr, float(k), cc, r0, r1);
+            c = b0.xyz;
+            float h = A.w;
+            au = U.xyz; hu = U.w; av = V.xyz; hv = V.w;
+            float dk = dot(p - c, A.xyz);
+            if (abs(dk) > h) {
+              faceOn = true;
+              float s = dk > 0.0 ? 1.0 : -1.0;
+              code = float(k) + (s > 0.0 ? 3.0 : 0.0);
+              float4 R = float4(-hu, hu, -hv, hv);
+              float4 E = float4(0.0, -1.0, 0.0, -1.0);
+              S0 = R;
+              S1 = E;
+              S2 = E;
+              S3 = E;
+              float g = -1.0;
+              float4 cr = R;
+              if (abs(cc.x - code) < 0.5) { g = cc.y; cr = r0; }
+              else if (abs(cc.z - code) < 0.5) { g = cc.w; cr = r1; }
+              float D = s * dk - h;
+              if (g >= 0.0 && D > g) {
+                float m = D / (D - g);
+                float pu = dot(p - c, au);
+                float pv = dot(p - c, av);
+                float u0 = max(R.x, pu + (cr.x - pu) * m);
+                float u1 = min(R.y, pu + (cr.y - pu) * m);
+                float v0 = max(R.z, pv + (cr.z - pv) * m);
+                float v1 = min(R.w, pv + (cr.w - pv) * m);
+                if (u1 > u0 && v1 > v0) {
+                  S0 = u0 > R.x ? float4(R.x, u0, R.z, R.w) : E;
+                  S1 = u1 < R.y ? float4(u1, R.y, R.z, R.w) : E;
+                  S2 = v0 > R.z ? float4(u0, u1, R.z, v0) : E;
+                  S3 = v1 < R.w ? float4(u0, u1, v1, R.w) : E;
+                }
+              }
+              nf = A.xyz * s;
+              fc = c + nf * h;
+              alb = faceAlbedo(tone, fr, float(k), s);
+              open = alb * irr(nf);
+            }
           }
         }
       }
+      if (faceOn) fsum += stripLoss(p, n, fc, nf, au, hu, av, hv, c, j == 0 ? S0 : (j == 1 ? S1 : (j == 2 ? S2 : S3)), open, alb, float2(fi, code));
+      if (j == 3) loss += fsum;
     }
     return loss;
   }

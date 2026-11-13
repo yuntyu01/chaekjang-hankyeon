@@ -17,7 +17,8 @@ const DOTS = { cx: 426, cy: 1286, gap: 37.5, d: 16 };
 // 지난 실행에서 찍어 둔 홈 사진이 있으면 그것을, 없으면 시작 화면 그림을 띄운다(사진 정보를 읽는 동안은 기기 시작 화면이 남아 있다).
 // 사진이면 실제 책장이 다 그려진 뒤 겹쳐 바꾼다
 // step: 1 서재 불러오는 중 · 2 책 그림 그리는 중 · 3 다 됨(시작 화면 그림의 점으로만 보인다)
-export function LoadingScreen({ ready, step, onFinished }: { ready: boolean; step: 1 | 2 | 3; onFinished: () => void }) {
+// onShown: 그림이 화면에 그려졌다(책장 탭 덮개가 그려진 뒤 앱 전체 시작 화면을 걷는다, ui/start-cover)
+export function LoadingScreen({ ready, step, onFinished, onShown }: { ready: boolean; step: 1 | 2 | 3; onFinished: () => void; onShown?: () => void }) {
   const [source, setSource] = useState<{ image: ImageSourcePropType; shot: boolean } | null>(null);
   useEffect(() => {
     void loadHomeSnapshot().then((uri) => {
@@ -31,6 +32,9 @@ export function LoadingScreen({ ready, step, onFinished }: { ready: boolean; ste
   const opacity = useRef(new Animated.Value(1)).current;
   const shot = !!source?.shot;
 
+  useEffect(() => {
+    if (imageReady && laidOut) onShown?.();
+  }, [imageReady, laidOut, onShown]);
   useEffect(() => {
     if (!imageReady || !laidOut) return;
     // Keep the native splash until the supplied artwork has a painted layout.

@@ -10,7 +10,7 @@
 // 자세만 바뀔 때는 캔버스 안 React가 다시 돌지 않는다(줄 구조가 바뀔 때만). 줄마다 RN 쪽에는 경로 계획·접근성 칸·안내·손잡이만 둔다.
 // 구성 비교(2026-10-01 측정): 세 줄을 캔버스 하나에 그리면 시점 전환은 비슷하고 끌기 프레임이 약 2배 느렸다(끄는 줄만 바뀌어도 전부 다시 그림).
 import { Blur, Canvas, Group, Paint, Path, Rect, Skia } from '@shopify/react-native-skia';
-import { memo, useLayoutEffect, useMemo } from 'react';
+import { memo, useEffect, useLayoutEffect, useMemo } from 'react';
 import { PixelRatio, StyleSheet, Text, View } from 'react-native';
 import { GestureDetector, type PanGesture } from 'react-native-gesture-handler';
 import Animated, { ReduceMotion, useAnimatedReaction, useAnimatedStyle, useDerivedValue, useSharedValue, withDelay, withTiming, type SharedValue } from 'react-native-reanimated';
@@ -29,7 +29,8 @@ import { ko } from '@/i18n/ko';
 import type { Shared } from '@/ui/book3d/art';
 import { BookNode } from '@/ui/book3d/BookNode';
 import { LIGHT_ON, RENDER, TL, tl, TRANSIT_DEBUG } from '@/ui/perf';
-import { areaItem, bakeAtlas, bookItems, bookKeyImage, NO_ATLAS, NO_BOOK_KEY, type BakeItem } from '@/ui/SceneLight';
+import { areaItem, bakeAtlas, bookItems, bookKeyImage, NO_ATLAS, NO_BOOK_KEY, PENDING_ATLAS, releaseBake, type Atlas, type BakeItem } from '@/ui/SceneLight';
+import { lightAllSV } from '@/ui/light-stage';
 import { useRetainedImageKey } from '@/ui/useRetainedImageKey';
 import type { BoxBuf } from '@/domain/light-model';
 import { SHOW } from '@/ui/shelf/shadow-debug';
@@ -190,8 +191,8 @@ const RowLayers = memo(function RowLayers({ r, st, mo, order, px, upx, books, ca
   const bakeKey = useRetainedImageKey(`atlas:${r.shelfId}`);
   const atlas = useFadingAtlas(target, boxes, `${space}|${top}|${last}|${wallOn}|${boardOn}|${booksOn}`, (ps: Record<string, Book3 | null>, bx: BoxBuf) => {
     'worklet';
-    // 아직 자세가 없다(마운트 직후)
-    if (ids.length && !ids.some((id) => ps[id])) return NO_ATLAS;
+    // 아직 자세가 없다(마운트 직후: 자세를 아직 구하지 않았으면 굽는 중으로 둔다. 구했는데 모두 없으면 구울 책이 없는 줄)
+    if (ids.length && !ids.some((id) => ps[id])) return Object.keys(ps).length ? NO_ATLAS : PENDING_ATLAS;
     const items: BakeItem[] = [];
     if (wallOn) items.push(areaItem(WALL_KEY, wallA, env, bx));
     if (wallOn && last && !FRAME_ON) items.push(areaItem(UNDER_KEY, underA, UNDER_ENV, NO_BOXES));
@@ -205,12 +206,14 @@ const RowLayers = memo(function RowLayers({ r, st, mo, order, px, upx, books, ca
     }
     return bakeAtlas(items, bakeKey);
   });
+  useBakeRelease(bakeKey);
+  const shown = useShownWhenBaked(atlas);
   // 이 줄 책이 벽·판 윗면에서 창빛을 가리는 몫(벽·판 셰이더가 빛 계산 안에서 쓴다)
   const wallKey = useWallKey(r.shelfId, poses, st.ids, px, top && !FRAME_ON ? wallY1 : space + SHELF_THICK, ceil);
   const floorKey = useFloorKey(r.shelfId, poses, st.ids, px, ceil);
   const frontKey = useFrontKey(r.shelfId, poses, st.ids, px);
   return (
-    <>
+    <Group clip={shown}>
       {/* 이 줄 벽: 판 아랫면 높이(판 양 끝 너머로 보인다)부터 위 판 두께 가운데까지(그 위는 위 줄 캔버스), 맨 윗줄은 캔버스 위 끝까지.
           판 아랫면 아래는 아래 줄 공간이라 아래 줄 캔버스가 그 둘레로 칠한다(이 줄 둘레로는 판 밑을 계산할 수 없다. 판 끝 둥근 모서리로 드러난다).
           아래 줄 벽이 이 판 두께 가운데까지 올라와 두 캔버스가 판 두께 절반 겹친다(줄마다 카메라가 달라 조금 어긋나도 틈이 없다) */}
@@ -221,9 +224,22 @@ const RowLayers = memo(function RowLayers({ r, st, mo, order, px, upx, books, ca
       {SHOW.shelfBoard ? <ShelfBoard px={px} cam={cam} zIndex={plankZ} env={env} atlas={atlas} keyShadow={floorKey} frontShadow={frontKey} /> : null}
       {RENDER.books && frosted ? <Group zIndex={FROST_Z} layer={FROST_LAYER}><RowBooks m={mo} shelfId={r.shelfId} st={st} books={books} glowId={r.glowId} dragId={r.dragId} cam={cam} px={px} space={space} ceil={ceil} shared={shared} order={order} poses={poses} env={envSV} atlas={atlas} boxes={boxes} debug={debug} /></Group> : null}
       {RENDER.books && !frosted ? <RowBooks m={mo} shelfId={r.shelfId} st={st} books={books} glowId={r.glowId} dragId={r.dragId} cam={cam} px={px} space={space} ceil={ceil} shared={shared} order={order} poses={poses} env={envSV} atlas={atlas} boxes={boxes} debug={debug} /> : null}
-    </>
+    </Group>
   );
 });
+
+// 줄이 사라지면 그 줄의 기다리는 굽기 일감을 버린다(SceneLight releaseBake)
+function useBakeRelease(key: string) {
+  useEffect(() => () => { scheduleOnUI(releaseBake, key); }, [key]);
+}
+// 시작 화면이 걷힌 뒤에 붙은 줄(지난 책장 등)은 첫 굽기가 끝날 때까지 그리지 않는다(빈 자르기 = Skia가 그리기를 건너뛴다).
+// 구운 값 없이 그리면 줄 전체가 화소마다 둘레 가림을 계산해 느린 기기에서 GPU를 오래 붙잡는다. 빠른 기기는 굽기가 부른 자리에서 끝나 가려지는 때가 없다.
+// 시작 화면 동안에는 겹마다 따로 기다린다(SceneLight gatePath: 컴파일 차례가 밀리지 않게)
+const SHOW_ALL = Skia.PathBuilder.Make().addRect(Skia.XYWHRect(-1e5, -1e5, 2e5, 2e5)).detach();
+const SHOW_NONE = Skia.PathBuilder.Make().detach();
+function useShownWhenBaked(atlas: Readonly<SharedValue<Atlas>>) {
+  return useDerivedValue(() => (lightAllSV.value && atlas.value.pending ? SHOW_NONE : SHOW_ALL));
+}
 
 // ---------- 줄 캔버스 ----------
 const EMPTY_CLIP = Skia.PathBuilder.Make().detach();
@@ -591,12 +607,16 @@ function HeaderWallRow({ row, mo, books, m, width, height, cam }: { row: SceneRo
   const area = useMemo(() => wallArea(y0, y1), [y0, y1]);
   const atlas = useFadingAtlas(target, boxes, `${space}|${y0}|${y1}`, (ps: Record<string, Book3 | null>, bx: BoxBuf) => {
     'worklet';
-    if (ids.length && !ids.some((id) => ps[id])) return NO_ATLAS;
+    if (ids.length && !ids.some((id) => ps[id])) return Object.keys(ps).length ? NO_ATLAS : PENDING_ATLAS;
     return bakeAtlas([areaItem(WALL_KEY, area, env, bx)], bakeKey);
   });
+  useBakeRelease(bakeKey);
+  const shown = useShownWhenBaked(atlas);
   return (
     <Canvas style={{ position: 'absolute', left: 0, top: 0, width, height }} pointerEvents="none">
-      <ShelfWall cam={cam} px={px} y0={y0} y1={y1} env={env} atlas={atlas} akey={WALL_KEY} zIndex={0} />
+      <Group clip={shown}>
+        <ShelfWall cam={cam} px={px} y0={y0} y1={y1} env={env} atlas={atlas} akey={WALL_KEY} zIndex={0} />
+      </Group>
     </Canvas>
   );
 }

@@ -30,7 +30,7 @@ import { physShadow } from '@/ui/lighting';
 import { SHOW } from '@/ui/shelf/shadow-debug';
 import { WALL_X0, WALL_X1 } from '@/ui/shelf/ShelfPlank';
 import { RENDER, TL, tl, tlOn, tlu } from '@/ui/perf';
-import { bookKeyImage, keepLatest, NO_ATLAS, NO_IMAGE, NO_PLANE_KEY, type Atlas, type BookKey, type PlaneKey } from '@/ui/SceneLight';
+import { bakeDoneSV, bookKeyImage, keepLatest, NO_IMAGE, NO_PLANE_KEY, PENDING_ATLAS, type Atlas, type BookKey, type PlaneKey } from '@/ui/SceneLight';
 import { useRetainedImageKey } from '@/ui/useRetainedImageKey';
 
 import { scheduleOnUI } from 'react-native-worklets';
@@ -125,19 +125,22 @@ export const FADE_MS = 200;
 const BAKE_GAP_MS = 200;
 // inputs: 자세·상자 말고 build가 읽는 값을 담은 글자(bake-input)
 export function useFadingAtlas(poses: Readonly<SharedValue<Poses>>, boxes: Readonly<SharedValue<BoxBuf>>, inputs: string, build: (ps: Poses, bx: BoxBuf) => Atlas): Readonly<SharedValue<Atlas>> {
-  const baked = useSharedValue<Atlas>(NO_ATLAS);
+  // 처음에는 굽는 중으로 둔다(첫 굽기가 오기 전에 구운 값 없는 줄을 그리지 않게, ShelfScene 줄 가리기)
+  const baked = useSharedValue<Atlas>(PENDING_ATLAS);
   const prev = useSharedValue<Atlas | null>(null);
   const fade = useSharedValue(1);
   const wake = useSharedValue(0);
-  // armed: 걸어 둔 깨우기가 끝나면 될 wake 값(걸어 둔 것이 없으면 null)
-  const last = useSharedValue({ at: -1e9, ps: null as Poses | null, bx: null as BoxBuf | null, inputs: null as string | null, armed: null as number | null });
+  // armed: 걸어 둔 깨우기가 끝나면 될 wake 값(걸어 둔 것이 없으면 null). wait: 굽기를 맡기고 기다리는 중(done: 그때의 bakeDoneSV)
+  const last = useSharedValue({ at: -1e9, ps: null as Poses | null, bx: null as BoxBuf | null, inputs: null as string | null, armed: null as number | null, wait: false, done: 0 });
   useAnimatedReaction(
-    () => ({ ps: poses.value, bx: boxes.value, inputs, w: wake.value }),
+    () => ({ ps: poses.value, bx: boxes.value, inputs, w: wake.value, d: bakeDoneSV.value }),
     (cur) => {
       const l = last.value;
-      if (sameBakeInput(cur, l)) return;
+      // 굽기는 프레임을 나눠 한다(SceneLight 나눠 굽기): 기다리는 동안 굽기 하나가 끝나면 다시 물어 본다(내 것이면 그림이 온다)
+      const retry = l.wait && cur.d !== l.done;
+      if (!retry && sameBakeInput(cur, l)) return;
       const now = globalThis.performance ? globalThis.performance.now() : Date.now();
-      if (now - l.at < BAKE_GAP_MS) {
+      if (!retry && now - l.at < BAKE_GAP_MS) {
         // 깨우기를 걸어 둔 채 기다리는 중이면 그대로. 깨었는데 아직 간격 안이면(깨우기 시계와 이 시계가 조금 달라 일찍 깬다) 다시 건다:
         // 다시 걸지 않으면 다음 자세가 바뀔 때까지 굽기가 멈춰 지난 자세의 어둠이 남았다
         if (l.armed === null || cur.w >= l.armed) {
@@ -147,9 +150,11 @@ export function useFadingAtlas(poses: Readonly<SharedValue<Poses>>, boxes: Reado
         }
         return;
       }
-      last.value = { at: now, ps: cur.ps, bx: cur.bx, inputs: cur.inputs, armed: null };
       const old = baked.value;
       const next = build(cur.ps, cur.bx);
+      last.value = { at: retry ? l.at : now, ps: cur.ps, bx: cur.bx, inputs: cur.inputs, armed: null, wait: !!next.pending, done: cur.d };
+      // 굽는 중: 지금 것(앞 굽기, 없으면 처음 그대로)을 그대로 둔다
+      if (next.pending) return;
       baked.value = next;
       // 처음 굽기(앞 굽기가 없다)는 바로 보인다
       prev.value = old.image && next.image ? old : null;

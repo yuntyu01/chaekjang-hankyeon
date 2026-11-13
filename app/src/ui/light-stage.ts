@@ -17,6 +17,11 @@ export const lightOpenSV = makeMutable(0);
 const slotsSV = makeMutable(0);
 export const lightAllSV = makeMutable(false);
 const artReadySV = makeMutable(false);
+// 책장 화면이 안 보이는 동안(다른 탭·다른 화면)은 열기를 멈춘다: 보이지 않는 캔버스는 그리지 않아, 그사이 번호만 다 열리면 돌아왔을 때 컴파일이 한 프레임에 몰린다
+const pausedSV = makeMutable(false);
+export function setLightPaused(paused: boolean) {
+  pausedSV.value = paused;
+}
 
 let slots = 0;
 let all = false;
@@ -67,10 +72,18 @@ export function kickLightStages() {
   let step = 1;
   let quiet = 0;
   let last = Date.now();
+  // 굽기를 기다리는 겹이 끝내 풀리지 않아도(구울 값이 오지 않는 면) 시작 화면이 걷히게 이만큼만 기다린다. 굽기 일감이 남아 있는 동안은 계속 기다린다
+  let gateUntil = Date.now() + 20000;
   const tick = () => {
     frame++;
     if (lightAllSV.value) {
       g.__lightLoop = false;
+      return;
+    }
+    if (pausedSV.value) {
+      last = Date.now();
+      quiet = 0;
+      requestAnimationFrame(tick);
       return;
     }
     // 두 프레임에 한 번: 연 겹을 그린(컴파일한) 프레임이 끝난 뒤 그 시간을 본다
@@ -82,6 +95,13 @@ export function kickLightStages() {
       if (STAGE_LOG && dt > 200) console.log(`[light-stage] ${dt}ms up to slot ${lightOpenSV.value}/${slotsSV.value}`);
       if (lightOpenSV.value < slotsSV.value) {
         lightOpenSV.value = Math.min(slotsSV.value, lightOpenSV.value + step);
+        quiet = 0;
+      } else if (((globalThis as { __bakeJobs?: unknown[] }).__bakeJobs?.length ?? 0) > 0) {
+        // 굽기 일감이 남아 있다(SceneLight 나눠 굽기): 시작 화면을 걷지 않는다
+        quiet = 0;
+        gateUntil = Math.max(gateUntil, now + 5000);
+      } else if (now < gateUntil && Object.keys((globalThis as { __lightGated?: Record<number, boolean> }).__lightGated ?? {}).length > 0) {
+        // 굽기를 기다리는 겹이 있다(SceneLight gatePath): 시작 화면을 걷지 않는다
         quiet = 0;
       } else if (artReadySV.value && ++quiet >= 10) {
         // 다 열었고 스무 프레임 동안 새 겹이 없다: 시작 화면을 걷어도 된다(고리는 멈추고, 새 번호가 오면 다시 돈다)

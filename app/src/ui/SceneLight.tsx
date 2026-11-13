@@ -7,11 +7,11 @@
 // (하늘·창빛 직접 몫은 둥근 모서리 법선까지, 반사광)만 화소마다 계산한다. 책은 한 권에 한 번(BookLight: 셰이더가 화소마다 광선으로
 // 보이는 면을 찾는다), 벽·판은 평면마다(BakedPlane).
 // 구운 값이 없는 면(줄 밖에서 움직이는 책, 막 들어온 책)은 둘레가 가린 하늘만 그 자리에서 계산한다(다른 책은 뺀다).
-import { AlphaType, BlurStyle, ColorType, FilterMode, ImageShader, MipmapMode, Path, processUniforms, Shader, Skia, TileMode, type SkImage, type SkPath, type SkRuntimeEffect, type SkShader, type Uniforms } from '@shopify/react-native-skia';
+import { AlphaType, BlurStyle, ColorType, FilterMode, ImageShader, MipmapMode, Path, processUniforms, Shader, Skia, TileMode, type SkCanvas, type SkImage, type SkPaint, type SkPath, type SkRuntimeEffect, type SkShader, type SkSurface, type Uniforms } from '@shopify/react-native-skia';
 import { useRef } from 'react';
 import { Platform } from 'react-native';
-import { isSharedValue, useDerivedValue, type SharedValue } from 'react-native-reanimated';
-import { scheduleOnUI } from 'react-native-worklets';
+import { isSharedValue, makeMutable, useDerivedValue, type SharedValue } from 'react-native-reanimated';
+import { scheduleOnRN, scheduleOnUI } from 'react-native-worklets';
 
 import { faceNormal, rot, toWorld, type Book3, type Cam, type FaceId, type Vec3 } from '@/domain/book3';
 import { lightPanel, rigOf } from '@/domain/book-parts';
@@ -24,6 +24,7 @@ import { materials, type MaterialName, type SurfaceMaterial } from '@/ui/lightin
 import { faceVisible } from '@/ui/book3d/face-geometry';
 
 import { PERF_ENABLED } from './perf';
+import { bakeHash, cachedBake, isCurrentBake, pinBake, putBake, saveBake, unpinBakes } from './bake-cache';
 import { lightAllSV, lightOpenSV, takeLightSlot } from './light-stage';
 import { keepLatest } from './retained-images';
 export { keepLatest } from './retained-images';
@@ -37,8 +38,34 @@ const make = (src: string) => {
   if (!e) throw new Error('SceneLight shader failed to compile');
   return e;
 };
-const BAKE = make(bakeSource());
-const GRID = make(gridSource());
+const BAKE_SRC = bakeSource();
+const GRID_SRC = gridSource();
+const BAKE = make(BAKE_SRC);
+const GRID = make(GRID_SRC);
+// 측정 번들: 실기기에서 굽기 셰이더 변형을 빌드 없이 재려고 바꿔 끼운 셰이더(overrideBakeShaders). 배포본은 늘 BAKE·GRID
+function gridEffect(): SkRuntimeEffect {
+  'worklet';
+  return (globalThis as { __lightGrid?: SkRuntimeEffect }).__lightGrid ?? GRID;
+}
+function bakeEffect(): SkRuntimeEffect {
+  'worklet';
+  return (globalThis as { __lightBake?: SkRuntimeEffect }).__lightBake ?? BAKE;
+}
+function overridden() {
+  'worklet';
+  return !!(globalThis as { __lightBake?: SkRuntimeEffect }).__lightBake;
+}
+// 측정 번들: 빛 격자·굽기 셰이더를 바꿔 끼운다(UI 스레드에 심는다). 첫 굽기보다 먼저 불러야 한다
+export function overrideBakeShaders(grid: string, bake: string) {
+  if (!PERF_ENABLED) return;
+  const g = make(grid);
+  const b = make(bake);
+  scheduleOnUI(() => {
+    'worklet';
+    (globalThis as { __lightGrid?: SkRuntimeEffect }).__lightGrid = g;
+    (globalThis as { __lightBake?: SkRuntimeEffect }).__lightBake = b;
+  });
+}
 // 평면(벽·판)·책·갈피 탭: 프로그램은 하나씩이고 겹(곱하기·컬러 닷지·한 번에·반사광 더하기)은 uniform으로 고른다(passOf).
 // 겹마다 셰이더를 따로 두면 첫 실행 GPU 컴파일이 그만큼 늘었다(2026-11-12 새로 설치한 S23에서 시작 화면 1분+)
 const LIT = make(litSource());
@@ -65,15 +92,30 @@ function usePasses(uniforms: RO<Uniforms>, kind: PassKind): RO<Uniforms>[] {
 // 첫 화면 빛(ui/light-stage): 겹마다 처음 그려지는 차례 번호를 받고, 그 번호가 열리기 전에는 빈 경로(Skia가 그리기를 건너뛰어
 // 그 셰이더·도형 방식을 아직 컴파일하지 않는다). 시작 화면이 걷힌 뒤에는 그대로 넘긴다. 겹 수(n, 많아야 셋)만큼 번호를 받는다
 const NO_PATH = Skia.Path.Make();
-function useStagedPaths(path: RO<SkPath> | SkPath, n: number): RO<SkPath>[] {
+// heavy: 아직 구운 값이 없어 그 자리에서 둘레 가림을 화소마다 계산해야 하는 면(무거운 실시간 계산). 시작 화면 동안에는 굽기가 끝날 때까지 기다린다:
+// S23(Adreno)에서 줄 하나를 그렇게 한꺼번에 칠하면 GPU를 몇 초씩 붙잡아 드라이버가 앱을 죽였다(2026-11-13). 기다리는 겹은 시작 화면이 걷히지 않게 알린다(__lightGated)
+// all·openTo: lightAllSV·lightOpenSV 값. 부르는 파생 값이 직접 읽어 넘긴다(Reanimated는 파생 값 워클릿이 직접 읽는 공유 값만 지켜본다:
+// 이 함수 안에서 읽으면 번호가 열려도 다시 계산되지 않아, 구운 그림이 처음부터 있는 줄(담아 둔 그림)의 빛 겹이 끝내 그려지지 않았다)
+function gatePath(slot: number, path: SkPath, heavy: boolean, all: boolean, openTo: number): SkPath {
+  'worklet';
+  if (all) return path;
+  const open = openTo >= slot;
+  const blocked = open && heavy;
+  const g = globalThis as { __lightGated?: Record<number, boolean> };
+  const m = g.__lightGated ?? (g.__lightGated = {});
+  if (blocked) m[slot] = true;
+  else delete m[slot];
+  return open && !blocked ? path : NO_PATH;
+}
+function useStagedPaths(path: RO<SkPath> | SkPath, n: number, heavy?: RO<boolean>): RO<SkPath>[] {
   const slots = useRef<number[] | null>(null);
   if (!slots.current) slots.current = [0, 1, 2].map((i) => (i < n ? takeLightSlot() : 0));
   const [s0, s1, s2] = slots.current;
   const sv = isSharedValue(path) ? (path as RO<SkPath>) : null;
   const fixed = sv ? null : (path as SkPath);
-  const a = useDerivedValue(() => (lightAllSV.value || lightOpenSV.value >= s0 ? (sv ? sv.value : fixed!) : NO_PATH), [sv, fixed, s0]);
-  const b = useDerivedValue(() => (lightAllSV.value || lightOpenSV.value >= s1 ? (sv ? sv.value : fixed!) : NO_PATH), [sv, fixed, s1]);
-  const c = useDerivedValue(() => (lightAllSV.value || lightOpenSV.value >= s2 ? (sv ? sv.value : fixed!) : NO_PATH), [sv, fixed, s2]);
+  const a = useDerivedValue(() => gatePath(s0, sv ? sv.value : fixed!, !!heavy && heavy.value, lightAllSV.value, lightOpenSV.value), [sv, fixed, s0, heavy]);
+  const b = useDerivedValue(() => gatePath(s1, sv ? sv.value : fixed!, !!heavy && heavy.value, lightAllSV.value, lightOpenSV.value), [sv, fixed, s1, heavy]);
+  const c = useDerivedValue(() => gatePath(s2, sv ? sv.value : fixed!, !!heavy && heavy.value, lightAllSV.value, lightOpenSV.value), [sv, fixed, s2, heavy]);
   return [a, b, c];
 }
 
@@ -139,8 +181,10 @@ export const BAKE_TEXEL = 2;
 export type BakeItem = { key: string; O: Vec3; U: Vec3; V: Vec3; w: number; h: number; n: Vec3; env: Env | null; bx: BoxBuf; self: number };
 // 구운 그림과 면마다 칸 (0, 0)의 자리·칸 수. 면 둘레에 한 칸씩 더 구워 둔다(겹선형 읽기가 옆 면으로 새지 않게, 값은 면 가장자리 칸 그대로)
 // prev·mix: 책이 움직이는 동안 앞 굽기(움직이기 전 자리)와 새 굽기의 몫(mix, 0 → 1). 셰이더가 둘을 섞는다
-export type Atlas = { image: SkImage | null; at: Record<string, { x: number; y: number; w: number; h: number }>; prev?: Atlas | null; mix?: number };
+// pending: 아직 굽는 중(bakeAtlas가 일감을 넣었다. 끝나면 bakeDoneSV가 오른다)
+export type Atlas = { image: SkImage | null; at: Record<string, { x: number; y: number; w: number; h: number }>; prev?: Atlas | null; mix?: number; pending?: boolean };
 export const NO_ATLAS: Atlas = { image: null, at: {} };
+export const PENDING_ATLAS: Atlas = { image: null, at: {}, pending: true };
 const GUTTER = 1;
 const ATLAS_W = 512;
 
@@ -173,57 +217,421 @@ function linearShader(img: SkImage): SkShader {
   return img.makeShaderOptions(TileMode.Clamp, TileMode.Clamp, FilterMode.Linear, MipmapMode.None);
 }
 
+// ---------- 나눠 굽기(2026-11-13) ----------
+// 굽기(빛 격자 GRID_PASSES번 + 면마다 하늘 가림)는 줄 하나에 GPU를 길게 쓴다(S23: 몇 초). 한 번에 그리면 그동안 화면이 멈추고(굽기와 화면이 같은 GPU·UI 스레드)
+// 여러 줄이 겹치면 앱이 죽었다. 그래서 굽기를 일감으로 줄 세우고, 프레임마다 FRAME_MS만큼만 조각(칸 몇 개~줄 몇 개)을 그린다. 조각을 그린 뒤 1화소를 읽어
+// GPU가 끝나기를 기다리고 걸린 시간으로 다음 조각 크기를 정한다(기기 속도에 맞춘다). 조각은 정수 칸 사각형이라 한 번에 그린 것과 화소가 같다.
+// 빠른 기기는 INLINE_MS 안에 끝날 것으로 보이면 부른 자리에서 다 굽는다(이전과 같은 프레임에 나온다).
+// 끝나면 그림을 bake-cache 모음에 넣고 bakeDoneSV를 올린다: 기다리던 줄(useFadingAtlas)이 다시 물어 그림을 받는다
+export const bakeDoneSV = makeMutable(0);
+const FRAME_MS = 10;
+const BATCH_MS = 8;
+const INLINE_MS = 40;
+// 묶음 크기의 아래 한계: 빛 격자·면 굽기를 각각 많아야 이만큼의 묶음으로 끝낸다(시간을 잘못 재도 굽기가 끝없이 늘어지지 않게)
+const MAX_BATCHES = 300;
+const PIXEL = { width: 1, height: 1, alphaType: AlphaType.Premul, colorType: ColorType.RGBA_8888 };
+
+type Cursor = { x: number; y: number };
+type Piece = { x: number; y: number; w: number; h: number };
+// W×H 칸 사각형에서 다음 조각(n칸쯤): 한 줄보다 작으면 줄의 일부, 아니면 줄 여러 개. 다 그렸으면 c.y >= H
+function nextPiece(c: Cursor, W: number, H: number, n: number): Piece {
+  'worklet';
+  if (c.x > 0 || n < W) {
+    const w = Math.min(W - c.x, Math.max(1, Math.floor(n)));
+    const p = { x: c.x, y: c.y, w, h: 1 };
+    c.x += w;
+    if (c.x >= W) {
+      c.x = 0;
+      c.y += 1;
+    }
+    return p;
+  }
+  const h = Math.min(H - c.y, Math.max(1, Math.floor(n / W)));
+  const p = { x: 0, y: c.y, w: W, h };
+  c.y += h;
+  return p;
+}
+
+// 기기 속도: 묶음 하나(GPU를 한 번 기다리는 단위, BATCH_MS쯤)에 그릴 양. 단위는 칸 수 × 무게(상자 수 + 2: 칸 하나의 계산은 상자 수와 함께 는다).
+// 빛 격자와 굽기를 따로 잰다(0 = 아직 모름: START부터). 작은 면 여러 개는 한 묶음에 이어 그린다(면마다 GPU를 기다리면 기다리는 시간이 더 든다)
+// over: GPU를 기다리는 것 자체에 드는 시간(그린 양과 상관없이 붙는 몫: 에뮬레이터 8ms쯤). 지금까지 가장 짧았던 묶음의 시간으로 어림한다
+// (처음에는 작은 묶음부터 키우므로 그때 드러난다). 이 시간을 빼지 않으면 묶음이 작은 채로 머물러 기다리는 시간만 쌓인다
+type Speed = { grid: number; bake: number; over: number };
+const START = 128;
+function speedOf(): Speed {
+  'worklet';
+  const g = globalThis as { __bakeSpeed?: Speed };
+  return g.__bakeSpeed ?? (g.__bakeSpeed = { grid: 0, bake: 0, over: 1e9 });
+}
+// 묶음을 그린 뒤 다음 묶음 크기: 그리는 데 든 시간(work: 걸린 시간 − over)이 BATCH_MS가 되게 한 번에 1/4~2배.
+// 묶음이 다 차지 않았으면(일이 먼저 끝났다) 느렸을 때만 줄인다
+function tune(budget: number, drawn: number, work: number): number {
+  'worklet';
+  const k = Math.max(0.25, Math.min(2, BATCH_MS / Math.max(work, 0.25)));
+  if (drawn >= budget * 0.9) return budget * k;
+  return k < 1 ? Math.max(drawn * k, 1) : budget;
+}
+
 // 빛 격자(light-model solveGrid)를 GPU로: 줄 둘레·상자 목록 하나에 그림 한 장(scene-light-sksl GRID_SCALE 칸 배치).
 // GRID_PASSES번 되풀이: 같은 표면에 다시 그리며 지난 그림(스냅숏)을 읽는다(첫 번은 가리개를 가림 없는 받는 빛으로)
-function solveGridImage(env: Env, bx: BoxBuf): SkImage | null {
+type GridRun = { key: string; env: Env; bx: BoxBuf; W: number; H: number; surf: SkSurface; canvas: SkCanvas; paint: SkPaint; pass: number; cur: Cursor; armed: boolean; img: SkImage | null; prev: SkImage[] };
+function gridKeyOf(env: Env, bx: BoxBuf): string {
   'worklet';
-  const nBox = bx.list.length;
-  const W = 6 * GRID_N;
-  const H = nBox * GRID_N + 3 * ENV_NY;
+  return `${env.floor},${env.ceil}|${bx.v.slice(0, bx.list.length * 32).join(',')}`;
+}
+function gridSizeOf(bx: BoxBuf) {
+  'worklet';
+  return { W: 6 * GRID_N, H: bx.list.length * GRID_N + 3 * ENV_NY };
+}
+function startGrid(env: Env, bx: BoxBuf, W: number, H: number): GridRun | null {
+  'worklet';
   const surf = Skia.Surface.MakeOffscreen(W, H, BAKE_SURFACE);
   if (!surf) return null;
-  const canvas = surf.getCanvas();
-  const paint = Skia.Paint();
-  let img: SkImage | null = null;
-  const prev: SkImage[] = [];
-  const cal = lightSet().u;
-  for (let k = 0; k < GRID_PASSES; k++) {
-    const u = { ...cal, env: envOf(env), box: bx.v, nBox, gridOn: img ? 1 : 0, gridNx: nBox || env.side ? ENV_NX : 1 };
-    paint.setShader(GRID.makeShaderWithChildren(processUniforms(GRID, u), [linearShader(img ?? EMPTY)]));
-    canvas.drawRect(Skia.XYWHRect(0, 0, W, H), paint);
-    // 스냅숏은 표면을 다시 그리기 전에 떠 둔다(GPU 순서는 Skia가 지킨다: 되풀이마다 기다리지 않는다)
-    const next = surf.makeImageSnapshot();
-    prev.push(next);
-    img = next;
+  return { key: gridKeyOf(env, bx), env, bx, W, H, surf, canvas: surf.getCanvas(), paint: Skia.Paint(), pass: 0, cur: { x: 0, y: 0 }, armed: false, img: null, prev: [] };
+}
+// 표면과 지난 스냅숏을 놓아준다(keep: 마지막 그림은 남긴다)
+function endGrid(run: GridRun, keep: boolean) {
+  'worklet';
+  for (const p of run.prev) if (!keep || p !== run.img) p.dispose();
+  run.prev = [];
+  if (!keep) run.img = null;
+  run.surf.dispose();
+}
+
+// 조각 하나(n칸쯤)를 그린다(GPU는 기다리지 않는다). 그린 칸 수. 한 번을 다 그리면 스냅숏을 뜨고 다음 번으로(다 끝났으면 run.pass === GRID_PASSES, 결과는 run.img)
+function drawGrid(run: GridRun, n: number): number {
+  'worklet';
+  if (!run.armed) {
+    const nBox = run.bx.list.length;
+    const u = { ...lightSet().u, env: envOf(run.env), box: run.bx.v, nBox, gridOn: run.img ? 1 : 0, gridNx: nBox || run.env.side ? ENV_NX : 1 };
+    const gridFx = gridEffect();
+    run.paint.setShader(gridFx.makeShaderWithChildren(processUniforms(gridFx, u), [linearShader(run.img ?? EMPTY)]));
+    run.armed = true;
   }
+  const p = nextPiece(run.cur, run.W, run.H, n);
+  run.canvas.drawRect(Skia.XYWHRect(p.x, p.y, p.w, p.h), run.paint);
+  if (run.cur.y >= run.H) {
+    // 스냅숏은 표면을 다시 그리기 전에 떠 둔다(다음 번이 이 그림을 읽는다)
+    const next = run.surf.makeImageSnapshot();
+    run.prev.push(next);
+    run.img = next;
+    run.pass += 1;
+    run.cur = { x: 0, y: 0 };
+    run.armed = false;
+  }
+  return p.w * p.h;
+}
+// 그린 것을 GPU가 끝낼 때까지 기다린다(1화소 읽기)
+function waitGpu(surf: SkSurface, canvas: SkCanvas) {
+  'worklet';
   surf.flush();
-  for (const p of prev) if (p !== img) p.dispose();
-  surf.dispose();
-  return img;
+  canvas.readPixels(0, 0, PIXEL);
 }
 
 // 푼 빛 격자 그림을 둘레·상자 값이 같으면 다시 쓴다(머리글 벽과 맨 윗줄은 같은 책 상자다). 최근 GRID_KEEP장만 두고 나머지는 놓아준다
-// (그림은 굽는 동안에만 읽는다)
+// (그림은 굽는 동안에만 읽는다. 굽고 있는 일감이 쓰는 그림은 놓아주지 않는다)
 const GRID_KEEP = 6;
-function cachedGrid(env: Env, bx: BoxBuf): SkImage | null {
+type GridStore = { __grids?: { key: string; img: SkImage | null }[] };
+function findGrid(key: string): { img: SkImage | null } | null {
   'worklet';
-  const g = globalThis as unknown as { __grids?: { key: string; img: SkImage | null }[] };
-  const list = g.__grids ?? (g.__grids = []);
-  const key = `${env.floor},${env.ceil}|${bx.v.slice(0, bx.list.length * 32).join(',')}`;
+  const list = (globalThis as GridStore).__grids;
+  if (!list) return null;
   const i = list.findIndex((e) => e.key === key);
-  if (i >= 0) {
-    const e = list.splice(i, 1)[0];
-    list.push(e);
-    return e.img;
-  }
-  const img = solveGridImage(env, bx);
+  if (i < 0) return null;
+  const e = list.splice(i, 1)[0];
+  list.push(e);
+  return e;
+}
+function storeGrid(key: string, img: SkImage | null, busy: (SkImage | null)[]) {
+  'worklet';
+  const g = globalThis as GridStore;
+  const list = g.__grids ?? (g.__grids = []);
   list.push({ key, img });
-  while (list.length > GRID_KEEP) list.shift()!.img?.dispose();
-  return img;
+  for (let i = 0; i < list.length && list.length > GRID_KEEP; ) {
+    if (busy.indexOf(list[i].img) >= 0) i++;
+    else list.splice(i, 1)[0].img?.dispose();
+  }
 }
 
 // 미리 굽기(warmLight)의 그림 열쇠
 const WARM_KEY = 'light-warm';
+
+// 굽기 결과를 정하는 값 전부(bake-cache 열쇠): 셰이더 소스·되풀이 수·표면, 아틀라스 크기와 면마다 자리·칸·법선·둘레·제 책, 상자 목록, 맞추기 값
+const LIGHT_REV = bakeHash(`${BAKE_SRC}|${GRID_SRC}|${GRID_PASSES}|${ENV_NX}|${Platform.OS}`);
+function bakeKeyOf(items: BakeItem[], at: Atlas['at'], W: number, H: number, cal: Record<string, unknown>): string {
+  'worklet';
+  const v = (p: Vec3) => `${p.x},${p.y},${p.z}`;
+  let s = `${LIGHT_REV}|${W}x${H}`;
+  let lastBx: BoxBuf | null = null;
+  for (const it of items) {
+    const r = at[it.key];
+    s += `|${r.x},${r.y}:${v(it.O)};${v(it.U)};${v(it.V)};${it.w}x${it.h};${v(it.n)};${it.self};`;
+    s += it.env ? `${it.env.floor},${it.env.ceil},${it.env.side ? 1 : 0}` : '-';
+    if (it.bx !== lastBx) {
+      lastBx = it.bx;
+      s += `;b${it.bx.list.length}:${it.bx.v.slice(0, it.bx.list.length * 32).join(',')}`;
+    }
+  }
+  for (const k of Object.keys(cal).sort()) s += `|${k}=${String(cal[k])}`;
+  return s;
+}
+// 새로 구운 그림을 담는다. 그림을 읽어 내는(CPU로) 일은 시작 화면이 걷히고 새 굽기가 2초 없을 때 한 프레임에 하나씩 해서 JS로 넘긴다.
+// 그때 어느 줄도 쓰지 않는 그림(끄는 동안 지나간 배치)은 담지 않는다
+type SaveJob = { name: string; image: SkImage };
+type SaveQueue = { __bakeSaves?: SaveJob[]; __bakeAt?: number; __bakeLoop?: boolean };
+function queueSave(name: string, image: SkImage) {
+  'worklet';
+  const g = globalThis as SaveQueue;
+  (g.__bakeSaves ?? (g.__bakeSaves = [])).push({ name, image });
+  g.__bakeAt = performance.now();
+  if (g.__bakeLoop) return;
+  g.__bakeLoop = true;
+  const tick = () => {
+    const list = g.__bakeSaves ?? [];
+    if (!list.length) {
+      g.__bakeLoop = false;
+      return;
+    }
+    if (lightAllSV.value && performance.now() - (g.__bakeAt ?? 0) > 2000) {
+      const job = list.shift()!;
+      if (isCurrentBake(job.name, job.image)) {
+        const cpu = job.image.makeNonTextureImage();
+        if (cpu) scheduleOnRN(saveBake, job.name, cpu);
+      }
+    }
+    requestAnimationFrame(tick);
+  };
+  requestAnimationFrame(tick);
+}
+
+// 면 하나를 굽는 셰이더(빛 격자 그림 g를 읽는다)
+function itemShader(it: BakeItem, g: SkImage | null, cal: Record<string, unknown>): SkShader {
+  'worklet';
+  const u = {
+    ...cal,
+    O: arr(it.O), Ux: arr(it.U), Vy: arr(it.V), tN: arr(it.n), cells: [it.w, it.h], env: envOf(it.env), box: it.bx.v, nBox: it.bx.list.length, selfIdx: it.self,
+    gridOn: g ? 1 : 0, gridNx: it.bx.list.length || it.env?.side ? ENV_NX : 1,
+  };
+  const bakeFx = bakeEffect();
+  return bakeFx.makeShaderWithChildren(processUniforms(bakeFx, u as Uniforms), [linearShader(g ?? EMPTY)]);
+}
+
+// 굽기 일감 하나(줄 아틀라스 한 장). keys: 이 그림을 기다리는 줄들(같은 값의 줄은 일감 하나를 같이 쓴다).
+// needs: 줄 둘레·상자 목록마다 빛 격자 한 장(가리개 면 밝기), gi: 면마다 쓰는 빛 격자 번호(둘레 없는 면은 −1)
+type Need = { env: Env; bx: BoxBuf; img: SkImage | null };
+type BakeJob = {
+  keys: string[]; name: string; save: boolean; items: BakeItem[]; at: Atlas['at']; W: number; H: number; cal: Record<string, unknown>;
+  needs: Need[]; gi: number[]; ni: number; grid: GridRun | null;
+  surf: SkSurface | null; canvas: SkCanvas | null; paint: SkPaint | null;
+  ii: number; cur: Cursor; armed: boolean;
+  // cells: 면 전체의 칸 수 × 무게(묶음 크기의 아래 한계를 정한다)
+  failed: boolean; t0: number; work: number; gridWork: number; batches: number; cells: number;
+};
+type JobStore = { __bakeJobs?: BakeJob[]; __bakeRun?: boolean; __bakeFailed?: Record<string, string> };
+function makeJob(key: string, name: string, save: boolean, items: BakeItem[], at: Atlas['at'], W: number, H: number, cal: Record<string, unknown>): BakeJob {
+  'worklet';
+  const needs: Need[] = [];
+  const gi = items.map((it) => {
+    const env = it.env;
+    if (!env) return -1;
+    const i = needs.findIndex((n) => n.bx === it.bx && n.env.floor === env.floor && n.env.ceil === env.ceil);
+    if (i >= 0) return i;
+    needs.push({ env, bx: it.bx, img: null });
+    return needs.length - 1;
+  });
+  let cells = 0;
+  for (const it of items) cells += (it.w + 2 * GUTTER) * (it.h + 2 * GUTTER) * (it.bx.list.length + 2);
+  return { keys: [key], name, save, items, at, W, H, cal, needs, gi, ni: 0, grid: null, surf: null, canvas: null, paint: null, ii: 0, cur: { x: 0, y: 0 }, armed: false, failed: false, t0: performance.now(), work: 0, gridWork: 0, batches: 0, cells };
+}
+// 이 일감을 다 굽는 데 걸릴 시간 어림(ms, 지금까지 잰 속도로. 아직 모르는 몫은 0)
+function estimateMs(job: BakeJob): number {
+  'worklet';
+  const sp = speedOf();
+  let ms = 0;
+  if (sp.grid > 0) {
+    for (const n of job.needs) {
+      if (findGrid(gridKeyOf(n.env, n.bx))) continue;
+      const s = gridSizeOf(n.bx);
+      ms += ((GRID_PASSES * s.W * s.H * (n.bx.list.length + 2)) / sp.grid) * BATCH_MS;
+    }
+  }
+  if (sp.bake > 0) for (const it of job.items) ms += (((it.w + 2 * GUTTER) * (it.h + 2 * GUTTER) * (it.bx.list.length + 2)) / sp.bake) * BATCH_MS;
+  return ms;
+}
+// until(시각)까지 묶음을 그린다. 다 구웠으면(또는 표면을 못 만들었으면) true. boost: 묶음을 이만큼 크게(부른 자리에서 다 구워 볼 때: 기다리는 횟수를 줄인다. 속도는 고치지 않는다)
+function stepJob(job: BakeJob, until: number, boost: number): boolean {
+  'worklet';
+  if (!job.surf) {
+    job.surf = Skia.Surface.MakeOffscreen(job.W, job.H, BAKE_SURFACE);
+    if (!job.surf) {
+      job.failed = true;
+      return true;
+    }
+    job.canvas = job.surf.getCanvas();
+    job.paint = Skia.Paint();
+  }
+  const sp = speedOf();
+  for (;;) {
+    const t0 = performance.now();
+    let t = t0;
+    if (job.ni < job.needs.length) {
+      // 빛 격자
+      const need = job.needs[job.ni];
+      if (!job.grid) {
+        const hit = findGrid(gridKeyOf(need.env, need.bx));
+        const s = gridSizeOf(need.bx);
+        const made = hit ? null : startGrid(need.env, need.bx, s.W, s.H);
+        if (!made) {
+          need.img = hit ? hit.img : null;
+          job.ni += 1;
+          continue;
+        }
+        job.grid = made;
+      }
+      const run = job.grid;
+      const weight = need.bx.list.length + 2;
+      // 먼저 밀린 GPU 일(화면 프레임)을 기다린다: 그래야 이 묶음에 든 시간만 잰다(같이 재면 묶음이 작은 채로 머문다)
+      waitGpu(run.surf, run.canvas);
+      t = performance.now();
+      const budget = Math.max(sp.grid > 0 ? sp.grid : START, (GRID_PASSES * run.W * run.H * weight) / MAX_BATCHES) * boost;
+      let drawn = 0;
+      while (drawn < budget && run.pass < GRID_PASSES) drawn += drawGrid(run, (budget - drawn) / weight) * weight;
+      waitGpu(run.surf, run.canvas);
+      const ms = performance.now() - t;
+      if (ms < sp.over) sp.over = ms;
+      if (boost === 1) sp.grid = tune(budget, drawn, ms - sp.over);
+      job.gridWork += ms;
+      if (run.pass >= GRID_PASSES) {
+        endGrid(run, true);
+        need.img = run.img;
+        storeGrid(run.key, run.img, job.needs.map((n) => n.img));
+        job.grid = null;
+        job.ni += 1;
+      }
+    } else if (job.ii < job.items.length) {
+      // 면(작은 면은 한 묶음에 여러 개)
+      const canvas = job.canvas!;
+      const paint = job.paint!;
+      waitGpu(job.surf, canvas);
+      t = performance.now();
+      const budget = Math.max(sp.bake > 0 ? sp.bake : START, job.cells / MAX_BATCHES) * boost;
+      let drawn = 0;
+      while (drawn < budget && job.ii < job.items.length) {
+        const it = job.items[job.ii];
+        const r = job.at[it.key];
+        const PW = it.w + 2 * GUTTER;
+        const PH = it.h + 2 * GUTTER;
+        if (!job.armed) {
+          const gi = job.gi[job.ii];
+          paint.setShader(itemShader(it, gi >= 0 ? job.needs[gi].img : null, job.cal));
+          job.cur = { x: 0, y: 0 };
+          job.armed = true;
+        }
+        const weight = it.bx.list.length + 2;
+        const p = nextPiece(job.cur, PW, PH, (budget - drawn) / weight);
+        canvas.save();
+        canvas.translate(r.x, r.y);
+        canvas.drawRect(Skia.XYWHRect(p.x - GUTTER, p.y - GUTTER, p.w, p.h), paint);
+        canvas.restore();
+        drawn += p.w * p.h * weight;
+        if (job.cur.y >= PH) {
+          job.ii += 1;
+          job.armed = false;
+        }
+      }
+      waitGpu(job.surf, canvas);
+      const ms = performance.now() - t;
+      if (ms < sp.over) sp.over = ms;
+      if (boost === 1) sp.bake = tune(budget, drawn, ms - sp.over);
+    } else {
+      return true;
+    }
+    job.work += performance.now() - t0;
+    job.batches += 1;
+    if (performance.now() >= until) return false;
+  }
+}
+// 다 구운 일감: 그림을 떠서 모음에 넣는다(기다리던 줄은 bakeAtlas를 다시 불러 받는다). 못 구웠으면 null
+function finishJob(job: BakeJob): SkImage | null {
+  'worklet';
+  const g = globalThis as JobStore;
+  if (job.failed || !job.surf) {
+    const failed = g.__bakeFailed ?? (g.__bakeFailed = {});
+    for (const k of job.keys) failed[k] = job.name;
+    return null;
+  }
+  job.surf.flush();
+  const image = job.surf.makeImageSnapshot();
+  job.surf.dispose();
+  job.surf = null;
+  putBake(job.name, image);
+  for (const k of job.keys) pinBake(k, image);
+  if (job.save) queueSave(job.name, image);
+  if (BAKE_STAT) console.log('[bake]', job.items.length, 'items', `${job.W}x${job.H}`, 'ms', job.work.toFixed(1), 'grid', job.needs.length, job.gridWork.toFixed(1), 'batches', job.batches, 'over', speedOf().over.toFixed(1), 'wall', (performance.now() - job.t0).toFixed(0));
+  return image;
+}
+// 굽다 만 일감(기다리는 줄이 없어졌다): 표면을 놓아준다
+function cancelJob(job: BakeJob) {
+  'worklet';
+  if (job.grid) endGrid(job.grid, false);
+  job.grid = null;
+  job.surf?.dispose();
+  job.surf = null;
+}
+// 줄(key)이 기다리던 일감에서 빠진다(name: 이 이름의 일감은 그대로 기다린다). 기다리는 줄이 없어진 일감은 버린다
+function leaveJobs(key: string, name: string | null) {
+  'worklet';
+  const q = (globalThis as JobStore).__bakeJobs;
+  if (!q) return;
+  for (let i = q.length - 1; i >= 0; i--) {
+    const j = q[i];
+    if (j.name === name) continue;
+    const k = j.keys.indexOf(key);
+    if (k < 0) continue;
+    j.keys.splice(k, 1);
+    if (!j.keys.length) cancelJob(q.splice(i, 1)[0]);
+  }
+}
+// 프레임마다 FRAME_MS만큼 일감을 굽는다(일감이 없으면 멈추고, 새 일감이 오면 다시 돈다)
+function startBakeLoop() {
+  'worklet';
+  const g = globalThis as JobStore;
+  if (g.__bakeRun) return;
+  g.__bakeRun = true;
+  const tick = () => {
+    const q = g.__bakeJobs ?? [];
+    if (!q.length) {
+      g.__bakeRun = false;
+      return;
+    }
+    const until = performance.now() + FRAME_MS;
+    let done = false;
+    while (q.length && performance.now() < until) {
+      const job = q[0];
+      if (!stepJob(job, until, 1)) break;
+      // 그리는 사이 버려졌으면(q에서 빠졌다) 넘어간다
+      if (q[0] === job) {
+        q.shift();
+        finishJob(job);
+        done = true;
+      }
+    }
+    if (done) bakeDoneSV.value = bakeDoneSV.value + 1;
+    requestAnimationFrame(tick);
+  };
+  requestAnimationFrame(tick);
+}
+// 줄이 사라졌다: 기다리던 일감에서 빠지고 그 줄이 쓰던 그림 표시를 지운다
+export function releaseBake(key: string) {
+  'worklet';
+  leaveJobs(key, null);
+  const failed = (globalThis as JobStore).__bakeFailed;
+  if (failed) delete failed[key];
+  unpinBakes(key);
+}
+
+// 줄 아틀라스: 구울 면들을 그림 한 장에 놓고 굽는다. 같은 값으로 구운 그림이 있으면(이번 실행에 구웠거나 지난 실행에 담아 둔 것, bake-cache) 그것을,
+// 없으면 일감을 넣고 PENDING_ATLAS(굽는 중)를 돌려준다. key: 줄(부르는 곳)마다 하나(같은 줄을 다른 배치로 다시 부르면 앞 일감은 버린다)
 export function bakeAtlas(items: BakeItem[], key: string): Atlas {
   'worklet';
   // 굽기는 UI 스레드에서만(파생 값은 마운트 직후 UI에서 다시 돈다)
@@ -250,54 +658,41 @@ export function bakeAtlas(items: BakeItem[], key: string): Atlas {
     shelf = Math.max(shelf, it.h + 2 * GUTTER);
   }
   const H = y + shelf;
-  const surf = Skia.Surface.MakeOffscreen(W, H, BAKE_SURFACE);
-  if (!surf) return NO_ATLAS;
-  const canvas = surf.getCanvas();
-  const paint = Skia.Paint();
-  const cal = lightSet().u; // 맞추기 값(스킨마다)
-  // 줄 둘레·상자 목록마다 빛 격자 한 장(가리개 면 밝기)
-  const grids: { env: Env; bx: BoxBuf; img: SkImage | null }[] = [];
-  let gridMs = 0;
-  const gridOf = (env: Env | null, bx: BoxBuf) => {
-    if (!env) return null;
-    for (const g of grids) if (g.bx === bx && g.env.floor === env.floor && g.env.ceil === env.ceil) return g.img;
-    const t = BAKE_STAT ? performance.now() : 0;
-    const img = cachedGrid(env, bx);
-    if (BAKE_STAT && img) {
-      img.readPixels(0, 0, { width: 1, height: 1, alphaType: AlphaType.Premul, colorType: ColorType.RGBA_8888 });
-      gridMs += performance.now() - t;
-    }
-    grids.push({ env, bx, img });
-    return img;
-  };
-  for (const it of items) {
-    const r = at[it.key];
-    const g = gridOf(it.env, it.bx);
-    const u = {
-      ...cal,
-      O: arr(it.O), Ux: arr(it.U), Vy: arr(it.V), tN: arr(it.n), cells: [it.w, it.h], env: envOf(it.env), box: it.bx.v, nBox: it.bx.list.length, selfIdx: it.self,
-      gridOn: g ? 1 : 0, gridNx: it.bx.list.length || it.env?.side ? ENV_NX : 1,
-    };
-    paint.setShader(BAKE.makeShaderWithChildren(processUniforms(BAKE, u), [linearShader(g ?? EMPTY)]));
-    canvas.save();
-    canvas.translate(r.x, r.y);
-    canvas.drawRect(Skia.XYWHRect(-GUTTER, -GUTTER, it.w + 2 * GUTTER, it.h + 2 * GUTTER), paint);
-    canvas.restore();
+  const cal = lightSet().u as Record<string, unknown>; // 맞추기 값(스킨마다)
+  // 측정용으로 바꿔 끼운 셰이더로 구운 그림은 이름을 달리하고 담지 않는다
+  const swapped = overridden();
+  const name = (swapped ? 'x' : '') + bakeHash(bakeKeyOf(items, at, W, H, cal));
+  const hit = cachedBake(name);
+  if (hit) {
+    pinBake(key, hit);
+    if (BAKE_STAT) console.log('[bake]', items.length, 'items', `${W}x${H}`, 'cached', (performance.now() - t0).toFixed(1));
+    return { image: hit, at };
   }
-  surf.flush();
-  const image = keepLatest(key, surf.makeImageSnapshot());
-  surf.dispose();
-  if (BAKE_STAT) {
-    image.readPixels(0, 0, { width: 1, height: 1, alphaType: AlphaType.Premul, colorType: ColorType.RGBA_8888 });
-    console.log('[bake]', items.length, 'items', `${W}x${H}`, 'ms', (performance.now() - t0).toFixed(1), 'grid', grids.length, gridMs.toFixed(1));
+  const g = globalThis as JobStore;
+  if (g.__bakeFailed?.[key] === name) return NO_ATLAS;
+  const q = g.__bakeJobs ?? (g.__bakeJobs = []);
+  // 이 줄이 앞서 맡긴 다른 배치는 이제 기다리지 않는다
+  leaveJobs(key, name);
+  const same = q.find((j) => j.name === name);
+  if (same) {
+    if (same.keys.indexOf(key) < 0) same.keys.push(key);
+    return PENDING_ATLAS;
   }
-  return { image, at };
+  const job = makeJob(key, name, !swapped, items, at, W, H, cal);
+  // 기다리는 일감이 없으면 여기서 INLINE_MS까지 구워 본다(빠른 기기는 그 안에 끝나 이전처럼 같은 프레임에 나온다).
+  // 지금까지 잰 속도로 턱없이 모자라면 해 보지 않는다(느린 기기에서 부를 때마다 멈칫하지 않게)
+  if (!q.length && estimateMs(job) <= 3 * INLINE_MS && stepJob(job, performance.now() + INLINE_MS, 8)) {
+    const image = finishJob(job);
+    return image ? { image, at } : NO_ATLAS;
+  }
+  q.push(job);
+  startBakeLoop();
+  return PENDING_ATLAS;
 }
 
 // 시작할 때 굽기 셰이더(빛 격자·굽기)를 미리 컴파일한다(2026-11-12). GPU 컴파일은 처음 그릴 때 UI 스레드를 막는데, 앱이 서재를 읽는 동안은
-// JS 스레드만 바쁘고 UI 스레드는 시작 화면만 띄운다: 그 시간에 겹친다. 실제 굽기와 같은 함수·같은 화면 밖 표면·같은 자식 그림이라 같은 GPU 프로그램을
-// 다시 쓴다. 빛 격자와 굽기는 프레임을 나눈다(한 번에 오래 막지 않게). 결과 그림은 쓰지 않는다
-// 둘레 값은 실제 줄과 겹치지 않게(빛 격자 캐시 cachedGrid 열쇠가 둘레 높이로 고른다)
+// JS 스레드만 바쁘고 UI 스레드는 시작 화면만 띄운다: 그 시간에 겹친다. 실제 굽기와 같은 셰이더·같은 화면 밖 표면·같은 자식 그림(첫 번은 빈 그림,
+// 다음부터 스냅숏)이라 같은 GPU 프로그램을 다시 쓴다. 칸 몇 개만 그린다(컴파일만 일어나면 된다). 빛 격자와 굽기는 프레임을 나눈다(한 번에 오래 막지 않게)
 const WARM_ENV: Env = { floor: -54321, ceil: -54121 };
 const WARM_ITEM: BakeItem = { key: WARM_KEY, O: { x: 0, y: 0, z: 100 }, U: { x: 1, y: 0, z: 0 }, V: { x: 0, y: -1, z: 0 }, w: 2, h: 2, n: { x: 0, y: 0, z: -1 }, env: WARM_ENV, bx: NO_BOXES, self: -1 };
 let warmed = false;
@@ -306,9 +701,21 @@ export function warmLight() {
   warmed = true;
   scheduleOnUI(() => {
     'worklet';
-    cachedGrid(WARM_ENV, NO_BOXES);
+    const run = startGrid(WARM_ENV, NO_BOXES, 8, 2);
+    if (!run) return;
+    while (run.pass < GRID_PASSES) drawGrid(run, 16);
+    waitGpu(run.surf, run.canvas);
+    endGrid(run, true);
     requestAnimationFrame(() => {
-      bakeAtlas([WARM_ITEM], WARM_KEY);
+      const surf = Skia.Surface.MakeOffscreen(ATLAS_W, 4, BAKE_SURFACE);
+      if (surf) {
+        const paint = Skia.Paint();
+        paint.setShader(itemShader(WARM_ITEM, run.img, lightSet().u as Record<string, unknown>));
+        surf.getCanvas().drawRect(Skia.XYWHRect(0, 0, 4, 4), paint);
+        waitGpu(surf, surf.getCanvas());
+        surf.dispose();
+      }
+      run.img?.dispose();
     });
   });
 }
@@ -334,8 +741,8 @@ function prevSampleOf(a: Atlas, key: string, M: (w: number, h: number) => number
 }
 
 // 두 겹(곱하기·닷지)으로 영역(path)을 다시 칠한다. fx: 셰이더, passes: 겹마다 uniform(usePasses), sample: 셰이더 자식(구운 그림과 행렬), prev: 앞 굽기
-function Relit({ path, fx, passes, sample, prev, keyImage }: { path: RO<SkPath> | SkPath; fx: SkRuntimeEffect; passes: RO<Uniforms>[]; sample: RO<Sample>; prev: RO<Sample>; keyImage: RO<SkImage> }) {
-  const paths = useStagedPaths(path, passes.length);
+function Relit({ path, fx, passes, sample, prev, keyImage, heavy }: { path: RO<SkPath> | SkPath; fx: SkRuntimeEffect; passes: RO<Uniforms>[]; sample: RO<Sample>; prev: RO<Sample>; keyImage: RO<SkImage>; heavy: RO<boolean> }) {
+  const paths = useStagedPaths(path, passes.length, heavy);
   const image = useDerivedValue(() => sample.value.image);
   const matrix = useDerivedValue(() => sample.value.matrix);
   const image2 = useDerivedValue(() => prev.value.image);
@@ -525,7 +932,13 @@ export function BookLight({ dims: d, state, cam, px, outline, albedo, material =
   const keyImage = useDerivedValue(() => (keyShadow ? keyShadow.value : NO_BOOK_KEY).image);
   const image2 = useDerivedValue(() => prev.value.image);
   const passes = usePasses(uniforms, picture ? 'art' : 'plain');
-  const paths = useStagedPaths(outline, 3);
+  // 구운 면이 하나도 없고 둘레가 있으면 화소마다 둘레 가림을 계산한다(무겁다)
+  const heavy = useDerivedValue(() => {
+    const r = rects.value;
+    for (let i = 2; i < r.length; i += 4) if (r[i] > 0) return false;
+    return !!(env && env.value);
+  });
+  const paths = useStagedPaths(outline, 3, heavy);
   return (
     <>
       {passes.map((u, i) => (
@@ -599,15 +1012,17 @@ export function BakedPlane({ path, cam, px, plane, env, atlas, akey, matrix, alb
     };
   });
   const passes = usePasses(uniforms, base ? 'direct' : 'plain');
-  if (base) return <Direct path={path} uniforms={passes[0]} sample={sample} prev={prev} keyImage={keyImage} />;
-  return <Relit path={path} fx={LIT} passes={passes} sample={sample} prev={prev} keyImage={keyImage} />;
+  // 구운 값이 없고 둘레가 있으면 화소마다 둘레 가림을 계산한다(무겁다)
+  const heavy = useDerivedValue(() => sample.value.live === 1 && env !== null, [env]);
+  if (base) return <Direct path={path} uniforms={passes[0]} sample={sample} prev={prev} keyImage={keyImage} heavy={heavy} />;
+  return <Relit path={path} fx={LIT} passes={passes} sample={sample} prev={prev} keyImage={keyImage} heavy={heavy} />;
 }
-function Direct({ path, uniforms, sample, prev, keyImage }: { path: RO<SkPath> | SkPath; uniforms: RO<Uniforms>; sample: RO<Sample>; prev: RO<Sample>; keyImage: RO<SkImage> }) {
+function Direct({ path, uniforms, sample, prev, keyImage, heavy }: { path: RO<SkPath> | SkPath; uniforms: RO<Uniforms>; sample: RO<Sample>; prev: RO<Sample>; keyImage: RO<SkImage>; heavy: RO<boolean> }) {
   const image = useDerivedValue(() => sample.value.image);
   const matrix = useDerivedValue(() => sample.value.matrix);
   const image2 = useDerivedValue(() => prev.value.image);
   const matrix2 = useDerivedValue(() => prev.value.matrix);
-  const paths = useStagedPaths(path, 1);
+  const paths = useStagedPaths(path, 1, heavy);
   return (
     <Path path={paths[0]}>
       <Shader source={LIT} uniforms={uniforms}>
