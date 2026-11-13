@@ -1,0 +1,7 @@
+{
+  "mode": "built-in imagegen edit",
+  "reference": "창가의 빗소리 독서 타이머.png",
+  "prompt": "Use case: precise-object-edit. Asset type: production background illustration for the existing Korean reading timer app, with all UI rendered separately in native code. Input image is the edit target. Extract ONLY the rainy window reading scene from the reference, preserving its composition and illustration style as faithfully as possible: rainy deep blue night window, golden crescent moon over mountains and lakeside village lights, warm wooden desk, open book, mug on left, illuminated brass lamp at right. Remove ALL overlaid user interface, all Korean labels, header icons, bottom cream control panel, mini book cover, timer numbers and buttons. Deliver only the uninterrupted scene, no text, icons, buttons, frames or UI. Use portrait approximately 2:3 aspect ratio corresponding to the upper scene region of the original; keep window in upper 72% and open book/desk at bottom, preserve original muted blue and warm amber palette and soft illustrated textures. No new objects. Opaque image.",
+  "asset": "rain-window-reference-v1.png",
+  "status": "Reference-derived illustration; not original editable source. Fire/room and audio retain prior temporary assets."
+}

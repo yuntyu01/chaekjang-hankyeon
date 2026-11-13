@@ -17,7 +17,8 @@ class AlertButton {
   final AlertStyle style;
 }
 
-Future<void> appAlert(BuildContext context, String title, [String? message, List<AlertButton>? buttons, bool cancelable = true]) async {
+/// stacked: 버튼을 늘 세로로 쌓는다(지금 앱 Dialog처럼: 주요 → 보조 → 맨 아래 글자 버튼)
+Future<void> appAlert(BuildContext context, String title, [String? message, List<AlertButton>? buttons, bool cancelable = true, bool stacked = false]) async {
   final list = buttons == null || buttons.isEmpty ? const [AlertButton('확인')] : buttons;
   final cancel = list.where((b) => b.style == AlertStyle.cancel).firstOrNull;
   final dismissTo = cancel ?? (list.length == 1 ? list.first : null);
@@ -31,7 +32,7 @@ Future<void> appAlert(BuildContext context, String title, [String? message, List
     pageBuilder: (ctx, _, _) {
       final actions = list.where((b) => b != cancel).toList();
       Widget btn(AlertButton b, String kind) => Btn(label: b.text, kind: kind, onPress: () => Navigator.pop(ctx, b));
-      final body = list.length <= 2
+      final body = list.length <= 2 && !stacked
           ? Row(children: [
               if (cancel != null) Expanded(child: btn(cancel, 'secondary')),
               for (final (i, b) in actions.indexed) ...[

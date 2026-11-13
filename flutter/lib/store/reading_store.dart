@@ -162,6 +162,41 @@ class ReadingStore extends ChangeNotifier with WidgetsBindingObserver {
     return p;
   }
 
+  /// 끝낸 기록의 책 바꾸기(적던 시작 쪽은 지운다: 새 책의 지금 쪽이 기본값)
+  void setPendingBook(String? myBookId, [num? startPage]) {
+    final p = pending;
+    if (p == null) return;
+    final n = p.notes;
+    pending = FinishDraft(
+      id: p.id,
+      startedAt: p.startedAt,
+      endedAt: p.endedAt,
+      durationMs: p.durationMs,
+      myBookId: myBookId,
+      startPage: myBookId != null ? startPage : null,
+      notes: n == null ? null : FinishNotes(pages: n.pages, memo: n.memo),
+    );
+    notifyListeners();
+    _save();
+  }
+
+  /// 종료 화면에 적는 중인 값(쪽수·메모)을 초안에 함께 둔다(앱이 꺼져도 복구)
+  void setPendingNotes({String? startPage, String? pages, String? memo}) {
+    final p = pending;
+    if (p == null) return;
+    final n = p.notes;
+    pending = FinishDraft(
+      id: p.id,
+      startedAt: p.startedAt,
+      endedAt: p.endedAt,
+      durationMs: p.durationMs,
+      myBookId: p.myBookId,
+      startPage: p.startPage,
+      notes: FinishNotes(startPage: startPage ?? n?.startPage, pages: pages ?? n?.pages, memo: memo ?? n?.memo),
+    );
+    _save();
+  }
+
   Future<void> clearPending() async {
     final p = pending;
     try {

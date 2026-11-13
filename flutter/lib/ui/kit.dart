@@ -236,7 +236,7 @@ class Screen extends StatelessWidget {
               Container(
                 color: AppColors.bg,
                 padding: EdgeInsets.fromLTRB(Space.page, 12, Space.page, 12 + insets.bottom),
-                child: Center(child: ConstrainedBox(constraints: const BoxConstraints(maxWidth: contentMax), child: footer)),
+                child: Center(child: ConstrainedBox(constraints: const BoxConstraints(maxWidth: contentMax), child: SizedBox(width: double.infinity, child: footer))),
               ),
           ],
         ),
@@ -1075,4 +1075,354 @@ class RenderPullUp extends RenderShiftedBox {
     (c.parentData! as BoxParentData).offset = Offset(0, -_dy);
     size = constraints.constrain(Size(c.size.width, math.max(0, c.size.height - _dy)));
   }
+}
+
+/// 고르는 블록(서로 바꿔 고르는 선택지: 분위기·목표 시간). 모서리 14, 안쪽 16. 흰 바탕 + 얇은 테두리, 고르면 갈색 테두리 + 작은 체크
+class Choice extends StatelessWidget {
+  const Choice({super.key, required this.label, required this.selected, required this.onPress, this.sub, this.compact = false, this.child});
+  final String label;
+  final String? sub;
+  final bool selected, compact;
+  final VoidCallback onPress;
+  final Widget? child;
+
+  @override
+  Widget build(BuildContext context) {
+    Widget check({double size = 20, bool ring = false}) => Container(
+          width: size,
+          height: size,
+          decoration: BoxDecoration(color: AppColors.accent, shape: BoxShape.circle, border: ring ? Border.all(color: AppColors.bg, width: 2) : null),
+          child: const Center(child: LucideIcon('Check', size: 12, color: AppColors.onAccent, stroke: 3)),
+        );
+    final wide = !compact && sub == null;
+    return Semantics(
+      button: true,
+      selected: selected,
+      label: [label, ?sub].join(', '),
+      excludeSemantics: true,
+      child: _ChoiceBox(
+        selected: selected,
+        onPress: onPress,
+        compact: compact,
+        child: Stack(clipBehavior: Clip.none, children: [
+          Column(crossAxisAlignment: CrossAxisAlignment.stretch, mainAxisSize: MainAxisSize.min, children: [
+            ?child,
+            Padding(
+              padding: EdgeInsets.only(right: wide && selected ? 28 : 0),
+              child: Text(label, textAlign: compact ? TextAlign.center : TextAlign.left, style: AppType.button.copyWith(color: AppColors.ink)),
+            ),
+            if (sub != null) Padding(padding: const EdgeInsets.only(top: 2), child: Text(sub!, textAlign: compact ? TextAlign.center : TextAlign.left, style: AppType.caption)),
+          ]),
+          // 넓은 한 줄은 오른쪽 세로 가운데, 좁은 칸은 모서리에 걸쳐, 설명이 있는 칸은 오른쪽 위
+          if (selected)
+            wide
+                ? Positioned(top: 0, bottom: 0, right: 0, child: Center(child: check()))
+                : compact
+                    ? Positioned(top: -12 - 7, right: -8 - 7, child: check(size: 22, ring: true))
+                    : Positioned(top: -16 + 8, right: -16 + 8, child: check()),
+        ]),
+      ),
+    );
+  }
+}
+
+class _ChoiceBox extends StatefulWidget {
+  const _ChoiceBox({required this.selected, required this.onPress, required this.compact, required this.child});
+  final bool selected, compact;
+  final VoidCallback onPress;
+  final Widget child;
+
+  @override
+  State<_ChoiceBox> createState() => _ChoiceBoxState();
+}
+
+class _ChoiceBoxState extends State<_ChoiceBox> {
+  bool _down = false;
+
+  @override
+  Widget build(BuildContext context) => GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTapDown: (_) => setState(() => _down = true),
+        onTapCancel: () => setState(() => _down = false),
+        onTapUp: (_) => setState(() => _down = false),
+        onTap: widget.onPress,
+        child: Container(
+          constraints: const BoxConstraints(minHeight: 56),
+          padding: widget.compact ? const EdgeInsets.symmetric(vertical: 12, horizontal: 8) : const EdgeInsets.all(16),
+          alignment: Alignment.centerLeft,
+          decoration: BoxDecoration(
+            color: _down && !widget.selected ? AppColors.surface : AppColors.bg,
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(color: widget.selected ? AppColors.accent : AppColors.line, width: 1.5),
+          ),
+          child: widget.child,
+        ),
+      );
+}
+
+/// 밤 장면 위 밝은 색(독서 타이머를 접었을 때)
+abstract final class NightColors {
+  static const ink = Color(0xFFF6EFE6);
+  static const inkSoft = Color.fromRGBO(246, 239, 230, 0.78);
+  static const line = Color.fromRGBO(246, 239, 230, 0.22);
+  static const shade = Color.fromRGBO(16, 13, 11, 0.28);
+  static const fade = Color(0xFF100D0B);
+}
+
+/// 막대 조절(소리 크기): 누른 곳부터 끌어 바꾸고, 손을 떼면 onCommit. dim이면 켜진 쪽·손잡이를 회색으로(값은 지키되 꺼진 상태).
+/// night: 어두운 장면 위(밝은 크림색 막대와 손잡이)
+class AppSlider extends StatefulWidget {
+  const AppSlider({super.key, required this.value, required this.onCommit, required this.label, this.onChange, this.valueText, this.dim = false, this.night = false});
+  final double value;
+  final ValueChanged<double>? onChange;
+  final ValueChanged<double> onCommit;
+  final String label;
+  final String? valueText;
+  final bool dim, night;
+
+  @override
+  State<AppSlider> createState() => _AppSliderState();
+}
+
+class _AppSliderState extends State<AppSlider> {
+  static const _pad = 14.0;
+  double _last = 0;
+
+  double _at(double x, double w) {
+    final span = w - _pad * 2;
+    return span > 0 ? ((x - _pad) / span).clamp(0.0, 1.0) : _last;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final pct = (widget.value * 100).round();
+    final fill = widget.night ? (widget.dim ? NightColors.line : NightColors.ink) : widget.dim ? AppColors.inkFaint : AppColors.accent;
+    return LayoutBuilder(builder: (context, box) {
+      final w = box.maxWidth, span = math.max(0.0, w - _pad * 2);
+      return Semantics(
+        slider: true,
+        label: widget.label,
+        value: widget.valueText ?? '$pct%',
+        increasedValue: '${math.min(100, pct + 10)}%',
+        decreasedValue: '${math.max(0, pct - 10)}%',
+        onIncrease: () => widget.onCommit(math.min(1, ((widget.value + 0.1) * 10).round() / 10)),
+        onDecrease: () => widget.onCommit(math.max(0, ((widget.value - 0.1) * 10).round() / 10)),
+        child: GestureDetector(
+          behavior: HitTestBehavior.opaque,
+          onHorizontalDragStart: (d) => widget.onChange?.call(_last = _at(d.localPosition.dx, w)),
+          onHorizontalDragUpdate: (d) => widget.onChange?.call(_last = _at(d.localPosition.dx, w)),
+          onHorizontalDragEnd: (_) => widget.onCommit(_last),
+          onTapDown: (d) => widget.onChange?.call(_last = _at(d.localPosition.dx, w)),
+          onTapUp: (_) => widget.onCommit(_last),
+          child: SizedBox(
+            height: 44,
+            width: w,
+            child: Stack(children: [
+              Positioned(left: _pad, right: _pad, top: 19, height: 6, child: _bar(widget.night ? const Color.fromRGBO(246, 239, 230, 0.32) : AppColors.track)),
+              Positioned(left: _pad, top: 19, height: 6, width: span * widget.value, child: _bar(fill)),
+              Positioned(
+                left: _pad + span * widget.value - 12,
+                top: 10,
+                child: Container(
+                  width: 24,
+                  height: 24,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    color: widget.night ? NightColors.ink : AppColors.white,
+                    border: widget.night ? null : Border.all(color: fill, width: 2),
+                    boxShadow: const [Shape.floatShadow],
+                  ),
+                ),
+              ),
+            ]),
+          ),
+        ),
+      );
+    });
+  }
+
+  Widget _bar(Color c) => DecoratedBox(decoration: BoxDecoration(color: c, borderRadius: BorderRadius.circular(3)));
+}
+
+/// 입력칸 이름 나누기: '쪽수 (선택)', '메모 (선택, 설명)' → 이름·'선택'/'필수'·설명
+({String name, String? tag, String? note}) splitLabel(String label) {
+  final m = RegExp(r'^(.+?) \((.+)\)$').firstMatch(label);
+  if (m == null) return (name: label, tag: null, note: null);
+  final parts = m[2]!.split(', ');
+  final tag = parts.first == '선택' || parts.first == '필수' ? parts.removeAt(0) : null;
+  return (name: m[1]!, tag: tag, note: parts.isEmpty ? null : parts.join(', '));
+}
+
+class _LabelRow extends StatelessWidget {
+  const _LabelRow(this.name, this.tag);
+  final String name;
+  final String? tag;
+
+  @override
+  Widget build(BuildContext context) => Padding(
+        padding: const EdgeInsets.only(bottom: Space.s),
+        child: Wrap(crossAxisAlignment: WrapCrossAlignment.end, spacing: 8, children: [
+          Text(name, style: AppType.label),
+          if (tag != null) Text(tag!, style: AppType.caption.copyWith(color: AppColors.inkSoft)),
+        ]),
+      );
+}
+
+/// 입력칸: 입력칸색 단색 바탕, 테두리 없음, 누르면 갈색 테두리. 이름은 위에, 단위('쪽')는 칸 안 오른쪽, 도움말·오류는 아래
+class Field extends StatefulWidget {
+  const Field({super.key, required this.label, required this.value, required this.onChange, this.hint, this.error, this.unit, this.placeholder, this.multiline = false, this.number = false, this.minHeight});
+  final String label;
+  final String value;
+  final ValueChanged<String> onChange;
+  final String? hint, error, unit, placeholder;
+  final bool multiline, number;
+  final double? minHeight;
+
+  @override
+  State<Field> createState() => _FieldState();
+}
+
+class _FieldState extends State<Field> {
+  late final _c = TextEditingController(text: widget.value);
+  final _focus = FocusNode();
+
+  @override
+  void initState() {
+    super.initState();
+    _focus.addListener(() => setState(() {}));
+  }
+
+  @override
+  void didUpdateWidget(Field old) {
+    super.didUpdateWidget(old);
+    if (widget.value != _c.text) _c.text = widget.value;
+  }
+
+  @override
+  void dispose() {
+    _c.dispose();
+    _focus.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final l = splitLabel(widget.label);
+    final placeholder = widget.placeholder ?? l.note;
+    final help = widget.placeholder != null && l.note != null ? l.note : widget.hint;
+    final border = widget.error != null ? AppColors.danger : _focus.hasFocus ? AppColors.accent : AppColors.input;
+    return Padding(
+      padding: const EdgeInsets.only(bottom: Space.xl),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        _LabelRow(l.name, l.tag),
+        Stack(children: [
+          Container(
+            constraints: BoxConstraints(minHeight: widget.minHeight ?? (widget.multiline ? 110 : 56)),
+            decoration: BoxDecoration(color: AppColors.input, borderRadius: BorderRadius.circular(Shape.input), border: Border.all(color: border)),
+            child: Semantics(
+              label: widget.label,
+              textField: true,
+              child: TextField(
+                controller: _c,
+                focusNode: _focus,
+                onChanged: widget.onChange,
+                maxLines: widget.multiline ? null : 1,
+                keyboardType: widget.number ? TextInputType.number : (widget.multiline ? TextInputType.multiline : TextInputType.text),
+                textInputAction: TextInputAction.done,
+                style: AppType.input.copyWith(height: widget.multiline ? 25 / 16 : null),
+                cursorColor: AppColors.accent,
+                decoration: InputDecoration(
+                  isCollapsed: true,
+                  border: InputBorder.none,
+                  contentPadding: EdgeInsets.fromLTRB(16, widget.multiline ? 14 : 16, widget.unit != null ? 44 : 16, 16),
+                  hintText: placeholder,
+                  hintStyle: AppType.input.copyWith(color: AppColors.inkFaint),
+                ),
+              ),
+            ),
+          ),
+          if (widget.unit != null)
+            Positioned(right: 16, top: 0, bottom: 0, child: IgnorePointer(child: Center(child: Text(widget.unit!, style: AppType.input.copyWith(color: AppColors.inkSoft))))),
+        ]),
+        if (widget.error != null)
+          Padding(padding: const EdgeInsets.only(top: 8), child: Text(widget.error!, style: AppType.caption.copyWith(color: AppColors.danger)))
+        else if (help != null)
+          Padding(padding: const EdgeInsets.only(top: 8), child: Text(help, style: AppType.caption)),
+      ]),
+    );
+  }
+}
+
+/// 고르는 칸(누르면 시트·화면에서 고른다): 입력칸과 같은 모양 + 오른쪽 화살표
+class SelectField extends StatelessWidget {
+  const SelectField({super.key, required this.label, required this.placeholder, required this.onPress, this.value, this.sub, this.disabled = false});
+  final String label, placeholder;
+  final String? value, sub;
+  final VoidCallback onPress;
+  final bool disabled;
+
+  @override
+  Widget build(BuildContext context) {
+    final l = splitLabel(label);
+    return Padding(
+      padding: const EdgeInsets.only(bottom: Space.xl),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        _LabelRow(l.name, l.tag),
+        Semantics(
+          button: true,
+          enabled: !disabled,
+          label: '$label, ${value ?? placeholder}',
+          excludeSemantics: true,
+          child: GestureDetector(
+            onTap: disabled ? null : onPress,
+            child: Container(
+              constraints: const BoxConstraints(minHeight: 52),
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 13),
+              decoration: BoxDecoration(color: AppColors.input, borderRadius: BorderRadius.circular(Shape.input)),
+              child: Row(children: [
+                Expanded(
+                  child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                    Text(value ?? placeholder, maxLines: 2, style: AppType.input.copyWith(color: value != null ? AppColors.ink : AppColors.inkFaint)),
+                    if (sub != null) Padding(padding: const EdgeInsets.only(top: 2), child: Text(sub!, maxLines: 1, style: AppType.caption)),
+                  ]),
+                ),
+                if (!disabled) ...[const SizedBox(width: 8), const LucideIcon('ChevronRight', size: 20, color: AppColors.inkSoft)],
+              ]),
+            ),
+          ),
+        ),
+      ]),
+    );
+  }
+}
+
+/// 글자 버튼(밑줄 없이 굵은 갈색 = 이어서 할 일, 회색 = 조심스러운 일)
+class TextLink extends StatelessWidget {
+  const TextLink({super.key, required this.label, required this.onPress, this.soft = false, this.disabled = false});
+  final String label;
+  final VoidCallback onPress;
+  final bool soft, disabled;
+
+  @override
+  Widget build(BuildContext context) => Semantics(
+        button: true,
+        enabled: !disabled,
+        label: label,
+        excludeSemantics: true,
+        child: Opacity(
+          opacity: disabled ? 0.4 : 1,
+          child: Center(
+            child: Pressable(
+              onPress: disabled ? null : onPress,
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(minHeight: Space.touch),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 8),
+                  child: Center(widthFactor: 1, child: Text(label, style: AppType.sub.copyWith(fontFamily: AppFonts.uiBold, color: soft ? AppColors.inkSoft : AppColors.accent))),
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
 }

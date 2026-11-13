@@ -11,9 +11,12 @@ dependencies:
   flutter:
     sdk: flutter
   flutter_svg: ^2.4.0
+  just_audio: ^0.10.6
+  just_audio_background: ^0.0.1-beta.17
   path_parsing: ^1.1.0
   path_provider: ^2.1.6
   sqflite: ^2.4.6
+  video_player: ^2.14.1
 
 dev_dependencies:
   flutter_test:
@@ -26,6 +29,9 @@ flutter:
   # 굽기 입력(지금 앱의 빛 모델이 뽑은 줄 하나, tool/gen_shaders.sh)
   assets:
     - assets/header/
+    # 분위기 장면 영상·미리보기, 환경음(지금 앱 assets/scenes·sounds 그대로, 출처는 각 provenance.json)
+    - assets/scenes/
+    - assets/sounds/
     - assets/bake_case.json
 
   # 제목 글꼴(지금 앱과 같은 함렛 SemiBold)

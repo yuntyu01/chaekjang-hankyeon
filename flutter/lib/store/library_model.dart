@@ -78,8 +78,10 @@ class LibraryModel extends ChangeNotifier {
     return _commit(next, changes);
   }
 
-  /// 독서 기록 저장(회차 확보·쪽 옮기기 포함). 같은 id로 다시 저장해도 하나
+  /// 독서 기록 저장(회차 확보·쪽 옮기기 포함). 같은 id로 다시 저장해도 하나.
+  /// 서재를 다 읽은 뒤에 계산한다(읽기 전이면 책이 없는 것으로 보여 책 연결이 빠진다)
   Future<String> addSession(SessionInput input) async {
+    await load();
     final r = addSessionTo(lib, input, nowIso());
     await commitLib(r.lib);
     return r.id;

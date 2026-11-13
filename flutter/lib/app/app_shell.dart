@@ -5,7 +5,13 @@ library;
 import 'package:flutter/material.dart';
 
 import '../features/bookmark/bookmarks_screen.dart';
+import '../domain/library.dart';
 import '../features/home/home_screen.dart';
+import '../features/reading/finish_screen.dart';
+import '../features/reading/reading_screen.dart';
+import '../store/library_model.dart';
+import '../store/reading_store.dart';
+import '../ui/alert.dart';
 import '../features/reading/read_list.dart';
 import '../features/stats/stats_screen.dart';
 import '../ui/tab_icons.dart';
@@ -40,6 +46,55 @@ class _AppShellState extends State<AppShell> {
 
   /// 한 번 연 탭은 살려 둔다(책장 그림·굽기를 다시 하지 않게)
   final _opened = <int>{0};
+
+  @override
+  void initState() {
+    super.initState();
+    // 지난 독서가 중간에 멈췄거나 끝낸 기록을 저장하지 않았으면 다시 켰을 때 묻는다(지금 앱 RecoveryDialog)
+    final reading = ReadingStore.instance;
+    // 서재는 첫 화면이 뜬 뒤 미리 읽어 둔다(복구 창·다른 탭이 책을 바로 찾게)
+    WidgetsBinding.instance.addPostFrameCallback((_) => LibraryModel.instance.load());
+    reading.load().then((_) {
+      if (mounted) WidgetsBinding.instance.addPostFrameCallback((_) => _askRecovery());
+    }, onError: (_) {});
+  }
+
+  void _askRecovery() {
+    final reading = ReadingStore.instance;
+    final it = reading.interrupted;
+    final pending = reading.pending;
+    if (it == null && pending != null && reading.pendingRestored) {
+      appAlert(context, '저장하지 않은 독서 기록이 있어요', '지난번에 끝낸 ${formatDuration(pending.durationMs)} 기록을 아직 저장하거나 버리지 않았어요.', [
+        AlertButton('기록 확인하기', onPress: () {
+          reading.ackPendingRestored();
+          Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => const FinishScreen()));
+        }),
+        AlertButton('나중에', style: AlertStyle.cancel, onPress: reading.ackPendingRestored),
+      ], true, true);
+      return;
+    }
+    if (it == null) return;
+    final at = DateTime.fromMillisecondsSinceEpoch(it.lastBeat.toInt());
+    final hm = '${at.hour}:${at.minute.toString().padLeft(2, '0')}';
+    appAlert(
+      context,
+      '지난 독서가 중간에 멈췄어요',
+      '마지막으로 확인된 $hm까지 ${formatDuration(it.countedMs)}을 읽은 것으로 저장해 두었어요. 앱이 꺼져 있던 ${formatDuration(it.gapMs)}은 독서 시간에 넣지 않았어요.',
+      [
+        AlertButton('이어 읽기', onPress: () {
+          reading.resume();
+          openReadingScene(context);
+        }),
+        AlertButton('$hm에 끝낸 것으로 기록하기', onPress: () {
+          reading.finish(it.lastBeat);
+          Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => const FinishScreen()));
+        }),
+        AlertButton('나중에 정하기(일시정지로 둠)', style: AlertStyle.cancel, onPress: reading.dismissInterrupted),
+      ],
+      true,
+      true,
+    );
+  }
 
   @override
   Widget build(BuildContext context) {

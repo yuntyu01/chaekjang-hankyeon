@@ -1,0 +1,14 @@
+{
+  "rain-window-poster.jpg": {
+    "from": "rain-window.mp4",
+    "frame": "1.0s",
+    "size": "360x640",
+    "note": "분위기 시트 미리보기용 정지 화면. 기존 장면 영상의 한 프레임을 줄인 것(새로 그리지 않음)"
+  },
+  "fireplace-poster.jpg": {
+    "from": "fireplace.mp4",
+    "frame": "1.0s",
+    "size": "360x640",
+    "note": "분위기 시트 미리보기용 정지 화면. 기존 장면 영상의 한 프레임을 줄인 것(새로 그리지 않음)"
+  }
+}

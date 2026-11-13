@@ -10,6 +10,7 @@ import 'package:flutter/material.dart';
 
 import '../../domain/library.dart';
 import '../../domain/reading.dart';
+import '../../services/ambient.dart';
 import '../../store/finish_reading.dart';
 import '../../store/library_model.dart';
 import '../../store/reading_store.dart';
@@ -20,7 +21,9 @@ import '../../ui/theme.dart';
 import '../bookmark/book_picker.dart';
 import '../stats/stats_screen.dart';
 import '../stats/stats_widgets.dart';
+import 'finish_screen.dart';
 import 'play_icons.dart';
+import 'reading_screen.dart';
 
 const _week = ['일', '월', '화', '수', '목', '금', '토'];
 const _coverW = 42.0; // 표지 폭(높이는 표지 비율대로 약 62)
@@ -108,17 +111,18 @@ class _ReadListState extends State<ReadList> {
     if (next.length != cur.length) _settings.set({'readList': next});
   }
 
-  void _openScene() => _pending(context, '분위기 장면');
+  void _openScene() => openReadingScene(context);
 
   void _startNew(String? id) {
     _reading.start(id, id == null ? null : _lib.lib.books[id]?.currentPage);
+    Ambient.instance.play(_settings.scene);
     _openScene();
   }
 
   // 재생 단추(책마다): 재는 책이면 일시정지·다시 시작, 아니면 그 책으로 시작하고 장면으로
   void _begin(String? id) {
     if (_reading.pending != null) {
-      _pending(context, '독서 끝내기'); // 끝냈지만 저장하지 않은 기록부터
+      Navigator.of(context, rootNavigator: true).push(MaterialPageRoute<void>(builder: (_) => const FinishScreen())); // 끝냈지만 저장하지 않은 기록부터
       return;
     }
     final cur = _reading.active;
@@ -312,7 +316,7 @@ class _ReadListState extends State<ReadList> {
                 width: 56,
                 child: Align(
                   alignment: Alignment.centerRight,
-                  child: IconBtn(label: '소리만 듣기', onPress: () => _pending(context, '소리만 듣기'), child: const LucideIcon('AudioLines')),
+                  child: IconBtn(label: '소리만 듣기', onPress: () => openReadingScene(context, soundOnly: true), child: const LucideIcon('AudioLines')),
                 ),
               ),
             ]),
