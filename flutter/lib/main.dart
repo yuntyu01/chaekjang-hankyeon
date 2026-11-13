@@ -212,32 +212,58 @@ class _GatePageState extends State<GatePage> {
 
   @override
   Widget build(BuildContext context) {
+    final r = _runs.isEmpty ? null : _runs.last;
     return Scaffold(
-      appBar: AppBar(title: const Text('Flutter 굽기 관문')),
-      body: Padding(
-        padding: const EdgeInsets.all(16),
-        child: ListView(
+      backgroundColor: const Color(0xFFFFFFFF),
+      body: SafeArea(
+        child: Stack(
           children: [
-            Text(_state, style: Theme.of(context).textTheme.titleMedium),
-            const SizedBox(height: 8),
-            for (final r in _runs)
-              Text('줄 ${r.rows.length}개 합 ${r.bakeTotal}ms  (격자 ${r.gridTotal})  셰이더 읽기 ${r.loadMs}ms  켠 뒤 ${r.sinceBoot}ms'),
-            const SizedBox(height: 12),
-            FilledButton(onPressed: _busy ? null : _run, child: const Text('다시 굽기')),
-            const SizedBox(height: 16),
+            // 책장(화면 전체). 지금 앱 홈 화면과 같은 구도로 그린다
             if (_atlases.length > 1 && _rowSpots.length == _spaces.length)
-              SizedBox(
-                height: 420,
+              Positioned.fill(
                 child: CustomPaint(
                   painter: ShelfPainter(
                     rows: _case!.rows,
                     atlases: _atlases,
                     rowSpots: _rowSpots,
-                    keys: _keys,
                     spaces: _spaces,
+                    keys: _keys,
                   ),
                 ),
               ),
+            // 머리글(지금 앱과 같은 자리·글씨)
+            const Padding(
+              padding: EdgeInsets.fromLTRB(20, 8, 20, 0),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text('나의 책장', style: TextStyle(fontSize: 24, fontWeight: FontWeight.w700, color: Color(0xFF191F28))),
+                  Text('2026', style: TextStyle(fontSize: 15, color: Color(0xFF8B95A1))),
+                ],
+              ),
+            ),
+            // 측정 값(관문용)
+            Align(
+              alignment: Alignment.bottomCenter,
+              child: Padding(
+                padding: const EdgeInsets.all(12),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                      decoration: BoxDecoration(color: Colors.white70, borderRadius: BorderRadius.circular(8)),
+                      child: Text(
+                        r == null ? _state : '굽기 ${r.bakeTotal}ms · 켠 뒤 ${r.sinceBoot}ms',
+                        style: const TextStyle(fontSize: 12, color: Color(0xFF191F28)),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    FilledButton(onPressed: _busy ? null : _run, child: const Text('다시 굽기')),
+                  ],
+                ),
+              ),
+            ),
           ],
         ),
       ),
@@ -270,7 +296,8 @@ class ShelfPainter extends CustomPainter {
     if (lit == null || book == null) return;
     final m = metricsOf(size.width);
     final cam = Cam(viewPitchMin);
-    var y = 0.0;
+    // 머리글 아래부터 쌓는다(지금 앱 홈과 같은 자리)
+    var y = 78.0;
     for (var i = 0; i < rowSpots.length && i < atlases.length; i++) {
       final space = spaces[i];
       final px = Affine(m.scale, m.originX, y + (space + shelfThick) * m.scale);
