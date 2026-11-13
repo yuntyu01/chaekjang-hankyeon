@@ -2,20 +2,21 @@
 // 켜면 바로 한 번 굽고 logcat에 남긴다([flbake] 줄마다, [fltotal] 합). 화면의 단추로 다시 잰다(두 번째부터는 GPU 준비가 끝나 있다).
 // 재는 것: 셰이더 읽기 · 빛 격자(GRID_PASSES번) · 면 굽기. 지금 앱의 `[bake] … ms … grid …` 과 같은 뜻이다.
 import 'dart:async';
+import 'dart:math' as math;
 import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
 
 import 'domain/camera.dart';
 import 'domain/place_books.dart';
-import 'domain/book3.dart';
-import 'domain/geometry.dart';
 import 'domain/shelf_row.dart';
 import 'ui/bake.dart';
 import 'ui/bake_cache.dart';
 import 'ui/plane_key.dart';
 import 'store/library_store.dart';
 import 'store/seed.dart';
+import 'ui/metrics.dart';
+import 'ui/outline.dart';
 import 'ui/scene.dart';
 
 /// 앱이 깨어난 때(켜고 책장이 다 될 때까지를 재려고 되도록 이른 곳에서 잡는다).
@@ -58,17 +59,11 @@ class Run {
   int get gridTotal => rows.fold(0, (t, r) => t + r.gridMs);
 }
 
+/// 머리글(나의 책장 · 2026) 높이: 그 아래가 책장 콘텐츠 위 끝
+const _headerH = 78.0;
+
 /// 창빛 그림자 그림의 배율(설계 단위 → 그림 칸). 지금 앱은 화면 배율을 쓴다
 const _shadowScale = 2.0;
-
-/// 줄 높이: 가장 높은 책 위로 조금 띄운다(지금 앱 SHELF.rowTopPad와 같은 뜻)
-double _spaceOf(List<Book3> books) {
-  var h = 0.0;
-  for (final b in books) {
-    if (b.dims.h > h) h = b.dims.h;
-  }
-  return (h < 1 ? 174.0 : h) + 16;
-}
 
 class GatePage extends StatefulWidget {
   const GatePage({super.key});
@@ -109,7 +104,7 @@ class _GatePageState extends State<GatePage> {
     final shelves = placeShelves(lib);
     final c = _case ??= BakeCase([
       for (var i = 0; i < shelves.length; i++)
-        rowFromBooks(shelves[i], lib.books, _spaceOf(shelves[i]), top: i == 0, last: i == shelves.length - 1),
+        rowFromBooks(shelves[i], lib.books, rowSpace, top: i == 0, last: i == shelves.length - 1),
       probeRow(),
     ]);
     await ShelfPainter.load();
@@ -309,20 +304,25 @@ class ShelfPainter extends CustomPainter {
     final lit = _lit;
     final book = _book;
     if (lit == null || book == null) return;
-    final m = metricsOf(size.width);
+    final m = makeMetrics(size.width);
     final cam = Cam(viewPitchMin);
-    // 머리글 아래부터 쌓는다(지금 앱 홈과 같은 자리)
-    var y = 78.0;
-    for (var i = 0; i < rowSpots.length && i < atlases.length; i++) {
-      final space = spaces[i];
-      final px = Affine(m.scale, m.originX, y + (space + shelfThick) * m.scale);
-      final h = rowHeightPx(cam, px, space);
+    // 머리글 아래가 콘텐츠 위 끝(지금 앱 홈 스크롤 영역)
+    const contentY = _headerH;
+    final geo = computeRows(rows.length, m.scale, viewportHeight: size.height - contentY);
+    Affine pxOf(RowGeom r) => Affine(m.scale, m.originX + sideMargin * m.scale, contentY + r.baseline);
+    for (var i = 0; i < rowSpots.length && i < atlases.length && i < geo.length; i++) {
+      final r = geo[i];
+      final px = pxOf(r);
+      // 줄 캔버스(지금 앱 RowCanvas): 칸 위로 맨 윗줄 벽 끝까지, 아래로 판 밑 벽까지. 윗선반 판 윤곽 안은 비운다(그 판이 보인다)
+      final y0 = math.max(0.0, r.top - headDu * m.scale);
+      final y1 = r.top + r.height + shelfCastExtent * m.scale;
       canvas.save();
-      canvas.clipRect(Rect.fromLTWH(0, y, size.width, h));
-      drawRow(canvas, lit, book, cam, px, rows[i], rowSpots[i], atlases[i], space, keys[i]);
+      final area = Path()..addRect(Rect.fromLTRB(0, contentY + y0, size.width, contentY + y1));
+      final up = i > 0 ? plankOutlinePath((v) => toPx(cam, pxOf(geo[i - 1]), v), m.scale) : null;
+      canvas.clipPath(up == null ? area : Path.combine(PathOperation.difference, area, up));
+      drawRow(canvas, lit, book, cam, px, rows[i], rowSpots[i], atlases[i], r.space, keys[i]);
       canvas.restore();
-      y += h;
-      if (y > size.height) break;
+      if (contentY + y0 > size.height) break;
     }
   }
 

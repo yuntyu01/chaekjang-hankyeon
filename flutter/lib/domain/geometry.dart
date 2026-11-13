@@ -79,3 +79,7 @@ double frontWidth(Book b) {
   if (w != null) return mm(w);
   return (bookHeight(b) * b.coverAspectRatio).roundToDouble();
 }
+
+/// 책 크기 범위(mm). 줄 간격은 가장 큰 책으로 정한다(지금 앱 BOOK_SIZE_MM)
+const bookSizeMm = (minH: 170.0, maxH: 225.0, minW: 100.0, maxW: 170.0);
+final bookMaxH = mm(bookSizeMm.maxH);

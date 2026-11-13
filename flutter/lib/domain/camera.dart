@@ -5,7 +5,6 @@ library;
 import 'dart:math' as math;
 
 import '../scene_config/skin.dart';
-import 'geometry.dart';
 
 /// 줄 앞 카메라 거리(DU). 틀 없는 책장은 6.45m × 0.7625DU/mm
 final viewDist = frameOn ? look.dist : 4918.0;
@@ -24,12 +23,6 @@ final scenePad = frameOn ? 4.0 : 0.0;
 const sideMargin = 12.0;
 
 double kyOf(double deg) => math.tan(deg * math.pi / 180);
-
-/// 설계 폭을 화면 폭에 맞추는 배율과 왼쪽 치우침
-({double scale, double originX}) metricsOf(double windowWidth) {
-  final scale = windowWidth / (designWidth + 2 * scenePad);
-  return (scale: scale, originX: scenePad * scale);
-}
 
 /// 눈(원근 카메라): 줄 공간 (x, y, z = 0)에서 줄 앞 dist만큼 떨어져 있다. 지금 앱 camAt(deg).eye
 class Eye {

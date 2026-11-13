@@ -17,6 +17,7 @@ import '../gen/light_uniforms.g.dart' as cal;
 import '../gen/scene_uniforms.g.dart';
 import 'bake.dart';
 import 'book_art.dart';
+import 'outline.dart';
 import 'plane_key.dart';
 
 /// 보는 눈: 줄 앞 viewDist만큼 떨어진 자리. 보기 각이 높을수록 눈이 올라간다
@@ -204,6 +205,9 @@ final _backCornerR = mm(look.cornerMm);
 final _softW = mm(look.softMm);
 final _roofSoft = (box: <double>[frameX0, frameX1, -far, far], r: <double>[0, _softW]);
 
+/// 판 윗면 번짐: 뒷벽·안쪽 면으로(나무와 벽이라 벽끼리 번짐의 절반 폭). 뒤 꼭지점은 둥글리지 않는다(지금 앱 PLANK_SOFT)
+final _plankSoft = (box: <double>[frameX0, frameX1, -far, shelfDepth * look.eyeY / look.dist], r: <double>[1, _softW / 2]);
+
 ui.Path _polyPath(List<ui.Offset> pts) {
   final p = ui.Path()..moveTo(pts[0].dx, pts[0].dy);
   for (final q in pts.skip(1)) {
@@ -295,14 +299,21 @@ void drawRow(
     _flatWall(canvas, lit, c, px, row, topY, bottomY, roofed ? space : null, row.last ? -shelfThick + holeBottomOver : null, space);
   }
 
-  // 판(윗면·앞면, 둥근 모서리는 셰이더가 법선을 돌린다)
+  // 판(윗면·앞면, 둥근 모서리는 셰이더가 법선을 돌린다). 두 면 껍질을 둥글린 윤곽 안에서만 칠한다(지금 앱 ShelfBoard)
   final faces = shelfFaces(project);
-  final seed = [space * 7.3 % 97, space * 3.1 % 89];
-  for (final (key, face, plane) in [(topBakeKey, faces.top, topPlane), (frontBakeKey, faces.front, frontPlane)]) {
+  final shape = plankShape(project, px.s);
+  // 판마다 나무 무늬 자리(지금 앱은 판 높이로 정하는데 줄 공간에서 판은 늘 y = 0이라 모든 판이 같다)
+  final seed = seedOf('plank:0.00');
+  canvas.save();
+  canvas.clipPath(pathOf(shape.outline));
+  for (final (key, face, poly, plane) in [
+    (topBakeKey, faces.top, shape.top, topPlane),
+    (frontBakeKey, faces.front, shape.front, frontPlane),
+  ]) {
     final spot = spotOf(key);
     if (spot == null) continue;
     canvas.drawPath(
-      _polyPath(face.poly),
+      _polyPath(poly),
       ui.Paint()
         ..shader = planeShader(
           u: lit,
@@ -316,9 +327,11 @@ void drawRow(
           cellToPx: faceTextureMatrix(face, spot.w, spot.h, 1, 0, 0),
           key: key == topBakeKey ? keys.floor : PlaneKey.none,
           seed: seed,
+          soft: key == topBakeKey && frameOn ? _plankSoft : null,
         ),
     );
   }
+  canvas.restore();
 
   // 책(면마다 아틀라스 자리는 이름으로 찾는다)
   for (var i = 0; i < row.books.length; i++) {
@@ -327,7 +340,7 @@ void drawRow(
       for (final f in FaceId.values) f: ?spotOf(faceKey(b.id, f)),
     };
     final albedo = row.tones.length > i ? row.tones[i] : const C3(0.3, 0.25, 0.2);
-    drawBook(canvas, book, c, px, row, b, albedo, spots3, atlas, [i * 13.7 % 61, i * 7.1 % 53],
+    drawBook(canvas, book, c, px, row, b, albedo, spots3, atlas, seedOf(b.id),
         title: row.titles.length > i ? row.titles[i] : '');
   }
 }
