@@ -7,7 +7,7 @@ import 'package:sqflite/sqflite.dart';
 import '../db/local_db.dart';
 import '../domain/library.dart';
 
-typedef Row = Map<String, Object?>;
+typedef DbRow = Map<String, Object?>;
 
 String _s(Object? v) => v as String;
 String? _so(Object? v) => v as String?;
@@ -22,7 +22,7 @@ String? bindingMaterialOf(Object? v) => v is! String ? null : (_materials.contai
 String _heightClassOf(num h) => h < 180 ? 'short' : h < 215 ? 'medium' : 'tall';
 String _thicknessClassOf(num p) => p < 220 ? 'thin' : p < 420 ? 'medium' : 'thick';
 
-Edition editionOf(Row r, List<String> authors) {
+Edition editionOf(DbRow r, List<String> authors) {
   final w = _n(r['width_mm']), h = _n(r['height_mm']);
   final hasSize = w != null && h != null;
   BookArtParams? art;
@@ -63,7 +63,7 @@ Edition editionOf(Row r, List<String> authors) {
   );
 }
 
-MyBook myBookOf(Row r) => MyBook(
+MyBook myBookOf(DbRow r) => MyBook(
       id: _s(r['id']),
       editionId: _s(r['edition_id']),
       status: readStatusOf(_s(r['status'])),
@@ -77,7 +77,7 @@ MyBook myBookOf(Row r) => MyBook(
       hiddenAt: _so(r['hidden_at']),
     );
 
-Binding bindingOf(Row r) => Binding(
+Binding bindingOf(DbRow r) => Binding(
       id: _s(r['id']),
       myBookId: _s(r['my_book_id']),
       spineColor: _s(r['spine_color']),
@@ -96,7 +96,7 @@ Binding bindingOf(Row r) => Binding(
       spineArtUri: _so(r['spine_art_uri']),
     );
 
-Round roundOf(Row r) => Round(
+Round roundOf(DbRow r) => Round(
       id: _s(r['id']),
       myBookId: _s(r['my_book_id']),
       index: _n(r['idx'])!.toInt(),
@@ -107,7 +107,7 @@ Round roundOf(Row r) => Round(
       paused: (_n(r['paused']) ?? 0) != 0,
     );
 
-Session sessionOf(Row r) => Session(
+Session sessionOf(DbRow r) => Session(
       id: _s(r['id']),
       startedAt: _s(r['started_at']),
       endedAt: _s(r['ended_at']),
@@ -121,7 +121,7 @@ Session sessionOf(Row r) => Session(
       memo: _so(r['memo']),
     );
 
-Bookmark bookmarkOf(Row r) => Bookmark(
+Bookmark bookmarkOf(DbRow r) => Bookmark(
       id: _s(r['id']),
       myBookId: _s(r['my_book_id']),
       text: _s(r['body']),
@@ -140,9 +140,9 @@ Bookmark bookmarkOf(Row r) => Bookmark(
     );
 
 /// 표마다 행(SELECT * 차례 그대로) → 서재. 저자는 edition_id·position 차례
-Library libraryFromRows(Map<String, List<Row>> t) {
+Library libraryFromRows(Map<String, List<DbRow>> t) {
   final authors = <String, List<String>>{};
-  final ar = [...(t['edition_authors'] ?? const <Row>[])]
+  final ar = [...(t['edition_authors'] ?? const <DbRow>[])]
     ..sort((a, b) {
       final c = _s(a['edition_id']).compareTo(_s(b['edition_id']));
       return c != 0 ? c : _n(a['position'])!.compareTo(_n(b['position'])!);
@@ -151,12 +151,12 @@ Library libraryFromRows(Map<String, List<Row>> t) {
     (authors[_s(a['edition_id'])] ??= []).add(_s(a['name']));
   }
   return Library(
-    editions: {for (final r in t['editions'] ?? const <Row>[]) _s(r['id']): editionOf(r, authors[_s(r['id'])] ?? [])},
-    books: {for (final r in t['my_books'] ?? const <Row>[]) _s(r['id']): myBookOf(r)},
-    rounds: {for (final r in t['rounds'] ?? const <Row>[]) _s(r['id']): roundOf(r)},
-    sessions: {for (final r in t['sessions'] ?? const <Row>[]) _s(r['id']): sessionOf(r)},
-    bookmarks: {for (final r in t['bookmarks'] ?? const <Row>[]) _s(r['id']): bookmarkOf(r)},
-    bindings: {for (final r in t['bindings'] ?? const <Row>[]) _s(r['id']): bindingOf(r)},
+    editions: {for (final r in t['editions'] ?? const <DbRow>[]) _s(r['id']): editionOf(r, authors[_s(r['id'])] ?? [])},
+    books: {for (final r in t['my_books'] ?? const <DbRow>[]) _s(r['id']): myBookOf(r)},
+    rounds: {for (final r in t['rounds'] ?? const <DbRow>[]) _s(r['id']): roundOf(r)},
+    sessions: {for (final r in t['sessions'] ?? const <DbRow>[]) _s(r['id']): sessionOf(r)},
+    bookmarks: {for (final r in t['bookmarks'] ?? const <DbRow>[]) _s(r['id']): bookmarkOf(r)},
+    bindings: {for (final r in t['bindings'] ?? const <DbRow>[]) _s(r['id']): bindingOf(r)},
   );
 }
 

@@ -4,6 +4,7 @@ library;
 
 import '../db/local_db.dart';
 import '../domain/cover_url.dart';
+import '../gen/real_reading.g.dart';
 import '../gen/real_sample.g.dart';
 
 String _coverOf(int goods) => 'https://image.yes24.com/goods/$goods/L';
@@ -44,6 +45,13 @@ Future<void> seedIfEmpty() async {
       for (var k = 0; k < b.ribbonCount; k++) {
         await t.insert('bookmarks', {'id': 'm-${b.id}-$k', 'my_book_id': b.id, 'body': '', 'created_at': now, 'updated_at': now});
       }
+    }
+    // 읽기 기록(회차·독서): 기록 탭이 보이게
+    for (final r in realReadingRounds) {
+      await t.insert('rounds', r);
+    }
+    for (final r in realReadingSessions) {
+      await t.insert('sessions', r);
     }
     for (final p in realSamplePlacements) {
       await t.insert('shelf_placements', {
