@@ -9,6 +9,7 @@ import '../scene_config/skin.dart';
 import 'book3.dart';
 import 'boxes.dart';
 import 'camera.dart';
+import 'types.dart';
 import 'geometry.dart';
 import 'vec3.dart';
 
@@ -131,4 +132,15 @@ RowCase probeRow() {
   return RowCase(r.env, r.bx, [
     for (final it in r.items.take(5)) BakeItem(it.o, it.u, it.v, it.n, 24, 18, it.self),
   ], books: r.books, space: r.space);
+}
+
+/// 서재에서 읽은 책들로 줄 하나를 만든다(책 색·제목까지)
+RowCase rowFromBooks(List<Book3> books, List<Book> meta, double space) {
+  final byId = {for (final b in meta) b.id: b};
+  final tones = [
+    for (final b in books) linearOf(byId[b.id]?.themeColor ?? 0x8F6E55),
+  ];
+  final row = buildRow(books, space, tones: tones);
+  row.titles = [for (final b in books) byId[b.id]?.title ?? ''];
+  return row;
 }
