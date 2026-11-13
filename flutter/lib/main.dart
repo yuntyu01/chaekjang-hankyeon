@@ -1,6 +1,7 @@
 // 관문 측정 앱(2026-11-13): 지금 앱(React Native)과 같은 값·같은 양으로 줄 여섯을 구워 시간을 잰다.
 // 켜면 바로 한 번 굽고 logcat에 남긴다([flbake] 줄마다, [fltotal] 합). 화면의 단추로 다시 잰다(두 번째부터는 GPU 준비가 끝나 있다).
 // 재는 것: 셰이더 읽기 · 빛 격자(GRID_PASSES번) · 면 굽기. 지금 앱의 `[bake] … ms … grid …` 과 같은 뜻이다.
+import 'dart:async';
 import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
@@ -9,6 +10,7 @@ import 'domain/camera.dart';
 import 'domain/geometry.dart';
 import 'domain/shelf_row.dart';
 import 'ui/bake.dart';
+import 'ui/bake_cache.dart';
 import 'ui/scene.dart';
 
 /// 앱이 깨어난 때(켜고 책장이 다 될 때까지를 재려고 되도록 이른 곳에서 잡는다).
@@ -95,6 +97,7 @@ class _GatePageState extends State<GatePage> {
     final bakeSlots = _bakeSlots ??= ShaderSlots(await ui.FragmentProgram.fromAsset('shaders/bake.frag'), bakeUniformNames);
     final loadMs = DateTime.now().difference(t0).inMilliseconds;
 
+    await loadBakeCache();
     final rows = <RowRun>[];
     final images = <ui.Image>[];
     final spots = <List<Spot>>[];
@@ -102,6 +105,21 @@ class _GatePageState extends State<GatePage> {
     for (var ri = 0; ri < c.rows.length; ri++) {
       final r = c.rows[ri];
       final probe = ri == c.rows.length - 1; // 맨 뒤는 값 확인용(시간에 넣지 않는다)
+      // 같은 값으로 구워 담아 둔 그림이 있으면 굽지 않는다
+      final key = bakeKey(r);
+      final hit = cachedBake(key);
+      if (hit != null) {
+        final pack = packAtlas(r.items);
+        images.add(hit);
+        if (!probe) {
+          spots.add(pack.at);
+          spaces.add(r.env.ceil);
+          rows.add(RowRun(r.items.length, pack.w, pack.h, 0, 0));
+        }
+        // ignore: avoid_print
+        print('[flbake] ${r.items.length} items ${pack.w}x${pack.h} cached');
+        continue;
+      }
       final t1 = DateTime.now();
       final grid = await solveGrid(gridSlots, c, r);
       final gridMs = DateTime.now().difference(t1).inMilliseconds;
@@ -110,6 +128,7 @@ class _GatePageState extends State<GatePage> {
       final bakeMs = DateTime.now().difference(t2).inMilliseconds;
       grid.dispose();
       images.add(atlas.image);
+      unawaited(saveBake(key, atlas.image));
       if (!probe) {
         spots.add(atlas.at); // 면 0 = 뒷벽, 1 = 판 윗면, 2 = 판 앞면, 3부터 책 면
         spaces.add(r.env.ceil);
