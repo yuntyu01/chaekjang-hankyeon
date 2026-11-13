@@ -3,6 +3,7 @@ library;
 
 import 'binding_material.dart';
 import 'color.dart';
+import 'cover_url.dart';
 import 'types.dart';
 
 class BookLook {
@@ -30,9 +31,14 @@ class BookLook {
 BookLook lookOf(Book b) {
   final face = jacketColor(hexOf(b.themeColor));
   final photo = b.coverArtUri != null;
-  // 갈피 색: 고른 색, 없으면 무채색이 아닌 책 색(지금 앱 toShelfBook: 표지에서 뽑은 색은 아직 재지 않는다)
+  // 갈피 색: 고른 색 → 표지에서 뽑은 색 → 무채색이 아닌 책 색(지금 앱 toShelfBook art.ribbon)
   final theme = hexOf(b.themeColor);
-  final ribbon = b.ribbonColor ?? (isNeutralColor(theme) ? null : theme);
+  final accent = coverAccentOf(b.coverUri);
+  final ribbon = (b.ribbonColor?.isNotEmpty ?? false)
+      ? b.ribbonColor
+      : (accent != null && accent.isNotEmpty)
+          ? accent
+          : (isNeutralColor(theme) ? null : theme);
   return BookLook(b.title, face, bookToneOf(face, photo: photo), displayInk(b.inkColor, face),
-      coverUri: b.coverArtUri, ribbons: b.quotes, ribbon: ribbon);
+      titleTop: b.titleTop, coverUri: b.coverArtUri, ribbons: b.quotes, ribbon: ribbon);
 }

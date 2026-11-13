@@ -98,7 +98,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
             para('사진은 책을 찾고 장정을 만들 때 참고하거나 갈피 원문을 보관하는 데만 쓰고, 읽었다는 인증에는 쓰지 않아요. '
                 '${_syncAvailable ? '사진 인식·AI 장정은 아직 연결되지 않았고, 사진은 동기화를 위해 책장 한켠 서버에만 올라가요.' : '사진 인식·AI 장정은 아직 연결되지 않아 사진이 밖으로 전송되지 않아요.'}'),
             para('내보낸 백업 파일은 직접 고른 곳에 저장되며, 그 파일에는 위 기록과 사진이 들어 있어요.', last: true),
-            Padding(padding: const EdgeInsets.only(top: Space.item), child: Text('서버 계정 삭제를 요청하면 연결된 로그인과 서버 기록·사진을 삭제 처리하고, 이 기기의 기록은 남겨요.', style: p)),
+            // 지금 앱은 이 문단에도 아래 여백(space.item)이 남는다(공통 문단 스타일)
+            Padding(padding: const EdgeInsets.only(top: Space.item, bottom: Space.item), child: Text('서버 계정 삭제를 요청하면 연결된 로그인과 서버 기록·사진을 삭제 처리하고, 이 기기의 기록은 남겨요.', style: p)),
             Padding(
               padding: const EdgeInsets.only(top: Space.xl),
               child: Btn(label: '처리방침 전문 보기(웹)', kind: 'secondary', onPress: () => launchUrl(Uri.parse(_privacyUrl), mode: LaunchMode.externalApplication)),

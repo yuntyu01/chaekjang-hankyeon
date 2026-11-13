@@ -6,6 +6,7 @@ import 'package:flutter/foundation.dart';
 
 import '../db/library_write.dart';
 import '../domain/color.dart';
+import '../domain/cover_url.dart';
 import '../domain/library.dart';
 import '../domain/reading.dart';
 import 'library_read.dart';
@@ -112,6 +113,20 @@ class LibraryModel extends ChangeNotifier {
     return commitLib(lib.copy(rounds: {...lib.rounds, roundId: r.copyWith(startedAt: startedAt, finishedAt: finishedAt, updatedAt: nowIso())}));
   }
 
+  /// 갈피 고치기
+  Future<void> updateBookmark(String id, {required String text, Object? page = _keep, Object? memo = _keep, Object? photoUri = _keep, Object? photoRatio = _keep}) {
+    final m = lib.bookmarks[id];
+    if (m == null) return Future.value();
+    final next = m.edit(text: text, page: page, memo: memo, photoUri: photoUri, photoRatio: photoRatio, updated: nowIso());
+    return commitLib(lib.copy(bookmarks: {...lib.bookmarks, id: next}));
+  }
+
+  /// 갈피 지우기
+  Future<void> deleteBookmark(String id) {
+    if (!lib.bookmarks.containsKey(id)) return Future.value();
+    return commitLib(lib.copy(bookmarks: {...lib.bookmarks}..remove(id)));
+  }
+
   /// 갈피 아껴두기 켜고 끄기
   Future<void> toggleSaved(String id) {
     final m = lib.bookmarks[id];
@@ -123,12 +138,13 @@ class LibraryModel extends ChangeNotifier {
 }
 
 /// 책장 책의 갈피 색(지금 앱 toShelfBook art.ribbon): 고른 색 → 표지에서 뽑은 색 → 무채색이 아닌 책 색
-/// 표지에서 뽑은 색(cover-accent)은 책 추가 단계에서 옮긴다: 지금은 고른 색과 책 색만
 String? ribbonOf(Library lib, String myBookId) {
   final b = lib.books[myBookId];
   if (b == null) return null;
   final picked = b.ribbonColor;
   if (picked != null && picked.isNotEmpty) return picked;
+  final accent = coverAccentOf(lib.editions[b.editionId]?.coverUri);
+  if (accent != null && accent.isNotEmpty) return accent;
   final theme = themeColorOf(lib, myBookId);
   return isNeutralColor(theme) ? null : theme;
 }

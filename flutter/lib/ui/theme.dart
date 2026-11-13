@@ -1,6 +1,8 @@
 // 화면 색·글자·크기(지금 앱 ui/theme.ts·ui/tabBar.ts를 옮긴 것). 글자·바탕 회색은 토스 디자인 시스템 단계, 대표색 갈색은 주요 버튼·선택에만
 library;
 
+import 'dart:ui' as ui;
+
 import 'package:flutter/painting.dart';
 
 abstract final class AppColors {
@@ -37,22 +39,47 @@ abstract final class AppFonts {
   static const serif = 'ReadingSerif';
 }
 
+/// 지금 앱(RN Android) 글자 화소 맞춤: 글자 크기는 화소로 올리고(TextAttributeProps: ceil(sp × 밀도)), 줄 높이도 줄마다 화소로 올린다
+/// (CustomLineHeightSpan: ceil(줄 높이 × 밀도)). 그대로 두면 17sp 글자가 44.625px(지금 앱 45px)라 줄이 약 0.8% 좁고, 목록 줄마다 0.4dp쯤 짧아 아래로 갈수록 어긋난다.
+/// 글자 크기는 앱 뿌리의 RnTextScaler가 모든 Text에 맞추고, 줄 높이는 여기 글자 위계(AppType)에서 맞춘다
+/// 지금 화면 밀도(읽을 때마다: 앱이 막 켜질 때는 아직 1.0일 수 있어 한 번만 읽어 두면 맞춤이 꺼진다)
+double get _dpr => ui.PlatformDispatcher.instance.implicitView?.devicePixelRatio ?? 1;
+double rnPx(double dp, [double dpr = 0]) {
+  final d = dpr > 0 ? dpr : _dpr;
+  return (dp * d - 1e-6).ceil() / d;
+}
+
+class RnTextScaler extends TextScaler {
+  const RnTextScaler(this.base, this.dpr);
+  final TextScaler base;
+  final double dpr;
+  @override
+  double scale(double fontSize) => rnPx(base.scale(fontSize), dpr);
+  @override
+  // ignore: deprecated_member_use
+  double get textScaleFactor => base.textScaleFactor;
+  @override
+  bool operator ==(Object other) => other is RnTextScaler && other.base == base && other.dpr == dpr;
+  @override
+  int get hashCode => Object.hash(base, dpr);
+}
+
 TextStyle _text(String family, double size, double line, Color color) =>
-    TextStyle(fontFamily: family, fontSize: size, height: line / size, color: color, leadingDistribution: TextLeadingDistribution.even);
+    TextStyle(fontFamily: family, fontSize: size, height: rnPx(line) / rnPx(size), color: color, leadingDistribution: TextLeadingDistribution.even);
 
 /// 글자 위계(토스 TDS): 큰 제목 26 Bold, 시트·묶음 제목 21, 구역 제목 19, 본문 17~18, 보조 16, 작은 메타 15
 abstract final class AppType {
-  static final title = _text(AppFonts.uiTitle, 26, 34, AppColors.ink);
-  static final navTitle = _text(AppFonts.uiBold, 18, 25, AppColors.ink);
-  static final heading = _text(AppFonts.uiBold, 21, 29, AppColors.ink);
-  static final section = _text(AppFonts.uiBold, 19, 27, AppColors.ink);
-  static final row = _text(AppFonts.ui, 18, 26, AppColors.ink);
-  static final rowStrong = _text(AppFonts.uiBold, 18, 26, AppColors.ink);
-  static final body = _text(AppFonts.ui, 17, 27, AppColors.ink);
-  static final sub = _text(AppFonts.ui, 16, 23, AppColors.inkSoft);
-  static final caption = _text(AppFonts.ui, 15, 21, AppColors.inkSoft);
-  static final button = _text(AppFonts.uiBold, 17, 24, AppColors.ink);
-  static final label = _text(AppFonts.uiMedium, 16, 22, AppColors.ink);
+  static TextStyle get title => _text(AppFonts.uiTitle, 26, 34, AppColors.ink);
+  static TextStyle get navTitle => _text(AppFonts.uiBold, 18, 25, AppColors.ink);
+  static TextStyle get heading => _text(AppFonts.uiBold, 21, 29, AppColors.ink);
+  static TextStyle get section => _text(AppFonts.uiBold, 19, 27, AppColors.ink);
+  static TextStyle get row => _text(AppFonts.ui, 18, 26, AppColors.ink);
+  static TextStyle get rowStrong => _text(AppFonts.uiBold, 18, 26, AppColors.ink);
+  static TextStyle get body => _text(AppFonts.ui, 17, 27, AppColors.ink);
+  static TextStyle get sub => _text(AppFonts.ui, 16, 23, AppColors.inkSoft);
+  static TextStyle get caption => _text(AppFonts.ui, 15, 21, AppColors.inkSoft);
+  static TextStyle get button => _text(AppFonts.uiBold, 17, 24, AppColors.ink);
+  static TextStyle get label => _text(AppFonts.uiMedium, 16, 22, AppColors.ink);
   /// 입력창(줄 높이는 플랫폼에 맡긴다)
   static const input = TextStyle(fontFamily: AppFonts.ui, fontSize: 16, color: AppColors.ink);
 }

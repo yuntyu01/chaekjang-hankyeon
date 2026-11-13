@@ -66,6 +66,30 @@ class Edition {
   final num? pageCount, widthMm, heightMm;
   final BookArtParams? art;
 
+  /// 장정 값만 바꾼 사본
+  Edition withArt(BookArtParams art, String updated) => Edition(
+        id: id,
+        title: title,
+        authors: authors,
+        source: source,
+        createdAt: createdAt,
+        updatedAt: updated,
+        isbn13: isbn13,
+        publisher: publisher,
+        publishedAt: publishedAt,
+        pageCount: pageCount,
+        widthMm: widthMm,
+        heightMm: heightMm,
+        coverUri: coverUri,
+        coverSource: coverSource,
+        category: category,
+        seriesTitle: seriesTitle,
+        sourceName: sourceName,
+        productId: productId,
+        link: link,
+        art: art,
+      );
+
   Json toJson() {
     final e = <String, Object?>{'id': id, 'title': title, 'authors': authors, 'source': source, 'createdAt': createdAt, 'updatedAt': updatedAt};
     _put(e, 'isbn13', isbn13);
@@ -228,6 +252,25 @@ class Bookmark {
   final num? page, photoRatio, boardX, boardY, boardRot, boardW;
   final String? memo, photoUri, sessionId, savedAt;
 
+  /// 내용 고친 사본(쪽·메모·사진은 null을 주면 비운다)
+  Bookmark edit({required String text, Object? page = _keep, Object? memo = _keep, Object? photoUri = _keep, Object? photoRatio = _keep, required String updated}) => Bookmark(
+        id: id,
+        myBookId: myBookId,
+        text: text,
+        createdAt: createdAt,
+        updatedAt: updated,
+        page: identical(page, _keep) ? this.page : page as num?,
+        memo: identical(memo, _keep) ? this.memo : memo as String?,
+        photoUri: identical(photoUri, _keep) ? this.photoUri : photoUri as String?,
+        photoRatio: identical(photoRatio, _keep) ? this.photoRatio : photoRatio as num?,
+        sessionId: sessionId,
+        savedAt: savedAt,
+        boardX: boardX,
+        boardY: boardY,
+        boardRot: boardRot,
+        boardW: boardW,
+      );
+
   /// 아껴둔 때를 바꾼 사본(null이면 아껴둔 표시를 뺀다)
   Bookmark withSaved(String? at, String updated) => Bookmark(
         id: id,
@@ -285,6 +328,26 @@ class Binding {
   final String id, myBookId, spineColor, motif, source, status, createdAt, updatedAt;
   final num seed;
   final String? inkColor, accentColor, layout, material, coverArtUri, coverArtId, spineArtUri;
+
+  /// 책 색·글자색·강조색만 바꾼 사본
+  Binding withColors(String spine, String ink, String accent, String updated) => Binding(
+        id: id,
+        myBookId: myBookId,
+        spineColor: spine,
+        motif: motif,
+        source: source,
+        status: status,
+        seed: seed,
+        createdAt: createdAt,
+        updatedAt: updated,
+        inkColor: ink,
+        accentColor: accent,
+        layout: layout,
+        material: material,
+        coverArtUri: coverArtUri,
+        coverArtId: coverArtId,
+        spineArtUri: spineArtUri,
+      );
 
   Json toJson() {
     final b = <String, Object?>{

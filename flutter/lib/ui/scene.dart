@@ -238,6 +238,7 @@ void drawRow(
   Map<String, CoverPhoto> photos = const {},
   ShaderSlots? tab,
   Map<String, BookKey> bookKeys = const {},
+  bool frosted = false,
 }) {
   Spot? spotOf(String key) {
     final i = row.indexOf(key);
@@ -342,6 +343,14 @@ void drawRow(
   }
   canvas.restore();
 
+  // 잠긴 칸(지금 앱 FROST_LAYER): 책만 흐리게(흐림 9, 불투명도 0.82). 칸·선반·벽은 또렷하다
+  if (frosted) {
+    canvas.saveLayer(
+        null,
+        ui.Paint()
+          ..imageFilter = ui.ImageFilter.blur(sigmaX: 9, sigmaY: 9, tileMode: ui.TileMode.decal)
+          ..color = const ui.Color.fromRGBO(0, 0, 0, 0.82));
+  }
   // 책(면마다 아틀라스 자리는 이름으로 찾는다)
   for (var i = 0; i < row.books.length; i++) {
     final b = row.books[i];
@@ -355,6 +364,7 @@ void drawRow(
     // 갈피 탭(책 위에, 같은 차례)
     if (tab != null && look != null) drawRibbons(canvas, tab, c, px, row, b, look, row.tabLoss[b.id]);
   }
+  if (frosted) canvas.restore();
 }
 
 /// 구멍 밖 평평한 벽 평면(z = −frameFront)

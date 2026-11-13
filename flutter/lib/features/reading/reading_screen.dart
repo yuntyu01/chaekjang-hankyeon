@@ -793,6 +793,7 @@ class _Side extends StatelessWidget {
   Widget build(BuildContext context) => Semantics(
         button: true,
         label: label,
+        onTap: onPress,
         excludeSemantics: true,
         child: Pressable(
           onPress: onPress,
@@ -829,6 +830,7 @@ class _RoundState extends State<_Round> {
   Widget build(BuildContext context) => Semantics(
         button: true,
         label: widget.label,
+        onTap: widget.onPress,
         excludeSemantics: true,
         child: GestureDetector(
           onTapDown: (_) => setState(() => _down = true),

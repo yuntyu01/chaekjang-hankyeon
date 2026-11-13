@@ -41,6 +41,7 @@ class Book {
     this.dims,
     this.coverArtUri,
     this.ribbonColor,
+    this.titleTop,
     this.quotes = 0,
     this.startedAt,
     this.finishedAt,
@@ -71,6 +72,9 @@ class Book {
 
   /// 사용자가 고른 갈피 색(없으면 표지에서 뽑은 색·책 색)
   final String? ribbonColor;
+
+  /// 책등 제목 시작 높이(책등 조판 변형 spine_b 0.16·spine_c 0.11, 지금 앱 layoutArt). 없으면 제목 길이로 정한다
+  final double? titleTop;
 
   /// 저장된 문장 수(갈피 표시)
   final int quotes;

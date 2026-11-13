@@ -171,9 +171,11 @@ class _MiniTimerState extends State<MiniTimer> {
               ),
             ),
             Semantics(
+              container: true,
               button: true,
               expanded: _open,
               label: '독서 시간 ${_speak(ms)}${running ? '' : ', 일시정지'}. 눌러서 ${_open ? '접기' : '펼치기'}',
+              onTap: () => setState(() => _open = !_open),
               excludeSemantics: true,
               child: GestureDetector(
                 behavior: HitTestBehavior.opaque,

@@ -47,7 +47,7 @@ Future<Library> loadLibrary() async {
   final db = await openLibrary();
   final rows = await db.rawQuery('''
     SELECT b.id, b.ribbon_color, e.title, e.width_mm, e.height_mm, e.page_count, e.cover_uri,
-           bd.spine_color, bd.ink_color, bd.cover_art_uri,
+           bd.spine_color, bd.ink_color, bd.cover_art_uri, bd.layout AS bd_layout, e.art_layout,
            (SELECT COUNT(*) FROM bookmarks m WHERE m.my_book_id = b.id) AS quotes,
            (SELECT name FROM edition_authors a WHERE a.edition_id = e.id ORDER BY a.position LIMIT 1) AS author
       FROM my_books b
@@ -80,6 +80,8 @@ Future<Library> loadLibrary() async {
         coverUri: r['cover_uri'] as String?,
         inkColor: r['ink_color'] as String?,
         ribbonColor: r['ribbon_color'] as String?,
+        // 책등 조판 변형: 장정 값 → 판본 추천 장정 값 → 기본(지금 앱 toShelfBook layoutArt)
+        titleTop: switch ((r['bd_layout'] as String?) ?? (r['art_layout'] as String?) ?? 'spine_a') { 'spine_b' => 0.16, 'spine_c' => 0.11, _ => null },
         quotes: ((r['quotes'] as num?) ?? 0).toInt(),
       ),
   ];
@@ -114,4 +116,22 @@ Future<Library> loadLibrary() async {
   ];
   final shown = {for (final b in books) b.id};
   return Library(books, shelves, [for (final p in placements) if (shown.contains(p.bookId)) p]);
+}
+
+
+/// 선반 한 칸 더 열기(지금 앱 placementStore.addShelf): 맨 끝에 빈 선반을 붙이고 책장 배치를 올릴 변경으로 표시한다
+Future<bool> addShelf() async {
+  final db = await openLibrary();
+  try {
+    await db.transaction((t) async {
+      final n = (await t.rawQuery('SELECT COUNT(*) AS n FROM shelves')).first['n']! as int;
+      await t.insert('shelves', {'id': 'shelf-${DateTime.now().millisecondsSinceEpoch.toRadixString(36)}', 'position': n});
+      await t.rawUpdate('UPDATE sync_meta SET revision=revision+1 WHERE id=1');
+      final rev = (await t.rawQuery('SELECT revision FROM sync_meta WHERE id=1')).first['revision'];
+      await t.rawUpdate('UPDATE sync_meta SET layout_at=?, layout_dirty=1, layout_revision=? WHERE id=1', [DateTime.now().toUtc().toIso8601String(), rev]);
+    });
+    return true;
+  } catch (_) {
+    return false;
+  }
 }

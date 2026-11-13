@@ -11,6 +11,7 @@ import '../features/home/home_screen.dart';
 import '../features/reading/finish_screen.dart';
 import '../features/settings/settings_screen.dart';
 import '../features/reading/reading_screen.dart';
+import '../services/cover_colors.dart';
 import '../store/library_model.dart';
 import '../store/mini_timer_store.dart';
 import '../store/reading_store.dart';
@@ -60,7 +61,14 @@ class _AppShellState extends State<AppShell> {
     AppNav.instance.addListener(_nav);
     final reading = ReadingStore.instance;
     // 서재는 첫 화면이 뜬 뒤 미리 읽어 둔다(복구 창·다른 탭이 책을 바로 찾게)
-    WidgetsBinding.instance.addPostFrameCallback((_) => LibraryModel.instance.load());
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      LibraryModel.instance.load();
+      // 표지 색·두께·갈피 색 맞추기는 켠 뒤 조금 있다 뒤에서(지금 앱 _layout: 3초 뒤)
+      Future<void>.delayed(const Duration(seconds: 3), () => backfillCoverColors().catchError((Object e) {
+            // ignore: avoid_print
+            print('표지 색 맞추기 실패(다음 시작 때 다시) $e');
+          }));
+    });
     reading.load().then((_) {
       if (mounted) WidgetsBinding.instance.addPostFrameCallback((_) => _askRecovery());
     }, onError: (_) {});

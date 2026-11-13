@@ -111,6 +111,9 @@ const _accentFallback = ['#C9A27E', '#8FA695', '#9A97BD'];
 /// 갈피 색 고르기의 기본 색(표지 색 말고 직접 고를 때)
 const ribbonPalette = ['#C9A27E', '#D98A7C', '#E3A857', '#C9B458', '#8FA695', '#5B8C7A', '#7D9CC0', '#5276B4', '#9A97BD', '#B57BA6', '#A0695F', '#8A6F5C'];
 
+/// 작아도 표지의 색으로 볼 만큼 뚜렷한 색(거의 무채색인 어두운 색·옅은 회보라는 뺀다)
+bool isVividColor(String hex) => !isNeutralColor(hex) && _toHsl(_parse(hex))[1] >= 0.25;
+
 bool isNeutralColor(String hex) {
   final hsl = _toHsl(_parse(hex));
   return hsl[2] > 0.86 || hsl[2] < 0.14 || hsl[1] < 0.14;

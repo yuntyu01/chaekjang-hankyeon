@@ -243,6 +243,7 @@ class ReadingChart extends StatelessWidget {
                       TextSpan(text: formatDuration(bars[sel].ms), style: const TextStyle(fontFamily: AppFonts.uiBold, fontSize: 14, height: 20 / 14)),
                     ]),
                     textDirection: TextDirection.ltr,
+                    textScaler: MediaQuery.textScalerOf(context), // 그릴 때와 같은 글자 크기(RnTextScaler)로 잰다
                   )..layout())
                       .width +
                   20;

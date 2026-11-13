@@ -1106,6 +1106,7 @@ class Choice extends StatelessWidget {
       button: true,
       selected: selected,
       label: [label, ?sub].join(', '),
+      onTap: onPress,
       excludeSemantics: true,
       child: _ChoiceBox(
         selected: selected,
@@ -1379,6 +1380,7 @@ class SelectField extends StatelessWidget {
           button: true,
           enabled: !disabled,
           label: '$label, ${value ?? placeholder}',
+          onTap: disabled ? null : onPress,
           excludeSemantics: true,
           child: GestureDetector(
             onTap: disabled ? null : onPress,
@@ -1415,6 +1417,7 @@ class TextLink extends StatelessWidget {
         button: true,
         enabled: !disabled,
         label: label,
+        onTap: disabled ? null : onPress,
         excludeSemantics: true,
         child: Opacity(
           opacity: disabled ? 0.4 : 1,
@@ -1445,6 +1448,7 @@ class Toggle extends StatelessWidget {
   Widget build(BuildContext context) => Semantics(
         toggled: value,
         label: label,
+        onTap: () => onChange(!value),
         excludeSemantics: true,
         child: GestureDetector(
           behavior: HitTestBehavior.opaque,
@@ -1517,6 +1521,7 @@ class Stars extends StatelessWidget {
             button: onChange != null,
             selected: value != null && n <= value!,
             label: '별점 $n점',
+            onTap: onChange == null ? null : () => onChange!(value == n ? null : n),
             excludeSemantics: true,
             child: GestureDetector(
               behavior: HitTestBehavior.opaque,
@@ -1642,6 +1647,7 @@ class _DateBodyState extends State<_DateBody> {
                   enabled: !off,
                   selected: on,
                   label: '$_m월 $d일 ${_week[i % 7]}요일${k == today ? ', 오늘' : ''}',
+                  onTap: off ? null : () => Navigator.pop(context, k),
                   excludeSemantics: true,
                   child: Pressable(
                     onPress: off ? null : () => Navigator.pop(context, k),

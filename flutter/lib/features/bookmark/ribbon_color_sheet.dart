@@ -44,6 +44,7 @@ class _Body extends StatelessWidget {
                   button: true,
                   selected: on,
                   label: '갈피 색 $c',
+                  onTap: () => pick(c),
                   excludeSemantics: true,
                   child: Pressable(
                     onPress: () => pick(c),

@@ -31,3 +31,34 @@ void rememberSpineRatio(String coverUri, double ratio) {
   final g = _goodsOf(coverUri);
   if (g != null) _spineRatios[g] = ratio;
 }
+
+/// 기기에 저장해 둔 책등 비율 목록(지금 앱 spineRatioEntries: [YES24 상품 번호, 비율])
+List<List<Object>> spineRatioEntries() => [for (final e in _spineRatios.entries) [e.key, e.value]];
+void loadSpineRatioEntries(List<dynamic> entries) {
+  for (final e in entries) {
+    if (e is List && e.length == 2 && e[1] is num) _spineRatios['${e[0]}'] = (e[1] as num).toDouble();
+  }
+}
+
+bool needsSpineRatio(String? coverUri) => _goodsOf(coverUri) != null && spineRatioOf(coverUri) == null;
+
+// 표지에서 뽑은 갈피 색(지금 앱 coverAccentOf): ''는 고를 색이 없는 표지, 없음은 아직 못 쟀다. 공개 그림에서 다시 잴 수 있어 기기에만 둔다
+final _coverAccents = <String, String>{};
+String? coverAccentOf(String? coverUri) {
+  final g = _goodsOf(coverUri);
+  return g == null ? null : _coverAccents[g];
+}
+
+void rememberCoverAccent(String? coverUri, String accent) {
+  final g = _goodsOf(coverUri);
+  if (g != null) _coverAccents[g] = accent;
+}
+
+List<List<String>> coverAccentEntries() => [for (final e in _coverAccents.entries) [e.key, e.value]];
+void loadCoverAccentEntries(List<dynamic> entries) {
+  for (final e in entries) {
+    if (e is List && e.length == 2) _coverAccents['${e[0]}'] = '${e[1]}';
+  }
+}
+
+bool needsCoverAccent(String? coverUri) => _goodsOf(coverUri) != null && coverAccentOf(coverUri) == null;

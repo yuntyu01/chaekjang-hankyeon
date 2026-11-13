@@ -17,6 +17,7 @@ import '../../ui/book_visual.dart';
 import '../../ui/kit.dart';
 import '../../ui/theme.dart';
 import '../bookmark/book_picker.dart' show statusLabel;
+import '../bookmark/bookmark_detail_screen.dart' show openBookmark;
 import '../bookmark/bookmark_card.dart' show hexColor;
 import '../bookmark/photo_plate.dart' show BookmarkPhoto;
 import '../bookmark/ribbon_color_sheet.dart';
@@ -226,6 +227,10 @@ class _BookScreenState extends State<BookScreen> {
           ),
         ]);
 
+    void togglePage() => setState(() {
+          _pageEdit = !_pageEdit;
+          _page.text = b.currentPage != null && b.currentPage != 0 ? '${b.currentPage}' : '';
+        });
     Widget minePane() => Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
           Row(crossAxisAlignment: CrossAxisAlignment.baseline, textBaseline: TextBaseline.alphabetic, children: [
             Expanded(child: Semantics(header: true, child: Text('내 독서', style: AppType.section))),
@@ -234,13 +239,11 @@ class _BookScreenState extends State<BookScreen> {
           Semantics(
             button: true,
             label: '현재 쪽 ${b.currentPage ?? 0}${e.pageCount != null ? ' / ${e.pageCount}쪽' : '쪽'}, 눌러서 고치기',
+            onTap: togglePage,
             excludeSemantics: true,
             child: GestureDetector(
               behavior: HitTestBehavior.opaque,
-              onTap: () => setState(() {
-                _pageEdit = !_pageEdit;
-                _page.text = b.currentPage != null && b.currentPage != 0 ? '${b.currentPage}' : '';
-              }),
+              onTap: togglePage,
               child: Padding(
                 padding: const EdgeInsets.only(top: Space.s),
                 child: ConstrainedBox(
@@ -339,7 +342,7 @@ class _BookScreenState extends State<BookScreen> {
             ListGroup(children: [
               for (final m in marks.take(5))
                 Pressable(
-                  onPress: () => _pending(context, '갈피'),
+                  onPress: () => openBookmark(context, m.id),
                   child: Padding(
                     padding: const EdgeInsets.symmetric(vertical: Space.l),
                     child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [

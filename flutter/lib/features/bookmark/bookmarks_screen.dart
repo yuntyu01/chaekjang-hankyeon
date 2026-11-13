@@ -15,6 +15,7 @@ import '../../ui/theme.dart';
 import '../book/labels.dart';
 import '../stats/stats_widgets.dart';
 import 'bookmark_card.dart';
+import 'bookmark_detail_screen.dart';
 import 'bookmark_empty.dart';
 
 enum _Kind { all, text, photo }
@@ -194,7 +195,8 @@ class _BookmarksScreenState extends State<BookmarksScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final bottomPad = TabBarStyle.contentPad + MediaQuery.paddingOf(context).bottom + (ReadingStore.instance.active != null ? miniTimerSpace : 0);
+    // 지금 앱 갈피 목록 아래 여백 = TAB_CONTENT_PAD(+ 작은 타이머). 기기 아래 안전 영역은 더하지 않는다
+    final bottomPad = TabBarStyle.contentPad + (ReadingStore.instance.active != null ? miniTimerSpace : 0);
     if (!_model.loaded) return const Screen(title: '갈피', back: false, scroll: false, children: []);
     final all = _all;
     if (all.isEmpty) {
@@ -292,7 +294,7 @@ class _BookmarksScreenState extends State<BookmarksScreen> {
                         compact: true,
                         width: cardW,
                         seed: m.id,
-                        onOpen: () => _pending(context, '갈피'),
+                        onOpen: () => openBookmark(context, m.id),
                         saved: saved.contains(m.id),
                         onToggleSaved: () => _toggleSaved(m.id),
                         data: BookmarkCardData(
@@ -331,6 +333,7 @@ class _BookChoice extends StatelessWidget {
         button: true,
         selected: on,
         label: '$label, $sub',
+        onTap: onPress,
         excludeSemantics: true,
         child: Pressable(
           onPress: onPress,
