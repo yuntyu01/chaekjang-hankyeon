@@ -90,7 +90,8 @@ String convert(String sksl) {
   if (children.isNotEmpty) {
     final fns = children.map((c) => '''
 vec4 _$c(vec2 q) {
-  vec2 uv = ($c\u004dat * vec3(q, 1.0)).xy / ${c}Size;
+  vec3 t = $c\u004dat * vec3(q, 1.0);
+  vec2 uv = (t.xy / t.z) / ${c}Size;
   if (${c}Decal > 0.5 && (uv.x < 0.0 || uv.x > 1.0 || uv.y < 0.0 || uv.y > 1.0)) return vec4(0.0);
   return texture($c, uv);
 }''').join('\n');

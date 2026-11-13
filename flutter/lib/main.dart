@@ -61,7 +61,7 @@ class GatePage extends StatefulWidget {
 class _GatePageState extends State<GatePage> {
   final List<Run> _runs = [];
   final List<ui.Image> _atlases = [];
-  final List<Spot> _wallSpots = [];
+  final List<List<Spot>> _rowSpots = [];
   final List<double> _spaces = [];
   String _state = '준비 중…';
   bool _busy = false;
@@ -97,7 +97,7 @@ class _GatePageState extends State<GatePage> {
 
     final rows = <RowRun>[];
     final images = <ui.Image>[];
-    final spots = <Spot>[];
+    final spots = <List<Spot>>[];
     final spaces = <double>[];
     for (var ri = 0; ri < c.rows.length; ri++) {
       final r = c.rows[ri];
@@ -111,7 +111,7 @@ class _GatePageState extends State<GatePage> {
       grid.dispose();
       images.add(atlas.image);
       if (!probe) {
-        spots.add(atlas.at[0]); // 면 0 = 뒷벽
+        spots.add(atlas.at.take(3).toList()); // 면 0 = 뒷벽, 1 = 판 윗면, 2 = 판 앞면
         spaces.add(r.env.ceil);
       }
       final run = RowRun(r.items.length, atlas.w, atlas.h, gridMs, bakeMs);
@@ -140,7 +140,7 @@ class _GatePageState extends State<GatePage> {
       _atlases
         ..clear()
         ..addAll(images);
-      _wallSpots
+      _rowSpots
         ..clear()
         ..addAll(spots);
       _spaces
@@ -195,14 +195,14 @@ class _GatePageState extends State<GatePage> {
             const SizedBox(height: 12),
             FilledButton(onPressed: _busy ? null : _run, child: const Text('다시 굽기')),
             const SizedBox(height: 16),
-            if (_atlases.length > 1 && _wallSpots.length == _spaces.length)
+            if (_atlases.length > 1 && _rowSpots.length == _spaces.length)
               SizedBox(
                 height: 420,
                 child: CustomPaint(
                   painter: ShelfPainter(
                     rows: _case!.rows,
                     atlases: _atlases,
-                    wallSpots: _wallSpots,
+                    rowSpots: _rowSpots,
                     spaces: _spaces,
                   ),
                 ),
@@ -216,10 +216,10 @@ class _GatePageState extends State<GatePage> {
 
 /// 구운 줄들을 실제 책장처럼 쌓아 그린다(지금은 뒷벽만, ui/scene). 줄마다 카메라가 따로다
 class ShelfPainter extends CustomPainter {
-  ShelfPainter({required this.rows, required this.atlases, required this.wallSpots, required this.spaces});
+  ShelfPainter({required this.rows, required this.atlases, required this.rowSpots, required this.spaces});
   final List<RowCase> rows;
   final List<ui.Image> atlases;
-  final List<Spot> wallSpots;
+  final List<List<Spot>> rowSpots;
   final List<double> spaces;
 
   static ShaderSlots? _lit;
@@ -236,13 +236,13 @@ class ShelfPainter extends CustomPainter {
     final m = metricsOf(size.width);
     final cam = Cam(viewPitchMin);
     var y = 0.0;
-    for (var i = 0; i < wallSpots.length && i < atlases.length; i++) {
+    for (var i = 0; i < rowSpots.length && i < atlases.length; i++) {
       final space = spaces[i];
       final px = Affine(m.scale, m.originX, y + (space + shelfThick) * m.scale);
       final h = rowHeightPx(cam, px, space);
       canvas.save();
       canvas.clipRect(Rect.fromLTWH(0, y, size.width, h));
-      drawRow(canvas, lit, cam, px, rows[i], wallSpots[i], atlases[i], emptyImage, space);
+      drawRow(canvas, lit, cam, px, rows[i], rowSpots[i], atlases[i], space);
       canvas.restore();
       y += h;
       if (y > size.height) break;

@@ -373,7 +373,8 @@ layout(location = 0) out vec4 fragColor;
   uniform vec3 ALB_WALL;   // 맞추기 값(벽·판 반사율)
   uniform vec3 ALB_PLANK;
 vec4 _grid(vec2 q) {
-  vec2 uv = (gridMat * vec3(q, 1.0)).xy / gridSize;
+  vec3 t = gridMat * vec3(q, 1.0);
+  vec2 uv = (t.xy / t.z) / gridSize;
   if (gridDecal > 0.5 && (uv.x < 0.0 || uv.x > 1.0 || uv.y < 0.0 || uv.y > 1.0)) return vec4(0.0);
   return texture(grid, uv);
 }

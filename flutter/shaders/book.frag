@@ -704,17 +704,20 @@ layout(location = 0) out vec4 fragColor;
   const float CURVE = 0.500000000;
   uniform vec3 EREF_PAPER;
 vec4 _tex(vec2 q) {
-  vec2 uv = (texMat * vec3(q, 1.0)).xy / texSize;
+  vec3 t = texMat * vec3(q, 1.0);
+  vec2 uv = (t.xy / t.z) / texSize;
   if (texDecal > 0.5 && (uv.x < 0.0 || uv.x > 1.0 || uv.y < 0.0 || uv.y > 1.0)) return vec4(0.0);
   return texture(tex, uv);
 }
 vec4 _keyTex(vec2 q) {
-  vec2 uv = (keyTexMat * vec3(q, 1.0)).xy / keyTexSize;
+  vec3 t = keyTexMat * vec3(q, 1.0);
+  vec2 uv = (t.xy / t.z) / keyTexSize;
   if (keyTexDecal > 0.5 && (uv.x < 0.0 || uv.x > 1.0 || uv.y < 0.0 || uv.y > 1.0)) return vec4(0.0);
   return texture(keyTex, uv);
 }
 vec4 _tex2(vec2 q) {
-  vec2 uv = (tex2Mat * vec3(q, 1.0)).xy / tex2Size;
+  vec3 t = tex2Mat * vec3(q, 1.0);
+  vec2 uv = (t.xy / t.z) / tex2Size;
   if (tex2Decal > 0.5 && (uv.x < 0.0 || uv.x > 1.0 || uv.y < 0.0 || uv.y > 1.0)) return vec4(0.0);
   return texture(tex2, uv);
 }
