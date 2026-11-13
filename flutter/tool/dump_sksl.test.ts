@@ -88,6 +88,13 @@ test('dump sksl + bake case', () => {
     return { env: [env.side ? 2 : 1, env.floor, env.ceil], nBox: list.length, box: bx.v, items };
   }
 
+  // 값 맞는지 보는 작은 줄(맨 뒤): CPU(CanvasKit)로도 구울 수 있을 만큼 작게. 시간 재기에는 넣지 않는다
+  function probeRow() {
+    const r = rowOf(3, 190);
+    r.items = r.items.slice(0, 5).map((it) => ({ ...it, w: 24, h: 18 }));
+    return r;
+  }
+
   // 지금 앱 로그의 줄들: 5 · 26 · 21 · 19 · 31 · 20면 → 책 수 0 · 5 · 4 · 4 · 7 · 4 (면 = 3 + 책×4)
   const rows = [
     rowOf(0, 190),
@@ -96,6 +103,7 @@ test('dump sksl + bake case', () => {
     rowOf(4, 205),
     rowOf(7, 215),
     rowOf(4, 205),
+    probeRow(),
   ];
 
   const cal = lightSet().u as Record<string, number | number[]>;
@@ -111,8 +119,8 @@ test('dump sksl + bake case', () => {
   };
   write(ASSETS, 'bake_case.json', `${JSON.stringify(caseJson)}\n`);
 
-  expect(rows.length).toBe(6);
+  expect(rows.length).toBe(7);
   const cells = rows.reduce((s2, r) => s2 + r.items.reduce((t, it) => t + it.w * it.h, 0), 0);
   console.log(`[dump] ${Object.entries(srcs).map(([n, s2]) => `${n} ${s2.split('\n').length}줄`).join(', ')}`);
-  console.log(`[case] 줄 ${rows.length}개, 면 ${rows.reduce((t, r) => t + r.items.length, 0)}개 ${cells}칸, 상자 ${rows.map((r) => r.nBox).join('/')}`);
+  console.log(`[case] 줄 ${rows.length}개(맨 뒤는 값 확인용), 면 ${rows.reduce((t, r) => t + r.items.length, 0)}개 ${cells}칸, 상자 ${rows.map((r) => r.nBox).join('/')}`);
 });
