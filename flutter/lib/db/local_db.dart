@@ -1,11 +1,18 @@
-// 휴대폰 안 서재(SQLite). app/src/db/local-db.ts의 v4 정규화 구조를 그대로 옮긴 것.
-// 지금 앱은 v1~v4 옮기기를 거치지만, 여기서는 처음부터 v4 구조로 만든다(이식이 끝나면 지금 앱의 DB를 그대로 읽는다).
+// 휴대폰 안 서재(SQLite). 지금 앱 db/local-db.ts의 마지막 구조(v10)를 그대로 쓴다: 같은 파일(expo-sqlite 자리 files/SQLite/chaekjang.db),
+// 같은 표·열·user_version. 이 앱이 지금 앱을 같은 패키지로 대신하게 되면 사용자의 서재를 그대로 읽는다.
+// (지금 앱은 v1~v10 옮기기를 거쳤고 v7에서 색인을 지웠다. 여기서는 그 결과 모양을 처음부터 만든다)
 library;
 
+import 'dart:io';
+
+import 'package:path_provider/path_provider.dart';
 import 'package:sqflite/sqflite.dart';
 
-/// 표 구조(지금 앱 SCHEMA_V4와 같은 열·같은 이름)
-const _schema = '''
+/// 지금 앱 MIGRATIONS 수(PRAGMA user_version)
+const schemaVersion = 10;
+
+/// 표 구조(지금 앱 SCHEMA_V4 + V5_COLUMNS + v7 색인 정리 + BOOKCASE_SCHEMA + V3_SYNC)
+const librarySchema = '''
 CREATE TABLE IF NOT EXISTS editions (
   id TEXT PRIMARY KEY NOT NULL,
   isbn13 TEXT,
@@ -29,9 +36,10 @@ CREATE TABLE IF NOT EXISTS editions (
   art_version INTEGER,
   art_generated_at TEXT,
   created_at TEXT NOT NULL,
-  updated_at TEXT NOT NULL
+  updated_at TEXT NOT NULL,
+  product_id TEXT,
+  link TEXT
 );
-CREATE INDEX IF NOT EXISTS editions_isbn_idx ON editions (isbn13);
 CREATE TABLE IF NOT EXISTS edition_authors (
   edition_id TEXT NOT NULL REFERENCES editions (id) ON DELETE CASCADE,
   position INTEGER NOT NULL,
@@ -47,9 +55,10 @@ CREATE TABLE IF NOT EXISTS my_books (
   current_page INTEGER,
   binding_id TEXT,
   created_at TEXT NOT NULL,
-  updated_at TEXT NOT NULL
+  updated_at TEXT NOT NULL,
+  ribbon_color TEXT,
+  hidden_at TEXT
 );
-CREATE INDEX IF NOT EXISTS my_books_edition_idx ON my_books (edition_id);
 CREATE TABLE IF NOT EXISTS bindings (
   id TEXT PRIMARY KEY NOT NULL,
   my_book_id TEXT NOT NULL,
@@ -68,7 +77,6 @@ CREATE TABLE IF NOT EXISTS bindings (
   created_at TEXT NOT NULL,
   updated_at TEXT NOT NULL
 );
-CREATE INDEX IF NOT EXISTS bindings_book_idx ON bindings (my_book_id);
 CREATE TABLE IF NOT EXISTS rounds (
   id TEXT PRIMARY KEY NOT NULL,
   my_book_id TEXT NOT NULL,
@@ -79,7 +87,6 @@ CREATE TABLE IF NOT EXISTS rounds (
   created_at TEXT NOT NULL,
   updated_at TEXT NOT NULL
 );
-CREATE INDEX IF NOT EXISTS rounds_book_idx ON rounds (my_book_id, idx);
 CREATE TABLE IF NOT EXISTS sessions (
   id TEXT PRIMARY KEY NOT NULL,
   my_book_id TEXT,
@@ -90,10 +97,9 @@ CREATE TABLE IF NOT EXISTS sessions (
   pages_read INTEGER,
   memo TEXT,
   created_at TEXT NOT NULL,
-  updated_at TEXT NOT NULL
+  updated_at TEXT NOT NULL,
+  start_page INTEGER
 );
-CREATE INDEX IF NOT EXISTS sessions_book_idx ON sessions (my_book_id);
-CREATE INDEX IF NOT EXISTS sessions_started_idx ON sessions (started_at);
 CREATE TABLE IF NOT EXISTS bookmarks (
   id TEXT PRIMARY KEY NOT NULL,
   my_book_id TEXT NOT NULL,
@@ -103,9 +109,14 @@ CREATE TABLE IF NOT EXISTS bookmarks (
   photo_uri TEXT,
   photo_ratio REAL,
   created_at TEXT NOT NULL,
-  updated_at TEXT NOT NULL
+  updated_at TEXT NOT NULL,
+  session_id TEXT,
+  saved_at TEXT,
+  board_x REAL,
+  board_y REAL,
+  board_rot REAL,
+  board_w REAL
 );
-CREATE INDEX IF NOT EXISTS bookmarks_book_idx ON bookmarks (my_book_id, created_at);
 CREATE TABLE IF NOT EXISTS shelves (
   id TEXT PRIMARY KEY NOT NULL,
   position INTEGER NOT NULL
@@ -143,20 +154,80 @@ CREATE TABLE IF NOT EXISTS sync_meta (
   layout_dirty INTEGER NOT NULL DEFAULT 0, layout_revision INTEGER NOT NULL DEFAULT 0,
   layout_stored INTEGER NOT NULL DEFAULT 0
 );
+CREATE TABLE IF NOT EXISTS bookcases (
+  id TEXT PRIMARY KEY NOT NULL,
+  year INTEGER NOT NULL UNIQUE,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  synced INTEGER NOT NULL DEFAULT 0
+);
+CREATE TABLE IF NOT EXISTS bookcase_shelves (
+  bookcase_id TEXT NOT NULL REFERENCES bookcases (id) ON DELETE CASCADE,
+  id TEXT NOT NULL,
+  position INTEGER NOT NULL,
+  PRIMARY KEY (bookcase_id, id)
+);
+CREATE TABLE IF NOT EXISTS bookcase_books (
+  bookcase_id TEXT NOT NULL REFERENCES bookcases (id) ON DELETE CASCADE,
+  book_id TEXT NOT NULL,
+  binding_id TEXT,
+  status TEXT NOT NULL,
+  rating INTEGER,
+  note TEXT,
+  ribbon_color TEXT,
+  current_page INTEGER,
+  PRIMARY KEY (bookcase_id, book_id)
+);
+CREATE TABLE IF NOT EXISTS bookcase_placements (
+  bookcase_id TEXT NOT NULL,
+  book_id TEXT NOT NULL,
+  shelf_id TEXT,
+  position INTEGER NOT NULL,
+  pose TEXT,
+  tilt INTEGER,
+  stack_id TEXT,
+  stack_order INTEGER,
+  pos REAL,
+  lean_angle REAL,
+  lean_on TEXT,
+  lean_slide REAL,
+  depth REAL,
+  spin REAL,
+  pitch REAL,
+  stack_dx REAL,
+  stack_dz REAL,
+  wall_lean INTEGER NOT NULL DEFAULT 0,
+  flip INTEGER NOT NULL DEFAULT 0,
+  overhang INTEGER NOT NULL DEFAULT 0,
+  PRIMARY KEY (bookcase_id, book_id),
+  FOREIGN KEY (bookcase_id, shelf_id) REFERENCES bookcase_shelves (bookcase_id, id) ON DELETE CASCADE,
+  FOREIGN KEY (bookcase_id, book_id) REFERENCES bookcase_books (bookcase_id, book_id) ON DELETE CASCADE
+)
 ''';
 
 Database? _db;
 
-/// 서재를 연다(없으면 만든다). 지금 앱과 같은 파일 이름을 쓴다
-Future<Database> openLibrary({String name = 'library.db'}) async {
+/// 지금 앱(expo-sqlite)이 서재를 두는 곳: 안드로이드 files/SQLite, iOS Documents/SQLite
+Future<String> libraryPath([String name = 'chaekjang.db']) async {
+  final base = Platform.isIOS ? await getApplicationDocumentsDirectory() : await getApplicationSupportDirectory();
+  final dir = Directory('${base.path}/SQLite');
+  if (!dir.existsSync()) dir.createSync(recursive: true);
+  return '${dir.path}/$name';
+}
+
+/// 서재를 연다(없으면 만든다). WAL·외래키는 지금 앱과 같게 연결마다 켠다
+Future<Database> openLibrary({String? path}) async {
   if (_db != null) return _db!;
-  final path = '${await getDatabasesPath()}/$name';
   _db = await openDatabase(
-    path,
-    version: 4,
-    onConfigure: (d) => d.execute('PRAGMA foreign_keys = ON'),
+    path ?? await libraryPath(),
+    version: schemaVersion,
+    onConfigure: (d) async {
+      await d.rawQuery('PRAGMA journal_mode = WAL');
+      await d.execute('PRAGMA synchronous = NORMAL');
+      await d.execute('PRAGMA foreign_keys = ON');
+    },
     onCreate: (d, _) async {
-      for (final stmt in _schema.split(';')) {
+      for (final stmt in librarySchema.split(';')) {
         if (stmt.trim().isNotEmpty) await d.execute(stmt);
       }
       await d.execute('INSERT OR IGNORE INTO sync_meta(id) VALUES(1)');

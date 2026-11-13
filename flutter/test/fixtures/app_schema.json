@@ -1,0 +1,1314 @@
+{
+ "note": "지금 앱 서재 DB 옮기기 끝 모양(tool/dump_schema.test.ts). 손으로 고치지 말 것",
+ "version": 10,
+ "tables": {
+  "bindings": [
+   {
+    "cid": 0,
+    "name": "id",
+    "type": "TEXT",
+    "notnull": 1,
+    "dflt_value": null,
+    "pk": 1
+   },
+   {
+    "cid": 1,
+    "name": "my_book_id",
+    "type": "TEXT",
+    "notnull": 1,
+    "dflt_value": null,
+    "pk": 0
+   },
+   {
+    "cid": 2,
+    "name": "spine_color",
+    "type": "TEXT",
+    "notnull": 1,
+    "dflt_value": null,
+    "pk": 0
+   },
+   {
+    "cid": 3,
+    "name": "motif",
+    "type": "TEXT",
+    "notnull": 1,
+    "dflt_value": null,
+    "pk": 0
+   },
+   {
+    "cid": 4,
+    "name": "ink_color",
+    "type": "TEXT",
+    "notnull": 0,
+    "dflt_value": null,
+    "pk": 0
+   },
+   {
+    "cid": 5,
+    "name": "accent_color",
+    "type": "TEXT",
+    "notnull": 0,
+    "dflt_value": null,
+    "pk": 0
+   },
+   {
+    "cid": 6,
+    "name": "layout",
+    "type": "TEXT",
+    "notnull": 0,
+    "dflt_value": null,
+    "pk": 0
+   },
+   {
+    "cid": 7,
+    "name": "material",
+    "type": "TEXT",
+    "notnull": 0,
+    "dflt_value": null,
+    "pk": 0
+   },
+   {
+    "cid": 8,
+    "name": "cover_art_uri",
+    "type": "TEXT",
+    "notnull": 0,
+    "dflt_value": null,
+    "pk": 0
+   },
+   {
+    "cid": 9,
+    "name": "cover_art_id",
+    "type": "TEXT",
+    "notnull": 0,
+    "dflt_value": null,
+    "pk": 0
+   },
+   {
+    "cid": 10,
+    "name": "spine_art_uri",
+    "type": "TEXT",
+    "notnull": 0,
+    "dflt_value": null,
+    "pk": 0
+   },
+   {
+    "cid": 11,
+    "name": "source",
+    "type": "TEXT",
+    "notnull": 1,
+    "dflt_value": null,
+    "pk": 0
+   },
+   {
+    "cid": 12,
+    "name": "status",
+    "type": "TEXT",
+    "notnull": 1,
+    "dflt_value": null,
+    "pk": 0
+   },
+   {
+    "cid": 13,
+    "name": "seed",
+    "type": "INTEGER",
+    "notnull": 1,
+    "dflt_value": "0",
+    "pk": 0
+   },
+   {
+    "cid": 14,
+    "name": "created_at",
+    "type": "TEXT",
+    "notnull": 1,
+    "dflt_value": null,
+    "pk": 0
+   },
+   {
+    "cid": 15,
+    "name": "updated_at",
+    "type": "TEXT",
+    "notnull": 1,
+    "dflt_value": null,
+    "pk": 0
+   }
+  ],
+  "bookcase_books": [
+   {
+    "cid": 0,
+    "name": "bookcase_id",
+    "type": "TEXT",
+    "notnull": 1,
+    "dflt_value": null,
+    "pk": 1
+   },
+   {
+    "cid": 1,
+    "name": "book_id",
+    "type": "TEXT",
+    "notnull": 1,
+    "dflt_value": null,
+    "pk": 2
+   },
+   {
+    "cid": 2,
+    "name": "binding_id",
+    "type": "TEXT",
+    "notnull": 0,
+    "dflt_value": null,
+    "pk": 0
+   },
+   {
+    "cid": 3,
+    "name": "status",
+    "type": "TEXT",
+    "notnull": 1,
+    "dflt_value": null,
+    "pk": 0
+   },
+   {
+    "cid": 4,
+    "name": "rating",
+    "type": "INTEGER",
+    "notnull": 0,
+    "dflt_value": null,
+    "pk": 0
+   },
+   {
+    "cid": 5,
+    "name": "note",
+    "type": "TEXT",
+    "notnull": 0,
+    "dflt_value": null,
+    "pk": 0
+   },
+   {
+    "cid": 6,
+    "name": "ribbon_color",
+    "type": "TEXT",
+    "notnull": 0,
+    "dflt_value": null,
+    "pk": 0
+   },
+   {
+    "cid": 7,
+    "name": "current_page",
+    "type": "INTEGER",
+    "notnull": 0,
+    "dflt_value": null,
+    "pk": 0
+   }
+  ],
+  "bookcase_placements": [
+   {
+    "cid": 0,
+    "name": "bookcase_id",
+    "type": "TEXT",
+    "notnull": 1,
+    "dflt_value": null,
+    "pk": 1
+   },
+   {
+    "cid": 1,
+    "name": "book_id",
+    "type": "TEXT",
+    "notnull": 1,
+    "dflt_value": null,
+    "pk": 2
+   },
+   {
+    "cid": 2,
+    "name": "shelf_id",
+    "type": "TEXT",
+    "notnull": 0,
+    "dflt_value": null,
+    "pk": 0
+   },
+   {
+    "cid": 3,
+    "name": "position",
+    "type": "INTEGER",
+    "notnull": 1,
+    "dflt_value": null,
+    "pk": 0
+   },
+   {
+    "cid": 4,
+    "name": "pose",
+    "type": "TEXT",
+    "notnull": 0,
+    "dflt_value": null,
+    "pk": 0
+   },
+   {
+    "cid": 5,
+    "name": "tilt",
+    "type": "INTEGER",
+    "notnull": 0,
+    "dflt_value": null,
+    "pk": 0
+   },
+   {
+    "cid": 6,
+    "name": "stack_id",
+    "type": "TEXT",
+    "notnull": 0,
+    "dflt_value": null,
+    "pk": 0
+   },
+   {
+    "cid": 7,
+    "name": "stack_order",
+    "type": "INTEGER",
+    "notnull": 0,
+    "dflt_value": null,
+    "pk": 0
+   },
+   {
+    "cid": 8,
+    "name": "pos",
+    "type": "REAL",
+    "notnull": 0,
+    "dflt_value": null,
+    "pk": 0
+   },
+   {
+    "cid": 9,
+    "name": "lean_angle",
+    "type": "REAL",
+    "notnull": 0,
+    "dflt_value": null,
+    "pk": 0
+   },
+   {
+    "cid": 10,
+    "name": "lean_on",
+    "type": "TEXT",
+    "notnull": 0,
+    "dflt_value": null,
+    "pk": 0
+   },
+   {
+    "cid": 11,
+    "name": "lean_slide",
+    "type": "REAL",
+    "notnull": 0,
+    "dflt_value": null,
+    "pk": 0
+   },
+   {
+    "cid": 12,
+    "name": "depth",
+    "type": "REAL",
+    "notnull": 0,
+    "dflt_value": null,
+    "pk": 0
+   },
+   {
+    "cid": 13,
+    "name": "spin",
+    "type": "REAL",
+    "notnull": 0,
+    "dflt_value": null,
+    "pk": 0
+   },
+   {
+    "cid": 14,
+    "name": "pitch",
+    "type": "REAL",
+    "notnull": 0,
+    "dflt_value": null,
+    "pk": 0
+   },
+   {
+    "cid": 15,
+    "name": "stack_dx",
+    "type": "REAL",
+    "notnull": 0,
+    "dflt_value": null,
+    "pk": 0
+   },
+   {
+    "cid": 16,
+    "name": "stack_dz",
+    "type": "REAL",
+    "notnull": 0,
+    "dflt_value": null,
+    "pk": 0
+   },
+   {
+    "cid": 17,
+    "name": "wall_lean",
+    "type": "INTEGER",
+    "notnull": 1,
+    "dflt_value": "0",
+    "pk": 0
+   },
+   {
+    "cid": 18,
+    "name": "flip",
+    "type": "INTEGER",
+    "notnull": 1,
+    "dflt_value": "0",
+    "pk": 0
+   },
+   {
+    "cid": 19,
+    "name": "overhang",
+    "type": "INTEGER",
+    "notnull": 1,
+    "dflt_value": "0",
+    "pk": 0
+   }
+  ],
+  "bookcase_shelves": [
+   {
+    "cid": 0,
+    "name": "bookcase_id",
+    "type": "TEXT",
+    "notnull": 1,
+    "dflt_value": null,
+    "pk": 1
+   },
+   {
+    "cid": 1,
+    "name": "id",
+    "type": "TEXT",
+    "notnull": 1,
+    "dflt_value": null,
+    "pk": 2
+   },
+   {
+    "cid": 2,
+    "name": "position",
+    "type": "INTEGER",
+    "notnull": 1,
+    "dflt_value": null,
+    "pk": 0
+   }
+  ],
+  "bookcases": [
+   {
+    "cid": 0,
+    "name": "id",
+    "type": "TEXT",
+    "notnull": 1,
+    "dflt_value": null,
+    "pk": 1
+   },
+   {
+    "cid": 1,
+    "name": "year",
+    "type": "INTEGER",
+    "notnull": 1,
+    "dflt_value": null,
+    "pk": 0
+   },
+   {
+    "cid": 2,
+    "name": "created_at",
+    "type": "TEXT",
+    "notnull": 1,
+    "dflt_value": null,
+    "pk": 0
+   },
+   {
+    "cid": 3,
+    "name": "updated_at",
+    "type": "TEXT",
+    "notnull": 1,
+    "dflt_value": null,
+    "pk": 0
+   },
+   {
+    "cid": 4,
+    "name": "synced",
+    "type": "INTEGER",
+    "notnull": 1,
+    "dflt_value": "0",
+    "pk": 0
+   }
+  ],
+  "bookmarks": [
+   {
+    "cid": 0,
+    "name": "id",
+    "type": "TEXT",
+    "notnull": 1,
+    "dflt_value": null,
+    "pk": 1
+   },
+   {
+    "cid": 1,
+    "name": "my_book_id",
+    "type": "TEXT",
+    "notnull": 1,
+    "dflt_value": null,
+    "pk": 0
+   },
+   {
+    "cid": 2,
+    "name": "body",
+    "type": "TEXT",
+    "notnull": 1,
+    "dflt_value": "''",
+    "pk": 0
+   },
+   {
+    "cid": 3,
+    "name": "page",
+    "type": "INTEGER",
+    "notnull": 0,
+    "dflt_value": null,
+    "pk": 0
+   },
+   {
+    "cid": 4,
+    "name": "memo",
+    "type": "TEXT",
+    "notnull": 0,
+    "dflt_value": null,
+    "pk": 0
+   },
+   {
+    "cid": 5,
+    "name": "photo_uri",
+    "type": "TEXT",
+    "notnull": 0,
+    "dflt_value": null,
+    "pk": 0
+   },
+   {
+    "cid": 6,
+    "name": "photo_ratio",
+    "type": "REAL",
+    "notnull": 0,
+    "dflt_value": null,
+    "pk": 0
+   },
+   {
+    "cid": 7,
+    "name": "created_at",
+    "type": "TEXT",
+    "notnull": 1,
+    "dflt_value": null,
+    "pk": 0
+   },
+   {
+    "cid": 8,
+    "name": "updated_at",
+    "type": "TEXT",
+    "notnull": 1,
+    "dflt_value": null,
+    "pk": 0
+   },
+   {
+    "cid": 9,
+    "name": "session_id",
+    "type": "TEXT",
+    "notnull": 0,
+    "dflt_value": null,
+    "pk": 0
+   },
+   {
+    "cid": 10,
+    "name": "saved_at",
+    "type": "TEXT",
+    "notnull": 0,
+    "dflt_value": null,
+    "pk": 0
+   },
+   {
+    "cid": 11,
+    "name": "board_x",
+    "type": "REAL",
+    "notnull": 0,
+    "dflt_value": null,
+    "pk": 0
+   },
+   {
+    "cid": 12,
+    "name": "board_y",
+    "type": "REAL",
+    "notnull": 0,
+    "dflt_value": null,
+    "pk": 0
+   },
+   {
+    "cid": 13,
+    "name": "board_rot",
+    "type": "REAL",
+    "notnull": 0,
+    "dflt_value": null,
+    "pk": 0
+   },
+   {
+    "cid": 14,
+    "name": "board_w",
+    "type": "REAL",
+    "notnull": 0,
+    "dflt_value": null,
+    "pk": 0
+   }
+  ],
+  "edition_authors": [
+   {
+    "cid": 0,
+    "name": "edition_id",
+    "type": "TEXT",
+    "notnull": 1,
+    "dflt_value": null,
+    "pk": 1
+   },
+   {
+    "cid": 1,
+    "name": "position",
+    "type": "INTEGER",
+    "notnull": 1,
+    "dflt_value": null,
+    "pk": 2
+   },
+   {
+    "cid": 2,
+    "name": "name",
+    "type": "TEXT",
+    "notnull": 1,
+    "dflt_value": null,
+    "pk": 0
+   }
+  ],
+  "editions": [
+   {
+    "cid": 0,
+    "name": "id",
+    "type": "TEXT",
+    "notnull": 1,
+    "dflt_value": null,
+    "pk": 1
+   },
+   {
+    "cid": 1,
+    "name": "isbn13",
+    "type": "TEXT",
+    "notnull": 0,
+    "dflt_value": null,
+    "pk": 0
+   },
+   {
+    "cid": 2,
+    "name": "title",
+    "type": "TEXT",
+    "notnull": 1,
+    "dflt_value": null,
+    "pk": 0
+   },
+   {
+    "cid": 3,
+    "name": "publisher",
+    "type": "TEXT",
+    "notnull": 0,
+    "dflt_value": null,
+    "pk": 0
+   },
+   {
+    "cid": 4,
+    "name": "published_at",
+    "type": "TEXT",
+    "notnull": 0,
+    "dflt_value": null,
+    "pk": 0
+   },
+   {
+    "cid": 5,
+    "name": "page_count",
+    "type": "INTEGER",
+    "notnull": 0,
+    "dflt_value": null,
+    "pk": 0
+   },
+   {
+    "cid": 6,
+    "name": "width_mm",
+    "type": "INTEGER",
+    "notnull": 0,
+    "dflt_value": null,
+    "pk": 0
+   },
+   {
+    "cid": 7,
+    "name": "height_mm",
+    "type": "INTEGER",
+    "notnull": 0,
+    "dflt_value": null,
+    "pk": 0
+   },
+   {
+    "cid": 8,
+    "name": "cover_uri",
+    "type": "TEXT",
+    "notnull": 0,
+    "dflt_value": null,
+    "pk": 0
+   },
+   {
+    "cid": 9,
+    "name": "cover_source",
+    "type": "TEXT",
+    "notnull": 0,
+    "dflt_value": null,
+    "pk": 0
+   },
+   {
+    "cid": 10,
+    "name": "category",
+    "type": "TEXT",
+    "notnull": 0,
+    "dflt_value": null,
+    "pk": 0
+   },
+   {
+    "cid": 11,
+    "name": "series_title",
+    "type": "TEXT",
+    "notnull": 0,
+    "dflt_value": null,
+    "pk": 0
+   },
+   {
+    "cid": 12,
+    "name": "source",
+    "type": "TEXT",
+    "notnull": 1,
+    "dflt_value": null,
+    "pk": 0
+   },
+   {
+    "cid": 13,
+    "name": "source_name",
+    "type": "TEXT",
+    "notnull": 0,
+    "dflt_value": null,
+    "pk": 0
+   },
+   {
+    "cid": 14,
+    "name": "art_base_color",
+    "type": "TEXT",
+    "notnull": 0,
+    "dflt_value": null,
+    "pk": 0
+   },
+   {
+    "cid": 15,
+    "name": "art_ink_color",
+    "type": "TEXT",
+    "notnull": 0,
+    "dflt_value": null,
+    "pk": 0
+   },
+   {
+    "cid": 16,
+    "name": "art_accent_color",
+    "type": "TEXT",
+    "notnull": 0,
+    "dflt_value": null,
+    "pk": 0
+   },
+   {
+    "cid": 17,
+    "name": "art_motif_id",
+    "type": "TEXT",
+    "notnull": 0,
+    "dflt_value": null,
+    "pk": 0
+   },
+   {
+    "cid": 18,
+    "name": "art_layout",
+    "type": "TEXT",
+    "notnull": 0,
+    "dflt_value": null,
+    "pk": 0
+   },
+   {
+    "cid": 19,
+    "name": "art_version",
+    "type": "INTEGER",
+    "notnull": 0,
+    "dflt_value": null,
+    "pk": 0
+   },
+   {
+    "cid": 20,
+    "name": "art_generated_at",
+    "type": "TEXT",
+    "notnull": 0,
+    "dflt_value": null,
+    "pk": 0
+   },
+   {
+    "cid": 21,
+    "name": "created_at",
+    "type": "TEXT",
+    "notnull": 1,
+    "dflt_value": null,
+    "pk": 0
+   },
+   {
+    "cid": 22,
+    "name": "updated_at",
+    "type": "TEXT",
+    "notnull": 1,
+    "dflt_value": null,
+    "pk": 0
+   },
+   {
+    "cid": 23,
+    "name": "product_id",
+    "type": "TEXT",
+    "notnull": 0,
+    "dflt_value": null,
+    "pk": 0
+   },
+   {
+    "cid": 24,
+    "name": "link",
+    "type": "TEXT",
+    "notnull": 0,
+    "dflt_value": null,
+    "pk": 0
+   }
+  ],
+  "my_books": [
+   {
+    "cid": 0,
+    "name": "id",
+    "type": "TEXT",
+    "notnull": 1,
+    "dflt_value": null,
+    "pk": 1
+   },
+   {
+    "cid": 1,
+    "name": "edition_id",
+    "type": "TEXT",
+    "notnull": 1,
+    "dflt_value": null,
+    "pk": 0
+   },
+   {
+    "cid": 2,
+    "name": "status",
+    "type": "TEXT",
+    "notnull": 1,
+    "dflt_value": null,
+    "pk": 0
+   },
+   {
+    "cid": 3,
+    "name": "rating",
+    "type": "INTEGER",
+    "notnull": 0,
+    "dflt_value": null,
+    "pk": 0
+   },
+   {
+    "cid": 4,
+    "name": "note",
+    "type": "TEXT",
+    "notnull": 0,
+    "dflt_value": null,
+    "pk": 0
+   },
+   {
+    "cid": 5,
+    "name": "current_page",
+    "type": "INTEGER",
+    "notnull": 0,
+    "dflt_value": null,
+    "pk": 0
+   },
+   {
+    "cid": 6,
+    "name": "binding_id",
+    "type": "TEXT",
+    "notnull": 0,
+    "dflt_value": null,
+    "pk": 0
+   },
+   {
+    "cid": 7,
+    "name": "created_at",
+    "type": "TEXT",
+    "notnull": 1,
+    "dflt_value": null,
+    "pk": 0
+   },
+   {
+    "cid": 8,
+    "name": "updated_at",
+    "type": "TEXT",
+    "notnull": 1,
+    "dflt_value": null,
+    "pk": 0
+   },
+   {
+    "cid": 9,
+    "name": "ribbon_color",
+    "type": "TEXT",
+    "notnull": 0,
+    "dflt_value": null,
+    "pk": 0
+   },
+   {
+    "cid": 10,
+    "name": "hidden_at",
+    "type": "TEXT",
+    "notnull": 0,
+    "dflt_value": null,
+    "pk": 0
+   }
+  ],
+  "rounds": [
+   {
+    "cid": 0,
+    "name": "id",
+    "type": "TEXT",
+    "notnull": 1,
+    "dflt_value": null,
+    "pk": 1
+   },
+   {
+    "cid": 1,
+    "name": "my_book_id",
+    "type": "TEXT",
+    "notnull": 1,
+    "dflt_value": null,
+    "pk": 0
+   },
+   {
+    "cid": 2,
+    "name": "idx",
+    "type": "INTEGER",
+    "notnull": 1,
+    "dflt_value": null,
+    "pk": 0
+   },
+   {
+    "cid": 3,
+    "name": "started_on",
+    "type": "TEXT",
+    "notnull": 0,
+    "dflt_value": null,
+    "pk": 0
+   },
+   {
+    "cid": 4,
+    "name": "finished_on",
+    "type": "TEXT",
+    "notnull": 0,
+    "dflt_value": null,
+    "pk": 0
+   },
+   {
+    "cid": 5,
+    "name": "paused",
+    "type": "INTEGER",
+    "notnull": 1,
+    "dflt_value": "0",
+    "pk": 0
+   },
+   {
+    "cid": 6,
+    "name": "created_at",
+    "type": "TEXT",
+    "notnull": 1,
+    "dflt_value": null,
+    "pk": 0
+   },
+   {
+    "cid": 7,
+    "name": "updated_at",
+    "type": "TEXT",
+    "notnull": 1,
+    "dflt_value": null,
+    "pk": 0
+   }
+  ],
+  "sessions": [
+   {
+    "cid": 0,
+    "name": "id",
+    "type": "TEXT",
+    "notnull": 1,
+    "dflt_value": null,
+    "pk": 1
+   },
+   {
+    "cid": 1,
+    "name": "my_book_id",
+    "type": "TEXT",
+    "notnull": 0,
+    "dflt_value": null,
+    "pk": 0
+   },
+   {
+    "cid": 2,
+    "name": "round_id",
+    "type": "TEXT",
+    "notnull": 0,
+    "dflt_value": null,
+    "pk": 0
+   },
+   {
+    "cid": 3,
+    "name": "started_at",
+    "type": "TEXT",
+    "notnull": 1,
+    "dflt_value": null,
+    "pk": 0
+   },
+   {
+    "cid": 4,
+    "name": "ended_at",
+    "type": "TEXT",
+    "notnull": 1,
+    "dflt_value": null,
+    "pk": 0
+   },
+   {
+    "cid": 5,
+    "name": "duration_ms",
+    "type": "INTEGER",
+    "notnull": 1,
+    "dflt_value": null,
+    "pk": 0
+   },
+   {
+    "cid": 6,
+    "name": "pages_read",
+    "type": "INTEGER",
+    "notnull": 0,
+    "dflt_value": null,
+    "pk": 0
+   },
+   {
+    "cid": 7,
+    "name": "memo",
+    "type": "TEXT",
+    "notnull": 0,
+    "dflt_value": null,
+    "pk": 0
+   },
+   {
+    "cid": 8,
+    "name": "created_at",
+    "type": "TEXT",
+    "notnull": 1,
+    "dflt_value": null,
+    "pk": 0
+   },
+   {
+    "cid": 9,
+    "name": "updated_at",
+    "type": "TEXT",
+    "notnull": 1,
+    "dflt_value": null,
+    "pk": 0
+   },
+   {
+    "cid": 10,
+    "name": "start_page",
+    "type": "INTEGER",
+    "notnull": 0,
+    "dflt_value": null,
+    "pk": 0
+   }
+  ],
+  "shelf_placements": [
+   {
+    "cid": 0,
+    "name": "book_id",
+    "type": "TEXT",
+    "notnull": 1,
+    "dflt_value": null,
+    "pk": 1
+   },
+   {
+    "cid": 1,
+    "name": "shelf_id",
+    "type": "TEXT",
+    "notnull": 0,
+    "dflt_value": null,
+    "pk": 0
+   },
+   {
+    "cid": 2,
+    "name": "position",
+    "type": "INTEGER",
+    "notnull": 1,
+    "dflt_value": null,
+    "pk": 0
+   },
+   {
+    "cid": 3,
+    "name": "pose",
+    "type": "TEXT",
+    "notnull": 0,
+    "dflt_value": null,
+    "pk": 0
+   },
+   {
+    "cid": 4,
+    "name": "tilt",
+    "type": "INTEGER",
+    "notnull": 0,
+    "dflt_value": null,
+    "pk": 0
+   },
+   {
+    "cid": 5,
+    "name": "stack_id",
+    "type": "TEXT",
+    "notnull": 0,
+    "dflt_value": null,
+    "pk": 0
+   },
+   {
+    "cid": 6,
+    "name": "stack_order",
+    "type": "INTEGER",
+    "notnull": 0,
+    "dflt_value": null,
+    "pk": 0
+   },
+   {
+    "cid": 7,
+    "name": "pos",
+    "type": "REAL",
+    "notnull": 0,
+    "dflt_value": null,
+    "pk": 0
+   },
+   {
+    "cid": 8,
+    "name": "lean_angle",
+    "type": "REAL",
+    "notnull": 0,
+    "dflt_value": null,
+    "pk": 0
+   },
+   {
+    "cid": 9,
+    "name": "lean_on",
+    "type": "TEXT",
+    "notnull": 0,
+    "dflt_value": null,
+    "pk": 0
+   },
+   {
+    "cid": 10,
+    "name": "lean_slide",
+    "type": "REAL",
+    "notnull": 0,
+    "dflt_value": null,
+    "pk": 0
+   },
+   {
+    "cid": 11,
+    "name": "depth",
+    "type": "REAL",
+    "notnull": 0,
+    "dflt_value": null,
+    "pk": 0
+   },
+   {
+    "cid": 12,
+    "name": "spin",
+    "type": "REAL",
+    "notnull": 0,
+    "dflt_value": null,
+    "pk": 0
+   },
+   {
+    "cid": 13,
+    "name": "pitch",
+    "type": "REAL",
+    "notnull": 0,
+    "dflt_value": null,
+    "pk": 0
+   },
+   {
+    "cid": 14,
+    "name": "stack_dx",
+    "type": "REAL",
+    "notnull": 0,
+    "dflt_value": null,
+    "pk": 0
+   },
+   {
+    "cid": 15,
+    "name": "stack_dz",
+    "type": "REAL",
+    "notnull": 0,
+    "dflt_value": null,
+    "pk": 0
+   },
+   {
+    "cid": 16,
+    "name": "wall_lean",
+    "type": "INTEGER",
+    "notnull": 1,
+    "dflt_value": "0",
+    "pk": 0
+   },
+   {
+    "cid": 17,
+    "name": "flip",
+    "type": "INTEGER",
+    "notnull": 1,
+    "dflt_value": "0",
+    "pk": 0
+   },
+   {
+    "cid": 18,
+    "name": "overhang",
+    "type": "INTEGER",
+    "notnull": 1,
+    "dflt_value": "0",
+    "pk": 0
+   }
+  ],
+  "shelves": [
+   {
+    "cid": 0,
+    "name": "id",
+    "type": "TEXT",
+    "notnull": 1,
+    "dflt_value": null,
+    "pk": 1
+   },
+   {
+    "cid": 1,
+    "name": "position",
+    "type": "INTEGER",
+    "notnull": 1,
+    "dflt_value": null,
+    "pk": 0
+   }
+  ],
+  "sync_meta": [
+   {
+    "cid": 0,
+    "name": "id",
+    "type": "INTEGER",
+    "notnull": 0,
+    "dflt_value": null,
+    "pk": 1
+   },
+   {
+    "cid": 1,
+    "name": "revision",
+    "type": "INTEGER",
+    "notnull": 1,
+    "dflt_value": "0",
+    "pk": 0
+   },
+   {
+    "cid": 2,
+    "name": "migrated",
+    "type": "INTEGER",
+    "notnull": 1,
+    "dflt_value": "0",
+    "pk": 0
+   },
+   {
+    "cid": 3,
+    "name": "layout",
+    "type": "TEXT",
+    "notnull": 0,
+    "dflt_value": null,
+    "pk": 0
+   },
+   {
+    "cid": 4,
+    "name": "layout_at",
+    "type": "TEXT",
+    "notnull": 0,
+    "dflt_value": null,
+    "pk": 0
+   },
+   {
+    "cid": 5,
+    "name": "layout_dirty",
+    "type": "INTEGER",
+    "notnull": 1,
+    "dflt_value": "0",
+    "pk": 0
+   },
+   {
+    "cid": 6,
+    "name": "layout_revision",
+    "type": "INTEGER",
+    "notnull": 1,
+    "dflt_value": "0",
+    "pk": 0
+   },
+   {
+    "cid": 7,
+    "name": "layout_stored",
+    "type": "INTEGER",
+    "notnull": 1,
+    "dflt_value": "0",
+    "pk": 0
+   }
+  ],
+  "sync_outbox": [
+   {
+    "cid": 0,
+    "name": "kind",
+    "type": "TEXT",
+    "notnull": 1,
+    "dflt_value": null,
+    "pk": 1
+   },
+   {
+    "cid": 1,
+    "name": "id",
+    "type": "TEXT",
+    "notnull": 1,
+    "dflt_value": null,
+    "pk": 2
+   },
+   {
+    "cid": 2,
+    "name": "deleted",
+    "type": "INTEGER",
+    "notnull": 1,
+    "dflt_value": null,
+    "pk": 0
+   },
+   {
+    "cid": 3,
+    "name": "updated_at",
+    "type": "TEXT",
+    "notnull": 1,
+    "dflt_value": null,
+    "pk": 0
+   },
+   {
+    "cid": 4,
+    "name": "revision",
+    "type": "INTEGER",
+    "notnull": 1,
+    "dflt_value": null,
+    "pk": 0
+   }
+  ]
+ },
+ "indexes": [
+  {
+   "name": "shelf_placements_shelf_idx",
+   "tbl_name": "shelf_placements"
+  }
+ ]
+}

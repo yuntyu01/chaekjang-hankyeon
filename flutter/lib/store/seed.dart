@@ -37,8 +37,13 @@ Future<void> seedIfEmpty() async {
         'source': 'seed', 'status': 'ready', 'seed': 0, 'created_at': now, 'updated_at': now,
       });
       await t.insert('my_books', {
-        'id': b.id, 'edition_id': eid, 'status': 'owned', 'binding_id': gid, 'created_at': now, 'updated_at': now,
+        'id': b.id, 'edition_id': eid, 'status': 'owned', 'binding_id': gid, 'ribbon_color': b.ribbon,
+        'created_at': now, 'updated_at': now,
       });
+      // 갈피: 비교 책장처럼 몇 권에 갈피가 꽂혀 있다(장 수 = 남긴 문장 수)
+      for (var k = 0; k < b.ribbonCount; k++) {
+        await t.insert('bookmarks', {'id': 'm-${b.id}-$k', 'my_book_id': b.id, 'body': '', 'created_at': now, 'updated_at': now});
+      }
     }
     for (final p in realSamplePlacements) {
       await t.insert('shelf_placements', {

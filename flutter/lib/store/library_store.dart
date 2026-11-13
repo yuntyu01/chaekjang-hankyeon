@@ -1,5 +1,5 @@
 // 서재를 읽고 쓴다(DB → 책·자리). app/src/store의 library-store·placement-store가 하던 일 가운데
-// 책장을 그리는 데 필요한 읽기만 먼저 옮긴 것. 쓰기·동기화는 아직
+// 책장을 그리는 데 필요한 읽기만 먼저 옮긴 것. 숨긴 책(hidden_at: 지웠지만 연도 책장에 남긴 책)은 화면용 서재에서 뺀다. 쓰기·동기화는 아직
 library;
 
 import '../db/local_db.dart';
@@ -46,13 +46,14 @@ Pose _poseOf(String? v) => switch (v) {
 Future<Library> loadLibrary() async {
   final db = await openLibrary();
   final rows = await db.rawQuery('''
-    SELECT b.id, e.title, e.width_mm, e.height_mm, e.page_count, e.cover_uri,
+    SELECT b.id, b.ribbon_color, e.title, e.width_mm, e.height_mm, e.page_count, e.cover_uri,
            bd.spine_color, bd.ink_color, bd.cover_art_uri,
            (SELECT COUNT(*) FROM bookmarks m WHERE m.my_book_id = b.id) AS quotes,
            (SELECT name FROM edition_authors a WHERE a.edition_id = e.id ORDER BY a.position LIMIT 1) AS author
       FROM my_books b
       JOIN editions e ON e.id = b.edition_id
       LEFT JOIN bindings bd ON bd.id = b.binding_id
+     WHERE b.hidden_at IS NULL
   ''');
   final books = [
     for (final r in rows)
@@ -78,6 +79,7 @@ Future<Library> loadLibrary() async {
         coverArtUri: (r['cover_art_uri'] as String?) ?? coverAtSize(r['cover_uri'] as String?, 'L'),
         coverUri: r['cover_uri'] as String?,
         inkColor: r['ink_color'] as String?,
+        ribbonColor: r['ribbon_color'] as String?,
         quotes: ((r['quotes'] as num?) ?? 0).toInt(),
       ),
   ];
@@ -110,5 +112,6 @@ Future<Library> loadLibrary() async {
         wallLean: ((r['wall_lean'] as num?) ?? 0) != 0,
       ),
   ];
-  return Library(books, shelves, placements);
+  final shown = {for (final b in books) b.id};
+  return Library(books, shelves, [for (final p in placements) if (shown.contains(p.bookId)) p]);
 }

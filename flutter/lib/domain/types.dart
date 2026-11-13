@@ -40,6 +40,7 @@ class Book {
     this.inkColor,
     this.dims,
     this.coverArtUri,
+    this.ribbonColor,
     this.quotes = 0,
     this.startedAt,
     this.finishedAt,
@@ -67,6 +68,9 @@ class Book {
 
   /// 표지 그림 주소(재장정 그림 또는 YES24 표지 L). 받기 전·못 받으면 코드로 그린 장정
   final String? coverArtUri;
+
+  /// 사용자가 고른 갈피 색(없으면 표지에서 뽑은 색·책 색)
+  final String? ribbonColor;
 
   /// 저장된 문장 수(갈피 표시)
   final int quotes;
