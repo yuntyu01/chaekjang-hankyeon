@@ -34,31 +34,41 @@ class BakeItem {
 
 List<double> _v(Object? x) => (x as List).map((e) => (e as num).toDouble()).toList();
 
+/// 줄 하나의 굽기 입력(둘레·상자 목록·구울 면들)
+class BakeRow {
+  BakeRow.fromJson(Map<String, dynamic> j)
+      : env = _v(j['env']),
+        nBox = j['nBox'] as int,
+        box = _v(j['box']),
+        items = (j['items'] as List).map((x) => BakeItem.fromJson(x as Map<String, dynamic>)).toList();
+
+  final List<double> env;
+  final int nBox;
+  final List<double> box;
+  final List<BakeItem> items;
+
+  int get cells => items.fold(0, (t, it) => t + it.w * it.h);
+}
+
 class BakeCase {
   BakeCase.fromJson(Map<String, dynamic> j)
       : gridPasses = j['gridPasses'] as int,
         gridN = j['gridN'] as int,
         envNy = j['envNy'] as int,
         envNx = j['envNx'] as int,
-        env = _v(j['env']),
-        nBox = j['nBox'] as int,
-        box = _v(j['box']),
         cal = (j['cal'] as Map<String, dynamic>).map((k, x) => MapEntry(k, _v(x))),
-        items = (j['items'] as List).map((x) => BakeItem.fromJson(x as Map<String, dynamic>)).toList();
+        rows = (j['rows'] as List).map((x) => BakeRow.fromJson(x as Map<String, dynamic>)).toList();
 
   final int gridPasses;
   final int gridN;
   final int envNx;
   final int envNy;
-  final List<double> env;
-  final int nBox;
-  final List<double> box;
   final Map<String, List<double>> cal;
-  final List<BakeItem> items;
+  final List<BakeRow> rows;
 
   /// 빛 격자 그림 크기(scene-light-sksl GRID_SCALE 배치)
-  int get gridW => 6 * gridN;
-  int get gridH => nBox * gridN + 3 * envNy;
+  int gridW() => 6 * gridN;
+  int gridH(BakeRow r) => r.nBox * gridN + 3 * envNy;
 
   static Future<BakeCase> load() async {
     final text = await rootBundle.loadString('assets/bake_case.json');
@@ -104,21 +114,21 @@ const _atlasW = 512;
 }
 
 /// 두 셰이더가 함께 읽는 값(둘레·맞추기 값·상자 목록·빛 격자 그림)
-void _setCommon(ui.FragmentShader sh, BakeCase c, {required ui.Image? grid, required bool gridNxOn}) {
+void _setCommon(ui.FragmentShader sh, BakeCase c, BakeRow r, {required ui.Image? grid}) {
   void vec3(String name, List<double> v) => sh.getUniformVec3(name).set(v[0], v[1], v[2]);
-  vec3('env', c.env);
+  vec3('env', r.env);
   for (final name in ['ECAM', 'RADF', 'RADU', 'RADW', 'RADE', 'RADSL', 'RADSR', 'PAPER', 'ALB_WALL', 'ALB_PLANK']) {
     vec3(name, c.cal[name]!);
   }
   final box = sh.getUniformVec4Array('box');
   for (var i = 0; i < box.length; i++) {
     final o = i * 4;
-    box[i].set(c.box[o], c.box[o + 1], c.box[o + 2], c.box[o + 3]);
+    box[i].set(r.box[o], r.box[o + 1], r.box[o + 2], r.box[o + 3]);
   }
-  sh.getUniformFloat('nBox').set(c.nBox.toDouble());
+  sh.getUniformFloat('nBox').set(r.nBox.toDouble());
   sh.getUniformFloat('gridOn').set(grid != null ? 1 : 0);
-  sh.getUniformFloat('gridNx').set(gridNxOn ? c.envNx.toDouble() : 1);
-  sh.getUniformVec2('gridSize').set(c.gridW.toDouble(), c.gridH.toDouble());
+  sh.getUniformFloat('gridNx').set(r.nBox > 0 || r.env[0] > 1.5 ? c.envNx.toDouble() : 1);
+  sh.getUniformVec2('gridSize').set(c.gridW().toDouble(), c.gridH(r).toDouble());
   // 칸 사이는 선형으로, 끝은 늘려 읽는다(지금 앱 linearShader와 같다)
   sh.setImageSampler(0, grid ?? _empty, filterQuality: ui.FilterQuality.low);
 }
@@ -145,13 +155,13 @@ Future<ui.Image> _draw(int w, int h, ui.FragmentShader sh) async {
   return img;
 }
 
-/// 빛 격자(되비침)를 GRID_PASSES번 풀어 그림 한 장으로. 첫 번은 가리개를 가림 없는 받는 빛으로 본다
-Future<ui.Image> solveGrid(ui.FragmentProgram prog, BakeCase c) async {
+/// 빛 격자(되비침)를 gridPasses번 풀어 그림 한 장으로. 첫 번은 가리개를 가림 없는 받는 빛으로 본다
+Future<ui.Image> solveGrid(ui.FragmentProgram prog, BakeCase c, BakeRow r) async {
   ui.Image? img;
   for (var k = 0; k < c.gridPasses; k++) {
     final sh = prog.fragmentShader();
-    _setCommon(sh, c, grid: img, gridNxOn: c.nBox > 0 || c.env[0] > 1.5);
-    final next = await _draw(c.gridW, c.gridH, sh);
+    _setCommon(sh, c, r, grid: img);
+    final next = await _draw(c.gridW(), c.gridH(r), sh);
     sh.dispose();
     img?.dispose();
     img = next;
@@ -163,14 +173,15 @@ Future<ui.Image> solveGrid(ui.FragmentProgram prog, BakeCase c) async {
 Future<({ui.Image image, List<Spot> at, int w, int h})> bakeAtlas(
   ui.FragmentProgram bakeProg,
   BakeCase c,
+  BakeRow r,
   ui.Image grid,
 ) async {
-  final pack = packAtlas(c.items);
+  final pack = packAtlas(r.items);
   final rec = ui.PictureRecorder();
   final canvas = ui.Canvas(rec);
-  for (var i = 0; i < c.items.length; i++) {
-    final it = c.items[i];
-    final r = pack.at[i];
+  for (var i = 0; i < r.items.length; i++) {
+    final it = r.items[i];
+    final sp = pack.at[i];
     final sh = bakeProg.fragmentShader();
     void vec3(String name, List<double> v) => sh.getUniformVec3(name).set(v[0], v[1], v[2]);
     vec3('O', it.o);
@@ -179,9 +190,9 @@ Future<({ui.Image image, List<Spot> at, int w, int h})> bakeAtlas(
     vec3('tN', it.n);
     sh.getUniformVec2('cells').set(it.w.toDouble(), it.h.toDouble());
     sh.getUniformFloat('selfIdx').set(it.self);
-    _setCommon(sh, c, grid: grid, gridNxOn: c.nBox > 0 || c.env[0] > 1.5);
+    _setCommon(sh, c, r, grid: grid);
     canvas.save();
-    canvas.translate(r.x.toDouble(), r.y.toDouble());
+    canvas.translate(sp.x.toDouble(), sp.y.toDouble());
     canvas.drawRect(
       ui.Rect.fromLTWH(-_gutter.toDouble(), -_gutter.toDouble(), (it.w + 2 * _gutter).toDouble(), (it.h + 2 * _gutter).toDouble()),
       ui.Paint()..shader = sh,

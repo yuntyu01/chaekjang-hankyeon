@@ -41,58 +41,78 @@ test('dump sksl + bake case', () => {
   const srcs: Record<string, string> = { grid: gridSource(), bake: bakeSource(), lit: litSource(), book: bookSource(), tab: tabSource() };
   for (const [name, src] of Object.entries(srcs)) write(SKSL, `${name}.sksl`, src);
 
-  // ---- 줄 하나: 책 네 권(하나는 기댄 책), 줄 높이 space ----
-  const space = 190;
-  const book = (x: number, T = 30, H = 174, W = 120): Book3 => ({ id: `b${x}`, dims: { T, H, W }, roll: 0, yaw: 0, t: { x, y: 0, z: 0 } });
-  const lean: Book3 = { id: 'lean', dims: { T: 22, H: 140, W: 100 }, roll: -8, yaw: 0, t: { x: 172, y: 0, z: 0 } };
-  const books = [book(76), book(100), book(123, 22, 120), lean];
-  const list = withCovers(books.map((b, i) => boxOf(b, i % 2 ? [0.5, 0.08, 0.05] : [0.05, 0.12, 0.42])));
-  const bx = packBoxes(list, books.map((b) => b.id));
-  const env: Env = FRAME_ON ? { floor: 0, ceil: space, side: true } : { floor: 0, ceil: space };
-
-  // 벽(화면에 보이는 가로 범위: 원근으로 벽은 화면보다 조금 넓다, ShelfPlank WALL_X0·WALL_X1)
-  const wallD = 1 + SHELF_DEPTH / VIEW_DIST;
-  const wx0 = VIEW_CX + (-SHELF.sideMargin - SCENE_PAD - VIEW_CX) * wallD;
-  const wx1 = VIEW_CX + (DESIGN_WIDTH - SHELF.sideMargin + SCENE_PAD - VIEW_CX) * wallD;
-  const items: ReturnType<typeof area>[] = [];
-  items.push(area({ x: wx0, y: space + SHELF_THICK, z: SHELF_DEPTH }, { x: 1, y: 0, z: 0 }, { x: 0, y: -1, z: 0 }, wx1 - wx0, space + 2 * SHELF_THICK, { x: 0, y: 0, z: -1 }));
-  // 판 윗면 · 앞면
-  items.push(area({ x: SHELF_X0, y: 0, z: SHELF_DEPTH }, { x: 1, y: 0, z: 0 }, { x: 0, y: 0, z: -1 }, SHELF_X1 - SHELF_X0, SHELF_DEPTH + 70, { x: 0, y: 1, z: 0 }));
-  items.push(area({ x: SHELF_X0, y: 0, z: -70 }, { x: 1, y: 0, z: 0 }, { x: 0, y: -1, z: 0 }, SHELF_X1 - SHELF_X0, SHELF_THICK, { x: 0, y: 0, z: 1 }));
-  // 책 면(ui/SceneLight bookItems와 같다: 보이는 면만 고르는 것은 빼고 모두 넣는다)
+  // ---- 줄 여섯(지금 앱이 실제 굽는 줄과 면 수·칸 수를 맞춘다: 로그의 5·26·21·19·31·20면) ----
+  // 책 수가 다른 줄을 만들어 같은 양을 굽게 한다. 기댄 책(돌아간 상자)도 줄마다 하나씩 둔다
   const faces: FaceId[] = ['front', 'back', 'spine', 'fore', 'head', 'tail'];
-  books.forEach((b, i) => {
-    for (const f of faces) {
-      const pn = lightPanel(b.dims, f);
-      const w = Math.max(1, Math.ceil(pn.w / BAKE_TEXEL));
-      const h = Math.max(1, Math.ceil(pn.h / BAKE_TEXEL));
-      const turn = (v: Vec3) => rot(b.roll, b.yaw, v, b.spin ?? 0, b.pitch ?? 0);
-      const U = turn(pn.U);
-      const V = turn(pn.V);
-      const O = toWorld(b, pn.O);
-      const n = turn(faceNormal(f));
-      items.push({ O: [O.x, O.y, O.z], U: [U.x / w, U.y / w, U.z / w], V: [V.x / h, V.y / h, V.z / h], w, h, n: [n.x, n.y, n.z], self: i });
+  const book = (x: number, T = 30, H = 174, W = 120): Book3 => ({ id: `b${x}`, dims: { T, H, W }, roll: 0, yaw: 0, t: { x, y: 0, z: 0 } });
+
+  function rowOf(nBooks: number, space: number) {
+    const books: Book3[] = [];
+    let x = 20;
+    for (let i = 0; i < nBooks; i++) {
+      const T = 22 + (i % 4) * 7;
+      const H = space - 16 - (i % 3) * 12;
+      const W = 110 + (i % 3) * 10;
+      const b = book(x, T, H, W);
+      // 줄마다 마지막 책은 기대어 둔다(돌아간 상자: 셰이더에서 가장 무거운 쪽)
+      books.push(i === nBooks - 1 ? { ...b, roll: -8 } : b);
+      x += T + 1;
     }
-  });
+    const list = withCovers(books.map((b, i) => boxOf(b, i % 2 ? [0.5, 0.08, 0.05] : [0.05, 0.12, 0.42])));
+    const bx = packBoxes(list, books.map((b) => b.id));
+    const env: Env = FRAME_ON ? { floor: 0, ceil: space, side: true } : { floor: 0, ceil: space };
+
+    const items: ReturnType<typeof area>[] = [];
+    // 벽(화면에 보이는 가로 범위: 원근으로 벽은 화면보다 조금 넓다, ShelfPlank WALL_X0·WALL_X1)
+    const wallD = 1 + SHELF_DEPTH / VIEW_DIST;
+    const wx0 = VIEW_CX + (-SHELF.sideMargin - SCENE_PAD - VIEW_CX) * wallD;
+    const wx1 = VIEW_CX + (DESIGN_WIDTH - SHELF.sideMargin + SCENE_PAD - VIEW_CX) * wallD;
+    items.push(area({ x: wx0, y: space + SHELF_THICK, z: SHELF_DEPTH }, { x: 1, y: 0, z: 0 }, { x: 0, y: -1, z: 0 }, wx1 - wx0, space + 2 * SHELF_THICK, { x: 0, y: 0, z: -1 }));
+    // 판 윗면 · 앞면
+    items.push(area({ x: SHELF_X0, y: 0, z: SHELF_DEPTH }, { x: 1, y: 0, z: 0 }, { x: 0, y: 0, z: -1 }, SHELF_X1 - SHELF_X0, SHELF_DEPTH + 70, { x: 0, y: 1, z: 0 }));
+    items.push(area({ x: SHELF_X0, y: 0, z: -70 }, { x: 1, y: 0, z: 0 }, { x: 0, y: -1, z: 0 }, SHELF_X1 - SHELF_X0, SHELF_THICK, { x: 0, y: 0, z: 1 }));
+    // 책 면(ui/SceneLight bookItems와 같다: 보이는 면만 고르는 것은 빼고 책마다 네 면 — 앞·책등·머리·배)
+    books.forEach((b, i) => {
+      for (const f of faces.slice(0, 4)) {
+        const pn = lightPanel(b.dims, f);
+        const w = Math.max(1, Math.ceil(pn.w / BAKE_TEXEL));
+        const h = Math.max(1, Math.ceil(pn.h / BAKE_TEXEL));
+        const turn = (v: Vec3) => rot(b.roll, b.yaw, v, b.spin ?? 0, b.pitch ?? 0);
+        const U = turn(pn.U);
+        const V = turn(pn.V);
+        const O = toWorld(b, pn.O);
+        const n = turn(faceNormal(f));
+        items.push({ O: [O.x, O.y, O.z], U: [U.x / w, U.y / w, U.z / w], V: [V.x / h, V.y / h, V.z / h], w, h, n: [n.x, n.y, n.z], self: i });
+      }
+    });
+    return { env: [env.side ? 2 : 1, env.floor, env.ceil], nBox: list.length, box: bx.v, items };
+  }
+
+  // 지금 앱 로그의 줄들: 5 · 26 · 21 · 19 · 31 · 20면 → 책 수 0 · 5 · 4 · 4 · 7 · 4 (면 = 3 + 책×4)
+  const rows = [
+    rowOf(0, 190),
+    rowOf(5, 190),
+    rowOf(4, 205),
+    rowOf(4, 205),
+    rowOf(7, 215),
+    rowOf(4, 205),
+  ];
 
   const cal = lightSet().u as Record<string, number | number[]>;
   const caseJson = {
-    note: '지금 앱의 빛 모델에서 뽑은 줄 하나 굽기 입력(flutter/tool/dump_sksl.test.ts). 손으로 고치지 말 것',
+    note: '지금 앱의 빛 모델에서 뽑은 줄 여섯의 굽기 입력(flutter/tool/dump_sksl.test.ts). 손으로 고치지 말 것',
     gridPasses: GRID_PASSES,
     gridN: GRID_N,
     envNx: ENV_NX,
     envNy: ENV_NY,
     bakeTexel: BAKE_TEXEL,
-    env: [env.side ? 2 : 1, env.floor, env.ceil],
-    nBox: list.length,
-    box: bx.v,
     cal,
-    items,
+    rows,
   };
   write(ASSETS, 'bake_case.json', `${JSON.stringify(caseJson)}\n`);
 
-  expect(items.length).toBeGreaterThan(5);
-  const cells = items.reduce((s, it) => s + it.w * it.h, 0);
-  console.log(`[dump] ${Object.entries(srcs).map(([n, s]) => `${n} ${s.split('\n').length}줄`).join(', ')}`);
-  console.log(`[case] 면 ${items.length}개 ${cells}칸, 상자 ${list.length}개, 격자 ${6 * GRID_N}x${list.length * GRID_N + 3 * ENV_NY} × ${GRID_PASSES}번`);
+  expect(rows.length).toBe(6);
+  const cells = rows.reduce((s2, r) => s2 + r.items.reduce((t, it) => t + it.w * it.h, 0), 0);
+  console.log(`[dump] ${Object.entries(srcs).map(([n, s2]) => `${n} ${s2.split('\n').length}줄`).join(', ')}`);
+  console.log(`[case] 줄 ${rows.length}개, 면 ${rows.reduce((t, r) => t + r.items.length, 0)}개 ${cells}칸, 상자 ${rows.map((r) => r.nBox).join('/')}`);
 });
