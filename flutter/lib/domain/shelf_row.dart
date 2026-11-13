@@ -63,6 +63,9 @@ class RowCase {
   final List<Book3> books;
   final double space;
 
+  /// 책 제목(그릴 때만 쓴다. 굽기에는 들어가지 않는다)
+  List<String> titles = const [];
+
   int get cells => items.fold(0, (t, it) => t + it.w * it.h);
 }
 
@@ -100,8 +103,12 @@ RowCase buildRow(List<Book3> books, double space, {List<C3>? tones}) {
       items.add(BakeItem(toWorld(b, pn.o), u * (1 / w), v * (1 / h), turn(faceNormal(f)), w, h, i.toDouble()));
     }
   }
-  return RowCase(env, bx, items, books: books, space: space);
+  return RowCase(env, bx, items, books: books, space: space)
+    ..titles = [for (var i = 0; i < books.length; i++) sampleTitles[i % sampleTitles.length]];
 }
+
+/// 보기 책 제목(지금 앱 예시 책장에서)
+const sampleTitles = ['느린 계절', '여름의 숲', '어린 왕자', '문장 수집', '아주 보통의 하루', '좋은 문장은 이렇게 온다', '찰나의 마음', '고요한 우연', '아무튼, 독서', '너라는 계절'];
 
 /// 지금 앱의 줄과 같은 양이 되도록 만든 보기 줄(측정·시험용). tool/dump_sksl.test.ts의 rowOf와 같다
 List<Book3> sampleBooks(int n, double space) {

@@ -15,6 +15,7 @@ import '../domain/vec3.dart';
 import '../gen/light_uniforms.g.dart' as cal;
 import '../gen/scene_uniforms.g.dart';
 import 'bake.dart';
+import 'book_art.dart';
 import 'plane_key.dart';
 
 /// 보는 눈: 줄 앞 viewDist만큼 떨어진 자리. 보기 각이 높을수록 눈이 올라간다
@@ -249,7 +250,9 @@ void drawRow(
       if (at < spots.length) spots3[bakeFaces[k]] = spots[at];
     }
     final b = row.books[i];
-    drawBook(canvas, book, c, px, row, b, i % 2 == 1 ? const C3(0.5, 0.08, 0.05) : const C3(0.05, 0.12, 0.42), spots3, atlas, [i * 13.7 % 61, i * 7.1 % 53]);
+    final albedo = i % 2 == 1 ? const C3(0.5, 0.08, 0.05) : const C3(0.05, 0.12, 0.42);
+    drawBook(canvas, book, c, px, row, b, albedo, spots3, atlas, [i * 13.7 % 61, i * 7.1 % 53],
+        title: row.titles.length > i ? row.titles[i] : '');
   }
 
   // 판(면 1 = 윗면, 면 2 = 앞면)
@@ -337,11 +340,13 @@ void drawBook(
   C3 albedo,
   Map<FaceId, Spot> faceSpots,
   ui.Image atlas,
-  List<double> seed,
-) {
+  List<double> seed, {
+  String title = '',
+  ui.Color titleInk = const ui.Color(0xFFF2EEE6),
+}) {
   final path = bookOutline(c, px, b);
-  // 바탕: 장정 색(지금 앱은 여기에 표지 그림·책등 글자를 그린다. 빛 두 겹이 그 위에 곱하고 더한다)
-  canvas.drawPath(path, ui.Paint()..color = srgbOf(albedo));
+  // 바탕: 장정 색 + 책등·표지 제목(빛 두 겹이 그 위에 곱하고 더한다)
+  drawBookArt(canvas, b, albedo, title, titleInk, (v) => px.at(c.project(v)));
   for (final dodge in [0.0, 1.0]) {
     final sh = bookSlots.shader();
     void vec(String name, List<double> v) {
