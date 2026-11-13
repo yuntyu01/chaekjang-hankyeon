@@ -18,6 +18,14 @@ class Physical {
   final int? pages;
 }
 
+/// 그리는 책 크기(DU): 실제 판형에서 정한 값(지금 앱 Book.dims, jacket-proportions realDimensions)
+class BookDims {
+  const BookDims(this.height, this.thickness, this.coverWidth);
+  final double height;
+  final double thickness;
+  final double coverWidth;
+}
+
 class Book {
   const Book({
     required this.id,
@@ -30,6 +38,8 @@ class Book {
     this.physical,
     this.coverUri,
     this.inkColor,
+    this.dims,
+    this.coverArtUri,
     this.quotes = 0,
     this.startedAt,
     this.finishedAt,
@@ -51,6 +61,12 @@ class Book {
 
   /// 장정에 저장된 제목 색(#rrggbb, 없으면 자동)
   final String? inkColor;
+
+  /// 그리는 크기(있으면 등급·판형보다 먼저)
+  final BookDims? dims;
+
+  /// 표지 그림 주소(재장정 그림 또는 YES24 표지 L). 받기 전·못 받으면 코드로 그린 장정
+  final String? coverArtUri;
 
   /// 저장된 문장 수(갈피 표시)
   final int quotes;
@@ -79,6 +95,7 @@ class BookPlacement {
     this.stackDz,
     this.flip = false,
     this.overhang = false,
+    this.wallLean = false,
   });
 
   final String bookId;
@@ -101,6 +118,9 @@ class BookPlacement {
   final double? stackDz;
   final bool flip;
   final bool overhang;
+
+  /// (예전 저장본) 표지 책이 벽에 기대 있는지. 지금은 pitch로 저장한다
+  final bool wallLean;
 }
 
 /// 선반 하나

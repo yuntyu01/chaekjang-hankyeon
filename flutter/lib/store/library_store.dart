@@ -3,6 +3,8 @@
 library;
 
 import '../db/local_db.dart';
+import '../domain/cover_url.dart';
+import '../domain/geometry.dart';
 import '../domain/types.dart';
 
 /// 서재 한 벌: 책과 선반·자리
@@ -45,7 +47,7 @@ Future<Library> loadLibrary() async {
   final db = await openLibrary();
   final rows = await db.rawQuery('''
     SELECT b.id, e.title, e.width_mm, e.height_mm, e.page_count, e.cover_uri,
-           bd.spine_color, bd.ink_color,
+           bd.spine_color, bd.ink_color, bd.cover_art_uri,
            (SELECT COUNT(*) FROM bookmarks m WHERE m.my_book_id = b.id) AS quotes,
            (SELECT name FROM edition_authors a WHERE a.edition_id = e.id ORDER BY a.position LIMIT 1) AS author
       FROM my_books b
@@ -66,6 +68,14 @@ Future<Library> loadLibrary() async {
           heightMm: (r['height_mm'] as num?)?.toDouble(),
           pages: (r['page_count'] as num?)?.toInt(),
         ),
+        // 그리는 크기: 판형이 없으면 흔한 판형(128×188mm, 250쪽), 두께는 책등 사진 비율이 있으면 그것(지금 앱 toShelfBook)
+        dims: realDimensions(
+          (r['width_mm'] as num?)?.toDouble() ?? 128,
+          (r['height_mm'] as num?)?.toDouble() ?? 188,
+          (r['page_count'] as num?)?.toInt() ?? 250,
+          spineRatioOf(r['cover_uri'] as String?),
+        ),
+        coverArtUri: (r['cover_art_uri'] as String?) ?? coverAtSize(r['cover_uri'] as String?, 'L'),
         coverUri: r['cover_uri'] as String?,
         inkColor: r['ink_color'] as String?,
         quotes: ((r['quotes'] as num?) ?? 0).toInt(),
@@ -97,6 +107,7 @@ Future<Library> loadLibrary() async {
         stackDz: (r['stack_dz'] as num?)?.toDouble(),
         flip: ((r['flip'] as num?) ?? 0) != 0,
         overhang: ((r['overhang'] as num?) ?? 0) != 0,
+        wallLean: ((r['wall_lean'] as num?) ?? 0) != 0,
       ),
   ];
   return Library(books, shelves, placements);

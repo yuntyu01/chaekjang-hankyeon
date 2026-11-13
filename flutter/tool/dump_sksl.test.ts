@@ -24,6 +24,9 @@ import { bakeSource, bookSource, gridSource, litSource, tabSource } from '@/ui/s
 import { boxOf, ENV_NX, ENV_NY, GRID_N, GRID_PASSES, lightSet, packBoxes, withCovers, type Env } from '@/domain/light-model';
 import { SHELF_THICK } from '@/domain/geometry';
 import { type Book3 } from '@/domain/book3';
+import { computeShelf } from '@/domain/shelf-scene';
+import { REAL_BEFORE, REAL_BOOKS, REAL_FRONT_BOOKS, REAL_FRONT_LAYOUT, REAL_LAYOUT, REAL_SIDE_BOOKS, REAL_SIDE_LAYOUT } from '@/domain/real-sample';
+import type { Book as AppBook, ShelfLayout } from '@/domain/types';
 import { coverTitleLayout, lyingTitleLayout, spineTitleLayout } from '@/domain/title-layout';
 import { displayInk, tabColors, titleInk } from '@/domain/color';
 import { jacketColor } from '@/domain/book-design';
@@ -149,6 +152,54 @@ ${calDart}
     displayInkCustom: displayInk('#AA3311', c), tone: bindingSurfaceTone(jacketColor(c)), tabs: tabColors(c, 'book-1'), tabsNone: tabColors(undefined, `k${c}`),
   }));
   write(join(ROOT, 'test', 'fixtures'), 'book_art_cases.json', `${JSON.stringify({ note: '지금 앱 함수 결과(tool/dump_sksl.test.ts). 손으로 고치지 말 것', titleCases, colorCases })}\n`);
+  // ---- 배치(지금 앱 computeShelf): 실제 책 비교 책장 넷과 변형(위치 없는 예전 저장본·기대는 방향 뒤집기) ----
+  const bookJson = (b: AppBook) => ({ id: b.id, title: b.title, themeColor: b.themeColor, dims: b.dims, physical: b.physical });
+  const layoutCase = (name: string, books: AppBook[], layout: ShelfLayout) => {
+    const map = Object.fromEntries(books.map((b) => [b.id, b]));
+    return {
+      name,
+      books: books.map(bookJson),
+      layout,
+      frames: Object.fromEntries(layout.shelves.map((sh) => [sh.id, computeShelf(layout, map, sh.id).frames.map((f) => ({
+        bookId: f.bookId, pose: f.pose, tilt: f.tilt, stackIndex: f.stackIndex, leanOn: f.leanOn ?? null, leanFailed: !!f.leanFailed,
+        fell: f.fell ?? null, slide: f.slide ?? null, box: f.box,
+      }))])),
+    };
+  };
+  const noPos = (l: ShelfLayout): ShelfLayout => ({ ...l, placements: l.placements.map(({ pos: _p, ...rest }) => rest) });
+  const flipped = (l: ShelfLayout): ShelfLayout => ({ ...l, placements: l.placements.map((p) => (p.tilt ? { ...p, tilt: (-p.tilt) as 7 | -7 } : p)) });
+  const layoutCases = [
+    layoutCase('real', REAL_BOOKS, REAL_LAYOUT),
+    layoutCase('real-front', REAL_FRONT_BOOKS, REAL_FRONT_LAYOUT),
+    layoutCase('real-side', REAL_SIDE_BOOKS, REAL_SIDE_LAYOUT),
+    layoutCase('real-before', REAL_BEFORE[0], REAL_BEFORE[1]),
+    layoutCase('real-nopos', REAL_BOOKS, noPos(REAL_LAYOUT)),
+    layoutCase('real-flipped', REAL_BOOKS, flipped(REAL_LAYOUT)),
+  ];
+  write(join(ROOT, 'test', 'fixtures'), 'layout_cases.json', `${JSON.stringify({ note: '지금 앱 computeShelf 결과(tool/dump_sksl.test.ts). 손으로 고치지 말 것', layoutCases })}\n`);
+
+  // 실제 책 비교 책장(지금 앱 real-sample): Flutter 앱이 비어 있을 때 넣는 보기 서재. 표지는 YES24에서 받는다
+  const q = (v: unknown) => (v === undefined || v === null ? 'null' : typeof v === 'string' ? `'${v.replace(/'/g, "\\'")}'` : String(v));
+  const realRows = REAL_BOOKS.map((b) => {
+    const goods = Number(/goods\/(\d+)/.exec(b.coverArtUri ?? '')?.[1] ?? 0);
+    return `  (id: ${q(b.id)}, title: ${q(b.title)}, author: ${q(b.author)}, publisher: ${q(b.publisher)}, goods: ${goods}, widthMm: ${b.physical!.widthMm}, heightMm: ${b.physical!.heightMm}, pages: ${b.physical!.pages}, spineRatio: ${b.dims!.thickness / b.dims!.height}, color: ${q(b.themeColor)}, ribbon: ${q(b.art.ribbon)}, ribbonCount: ${b.art.ribbonCount ?? 0}),`;
+  }).join('\n');
+  const realPlacements = REAL_LAYOUT.placements.map((p) => `  (bookId: ${q(p.bookId)}, shelfId: ${q(p.shelfId)}, order: ${p.order}, pose: ${q(p.pose)}, tilt: ${p.tilt}, stackId: ${q(p.stackId)}, stackOrder: ${q(p.stackOrder)}, depth: ${q(p.depth)}, pitch: ${q(p.pitch)}, spin: ${q(p.spin)}),`).join('\n');
+  write(join(ROOT, 'lib', 'gen'), 'real_sample.g.dart', `// 실제 책 비교 책장(지금 앱 domain/real-sample). tool/gen_shaders.sh 가 만든다 — 손으로 고치지 말 것
+// spineRatio: 지금 앱이 그리는 두께/높이(책등 사진 비율에서 정한 실제 두께)
+library;
+
+const realSampleBooks = [
+${realRows}
+];
+
+const realSampleShelves = [${REAL_LAYOUT.shelves.map((s) => `(id: ${q(s.id)}, order: ${s.order})`).join(', ')}];
+
+const realSamplePlacements = [
+${realPlacements}
+];
+`);
+
   // 장정 재질 띠(reference-bindings): 책 색 → 재질 색에 쓴다. Dart 상수로
   write(join(ROOT, 'lib', 'gen'), 'reference_bindings.g.dart', `// 장정 재질 띠(지금 앱 scene-config/reference-bindings.generated.json). tool/gen_shaders.sh 가 만든다 — 손으로 고치지 말 것
 // ignore_for_file: constant_identifier_names
