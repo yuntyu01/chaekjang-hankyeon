@@ -54,8 +54,89 @@ String _rewriteEval(String src, String name) {
   }
 }
 
+/// `i == 0 ? A : (i == 1 ? B : (… : Z))` 처럼 같은 변수를 0, 1, 2, …와 차례로 견주는 긴 삼항 사슬을 이분 나무로 바꾼다
+/// (`i < 8 ? (i < 4 ? …) : …`, 깊이 16 → 4). 값은 같다. 배열은 쓰지 않는다(지금 앱이 Adreno GLES 때문에 피한 모양).
+/// impellerc가 Skia 대비용 SkSL을 만들 때 SPIRV-Cross가 사슬을 if 중첩으로 풀어 SkSL 구문 깊이 한도를 넘었다
+String _balanceChains(String src) {
+  final start = RegExp(r'(\w+) == 0 \? ');
+  var out = src;
+  var from = 0;
+  while (true) {
+    final m = start.firstMatch(out.substring(from));
+    if (m == null) return out;
+    final at = from + m.start;
+    final v = m.group(1)!;
+    // 사슬 읽기: 값 k마다 `v == k ? 식 : (`, 마지막은 `식` 뒤 닫는 괄호들
+    final values = <String>[];
+    var i = at;
+    var k = 0;
+    String? last;
+    var opens = 0;
+    while (true) {
+      final head = '$v == $k ? ';
+      if (!out.startsWith(head, i)) break;
+      i += head.length;
+      final e = _readExpr(out, i, ':');
+      values.add(out.substring(i, e).trim());
+      i = e + 1;
+      while (i < out.length && out[i] == ' ') {
+        i++;
+      }
+      if (out.startsWith('($v == ${k + 1} ? ', i)) {
+        i++;
+        opens++;
+        k++;
+        continue;
+      }
+      // 마지막 값: 괄호 하나로 감싼 식이거나 그냥 식
+      final e2 = _readExpr(out, i, ')');
+      last = out.substring(i, e2).trim();
+      i = e2;
+      break;
+    }
+    if (last == null || values.length < 4) {
+      from = at + m.group(0)!.length;
+      continue;
+    }
+    // 열었던 괄호만큼 닫는 괄호를 건너뛴다
+    for (var o = 0; o < opens; o++) {
+      while (out[i] == ' ') {
+        i++;
+      }
+      if (out[i] != ')') throw StateError('삼항 사슬 끝 괄호를 찾지 못했다: ${out.substring(at, at + 80)}');
+      i++;
+    }
+    final all = [...values, last];
+    String tree(int lo, int hi) {
+      if (hi - lo == 1) return all[lo];
+      final mid = (lo + hi) ~/ 2;
+      return '($v < $mid ? ${tree(lo, mid)} : ${tree(mid, hi)})';
+    }
+
+    final rep = tree(0, all.length);
+    out = out.substring(0, at) + rep + out.substring(i);
+    from = at + rep.length;
+  }
+}
+
+/// i부터 괄호 균형이 맞는 채로 stop 문자를 만나는 자리(괄호 안의 stop은 건너뛴다)
+int _readExpr(String s, int i, String stop) {
+  var depth = 0;
+  for (var j = i; j < s.length; j++) {
+    final c = s[j];
+    if (c == '(') depth++;
+    if (c == ')') {
+      if (depth == 0) return j;
+      depth--;
+    }
+    if (depth == 0 && c == stop) return j;
+    if (depth == 0 && (c == ';' || c == ',')) return j;
+  }
+  return s.length;
+}
+
 String convert(String sksl) {
-  var s = sksl;
+  var s = _balanceChains(sksl);
   for (final e in _types.entries) {
     s = _replaceWord(s, e.key, e.value);
   }

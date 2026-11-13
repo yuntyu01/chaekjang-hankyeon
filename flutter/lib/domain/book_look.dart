@@ -6,7 +6,7 @@ import 'color.dart';
 import 'types.dart';
 
 class BookLook {
-  const BookLook(this.title, this.face, this.tone, this.ink, {this.titleTop, this.coverUri});
+  const BookLook(this.title, this.face, this.tone, this.ink, {this.titleTop, this.coverUri, this.ribbons = 0, this.ribbon});
   final String title;
 
   /// 장정 색(제목 색을 고르는 바탕), 재질 색(몸체·책등·표지와 빛 셰이더의 반사율), 제목 색(모두 #rrggbb)
@@ -20,11 +20,19 @@ class BookLook {
   /// 표지 사진 주소(있으면 사진 책: 재질 색은 사진 채도로, 빛 셰이더는 회색 반사율 + 그림 겹)
   final String? coverUri;
   bool get photo => coverUri != null;
+
+  /// 갈피 장 수(남긴 문장 수, 0이면 갈피 없음)와 갈피 색
+  final int ribbons;
+  final String? ribbon;
 }
 
 /// 장정 색 = 책 색, 재질 색 = 장정 띠 가운데 색(표지 사진 책은 사진 채도로), 제목 색 = 저장된 색 또는 자동(지금 앱 faceOf·bookTone·inkOf)
 BookLook lookOf(Book b) {
   final face = jacketColor(hexOf(b.themeColor));
   final photo = b.coverArtUri != null;
-  return BookLook(b.title, face, bookToneOf(face, photo: photo), displayInk(b.inkColor, face), coverUri: b.coverArtUri);
+  // 갈피 색: 고른 색, 없으면 무채색이 아닌 책 색(지금 앱 toShelfBook: 표지에서 뽑은 색은 아직 재지 않는다)
+  final theme = hexOf(b.themeColor);
+  final ribbon = b.ribbonColor ?? (isNeutralColor(theme) ? null : theme);
+  return BookLook(b.title, face, bookToneOf(face, photo: photo), displayInk(b.inkColor, face),
+      coverUri: b.coverArtUri, ribbons: b.quotes, ribbon: ribbon);
 }

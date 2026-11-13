@@ -21,6 +21,7 @@ import 'cover_photo.dart';
 import 'glyph_metrics.dart';
 import '../domain/book_look.dart';
 import 'outline.dart';
+import 'ribbons.dart';
 import 'plane_key.dart';
 
 /// 보는 눈: 줄 앞 viewDist만큼 떨어진 자리. 보기 각이 높을수록 눈이 올라간다
@@ -234,6 +235,7 @@ void drawRow(
   ({PlaneKey wall, PlaneKey floor}) keys, {
   GlyphMetrics? glyphs,
   Map<String, CoverPhoto> photos = const {},
+  ShaderSlots? tab,
 }) {
   Spot? spotOf(String key) {
     final i = row.indexOf(key);
@@ -348,6 +350,8 @@ void drawRow(
     final look = row.looks.length > i ? row.looks[i] : null;
     final photo = look?.coverUri == null ? null : photos[look!.coverUri];
     drawBook(canvas, book, c, px, row, b, albedo, spots3, atlas, seedOf(b.id), look: look, glyphs: glyphs, photo: photo);
+    // 갈피 탭(책 위에, 같은 차례)
+    if (tab != null && look != null) drawRibbons(canvas, tab, c, px, row, b, look, row.tabLoss[b.id]);
   }
 }
 

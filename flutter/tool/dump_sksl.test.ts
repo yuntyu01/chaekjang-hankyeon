@@ -20,7 +20,7 @@ function mockStubModule() {
 import { existsSync, mkdirSync, writeFileSync } from 'fs';
 import { join } from 'path';
 
-import { bakeSource, bookSource, gridSource, litSource, tabSource } from '@/ui/scene-light-sksl';
+import { bakeSource, bookSource, gridSource, litSource, LOSS_G0, LOSS_RN, LOSS_RP, tabSource } from '@/ui/scene-light-sksl';
 import { boxOf, ENV_NX, ENV_NY, GRID_N, GRID_PASSES, lightSet, packBoxes, withCovers, type Env } from '@/domain/light-model';
 import { SHELF_THICK } from '@/domain/geometry';
 import { type Book3 } from '@/domain/book3';
@@ -35,9 +35,9 @@ import bindingProfiles from '@/scene-config/reference-bindings.generated.json';
 import { frameParts, FRONT_AREA, FRONT_KEY, rowEnv, TOP_AREA, TOP_KEY, wallArea } from '@/ui/shelf/ShelfPlank';
 import { areaItem, BAKE_TEXEL, bookItems, type BakeItem } from '@/ui/SceneLight';
 import { FRAME_ON } from '@/scene-config/skin';
-import { bookAlbedo, bookEref, bookSref, DESIGN, EREF, SPEC_K, SREF, TONE } from '@/domain/light-model';
+import { bookAlbedo, bookEref, bookSref, DESIGN, EREF, SKY_C, SPEC_K, SREF, TONE } from '@/domain/light-model';
 import { MAT_UNIFORMS } from '@/domain/surface-pattern';
-import { surfaceMats, surfaces } from '@/scene-config/lighting';
+import { light, surfaceMats, surfaces } from '@/scene-config/lighting';
 
 const ROOT = join(__dirname, '..');
 const SKSL = join(ROOT, 'build', 'sksl');
@@ -218,6 +218,16 @@ const toneShoulder = ${TONE.shoulder};
 const camGain = ${L.gain};
 const erefWall = C3(${L.eref.wall.join(', ')});
 
+/// 구운 하늘 가림 담기(scene-light-sksl lossEncode·lossDecode): 0을 가운데 G0로 양쪽 제곱근 곡선
+const lossG0 = ${LOSS_G0};
+const lossRP = ${LOSS_RP};
+const lossRN = ${LOSS_RN};
+
+/// 하늘 빛(skyIrr = SKYC · (AMB + SKYTILT·n))
+const skyC = C3(${SKY_C.join(', ')});
+const ambient = ${light.ambient};
+const skyTilt = (${light.skyTilt.x}, ${light.skyTilt.y}, ${light.skyTilt.z});
+
 /// 장정 재질마다 대표 자리 빛·반사광(고운 종이·린넨·무광·줄무늬 종이)
 const bookErefOf = {${(['fine', 'linen', 'matte', 'laid'] as const).map((m) => `'${m}': C3(${bookEref(m).join(', ')})`).join(', ')}};
 const bookSrefOf = {${(['fine', 'linen', 'matte', 'laid'] as const).map((m) => `'${m}': C3(${bookSref(m).join(', ')})`).join(', ')}};
@@ -279,6 +289,9 @@ class BookSurface {
 }
 
 const bookFine = BookSurface(${c3(bookEref('fine'))}, ${c3(bookSref('fine'))}, ${SPEC_K.fine}, ${matOf('fine')}, ${matOf('pages')}, ${c3(SREF.paper)});
+
+/// 갈피 탭 종이(무광 종이): 대표 자리 빛 · 반사광 · 표면
+const tabPaper = (eref: ${c3(bookEref('paper'))}, sref: ${c3(bookSref('paper'))}, mat: ${matOf('paper')});
 
 const wallSurface = ${surf('wall')};
 const plankSurface = ${surf('plank')};

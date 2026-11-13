@@ -14,6 +14,7 @@ import 'geometry.dart';
 import 'binding_material.dart';
 import 'book_light.dart';
 import 'book_look.dart';
+import 'ribbon_design.dart';
 import 'color.dart';
 import 'shelf_parts.dart';
 import 'vec3.dart';
@@ -58,6 +59,9 @@ class RowCase {
   List<BookLook> looks = const [];
   List<C3> tones = const [];
 
+  /// 갈피 탭 한 점의 하늘 가림(책 id → 값). 구운 그림에서 읽어 채운다
+  Map<String, C3> tabLoss = const {};
+
   int get cells => items.fold(0, (t, it) => t + it.w * it.h);
 
   late final Map<String, int> _at = {for (var i = 0; i < items.length; i++) items[i].key: i};
@@ -65,6 +69,9 @@ class RowCase {
   /// 이름으로 면 번호(아틀라스 자리 차례). 없으면 −1
   int indexOf(String key) => _at[key] ?? -1;
 }
+
+/// 갈피 탭 한 점의 굽기 이름
+String tabBakeKey(String id) => '$id:tab';
 
 /// 책 한 권 면의 이름(지금 앱 faceKey)
 String faceKey(String id, FaceId f) => '$id:${f.name}';
@@ -160,6 +167,16 @@ RowCase rowFromBooks(List<Book3> books, List<Book> meta, double space, {bool top
   ];
   // 굽기 상자 색 = 장정 색의 실제 반사율(되비침), 그리는 빛의 반사율 = 재질 색(사진 책은 회색: 색은 그림이 낸다)
   final row = buildRow(books, space, tones: [for (final l in looks) bookAlbedo(l.tone)], top: top, last: last);
+  // 갈피 탭: 탭 가운데 한 점의 하늘 가림을 줄 굽기에 한 칸으로 함께 굽는다(지금 앱은 같은 값을 JS 빛 모델 bakedLossAt으로 구한다)
+  for (var i = 0; i < books.length; i++) {
+    final l = looks[i];
+    if (l.ribbons <= 0) continue;
+    final tabs = tabsOf(books[i].id, l.ribbons, l.ribbon, l.tone);
+    final out = tabs.map((t) => t.out).reduce(math.max);
+    final at = tabRoot(books[i], out).center;
+    final ax = tabAxes(books[i]);
+    row.items.add(BakeItem(tabBakeKey(books[i].id), at - ax.ax * 0.005 - ax.up * 0.005, ax.ax * 0.01, ax.up * 0.01, ax.n, 1, 1, i.toDouble()));
+  }
   row.looks = looks;
   row.tones = [for (final l in looks) l.photo ? pictureAlbedo : linearOf(rgbOf(l.tone))];
   return row;

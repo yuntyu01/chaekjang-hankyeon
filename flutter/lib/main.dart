@@ -19,6 +19,7 @@ import 'services/cover_cache.dart';
 import 'ui/cover_photo.dart';
 import 'ui/glyph_metrics.dart';
 import 'ui/metrics.dart';
+import 'ui/ribbons.dart';
 import 'ui/outline.dart';
 import 'ui/scene.dart';
 
@@ -134,6 +135,7 @@ class _GatePageState extends State<GatePage> {
       if (hit != null) {
         final pack = packAtlas(r.items);
         images.add(hit);
+        r.tabLoss = await readTabLosses(r, hit, pack.at);
         if (!probe) {
           spots.add(pack.at);
           spaces.add(r.space);
@@ -152,6 +154,7 @@ class _GatePageState extends State<GatePage> {
       final bakeMs = DateTime.now().difference(t2).inMilliseconds;
       grid.dispose();
       images.add(atlas.image);
+      r.tabLoss = await readTabLosses(r, atlas.image, atlas.at);
       unawaited(saveBake(key, atlas.image));
       if (!probe) {
         spots.add(atlas.at); // 면 0 = 뒷벽, 1 = 판 윗면, 2 = 판 앞면, 3부터 책 면
@@ -325,12 +328,14 @@ class ShelfPainter extends CustomPainter {
 
   static ShaderSlots? _lit;
   static ShaderSlots? _book;
+  static ShaderSlots? _tab;
   static GlyphMetrics? _glyphs;
 
   /// 그리기 셰이더는 한 번만 올린다(미리 컴파일돼 있다)
   static Future<void> load() async {
     _lit ??= ShaderSlots(await ui.FragmentProgram.fromAsset('shaders/lit.frag'), litUniformNames);
     _book ??= ShaderSlots(await ui.FragmentProgram.fromAsset('shaders/book.frag'), bookUniformNames);
+    _tab ??= ShaderSlots(await ui.FragmentProgram.fromAsset('shaders/tab.frag'), tabUniformNames);
     _glyphs ??= await GlyphMetrics.load(titleFontAsset);
   }
 
@@ -355,7 +360,7 @@ class ShelfPainter extends CustomPainter {
       final area = Path()..addRect(Rect.fromLTRB(0, contentY + y0, size.width, contentY + y1));
       final up = i > 0 ? plankOutlinePath((v) => toPx(cam, pxOf(geo[i - 1]), v), m.scale) : null;
       canvas.clipPath(up == null ? area : Path.combine(PathOperation.difference, area, up));
-      drawRow(canvas, lit, book, cam, px, rows[i], rowSpots[i], atlases[i], r.space, keys[i], glyphs: _glyphs, photos: photos);
+      drawRow(canvas, lit, book, cam, px, rows[i], rowSpots[i], atlases[i], r.space, keys[i], glyphs: _glyphs, photos: photos, tab: _tab);
       canvas.restore();
       if (contentY + y0 > size.height) break;
     }
