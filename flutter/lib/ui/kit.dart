@@ -3,11 +3,14 @@
 library;
 
 import 'dart:math' as math;
+import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 
 import '../gen/lucide.g.dart';
+import '../services/cover_cache.dart';
 import 'theme.dart';
 
 /// 간격: 화면 좌우 24, 4·8·12·16·28·40 단계
@@ -29,18 +32,22 @@ const _sheetMax = 560.0;
 
 /// 선 아이콘(지금 앱 lucide 아이콘, 굵기 1.6)
 class LucideIcon extends StatelessWidget {
-  const LucideIcon(this.name, {super.key, this.size = 22, this.color = AppColors.ink, this.stroke = 1.6});
+  const LucideIcon(this.name, {super.key, this.size = 22, this.color = AppColors.ink, this.stroke = 1.6, this.fill});
   final String name;
   final double size;
   final Color color;
   final double stroke;
+  /// 채움 색(없으면 선만)
+  final Color? fill;
 
   @override
   Widget build(BuildContext context) {
     final svg = lucideSvg[name] ?? lucideSvg['X']!;
-    final hex = '#${(color.toARGB32() & 0xFFFFFF).toRadixString(16).padLeft(6, '0')}';
+    String hex(Color c) => '#${(c.toARGB32() & 0xFFFFFF).toRadixString(16).padLeft(6, '0')}';
     // 지금 앱 lucide는 굵기를 24칸 기준으로 준다(크기를 바꿔도 굵기는 칸 비율)
-    return SvgPicture.string(svg.replaceAll('{c}', hex).replaceAll('{w}', '$stroke'), width: size, height: size);
+    var markup = svg.replaceAll('{c}', hex(color)).replaceAll('{w}', '$stroke');
+    if (fill != null) markup = markup.replaceFirst('fill="none"', 'fill="${hex(fill!)}"');
+    return SvgPicture.string(markup, width: size, height: size);
   }
 }
 
@@ -120,7 +127,8 @@ class Screen extends StatelessWidget {
                     ],
                   ),
                 ),
-                if (right != null) Transform.translate(offset: const Offset(10, -6), child: right),
+                // 지금 앱 marginRight −10·marginTop −6: 자리째 위로 당긴다(머리줄 높이도 6 줄어든다)
+                if (right != null) Transform.translate(offset: const Offset(10, 0), child: PullUp(dy: 6, child: right!)),
               ],
             ),
           ),
@@ -164,13 +172,24 @@ class Screen extends StatelessWidget {
         ),
       ),
     );
+    // 스크롤하지 않는 화면: 본문이 남은 높이를 다 쓴다(안에서 목록이 Expanded로 스크롤)
+    final fixed = Align(
+      alignment: Alignment.topCenter,
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: contentMax + Space.page * 2),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: pad),
+          child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [?largeTitle, ...children]),
+        ),
+      ),
+    );
     final body = scroll
         ? SingleChildScrollView(
             padding: EdgeInsets.only(bottom: Space.section + bottomPad + (footer != null ? 0 : insets.bottom)),
             keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
             child: content,
           )
-        : content;
+        : fixed;
     return ColoredBox(
       color: AppColors.bg,
       child: Padding(
@@ -454,8 +473,9 @@ bool _isLight(String hex) {
   return 0.299 * r + 0.587 * g + 0.114 * b > 180;
 }
 
-/// 실제 표지(도서 이미지). 없거나 못 읽으면 책 색 대체 표지(제목)
-class RealCover extends StatelessWidget {
+/// 실제 표지(도서 이미지·내가 찍은 사진). 없거나 못 읽으면 책 색 대체 표지(제목, 명조).
+/// 원격 그림은 표지 캐시로 읽는다(오프라인에서도 한 번 본 표지는 보인다)
+class RealCover extends StatefulWidget {
   const RealCover({super.key, this.uri, required this.title, required this.color, required this.width, this.ratio = 0.68});
   final String? uri;
   final String title;
@@ -464,25 +484,61 @@ class RealCover extends StatelessWidget {
   final double ratio;
 
   @override
+  State<RealCover> createState() => _RealCoverState();
+}
+
+class _RealCoverState extends State<RealCover> {
+  ui.Image? _img;
+  bool _failed = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  @override
+  void didUpdateWidget(RealCover old) {
+    super.didUpdateWidget(old);
+    if (old.uri != widget.uri) {
+      _img = null;
+      _failed = false;
+      _load();
+    }
+  }
+
+  Future<void> _load() async {
+    final u = widget.uri;
+    if (u == null) return;
+    final img = coverInMemory(u) ?? await loadCover(u);
+    if (!mounted || u != widget.uri) return;
+    setState(() => img == null ? _failed = true : _img = img);
+  }
+
+  @override
   Widget build(BuildContext context) {
-    final h = width / ratio;
-    Widget fallback() => Container(
-          width: width,
+    final w = widget.width, h = w / widget.ratio;
+    if (widget.uri == null || _failed) {
+      return Semantics(
+        label: '${widget.title} 대체 표지',
+        child: Container(
+          width: w,
           height: h,
           padding: const EdgeInsets.all(8),
-          decoration: BoxDecoration(color: _hexColor(color), borderRadius: BorderRadius.circular(3)),
+          decoration: BoxDecoration(color: _hexColor(widget.color), borderRadius: BorderRadius.circular(3)),
           alignment: Alignment.center,
-          child: Text(title,
+          child: Text(widget.title,
               maxLines: 4,
               textAlign: TextAlign.center,
-              style: TextStyle(fontFamily: AppFonts.ui, fontSize: math.max(10, width / 8), color: _isLight(color) ? AppColors.inkSoft : AppColors.onAccent)),
-        );
-    if (uri == null) return Semantics(label: '$title 대체 표지', child: fallback());
+              style: TextStyle(fontFamily: AppFonts.serif, fontSize: math.max(10, w / 8), color: _isLight(widget.color) ? AppColors.inkSoft : AppColors.onAccent)),
+        ),
+      );
+    }
     return Semantics(
-      label: '$title 표지',
+      label: '${widget.title} 표지',
       child: ClipRRect(
         borderRadius: BorderRadius.circular(3),
-        child: Image.network(uri!, width: width, height: h, fit: BoxFit.cover, errorBuilder: (_, _, _) => fallback()),
+        child: Container(width: w, height: h, color: AppColors.surface, child: _img == null ? null : RawImage(image: _img, fit: BoxFit.cover, width: w, height: h)),
       ),
     );
   }
@@ -690,7 +746,7 @@ class AppDivider extends StatelessWidget {
 }
 
 /// 하단 시트: 어두운 덮개 + 위쪽만 둥근 판(손잡이·제목·설명·내용). 바깥을 누르거나 뒤로 가면, 손잡이를 끌어 내리면 닫힌다. 닫기 단추는 두지 않는다
-Future<T?> showSheet<T>(BuildContext context, {String? title, String? description, required WidgetBuilder builder, bool scroll = false}) {
+Future<T?> showSheet<T>(BuildContext context, {String? title, String? description, required WidgetBuilder builder, bool scroll = false, double? maxHeight}) {
   return showModalBottomSheet<T>(
     context: context,
     isScrollControlled: true,
@@ -702,6 +758,8 @@ Future<T?> showSheet<T>(BuildContext context, {String? title, String? descriptio
       final insets = MediaQuery.paddingOf(ctx);
       final body = builder(ctx);
       return Container(
+        // maxHeight: 화면 높이에 대한 비율(긴 목록 시트)
+        constraints: maxHeight == null ? null : BoxConstraints(maxHeight: MediaQuery.sizeOf(ctx).height * maxHeight),
         decoration: const BoxDecoration(
           color: AppColors.bg,
           borderRadius: BorderRadius.vertical(top: Radius.circular(Shape.sheet)),
@@ -736,4 +794,283 @@ Future<T?> showSheet<T>(BuildContext context, {String? title, String? descriptio
       );
     },
   );
+}
+
+/// 밑줄 탭(2026-11-05 시안, 색은 우리 것): 글자 폭대로 두고 탭 사이를 같게 벌린다. 고른 칸은 굵은 본문색 + 글자 폭 테마색 밑줄(3, 둥근 끝).
+/// fill: 칸을 똑같이 나눠 화면 끝까지, 고른 칸은 굵은 본문색 + 칸 폭 밑줄(2), 아래 얇은 선
+class Tabs<T> extends StatelessWidget {
+  const Tabs({super.key, required this.items, required this.value, required this.onChange, this.fill = false, this.gap});
+  final List<({T id, String label})> items;
+  final T value;
+  final ValueChanged<T> onChange;
+  final bool fill;
+  /// 탭 사이(없으면 양 끝에 맞춰 벌린다)
+  final double? gap;
+
+  @override
+  Widget build(BuildContext context) {
+    Widget tab(({T id, String label}) it) {
+      final on = it.id == value;
+      final text = fill
+          ? TextStyle(fontFamily: AppFonts.uiBold, fontSize: 16, height: 22 / 16, color: on ? AppColors.ink : AppColors.inkSoft)
+          : AppType.row.copyWith(fontSize: 17, height: 24 / 17, color: on ? AppColors.ink : AppColors.inkSoft, fontFamily: on ? AppType.button.fontFamily : AppFonts.ui);
+      return Semantics(
+        selected: on,
+        button: true,
+        child: GestureDetector(
+          behavior: HitTestBehavior.opaque,
+          onTap: () => onChange(it.id),
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(minHeight: Space.touch),
+            child: Padding(
+              padding: EdgeInsets.only(top: fill ? 10 : 4),
+              child: IntrinsicWidth(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(it.label, maxLines: 1, textAlign: TextAlign.center, style: text, textScaler: MediaQuery.textScalerOf(context).clamp(maxScaleFactor: 1.25)),
+                    Container(
+                      height: fill ? 2 : 3,
+                      margin: EdgeInsets.only(top: fill ? 10 : 7),
+                      decoration: BoxDecoration(
+                        color: on ? (fill ? AppColors.ink : AppColors.accent) : Colors.transparent,
+                        borderRadius: BorderRadius.circular(fill ? 0 : 2),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
+    }
+
+    if (fill) {
+      return DecoratedBox(
+        decoration: const BoxDecoration(border: Border(bottom: BorderSide(color: AppColors.line, width: 0.5))),
+        child: Row(children: [for (final it in items) Expanded(child: tab(it))]),
+      );
+    }
+    return Row(
+      mainAxisAlignment: gap == null ? MainAxisAlignment.spaceBetween : MainAxisAlignment.start,
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        for (final (i, it) in items.indexed) ...[if (i > 0 && gap != null) SizedBox(width: gap), tab(it)],
+      ],
+    );
+  }
+}
+
+/// 필터 아이콘: 누르면 필터 시트. 걸러진 상태면 테마색 점
+class FilterIcon extends StatelessWidget {
+  const FilterIcon({super.key, required this.onPress, this.active = false});
+  final VoidCallback onPress;
+  final bool active;
+
+  @override
+  Widget build(BuildContext context) => IconBtn(
+        label: active ? '필터, 걸러진 상태' : '필터',
+        onPress: onPress,
+        child: SizedBox(
+          width: Space.touch,
+          height: Space.touch,
+          child: Stack(children: [
+            const Center(child: LucideIcon('SlidersHorizontal', size: 22)),
+            if (active)
+              Positioned(
+                top: 9,
+                right: 7,
+                child: Container(width: 7, height: 7, decoration: const BoxDecoration(color: AppColors.accent, shape: BoxShape.circle)),
+              ),
+          ]),
+        ),
+      );
+}
+
+/// 필터 시트 묶음: 묶음 이름은 진한 글씨, 첫 묶음 말고는 위에 선
+class FilterGroup extends StatelessWidget {
+  const FilterGroup({super.key, required this.title, required this.children, this.first = false});
+  final String title;
+  final List<Widget> children;
+  final bool first;
+
+  @override
+  Widget build(BuildContext context) => Container(
+        margin: EdgeInsets.only(top: first ? 0 : Space.m),
+        padding: EdgeInsets.only(top: first ? 0 : Space.l),
+        decoration: first ? null : const BoxDecoration(border: Border(top: BorderSide(color: AppColors.line, width: 1))),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Padding(padding: const EdgeInsets.only(bottom: Space.xs), child: Semantics(header: true, child: Text(title, style: AppType.rowStrong))),
+            ...children,
+          ],
+        ),
+      );
+}
+
+/// 필터 항목: 고른 항목만 진한 글씨와 체크. chevron은 다른 시트로 넘어가는 항목, right는 스위치 등
+class FilterOption extends StatelessWidget {
+  const FilterOption({super.key, required this.label, this.sub, this.selected = false, this.chevron = false, this.right, this.onPress});
+  final String label;
+  final String? sub;
+  final bool selected;
+  final bool chevron;
+  final Widget? right;
+  final VoidCallback? onPress;
+
+  @override
+  Widget build(BuildContext context) => Semantics(
+        button: true,
+        selected: selected,
+        child: Pressable(
+          onPress: onPress,
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(minHeight: 50),
+            child: Row(children: [
+              Expanded(
+                child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
+                  Text(label,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: AppType.row.copyWith(color: selected ? AppColors.ink : AppColors.inkSoft, fontFamily: selected ? AppFonts.uiBold : AppFonts.ui)),
+                  if (sub != null) Text(sub!, style: AppType.caption),
+                ]),
+              ),
+              const SizedBox(width: Space.m),
+              right ??
+                  (selected
+                      ? const LucideIcon('Check', size: 20, color: AppColors.accent, stroke: 2.2)
+                      : chevron
+                          ? const LucideIcon('ChevronRight', size: 22, color: AppColors.inkFaint)
+                          : const SizedBox.shrink()),
+            ]),
+          ),
+        ),
+      );
+}
+
+/// 검색창: 돋보기 + 입력 + 지우기(입력이 있을 때)
+class SearchField extends StatefulWidget {
+  const SearchField({super.key, required this.value, required this.onChange, this.placeholder, this.label, this.autofocus = false, this.onSubmit, this.busy = false});
+  final String value;
+  final ValueChanged<String> onChange;
+  final String? placeholder;
+  final String? label;
+  final bool autofocus;
+  final VoidCallback? onSubmit;
+  final bool busy;
+
+  @override
+  State<SearchField> createState() => _SearchFieldState();
+}
+
+class _SearchFieldState extends State<SearchField> {
+  late final _c = TextEditingController(text: widget.value);
+
+  @override
+  void didUpdateWidget(SearchField old) {
+    super.didUpdateWidget(old);
+    if (widget.value != _c.text) _c.text = widget.value;
+  }
+
+  @override
+  void dispose() {
+    _c.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => Container(
+        constraints: const BoxConstraints(minHeight: 52),
+        padding: const EdgeInsets.only(right: 2),
+        decoration: BoxDecoration(color: AppColors.input, borderRadius: BorderRadius.circular(Shape.input)),
+        child: Row(children: [
+          Semantics(
+            button: widget.onSubmit != null,
+            label: widget.onSubmit != null ? '검색' : null,
+            child: Pressable(
+              onPress: widget.onSubmit,
+              child: const SizedBox(width: Space.touch + 4, height: 46, child: Center(child: LucideIcon('Search', size: 22, color: AppColors.inkSoft))),
+            ),
+          ),
+          Expanded(
+            child: Semantics(
+              label: widget.label,
+              textField: true,
+              child: TextField(
+                controller: _c,
+                autofocus: widget.autofocus,
+                onChanged: widget.onChange,
+                onSubmitted: (_) => widget.onSubmit?.call(),
+                textInputAction: widget.onSubmit != null ? TextInputAction.search : TextInputAction.done,
+                style: AppType.input,
+                cursorColor: AppColors.accent,
+                decoration: InputDecoration(
+                  isCollapsed: true,
+                  border: InputBorder.none,
+                  contentPadding: const EdgeInsets.symmetric(vertical: 12),
+                  hintText: widget.placeholder,
+                  hintStyle: AppType.input.copyWith(color: AppColors.inkFaint),
+                ),
+              ),
+            ),
+          ),
+          if (widget.busy)
+            const SizedBox(width: Space.touch, child: Center(child: SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: AppColors.inkSoft))))
+          else if (widget.value.isNotEmpty)
+            Semantics(
+              button: true,
+              label: '검색어 지우기',
+              child: Pressable(
+                onPress: () => widget.onChange(''),
+                child: SizedBox(
+                  width: Space.touch + 4,
+                  height: 46,
+                  child: Center(
+                    child: Container(
+                      width: 22,
+                      height: 22,
+                      decoration: const BoxDecoration(color: AppColors.inkFaint, shape: BoxShape.circle),
+                      child: const Center(child: LucideIcon('X', size: 14, color: AppColors.bg, stroke: 2.2)),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+        ]),
+      );
+}
+
+
+/// 음수 위 여백(지금 앱 marginTop −dy): 자식을 dy만큼 위로 그리고, 차지하는 높이도 dy만큼 줄인다
+class PullUp extends SingleChildRenderObjectWidget {
+  const PullUp({super.key, required this.dy, required Widget super.child});
+  final double dy;
+
+  @override
+  RenderObject createRenderObject(BuildContext context) => RenderPullUp(dy);
+
+  @override
+  void updateRenderObject(BuildContext context, RenderPullUp renderObject) => renderObject.dy = dy;
+}
+
+class RenderPullUp extends RenderShiftedBox {
+  RenderPullUp(this._dy) : super(null);
+  double _dy;
+  set dy(double v) {
+    if (v == _dy) return;
+    _dy = v;
+    markNeedsLayout();
+  }
+
+  @override
+  void performLayout() {
+    final c = child!;
+    c.layout(constraints.loosen(), parentUsesSize: true);
+    (c.parentData! as BoxParentData).offset = Offset(0, -_dy);
+    size = constraints.constrain(Size(c.size.width, math.max(0, c.size.height - _dy)));
+  }
 }

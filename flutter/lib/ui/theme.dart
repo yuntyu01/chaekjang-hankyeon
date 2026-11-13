@@ -32,6 +32,9 @@ abstract final class AppFonts {
   static const uiMedium = 'PretendardMedium';
   static const uiBold = 'PretendardSemiBold';
   static const uiTitle = 'PretendardBold';
+  /// 갈피 문장·책 표지 같은 내용 글꼴(본명조 Noto Serif KR)
+  static const reading = 'ReadingSerif';
+  static const serif = 'ReadingSerif';
 }
 
 TextStyle _text(String family, double size, double line, Color color) =>
@@ -50,6 +53,8 @@ abstract final class AppType {
   static final caption = _text(AppFonts.ui, 15, 21, AppColors.inkSoft);
   static final button = _text(AppFonts.uiBold, 17, 24, AppColors.ink);
   static final label = _text(AppFonts.uiMedium, 16, 22, AppColors.ink);
+  /// 입력창(줄 높이는 플랫폼에 맡긴다)
+  static const input = TextStyle(fontFamily: AppFonts.ui, fontSize: 16, color: AppColors.ink);
 }
 
 /// 탭 첫 화면 머리줄
@@ -75,3 +80,7 @@ abstract final class TabBarStyle {
 
 /// 눌린 표시(아이콘·글자 버튼)
 const pressOpacity = 0.55;
+
+/// 지금 앱 boxShadow(CSS: 흐림 반경 = 2σ)를 Flutter 그림자로(Flutter blurRadius r → σ = 0.57735·r + 0.5)
+BoxShadow cssShadow(Color color, double dx, double dy, double blur, [double spread = 0]) =>
+    BoxShadow(color: color, offset: Offset(dx, dy), blurRadius: blur / 2 <= 0.5 ? 0 : (blur / 2 - 0.5) / 0.57735, spreadRadius: spread);

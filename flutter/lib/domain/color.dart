@@ -130,6 +130,13 @@ List<double> _accentHsl(String? accent, String key) {
   return (_hsl(hsl[0], sat, base), _hsl(hsl[0], sat, base + 0.12));
 }
 
+/// 갈피 카드: 뒤 종이와 테이프(앞 종이는 흰색이라 옅어도 갈린다)
+({String paper, String tape}) paperColors(String? accent, String key) {
+  final hsl = _accentHsl(accent, key);
+  final sat = _clamp(hsl[1], 0.28, 0.55);
+  return (paper: _hsl(hsl[0], sat, 0.86), tape: _hsl(hsl[0], sat, 0.8));
+}
+
 // ---------- 장정 색(book-design) ----------
 /// 예전 예시 색을 지금 색으로(사용자가 고른 색은 그대로)
 const _legacyColors = {

@@ -183,6 +183,25 @@ class Bookmark {
   final num? page, photoRatio, boardX, boardY, boardRot, boardW;
   final String? memo, photoUri, sessionId, savedAt;
 
+  /// 아껴둔 때를 바꾼 사본(null이면 아껴둔 표시를 뺀다)
+  Bookmark withSaved(String? at, String updated) => Bookmark(
+        id: id,
+        myBookId: myBookId,
+        text: text,
+        createdAt: createdAt,
+        updatedAt: updated,
+        page: page,
+        memo: memo,
+        photoUri: photoUri,
+        photoRatio: photoRatio,
+        sessionId: sessionId,
+        savedAt: at,
+        boardX: boardX,
+        boardY: boardY,
+        boardRot: boardRot,
+        boardW: boardW,
+      );
+
   Json toJson() {
     final m = <String, Object?>{'id': id, 'myBookId': myBookId, 'text': text, 'createdAt': createdAt, 'updatedAt': updatedAt};
     _put(m, 'page', page);
@@ -390,4 +409,15 @@ String formatDuration(num ms) {
   if (h > 0) return '$h시간 ${m % 60}분';
   if (m > 0) return '$m분';
   return ms > 0 ? '1분 미만' : '0분';
+}
+
+/// 책 색 표(장정이 없을 때 첫 색)
+const spinePalette = ['#3D5F57', '#1D426B', '#BE5D47', '#893E41', '#B5C7D7', '#F8C69F', '#E39E8A', '#4E6B60', '#F7E8D5', '#FAEDDE', '#6B5B7A', '#C9A46A'];
+
+/// 책장 책의 책 색(지금 앱 toShelfBook themeColor): 장정 책등 색 → 판본 장정 바탕색 → 첫 색
+String themeColorOf(Library lib, String myBookId) {
+  final b = lib.books[myBookId];
+  final bd = b?.bindingId == null ? null : lib.bindings[b!.bindingId];
+  final e = b == null ? null : lib.editions[b.editionId];
+  return bd?.spineColor ?? e?.art?.baseColor ?? spinePalette[0];
 }
