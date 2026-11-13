@@ -8,6 +8,7 @@ import '../features/bookmark/bookmarks_screen.dart';
 import '../domain/library.dart';
 import '../features/home/home_screen.dart';
 import '../features/reading/finish_screen.dart';
+import '../features/settings/settings_screen.dart';
 import '../features/reading/reading_screen.dart';
 import '../store/library_model.dart';
 import '../store/mini_timer_store.dart';
@@ -39,7 +40,7 @@ final _tabs = <_Tab>[
   _Tab('갈피', (c, f) => bookmarkTabIcon(c, size: TabBarStyle.icon, filled: f), (_) => const BookmarksScreen()),
   _Tab('읽기', (c, f) => readTabIcon(c, AppColors.bg, size: TabBarStyle.icon, filled: f), (_) => const ReadList()),
   _Tab('기록', (c, f) => recordTabIcon(c, AppColors.bg, size: TabBarStyle.icon, filled: f), (_) => const StatsScreen()),
-  _Tab('내 정보', (c, f) => profileTabIcon(c, size: TabBarStyle.icon, filled: f), (_) => const _Pending('내 정보')),
+  _Tab('내 정보', (c, f) => profileTabIcon(c, size: TabBarStyle.icon, filled: f), (_) => const SettingsScreen(tab: true)),
 ];
 
 /// 탭마다 지금 앱 경로(작은 타이머 자리·숨김을 정한다)
@@ -152,25 +153,4 @@ class _AppShellState extends State<AppShell> {
       ),
     );
   }
-}
-
-/// 아직 옮기지 않은 탭
-class _Pending extends StatelessWidget {
-  const _Pending(this.title);
-  final String title;
-
-  @override
-  Widget build(BuildContext context) => SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(TabHeader.paddingH, TabHeader.paddingTop, TabHeader.paddingH, 0),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(title, style: AppType.title),
-              const SizedBox(height: 8),
-              Text('옮기는 중이에요', style: AppType.sub),
-            ],
-          ),
-        ),
-      );
 }

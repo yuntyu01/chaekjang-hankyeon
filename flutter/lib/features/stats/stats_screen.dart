@@ -217,7 +217,7 @@ class _StatsScreenState extends State<StatsScreen> {
       back: !widget.tab,
       title: widget.tab ? null : '내 기록',
       // 떠 있는 하단바 아래까지 내용이 내려가게
-      bottomPad: widget.tab ? 66 + 40 - Space.section : 0,
+      bottomPad: widget.tab ? TabBarStyle.contentPad - Space.section : 0,
       children: children,
     );
   }

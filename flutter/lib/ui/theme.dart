@@ -68,6 +68,12 @@ abstract final class TabHeader {
 /// 하단 탭 바(알약): 양옆 15, 높이 58, 아래 틈 4, 안쪽 좌우 9, 아이콘 23, 그림자 0 3 14 rgba(25,31,40,.13)
 abstract final class TabBarStyle {
   static const height = 58.0;
+
+  /// 탭 바가 차지하는 높이(지금 앱 navigation.height: 알약 + 틈). 작은 타이머·목록 아래 여백의 기준
+  static const navHeight = 66.0;
+
+  /// 탭 화면 내용 아래 여백(지금 앱 TAB_CONTENT_PAD)
+  static const contentPad = navHeight + 40;
   static const side = 15.0;
   static const gap = 4.0;
   static const paddingX = 9.0;

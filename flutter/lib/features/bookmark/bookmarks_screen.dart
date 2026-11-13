@@ -194,12 +194,12 @@ class _BookmarksScreenState extends State<BookmarksScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final bottomPad = TabBarStyle.height + 40 + MediaQuery.paddingOf(context).bottom + (ReadingStore.instance.active != null ? miniTimerSpace : 0);
+    final bottomPad = TabBarStyle.contentPad + MediaQuery.paddingOf(context).bottom + (ReadingStore.instance.active != null ? miniTimerSpace : 0);
     if (!_model.loaded) return const Screen(title: '갈피', back: false, scroll: false, children: []);
     final all = _all;
     if (all.isEmpty) {
       return Screen(title: '갈피', back: false, scroll: false, children: [
-        Expanded(child: BookmarkEmpty(onAdd: () => _pending(context, '갈피 남기기'), bottomPad: bottomPad)),
+        Expanded(child: BookmarkEmpty(onAdd: () => _pending(context, '갈피 남기기'))),
       ]);
     }
     final books = _booksOf(all);

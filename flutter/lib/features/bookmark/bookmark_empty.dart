@@ -6,6 +6,8 @@ import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 
+import '../../store/mini_timer_store.dart';
+import '../../store/reading_store.dart';
 import '../../ui/kit.dart';
 import '../../ui/theme.dart';
 import 'bookmark_card.dart';
@@ -15,19 +17,20 @@ const _sample = '어떤 문장은\n책을 덮은 뒤에도\n곁에 남아요.';
 const _sampleBook = (title: '채식주의자', coverUri: 'https://image.yes24.com/goods/108422348/L', color: '#5276B3');
 
 class BookmarkEmpty extends StatelessWidget {
-  const BookmarkEmpty({super.key, required this.onAdd, this.bottomPad = 0});
+  const BookmarkEmpty({super.key, required this.onAdd});
   final VoidCallback onAdd;
-  final double bottomPad;
 
   @override
   Widget build(BuildContext context) {
     final now = DateTime.now();
+    // 아래: 탭 바 + 안전 영역 + (독서 중이면 작은 타이머 자리, 아니면 24)
+    final bottom = TabBarStyle.navHeight + MediaQuery.paddingOf(context).bottom + (ReadingStore.instance.active != null ? miniTimerSpace : 24);
     final cardW = math.min(MediaQuery.sizeOf(context).width - Space.page * 2, contentMax);
     return LayoutBuilder(
       builder: (context, box) => SingleChildScrollView(
-        padding: EdgeInsets.only(top: 12, bottom: bottomPad + 24),
+        padding: EdgeInsets.only(top: 12, bottom: bottom),
         child: ConstrainedBox(
-          constraints: BoxConstraints(minHeight: math.max(0, box.maxHeight - 12 - bottomPad - 24)),
+          constraints: BoxConstraints(minHeight: math.max(0, box.maxHeight - 12 - bottom)),
           child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 2),

@@ -1433,3 +1433,70 @@ class TextLink extends StatelessWidget {
         ),
       );
 }
+
+/// 켜고 끄는 스위치(갈색 둥근 바탕 안에 흰 손잡이, 50×30·손잡이 24). 안드로이드 기본 스위치는 손잡이가 바탕 밖으로 커서 직접 그린다
+class Toggle extends StatelessWidget {
+  const Toggle({super.key, required this.value, required this.onChange, required this.label});
+  final bool value;
+  final ValueChanged<bool> onChange;
+  final String label;
+
+  @override
+  Widget build(BuildContext context) => Semantics(
+        toggled: value,
+        label: label,
+        excludeSemantics: true,
+        child: GestureDetector(
+          behavior: HitTestBehavior.opaque,
+          onTap: () => onChange(!value),
+          child: SizedBox(
+            width: 50,
+            height: 30,
+            child: TweenAnimationBuilder<double>(
+              tween: Tween(end: value ? 1 : 0),
+              duration: const Duration(milliseconds: 160),
+              builder: (_, x, _) => Container(
+                width: 50,
+                height: 30,
+                padding: const EdgeInsets.all(3),
+                decoration: BoxDecoration(color: Color.lerp(AppColors.track, AppColors.accent, x), borderRadius: BorderRadius.circular(15)),
+                child: Align(
+                  alignment: Alignment.centerLeft,
+                  child: Transform.translate(
+                    offset: Offset(x * (50 - 24 - 6), 0),
+                    child: Container(
+                      width: 24,
+                      height: 24,
+                      decoration: const BoxDecoration(
+                        color: AppColors.white,
+                        shape: BoxShape.circle,
+                        boxShadow: [BoxShadow(color: Color.fromRGBO(59, 42, 36, 0.18), offset: Offset(0, 1), blurRadius: 2)],
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
+}
+
+/// 화면 맨 아래 작은 브랜드 줄(짧은 선 + '책장 한켠')
+class BrandFooter extends StatelessWidget {
+  const BrandFooter({super.key});
+
+  @override
+  Widget build(BuildContext context) => Semantics(
+        label: '책장 한켠',
+        excludeSemantics: true,
+        child: Padding(
+          padding: const EdgeInsets.only(top: 48),
+          child: Row(children: [
+            Container(width: 20, height: 2 / MediaQuery.devicePixelRatioOf(context), color: AppColors.inkFaint),
+            const SizedBox(width: 12),
+            Text('책장 한켠', style: AppType.sub),
+          ]),
+        ),
+      );
+}

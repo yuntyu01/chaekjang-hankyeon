@@ -300,7 +300,7 @@ class _ReadListState extends State<ReadList> {
 
     return Screen(
       back: false,
-      bottomPad: TabBarStyle.height + 40,
+      bottomPad: TabBarStyle.contentPad - Space.section,
       children: [
         // 머리: 가운데 오늘 날짜, 오른쪽 소리만 듣기(시간을 재지 않는 분위기 장면)
         Padding(

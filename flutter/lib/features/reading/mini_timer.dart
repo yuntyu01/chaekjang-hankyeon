@@ -78,7 +78,7 @@ class _MiniTimerState extends State<MiniTimer> {
     final mq = MediaQuery.of(context);
     final keyboard = mq.viewInsets.bottom > 0;
     final path = _place.path;
-    final hidden = _reading.active == null || miniTimerHidden(path) || _place.hidden || keyboard;
+    final hidden = _reading.active == null || miniTimerHidden(path) || _place.hidden || _place.modal || keyboard;
     // 화면이 바뀌거나 숨으면 접어 둔다(다시 나타날 때 늘 원)
     final key = '$path|$hidden';
     if (key != _lastKey) {
@@ -95,7 +95,7 @@ class _MiniTimerState extends State<MiniTimer> {
     final s = SettingsStore.instance;
     final reduce = s.reduceMotion == 'on' || (s.reduceMotion == 'system' && mq.disableAnimations);
     final onTabs = _place.route == '/' && _tabs.contains(path);
-    final bottom = (onTabs ? TabBarStyle.height + mq.padding.bottom : _place.bottom ?? mq.padding.bottom) + _gap;
+    final bottom = (onTabs ? TabBarStyle.navHeight + mq.padding.bottom : _place.bottom ?? mq.padding.bottom) + _gap;
     final hair = 2 / mq.devicePixelRatio;
     Widget divider() => Container(width: hair, height: 22, color: AppColors.line);
     return Stack(children: [

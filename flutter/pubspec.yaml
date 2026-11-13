@@ -13,9 +13,11 @@ dependencies:
   flutter_svg: ^2.4.0
   just_audio: ^0.10.6
   just_audio_background: ^0.0.1-beta.17
+  package_info_plus: ^10.2.2
   path_parsing: ^1.1.0
   path_provider: ^2.1.6
   sqflite: ^2.4.6
+  url_launcher: ^6.3.3
   video_player: ^2.14.1
 
 dev_dependencies:

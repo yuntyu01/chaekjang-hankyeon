@@ -21,6 +21,9 @@ class MiniTimerPlace extends ChangeNotifier {
   double? bottom;
   bool hidden = false;
 
+  /// 시트·확인창이 떠 있다(지금 앱은 시트가 따로 된 창이라 작은 타이머를 덮는다)
+  bool modal = false;
+
   String get path => route == '/' ? tab : route;
 
   void setTab(String t) {
@@ -41,10 +44,11 @@ class MiniTimerPlace extends ChangeNotifier {
     notifyListeners();
   }
 
-  void _route(Route<dynamic>? r) {
-    final name = r?.settings.name ?? (r is PageRoute ? '/other' : null);
-    if (name == null || name == route) return; // 시트·확인창은 화면을 바꾸지 않는다
+  void _route(Route<dynamic>? page, bool overlay) {
+    final name = page?.settings.name ?? '/other';
+    if (name == route && overlay == modal) return;
     route = name;
+    modal = overlay;
     notifyListeners();
   }
 }
@@ -53,7 +57,8 @@ class MiniTimerPlace extends ChangeNotifier {
 class MiniTimerObserver extends NavigatorObserver {
   final _stack = <Route<dynamic>>[];
 
-  void _top() => MiniTimerPlace.instance._route(_stack.whereType<PageRoute<dynamic>>().lastOrNull);
+  // 맨 위 화면(시트·확인창 아래의 화면)과, 그 위에 시트·확인창이 떠 있는지
+  void _top() => MiniTimerPlace.instance._route(_stack.whereType<PageRoute<dynamic>>().lastOrNull, _stack.isNotEmpty && _stack.last is! PageRoute);
 
   @override
   void didPush(Route<dynamic> route, Route<dynamic>? previousRoute) {
