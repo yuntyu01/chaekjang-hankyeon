@@ -8,5 +8,10 @@
     </style>
     <style name="NormalTheme" parent="@android:style/Theme.Light.NoTitleBar">
         <item name="android:windowBackground">@color/splashscreen_background</item>
+        <!-- 지금 앱(AppTheme)처럼 상태·내비 막대 투명, 세 단추 내비의 짙은 대비 막 끄기 -->
+        <item name="android:statusBarColor">@android:color/transparent</item>
+        <item name="android:navigationBarColor">@android:color/transparent</item>
+        <item name="android:enforceNavigationBarContrast">false</item>
+        <item name="android:enforceStatusBarContrast">false</item>
     </style>
 </resources>

@@ -62,7 +62,16 @@ class ChaekjangApp extends StatelessWidget {
             data: mq.copyWith(textScaler: RnTextScaler(mq.textScaler, mq.devicePixelRatio)),
             // 상태 표시줄 기본 = 어두운 글자(지금 앱 StatusBar style="dark"). 읽기 장면은 자기 화면에서 밝은 글자로 덮고, 나오면 이 값으로 돌아온다
             child: AnnotatedRegion<SystemUiOverlayStyle>(
-              value: const SystemUiOverlayStyle(statusBarColor: Color(0x00000000), statusBarIconBrightness: Brightness.dark, statusBarBrightness: Brightness.light),
+              // 아래 내비게이션 막대도 지금 앱처럼 투명 + 어두운 단추(세 단추 내비에서 Android가 덧씌우는 짙은 막 끄기)
+              value: const SystemUiOverlayStyle(
+                statusBarColor: Color(0x00000000),
+                statusBarIconBrightness: Brightness.dark,
+                statusBarBrightness: Brightness.light,
+                systemNavigationBarColor: Color(0x00000000),
+                systemNavigationBarDividerColor: Color(0x00000000),
+                systemNavigationBarIconBrightness: Brightness.dark,
+                systemNavigationBarContrastEnforced: false,
+              ),
               child: Stack(children: [
                 ?child,
                 Material(type: MaterialType.transparency, child: MiniTimer(navigator: appNavigator)),

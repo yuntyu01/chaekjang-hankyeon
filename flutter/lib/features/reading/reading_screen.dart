@@ -709,7 +709,13 @@ class _ReadingScreenState extends State<ReadingScreen> with WidgetsBindingObserv
     ];
 
     return AnnotatedRegion<SystemUiOverlayStyle>(
-      value: SystemUiOverlayStyle.light,
+      // 위는 밝은 글자(영상 위), 아래 내비 막대는 지금 앱처럼 투명 + 어두운 단추(아래는 흰 조작부)
+      value: SystemUiOverlayStyle.light.copyWith(
+        systemNavigationBarColor: const Color(0x00000000),
+        systemNavigationBarDividerColor: const Color(0x00000000),
+        systemNavigationBarIconBrightness: Brightness.dark,
+        systemNavigationBarContrastEnforced: false,
+      ),
       child: Material(
         color: const Color(0xFF182C44),
         child: Stack(children: [
