@@ -250,7 +250,7 @@ void drawRow(
       if (at < spots.length) spots3[bakeFaces[k]] = spots[at];
     }
     final b = row.books[i];
-    final albedo = i % 2 == 1 ? const C3(0.5, 0.08, 0.05) : const C3(0.05, 0.12, 0.42);
+    final albedo = row.tones.length > i ? row.tones[i] : const C3(0.3, 0.25, 0.2);
     drawBook(canvas, book, c, px, row, b, albedo, spots3, atlas, [i * 13.7 % 61, i * 7.1 % 53],
         title: row.titles.length > i ? row.titles[i] : '');
   }

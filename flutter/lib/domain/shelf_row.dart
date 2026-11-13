@@ -64,8 +64,9 @@ class RowCase {
   final List<Book3> books;
   final double space;
 
-  /// 책 제목(그릴 때만 쓴다. 굽기에는 들어가지 않는다)
+  /// 책 제목·장정 색(그릴 때만 쓴다. 굽기에는 들어가지 않는다)
   List<String> titles = const [];
+  List<C3> tones = const [];
 
   int get cells => items.fold(0, (t, it) => t + it.w * it.h);
 }
@@ -105,7 +106,8 @@ RowCase buildRow(List<Book3> books, double space, {List<C3>? tones}) {
     }
   }
   return RowCase(env, bx, items, books: books, space: space)
-    ..titles = [for (var i = 0; i < books.length; i++) sampleTitles[i % sampleTitles.length]];
+    ..titles = [for (var i = 0; i < books.length; i++) sampleTitles[i % sampleTitles.length]]
+    ..tones = [for (var i = 0; i < list.length; i++) list[i].tone];
 }
 
 /// 보기 책 제목(지금 앱 예시 책장에서)
@@ -142,5 +144,6 @@ RowCase rowFromBooks(List<Book3> books, List<Book> meta, double space) {
   ];
   final row = buildRow(books, space, tones: tones);
   row.titles = [for (final b in books) byId[b.id]?.title ?? ''];
+  row.tones = tones;
   return row;
 }
