@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Android 12+ 시스템 시작 화면: 지금 앱과 같게 흰 바탕 + 빈 로고(Flutter 기본 로고·검은 바탕 대신) -->
+<resources>
+    <style name="LaunchTheme" parent="@android:style/Theme.Light.NoTitleBar">
+        <item name="android:windowBackground">@drawable/launch_background</item>
+        <item name="android:windowSplashScreenBackground">@color/splashscreen_background</item>
+        <item name="android:windowSplashScreenAnimatedIcon">@drawable/splashscreen_logo</item>
+    </style>
+    <style name="NormalTheme" parent="@android:style/Theme.Light.NoTitleBar">
+        <item name="android:windowBackground">@color/splashscreen_background</item>
+    </style>
+</resources>

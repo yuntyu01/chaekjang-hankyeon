@@ -3,6 +3,7 @@
 library;
 
 import 'dart:async';
+import 'dart:io';
 import 'dart:math' as math;
 import 'dart:ui' as ui;
 
@@ -17,6 +18,7 @@ import '../../domain/place_books.dart';
 import '../../domain/received3.dart';
 import '../../domain/shelf_row.dart';
 import '../../services/cover_cache.dart';
+import '../../store/files.dart' show imageDir;
 import '../../store/library_store.dart';
 import '../../store/seed.dart';
 import '../../ui/bake.dart';
@@ -64,6 +66,93 @@ class HomeScreen extends StatefulWidget {
 }
 
 class _HomeScreenState extends State<HomeScreen> {
+  final _scroll = ScrollController();
+
+  /// 책장 그림(입력이 같으면 다시 쓰고, 바뀌면 다시 그린다)
+  ui.Image? _shelfImage;
+  Object? _shelfKey;
+  bool _frozen = false;
+  Timer? _freezeTimer;
+
+  /// 시작 사진(files/home_snapshot.png): 굳힌 책장 그림을 저장해 두고 다음에 켤 때 먼저 보인다
+  ui.Image? _snap;
+  static Future<File> _snapFile() async => File('${(await imageDir()).parent.path}/home_snapshot.png');
+
+  Future<void> _loadSnap() async {
+    try {
+      final f = await _snapFile();
+      if (!f.existsSync()) return;
+      final img = await decodeImageInLine(await f.readAsBytes());
+      if (img == null) return;
+      if (!mounted || _atlases.length > 1) {
+        img.dispose();
+        return;
+      }
+      setState(() => _snap = img);
+      // ignore: avoid_print
+      print('[flsnap] 시작 사진 ${img.width}x${img.height}');
+    } catch (_) {
+      // 없거나 깨졌으면 그냥 진짜 책장을 기다린다
+    }
+  }
+
+  Future<void> _saveSnap(ui.Image img) async {
+    try {
+      final bytes = await img.toByteData(format: ui.ImageByteFormat.png);
+      if (bytes == null) return;
+      await (await _snapFile()).writeAsBytes(bytes.buffer.asUint8List(), flush: true);
+    } catch (_) {
+      // 다음에 굳힐 때 다시 저장한다
+    }
+  }
+
+  Widget _shelfLayer(ShelfPainter painter, Size size, double dpr) {
+    final w = (size.width * dpr).ceil(), h = (size.height * dpr).ceil();
+    // 셰이더가 아직 안 올라왔거나 그림이 너무 크면(텍스처 한도) 그대로 그린다
+    // 켤 때는 화면에 보이는 만큼만 바로 그린다(한 장으로 굳히면 안 보이는 아래 줄까지 그려 책장이 1초쯤 늦게 뜬다).
+    // 가만히 있게 되면(6초 뒤) 또는 밀기 시작하면 그림으로 굳힌다
+    _freezeTimer ??= Timer(const Duration(seconds: 6), () {
+      if (mounted && !_frozen) setState(() => _frozen = true);
+    });
+    if (!_frozen || !ShelfPainter.ready || h > 8192 || w > 8192) return CustomPaint(painter: painter);
+    final key = (
+      _runs.length,
+      painter.rows,
+      painter.atlases,
+      painter.rowSpots,
+      painter.photos,
+      painter.bookKeys,
+      painter.keys,
+      painter.contentTop,
+      painter.bottomInset,
+      painter.viewport,
+      painter.frostedFrom,
+      w,
+      h,
+    );
+    if (_shelfImage == null || _shelfKey != key) {
+      final rec = ui.PictureRecorder();
+      final canvas = Canvas(rec)..scale(dpr);
+      painter.paint(canvas, size);
+      final pic = rec.endRecording();
+      final old = _shelfImage;
+      _shelfImage = pic.toImageSync(w, h);
+      _shelfKey = key;
+      pic.dispose();
+      final saved = _shelfImage!;
+      WidgetsBinding.instance.addPostFrameCallback((_) => _saveSnap(saved));
+      // 시작 사진은 진짜 책장이 떴으니 놓는다
+      final s0 = _snap;
+      if (s0 != null) {
+        _snap = null;
+        WidgetsBinding.instance.addPostFrameCallback((_) => s0.dispose());
+      }
+      // 앞 장은 이번 화면이 다 그려진 뒤 놓는다
+      if (old != null) WidgetsBinding.instance.addPostFrameCallback((_) => old.dispose());
+    }
+    return RawImage(image: _shelfImage, width: size.width, height: size.height, scale: dpr, filterQuality: FilterQuality.none, fit: BoxFit.fill);
+  }
+
   final List<Run> _runs = [];
   final List<ui.Image> _atlases = [];
   final List<List<Spot>> _rowSpots = [];
@@ -88,6 +177,7 @@ class _HomeScreenState extends State<HomeScreen> {
   void initState() {
     super.initState();
     shelfRefresh.addListener(_refresh);
+    _loadSnap();
     WidgetsBinding.instance.addPostFrameCallback((_) => _run());
   }
 
@@ -120,8 +210,7 @@ class _HomeScreenState extends State<HomeScreen> {
     final locked = [for (var i = 0; i < lockedShelfCount(shelves.length); i++) await lockedRow(i)];
     _lockedCount = locked.length;
     final c = _case ??= BakeCase([
-      for (var i = 0; i < shelves.length; i++)
-        rowFromBooks(shelves[i], lib.books, rowSpace, top: i == 0, last: i == shelves.length - 1 && locked.isEmpty),
+      for (var i = 0; i < shelves.length; i++) rowFromBooks(shelves[i], lib.books, rowSpace, top: i == 0, last: i == shelves.length - 1 && locked.isEmpty),
       for (var i = 0; i < locked.length; i++) rowFromBooks(locked[i].bodies, locked[i].books, rowSpace, last: i == locked.length - 1),
       probeRow(),
     ]);
@@ -230,24 +319,24 @@ class _HomeScreenState extends State<HomeScreen> {
 
   // 잠긴 선반 시트(지금 앱 LockedShelfSheet): 결제는 아직 붙이지 않아 무료로 연다
   void _openLocked() => showSheet<void>(
-        context,
-        title: '선반 한 칸 더 열기',
-        description: '책을 더 진열할 수 있는 선반이 한 칸 늘어나요. 한 번 열면 계속 쓸 수 있어요.',
-        builder: (ctx) => Padding(
-          padding: const EdgeInsets.only(top: 8),
-          child: Btn(
-            label: '무료로 열기',
-            size: 'l',
-            onPress: () async {
-              Navigator.pop(ctx);
-              final ok = await addShelf();
-              if (!mounted) return;
-              ScaffoldMessenger.maybeOf(context)?.showSnackBar(SnackBar(content: Text(ok ? '선반을 열었어요.' : '지금은 바꿀 수 없어요.'), duration: const Duration(seconds: 2)));
-              if (ok) _refresh();
-            },
-          ),
-        ),
-      );
+    context,
+    title: '선반 한 칸 더 열기',
+    description: '책을 더 진열할 수 있는 선반이 한 칸 늘어나요. 한 번 열면 계속 쓸 수 있어요.',
+    builder: (ctx) => Padding(
+      padding: const EdgeInsets.only(top: 8),
+      child: Btn(
+        label: '무료로 열기',
+        size: 'l',
+        onPress: () async {
+          Navigator.pop(ctx);
+          final ok = await addShelf();
+          if (!mounted) return;
+          ScaffoldMessenger.maybeOf(context)?.showSnackBar(SnackBar(content: Text(ok ? '선반을 열었어요.' : '지금은 바꿀 수 없어요.'), duration: const Duration(seconds: 2)));
+          if (ok) _refresh();
+        },
+      ),
+    ),
+  );
 
   /// 표지 사진을 받는다(기기에 있으면 바로). 하나 올 때마다 다시 그린다
   bool _pruned = false;
@@ -295,6 +384,10 @@ class _HomeScreenState extends State<HomeScreen> {
 
   @override
   void dispose() {
+    _scroll.dispose();
+    _shelfImage?.dispose();
+    _snap?.dispose();
+    _freezeTimer?.cancel();
     shelfRefresh.removeListener(_refresh);
     for (final i in _atlases) {
       i.dispose();
@@ -307,65 +400,139 @@ class _HomeScreenState extends State<HomeScreen> {
     final r = _runs.isEmpty ? null : _runs.last;
     final pad = MediaQuery.paddingOf(context);
     final scale = MediaQuery.textScalerOf(context).clamp(maxScaleFactor: 1.3);
+    Widget header() => MediaQuery(
+      data: MediaQuery.of(context).copyWith(textScaler: scale),
+      child: _Header(
+        year: DateTime.now().year,
+        // 측정 메뉴: 제목을 길게 누르면 다시 굽고 시간을 알린다(지금 앱 측정 번들의 책장 메뉴 자리)
+        onLongPress: _busy ? null : _run,
+        status: r == null ? _state : '굽기 ${r.bakeTotal}ms · 켠 뒤 ${r.sinceBoot}ms',
+      ),
+    );
+    final ready = _atlases.length > 1 && _rowSpots.length == _spaces.length;
+    final dpr = MediaQuery.devicePixelRatioOf(context);
+    final snap = _snap;
     return ColoredBox(
       color: AppColors.bg,
       child: Stack(
         children: [
+          // 시작 사진(지금 앱 LoadingScreen 스냅샷): 진짜 책장이 준비될 때까지 지난번에 굳힌 책장 그림을 먼저 보인다
+          if (!ready && snap != null && snap.width == (MediaQuery.sizeOf(context).width * dpr).ceil()) ...[
+            Positioned(
+              left: 0,
+              top: 0,
+              child: IgnorePointer(
+                child: RawImage(image: snap, width: snap.width / dpr, height: snap.height / dpr, scale: dpr, filterQuality: FilterQuality.none, fit: BoxFit.fill),
+              ),
+            ),
+            Positioned(left: 0, right: 0, top: pad.top, child: header()),
+          ],
           // 책장(머리글 아래부터, 맨 윗줄 벽은 머리글 뒤까지). 지금 앱 홈 화면과 같은 구도
-          if (_atlases.length > 1 && _rowSpots.length == _spaces.length)
+          if (ready)
             Positioned.fill(
-              child: LayoutBuilder(builder: (context, box) {
-                final contentTop = pad.top + homeHeaderHeight;
-                final bottomInset = navigationShelfReserve + pad.bottom;
-                final m = makeMetrics(box.maxWidth);
-                final n = _rowSpots.length;
-                final geo = computeRows(n, m.scale, viewportHeight: box.maxHeight - contentTop, bottomInset: bottomInset);
-                // 잠긴 칸까지 다 보이게 세로로 넘긴다(머리줄은 고정, 지금 앱 홈 스크롤)
-                final last = geo.isEmpty ? null : geo.last;
-                final height = math.max(box.maxHeight, last == null ? 0.0 : contentTop + last.top + last.height + bottomInset);
-                final lockedFrom = n - _lockedCount;
-                return SingleChildScrollView(
-                  child: SizedBox(
-                    width: box.maxWidth,
-                    height: height,
-                    child: Stack(children: [
-                      Positioned.fill(
-                        child: CustomPaint(
-                          painter: ShelfPainter(
-                            rows: _case!.rows,
-                            atlases: _atlases,
-                            rowSpots: _rowSpots,
-                            spaces: _spaces,
-                            photos: _photos,
-                            bookKeys: _bookKeys,
-                            keys: _keys,
-                            contentTop: contentTop,
-                            bottomInset: bottomInset,
-                            viewport: box.maxHeight,
-                            frostedFrom: lockedFrom,
+              // 지금 앱: 스크롤 영역은 상태 표시줄 아래부터(위로 올라간 책은 상태 표시줄 밑에서 잘린다)
+              child: ClipRect(
+                clipper: _BelowTop(pad.top),
+                child: LayoutBuilder(
+                  builder: (context, box) {
+                    final contentTop = pad.top + homeHeaderHeight;
+                    final bottomInset = navigationShelfReserve + pad.bottom;
+                    final m = makeMetrics(box.maxWidth);
+                    final n = _rowSpots.length;
+                    final geo = computeRows(n, m.scale, viewportHeight: box.maxHeight - contentTop, bottomInset: bottomInset);
+                    // 잠긴 칸까지 다 보이게 세로로 넘긴다(머리줄도 함께, 지금 앱 홈 스크롤)
+                    final last = geo.isEmpty ? null : geo.last;
+                    // 끝 여백(지금 앱 contentEnd): 판 그늘 몫과 하단바 블록 + 덮개 0.6 중 큰 것
+                    final tail = math.max((shelfCastExtent + 8) * m.scale, pad.bottom + TabBarStyle.gap + TabBarStyle.height + TabBarStyle.fade * 0.6);
+                    final height = math.max(box.maxHeight, last == null ? 0.0 : contentTop + last.top + last.height + tail);
+                    final lockedFrom = n - _lockedCount;
+                    return NotificationListener<ScrollStartNotification>(
+                      onNotification: (_) {
+                        if (!_frozen) setState(() => _frozen = true);
+                        return false;
+                      },
+                      child: SingleChildScrollView(
+                        controller: _scroll,
+                        child: SizedBox(
+                          width: box.maxWidth,
+                          height: height,
+                          child: Stack(
+                            children: [
+                              // 책장은 화면 밀도 크기의 그림 한 장으로 한 번 그려 두고 밀 때는 옮기기만 한다(지금 앱 줄 캔버스와 같은 생각).
+                              // 그대로 두면 밀 때마다 빛 셰이더를 모두 다시 돌려 에뮬에서 16fps였다. 셰이더 좌표는 그리는 면 기준이라 결과 화소는 같다
+                              Positioned.fill(
+                                child: RepaintBoundary(
+                                  child: _shelfLayer(
+                                    ShelfPainter(
+                                      rows: _case!.rows,
+                                      atlases: _atlases,
+                                      rowSpots: _rowSpots,
+                                      spaces: _spaces,
+                                      photos: _photos,
+                                      bookKeys: _bookKeys,
+                                      keys: _keys,
+                                      contentTop: contentTop,
+                                      bottomInset: bottomInset,
+                                      viewport: box.maxHeight,
+                                      frostedFrom: lockedFrom,
+                                    ),
+                                    Size(box.maxWidth, height),
+                                    MediaQuery.devicePixelRatioOf(context),
+                                  ),
+                                ),
+                              ),
+                              // 머리줄(책장과 함께 스크롤: 지금 앱 2026-11-04 '상단 라인은 고정이 아니야'): 왼쪽 '나의 책장'과 그 밑 해, 오른쪽 스토어·꾸미기·전체 책·더하기
+                              Positioned(left: 0, right: 0, top: pad.top, child: header()),
+                              // 잠긴 칸: 가운데 자물쇠, 누르면 선반 한 칸 더 열기
+                              for (var i = lockedFrom; i < n && i < geo.length; i++)
+                                Positioned(
+                                  left: 0,
+                                  right: 0,
+                                  top: contentTop + geo[i].top,
+                                  height: geo[i].height,
+                                  child: Semantics(
+                                    button: true,
+                                    label: '잠긴 선반, 눌러서 열기',
+                                    onTap: _openLocked,
+                                    excludeSemantics: true,
+                                    child: _Pressable(
+                                      onTap: _openLocked,
+                                      child: const Center(child: _LockIcon()),
+                                    ),
+                                  ),
+                                ),
+                            ],
                           ),
                         ),
                       ),
-                      // 잠긴 칸: 가운데 자물쇠, 누르면 선반 한 칸 더 열기
-                      for (var i = lockedFrom; i < n && i < geo.length; i++)
-                        Positioned(
-                          left: 0,
-                          right: 0,
-                          top: contentTop + geo[i].top,
-                          height: geo[i].height,
-                          child: Semantics(
-                            button: true,
-                            label: '잠긴 선반, 눌러서 열기',
-                            onTap: _openLocked,
-                            excludeSemantics: true,
-                            child: _Pressable(onTap: _openLocked, child: const Center(child: _LockIcon())),
-                          ),
-                        ),
-                    ]),
-                  ),
-                );
-              }),
+                    );
+                  },
+                ),
+              ),
             ),
+          // 화면 위 끝 덮개(지금 앱 HeaderVeil): 올라간 거리만큼(28dp까지) 진해지는 벽색 그라데이션
+          Positioned(
+            left: 0,
+            right: 0,
+            top: pad.top,
+            height: _veilH,
+            child: IgnorePointer(
+              child: AnimatedBuilder(
+                animation: _scroll,
+                builder: (context, _) {
+                  final o = _scroll.hasClients ? (_scroll.offset / _veilH).clamp(0.0, 1.0) : 0.0;
+                  return Opacity(
+                    opacity: o,
+                    child: const DecoratedBox(
+                      decoration: BoxDecoration(
+                        gradient: LinearGradient(begin: Alignment.topCenter, end: Alignment.bottomCenter, colors: [AppColors.bg, Color(0xD9FFFFFF), Color(0x00FFFFFF)], stops: [0, 0.35, 1]),
+                      ),
+                    ),
+                  );
+                },
+              ),
+            ),
+          ),
           // 하단바 쪽 덮개: 책장이 하단바 뒤로 들어갈 때 벽 색으로 서서히 덮는다(지금 앱 TabBarFade)
           Positioned(
             left: 0,
@@ -385,25 +552,23 @@ class _HomeScreenState extends State<HomeScreen> {
               ),
             ),
           ),
-          // 머리줄: 왼쪽 '나의 책장'과 그 밑 해, 오른쪽 스토어·꾸미기·전체 책·더하기
-          Positioned(
-            left: 0,
-            right: 0,
-            top: pad.top,
-            child: MediaQuery(
-              data: MediaQuery.of(context).copyWith(textScaler: scale),
-              child: _Header(
-                year: DateTime.now().year,
-                // 측정 메뉴: 제목을 길게 누르면 다시 굽고 시간을 알린다(지금 앱 측정 번들의 책장 메뉴 자리)
-                onLongPress: _busy ? null : _run,
-                status: r == null ? _state : '굽기 ${r.bakeTotal}ms · 켠 뒤 ${r.sinceBoot}ms',
-              ),
-            ),
-          ),
         ],
       ),
     );
   }
+}
+
+/// 화면 위 끝 덮개 높이(지금 앱 HEADER_FADE)
+const _veilH = 28.0;
+
+/// top 아래만 보이게 자른다(상태 표시줄 밑부터)
+class _BelowTop extends CustomClipper<Rect> {
+  const _BelowTop(this.top);
+  final double top;
+  @override
+  Rect getClip(Size size) => Rect.fromLTRB(0, top, size.width, size.height);
+  @override
+  bool shouldReclip(_BelowTop old) => old.top != top;
 }
 
 /// 하단바 덮개 농도(끝이 부드러운 곡선)
@@ -429,17 +594,19 @@ class _Header extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     Widget icon(String name, String label) => Semantics(
-          button: true,
-          label: label,
-          child: _Pressable(
-            onTap: () => ScaffoldMessenger.maybeOf(context)?.showSnackBar(SnackBar(content: Text('$label: 아직 옮기는 중이에요'), duration: const Duration(seconds: 1))),
-            child: SizedBox(
-              width: _headerCell,
-              height: 44,
-              child: Center(child: Image.asset('assets/header/$name.png', width: _headerArt, height: _headerArt)),
-            ),
+      button: true,
+      label: label,
+      child: _Pressable(
+        onTap: () => ScaffoldMessenger.maybeOf(context)?.showSnackBar(SnackBar(content: Text('$label: 아직 옮기는 중이에요'), duration: const Duration(seconds: 1))),
+        child: SizedBox(
+          width: _headerCell,
+          height: 44,
+          child: Center(
+            child: Image.asset('assets/header/$name.png', width: _headerArt, height: _headerArt),
           ),
-        );
+        ),
+      ),
+    );
     return Padding(
       // 지금 앱(커밋된 HomeScreen): 머리줄 아래 여백 = tabHeader 12, 해는 제목 밑 4dp·보통 굵기(headerType.sub).
       // 다른 세션의 11-10 미커밋 조정(아래 여백 4·해 −2dp SemiBold)은 커밋되면 함께 옮긴다
@@ -456,7 +623,10 @@ class _Header extends StatelessWidget {
                   Text('나의 책장', style: AppType.title, maxLines: 1),
                   Padding(
                     padding: const EdgeInsets.only(top: 4),
-                    child: Tooltip(message: status, child: Text('$year', style: AppType.sub, maxLines: 1)),
+                    child: Tooltip(
+                      message: status,
+                      child: Text('$year', style: AppType.sub, maxLines: 1),
+                    ),
                   ),
                 ],
               ),
@@ -490,10 +660,13 @@ class _LockPainter extends CustomPainter {
       ..lineTo(8.5, 11.5)
       ..arcToPoint(const Offset(23.5, 11.5), radius: const Radius.circular(7.5))
       ..lineTo(23.5, 19);
-    canvas.drawPath(shackle, Paint()
-      ..color = _ink
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 3.6);
+    canvas.drawPath(
+      shackle,
+      Paint()
+        ..color = _ink
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 3.6,
+    );
     canvas.drawRRect(RRect.fromRectAndRadius(const Rect.fromLTWH(2.5, 16.5, 27, 22), const Radius.circular(5.5)), Paint()..color = _ink);
     canvas.drawCircle(const Offset(16, 25.5), 3.1, Paint()..color = _hole);
     canvas.drawRRect(RRect.fromRectAndRadius(const Rect.fromLTWH(14.5, 25.5, 3, 6.5), const Radius.circular(1.5)), Paint()..color = _hole);
@@ -518,13 +691,13 @@ class _PressableState extends State<_Pressable> {
 
   @override
   Widget build(BuildContext context) => GestureDetector(
-        behavior: HitTestBehavior.opaque,
-        onTapDown: (_) => setState(() => _down = true),
-        onTapCancel: () => setState(() => _down = false),
-        onTapUp: (_) => setState(() => _down = false),
-        onTap: widget.onTap,
-        child: Opacity(opacity: _down ? pressOpacity : 1, child: widget.child),
-      );
+    behavior: HitTestBehavior.opaque,
+    onTapDown: (_) => setState(() => _down = true),
+    onTapCancel: () => setState(() => _down = false),
+    onTapUp: (_) => setState(() => _down = false),
+    onTap: widget.onTap,
+    child: Opacity(opacity: _down ? pressOpacity : 1, child: widget.child),
+  );
 }
 
 /// 구운 줄들을 실제 책장처럼 쌓아 그린다(지금은 뒷벽만, ui/scene). 줄마다 카메라가 따로다
@@ -565,6 +738,9 @@ class ShelfPainter extends CustomPainter {
   static ShaderSlots? _tab;
   static GlyphMetrics? _glyphs;
 
+  /// 그리기 셰이더가 다 올라왔는지(그림으로 굳히기 전에 본다)
+  static bool get ready => _lit != null && _book != null && _tab != null && _glyphs != null;
+
   /// 그리기 셰이더는 한 번만 올린다(미리 컴파일돼 있다)
   static Future<void> load() async {
     _lit ??= ShaderSlots(await ui.FragmentProgram.fromAsset('shaders/lit.frag'), litUniformNames);
@@ -594,8 +770,23 @@ class ShelfPainter extends CustomPainter {
       final area = Path()..addRect(Rect.fromLTRB(0, contentY + y0, size.width, contentY + y1));
       final up = i > 0 ? plankOutlinePath((v) => toPx(cam, pxOf(geo[i - 1]), v), m.scale) : null;
       canvas.clipPath(up == null ? area : Path.combine(PathOperation.difference, area, up));
-      drawRow(canvas, lit, book, cam, px, rows[i], rowSpots[i], atlases[i], r.space, keys[i],
-          glyphs: _glyphs, photos: photos, tab: _tab, bookKeys: i < bookKeys.length ? bookKeys[i] : const {}, frosted: i >= frostedFrom);
+      drawRow(
+        canvas,
+        lit,
+        book,
+        cam,
+        px,
+        rows[i],
+        rowSpots[i],
+        atlases[i],
+        r.space,
+        keys[i],
+        glyphs: _glyphs,
+        photos: photos,
+        tab: _tab,
+        bookKeys: i < bookKeys.length ? bookKeys[i] : const {},
+        frosted: i >= frostedFrom,
+      );
       canvas.restore();
       if (contentY + y0 > size.height) break;
     }
@@ -611,4 +802,3 @@ class ShelfPainter extends CustomPainter {
       old.viewport != viewport ||
       old.frostedFrom != frostedFrom;
 }
-

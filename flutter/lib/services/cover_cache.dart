@@ -48,6 +48,9 @@ void _remember(String uri, ui.Image img) {
 
 /// 해독은 한 번에 하나씩: 여럿을 한꺼번에 맡기면 에뮬레이터(Impeller GLES)에서 프레임이 끝나지 않았다(지금 앱도 책 그림을 한 권씩 기록한다)
 Future<void> _decoding = Future.value();
+/// 다른 그림(책장 시작 사진 등)도 표지와 같은 줄에서 한 장씩 해독한다(에뮬 Impeller GLES에서 동시에 맡기면 getNextFrame이 끝나지 않는다)
+Future<ui.Image?> decodeImageInLine(Uint8List bytes) => _decode(bytes);
+
 Future<ui.Image?> _decode(Uint8List bytes) {
   final done = _decoding.then((_) => _decodeNow(bytes));
   _decoding = done.then((_) {}, onError: (_) {});
