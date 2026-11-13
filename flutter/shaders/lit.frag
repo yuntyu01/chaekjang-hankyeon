@@ -7,11 +7,17 @@ layout(location = 0) out vec4 fragColor;
 
 
   uniform sampler2D tex;
-  uniform vec2 texSize;  // 그림 칸 수(SkSL 화소 좌표를 0~1로 바꾼다)
+  uniform vec2 texSize;   // 그림 칸 수(SkSL 화소 좌표를 0~1로 바꾼다)
+  uniform mat3 texMat;    // 그리는 좌표 → 그림 칸(SkSL에서는 자식 그림에 붙인 행렬)
+  uniform float texDecal; // 1이면 그림 밖은 비워 둔다(SkSL TileMode.Decal)
   uniform sampler2D keyTex;
-  uniform vec2 keyTexSize;  // 그림 칸 수(SkSL 화소 좌표를 0~1로 바꾼다)    // 책이 이 면에서 창빛 원반을 가리는 몫(알파, 평면 좌표 그림: 그림 px = (P·kU, P·kV) + kO)
+  uniform vec2 keyTexSize;   // 그림 칸 수(SkSL 화소 좌표를 0~1로 바꾼다)
+  uniform mat3 keyTexMat;    // 그리는 좌표 → 그림 칸(SkSL에서는 자식 그림에 붙인 행렬)
+  uniform float keyTexDecal; // 1이면 그림 밖은 비워 둔다(SkSL TileMode.Decal)    // 책이 이 면에서 창빛 원반을 가리는 몫(알파, 평면 좌표 그림: 그림 px = (P·kU, P·kV) + kO)
   uniform sampler2D tex2;
-  uniform vec2 tex2Size;  // 그림 칸 수(SkSL 화소 좌표를 0~1로 바꾼다)      // 앞 굽기(움직이기 전 자리의 하늘 가림, tex와 같은 캔버스 px로 읽힌다)
+  uniform vec2 tex2Size;   // 그림 칸 수(SkSL 화소 좌표를 0~1로 바꾼다)
+  uniform mat3 tex2Mat;    // 그리는 좌표 → 그림 칸(SkSL에서는 자식 그림에 붙인 행렬)
+  uniform float tex2Decal; // 1이면 그림 밖은 비워 둔다(SkSL TileMode.Decal)      // 앞 굽기(움직이기 전 자리의 하늘 가림, tex와 같은 캔버스 px로 읽힌다)
   uniform float mixT;       // 새 굽기 몫(1이면 tex만)
   uniform vec3 base;      // 재질 색(감마 sRGB): 겹 2(한 번에)만 쓴다
   uniform vec3 O;
@@ -591,7 +597,23 @@ layout(location = 0) out vec4 fragColor;
 
 
   uniform float DODGE;      // 겹: 0 곱하기 · 1 닷지 · 2 한 번에(단색 재질) · 3 반사광 더하기
-  uniform float SPLIT;      // 1이면 곱하기·닷지가 확산 몫만(반사광은 겹 3)
+  uniform float SPLIT;
+vec4 _tex(vec2 q) {
+  vec2 uv = (texMat * vec3(q, 1.0)).xy / texSize;
+  if (texDecal > 0.5 && (uv.x < 0.0 || uv.x > 1.0 || uv.y < 0.0 || uv.y > 1.0)) return vec4(0.0);
+  return texture(tex, uv);
+}
+vec4 _keyTex(vec2 q) {
+  vec2 uv = (keyTexMat * vec3(q, 1.0)).xy / keyTexSize;
+  if (keyTexDecal > 0.5 && (uv.x < 0.0 || uv.x > 1.0 || uv.y < 0.0 || uv.y > 1.0)) return vec4(0.0);
+  return texture(keyTex, uv);
+}
+vec4 _tex2(vec2 q) {
+  vec2 uv = (tex2Mat * vec3(q, 1.0)).xy / tex2Size;
+  if (tex2Decal > 0.5 && (uv.x < 0.0 || uv.x > 1.0 || uv.y < 0.0 || uv.y > 1.0)) return vec4(0.0);
+  return texture(tex2, uv);
+}
+      // 1이면 곱하기·닷지가 확산 몫만(반사광은 겹 3)
   float plankKey(vec3 p) { return keyOn < 0.5 ? 0.0 : plankKeyOf(p); }
   // 카메라: 노출과 필름형 톤 곡선(light-model tone·toneInv)
   const float EXPO = 1.00000000;
@@ -786,10 +808,10 @@ void main() {
     bool beyond = env.x > 1.5 && abs(tN.z) < 0.5 && tN.y < 0.5 && (P.z > DEPTH + 0.01 || P.z < -FFRONT - 0.01 || (abs(tN.x) > 0.5 && P.y > env.z + 0.01));
     vec3 Pb = beyond ? vec3(P.x, abs(tN.x) > 0.5 ? min(P.y, env.z - 1.50000000) : P.y, clamp(P.z, -FFRONT + 6.50000000, DEPTH - 6.50000000)) : P;
     vec2 pb = beyond && liveEnv < 0.5 ? pxOf(Pb, Au, Av) : p;
-    vec3 loss = liveEnv > 0.5 ? envLoss(Pb, tN) : lossDec(vec3(texture(tex, (pb) / texSize).rgb), skyIrr(tN));
-    if (liveEnv < 0.5 && mixT < 1.0) loss = mix(lossDec(vec3(texture(tex2, (pb) / tex2Size).rgb), skyIrr(tN)), loss, mixT);
+    vec3 loss = liveEnv > 0.5 ? envLoss(Pb, tN) : lossDec(vec3(_tex(pb).rgb), skyIrr(tN));
+    if (liveEnv < 0.5 && mixT < 1.0) loss = mix(lossDec(vec3(_tex2(pb).rgb), skyIrr(tN)), loss, mixT);
     if (rimLoss > 0.0) loss += rimLoss * (skyIrr(tN) + KEYC * (DIFF * max(0.0, dot(tN, LU)))) / OCC;
-    vec4 g = shade(P, n, tN, normalize(vec3(cam4.x, cam4.y, cam4.z - cam4.w) - P), loss, albedo, eref, ms.w, ms.z, float(texture(keyTex, (vec2(dot(P, kU), dot(P, kV)) + kO) / keyTexSize).a), sref, kS);
+    vec4 g = shade(P, n, tN, normalize(vec3(cam4.x, cam4.y, cam4.z - cam4.w) - P), loss, albedo, eref, ms.w, ms.z, float(_keyTex(vec2(dot(P, kU), dot(P, kV)) + kO).a), sref, kS);
     if (DODGE > 1.5) {
       float softA = softR.y > 0.0 ? softEdge(P) : 1.0;
       { fragColor = vec4(vec3(min(base * vec3(g.rgb), vec3(1.0))) * softA, softA); return; }

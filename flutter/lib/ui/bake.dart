@@ -89,7 +89,7 @@ class ShaderSlots {
 }
 
 const _calNames = ['ECAM', 'RADF', 'RADU', 'RADW', 'RADE', 'RADSL', 'RADSR', 'PAPER', 'ALB_WALL', 'ALB_PLANK'];
-const _commonNames = ['env', ..._calNames, 'box', 'nBox', 'gridOn', 'gridNx', 'gridSize'];
+const _commonNames = ['env', ..._calNames, 'box', 'nBox', 'gridOn', 'gridNx', 'gridSize', 'gridMat', 'gridDecal'];
 const _itemNames = ['O', 'Ux', 'Vy', 'tN', 'cells', 'selfIdx'];
 
 /// 굽기 셰이더가 쓰는 이름 전부(면 값 + 함께 읽는 값)
@@ -100,6 +100,9 @@ final _calValues = <String, C3>{
   'ECAM': cal.ECAM, 'RADF': cal.RADF, 'RADU': cal.RADU, 'RADW': cal.RADW, 'RADE': cal.RADE,
   'RADSL': cal.RADSL, 'RADSR': cal.RADSR, 'PAPER': cal.PAPER, 'ALB_WALL': cal.ALB_WALL, 'ALB_PLANK': cal.ALB_PLANK,
 };
+
+/// 그대로 두는 3×3 행렬(열 우선: GLSL mat3)
+const _identity3 = <double>[1, 0, 0, 0, 1, 0, 0, 0, 1];
 
 void _setVec(ui.FragmentShader sh, int at, List<double> v) {
   for (var i = 0; i < v.length; i++) {
@@ -122,6 +125,9 @@ void _setCommon(ui.FragmentShader sh, ShaderSlots u, BakeCase c, RowCase r, {req
   sh.setFloat(u.at('gridOn'), grid != null ? 1 : 0);
   sh.setFloat(u.at('gridNx'), nBox > 0 || r.env.side ? BakeCase.envNx.toDouble() : 1);
   _setVec(sh, u.at('gridSize'), [c.gridW.toDouble(), c.gridH(r).toDouble()]);
+  // 빛 격자는 셰이더가 칸 자리를 그대로 주므로 행렬은 그대로, 끝은 늘려 읽는다
+  _setVec(sh, u.at('gridMat'), _identity3);
+  sh.setFloat(u.at('gridDecal'), 0);
   // 칸 사이는 선형으로, 끝은 늘려 읽는다(지금 앱 linearShader와 같다)
   sh.setImageSampler(0, grid ?? _empty, filterQuality: ui.FilterQuality.low);
 }

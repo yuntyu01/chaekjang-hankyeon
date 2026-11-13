@@ -3,8 +3,9 @@
 // 바뀌는 곳은 넷뿐이고 모두 기계적이다(식은 한 글자도 바꾸지 않는다):
 //   1. 타입 이름: float2/3/4·half… → vec2/3/4, float3x3 → mat3
 //   2. 진입점: `half4 main(float2 p) { … return c; }` → `void main() { vec2 p = FlutterFragCoord().xy; … fragColor = c; return; }`
-//   3. 자식 그림: `uniform shader g;` → `uniform sampler2D g;` + `uniform vec2 gSize;`,
-//      `g.eval(uv)` → `texture(g, (uv) / gSize)` (SkSL은 화소 좌표, GLSL은 0~1 좌표라 크기로 나눈다)
+//   3. 자식 그림: `uniform shader g;` → sampler2D + 크기·행렬·끝처리 uniform과 읽기 함수 `_g(uv)`,
+//      `g.eval(uv)` → `_g(uv)`. SkSL에서는 자식 그림(ImageShader)에 붙인 행렬과 끝처리(clamp·decal)가 저절로 걸리지만
+//      GLSL에는 그런 것이 없어 값으로 받아 함수 안에서 한다(gMat: 그리는 좌표 → 그림 칸, gDecal: 밖은 비워 둠)
 //   4. 머리말: #version·runtime_effect.glsl·fragColor 선언
 //
 // 자식 그림의 칸 사이 읽기(선형)·끝 늘리기(clamp)는 Dart 쪽에서 ImageShader에 준다(지금 앱의 linearShader와 같다).
@@ -34,7 +35,7 @@ int _matchParen(String s, int open) {
   return i - 1;
 }
 
-/// `name.eval(식)` → `texture(name, (식) / nameSize)`
+/// `name.eval(식)` → `_name(식)`
 String _rewriteEval(String src, String name) {
   final key = '$name.eval(';
   final out = StringBuffer();
@@ -48,7 +49,7 @@ String _rewriteEval(String src, String name) {
     out.write(src.substring(i, j));
     final open = j + key.length;
     final close = _matchParen(src, open);
-    out.write('texture($name, (${src.substring(open, close)}) / ${name}Size)');
+    out.write('_$name(${src.substring(open, close)})');
     i = close + 1;
   }
 }
@@ -67,7 +68,10 @@ String convert(String sksl) {
   for (final c in children) {
     s = s.replaceAll(
       RegExp('uniform\\s+shader\\s+$c\\s*;'),
-      'uniform sampler2D $c;\n  uniform vec2 ${c}Size;  // 그림 칸 수(SkSL 화소 좌표를 0~1로 바꾼다)',
+      'uniform sampler2D $c;\n'
+          '  uniform vec2 ${c}Size;   // 그림 칸 수(SkSL 화소 좌표를 0~1로 바꾼다)\n'
+          '  uniform mat3 ${c}Mat;    // 그리는 좌표 → 그림 칸(SkSL에서는 자식 그림에 붙인 행렬)\n'
+          '  uniform float ${c}Decal; // 1이면 그림 밖은 비워 둔다(SkSL TileMode.Decal)',
     );
     s = _rewriteEval(s, c);
   }
@@ -77,10 +81,24 @@ String convert(String sksl) {
   final m = mainRe.firstMatch(s);
   if (m == null) throw StateError('main(float2) 을 찾지 못했다');
   final coord = m.group(1)!;
-  final head = s.substring(0, m.start);
+  var head = s.substring(0, m.start);
   var body = s.substring(m.end);
   // main 안의 `return 식;` → `{ fragColor = 식; return; }`
   body = body.replaceAllMapped(RegExp(r'return\s+([^;]+);'), (x) => '{ fragColor = ${x.group(1)}; return; }');
+
+  // 자식 그림 읽기 함수(행렬·끝처리). 선언 뒤·쓰는 곳 앞에 둔다
+  if (children.isNotEmpty) {
+    final fns = children.map((c) => '''
+vec4 _$c(vec2 q) {
+  vec2 uv = ($c\u004dat * vec3(q, 1.0)).xy / ${c}Size;
+  if (${c}Decal > 0.5 && (uv.x < 0.0 || uv.x > 1.0 || uv.y < 0.0 || uv.y > 1.0)) return vec4(0.0);
+  return texture($c, uv);
+}''').join('\n');
+    // 마지막 uniform 선언 뒤에 넣는다
+    final lastUniform = head.lastIndexOf(RegExp(r'uniform[^;]*;'));
+    final end = head.indexOf(';', lastUniform) + 1;
+    head = '${head.substring(0, end)}\n$fns\n${head.substring(end)}';
+  }
 
   return '''#version 460 core
 // 이 파일은 tool/gen_shaders.sh 가 만든다. 손으로 고치지 말 것(출처: ../app/src/ui/scene-light-sksl.ts)

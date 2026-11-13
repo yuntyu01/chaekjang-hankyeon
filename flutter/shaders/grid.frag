@@ -355,7 +355,9 @@ layout(location = 0) out vec4 fragColor;
 
 
   uniform sampler2D grid;
-  uniform vec2 gridSize;  // 그림 칸 수(SkSL 화소 좌표를 0~1로 바꾼다)      // 빛 격자 그림(GRID_SCALE), gridOn < 0.5면 읽지 않는다(가리개는 가림 없는 받는 빛: 격자 풀기 첫 번)
+  uniform vec2 gridSize;   // 그림 칸 수(SkSL 화소 좌표를 0~1로 바꾼다)
+  uniform mat3 gridMat;    // 그리는 좌표 → 그림 칸(SkSL에서는 자식 그림에 붙인 행렬)
+  uniform float gridDecal; // 1이면 그림 밖은 비워 둔다(SkSL TileMode.Decal)      // 빛 격자 그림(GRID_SCALE), gridOn < 0.5면 읽지 않는다(가리개는 가림 없는 받는 빛: 격자 풀기 첫 번)
   uniform float gridOn;
   uniform float gridNx;     // 둘레 면 가로 칸 수(책이 없으면 1)
   const float GN = 8.0;
@@ -364,10 +366,16 @@ layout(location = 0) out vec4 fragColor;
   const float ENVL = 175.375000;
   uniform vec3 ALB_WALL;   // 맞추기 값(벽·판 반사율)
   uniform vec3 ALB_PLANK;
+vec4 _grid(vec2 q) {
+  vec2 uv = (gridMat * vec3(q, 1.0)).xy / gridSize;
+  if (gridDecal > 0.5 && (uv.x < 0.0 || uv.x > 1.0 || uv.y < 0.0 || uv.y > 1.0)) return vec4(0.0);
+  return texture(grid, uv);
+}
+
   float chebIndex(float t, float n) { return (n - 1.0) * acos(1.0 - 2.0 * clamp(t, 0.0, 1.0)) / PI; }
   // 블록 (bx, by)의 칸 좌표 (su, sv) 겹선형 값(칸 가운데 사이를 그림의 선형 읽기로)
   vec3 gridAt(float bx, float by, float su, float sv, float nu, float nv) {
-    return vec3(texture(grid, (vec2(bx + clamp(su, 0.0, nu - 1.0) + 0.5, by + clamp(sv, 0.0, nv - 1.0) + 0.5)) / gridSize).rgb) * GSCALE;
+    return vec3(_grid(vec2(bx + clamp(su, 0.0, nu - 1.0) + 0.5, by + clamp(sv, 0.0, nv - 1.0) + 0.5)).rgb) * GSCALE;
   }
   // 둘레 면 which의 두 번째 방향 t(light-model envT)
   float envT(int which, vec3 q) {

@@ -7,11 +7,17 @@ layout(location = 0) out vec4 fragColor;
 
 
   uniform sampler2D tex;
-  uniform vec2 texSize;  // 그림 칸 수(SkSL 화소 좌표를 0~1로 바꾼다)       // 줄 아틀라스(그림 px 그대로 읽는다)
+  uniform vec2 texSize;   // 그림 칸 수(SkSL 화소 좌표를 0~1로 바꾼다)
+  uniform mat3 texMat;    // 그리는 좌표 → 그림 칸(SkSL에서는 자식 그림에 붙인 행렬)
+  uniform float texDecal; // 1이면 그림 밖은 비워 둔다(SkSL TileMode.Decal)       // 줄 아틀라스(그림 px 그대로 읽는다)
   uniform sampler2D keyTex;
-  uniform vec2 keyTexSize;  // 그림 칸 수(SkSL 화소 좌표를 0~1로 바꾼다)    // 이 책 면이 받는 창빛 그림자(다른 책이 창빛 원반을 가리는 몫, 알파): 면마다 칸(kRect)
+  uniform vec2 keyTexSize;   // 그림 칸 수(SkSL 화소 좌표를 0~1로 바꾼다)
+  uniform mat3 keyTexMat;    // 그리는 좌표 → 그림 칸(SkSL에서는 자식 그림에 붙인 행렬)
+  uniform float keyTexDecal; // 1이면 그림 밖은 비워 둔다(SkSL TileMode.Decal)    // 이 책 면이 받는 창빛 그림자(다른 책이 창빛 원반을 가리는 몫, 알파): 면마다 칸(kRect)
   uniform sampler2D tex2;
-  uniform vec2 tex2Size;  // 그림 칸 수(SkSL 화소 좌표를 0~1로 바꾼다)      // 앞 굽기 아틀라스(그림 px 그대로)
+  uniform vec2 tex2Size;   // 그림 칸 수(SkSL 화소 좌표를 0~1로 바꾼다)
+  uniform mat3 tex2Mat;    // 그리는 좌표 → 그림 칸(SkSL에서는 자식 그림에 붙인 행렬)
+  uniform float tex2Decal; // 1이면 그림 밖은 비워 둔다(SkSL TileMode.Decal)      // 앞 굽기 아틀라스(그림 px 그대로)
   uniform vec4 rect2[6];  // 앞 굽기에서 면마다 칸(rect와 같은 틀)
   uniform float mixT;       // 새 굽기 몫(1이면 tex만)
   uniform vec4 kRect[6];  // 면마다 그림자 칸: (칸 원점 x, y, 배율 px/DU, 있으면 1)
@@ -696,7 +702,23 @@ layout(location = 0) out vec4 fragColor;
   }
 
   const float CURVE = 0.500000000;
-  uniform vec3 EREF_PAPER; // 맞추기 값(속지 대표 자리 빛)
+  uniform vec3 EREF_PAPER;
+vec4 _tex(vec2 q) {
+  vec2 uv = (texMat * vec3(q, 1.0)).xy / texSize;
+  if (texDecal > 0.5 && (uv.x < 0.0 || uv.x > 1.0 || uv.y < 0.0 || uv.y > 1.0)) return vec4(0.0);
+  return texture(tex, uv);
+}
+vec4 _keyTex(vec2 q) {
+  vec2 uv = (keyTexMat * vec3(q, 1.0)).xy / keyTexSize;
+  if (keyTexDecal > 0.5 && (uv.x < 0.0 || uv.x > 1.0 || uv.y < 0.0 || uv.y > 1.0)) return vec4(0.0);
+  return texture(keyTex, uv);
+}
+vec4 _tex2(vec2 q) {
+  vec2 uv = (tex2Mat * vec3(q, 1.0)).xy / tex2Size;
+  if (tex2Decal > 0.5 && (uv.x < 0.0 || uv.x > 1.0 || uv.y < 0.0 || uv.y > 1.0)) return vec4(0.0);
+  return texture(tex2, uv);
+}
+ // 맞추기 값(속지 대표 자리 빛)
   const vec4 GRV = vec4(6.50000000, 2.40000000, 0.160000000, 0.0);
   vec3 toRow(vec3 l) { return bX * l.x + bY * l.y + bZ * l.z; }
 
@@ -840,16 +862,16 @@ void main() {
     // 하늘 가림: 그 면의 구운 칸(면 평면 점의 칸 좌표), 없으면 둘레만 그 자리에서(면 법선)
     vec4 R = vec4(0.0);
     for (int i = 0; i < 6; i++) { if (i == fi) R = rect[i]; }
-    vec3 loss = R.z > 0.0 ? lossDec(vec3(texture(tex, (vec2(R.x + u / pw * R.z, R.y + v / ph * R.w)) / texSize).rgb), skyIrr(toRow(nl))) : envLoss(bO + toRow(L), toRow(nl));
+    vec3 loss = R.z > 0.0 ? lossDec(vec3(_tex(vec2(R.x + u / pw * R.z, R.y + v / ph * R.w)).rgb), skyIrr(toRow(nl))) : envLoss(bO + toRow(L), toRow(nl));
     if (mixT < 1.0) {
       vec4 R2 = vec4(0.0);
       for (int i = 0; i < 6; i++) { if (i == fi) R2 = rect2[i]; }
-      if (R2.z > 0.0) loss = mix(lossDec(vec3(texture(tex2, (vec2(R2.x + u / pw * R2.z, R2.y + v / ph * R2.w)) / tex2Size).rgb), skyIrr(toRow(nl))), loss, mixT);
+      if (R2.z > 0.0) loss = mix(lossDec(vec3(_tex2(vec2(R2.x + u / pw * R2.z, R2.y + v / ph * R2.w)).rgb), skyIrr(toRow(nl))), loss, mixT);
     }
     vec3 view = cam4.w > 0.0 ? normalize(E - P) : normalize(-d);
     vec4 K = vec4(0.0);
     for (int i = 0; i < 6; i++) { if (i == fi) K = kRect[i]; }
-    float kx = K.w > 0.5 ? float(texture(keyTex, (K.xy + vec2(u, v) * K.z) / keyTexSize).a) : 0.0;
+    float kx = K.w > 0.5 ? float(_keyTex(K.xy + vec2(u, v) * K.z).a) : 0.0;
     // 두 면이 만나는 둥근 모서리(책등↔표지·뒤표지): 그늘은 면마다 따로 구워 모서리에서 값이 끊긴다(2026-11-03 사용자: 어린 왕자 책등과 표지 사이가 |처럼 각진다, 옆 책이 책등만 가린 책).
     // 모서리 띠(둥근 반지름의 두 배)에서 옆 면의 같은 높이 값과 섞어 모서리에서 두 면이 같은 값이 되게 한다. 옆 면이 보이지 않으면(구운 칸이 없으면) 섞지 않는다
     if (fi < 3) {
@@ -871,9 +893,9 @@ void main() {
           vec3 nN = fN == 0 ? vec3(0.0, 0.0, -1.0) : (fN == 1 ? vec3(1.0, 0.0, 0.0) : vec3(-1.0, 0.0, 0.0));
           float pwN = fN == 0 ? T : W;
           vec3 skyN = skyIrr(toRow(nN));
-          vec3 lossN = lossDec(vec3(texture(tex, (vec2(RN.x + uN / pwN * RN.z, RN.y + v / ph * RN.w)) / texSize).rgb), skyN);
+          vec3 lossN = lossDec(vec3(_tex(vec2(RN.x + uN / pwN * RN.z, RN.y + v / ph * RN.w)).rgb), skyN);
           loss = mix(loss, lossN * skyIrr(toRow(nl)) / max(skyN, vec3(1e-4)), kw);
-          kx = mix(kx, KN.w > 0.5 ? float(texture(keyTex, (KN.xy + vec2(uN, v) * KN.z) / keyTexSize).a) : 0.0, kw);
+          kx = mix(kx, KN.w > 0.5 ? float(_keyTex(KN.xy + vec2(uN, v) * KN.z).a) : 0.0, kw);
         }
       }
     }
