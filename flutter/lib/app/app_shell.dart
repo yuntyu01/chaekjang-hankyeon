@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 
 import '../features/bookmark/bookmarks_screen.dart';
 import '../features/home/home_screen.dart';
+import '../features/reading/read_list.dart';
 import '../features/stats/stats_screen.dart';
 import '../ui/tab_icons.dart';
 import '../ui/theme.dart';
@@ -29,7 +30,7 @@ class _Tab {
 final _tabs = <_Tab>[
   _Tab('책장', (c, f) => shelfIcon(c, size: TabBarStyle.icon, filled: f), (_) => const HomeScreen()),
   _Tab('갈피', (c, f) => bookmarkTabIcon(c, size: TabBarStyle.icon, filled: f), (_) => const BookmarksScreen()),
-  _Tab('읽기', (c, f) => readTabIcon(c, AppColors.bg, size: TabBarStyle.icon, filled: f), (_) => const _Pending('읽기')),
+  _Tab('읽기', (c, f) => readTabIcon(c, AppColors.bg, size: TabBarStyle.icon, filled: f), (_) => const ReadList()),
   _Tab('기록', (c, f) => recordTabIcon(c, AppColors.bg, size: TabBarStyle.icon, filled: f), (_) => const StatsScreen()),
   _Tab('내 정보', (c, f) => profileTabIcon(c, size: TabBarStyle.icon, filled: f), (_) => const _Pending('내 정보')),
 ];

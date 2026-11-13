@@ -6,7 +6,7 @@ import 'package:flutter/material.dart';
 
 import '../../domain/library.dart' hide today;
 import '../../domain/library.dart' as lib_d show today;
-import '../../store/library_read.dart';
+import '../../store/library_model.dart';
 import '../../ui/kit.dart';
 import '../../ui/theme.dart';
 import 'chart_data.dart';
@@ -27,7 +27,8 @@ class StatsScreen extends StatefulWidget {
 }
 
 class _StatsScreenState extends State<StatsScreen> {
-  Library? _lib;
+  final _model = LibraryModel.instance;
+  Library? get _lib => _model.loaded ? _model.lib : null;
   String _view = 'calendar';
   bool _yearly = false;
   late int _y;
@@ -42,9 +43,18 @@ class _StatsScreenState extends State<StatsScreen> {
     _y = now.year;
     _m = now.month;
     _book = widget.initialBook;
-    loadFullLibrary().then((l) {
-      if (mounted) setState(() => _lib = l);
-    });
+    _model.addListener(_changed);
+    _model.load();
+  }
+
+  @override
+  void dispose() {
+    _model.removeListener(_changed);
+    super.dispose();
+  }
+
+  void _changed() {
+    if (mounted) setState(() {});
   }
 
   bool get _monthly => _view == 'calendar' || !_yearly;

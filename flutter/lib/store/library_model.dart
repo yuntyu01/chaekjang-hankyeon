@@ -7,6 +7,7 @@ import 'package:flutter/foundation.dart';
 import '../db/library_write.dart';
 import '../domain/color.dart';
 import '../domain/library.dart';
+import '../domain/reading.dart';
 import 'library_read.dart';
 
 class LibraryModel extends ChangeNotifier {
@@ -48,6 +49,41 @@ class LibraryModel extends ChangeNotifier {
 
   /// 아껴둔 갈피(아껴둔 순서)
   List<String> get savedIds => ([for (final m in lib.bookmarks.values) if (m.savedAt != null) m]..sort((a, b) => a.savedAt!.compareTo(b.savedAt!))).map((m) => m.id).toList();
+
+  /// 바뀐 항목만 골라 저장할 변경으로(지금 앱 commit의 비교와 같다: 같은 객체면 그대로)
+  List<LocalChange> _diff(Library next, String at) {
+    final out = <LocalChange>[];
+    void kind<T extends Object>(LibKind k, Map<String, T> a, Map<String, T> b, String Function(T) updated) {
+      for (final e in b.entries) {
+        if (!identical(a[e.key], e.value)) out.add(LocalChange.put(k, e.key, e.value, updated(e.value)));
+      }
+      for (final id in a.keys) {
+        if (!b.containsKey(id)) out.add(LocalChange.delete(k, id, at));
+      }
+    }
+
+    kind<Edition>(LibKind.editions, lib.editions, next.editions, (x) => x.updatedAt);
+    kind<MyBook>(LibKind.books, lib.books, next.books, (x) => x.updatedAt);
+    kind<Round>(LibKind.rounds, lib.rounds, next.rounds, (x) => x.updatedAt);
+    kind<Session>(LibKind.sessions, lib.sessions, next.sessions, (x) => x.updatedAt);
+    kind<Bookmark>(LibKind.bookmarks, lib.bookmarks, next.bookmarks, (x) => x.updatedAt);
+    kind<Binding>(LibKind.bindings, lib.bindings, next.bindings, (x) => x.updatedAt);
+    return out;
+  }
+
+  /// 새 서재로 바꾸고 바뀐 항목을 저장한다
+  Future<void> commitLib(Library next) {
+    final changes = _diff(next, nowIso());
+    if (changes.isEmpty) return Future.value();
+    return _commit(next, changes);
+  }
+
+  /// 독서 기록 저장(회차 확보·쪽 옮기기 포함). 같은 id로 다시 저장해도 하나
+  Future<String> addSession(SessionInput input) async {
+    final r = addSessionTo(lib, input, nowIso());
+    await commitLib(r.lib);
+    return r.id;
+  }
 
   /// 갈피 아껴두기 켜고 끄기
   Future<void> toggleSaved(String id) {

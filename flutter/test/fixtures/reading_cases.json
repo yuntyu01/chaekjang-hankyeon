@@ -1,0 +1,1508 @@
+{
+ "note": "지금 앱 읽기 탭 규칙(tool/dump_reading.test.ts). 손으로 고치지 말 것",
+ "tz": "Asia/Seoul",
+ "now": "2026-11-13T12:00:00.000Z",
+ "books": {
+  "b01": {
+   "id": "b01",
+   "editionId": "e-b01",
+   "status": "reading",
+   "createdAt": "2026-10-31T15:00:00.000Z",
+   "updatedAt": "2026-11-03T01:00:00.000Z"
+  },
+  "b02": {
+   "id": "b02",
+   "editionId": "e-b02",
+   "status": "reading",
+   "createdAt": "2026-10-31T15:00:00.000Z",
+   "updatedAt": "2026-10-31T15:00:00.000Z"
+  },
+  "b03": {
+   "id": "b03",
+   "editionId": "e-b03",
+   "status": "reading",
+   "createdAt": "2026-10-31T15:00:00.000Z",
+   "updatedAt": "2026-11-09T01:00:00.000Z"
+  },
+  "b04": {
+   "id": "b04",
+   "editionId": "e-b04",
+   "status": "reading",
+   "createdAt": "2026-10-31T15:00:00.000Z",
+   "updatedAt": "2026-10-31T15:00:00.000Z",
+   "hiddenAt": "2026-11-04T00:00:00.000Z"
+  },
+  "b05": {
+   "id": "b05",
+   "editionId": "e-b05",
+   "status": "paused",
+   "createdAt": "2026-10-31T15:00:00.000Z",
+   "updatedAt": "2026-10-31T15:00:00.000Z"
+  },
+  "b17": {
+   "id": "b17",
+   "editionId": "e-b17",
+   "status": "want",
+   "createdAt": "2026-10-31T15:00:00.000Z",
+   "updatedAt": "2026-10-31T15:00:00.000Z",
+   "currentPage": 30
+  },
+  "b06": {
+   "id": "b06",
+   "editionId": "e-b06",
+   "status": "reading",
+   "createdAt": "2026-10-31T15:00:00.000Z",
+   "updatedAt": "2026-10-31T15:00:00.000Z",
+   "currentPage": 40
+  },
+  "b07": {
+   "id": "b07",
+   "editionId": "e-b07",
+   "status": "reading",
+   "createdAt": "2026-10-31T15:00:00.000Z",
+   "updatedAt": "2026-10-31T15:00:00.000Z"
+  },
+  "b08": {
+   "id": "b08",
+   "editionId": "e-b08",
+   "status": "reading",
+   "createdAt": "2026-10-31T15:00:00.000Z",
+   "updatedAt": "2026-10-31T15:00:00.000Z"
+  },
+  "b09": {
+   "id": "b09",
+   "editionId": "e-b09",
+   "status": "reading",
+   "createdAt": "2026-10-31T15:00:00.000Z",
+   "updatedAt": "2026-10-31T15:00:00.000Z"
+  },
+  "b10": {
+   "id": "b10",
+   "editionId": "e-b10",
+   "status": "reading",
+   "createdAt": "2026-10-31T15:00:00.000Z",
+   "updatedAt": "2026-10-31T15:00:00.000Z"
+  },
+  "b18": {
+   "id": "b18",
+   "editionId": "e-b18",
+   "status": "reading",
+   "createdAt": "2026-10-31T15:00:00.000Z",
+   "updatedAt": "2026-10-31T15:00:00.000Z"
+  },
+  "b11": {
+   "id": "b11",
+   "editionId": "e-b11",
+   "status": "reading",
+   "createdAt": "2026-10-31T15:00:00.000Z",
+   "updatedAt": "2026-10-31T15:00:00.000Z"
+  },
+  "b12": {
+   "id": "b12",
+   "editionId": "e-b12",
+   "status": "reading",
+   "createdAt": "2026-10-31T15:00:00.000Z",
+   "updatedAt": "2026-10-31T15:00:00.000Z"
+  },
+  "b13": {
+   "id": "b13",
+   "editionId": "e-b13",
+   "status": "reading",
+   "createdAt": "2026-10-31T15:00:00.000Z",
+   "updatedAt": "2026-10-31T15:00:00.000Z"
+  },
+  "b14": {
+   "id": "b14",
+   "editionId": "e-b14",
+   "status": "reading",
+   "createdAt": "2026-10-31T15:00:00.000Z",
+   "updatedAt": "2026-10-31T15:00:00.000Z"
+  },
+  "b15": {
+   "id": "b15",
+   "editionId": "e-b15",
+   "status": "reading",
+   "createdAt": "2026-10-31T15:00:00.000Z",
+   "updatedAt": "2026-10-31T15:00:00.000Z"
+  },
+  "b16": {
+   "id": "b16",
+   "editionId": "e-b16",
+   "status": "reading",
+   "createdAt": "2026-10-31T15:00:00.000Z",
+   "updatedAt": "2026-10-31T15:00:00.000Z"
+  },
+  "b19": {
+   "id": "b19",
+   "editionId": "e-b19",
+   "status": "reading",
+   "createdAt": "2026-10-31T15:00:00.000Z",
+   "updatedAt": "2026-10-31T15:00:00.000Z"
+  }
+ },
+ "rounds": {
+  "rd_a": {
+   "id": "rd_a",
+   "myBookId": "b06",
+   "index": 1,
+   "startedAt": "2026-10-01",
+   "finishedAt": "2026-10-20",
+   "createdAt": "2026-10-01T00:00:00.000Z",
+   "updatedAt": "2026-10-20T00:00:00.000Z"
+  },
+  "rd_b": {
+   "id": "rd_b",
+   "myBookId": "b06",
+   "index": 2,
+   "startedAt": "2026-11-02",
+   "createdAt": "2026-11-02T00:00:00.000Z",
+   "updatedAt": "2026-11-02T00:00:00.000Z"
+  }
+ },
+ "sessions": {
+  "s-1-0": {
+   "id": "s-1-0",
+   "myBookId": "b01",
+   "startedAt": "2026-10-31T23:43:00.000Z",
+   "endedAt": "2026-10-31T23:58:00.000Z",
+   "durationMs": 900000,
+   "createdAt": "2026-10-31T15:00:00.000Z",
+   "updatedAt": "2026-10-31T15:00:00.000Z"
+  },
+  "s-1-1": {
+   "id": "s-1-1",
+   "myBookId": "b02",
+   "startedAt": "2026-11-01T04:08:00.000Z",
+   "endedAt": "2026-11-01T04:50:00.000Z",
+   "durationMs": 2520000,
+   "createdAt": "2026-10-31T15:00:00.000Z",
+   "updatedAt": "2026-10-31T15:00:00.000Z"
+  },
+  "s-2-0": {
+   "id": "s-2-0",
+   "myBookId": "b01",
+   "startedAt": "2026-11-01T23:15:00.000Z",
+   "endedAt": "2026-11-01T23:37:00.000Z",
+   "durationMs": 1320000,
+   "createdAt": "2026-10-31T15:00:00.000Z",
+   "updatedAt": "2026-10-31T15:00:00.000Z"
+  },
+  "s-2-1": {
+   "id": "s-2-1",
+   "myBookId": "b02",
+   "startedAt": "2026-11-02T04:42:00.000Z",
+   "endedAt": "2026-11-02T05:17:00.000Z",
+   "durationMs": 2100000,
+   "createdAt": "2026-10-31T15:00:00.000Z",
+   "updatedAt": "2026-10-31T15:00:00.000Z"
+  },
+  "s-3-0": {
+   "id": "s-3-0",
+   "myBookId": "b02",
+   "startedAt": "2026-11-02T23:11:00.000Z",
+   "endedAt": "2026-11-02T23:24:00.000Z",
+   "durationMs": 780000,
+   "createdAt": "2026-10-31T15:00:00.000Z",
+   "updatedAt": "2026-10-31T15:00:00.000Z"
+  },
+  "s-3-1": {
+   "id": "s-3-1",
+   "myBookId": "b03",
+   "startedAt": "2026-11-03T04:48:00.000Z",
+   "endedAt": "2026-11-03T05:19:00.000Z",
+   "durationMs": 1860000,
+   "createdAt": "2026-10-31T15:00:00.000Z",
+   "updatedAt": "2026-10-31T15:00:00.000Z"
+  },
+  "s-3-2": {
+   "id": "s-3-2",
+   "myBookId": "b04",
+   "startedAt": "2026-11-03T09:30:00.000Z",
+   "endedAt": "2026-11-03T10:18:00.000Z",
+   "durationMs": 2880000,
+   "createdAt": "2026-10-31T15:00:00.000Z",
+   "updatedAt": "2026-10-31T15:00:00.000Z"
+  },
+  "s-4-0": {
+   "id": "s-4-0",
+   "myBookId": "b02",
+   "startedAt": "2026-11-03T23:24:00.000Z",
+   "endedAt": "2026-11-04T00:29:00.000Z",
+   "durationMs": 3900000,
+   "createdAt": "2026-10-31T15:00:00.000Z",
+   "updatedAt": "2026-10-31T15:00:00.000Z"
+  },
+  "s-5-0": {
+   "id": "s-5-0",
+   "myBookId": "b02",
+   "startedAt": "2026-11-04T23:05:00.000Z",
+   "endedAt": "2026-11-04T23:43:00.000Z",
+   "durationMs": 2280000,
+   "createdAt": "2026-10-31T15:00:00.000Z",
+   "updatedAt": "2026-10-31T15:00:00.000Z"
+  },
+  "s-5-1": {
+   "id": "s-5-1",
+   "myBookId": "b03",
+   "startedAt": "2026-11-05T04:35:00.000Z",
+   "endedAt": "2026-11-05T05:28:00.000Z",
+   "durationMs": 3180000,
+   "createdAt": "2026-10-31T15:00:00.000Z",
+   "updatedAt": "2026-10-31T15:00:00.000Z"
+  },
+  "s-5-2": {
+   "id": "s-5-2",
+   "myBookId": "b04",
+   "startedAt": "2026-11-05T09:22:00.000Z",
+   "endedAt": "2026-11-05T10:06:00.000Z",
+   "durationMs": 2640000,
+   "createdAt": "2026-10-31T15:00:00.000Z",
+   "updatedAt": "2026-10-31T15:00:00.000Z"
+  },
+  "s-6-0": {
+   "id": "s-6-0",
+   "myBookId": "b02",
+   "startedAt": "2026-11-05T23:43:00.000Z",
+   "endedAt": "2026-11-06T00:42:00.000Z",
+   "durationMs": 3540000,
+   "createdAt": "2026-10-31T15:00:00.000Z",
+   "updatedAt": "2026-10-31T15:00:00.000Z"
+  },
+  "s-6-1": {
+   "id": "s-6-1",
+   "myBookId": "b03",
+   "startedAt": "2026-11-06T04:11:00.000Z",
+   "endedAt": "2026-11-06T05:06:00.000Z",
+   "durationMs": 3300000,
+   "createdAt": "2026-10-31T15:00:00.000Z",
+   "updatedAt": "2026-10-31T15:00:00.000Z"
+  },
+  "s-7-0": {
+   "id": "s-7-0",
+   "myBookId": "b02",
+   "startedAt": "2026-11-06T23:17:00.000Z",
+   "endedAt": "2026-11-06T23:52:00.000Z",
+   "durationMs": 2100000,
+   "createdAt": "2026-10-31T15:00:00.000Z",
+   "updatedAt": "2026-10-31T15:00:00.000Z"
+  },
+  "s-9-0": {
+   "id": "s-9-0",
+   "myBookId": "b03",
+   "startedAt": "2026-11-08T23:08:00.000Z",
+   "endedAt": "2026-11-08T23:54:00.000Z",
+   "durationMs": 2760000,
+   "createdAt": "2026-10-31T15:00:00.000Z",
+   "updatedAt": "2026-10-31T15:00:00.000Z"
+  },
+  "s-9-1": {
+   "id": "s-9-1",
+   "myBookId": "b04",
+   "startedAt": "2026-11-09T04:20:00.000Z",
+   "endedAt": "2026-11-09T05:02:00.000Z",
+   "durationMs": 2520000,
+   "createdAt": "2026-10-31T15:00:00.000Z",
+   "updatedAt": "2026-10-31T15:00:00.000Z"
+  },
+  "s-9-2": {
+   "id": "s-9-2",
+   "myBookId": "b05",
+   "startedAt": "2026-11-09T09:47:00.000Z",
+   "endedAt": "2026-11-09T10:16:00.000Z",
+   "durationMs": 1740000,
+   "createdAt": "2026-10-31T15:00:00.000Z",
+   "updatedAt": "2026-10-31T15:00:00.000Z"
+  },
+  "s-10-0": {
+   "id": "s-10-0",
+   "myBookId": "b03",
+   "startedAt": "2026-11-09T23:16:00.000Z",
+   "endedAt": "2026-11-10T00:02:00.000Z",
+   "durationMs": 2760000,
+   "createdAt": "2026-10-31T15:00:00.000Z",
+   "updatedAt": "2026-10-31T15:00:00.000Z"
+  },
+  "s-11-0": {
+   "id": "s-11-0",
+   "myBookId": "b04",
+   "startedAt": "2026-11-10T23:10:00.000Z",
+   "endedAt": "2026-11-10T23:31:00.000Z",
+   "durationMs": 1260000,
+   "createdAt": "2026-10-31T15:00:00.000Z",
+   "updatedAt": "2026-10-31T15:00:00.000Z"
+  },
+  "s-12-0": {
+   "id": "s-12-0",
+   "myBookId": "b04",
+   "startedAt": "2026-11-11T23:46:00.000Z",
+   "endedAt": "2026-11-12T00:37:00.000Z",
+   "durationMs": 3060000,
+   "createdAt": "2026-10-31T15:00:00.000Z",
+   "updatedAt": "2026-10-31T15:00:00.000Z"
+  },
+  "s-12-1": {
+   "id": "s-12-1",
+   "myBookId": "b05",
+   "startedAt": "2026-11-12T04:15:00.000Z",
+   "endedAt": "2026-11-12T05:15:00.000Z",
+   "durationMs": 3600000,
+   "createdAt": "2026-10-31T15:00:00.000Z",
+   "updatedAt": "2026-10-31T15:00:00.000Z"
+  },
+  "s-12-2": {
+   "id": "s-12-2",
+   "myBookId": "b17",
+   "startedAt": "2026-11-12T09:01:00.000Z",
+   "endedAt": "2026-11-12T09:51:00.000Z",
+   "durationMs": 3000000,
+   "createdAt": "2026-10-31T15:00:00.000Z",
+   "updatedAt": "2026-10-31T15:00:00.000Z"
+  },
+  "s-14-0": {
+   "id": "s-14-0",
+   "myBookId": "b04",
+   "startedAt": "2026-11-13T23:37:00.000Z",
+   "endedAt": "2026-11-14T00:23:00.000Z",
+   "durationMs": 2760000,
+   "createdAt": "2026-10-31T15:00:00.000Z",
+   "updatedAt": "2026-10-31T15:00:00.000Z"
+  },
+  "s-15-0": {
+   "id": "s-15-0",
+   "myBookId": "b04",
+   "startedAt": "2026-11-14T23:21:00.000Z",
+   "endedAt": "2026-11-15T00:18:00.000Z",
+   "durationMs": 3420000,
+   "createdAt": "2026-10-31T15:00:00.000Z",
+   "updatedAt": "2026-10-31T15:00:00.000Z"
+  },
+  "s-17-0": {
+   "id": "s-17-0",
+   "myBookId": "b04",
+   "startedAt": "2026-11-16T23:12:00.000Z",
+   "endedAt": "2026-11-17T00:17:00.000Z",
+   "durationMs": 3900000,
+   "createdAt": "2026-10-31T15:00:00.000Z",
+   "updatedAt": "2026-10-31T15:00:00.000Z"
+  },
+  "s-17-1": {
+   "id": "s-17-1",
+   "myBookId": "b05",
+   "startedAt": "2026-11-17T04:05:00.000Z",
+   "endedAt": "2026-11-17T05:04:00.000Z",
+   "durationMs": 3540000,
+   "createdAt": "2026-10-31T15:00:00.000Z",
+   "updatedAt": "2026-10-31T15:00:00.000Z"
+  },
+  "s-19-0": {
+   "id": "s-19-0",
+   "myBookId": "b04",
+   "startedAt": "2026-11-18T23:21:00.000Z",
+   "endedAt": "2026-11-19T00:23:00.000Z",
+   "durationMs": 3720000,
+   "createdAt": "2026-10-31T15:00:00.000Z",
+   "updatedAt": "2026-10-31T15:00:00.000Z"
+  },
+  "s-19-1": {
+   "id": "s-19-1",
+   "myBookId": "b05",
+   "startedAt": "2026-11-19T04:18:00.000Z",
+   "endedAt": "2026-11-19T05:23:00.000Z",
+   "durationMs": 3900000,
+   "createdAt": "2026-10-31T15:00:00.000Z",
+   "updatedAt": "2026-10-31T15:00:00.000Z"
+  },
+  "s-20-0": {
+   "id": "s-20-0",
+   "myBookId": "b05",
+   "startedAt": "2026-11-19T23:48:00.000Z",
+   "endedAt": "2026-11-20T00:26:00.000Z",
+   "durationMs": 2280000,
+   "createdAt": "2026-10-31T15:00:00.000Z",
+   "updatedAt": "2026-10-31T15:00:00.000Z"
+  },
+  "s-20-1": {
+   "id": "s-20-1",
+   "myBookId": "b17",
+   "startedAt": "2026-11-20T04:29:00.000Z",
+   "endedAt": "2026-11-20T05:08:00.000Z",
+   "durationMs": 2340000,
+   "createdAt": "2026-10-31T15:00:00.000Z",
+   "updatedAt": "2026-10-31T15:00:00.000Z"
+  },
+  "s-20-2": {
+   "id": "s-20-2",
+   "myBookId": "b06",
+   "startedAt": "2026-11-20T09:32:00.000Z",
+   "endedAt": "2026-11-20T10:10:00.000Z",
+   "durationMs": 2280000,
+   "createdAt": "2026-10-31T15:00:00.000Z",
+   "updatedAt": "2026-10-31T15:00:00.000Z"
+  },
+  "s-21-0": {
+   "id": "s-21-0",
+   "myBookId": "b17",
+   "startedAt": "2026-11-20T23:03:00.000Z",
+   "endedAt": "2026-11-20T23:34:00.000Z",
+   "durationMs": 1860000,
+   "createdAt": "2026-10-31T15:00:00.000Z",
+   "updatedAt": "2026-10-31T15:00:00.000Z"
+  },
+  "s-21-1": {
+   "id": "s-21-1",
+   "myBookId": "b06",
+   "startedAt": "2026-11-21T04:05:00.000Z",
+   "endedAt": "2026-11-21T04:54:00.000Z",
+   "durationMs": 2940000,
+   "createdAt": "2026-10-31T15:00:00.000Z",
+   "updatedAt": "2026-10-31T15:00:00.000Z"
+  },
+  "s-22-0": {
+   "id": "s-22-0",
+   "myBookId": "b06",
+   "startedAt": "2026-11-21T23:23:00.000Z",
+   "endedAt": "2026-11-22T00:02:00.000Z",
+   "durationMs": 2340000,
+   "createdAt": "2026-10-31T15:00:00.000Z",
+   "updatedAt": "2026-10-31T15:00:00.000Z"
+  },
+  "s-22-1": {
+   "id": "s-22-1",
+   "myBookId": "b07",
+   "startedAt": "2026-11-22T04:18:00.000Z",
+   "endedAt": "2026-11-22T05:12:00.000Z",
+   "durationMs": 3240000,
+   "createdAt": "2026-10-31T15:00:00.000Z",
+   "updatedAt": "2026-10-31T15:00:00.000Z"
+  },
+  "s-23-0": {
+   "id": "s-23-0",
+   "myBookId": "b06",
+   "startedAt": "2026-11-22T23:02:00.000Z",
+   "endedAt": "2026-11-22T23:29:00.000Z",
+   "durationMs": 1620000,
+   "createdAt": "2026-10-31T15:00:00.000Z",
+   "updatedAt": "2026-10-31T15:00:00.000Z"
+  },
+  "s-23-1": {
+   "id": "s-23-1",
+   "myBookId": "b07",
+   "startedAt": "2026-11-23T04:48:00.000Z",
+   "endedAt": "2026-11-23T05:50:00.000Z",
+   "durationMs": 3720000,
+   "createdAt": "2026-10-31T15:00:00.000Z",
+   "updatedAt": "2026-10-31T15:00:00.000Z"
+  },
+  "s-24-0": {
+   "id": "s-24-0",
+   "myBookId": "b07",
+   "startedAt": "2026-11-23T23:10:00.000Z",
+   "endedAt": "2026-11-23T23:47:00.000Z",
+   "durationMs": 2220000,
+   "createdAt": "2026-10-31T15:00:00.000Z",
+   "updatedAt": "2026-10-31T15:00:00.000Z"
+  },
+  "s-25-0": {
+   "id": "s-25-0",
+   "myBookId": "b07",
+   "startedAt": "2026-11-24T23:21:00.000Z",
+   "endedAt": "2026-11-24T23:51:00.000Z",
+   "durationMs": 1800000,
+   "createdAt": "2026-10-31T15:00:00.000Z",
+   "updatedAt": "2026-10-31T15:00:00.000Z"
+  },
+  "s-25-1": {
+   "id": "s-25-1",
+   "myBookId": "b08",
+   "startedAt": "2026-11-25T04:29:00.000Z",
+   "endedAt": "2026-11-25T04:42:00.000Z",
+   "durationMs": 780000,
+   "createdAt": "2026-10-31T15:00:00.000Z",
+   "updatedAt": "2026-10-31T15:00:00.000Z"
+  },
+  "s-26-0": {
+   "id": "s-26-0",
+   "myBookId": "b07",
+   "startedAt": "2026-11-25T23:11:00.000Z",
+   "endedAt": "2026-11-25T23:25:00.000Z",
+   "durationMs": 840000,
+   "createdAt": "2026-10-31T15:00:00.000Z",
+   "updatedAt": "2026-10-31T15:00:00.000Z"
+  },
+  "s-26-1": {
+   "id": "s-26-1",
+   "myBookId": "b08",
+   "startedAt": "2026-11-26T04:13:00.000Z",
+   "endedAt": "2026-11-26T04:47:00.000Z",
+   "durationMs": 2040000,
+   "createdAt": "2026-10-31T15:00:00.000Z",
+   "updatedAt": "2026-10-31T15:00:00.000Z"
+  },
+  "s-27-0": {
+   "id": "s-27-0",
+   "myBookId": "b07",
+   "startedAt": "2026-11-26T23:45:00.000Z",
+   "endedAt": "2026-11-27T00:23:00.000Z",
+   "durationMs": 2280000,
+   "createdAt": "2026-10-31T15:00:00.000Z",
+   "updatedAt": "2026-10-31T15:00:00.000Z"
+  },
+  "s-28-0": {
+   "id": "s-28-0",
+   "myBookId": "b07",
+   "startedAt": "2026-11-27T23:04:00.000Z",
+   "endedAt": "2026-11-27T23:57:00.000Z",
+   "durationMs": 3180000,
+   "createdAt": "2026-10-31T15:00:00.000Z",
+   "updatedAt": "2026-10-31T15:00:00.000Z"
+  },
+  "s-29-0": {
+   "id": "s-29-0",
+   "myBookId": "b08",
+   "startedAt": "2026-11-28T23:39:00.000Z",
+   "endedAt": "2026-11-29T00:06:00.000Z",
+   "durationMs": 1620000,
+   "createdAt": "2026-10-31T15:00:00.000Z",
+   "updatedAt": "2026-10-31T15:00:00.000Z"
+  },
+  "s-29-1": {
+   "id": "s-29-1",
+   "myBookId": "b09",
+   "startedAt": "2026-11-29T04:20:00.000Z",
+   "endedAt": "2026-11-29T04:41:00.000Z",
+   "durationMs": 1260000,
+   "createdAt": "2026-10-31T15:00:00.000Z",
+   "updatedAt": "2026-10-31T15:00:00.000Z"
+  },
+  "s-30-0": {
+   "id": "s-30-0",
+   "myBookId": "b08",
+   "startedAt": "2026-11-29T23:15:00.000Z",
+   "endedAt": "2026-11-30T00:11:00.000Z",
+   "durationMs": 3360000,
+   "createdAt": "2026-10-31T15:00:00.000Z",
+   "updatedAt": "2026-10-31T15:00:00.000Z"
+  },
+  "s-30-1": {
+   "id": "s-30-1",
+   "myBookId": "b09",
+   "startedAt": "2026-11-30T04:38:00.000Z",
+   "endedAt": "2026-11-30T05:00:00.000Z",
+   "durationMs": 1320000,
+   "createdAt": "2026-10-31T15:00:00.000Z",
+   "updatedAt": "2026-10-31T15:00:00.000Z"
+  }
+ },
+ "editions": {
+  "e-b01": {
+   "id": "e-b01",
+   "title": "모순",
+   "authors": [
+    "양귀자"
+   ],
+   "coverUri": "https://image.yes24.com/goods/8759796/L",
+   "coverSource": "api",
+   "source": "search",
+   "createdAt": "2026-10-31T15:00:00.000Z",
+   "updatedAt": "2026-10-31T15:00:00.000Z"
+  },
+  "e-b02": {
+   "id": "e-b02",
+   "title": "데미안",
+   "authors": [
+    "헤르만 헤세"
+   ],
+   "coverUri": "https://image.yes24.com/goods/176787/L",
+   "coverSource": "api",
+   "source": "search",
+   "createdAt": "2026-10-31T15:00:00.000Z",
+   "updatedAt": "2026-10-31T15:00:00.000Z"
+  },
+  "e-b03": {
+   "id": "e-b03",
+   "title": "어린 왕자",
+   "authors": [
+    "생텍쥐페리"
+   ],
+   "coverUri": "https://image.yes24.com/goods/22431294/L",
+   "coverSource": "api",
+   "source": "search",
+   "createdAt": "2026-10-31T15:00:00.000Z",
+   "updatedAt": "2026-10-31T15:00:00.000Z"
+  },
+  "e-b04": {
+   "id": "e-b04",
+   "title": "아몬드",
+   "authors": [
+    "손원평"
+   ],
+   "coverUri": "https://image.yes24.com/goods/119697570/L",
+   "coverSource": "api",
+   "source": "search",
+   "createdAt": "2026-10-31T15:00:00.000Z",
+   "updatedAt": "2026-10-31T15:00:00.000Z"
+  },
+  "e-b05": {
+   "id": "e-b05",
+   "title": "여행의 이유",
+   "authors": [
+    "김영하"
+   ],
+   "coverUri": "https://image.yes24.com/goods/125905365/L",
+   "coverSource": "api",
+   "source": "search",
+   "createdAt": "2026-10-31T15:00:00.000Z",
+   "updatedAt": "2026-10-31T15:00:00.000Z"
+  },
+  "e-b17": {
+   "id": "e-b17",
+   "title": "불편한 편의점",
+   "authors": [
+    "김호연"
+   ],
+   "coverUri": "https://image.yes24.com/goods/99308021/L",
+   "coverSource": "api",
+   "source": "search",
+   "createdAt": "2026-10-31T15:00:00.000Z",
+   "updatedAt": "2026-10-31T15:00:00.000Z"
+  },
+  "e-b06": {
+   "id": "e-b06",
+   "title": "흰",
+   "authors": [
+    "한강"
+   ],
+   "coverUri": "https://image.yes24.com/goods/143896198/L",
+   "coverSource": "api",
+   "source": "search",
+   "createdAt": "2026-10-31T15:00:00.000Z",
+   "updatedAt": "2026-10-31T15:00:00.000Z"
+  },
+  "e-b07": {
+   "id": "e-b07",
+   "title": "코스모스",
+   "authors": [
+    "칼 세이건"
+   ],
+   "coverUri": "https://image.yes24.com/goods/2312211/L",
+   "coverSource": "api",
+   "source": "search",
+   "createdAt": "2026-10-31T15:00:00.000Z",
+   "updatedAt": "2026-10-31T15:00:00.000Z"
+  },
+  "e-b08": {
+   "id": "e-b08",
+   "title": "쇼코의 미소",
+   "authors": [
+    "최은영"
+   ],
+   "coverUri": "https://image.yes24.com/goods/29288225/L",
+   "coverSource": "api",
+   "source": "search",
+   "createdAt": "2026-10-31T15:00:00.000Z",
+   "updatedAt": "2026-10-31T15:00:00.000Z"
+  },
+  "e-b09": {
+   "id": "e-b09",
+   "title": "82년생 김지영",
+   "authors": [
+    "조남주"
+   ],
+   "coverUri": "https://image.yes24.com/goods/32972572/L",
+   "coverSource": "api",
+   "source": "search",
+   "createdAt": "2026-10-31T15:00:00.000Z",
+   "updatedAt": "2026-10-31T15:00:00.000Z"
+  },
+  "e-b10": {
+   "id": "e-b10",
+   "title": "채식주의자",
+   "authors": [
+    "한강"
+   ],
+   "coverUri": "https://image.yes24.com/goods/108422348/L",
+   "coverSource": "api",
+   "source": "search",
+   "createdAt": "2026-10-31T15:00:00.000Z",
+   "updatedAt": "2026-10-31T15:00:00.000Z"
+  },
+  "e-b18": {
+   "id": "e-b18",
+   "title": "구의 증명",
+   "authors": [
+    "최진영"
+   ],
+   "coverUri": "https://image.yes24.com/goods/118578901/L",
+   "coverSource": "api",
+   "source": "search",
+   "createdAt": "2026-10-31T15:00:00.000Z",
+   "updatedAt": "2026-10-31T15:00:00.000Z"
+  },
+  "e-b11": {
+   "id": "e-b11",
+   "title": "아무튼, 서재",
+   "authors": [
+    "김윤관"
+   ],
+   "coverUri": "https://image.yes24.com/goods/51095578/L",
+   "coverSource": "api",
+   "source": "search",
+   "createdAt": "2026-10-31T15:00:00.000Z",
+   "updatedAt": "2026-10-31T15:00:00.000Z"
+  },
+  "e-b12": {
+   "id": "e-b12",
+   "title": "사피엔스",
+   "authors": [
+    "유발 하라리"
+   ],
+   "coverUri": "https://image.yes24.com/goods/23030284/L",
+   "coverSource": "api",
+   "source": "search",
+   "createdAt": "2026-10-31T15:00:00.000Z",
+   "updatedAt": "2026-10-31T15:00:00.000Z"
+  },
+  "e-b13": {
+   "id": "e-b13",
+   "title": "달러구트 꿈 백화점",
+   "authors": [
+    "이미예"
+   ],
+   "coverUri": "https://image.yes24.com/goods/91065309/L",
+   "coverSource": "api",
+   "source": "search",
+   "createdAt": "2026-10-31T15:00:00.000Z",
+   "updatedAt": "2026-10-31T15:00:00.000Z"
+  },
+  "e-b14": {
+   "id": "e-b14",
+   "title": "소년이 온다",
+   "authors": [
+    "한강"
+   ],
+   "coverUri": "https://image.yes24.com/goods/13137546/L",
+   "coverSource": "api",
+   "source": "search",
+   "createdAt": "2026-10-31T15:00:00.000Z",
+   "updatedAt": "2026-10-31T15:00:00.000Z"
+  },
+  "e-b15": {
+   "id": "e-b15",
+   "title": "이처럼 사소한 것들",
+   "authors": [
+    "클레어 키건"
+   ],
+   "coverUri": "https://image.yes24.com/goods/123400303/L",
+   "coverSource": "api",
+   "source": "search",
+   "createdAt": "2026-10-31T15:00:00.000Z",
+   "updatedAt": "2026-10-31T15:00:00.000Z"
+  },
+  "e-b16": {
+   "id": "e-b16",
+   "title": "우리가 빛의 속도로 갈 수 없다면",
+   "authors": [
+    "김초엽"
+   ],
+   "coverUri": "https://image.yes24.com/goods/74261416/L",
+   "coverSource": "api",
+   "source": "search",
+   "createdAt": "2026-10-31T15:00:00.000Z",
+   "updatedAt": "2026-10-31T15:00:00.000Z"
+  },
+  "e-b19": {
+   "id": "e-b19",
+   "title": "작별하지 않는다",
+   "authors": [
+    "한강"
+   ],
+   "coverUri": "https://image.yes24.com/goods/103495056/L",
+   "coverSource": "api",
+   "source": "search",
+   "createdAt": "2026-10-31T15:00:00.000Z",
+   "updatedAt": "2026-10-31T15:00:00.000Z"
+  }
+ },
+ "todays": [
+  {
+   "day": "2026-11-01",
+   "total": 3420000,
+   "noBook": 0,
+   "byBook": {
+    "b01": 900000,
+    "b02": 2520000
+   }
+  },
+  {
+   "day": "2026-11-17",
+   "total": 7440000,
+   "noBook": 0,
+   "byBook": {
+    "b04": 3900000,
+    "b05": 3540000
+   }
+  },
+  {
+   "day": "2026-11-30",
+   "total": 4680000,
+   "noBook": 0,
+   "byBook": {
+    "b08": 3360000,
+    "b09": 1320000
+   }
+  },
+  {
+   "day": "2026-11-30",
+   "total": 4680000,
+   "noBook": 0,
+   "byBook": {
+    "b08": 3360000,
+    "b09": 1320000
+   }
+  }
+ ],
+ "lists": [
+  {
+   "day": "2026-11-30",
+   "out": [
+    "b09",
+    "b08",
+    "b07",
+    "b06",
+    "b03",
+    "b02",
+    "b01",
+    "b10",
+    "b18",
+    "b11",
+    "b12",
+    "b13",
+    "b14",
+    "b15",
+    "b16",
+    "b19"
+   ]
+  },
+  {
+   "day": "2026-11-17",
+   "activeId": "b07",
+   "out": [
+    "b07",
+    "b09",
+    "b08",
+    "b06",
+    "b05",
+    "b03",
+    "b02",
+    "b01",
+    "b10",
+    "b18",
+    "b11",
+    "b12",
+    "b13",
+    "b14",
+    "b15",
+    "b16",
+    "b19"
+   ]
+  },
+  {
+   "day": "2026-11-17",
+   "activeId": "b07",
+   "focusId": "b09",
+   "added": [
+    "b18",
+    "~none",
+    "b04",
+    "b01",
+    "missing"
+   ],
+   "out": [
+    "b09",
+    "b07",
+    "b08",
+    "b06",
+    "b05",
+    "b03",
+    "b02",
+    "b01",
+    "b10",
+    "b18",
+    "b11",
+    "b12",
+    "b13",
+    "b14",
+    "b15",
+    "b16",
+    "b19"
+   ]
+  },
+  {
+   "day": "2026-11-30",
+   "added": [
+    "b11",
+    "b12"
+   ],
+   "out": [
+    "b09",
+    "b08",
+    "b07",
+    "b06",
+    "b03",
+    "b02",
+    "b01",
+    "b10",
+    "b18",
+    "b11",
+    "b12",
+    "b13",
+    "b14",
+    "b15",
+    "b16",
+    "b19"
+   ]
+  }
+ ],
+ "times": [
+  {
+   "ms": 0,
+   "hms": "0:00:00",
+   "clock": "00:00"
+  },
+  {
+   "ms": 999,
+   "hms": "0:00:00",
+   "clock": "00:00"
+  },
+  {
+   "ms": 1000,
+   "hms": "0:00:01",
+   "clock": "00:01"
+  },
+  {
+   "ms": 59999,
+   "hms": "0:00:59",
+   "clock": "00:59"
+  },
+  {
+   "ms": 60000,
+   "hms": "0:01:00",
+   "clock": "01:00"
+  },
+  {
+   "ms": 3599999,
+   "hms": "0:59:59",
+   "clock": "59:59"
+  },
+  {
+   "ms": 3600000,
+   "hms": "1:00:00",
+   "clock": "1:00:00"
+  },
+  {
+   "ms": 36061000,
+   "hms": "10:01:01",
+   "clock": "10:01:01"
+  },
+  {
+   "ms": -5,
+   "hms": "0:00:00",
+   "clock": "00:00"
+  }
+ ],
+ "recent": [
+  "b09",
+  "b08",
+  "b07",
+  "b06",
+  "b17",
+  "b05",
+  "b04",
+  "b03",
+  "b02",
+  "b01",
+  "b10",
+  "b18",
+  "b11",
+  "b12",
+  "b13",
+  "b14",
+  "b15",
+  "b16",
+  "b19"
+ ],
+ "fresh": [
+  "b01",
+  "b02",
+  "b03",
+  "b04",
+  "b05",
+  "b17",
+  "b07",
+  "b08",
+  "b09",
+  "b10",
+  "b18",
+  "b11",
+  "b12",
+  "b13",
+  "b14",
+  "b15",
+  "b16",
+  "b19"
+ ],
+ "adds": [
+  {
+   "input": {
+    "myBookId": "b17",
+    "startedAt": "2026-11-13T00:30:00.000Z",
+    "endedAt": "2026-11-13T01:00:00.000Z",
+    "durationMs": 1800000,
+    "startPage": 30,
+    "pagesRead": 52
+   },
+   "session": {
+    "createdAt": "2026-11-13T12:00:00.000Z",
+    "updatedAt": "2026-11-13T12:00:00.000Z",
+    "myBookId": "b17",
+    "startedAt": "2026-11-13T00:30:00.000Z",
+    "endedAt": "2026-11-13T01:00:00.000Z",
+    "durationMs": 1800000,
+    "startPage": 30,
+    "pagesRead": 52,
+    "roundId": "NEW",
+    "id": "ss_fixed0"
+   },
+   "newRounds": [
+    {
+     "myBookId": "b17",
+     "index": 1,
+     "startedAt": "2026-11-13",
+     "createdAt": "2026-11-13T12:00:00.000Z",
+     "updatedAt": "2026-11-13T12:00:00.000Z"
+    }
+   ],
+   "changedBooks": [
+    {
+     "id": "b17",
+     "editionId": "e-b17",
+     "status": "reading",
+     "createdAt": "2026-10-31T15:00:00.000Z",
+     "updatedAt": "2026-11-13T12:00:00.000Z",
+     "currentPage": 52
+    }
+   ]
+  },
+  {
+   "input": {
+    "myBookId": "b05",
+    "startedAt": "2026-11-12T15:30:00.000Z",
+    "endedAt": "2026-11-12T16:00:00.000Z",
+    "durationMs": 1700000
+   },
+   "session": {
+    "createdAt": "2026-11-13T12:00:00.000Z",
+    "updatedAt": "2026-11-13T12:00:00.000Z",
+    "myBookId": "b05",
+    "startedAt": "2026-11-12T15:30:00.000Z",
+    "endedAt": "2026-11-12T16:00:00.000Z",
+    "durationMs": 1700000,
+    "roundId": "NEW",
+    "id": "ss_fixed1"
+   },
+   "newRounds": [
+    {
+     "myBookId": "b05",
+     "index": 1,
+     "startedAt": "2026-11-13",
+     "createdAt": "2026-11-13T12:00:00.000Z",
+     "updatedAt": "2026-11-13T12:00:00.000Z",
+     "paused": true
+    }
+   ],
+   "changedBooks": [
+    {
+     "id": "b05",
+     "editionId": "e-b05",
+     "status": "paused",
+     "createdAt": "2026-10-31T15:00:00.000Z",
+     "updatedAt": "2026-11-13T12:00:00.000Z"
+    }
+   ]
+  },
+  {
+   "input": {
+    "myBookId": "b06",
+    "startedAt": "2026-11-13T02:00:00.000Z",
+    "endedAt": "2026-11-13T02:10:00.000Z",
+    "durationMs": 600000,
+    "pagesRead": 1
+   },
+   "session": {
+    "createdAt": "2026-11-13T12:00:00.000Z",
+    "updatedAt": "2026-11-13T12:00:00.000Z",
+    "myBookId": "b06",
+    "startedAt": "2026-11-13T02:00:00.000Z",
+    "endedAt": "2026-11-13T02:10:00.000Z",
+    "durationMs": 600000,
+    "pagesRead": 1,
+    "roundId": "rd_b",
+    "id": "ss_fixed2"
+   },
+   "newRounds": [],
+   "changedBooks": [
+    {
+     "id": "b06",
+     "editionId": "e-b06",
+     "status": "reading",
+     "createdAt": "2026-10-31T15:00:00.000Z",
+     "updatedAt": "2026-11-13T12:00:00.000Z",
+     "currentPage": 40
+    }
+   ]
+  },
+  {
+   "input": {
+    "startedAt": "2026-11-13T03:00:00.000Z",
+    "endedAt": "2026-11-13T03:05:00.000Z",
+    "durationMs": 300000,
+    "memo": "메모"
+   },
+   "session": {
+    "createdAt": "2026-11-13T12:00:00.000Z",
+    "updatedAt": "2026-11-13T12:00:00.000Z",
+    "startedAt": "2026-11-13T03:00:00.000Z",
+    "endedAt": "2026-11-13T03:05:00.000Z",
+    "durationMs": 300000,
+    "memo": "메모",
+    "id": "ss_fixed3"
+   },
+   "newRounds": [],
+   "changedBooks": []
+  },
+  {
+   "input": {
+    "id": "s-1-0",
+    "myBookId": "b06",
+    "startedAt": "2026-11-01T03:00:00.000Z",
+    "endedAt": "2026-11-01T03:05:00.000Z",
+    "durationMs": 300000
+   },
+   "session": {
+    "createdAt": "2026-10-31T15:00:00.000Z",
+    "updatedAt": "2026-11-13T12:00:00.000Z",
+    "id": "s-1-0",
+    "myBookId": "b06",
+    "startedAt": "2026-11-01T03:00:00.000Z",
+    "endedAt": "2026-11-01T03:05:00.000Z",
+    "durationMs": 300000,
+    "roundId": "rd_b"
+   },
+   "newRounds": [],
+   "changedBooks": []
+  },
+  {
+   "input": {
+    "myBookId": "missing",
+    "startedAt": "2026-11-13T04:00:00.000Z",
+    "endedAt": "2026-11-13T04:05:00.000Z",
+    "durationMs": 300000
+   },
+   "session": {
+    "createdAt": "2026-11-13T12:00:00.000Z",
+    "updatedAt": "2026-11-13T12:00:00.000Z",
+    "startedAt": "2026-11-13T04:00:00.000Z",
+    "endedAt": "2026-11-13T04:05:00.000Z",
+    "durationMs": 300000,
+    "id": "ss_fixed4"
+   },
+   "newRounds": [],
+   "changedBooks": []
+  }
+ ],
+ "recovers": [
+  {
+   "saved": {
+    "id": "a1",
+    "myBookId": "b01",
+    "startedAt": "2026-11-13T10:00:00.000Z",
+    "accumulatedMs": 0,
+    "runningSince": 1794564000000,
+    "lastBeat": 1794564025000,
+    "startPage": 12
+   },
+   "out": {
+    "active": {
+     "id": "a1",
+     "myBookId": "b01",
+     "startedAt": "2026-11-13T10:00:00.000Z",
+     "accumulatedMs": 25000,
+     "runningSince": null,
+     "lastBeat": 1794564025000,
+     "startPage": 12,
+     "interruptedAt": 1794564025000
+    },
+    "interrupted": {
+     "active": {
+      "id": "a1",
+      "myBookId": "b01",
+      "startedAt": "2026-11-13T10:00:00.000Z",
+      "accumulatedMs": 25000,
+      "runningSince": null,
+      "lastBeat": 1794564025000,
+      "startPage": 12,
+      "interruptedAt": 1794564025000
+     },
+     "countedMs": 25000,
+     "lastBeat": 1794564025000,
+     "gapMs": 3575000
+    }
+   }
+  },
+  {
+   "saved": {
+    "id": "a2",
+    "startedAt": "2026-11-13T10:00:00.000Z",
+    "accumulatedMs": 120000,
+    "runningSince": 1794564300000,
+    "lastBeat": 1794564100000
+   },
+   "out": {
+    "active": {
+     "id": "a2",
+     "startedAt": "2026-11-13T10:00:00.000Z",
+     "accumulatedMs": 120000,
+     "runningSince": null,
+     "lastBeat": 1794564300000,
+     "interruptedAt": 1794564300000
+    },
+    "interrupted": {
+     "active": {
+      "id": "a2",
+      "startedAt": "2026-11-13T10:00:00.000Z",
+      "accumulatedMs": 120000,
+      "runningSince": null,
+      "lastBeat": 1794564300000,
+      "interruptedAt": 1794564300000
+     },
+     "countedMs": 120000,
+     "lastBeat": 1794564300000,
+     "gapMs": 3300000
+    }
+   }
+  },
+  {
+   "saved": {
+    "id": "a3",
+    "myBookId": "b02",
+    "startedAt": "2026-11-13T10:00:00.000Z",
+    "accumulatedMs": 90000,
+    "runningSince": null,
+    "lastBeat": 1794564090000
+   },
+   "out": {
+    "active": {
+     "id": "a3",
+     "myBookId": "b02",
+     "startedAt": "2026-11-13T10:00:00.000Z",
+     "accumulatedMs": 90000,
+     "runningSince": null,
+     "lastBeat": 1794564090000
+    },
+    "interrupted": null
+   }
+  },
+  {
+   "saved": {
+    "id": "a4",
+    "myBookId": "b02",
+    "startedAt": "2026-11-13T10:00:00.000Z",
+    "accumulatedMs": 90000,
+    "runningSince": null,
+    "lastBeat": 1794564090000,
+    "interruptedAt": 1794564095000
+   },
+   "out": {
+    "active": {
+     "id": "a4",
+     "myBookId": "b02",
+     "startedAt": "2026-11-13T10:00:00.000Z",
+     "accumulatedMs": 90000,
+     "runningSince": null,
+     "lastBeat": 1794564090000,
+     "interruptedAt": 1794564095000
+    },
+    "interrupted": {
+     "active": {
+      "id": "a4",
+      "myBookId": "b02",
+      "startedAt": "2026-11-13T10:00:00.000Z",
+      "accumulatedMs": 90000,
+      "runningSince": null,
+      "lastBeat": 1794564090000,
+      "interruptedAt": 1794564095000
+     },
+     "countedMs": 90000,
+     "lastBeat": 1794564095000,
+     "gapMs": 3505000
+    }
+   }
+  }
+ ],
+ "finishes": [
+  {
+   "active": {
+    "id": "a1",
+    "myBookId": "b01",
+    "startedAt": "2026-11-13T10:00:00.000Z",
+    "accumulatedMs": 0,
+    "runningSince": 1794564000000,
+    "lastBeat": 1794564025000,
+    "startPage": 12
+   },
+   "now": 1794567600000,
+   "endAt": null,
+   "out": {
+    "id": "a1",
+    "myBookId": "b01",
+    "startedAt": "2026-11-13T10:00:00.000Z",
+    "endedAt": "2026-11-13T11:00:00.000Z",
+    "durationMs": 3600000,
+    "startPage": 12
+   }
+  },
+  {
+   "active": {
+    "id": "a1",
+    "myBookId": "b01",
+    "startedAt": "2026-11-13T10:00:00.000Z",
+    "accumulatedMs": 0,
+    "runningSince": 1794564000000,
+    "lastBeat": 1794564025000,
+    "startPage": 12
+   },
+   "now": 1794567600000,
+   "endAt": 1794564200000,
+   "out": {
+    "id": "a1",
+    "myBookId": "b01",
+    "startedAt": "2026-11-13T10:00:00.000Z",
+    "endedAt": "2026-11-13T10:03:20.000Z",
+    "durationMs": 200000,
+    "startPage": 12
+   }
+  },
+  {
+   "active": {
+    "id": "a2",
+    "startedAt": "2026-11-13T10:00:00.000Z",
+    "accumulatedMs": 120000,
+    "runningSince": 1794564300000,
+    "lastBeat": 1794564100000
+   },
+   "now": 1794567600000,
+   "endAt": null,
+   "out": {
+    "id": "a2",
+    "startedAt": "2026-11-13T10:00:00.000Z",
+    "endedAt": "2026-11-13T11:00:00.000Z",
+    "durationMs": 3420000
+   }
+  },
+  {
+   "active": {
+    "id": "a2",
+    "startedAt": "2026-11-13T10:00:00.000Z",
+    "accumulatedMs": 120000,
+    "runningSince": 1794564300000,
+    "lastBeat": 1794564100000
+   },
+   "now": 1794567600000,
+   "endAt": 1794564200000,
+   "out": {
+    "id": "a2",
+    "startedAt": "2026-11-13T10:00:00.000Z",
+    "endedAt": "2026-11-13T10:03:20.000Z",
+    "durationMs": 120000
+   }
+  },
+  {
+   "active": {
+    "id": "a3",
+    "myBookId": "b02",
+    "startedAt": "2026-11-13T10:00:00.000Z",
+    "accumulatedMs": 90000,
+    "runningSince": null,
+    "lastBeat": 1794564090000
+   },
+   "now": 1794567600000,
+   "endAt": null,
+   "out": {
+    "id": "a3",
+    "myBookId": "b02",
+    "startedAt": "2026-11-13T10:00:00.000Z",
+    "endedAt": "2026-11-13T10:01:30.000Z",
+    "durationMs": 90000
+   }
+  },
+  {
+   "active": {
+    "id": "a3",
+    "myBookId": "b02",
+    "startedAt": "2026-11-13T10:00:00.000Z",
+    "accumulatedMs": 90000,
+    "runningSince": null,
+    "lastBeat": 1794564090000
+   },
+   "now": 1794567600000,
+   "endAt": 1794564200000,
+   "out": {
+    "id": "a3",
+    "myBookId": "b02",
+    "startedAt": "2026-11-13T10:00:00.000Z",
+    "endedAt": "2026-11-13T10:01:30.000Z",
+    "durationMs": 90000
+   }
+  },
+  {
+   "active": {
+    "id": "a4",
+    "myBookId": "b02",
+    "startedAt": "2026-11-13T10:00:00.000Z",
+    "accumulatedMs": 90000,
+    "runningSince": null,
+    "lastBeat": 1794564090000,
+    "interruptedAt": 1794564095000
+   },
+   "now": 1794567600000,
+   "endAt": null,
+   "out": {
+    "id": "a4",
+    "myBookId": "b02",
+    "startedAt": "2026-11-13T10:00:00.000Z",
+    "endedAt": "2026-11-13T10:01:35.000Z",
+    "durationMs": 90000
+   }
+  },
+  {
+   "active": {
+    "id": "a4",
+    "myBookId": "b02",
+    "startedAt": "2026-11-13T10:00:00.000Z",
+    "accumulatedMs": 90000,
+    "runningSince": null,
+    "lastBeat": 1794564090000,
+    "interruptedAt": 1794564095000
+   },
+   "now": 1794567600000,
+   "endAt": 1794564200000,
+   "out": {
+    "id": "a4",
+    "myBookId": "b02",
+    "startedAt": "2026-11-13T10:00:00.000Z",
+    "endedAt": "2026-11-13T10:01:35.000Z",
+    "durationMs": 90000
+   }
+  }
+ ]
+}

@@ -190,7 +190,8 @@ class Screen extends StatelessWidget {
             child: content,
           )
         : fixed;
-    return ColoredBox(
+    // Material: 글자 기본 모양·잉크 효과의 바탕(밀어 넣은 화면에서도 글자 밑에 노란 줄이 생기지 않게)
+    return Material(
       color: AppColors.bg,
       child: Padding(
         padding: EdgeInsets.only(top: insets.top),
@@ -746,7 +747,7 @@ class AppDivider extends StatelessWidget {
 }
 
 /// 하단 시트: 어두운 덮개 + 위쪽만 둥근 판(손잡이·제목·설명·내용). 바깥을 누르거나 뒤로 가면, 손잡이를 끌어 내리면 닫힌다. 닫기 단추는 두지 않는다
-Future<T?> showSheet<T>(BuildContext context, {String? title, String? description, required WidgetBuilder builder, bool scroll = false, double? maxHeight}) {
+Future<T?> showSheet<T>(BuildContext context, {String? title, String? description, required WidgetBuilder builder, bool scroll = false, double? maxHeight, bool fit = false}) {
   return showModalBottomSheet<T>(
     context: context,
     isScrollControlled: true,
@@ -788,7 +789,8 @@ Future<T?> showSheet<T>(BuildContext context, {String? title, String? descriptio
                   if (description != null) Padding(padding: const EdgeInsets.only(top: 2), child: Text(description, style: AppType.sub)),
                 ]),
               ),
-            if (scroll) Flexible(child: SingleChildScrollView(child: body)) else body,
+            // fit: 내용이 스스로 스크롤하는 시트(목록+아래 단추): 남은 높이 안에 맞춘다
+            if (scroll) Flexible(child: SingleChildScrollView(child: body)) else if (fit) Flexible(child: body) else body,
           ],
         ),
       );

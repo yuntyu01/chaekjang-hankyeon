@@ -101,6 +101,21 @@ class MyBook {
   final num? rating, currentPage;
   final String? note, ribbonColor, bindingId, hiddenAt;
 
+  /// 상태·현재 쪽을 바꾼 사본
+  MyBook copyWith({ReadStatus? status, num? currentPage, required String updatedAt}) => MyBook(
+        id: id,
+        editionId: editionId,
+        status: status ?? this.status,
+        createdAt: createdAt,
+        updatedAt: updatedAt,
+        rating: rating,
+        note: note,
+        ribbonColor: ribbonColor,
+        currentPage: currentPage ?? this.currentPage,
+        bindingId: bindingId,
+        hiddenAt: hiddenAt,
+      );
+
   Json toJson() {
     final b = <String, Object?>{'id': id, 'editionId': editionId, 'status': status.name, 'createdAt': createdAt, 'updatedAt': updatedAt};
     _put(b, 'rating', rating);
@@ -273,6 +288,18 @@ class Library {
   final Map<String, Session> sessions;
   final Map<String, Bookmark> bookmarks;
   final Map<String, Binding> bindings;
+
+  /// 몇 가지 표만 바꾼 새 서재(나머지는 같은 표를 함께 쓴다)
+  Library copy({Map<String, Edition>? editions, Map<String, MyBook>? books, Map<String, Round>? rounds, Map<String, Session>? sessions,
+          Map<String, Bookmark>? bookmarks, Map<String, Binding>? bindings}) =>
+      Library(
+        editions: editions ?? this.editions,
+        books: books ?? this.books,
+        rounds: rounds ?? this.rounds,
+        sessions: sessions ?? this.sessions,
+        bookmarks: bookmarks ?? this.bookmarks,
+        bindings: bindings ?? this.bindings,
+      );
 
   Json toJson() => {
         'editions': {for (final e in editions.entries) e.key: e.value.toJson()},

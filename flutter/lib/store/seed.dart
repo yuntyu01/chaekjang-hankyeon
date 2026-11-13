@@ -50,7 +50,7 @@ Future<void> seedIfEmpty() async {
         'source': 'seed', 'status': 'ready', 'seed': 0, 'created_at': now, 'updated_at': now,
       });
       await t.insert('my_books', {
-        'id': b.id, 'edition_id': eid, 'status': 'owned', 'binding_id': gid, 'ribbon_color': b.ribbon,
+        'id': b.id, 'edition_id': eid, 'status': 'reading', 'binding_id': gid, 'ribbon_color': b.ribbon,
         'created_at': now, 'updated_at': now,
       });
       // 갈피: 비교 책장처럼 몇 권에 갈피가 꽂혀 있다(장 수 = 남긴 문장 수). 문장은 지금 앱 예시 갈피 문장(real-sample BOARD_QUOTES)을 돌려 쓰고,
