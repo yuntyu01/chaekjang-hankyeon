@@ -3,7 +3,7 @@
 import { mkdirSync, writeFileSync } from 'fs';
 import { join } from 'path';
 
-import { addSessionTo, today, type Library } from '@/domain/library';
+import { addSessionTo, applyStatus, rereadRound, today, type Library, type ReadStatus } from '@/domain/library';
 import { realReadingLibrary } from '@/domain/real-sample';
 import { hms, NO_BOOK, readListIds, todayRead } from '@/domain/reading-list';
 import { clock } from '@/features/reading/ActiveReading';
@@ -87,8 +87,24 @@ test('dump reading rules', () => {
   const now2 = t0 + 3_600_000;
   const recovers = actives.map((a) => ({ saved: a, out: recoverOnLoad(a, now2) }));
   const finishes = actives.flatMap((a) => [{ a, endAt: undefined as number | undefined }, { a, endAt: t0 + 200_000 }]).map(({ a, endAt }) => ({ active: a, now: now2, endAt: endAt ?? null, out: finishActive(a, now2, endAt) }));
+  // 읽기 상태 바꾸기·다시 읽기: 책마다(회차 없음·열린 회차·완독 회차·보류) 네 상태로. 새 회차 id는 빼고 견준다
+  const finishedLib = sampleLib();
+  finishedLib.rounds.rd_b = { ...finishedLib.rounds.rd_b, finishedAt: '2026-11-10' };
+  finishedLib.books[ids[6]] = { ...finishedLib.books[ids[6]], status: 'read' };
+  const emptyOpen = sampleLib();
+  emptyOpen.rounds.rd_e = { id: 'rd_e', myBookId: ids[7], index: 1, createdAt: '2026-11-01T00:00:00.000Z', updatedAt: '2026-11-01T00:00:00.000Z' };
+  emptyOpen.books[ids[7]] = { ...emptyOpen.books[ids[7]], status: 'reading' };
+  const libs: Record<string, Library> = { sample: lib, finished: finishedLib, emptyOpen };
+  const diffOf = (before: Library, after: Library) => ({
+    changedRounds: Object.values(after.rounds).filter((r) => before.rounds[r.id] && before.rounds[r.id] !== r),
+    newRounds: Object.values(after.rounds).filter((r) => !before.rounds[r.id]).map(({ id: _id, ...x }) => x),
+    removedRounds: Object.keys(before.rounds).filter((id) => !after.rounds[id]),
+    changedBooks: Object.values(after.books).filter((b) => before.books[b.id] !== b),
+  });
+  const statuses = (['sample', 'finished', 'emptyOpen'] as const).flatMap((name) => [ids[0], ids[4], ids[5], ids[6], ids[7]].flatMap((id) => (['want', 'reading', 'read', 'paused'] as ReadStatus[]).map((st) => ({ lib: name, id, status: st, ...diffOf(libs[name], applyStatus(libs[name], id, st, now, '2026-11-13')) }))));
+  const rereads = (['sample', 'finished'] as const).flatMap((name) => [ids[0], ids[6], 'missing'].map((id) => ({ lib: name, id, ...diffOf(libs[name], rereadRound(libs[name], id, now, '2026-11-13')) })));
   const dir = join(__dirname, '..', 'test', 'fixtures');
   mkdirSync(dir, { recursive: true });
-  writeFileSync(join(dir, 'reading_cases.json'), `${JSON.stringify({ note: '지금 앱 읽기 탭 규칙(tool/dump_reading.test.ts). 손으로 고치지 말 것', tz: Intl.DateTimeFormat().resolvedOptions().timeZone, now, books: lib.books, rounds: lib.rounds, sessions: lib.sessions, editions: lib.editions, todays, lists, times, recent: recentBookIds(lib), fresh, adds, recovers, finishes }, null, 1)}\n`);
+  writeFileSync(join(dir, 'reading_cases.json'), `${JSON.stringify({ note: '지금 앱 읽기 탭 규칙(tool/dump_reading.test.ts). 손으로 고치지 말 것', tz: Intl.DateTimeFormat().resolvedOptions().timeZone, now, books: lib.books, rounds: lib.rounds, sessions: lib.sessions, editions: lib.editions, todays, lists, times, recent: recentBookIds(lib), fresh, adds, recovers, finishes, extraRounds: { finished: finishedLib.rounds, emptyOpen: emptyOpen.rounds }, extraBooks: { finished: finishedLib.books, emptyOpen: emptyOpen.books }, statuses, rereads }, null, 1)}\n`);
   console.log(`[dump] reading lists ${lists.length} adds ${adds.length} recovers ${recovers.length}`);
 });

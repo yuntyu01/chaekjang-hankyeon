@@ -18,6 +18,8 @@ import '../../store/settings_store.dart';
 import '../../ui/alert.dart';
 import '../../ui/kit.dart';
 import '../../ui/theme.dart';
+import '../book/book_screen.dart';
+import '../../app/app_nav.dart';
 import '../bookmark/book_picker.dart';
 import '../stats/stats_screen.dart';
 import '../stats/stats_widgets.dart';
@@ -34,11 +36,6 @@ String? bookTitle(Library lib, String? id) {
   final b = id == null ? null : lib.books[id];
   return b == null ? null : lib.editions[b.editionId]?.title;
 }
-
-/// 아직 옮기지 않은 화면(분위기 장면·책 정보)
-Future<void> _pending(BuildContext context, String title) => Navigator.of(context).push(MaterialPageRoute<void>(
-      builder: (_) => Screen(title: title, children: const [Empty(title: '준비 중이에요', body: '이 화면은 다음 단계에서 옮겨요.')]),
-    ));
 
 class ReadList extends StatefulWidget {
   const ReadList({super.key, this.handoff});
@@ -63,7 +60,11 @@ class _ReadListState extends State<ReadList> {
     for (final n in [_lib, _reading, _settings]) {
       n.addListener(_changed);
     }
-    _lib.load().then((_) => _takeHandoff());
+    AppNav.instance.addListener(_navHandoff);
+    _lib.load().then((_) {
+      _takeHandoff(widget.handoff);
+      _navHandoff();
+    });
     _reading.load().catchError((_) {});
     _settings.load();
     _sync();
@@ -74,6 +75,7 @@ class _ReadListState extends State<ReadList> {
     for (final n in [_lib, _reading, _settings]) {
       n.removeListener(_changed);
     }
+    AppNav.instance.removeListener(_navHandoff);
     _tick?.cancel();
     super.dispose();
   }
@@ -97,8 +99,15 @@ class _ReadListState extends State<ReadList> {
   }
 
   // 넘겨받은 책은 목록 맨 앞에 두고 추가해 둔다(시작은 재생을 눌러서)
-  void _takeHandoff() {
-    final h = widget.handoff;
+  // 다른 화면이 '읽기'로 넘겨준 책(책 정보의 읽기 시작·이어서 읽기)
+  void _navHandoff() {
+    final id = AppNav.instance.readBook;
+    if (id == null || !_lib.loaded) return;
+    AppNav.instance.readBook = null;
+    _takeHandoff(id);
+  }
+
+  void _takeHandoff(String? h) {
     final b = h == null ? null : _lib.lib.books[h];
     if (b == null || !mounted) return;
     setState(() => _focusId = h);
@@ -158,7 +167,7 @@ class _ReadListState extends State<ReadList> {
           if (id != noBook) ...[
             ListItem(label: '책 정보', chevron: true, onPress: () {
               Navigator.pop(ctx);
-              _pending(context, '책 정보');
+              openBook(context, id);
             }),
             ListItem(label: '이 책 독서 기록', chevron: true, onPress: () {
               Navigator.pop(ctx);

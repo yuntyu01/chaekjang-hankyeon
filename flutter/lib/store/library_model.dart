@@ -11,6 +11,8 @@ import '../domain/reading.dart';
 import 'library_read.dart';
 import 'seed.dart';
 
+const Object _keep = Object();
+
 class LibraryModel extends ChangeNotifier {
   LibraryModel._();
   static final instance = LibraryModel._();
@@ -87,6 +89,27 @@ class LibraryModel extends ChangeNotifier {
     final r = addSessionTo(lib, input, nowIso());
     await commitLib(r.lib);
     return r.id;
+  }
+
+  /// 책 고치기(별점·한 줄 감상·현재 쪽·갈피 색). null을 주면 비운다
+  Future<void> updateBook(String id, {Object? rating = _keep, Object? note = _keep, Object? currentPage = _keep, Object? ribbonColor = _keep}) {
+    final b = lib.books[id];
+    if (b == null) return Future.value();
+    final next = b.patch(rating: rating, note: note, currentPage: currentPage, ribbonColor: ribbonColor, updatedAt: nowIso());
+    return commitLib(lib.copy(books: {...lib.books, id: next}));
+  }
+
+  /// 읽기 상태 바꾸기(같은 상태면 그대로)
+  Future<void> setStatus(String id, ReadStatus status) => commitLib(applyStatus(lib, id, status, nowIso()));
+
+  /// 다시 읽기: 지난 회차는 그대로 두고 새 회차(진도 0쪽부터)
+  Future<void> reread(String id) => commitLib(rereadRound(lib, id, nowIso()));
+
+  /// 회차 날짜 고치기(null을 주면 비운다)
+  Future<void> updateRound(String roundId, {Object? startedAt = _keep, Object? finishedAt = _keep}) {
+    final r = lib.rounds[roundId];
+    if (r == null) return Future.value();
+    return commitLib(lib.copy(rounds: {...lib.rounds, roundId: r.copyWith(startedAt: startedAt, finishedAt: finishedAt, updatedAt: nowIso())}));
   }
 
   /// 갈피 아껴두기 켜고 끄기

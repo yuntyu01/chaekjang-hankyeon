@@ -282,3 +282,50 @@ FinishDraft finishActive(Active a, num now, [num? endAt]) {
   final end = running ? t : (a.interruptedAt ?? math.max(a.lastBeat, DateTime.parse(a.startedAt).millisecondsSinceEpoch));
   return FinishDraft(id: a.id, myBookId: a.myBookId, startedAt: a.startedAt, endedAt: isoOf(end), durationMs: duration, startPage: a.startPage);
 }
+
+// ---------- 읽기 상태·다시 읽기(지금 앱 domain/library.ts applyStatus·rereadRound) ----------
+
+/// 상태 변경 규칙(사용자가 정한다. 타이머 시간으로 자동 완독 판정하지 않는다). day는 기기 현지 날짜.
+/// 같은 상태면 그대로. 읽는 중·보류로: 열린 회차를 이어 가거나(보류 해제/설정) 없으면 새 회차(완독 뒤면 다시 읽기, 진도 0쪽부터).
+/// 완독으로: 열린 회차를 닫고(완독일 오늘), 회차가 없으면 만들고 바로 닫는다. 읽기 전으로: 날짜 없는 빈 열린 회차만 지운다
+Library applyStatus(Library lib, String myBookId, ReadStatus status, String now, {String? day, String Function()? roundId}) {
+  final book = lib.books[myBookId];
+  if (book == null || book.status == status) return lib;
+  final d = day ?? today(DateTime.parse(now));
+  final rounds = {...lib.rounds};
+  final last = currentRound(lib, myBookId);
+  final open = last != null && last.finishedAt == null ? last : null;
+  Round make() => Round(id: (roundId ?? () => newId('rd'))(), myBookId: myBookId, index: (last?.index ?? 0) + 1, startedAt: d, createdAt: now, updatedAt: now);
+  Object? page = book.currentPage;
+  if (status == ReadStatus.reading || status == ReadStatus.paused) {
+    final paused = status == ReadStatus.paused;
+    if (open != null) {
+      rounds[open.id] = open.copyWith(paused: paused, startedAt: open.startedAt ?? d, updatedAt: now);
+    } else {
+      final r = make();
+      rounds[r.id] = paused ? r.copyWith(paused: true, updatedAt: now) : r;
+      if (last != null) page = null; // 다시 읽기: 진도는 0쪽부터
+    }
+  } else if (status == ReadStatus.read) {
+    if (open != null) {
+      rounds[open.id] = open.copyWith(paused: false, finishedAt: d, updatedAt: now);
+    } else if (last == null) {
+      final r = make();
+      rounds[r.id] = r.copyWith(finishedAt: d, updatedAt: now);
+    }
+  } else if (open != null && open.startedAt == null && open.finishedAt == null) {
+    rounds.remove(open.id);
+  }
+  return lib.copy(rounds: rounds, books: {...lib.books, myBookId: book.patch(status: status, currentPage: page, updatedAt: now)});
+}
+
+/// 다시 읽기(명시적): 지난 회차는 그대로 두고 새 회차를 연다(진도 0쪽부터). 열린 회차가 있으면 그대로
+Library rereadRound(Library lib, String myBookId, String now, {String? day, String Function()? roundId}) {
+  final book = lib.books[myBookId];
+  if (book == null) return lib;
+  final last = currentRound(lib, myBookId);
+  if (last != null && last.finishedAt == null) return lib;
+  final d = day ?? today(DateTime.parse(now));
+  final r = Round(id: (roundId ?? () => newId('rd'))(), myBookId: myBookId, index: (last?.index ?? 0) + 1, startedAt: d, createdAt: now, updatedAt: now);
+  return lib.copy(rounds: {...lib.rounds, r.id: r}, books: {...lib.books, myBookId: book.patch(status: ReadStatus.reading, currentPage: null, updatedAt: now)});
+}

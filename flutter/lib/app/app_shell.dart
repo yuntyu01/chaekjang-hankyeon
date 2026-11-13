@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 
 import '../features/bookmark/bookmarks_screen.dart';
 import '../domain/library.dart';
+import 'app_nav.dart';
 import '../features/home/home_screen.dart';
 import '../features/reading/finish_screen.dart';
 import '../features/settings/settings_screen.dart';
@@ -56,12 +57,33 @@ class _AppShellState extends State<AppShell> {
   void initState() {
     super.initState();
     // 지난 독서가 중간에 멈췄거나 끝낸 기록을 저장하지 않았으면 다시 켰을 때 묻는다(지금 앱 RecoveryDialog)
+    AppNav.instance.addListener(_nav);
     final reading = ReadingStore.instance;
     // 서재는 첫 화면이 뜬 뒤 미리 읽어 둔다(복구 창·다른 탭이 책을 바로 찾게)
     WidgetsBinding.instance.addPostFrameCallback((_) => LibraryModel.instance.load());
     reading.load().then((_) {
       if (mounted) WidgetsBinding.instance.addPostFrameCallback((_) => _askRecovery());
     }, onError: (_) {});
+  }
+
+  // 다른 화면에서 탭을 바꾸라고 했을 때
+  void _nav() {
+    final t = AppNav.instance.tab;
+    if (t == null || !mounted) return;
+    AppNav.instance.tab = null;
+    _select(t);
+  }
+
+  void _select(int i) => setState(() {
+        _index = i;
+        _opened.add(i);
+        MiniTimerPlace.instance.setTab(_tabPaths[i]);
+      });
+
+  @override
+  void dispose() {
+    AppNav.instance.removeListener(_nav);
+    super.dispose();
   }
 
   void _askRecovery() {
@@ -135,11 +157,7 @@ class _AppShellState extends State<AppShell> {
                           label: _tabs[i].label,
                           child: GestureDetector(
                             behavior: HitTestBehavior.opaque,
-                            onTap: () => setState(() {
-                              _index = i;
-                              _opened.add(i);
-                              MiniTimerPlace.instance.setTab(_tabPaths[i]);
-                            }),
+                            onTap: () => _select(i),
                             child: Center(child: _tabs[i].icon(i == _index ? AppColors.tabInk : AppColors.tabInkSoft, i == _index)),
                           ),
                         ),

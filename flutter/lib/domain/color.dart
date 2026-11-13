@@ -108,6 +108,9 @@ String _hsl(double h, double s, double l) => _toHex(_fromHsl(h, math.min(1, s), 
 
 const _accentFallback = ['#C9A27E', '#8FA695', '#9A97BD'];
 
+/// 갈피 색 고르기의 기본 색(표지 색 말고 직접 고를 때)
+const ribbonPalette = ['#C9A27E', '#D98A7C', '#E3A857', '#C9B458', '#8FA695', '#5B8C7A', '#7D9CC0', '#5276B4', '#9A97BD', '#B57BA6', '#A0695F', '#8A6F5C'];
+
 bool isNeutralColor(String hex) {
   final hsl = _toHsl(_parse(hex));
   return hsl[2] > 0.86 || hsl[2] < 0.14 || hsl[1] < 0.14;

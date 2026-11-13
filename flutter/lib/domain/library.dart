@@ -4,6 +4,9 @@ library;
 
 import 'dart:math' as math;
 
+/// 고친 사본에서 '주지 않음'(null = 비움과 구별)
+const Object _keep = Object();
+
 typedef Json = Map<String, Object?>;
 
 void _put(Json o, String key, Object? v) {
@@ -101,6 +104,21 @@ class MyBook {
   final num? rating, currentPage;
   final String? note, ribbonColor, bindingId, hiddenAt;
 
+  /// 고친 사본: 별점·감상·현재 쪽·갈피 색은 null을 주면 비운다(주지 않으면 그대로)
+  MyBook patch({ReadStatus? status, Object? rating = _keep, Object? note = _keep, Object? currentPage = _keep, Object? ribbonColor = _keep, Object? hiddenAt = _keep, required String updatedAt}) => MyBook(
+        id: id,
+        editionId: editionId,
+        status: status ?? this.status,
+        createdAt: createdAt,
+        updatedAt: updatedAt,
+        rating: identical(rating, _keep) ? this.rating : rating as num?,
+        note: identical(note, _keep) ? this.note : note as String?,
+        ribbonColor: identical(ribbonColor, _keep) ? this.ribbonColor : ribbonColor as String?,
+        currentPage: identical(currentPage, _keep) ? this.currentPage : currentPage as num?,
+        bindingId: bindingId,
+        hiddenAt: identical(hiddenAt, _keep) ? this.hiddenAt : hiddenAt as String?,
+      );
+
   /// 상태·현재 쪽을 바꾼 사본
   MyBook copyWith({ReadStatus? status, num? currentPage, required String updatedAt}) => MyBook(
         id: id,
@@ -136,6 +154,18 @@ class Round {
   /// YYYY-MM-DD. finishedAt이 있으면 이 회차는 완독
   final String? startedAt, finishedAt;
   final bool paused;
+
+  /// 날짜·보류만 바꾼 사본(startedAt·finishedAt에 null을 주면 비운다)
+  Round copyWith({Object? startedAt = _keep, Object? finishedAt = _keep, bool? paused, required String updatedAt}) => Round(
+        id: id,
+        myBookId: myBookId,
+        index: index,
+        createdAt: createdAt,
+        updatedAt: updatedAt,
+        startedAt: identical(startedAt, _keep) ? this.startedAt : startedAt as String?,
+        finishedAt: identical(finishedAt, _keep) ? this.finishedAt : finishedAt as String?,
+        paused: paused ?? this.paused,
+      );
 
   Json toJson() {
     final o = <String, Object?>{'id': id, 'myBookId': myBookId, 'index': index, 'createdAt': createdAt, 'updatedAt': updatedAt};

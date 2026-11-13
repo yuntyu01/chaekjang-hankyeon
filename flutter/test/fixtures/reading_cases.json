@@ -1504,5 +1504,1647 @@
     "durationMs": 90000
    }
   }
+ ],
+ "extraRounds": {
+  "finished": {
+   "rd_a": {
+    "id": "rd_a",
+    "myBookId": "b06",
+    "index": 1,
+    "startedAt": "2026-10-01",
+    "finishedAt": "2026-10-20",
+    "createdAt": "2026-10-01T00:00:00.000Z",
+    "updatedAt": "2026-10-20T00:00:00.000Z"
+   },
+   "rd_b": {
+    "id": "rd_b",
+    "myBookId": "b06",
+    "index": 2,
+    "startedAt": "2026-11-02",
+    "createdAt": "2026-11-02T00:00:00.000Z",
+    "updatedAt": "2026-11-02T00:00:00.000Z",
+    "finishedAt": "2026-11-10"
+   }
+  },
+  "emptyOpen": {
+   "rd_a": {
+    "id": "rd_a",
+    "myBookId": "b06",
+    "index": 1,
+    "startedAt": "2026-10-01",
+    "finishedAt": "2026-10-20",
+    "createdAt": "2026-10-01T00:00:00.000Z",
+    "updatedAt": "2026-10-20T00:00:00.000Z"
+   },
+   "rd_b": {
+    "id": "rd_b",
+    "myBookId": "b06",
+    "index": 2,
+    "startedAt": "2026-11-02",
+    "createdAt": "2026-11-02T00:00:00.000Z",
+    "updatedAt": "2026-11-02T00:00:00.000Z"
+   },
+   "rd_e": {
+    "id": "rd_e",
+    "myBookId": "b07",
+    "index": 1,
+    "createdAt": "2026-11-01T00:00:00.000Z",
+    "updatedAt": "2026-11-01T00:00:00.000Z"
+   }
+  }
+ },
+ "extraBooks": {
+  "finished": {
+   "b01": {
+    "id": "b01",
+    "editionId": "e-b01",
+    "status": "reading",
+    "createdAt": "2026-10-31T15:00:00.000Z",
+    "updatedAt": "2026-11-03T01:00:00.000Z"
+   },
+   "b02": {
+    "id": "b02",
+    "editionId": "e-b02",
+    "status": "reading",
+    "createdAt": "2026-10-31T15:00:00.000Z",
+    "updatedAt": "2026-10-31T15:00:00.000Z"
+   },
+   "b03": {
+    "id": "b03",
+    "editionId": "e-b03",
+    "status": "reading",
+    "createdAt": "2026-10-31T15:00:00.000Z",
+    "updatedAt": "2026-11-09T01:00:00.000Z"
+   },
+   "b04": {
+    "id": "b04",
+    "editionId": "e-b04",
+    "status": "reading",
+    "createdAt": "2026-10-31T15:00:00.000Z",
+    "updatedAt": "2026-10-31T15:00:00.000Z",
+    "hiddenAt": "2026-11-04T00:00:00.000Z"
+   },
+   "b05": {
+    "id": "b05",
+    "editionId": "e-b05",
+    "status": "paused",
+    "createdAt": "2026-10-31T15:00:00.000Z",
+    "updatedAt": "2026-10-31T15:00:00.000Z"
+   },
+   "b17": {
+    "id": "b17",
+    "editionId": "e-b17",
+    "status": "want",
+    "createdAt": "2026-10-31T15:00:00.000Z",
+    "updatedAt": "2026-10-31T15:00:00.000Z",
+    "currentPage": 30
+   },
+   "b06": {
+    "id": "b06",
+    "editionId": "e-b06",
+    "status": "read",
+    "createdAt": "2026-10-31T15:00:00.000Z",
+    "updatedAt": "2026-10-31T15:00:00.000Z",
+    "currentPage": 40
+   },
+   "b07": {
+    "id": "b07",
+    "editionId": "e-b07",
+    "status": "reading",
+    "createdAt": "2026-10-31T15:00:00.000Z",
+    "updatedAt": "2026-10-31T15:00:00.000Z"
+   },
+   "b08": {
+    "id": "b08",
+    "editionId": "e-b08",
+    "status": "reading",
+    "createdAt": "2026-10-31T15:00:00.000Z",
+    "updatedAt": "2026-10-31T15:00:00.000Z"
+   },
+   "b09": {
+    "id": "b09",
+    "editionId": "e-b09",
+    "status": "reading",
+    "createdAt": "2026-10-31T15:00:00.000Z",
+    "updatedAt": "2026-10-31T15:00:00.000Z"
+   },
+   "b10": {
+    "id": "b10",
+    "editionId": "e-b10",
+    "status": "reading",
+    "createdAt": "2026-10-31T15:00:00.000Z",
+    "updatedAt": "2026-10-31T15:00:00.000Z"
+   },
+   "b18": {
+    "id": "b18",
+    "editionId": "e-b18",
+    "status": "reading",
+    "createdAt": "2026-10-31T15:00:00.000Z",
+    "updatedAt": "2026-10-31T15:00:00.000Z"
+   },
+   "b11": {
+    "id": "b11",
+    "editionId": "e-b11",
+    "status": "reading",
+    "createdAt": "2026-10-31T15:00:00.000Z",
+    "updatedAt": "2026-10-31T15:00:00.000Z"
+   },
+   "b12": {
+    "id": "b12",
+    "editionId": "e-b12",
+    "status": "reading",
+    "createdAt": "2026-10-31T15:00:00.000Z",
+    "updatedAt": "2026-10-31T15:00:00.000Z"
+   },
+   "b13": {
+    "id": "b13",
+    "editionId": "e-b13",
+    "status": "reading",
+    "createdAt": "2026-10-31T15:00:00.000Z",
+    "updatedAt": "2026-10-31T15:00:00.000Z"
+   },
+   "b14": {
+    "id": "b14",
+    "editionId": "e-b14",
+    "status": "reading",
+    "createdAt": "2026-10-31T15:00:00.000Z",
+    "updatedAt": "2026-10-31T15:00:00.000Z"
+   },
+   "b15": {
+    "id": "b15",
+    "editionId": "e-b15",
+    "status": "reading",
+    "createdAt": "2026-10-31T15:00:00.000Z",
+    "updatedAt": "2026-10-31T15:00:00.000Z"
+   },
+   "b16": {
+    "id": "b16",
+    "editionId": "e-b16",
+    "status": "reading",
+    "createdAt": "2026-10-31T15:00:00.000Z",
+    "updatedAt": "2026-10-31T15:00:00.000Z"
+   },
+   "b19": {
+    "id": "b19",
+    "editionId": "e-b19",
+    "status": "reading",
+    "createdAt": "2026-10-31T15:00:00.000Z",
+    "updatedAt": "2026-10-31T15:00:00.000Z"
+   }
+  },
+  "emptyOpen": {
+   "b01": {
+    "id": "b01",
+    "editionId": "e-b01",
+    "status": "reading",
+    "createdAt": "2026-10-31T15:00:00.000Z",
+    "updatedAt": "2026-11-03T01:00:00.000Z"
+   },
+   "b02": {
+    "id": "b02",
+    "editionId": "e-b02",
+    "status": "reading",
+    "createdAt": "2026-10-31T15:00:00.000Z",
+    "updatedAt": "2026-10-31T15:00:00.000Z"
+   },
+   "b03": {
+    "id": "b03",
+    "editionId": "e-b03",
+    "status": "reading",
+    "createdAt": "2026-10-31T15:00:00.000Z",
+    "updatedAt": "2026-11-09T01:00:00.000Z"
+   },
+   "b04": {
+    "id": "b04",
+    "editionId": "e-b04",
+    "status": "reading",
+    "createdAt": "2026-10-31T15:00:00.000Z",
+    "updatedAt": "2026-10-31T15:00:00.000Z",
+    "hiddenAt": "2026-11-04T00:00:00.000Z"
+   },
+   "b05": {
+    "id": "b05",
+    "editionId": "e-b05",
+    "status": "paused",
+    "createdAt": "2026-10-31T15:00:00.000Z",
+    "updatedAt": "2026-10-31T15:00:00.000Z"
+   },
+   "b17": {
+    "id": "b17",
+    "editionId": "e-b17",
+    "status": "want",
+    "createdAt": "2026-10-31T15:00:00.000Z",
+    "updatedAt": "2026-10-31T15:00:00.000Z",
+    "currentPage": 30
+   },
+   "b06": {
+    "id": "b06",
+    "editionId": "e-b06",
+    "status": "reading",
+    "createdAt": "2026-10-31T15:00:00.000Z",
+    "updatedAt": "2026-10-31T15:00:00.000Z",
+    "currentPage": 40
+   },
+   "b07": {
+    "id": "b07",
+    "editionId": "e-b07",
+    "status": "reading",
+    "createdAt": "2026-10-31T15:00:00.000Z",
+    "updatedAt": "2026-10-31T15:00:00.000Z"
+   },
+   "b08": {
+    "id": "b08",
+    "editionId": "e-b08",
+    "status": "reading",
+    "createdAt": "2026-10-31T15:00:00.000Z",
+    "updatedAt": "2026-10-31T15:00:00.000Z"
+   },
+   "b09": {
+    "id": "b09",
+    "editionId": "e-b09",
+    "status": "reading",
+    "createdAt": "2026-10-31T15:00:00.000Z",
+    "updatedAt": "2026-10-31T15:00:00.000Z"
+   },
+   "b10": {
+    "id": "b10",
+    "editionId": "e-b10",
+    "status": "reading",
+    "createdAt": "2026-10-31T15:00:00.000Z",
+    "updatedAt": "2026-10-31T15:00:00.000Z"
+   },
+   "b18": {
+    "id": "b18",
+    "editionId": "e-b18",
+    "status": "reading",
+    "createdAt": "2026-10-31T15:00:00.000Z",
+    "updatedAt": "2026-10-31T15:00:00.000Z"
+   },
+   "b11": {
+    "id": "b11",
+    "editionId": "e-b11",
+    "status": "reading",
+    "createdAt": "2026-10-31T15:00:00.000Z",
+    "updatedAt": "2026-10-31T15:00:00.000Z"
+   },
+   "b12": {
+    "id": "b12",
+    "editionId": "e-b12",
+    "status": "reading",
+    "createdAt": "2026-10-31T15:00:00.000Z",
+    "updatedAt": "2026-10-31T15:00:00.000Z"
+   },
+   "b13": {
+    "id": "b13",
+    "editionId": "e-b13",
+    "status": "reading",
+    "createdAt": "2026-10-31T15:00:00.000Z",
+    "updatedAt": "2026-10-31T15:00:00.000Z"
+   },
+   "b14": {
+    "id": "b14",
+    "editionId": "e-b14",
+    "status": "reading",
+    "createdAt": "2026-10-31T15:00:00.000Z",
+    "updatedAt": "2026-10-31T15:00:00.000Z"
+   },
+   "b15": {
+    "id": "b15",
+    "editionId": "e-b15",
+    "status": "reading",
+    "createdAt": "2026-10-31T15:00:00.000Z",
+    "updatedAt": "2026-10-31T15:00:00.000Z"
+   },
+   "b16": {
+    "id": "b16",
+    "editionId": "e-b16",
+    "status": "reading",
+    "createdAt": "2026-10-31T15:00:00.000Z",
+    "updatedAt": "2026-10-31T15:00:00.000Z"
+   },
+   "b19": {
+    "id": "b19",
+    "editionId": "e-b19",
+    "status": "reading",
+    "createdAt": "2026-10-31T15:00:00.000Z",
+    "updatedAt": "2026-10-31T15:00:00.000Z"
+   }
+  }
+ },
+ "statuses": [
+  {
+   "lib": "sample",
+   "id": "b01",
+   "status": "want",
+   "changedRounds": [],
+   "newRounds": [],
+   "removedRounds": [],
+   "changedBooks": [
+    {
+     "id": "b01",
+     "editionId": "e-b01",
+     "status": "want",
+     "createdAt": "2026-10-31T15:00:00.000Z",
+     "updatedAt": "2026-11-13T12:00:00.000Z"
+    }
+   ]
+  },
+  {
+   "lib": "sample",
+   "id": "b01",
+   "status": "reading",
+   "changedRounds": [],
+   "newRounds": [],
+   "removedRounds": [],
+   "changedBooks": []
+  },
+  {
+   "lib": "sample",
+   "id": "b01",
+   "status": "read",
+   "changedRounds": [],
+   "newRounds": [
+    {
+     "myBookId": "b01",
+     "index": 1,
+     "startedAt": "2026-11-13",
+     "createdAt": "2026-11-13T12:00:00.000Z",
+     "updatedAt": "2026-11-13T12:00:00.000Z",
+     "finishedAt": "2026-11-13"
+    }
+   ],
+   "removedRounds": [],
+   "changedBooks": [
+    {
+     "id": "b01",
+     "editionId": "e-b01",
+     "status": "read",
+     "createdAt": "2026-10-31T15:00:00.000Z",
+     "updatedAt": "2026-11-13T12:00:00.000Z"
+    }
+   ]
+  },
+  {
+   "lib": "sample",
+   "id": "b01",
+   "status": "paused",
+   "changedRounds": [],
+   "newRounds": [
+    {
+     "myBookId": "b01",
+     "index": 1,
+     "startedAt": "2026-11-13",
+     "createdAt": "2026-11-13T12:00:00.000Z",
+     "updatedAt": "2026-11-13T12:00:00.000Z",
+     "paused": true
+    }
+   ],
+   "removedRounds": [],
+   "changedBooks": [
+    {
+     "id": "b01",
+     "editionId": "e-b01",
+     "status": "paused",
+     "createdAt": "2026-10-31T15:00:00.000Z",
+     "updatedAt": "2026-11-13T12:00:00.000Z"
+    }
+   ]
+  },
+  {
+   "lib": "sample",
+   "id": "b05",
+   "status": "want",
+   "changedRounds": [],
+   "newRounds": [],
+   "removedRounds": [],
+   "changedBooks": [
+    {
+     "id": "b05",
+     "editionId": "e-b05",
+     "status": "want",
+     "createdAt": "2026-10-31T15:00:00.000Z",
+     "updatedAt": "2026-11-13T12:00:00.000Z"
+    }
+   ]
+  },
+  {
+   "lib": "sample",
+   "id": "b05",
+   "status": "reading",
+   "changedRounds": [],
+   "newRounds": [
+    {
+     "myBookId": "b05",
+     "index": 1,
+     "startedAt": "2026-11-13",
+     "createdAt": "2026-11-13T12:00:00.000Z",
+     "updatedAt": "2026-11-13T12:00:00.000Z"
+    }
+   ],
+   "removedRounds": [],
+   "changedBooks": [
+    {
+     "id": "b05",
+     "editionId": "e-b05",
+     "status": "reading",
+     "createdAt": "2026-10-31T15:00:00.000Z",
+     "updatedAt": "2026-11-13T12:00:00.000Z"
+    }
+   ]
+  },
+  {
+   "lib": "sample",
+   "id": "b05",
+   "status": "read",
+   "changedRounds": [],
+   "newRounds": [
+    {
+     "myBookId": "b05",
+     "index": 1,
+     "startedAt": "2026-11-13",
+     "createdAt": "2026-11-13T12:00:00.000Z",
+     "updatedAt": "2026-11-13T12:00:00.000Z",
+     "finishedAt": "2026-11-13"
+    }
+   ],
+   "removedRounds": [],
+   "changedBooks": [
+    {
+     "id": "b05",
+     "editionId": "e-b05",
+     "status": "read",
+     "createdAt": "2026-10-31T15:00:00.000Z",
+     "updatedAt": "2026-11-13T12:00:00.000Z"
+    }
+   ]
+  },
+  {
+   "lib": "sample",
+   "id": "b05",
+   "status": "paused",
+   "changedRounds": [],
+   "newRounds": [],
+   "removedRounds": [],
+   "changedBooks": []
+  },
+  {
+   "lib": "sample",
+   "id": "b17",
+   "status": "want",
+   "changedRounds": [],
+   "newRounds": [],
+   "removedRounds": [],
+   "changedBooks": []
+  },
+  {
+   "lib": "sample",
+   "id": "b17",
+   "status": "reading",
+   "changedRounds": [],
+   "newRounds": [
+    {
+     "myBookId": "b17",
+     "index": 1,
+     "startedAt": "2026-11-13",
+     "createdAt": "2026-11-13T12:00:00.000Z",
+     "updatedAt": "2026-11-13T12:00:00.000Z"
+    }
+   ],
+   "removedRounds": [],
+   "changedBooks": [
+    {
+     "id": "b17",
+     "editionId": "e-b17",
+     "status": "reading",
+     "createdAt": "2026-10-31T15:00:00.000Z",
+     "updatedAt": "2026-11-13T12:00:00.000Z",
+     "currentPage": 30
+    }
+   ]
+  },
+  {
+   "lib": "sample",
+   "id": "b17",
+   "status": "read",
+   "changedRounds": [],
+   "newRounds": [
+    {
+     "myBookId": "b17",
+     "index": 1,
+     "startedAt": "2026-11-13",
+     "createdAt": "2026-11-13T12:00:00.000Z",
+     "updatedAt": "2026-11-13T12:00:00.000Z",
+     "finishedAt": "2026-11-13"
+    }
+   ],
+   "removedRounds": [],
+   "changedBooks": [
+    {
+     "id": "b17",
+     "editionId": "e-b17",
+     "status": "read",
+     "createdAt": "2026-10-31T15:00:00.000Z",
+     "updatedAt": "2026-11-13T12:00:00.000Z",
+     "currentPage": 30
+    }
+   ]
+  },
+  {
+   "lib": "sample",
+   "id": "b17",
+   "status": "paused",
+   "changedRounds": [],
+   "newRounds": [
+    {
+     "myBookId": "b17",
+     "index": 1,
+     "startedAt": "2026-11-13",
+     "createdAt": "2026-11-13T12:00:00.000Z",
+     "updatedAt": "2026-11-13T12:00:00.000Z",
+     "paused": true
+    }
+   ],
+   "removedRounds": [],
+   "changedBooks": [
+    {
+     "id": "b17",
+     "editionId": "e-b17",
+     "status": "paused",
+     "createdAt": "2026-10-31T15:00:00.000Z",
+     "updatedAt": "2026-11-13T12:00:00.000Z",
+     "currentPage": 30
+    }
+   ]
+  },
+  {
+   "lib": "sample",
+   "id": "b06",
+   "status": "want",
+   "changedRounds": [],
+   "newRounds": [],
+   "removedRounds": [],
+   "changedBooks": [
+    {
+     "id": "b06",
+     "editionId": "e-b06",
+     "status": "want",
+     "createdAt": "2026-10-31T15:00:00.000Z",
+     "updatedAt": "2026-11-13T12:00:00.000Z",
+     "currentPage": 40
+    }
+   ]
+  },
+  {
+   "lib": "sample",
+   "id": "b06",
+   "status": "reading",
+   "changedRounds": [],
+   "newRounds": [],
+   "removedRounds": [],
+   "changedBooks": []
+  },
+  {
+   "lib": "sample",
+   "id": "b06",
+   "status": "read",
+   "changedRounds": [
+    {
+     "id": "rd_b",
+     "myBookId": "b06",
+     "index": 2,
+     "startedAt": "2026-11-02",
+     "createdAt": "2026-11-02T00:00:00.000Z",
+     "updatedAt": "2026-11-13T12:00:00.000Z",
+     "paused": false,
+     "finishedAt": "2026-11-13"
+    }
+   ],
+   "newRounds": [],
+   "removedRounds": [],
+   "changedBooks": [
+    {
+     "id": "b06",
+     "editionId": "e-b06",
+     "status": "read",
+     "createdAt": "2026-10-31T15:00:00.000Z",
+     "updatedAt": "2026-11-13T12:00:00.000Z",
+     "currentPage": 40
+    }
+   ]
+  },
+  {
+   "lib": "sample",
+   "id": "b06",
+   "status": "paused",
+   "changedRounds": [
+    {
+     "id": "rd_b",
+     "myBookId": "b06",
+     "index": 2,
+     "startedAt": "2026-11-02",
+     "createdAt": "2026-11-02T00:00:00.000Z",
+     "updatedAt": "2026-11-13T12:00:00.000Z",
+     "paused": true
+    }
+   ],
+   "newRounds": [],
+   "removedRounds": [],
+   "changedBooks": [
+    {
+     "id": "b06",
+     "editionId": "e-b06",
+     "status": "paused",
+     "createdAt": "2026-10-31T15:00:00.000Z",
+     "updatedAt": "2026-11-13T12:00:00.000Z",
+     "currentPage": 40
+    }
+   ]
+  },
+  {
+   "lib": "sample",
+   "id": "b07",
+   "status": "want",
+   "changedRounds": [],
+   "newRounds": [],
+   "removedRounds": [],
+   "changedBooks": [
+    {
+     "id": "b07",
+     "editionId": "e-b07",
+     "status": "want",
+     "createdAt": "2026-10-31T15:00:00.000Z",
+     "updatedAt": "2026-11-13T12:00:00.000Z"
+    }
+   ]
+  },
+  {
+   "lib": "sample",
+   "id": "b07",
+   "status": "reading",
+   "changedRounds": [],
+   "newRounds": [],
+   "removedRounds": [],
+   "changedBooks": []
+  },
+  {
+   "lib": "sample",
+   "id": "b07",
+   "status": "read",
+   "changedRounds": [],
+   "newRounds": [
+    {
+     "myBookId": "b07",
+     "index": 1,
+     "startedAt": "2026-11-13",
+     "createdAt": "2026-11-13T12:00:00.000Z",
+     "updatedAt": "2026-11-13T12:00:00.000Z",
+     "finishedAt": "2026-11-13"
+    }
+   ],
+   "removedRounds": [],
+   "changedBooks": [
+    {
+     "id": "b07",
+     "editionId": "e-b07",
+     "status": "read",
+     "createdAt": "2026-10-31T15:00:00.000Z",
+     "updatedAt": "2026-11-13T12:00:00.000Z"
+    }
+   ]
+  },
+  {
+   "lib": "sample",
+   "id": "b07",
+   "status": "paused",
+   "changedRounds": [],
+   "newRounds": [
+    {
+     "myBookId": "b07",
+     "index": 1,
+     "startedAt": "2026-11-13",
+     "createdAt": "2026-11-13T12:00:00.000Z",
+     "updatedAt": "2026-11-13T12:00:00.000Z",
+     "paused": true
+    }
+   ],
+   "removedRounds": [],
+   "changedBooks": [
+    {
+     "id": "b07",
+     "editionId": "e-b07",
+     "status": "paused",
+     "createdAt": "2026-10-31T15:00:00.000Z",
+     "updatedAt": "2026-11-13T12:00:00.000Z"
+    }
+   ]
+  },
+  {
+   "lib": "finished",
+   "id": "b01",
+   "status": "want",
+   "changedRounds": [],
+   "newRounds": [],
+   "removedRounds": [],
+   "changedBooks": [
+    {
+     "id": "b01",
+     "editionId": "e-b01",
+     "status": "want",
+     "createdAt": "2026-10-31T15:00:00.000Z",
+     "updatedAt": "2026-11-13T12:00:00.000Z"
+    }
+   ]
+  },
+  {
+   "lib": "finished",
+   "id": "b01",
+   "status": "reading",
+   "changedRounds": [],
+   "newRounds": [],
+   "removedRounds": [],
+   "changedBooks": []
+  },
+  {
+   "lib": "finished",
+   "id": "b01",
+   "status": "read",
+   "changedRounds": [],
+   "newRounds": [
+    {
+     "myBookId": "b01",
+     "index": 1,
+     "startedAt": "2026-11-13",
+     "createdAt": "2026-11-13T12:00:00.000Z",
+     "updatedAt": "2026-11-13T12:00:00.000Z",
+     "finishedAt": "2026-11-13"
+    }
+   ],
+   "removedRounds": [],
+   "changedBooks": [
+    {
+     "id": "b01",
+     "editionId": "e-b01",
+     "status": "read",
+     "createdAt": "2026-10-31T15:00:00.000Z",
+     "updatedAt": "2026-11-13T12:00:00.000Z"
+    }
+   ]
+  },
+  {
+   "lib": "finished",
+   "id": "b01",
+   "status": "paused",
+   "changedRounds": [],
+   "newRounds": [
+    {
+     "myBookId": "b01",
+     "index": 1,
+     "startedAt": "2026-11-13",
+     "createdAt": "2026-11-13T12:00:00.000Z",
+     "updatedAt": "2026-11-13T12:00:00.000Z",
+     "paused": true
+    }
+   ],
+   "removedRounds": [],
+   "changedBooks": [
+    {
+     "id": "b01",
+     "editionId": "e-b01",
+     "status": "paused",
+     "createdAt": "2026-10-31T15:00:00.000Z",
+     "updatedAt": "2026-11-13T12:00:00.000Z"
+    }
+   ]
+  },
+  {
+   "lib": "finished",
+   "id": "b05",
+   "status": "want",
+   "changedRounds": [],
+   "newRounds": [],
+   "removedRounds": [],
+   "changedBooks": [
+    {
+     "id": "b05",
+     "editionId": "e-b05",
+     "status": "want",
+     "createdAt": "2026-10-31T15:00:00.000Z",
+     "updatedAt": "2026-11-13T12:00:00.000Z"
+    }
+   ]
+  },
+  {
+   "lib": "finished",
+   "id": "b05",
+   "status": "reading",
+   "changedRounds": [],
+   "newRounds": [
+    {
+     "myBookId": "b05",
+     "index": 1,
+     "startedAt": "2026-11-13",
+     "createdAt": "2026-11-13T12:00:00.000Z",
+     "updatedAt": "2026-11-13T12:00:00.000Z"
+    }
+   ],
+   "removedRounds": [],
+   "changedBooks": [
+    {
+     "id": "b05",
+     "editionId": "e-b05",
+     "status": "reading",
+     "createdAt": "2026-10-31T15:00:00.000Z",
+     "updatedAt": "2026-11-13T12:00:00.000Z"
+    }
+   ]
+  },
+  {
+   "lib": "finished",
+   "id": "b05",
+   "status": "read",
+   "changedRounds": [],
+   "newRounds": [
+    {
+     "myBookId": "b05",
+     "index": 1,
+     "startedAt": "2026-11-13",
+     "createdAt": "2026-11-13T12:00:00.000Z",
+     "updatedAt": "2026-11-13T12:00:00.000Z",
+     "finishedAt": "2026-11-13"
+    }
+   ],
+   "removedRounds": [],
+   "changedBooks": [
+    {
+     "id": "b05",
+     "editionId": "e-b05",
+     "status": "read",
+     "createdAt": "2026-10-31T15:00:00.000Z",
+     "updatedAt": "2026-11-13T12:00:00.000Z"
+    }
+   ]
+  },
+  {
+   "lib": "finished",
+   "id": "b05",
+   "status": "paused",
+   "changedRounds": [],
+   "newRounds": [],
+   "removedRounds": [],
+   "changedBooks": []
+  },
+  {
+   "lib": "finished",
+   "id": "b17",
+   "status": "want",
+   "changedRounds": [],
+   "newRounds": [],
+   "removedRounds": [],
+   "changedBooks": []
+  },
+  {
+   "lib": "finished",
+   "id": "b17",
+   "status": "reading",
+   "changedRounds": [],
+   "newRounds": [
+    {
+     "myBookId": "b17",
+     "index": 1,
+     "startedAt": "2026-11-13",
+     "createdAt": "2026-11-13T12:00:00.000Z",
+     "updatedAt": "2026-11-13T12:00:00.000Z"
+    }
+   ],
+   "removedRounds": [],
+   "changedBooks": [
+    {
+     "id": "b17",
+     "editionId": "e-b17",
+     "status": "reading",
+     "createdAt": "2026-10-31T15:00:00.000Z",
+     "updatedAt": "2026-11-13T12:00:00.000Z",
+     "currentPage": 30
+    }
+   ]
+  },
+  {
+   "lib": "finished",
+   "id": "b17",
+   "status": "read",
+   "changedRounds": [],
+   "newRounds": [
+    {
+     "myBookId": "b17",
+     "index": 1,
+     "startedAt": "2026-11-13",
+     "createdAt": "2026-11-13T12:00:00.000Z",
+     "updatedAt": "2026-11-13T12:00:00.000Z",
+     "finishedAt": "2026-11-13"
+    }
+   ],
+   "removedRounds": [],
+   "changedBooks": [
+    {
+     "id": "b17",
+     "editionId": "e-b17",
+     "status": "read",
+     "createdAt": "2026-10-31T15:00:00.000Z",
+     "updatedAt": "2026-11-13T12:00:00.000Z",
+     "currentPage": 30
+    }
+   ]
+  },
+  {
+   "lib": "finished",
+   "id": "b17",
+   "status": "paused",
+   "changedRounds": [],
+   "newRounds": [
+    {
+     "myBookId": "b17",
+     "index": 1,
+     "startedAt": "2026-11-13",
+     "createdAt": "2026-11-13T12:00:00.000Z",
+     "updatedAt": "2026-11-13T12:00:00.000Z",
+     "paused": true
+    }
+   ],
+   "removedRounds": [],
+   "changedBooks": [
+    {
+     "id": "b17",
+     "editionId": "e-b17",
+     "status": "paused",
+     "createdAt": "2026-10-31T15:00:00.000Z",
+     "updatedAt": "2026-11-13T12:00:00.000Z",
+     "currentPage": 30
+    }
+   ]
+  },
+  {
+   "lib": "finished",
+   "id": "b06",
+   "status": "want",
+   "changedRounds": [],
+   "newRounds": [],
+   "removedRounds": [],
+   "changedBooks": [
+    {
+     "id": "b06",
+     "editionId": "e-b06",
+     "status": "want",
+     "createdAt": "2026-10-31T15:00:00.000Z",
+     "updatedAt": "2026-11-13T12:00:00.000Z",
+     "currentPage": 40
+    }
+   ]
+  },
+  {
+   "lib": "finished",
+   "id": "b06",
+   "status": "reading",
+   "changedRounds": [],
+   "newRounds": [
+    {
+     "myBookId": "b06",
+     "index": 3,
+     "startedAt": "2026-11-13",
+     "createdAt": "2026-11-13T12:00:00.000Z",
+     "updatedAt": "2026-11-13T12:00:00.000Z"
+    }
+   ],
+   "removedRounds": [],
+   "changedBooks": [
+    {
+     "id": "b06",
+     "editionId": "e-b06",
+     "status": "reading",
+     "createdAt": "2026-10-31T15:00:00.000Z",
+     "updatedAt": "2026-11-13T12:00:00.000Z"
+    }
+   ]
+  },
+  {
+   "lib": "finished",
+   "id": "b06",
+   "status": "read",
+   "changedRounds": [],
+   "newRounds": [],
+   "removedRounds": [],
+   "changedBooks": []
+  },
+  {
+   "lib": "finished",
+   "id": "b06",
+   "status": "paused",
+   "changedRounds": [],
+   "newRounds": [
+    {
+     "myBookId": "b06",
+     "index": 3,
+     "startedAt": "2026-11-13",
+     "createdAt": "2026-11-13T12:00:00.000Z",
+     "updatedAt": "2026-11-13T12:00:00.000Z",
+     "paused": true
+    }
+   ],
+   "removedRounds": [],
+   "changedBooks": [
+    {
+     "id": "b06",
+     "editionId": "e-b06",
+     "status": "paused",
+     "createdAt": "2026-10-31T15:00:00.000Z",
+     "updatedAt": "2026-11-13T12:00:00.000Z"
+    }
+   ]
+  },
+  {
+   "lib": "finished",
+   "id": "b07",
+   "status": "want",
+   "changedRounds": [],
+   "newRounds": [],
+   "removedRounds": [],
+   "changedBooks": [
+    {
+     "id": "b07",
+     "editionId": "e-b07",
+     "status": "want",
+     "createdAt": "2026-10-31T15:00:00.000Z",
+     "updatedAt": "2026-11-13T12:00:00.000Z"
+    }
+   ]
+  },
+  {
+   "lib": "finished",
+   "id": "b07",
+   "status": "reading",
+   "changedRounds": [],
+   "newRounds": [],
+   "removedRounds": [],
+   "changedBooks": []
+  },
+  {
+   "lib": "finished",
+   "id": "b07",
+   "status": "read",
+   "changedRounds": [],
+   "newRounds": [
+    {
+     "myBookId": "b07",
+     "index": 1,
+     "startedAt": "2026-11-13",
+     "createdAt": "2026-11-13T12:00:00.000Z",
+     "updatedAt": "2026-11-13T12:00:00.000Z",
+     "finishedAt": "2026-11-13"
+    }
+   ],
+   "removedRounds": [],
+   "changedBooks": [
+    {
+     "id": "b07",
+     "editionId": "e-b07",
+     "status": "read",
+     "createdAt": "2026-10-31T15:00:00.000Z",
+     "updatedAt": "2026-11-13T12:00:00.000Z"
+    }
+   ]
+  },
+  {
+   "lib": "finished",
+   "id": "b07",
+   "status": "paused",
+   "changedRounds": [],
+   "newRounds": [
+    {
+     "myBookId": "b07",
+     "index": 1,
+     "startedAt": "2026-11-13",
+     "createdAt": "2026-11-13T12:00:00.000Z",
+     "updatedAt": "2026-11-13T12:00:00.000Z",
+     "paused": true
+    }
+   ],
+   "removedRounds": [],
+   "changedBooks": [
+    {
+     "id": "b07",
+     "editionId": "e-b07",
+     "status": "paused",
+     "createdAt": "2026-10-31T15:00:00.000Z",
+     "updatedAt": "2026-11-13T12:00:00.000Z"
+    }
+   ]
+  },
+  {
+   "lib": "emptyOpen",
+   "id": "b01",
+   "status": "want",
+   "changedRounds": [],
+   "newRounds": [],
+   "removedRounds": [],
+   "changedBooks": [
+    {
+     "id": "b01",
+     "editionId": "e-b01",
+     "status": "want",
+     "createdAt": "2026-10-31T15:00:00.000Z",
+     "updatedAt": "2026-11-13T12:00:00.000Z"
+    }
+   ]
+  },
+  {
+   "lib": "emptyOpen",
+   "id": "b01",
+   "status": "reading",
+   "changedRounds": [],
+   "newRounds": [],
+   "removedRounds": [],
+   "changedBooks": []
+  },
+  {
+   "lib": "emptyOpen",
+   "id": "b01",
+   "status": "read",
+   "changedRounds": [],
+   "newRounds": [
+    {
+     "myBookId": "b01",
+     "index": 1,
+     "startedAt": "2026-11-13",
+     "createdAt": "2026-11-13T12:00:00.000Z",
+     "updatedAt": "2026-11-13T12:00:00.000Z",
+     "finishedAt": "2026-11-13"
+    }
+   ],
+   "removedRounds": [],
+   "changedBooks": [
+    {
+     "id": "b01",
+     "editionId": "e-b01",
+     "status": "read",
+     "createdAt": "2026-10-31T15:00:00.000Z",
+     "updatedAt": "2026-11-13T12:00:00.000Z"
+    }
+   ]
+  },
+  {
+   "lib": "emptyOpen",
+   "id": "b01",
+   "status": "paused",
+   "changedRounds": [],
+   "newRounds": [
+    {
+     "myBookId": "b01",
+     "index": 1,
+     "startedAt": "2026-11-13",
+     "createdAt": "2026-11-13T12:00:00.000Z",
+     "updatedAt": "2026-11-13T12:00:00.000Z",
+     "paused": true
+    }
+   ],
+   "removedRounds": [],
+   "changedBooks": [
+    {
+     "id": "b01",
+     "editionId": "e-b01",
+     "status": "paused",
+     "createdAt": "2026-10-31T15:00:00.000Z",
+     "updatedAt": "2026-11-13T12:00:00.000Z"
+    }
+   ]
+  },
+  {
+   "lib": "emptyOpen",
+   "id": "b05",
+   "status": "want",
+   "changedRounds": [],
+   "newRounds": [],
+   "removedRounds": [],
+   "changedBooks": [
+    {
+     "id": "b05",
+     "editionId": "e-b05",
+     "status": "want",
+     "createdAt": "2026-10-31T15:00:00.000Z",
+     "updatedAt": "2026-11-13T12:00:00.000Z"
+    }
+   ]
+  },
+  {
+   "lib": "emptyOpen",
+   "id": "b05",
+   "status": "reading",
+   "changedRounds": [],
+   "newRounds": [
+    {
+     "myBookId": "b05",
+     "index": 1,
+     "startedAt": "2026-11-13",
+     "createdAt": "2026-11-13T12:00:00.000Z",
+     "updatedAt": "2026-11-13T12:00:00.000Z"
+    }
+   ],
+   "removedRounds": [],
+   "changedBooks": [
+    {
+     "id": "b05",
+     "editionId": "e-b05",
+     "status": "reading",
+     "createdAt": "2026-10-31T15:00:00.000Z",
+     "updatedAt": "2026-11-13T12:00:00.000Z"
+    }
+   ]
+  },
+  {
+   "lib": "emptyOpen",
+   "id": "b05",
+   "status": "read",
+   "changedRounds": [],
+   "newRounds": [
+    {
+     "myBookId": "b05",
+     "index": 1,
+     "startedAt": "2026-11-13",
+     "createdAt": "2026-11-13T12:00:00.000Z",
+     "updatedAt": "2026-11-13T12:00:00.000Z",
+     "finishedAt": "2026-11-13"
+    }
+   ],
+   "removedRounds": [],
+   "changedBooks": [
+    {
+     "id": "b05",
+     "editionId": "e-b05",
+     "status": "read",
+     "createdAt": "2026-10-31T15:00:00.000Z",
+     "updatedAt": "2026-11-13T12:00:00.000Z"
+    }
+   ]
+  },
+  {
+   "lib": "emptyOpen",
+   "id": "b05",
+   "status": "paused",
+   "changedRounds": [],
+   "newRounds": [],
+   "removedRounds": [],
+   "changedBooks": []
+  },
+  {
+   "lib": "emptyOpen",
+   "id": "b17",
+   "status": "want",
+   "changedRounds": [],
+   "newRounds": [],
+   "removedRounds": [],
+   "changedBooks": []
+  },
+  {
+   "lib": "emptyOpen",
+   "id": "b17",
+   "status": "reading",
+   "changedRounds": [],
+   "newRounds": [
+    {
+     "myBookId": "b17",
+     "index": 1,
+     "startedAt": "2026-11-13",
+     "createdAt": "2026-11-13T12:00:00.000Z",
+     "updatedAt": "2026-11-13T12:00:00.000Z"
+    }
+   ],
+   "removedRounds": [],
+   "changedBooks": [
+    {
+     "id": "b17",
+     "editionId": "e-b17",
+     "status": "reading",
+     "createdAt": "2026-10-31T15:00:00.000Z",
+     "updatedAt": "2026-11-13T12:00:00.000Z",
+     "currentPage": 30
+    }
+   ]
+  },
+  {
+   "lib": "emptyOpen",
+   "id": "b17",
+   "status": "read",
+   "changedRounds": [],
+   "newRounds": [
+    {
+     "myBookId": "b17",
+     "index": 1,
+     "startedAt": "2026-11-13",
+     "createdAt": "2026-11-13T12:00:00.000Z",
+     "updatedAt": "2026-11-13T12:00:00.000Z",
+     "finishedAt": "2026-11-13"
+    }
+   ],
+   "removedRounds": [],
+   "changedBooks": [
+    {
+     "id": "b17",
+     "editionId": "e-b17",
+     "status": "read",
+     "createdAt": "2026-10-31T15:00:00.000Z",
+     "updatedAt": "2026-11-13T12:00:00.000Z",
+     "currentPage": 30
+    }
+   ]
+  },
+  {
+   "lib": "emptyOpen",
+   "id": "b17",
+   "status": "paused",
+   "changedRounds": [],
+   "newRounds": [
+    {
+     "myBookId": "b17",
+     "index": 1,
+     "startedAt": "2026-11-13",
+     "createdAt": "2026-11-13T12:00:00.000Z",
+     "updatedAt": "2026-11-13T12:00:00.000Z",
+     "paused": true
+    }
+   ],
+   "removedRounds": [],
+   "changedBooks": [
+    {
+     "id": "b17",
+     "editionId": "e-b17",
+     "status": "paused",
+     "createdAt": "2026-10-31T15:00:00.000Z",
+     "updatedAt": "2026-11-13T12:00:00.000Z",
+     "currentPage": 30
+    }
+   ]
+  },
+  {
+   "lib": "emptyOpen",
+   "id": "b06",
+   "status": "want",
+   "changedRounds": [],
+   "newRounds": [],
+   "removedRounds": [],
+   "changedBooks": [
+    {
+     "id": "b06",
+     "editionId": "e-b06",
+     "status": "want",
+     "createdAt": "2026-10-31T15:00:00.000Z",
+     "updatedAt": "2026-11-13T12:00:00.000Z",
+     "currentPage": 40
+    }
+   ]
+  },
+  {
+   "lib": "emptyOpen",
+   "id": "b06",
+   "status": "reading",
+   "changedRounds": [],
+   "newRounds": [],
+   "removedRounds": [],
+   "changedBooks": []
+  },
+  {
+   "lib": "emptyOpen",
+   "id": "b06",
+   "status": "read",
+   "changedRounds": [
+    {
+     "id": "rd_b",
+     "myBookId": "b06",
+     "index": 2,
+     "startedAt": "2026-11-02",
+     "createdAt": "2026-11-02T00:00:00.000Z",
+     "updatedAt": "2026-11-13T12:00:00.000Z",
+     "paused": false,
+     "finishedAt": "2026-11-13"
+    }
+   ],
+   "newRounds": [],
+   "removedRounds": [],
+   "changedBooks": [
+    {
+     "id": "b06",
+     "editionId": "e-b06",
+     "status": "read",
+     "createdAt": "2026-10-31T15:00:00.000Z",
+     "updatedAt": "2026-11-13T12:00:00.000Z",
+     "currentPage": 40
+    }
+   ]
+  },
+  {
+   "lib": "emptyOpen",
+   "id": "b06",
+   "status": "paused",
+   "changedRounds": [
+    {
+     "id": "rd_b",
+     "myBookId": "b06",
+     "index": 2,
+     "startedAt": "2026-11-02",
+     "createdAt": "2026-11-02T00:00:00.000Z",
+     "updatedAt": "2026-11-13T12:00:00.000Z",
+     "paused": true
+    }
+   ],
+   "newRounds": [],
+   "removedRounds": [],
+   "changedBooks": [
+    {
+     "id": "b06",
+     "editionId": "e-b06",
+     "status": "paused",
+     "createdAt": "2026-10-31T15:00:00.000Z",
+     "updatedAt": "2026-11-13T12:00:00.000Z",
+     "currentPage": 40
+    }
+   ]
+  },
+  {
+   "lib": "emptyOpen",
+   "id": "b07",
+   "status": "want",
+   "changedRounds": [],
+   "newRounds": [],
+   "removedRounds": [
+    "rd_e"
+   ],
+   "changedBooks": [
+    {
+     "id": "b07",
+     "editionId": "e-b07",
+     "status": "want",
+     "createdAt": "2026-10-31T15:00:00.000Z",
+     "updatedAt": "2026-11-13T12:00:00.000Z"
+    }
+   ]
+  },
+  {
+   "lib": "emptyOpen",
+   "id": "b07",
+   "status": "reading",
+   "changedRounds": [],
+   "newRounds": [],
+   "removedRounds": [],
+   "changedBooks": []
+  },
+  {
+   "lib": "emptyOpen",
+   "id": "b07",
+   "status": "read",
+   "changedRounds": [
+    {
+     "id": "rd_e",
+     "myBookId": "b07",
+     "index": 1,
+     "createdAt": "2026-11-01T00:00:00.000Z",
+     "updatedAt": "2026-11-13T12:00:00.000Z",
+     "paused": false,
+     "finishedAt": "2026-11-13"
+    }
+   ],
+   "newRounds": [],
+   "removedRounds": [],
+   "changedBooks": [
+    {
+     "id": "b07",
+     "editionId": "e-b07",
+     "status": "read",
+     "createdAt": "2026-10-31T15:00:00.000Z",
+     "updatedAt": "2026-11-13T12:00:00.000Z"
+    }
+   ]
+  },
+  {
+   "lib": "emptyOpen",
+   "id": "b07",
+   "status": "paused",
+   "changedRounds": [
+    {
+     "id": "rd_e",
+     "myBookId": "b07",
+     "index": 1,
+     "createdAt": "2026-11-01T00:00:00.000Z",
+     "updatedAt": "2026-11-13T12:00:00.000Z",
+     "paused": true,
+     "startedAt": "2026-11-13"
+    }
+   ],
+   "newRounds": [],
+   "removedRounds": [],
+   "changedBooks": [
+    {
+     "id": "b07",
+     "editionId": "e-b07",
+     "status": "paused",
+     "createdAt": "2026-10-31T15:00:00.000Z",
+     "updatedAt": "2026-11-13T12:00:00.000Z"
+    }
+   ]
+  }
+ ],
+ "rereads": [
+  {
+   "lib": "sample",
+   "id": "b01",
+   "changedRounds": [],
+   "newRounds": [
+    {
+     "myBookId": "b01",
+     "index": 1,
+     "startedAt": "2026-11-13",
+     "createdAt": "2026-11-13T12:00:00.000Z",
+     "updatedAt": "2026-11-13T12:00:00.000Z"
+    }
+   ],
+   "removedRounds": [],
+   "changedBooks": [
+    {
+     "id": "b01",
+     "editionId": "e-b01",
+     "status": "reading",
+     "createdAt": "2026-10-31T15:00:00.000Z",
+     "updatedAt": "2026-11-13T12:00:00.000Z"
+    }
+   ]
+  },
+  {
+   "lib": "sample",
+   "id": "b06",
+   "changedRounds": [],
+   "newRounds": [],
+   "removedRounds": [],
+   "changedBooks": []
+  },
+  {
+   "lib": "sample",
+   "id": "missing",
+   "changedRounds": [],
+   "newRounds": [],
+   "removedRounds": [],
+   "changedBooks": []
+  },
+  {
+   "lib": "finished",
+   "id": "b01",
+   "changedRounds": [],
+   "newRounds": [
+    {
+     "myBookId": "b01",
+     "index": 1,
+     "startedAt": "2026-11-13",
+     "createdAt": "2026-11-13T12:00:00.000Z",
+     "updatedAt": "2026-11-13T12:00:00.000Z"
+    }
+   ],
+   "removedRounds": [],
+   "changedBooks": [
+    {
+     "id": "b01",
+     "editionId": "e-b01",
+     "status": "reading",
+     "createdAt": "2026-10-31T15:00:00.000Z",
+     "updatedAt": "2026-11-13T12:00:00.000Z"
+    }
+   ]
+  },
+  {
+   "lib": "finished",
+   "id": "b06",
+   "changedRounds": [],
+   "newRounds": [
+    {
+     "myBookId": "b06",
+     "index": 3,
+     "startedAt": "2026-11-13",
+     "createdAt": "2026-11-13T12:00:00.000Z",
+     "updatedAt": "2026-11-13T12:00:00.000Z"
+    }
+   ],
+   "removedRounds": [],
+   "changedBooks": [
+    {
+     "id": "b06",
+     "editionId": "e-b06",
+     "status": "reading",
+     "createdAt": "2026-10-31T15:00:00.000Z",
+     "updatedAt": "2026-11-13T12:00:00.000Z"
+    }
+   ]
+  },
+  {
+   "lib": "finished",
+   "id": "missing",
+   "changedRounds": [],
+   "newRounds": [],
+   "removedRounds": [],
+   "changedBooks": []
+  }
  ]
 }

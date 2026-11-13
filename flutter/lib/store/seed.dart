@@ -46,7 +46,10 @@ Future<void> _seed() async {
       final eid = 'e-${b.id}', gid = 'g-${b.id}';
       await t.insert('editions', {
         'id': eid, 'title': b.title, 'publisher': b.publisher, 'page_count': b.pages, 'width_mm': b.widthMm,
-        'height_mm': b.heightMm, 'cover_uri': _coverOf(b.goods), 'source': 'seed', 'created_at': now, 'updated_at': now,
+        'height_mm': b.heightMm, 'cover_uri': _coverOf(b.goods),
+        // 지금 앱 예시 서재(realLibrarySeed)처럼 YES24 검색으로 넣은 책: 도서 정보 출처와 판매 페이지 줄이 보인다
+        'cover_source': 'api', 'source': 'search', 'source_name': 'YES24', 'link': 'https://www.yes24.com/product/goods/${b.goods}',
+        'created_at': now, 'updated_at': now,
       });
       await t.insert('edition_authors', {'edition_id': eid, 'position': 0, 'name': b.author});
       await t.insert('bindings', {

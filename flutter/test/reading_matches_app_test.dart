@@ -126,4 +126,43 @@ void main() {
       expect(norm(f.toJson()), norm(c['out']), reason: jsonEncode(c));
     }
   });
+
+  test('읽기 상태 바꾸기·다시 읽기', () {
+    Library libNamed(String name) {
+      if (name == 'sample') return lib;
+      return Library(
+        books: {for (final e in ((d['extraBooks'] as J)[name] as J).entries) e.key: _book(e.value as J)},
+        rounds: {for (final e in ((d['extraRounds'] as J)[name] as J).entries) e.key: _round(e.value as J)},
+        sessions: lib.sessions,
+        editions: lib.editions,
+      );
+    }
+
+    // 지금 앱은 paused:false를 적기도 한다(없음과 같은 뜻)
+    Object? clean(Object? v) => switch (v) {
+          Map m => {for (final e in m.entries) if (!(e.key == 'paused' && e.value == false)) e.key: clean(e.value)},
+          List l => [for (final x in l) clean(x)],
+          _ => v,
+        };
+    void check(Library before, Library after, J c) {
+      final changed = [for (final r in after.rounds.values) if (before.rounds[r.id] != null && !identical(before.rounds[r.id], r)) r.toJson()];
+      final added = [for (final r in after.rounds.values) if (before.rounds[r.id] == null) (r.toJson()..remove('id'))];
+      final removed = [for (final id in before.rounds.keys) if (after.rounds[id] == null) id];
+      final books = [for (final b in after.books.values) if (!identical(before.books[b.id], b)) b.toJson()];
+      final why = '${c['lib']} ${c['id']} ${c['status'] ?? 'reread'}';
+      expect(clean(norm(changed)), clean(norm(c['changedRounds'])), reason: '$why 바뀐 회차');
+      expect(clean(norm(added)), clean(norm(c['newRounds'])), reason: '$why 새 회차');
+      expect(removed, c['removedRounds'], reason: '$why 지운 회차');
+      expect(clean(norm(books)), clean(norm(c['changedBooks'])), reason: '$why 책');
+    }
+
+    for (final c in (d['statuses'] as List).cast<J>()) {
+      final before = libNamed(c['lib']);
+      check(before, applyStatus(before, c['id'], readStatusOf(c['status']), d['now'], day: '2026-11-13'), c);
+    }
+    for (final c in (d['rereads'] as List).cast<J>()) {
+      final before = libNamed(c['lib']);
+      check(before, rereadRound(before, c['id'], d['now'], day: '2026-11-13'), c);
+    }
+  });
 }

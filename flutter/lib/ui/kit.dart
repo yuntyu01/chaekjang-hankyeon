@@ -1500,3 +1500,168 @@ class BrandFooter extends StatelessWidget {
         ),
       );
 }
+
+/// 별점(1~5, 같은 별을 다시 누르면 지운다). onChange가 없으면 보이기만
+class Stars extends StatelessWidget {
+  const Stars({super.key, this.value, this.onChange, this.size = 24, this.color = AppColors.star});
+  final num? value;
+  final ValueChanged<int?>? onChange;
+  final double size;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) => Row(mainAxisSize: MainAxisSize.min, children: [
+        for (var n = 1; n <= 5; n++) ...[
+          if (n > 1) const SizedBox(width: 4),
+          Semantics(
+            button: onChange != null,
+            selected: value != null && n <= value!,
+            label: '별점 $n점',
+            excludeSemantics: true,
+            child: GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              onTap: onChange == null ? null : () => onChange!(value == n ? null : n),
+              child: LucideIcon('Star', size: size, color: color, stroke: 1.3, fill: value != null && n <= value! ? color : null),
+            ),
+          ),
+        ],
+      ]);
+}
+
+const _week = ['일', '월', '화', '수', '목', '금', '토'];
+String _p2(int n) => n.toString().padLeft(2, '0');
+String dayKey(int y, int m, int d) => '$y-${_p2(m)}-${_p2(d)}';
+String todayKey([DateTime? now]) {
+  final t = now ?? DateTime.now();
+  return dayKey(t.year, t.month, t.day);
+}
+
+/// 칸에 보이는 날짜: 숫자만(2026.11.09)
+String dayLabel(String v) => v.replaceAll('-', '.');
+
+/// 날짜 칸: 누르면 한 달 달력 시트에서 하루를 고른다(고를 수 없는 날은 흐리게). 값은 'YYYY-MM-DD' 또는 ''(정하지 않음)
+class DateField extends StatelessWidget {
+  const DateField({super.key, required this.label, required this.value, required this.onChange, this.placeholder = '날짜 고르기', this.min, this.max, this.clearable = false, this.disabled = false});
+  final String label, value, placeholder;
+  final ValueChanged<String> onChange;
+  final String? min, max;
+  final bool clearable, disabled;
+
+  @override
+  Widget build(BuildContext context) => SelectField(
+        label: label,
+        value: value.isNotEmpty ? dayLabel(value) : null,
+        placeholder: placeholder,
+        disabled: disabled,
+        onPress: () async {
+          final r = await showDatePickerSheet(context, title: label.replaceAll(RegExp(r' \(.+\)$'), ''), value: value, min: min, max: max ?? todayKey(), clearable: clearable && value.isNotEmpty);
+          if (r != null && r != value) onChange(r);
+        },
+      );
+}
+
+/// 날짜 고르기 시트: 고른 날('YYYY-MM-DD'), '날짜 지우기'면 '', 닫으면 null
+Future<String?> showDatePickerSheet(BuildContext context, {required String title, required String value, String? min, String? max, bool clearable = false}) => showSheet<String>(
+      context,
+      title: title,
+      builder: (ctx) => _DateBody(value: value, min: min, max: max, clearable: clearable),
+    );
+
+class _DateBody extends StatefulWidget {
+  const _DateBody({required this.value, this.min, this.max, this.clearable = false});
+  final String value;
+  final String? min, max;
+  final bool clearable;
+
+  @override
+  State<_DateBody> createState() => _DateBodyState();
+}
+
+class _DateBodyState extends State<_DateBody> {
+  late int _y, _m;
+
+  @override
+  void initState() {
+    super.initState();
+    // 처음 보이는 달: 고른 날, 없으면 마지막으로 고를 수 있는 날(보통 오늘)이 든 달
+    final start = widget.value.isNotEmpty ? widget.value : widget.max ?? todayKey();
+    _y = int.parse(start.substring(0, 4));
+    _m = int.parse(start.substring(5, 7));
+  }
+
+  void _shift(int k) {
+    final t = DateTime(_y, _m + k, 1);
+    setState(() {
+      _y = t.year;
+      _m = t.month;
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final first = DateTime(_y, _m, 1).weekday % 7;
+    final days = DateTime(_y, _m + 1, 0).day;
+    final cells = <int?>[for (var i = 0; i < first; i++) null, for (var d = 1; d <= days; d++) d];
+    while (cells.length % 7 != 0) {
+      cells.add(null);
+    }
+    final month = '$_y-${_p2(_m)}';
+    final canPrev = widget.min == null || month.compareTo(widget.min!.substring(0, 7)) > 0;
+    final canNext = widget.max == null || month.compareTo(widget.max!.substring(0, 7)) < 0;
+    final today = todayKey();
+    final dayStyle = TextStyle(fontFamily: AppFonts.ui, fontSize: 16, color: AppColors.ink, fontFeatures: const [FontFeature.tabularFigures()]);
+    return Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+      Padding(
+        padding: const EdgeInsets.only(bottom: Space.s),
+        child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+          IconBtn(label: '이전 달', disabled: !canPrev, onPress: () => _shift(-1), child: LucideIcon('ChevronLeft', color: canPrev ? AppColors.ink : AppColors.inkFaint)),
+          const SizedBox(width: Space.l),
+          ConstrainedBox(
+            constraints: const BoxConstraints(minWidth: 128),
+            child: Semantics(header: true, child: Text('$_y년 $_m월', textAlign: TextAlign.center, style: AppType.section.copyWith(fontFeatures: const [FontFeature.tabularFigures()]))),
+          ),
+          const SizedBox(width: Space.l),
+          IconBtn(label: '다음 달', disabled: !canNext, onPress: () => _shift(1), child: LucideIcon('ChevronRight', color: canNext ? AppColors.ink : AppColors.inkFaint)),
+        ]),
+      ),
+      LayoutBuilder(builder: (context, box) {
+        final cw = box.maxWidth / 7;
+        Widget cell(Widget child) => SizedBox(width: cw, height: 44, child: Center(child: child));
+        return Wrap(children: [
+          for (final w in _week) cell(ExcludeSemantics(child: Text(w, style: AppType.caption))),
+          for (final (i, d) in cells.indexed)
+            if (d == null)
+              cell(const SizedBox.shrink())
+            else
+              Builder(builder: (_) {
+                final k = dayKey(_y, _m, d);
+                final off = (widget.min != null && k.compareTo(widget.min!) < 0) || (widget.max != null && k.compareTo(widget.max!) > 0);
+                final on = k == widget.value;
+                return Semantics(
+                  button: true,
+                  enabled: !off,
+                  selected: on,
+                  label: '$_m월 $d일 ${_week[i % 7]}요일${k == today ? ', 오늘' : ''}',
+                  excludeSemantics: true,
+                  child: Pressable(
+                    onPress: off ? null : () => Navigator.pop(context, k),
+                    child: cell(Container(
+                      width: 38,
+                      height: 38,
+                      decoration: BoxDecoration(shape: BoxShape.circle, color: on ? AppColors.accent : null),
+                      alignment: Alignment.center,
+                      child: Text('$d',
+                          style: dayStyle.copyWith(
+                            fontFamily: on || k == today ? AppFonts.uiBold : AppFonts.ui,
+                            color: on ? AppColors.onAccent : off ? AppColors.inkFaint : k == today ? AppColors.accent : AppColors.ink,
+                          )),
+                    )),
+                  ),
+                );
+              }),
+        ]);
+      }),
+      if (widget.clearable) Padding(padding: const EdgeInsets.only(top: Space.s), child: TextLink(label: '날짜 지우기', soft: true, onPress: () => Navigator.pop(context, ''))),
+    ]);
+  }
+}

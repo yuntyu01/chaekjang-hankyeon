@@ -17,6 +17,7 @@ import '../../ui/alert.dart';
 import '../../ui/kit.dart';
 import '../../ui/theme.dart';
 import '../bookmark/book_picker.dart';
+import '../book/book_screen.dart';
 import '../stats/stats_screen.dart';
 
 int? _page(String? v) {
@@ -163,7 +164,7 @@ class _FinishScreenState extends State<FinishScreen> {
           const H2('이어서 할 수 있어요', first: true),
           ListGroup(children: [
             if (saved.bookId != null) ListItem(label: '이 책에 갈피 남기기', sub: '이번 기록과 연결돼요', chevron: true, onPress: () => _pending(context, '갈피 남기기')),
-            if (saved.bookId != null) ListItem(label: '책 정보 보기', chevron: true, onPress: () => _pending(context, '책 정보')),
+            if (saved.bookId != null) ListItem(label: '책 정보 보기', chevron: true, onPress: () => Navigator.of(context).pushReplacement(MaterialPageRoute<void>(settings: const RouteSettings(name: '/book'), builder: (_) => BookScreen(id: saved.bookId!)))),
             ListItem(
               label: '내 기록 보기',
               chevron: true,
