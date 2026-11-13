@@ -1,0 +1,481 @@
+// 홈 화면(책장 탭): 서재를 읽어 줄마다 굽고(담아 둔 그림이 있으면 그대로) 실제 책장을 그린다. 지금 앱 features/home/HomeScreen을 옮기는 중.
+// 머리줄·하단바 덮개·책장 그림까지. 측정: 켤 때마다 logcat에 [flbake] 줄마다·[fltotal] 합, 제목을 길게 누르면 다시 굽는다
+library;
+
+import 'dart:async';
+import 'dart:math' as math;
+import 'dart:ui' as ui;
+
+import 'package:flutter/material.dart';
+
+import '../../domain/camera.dart';
+import '../../domain/place_books.dart';
+import '../../domain/received3.dart';
+import '../../domain/shelf_row.dart';
+import '../../services/cover_cache.dart';
+import '../../store/library_store.dart';
+import '../../store/seed.dart';
+import '../../ui/bake.dart';
+import '../../ui/bake_cache.dart';
+import '../../ui/book_key.dart';
+import '../../ui/cover_photo.dart';
+import '../../ui/glyph_metrics.dart';
+import '../../ui/metrics.dart';
+import '../../ui/outline.dart';
+import '../../ui/plane_key.dart';
+import '../../ui/ribbons.dart';
+import '../../ui/scene.dart';
+import '../../ui/theme.dart';
+
+/// 앱이 깨어난 때(main이 채운다). 켜고 책장이 다 될 때까지를 잰다
+DateTime bootAt = DateTime.now();
+
+class RowRun {
+  RowRun(this.items, this.w, this.h, this.gridMs, this.bakeMs);
+  final int items;
+  final int w;
+  final int h;
+  final int gridMs;
+  final int bakeMs;
+  int get total => gridMs + bakeMs;
+}
+
+class Run {
+  Run(this.rows, this.loadMs, this.sinceBoot);
+  final List<RowRun> rows;
+  final int loadMs;
+  final int sinceBoot;
+  int get bakeTotal => rows.fold(0, (t, r) => t + r.total);
+  int get gridTotal => rows.fold(0, (t, r) => t + r.gridMs);
+}
+
+/// 창빛 그림자 그림의 배율(설계 단위 → 그림 칸). 지금 앱은 화면 배율을 쓴다
+const _shadowScale = 2.0;
+
+class HomeScreen extends StatefulWidget {
+  const HomeScreen({super.key});
+
+  @override
+  State<HomeScreen> createState() => _HomeScreenState();
+}
+
+class _HomeScreenState extends State<HomeScreen> {
+  final List<Run> _runs = [];
+  final List<ui.Image> _atlases = [];
+  final List<List<Spot>> _rowSpots = [];
+  final List<double> _spaces = [];
+  final List<({PlaneKey wall, PlaneKey floor})> _keys = [];
+  String _state = '준비 중…';
+
+  /// 줄마다 책이 받는 창빛 그림자(책 id → 면 칸 그림)
+  List<Map<String, BookKey>> _bookKeys = const [];
+
+  /// 받아 온 표지 사진(주소 → 그림). 받는 대로 다시 그린다(그 전까지는 코드로 그린 장정)
+  Map<String, CoverPhoto> _photos = const {};
+  bool _busy = false;
+  BakeCase? _case;
+  ShaderSlots? _gridSlots;
+  ShaderSlots? _bakeSlots;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) => _run());
+  }
+
+  Future<void> _run() async {
+    if (_busy) return;
+    setState(() {
+      _busy = true;
+      _state = '굽는 중…';
+    });
+    final t0 = DateTime.now();
+    // 셰이더는 빌드할 때 미리 컴파일돼 있다(impellerc). 여기서는 읽어 올리기만 한다
+    // 서재(SQLite)에서 책과 자리를 읽어 줄을 만든다. 비어 있으면 보기 책을 넣는다
+    await seedIfEmpty();
+    final lib = await loadLibrary();
+    _loadCovers([for (final b in lib.books) ?b.coverArtUri]);
+    final shelves = placeShelves(lib);
+    final c = _case ??= BakeCase([
+      for (var i = 0; i < shelves.length; i++)
+        rowFromBooks(shelves[i], lib.books, rowSpace, top: i == 0, last: i == shelves.length - 1),
+      probeRow(),
+    ]);
+    await ShelfPainter.load();
+    final gridSlots = _gridSlots ??= ShaderSlots(await ui.FragmentProgram.fromAsset('shaders/grid.frag'), gridUniformNames);
+    final bakeSlots = _bakeSlots ??= ShaderSlots(await ui.FragmentProgram.fromAsset('shaders/bake.frag'), bakeUniformNames);
+    final loadMs = DateTime.now().difference(t0).inMilliseconds;
+
+    await loadBakeCache();
+    final rows = <RowRun>[];
+    final images = <ui.Image>[];
+    final spots = <List<Spot>>[];
+    final spaces = <double>[];
+    final keys = <({PlaneKey wall, PlaneKey floor})>[];
+    for (var ri = 0; ri < c.rows.length; ri++) {
+      final r = c.rows[ri];
+      final probe = ri == c.rows.length - 1; // 맨 뒤는 값 확인용(시간에 넣지 않는다)
+      // 같은 값으로 구워 담아 둔 그림이 있으면 굽지 않는다
+      final key = bakeKey(r);
+      final hit = cachedBake(key);
+      if (hit != null) {
+        final pack = packAtlas(r.items);
+        images.add(hit);
+        r.tabLoss = await readTabLosses(r, hit, pack.at);
+        if (!probe) {
+          spots.add(pack.at);
+          spaces.add(r.space);
+          keys.add(await rowKeys(r, _shadowScale));
+          rows.add(RowRun(r.items.length, pack.w, pack.h, 0, 0));
+        }
+        // ignore: avoid_print
+        print('[flbake] ${r.items.length} items ${pack.w}x${pack.h} cached');
+        continue;
+      }
+      final t1 = DateTime.now();
+      final grid = await solveGrid(gridSlots, c, r);
+      final gridMs = DateTime.now().difference(t1).inMilliseconds;
+      final t2 = DateTime.now();
+      final atlas = await bakeAtlas(bakeSlots, c, r, grid);
+      final bakeMs = DateTime.now().difference(t2).inMilliseconds;
+      grid.dispose();
+      images.add(atlas.image);
+      r.tabLoss = await readTabLosses(r, atlas.image, atlas.at);
+      unawaited(saveBake(key, atlas.image));
+      if (!probe) {
+        spots.add(atlas.at); // 면 0 = 뒷벽, 1 = 판 윗면, 2 = 판 앞면, 3부터 책 면
+        spaces.add(r.space);
+        keys.add(await rowKeys(r, _shadowScale));
+      }
+      final run = RowRun(r.items.length, atlas.w, atlas.h, gridMs, bakeMs);
+      if (!probe) rows.add(run);
+      // ignore: avoid_print
+      print('[flbake] ${run.items} items ${run.w}x${run.h} ms ${run.total} grid $gridMs bake $bakeMs');
+      // 구운 값이 맞는지 보는 자국(시간 잰 뒤에 따로 읽는다): 평균과 고른 칸 몇 개.
+      // 같은 값을 지금 앱 셰이더(CanvasKit)로도 구워 견준다(tool/pixcheck.test.ts)
+      // ignore: avoid_print
+      print('[flpix] row $ri ${atlas.w}x${atlas.h} ${await _stamp(atlas.image)}');
+    }
+    // 책 면이 받는 창빛 그림자(다른 책이 가리는 몫): 줄마다 책마다(위 판이 막는 부분은 뺀 가리개)
+    final bookKeys = <Map<String, BookKey>>[];
+    for (var ri = 0; ri < c.rows.length - 1; ri++) {
+      final r = c.rows[ri];
+      final keysOf = <String, BookKey>{};
+      for (final b in r.books) {
+        final key = await bookKeyImage(b, receivedShadow3(b, occludersIn(r.books, b, r.space), _shadowScale), _shadowScale);
+        if (key != null) keysOf[b.id] = key;
+      }
+      bookKeys.add(keysOf);
+    }
+    final run = Run(rows, loadMs, DateTime.now().difference(bootAt).inMilliseconds);
+    // ignore: avoid_print
+    print('[fltotal] rows ${rows.length} bake ${run.bakeTotal}ms (grid ${run.gridTotal}) load ${run.loadMs}ms sinceBoot ${run.sinceBoot}ms');
+
+    if (!mounted) {
+      for (final i in images) {
+        i.dispose();
+      }
+      return;
+    }
+    setState(() {
+      for (final i in _atlases) {
+        i.dispose();
+      }
+      _atlases
+        ..clear()
+        ..addAll(images);
+      _rowSpots
+        ..clear()
+        ..addAll(spots);
+      _spaces
+        ..clear()
+        ..addAll(spaces);
+      _keys
+        ..clear()
+        ..addAll(keys);
+      _bookKeys = bookKeys;
+      _runs.add(run);
+      _state = '${_runs.length}번째';
+      _busy = false;
+    });
+  }
+
+  /// 표지 사진을 받는다(기기에 있으면 바로). 하나 올 때마다 다시 그린다
+  bool _pruned = false;
+  void _loadCovers(List<String> uris) {
+    if (!_pruned) {
+      _pruned = true;
+      pruneCoverCache();
+    }
+    final t0 = DateTime.now();
+    var left = uris.toSet().length;
+    for (final uri in uris.toSet()) {
+      if (_photos.containsKey(uri)) {
+        left--;
+        continue;
+      }
+      loadCover(uri).then((img) async {
+        if (img != null && mounted) {
+          final photo = await CoverPhoto.of(img);
+          setState(() => _photos = {..._photos, uri: photo});
+        }
+        if (--left == 0) debugPrint('[flcover] ${uris.length} covers ${DateTime.now().difference(t0).inMilliseconds}ms got ${_photos.length}');
+      });
+    }
+  }
+
+  /// 구운 그림의 자국: 평균 R,G,B와 고른 칸 여덟
+  Future<String> _stamp(ui.Image img) async {
+    final data = await img.toByteData(format: ui.ImageByteFormat.rawRgba);
+    if (data == null) return 'null';
+    final b = data.buffer.asUint8List();
+    var sr = 0, sg = 0, sb = 0;
+    for (var i = 0; i < b.length; i += 4) {
+      sr += b[i];
+      sg += b[i + 1];
+      sb += b[i + 2];
+    }
+    final n = b.length ~/ 4;
+    final picks = <String>[];
+    for (var k = 1; k <= 8; k++) {
+      final i = ((n * k) ~/ 9) * 4;
+      picks.add('${b[i]},${b[i + 1]},${b[i + 2]}');
+    }
+    return 'mean ${(sr / n).toStringAsFixed(2)},${(sg / n).toStringAsFixed(2)},${(sb / n).toStringAsFixed(2)} at ${picks.join(' ')}';
+  }
+
+  @override
+  void dispose() {
+    for (final i in _atlases) {
+      i.dispose();
+    }
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final r = _runs.isEmpty ? null : _runs.last;
+    final pad = MediaQuery.paddingOf(context);
+    final scale = MediaQuery.textScalerOf(context).clamp(maxScaleFactor: 1.3);
+    return ColoredBox(
+      color: AppColors.bg,
+      child: Stack(
+        children: [
+          // 책장(머리글 아래부터, 맨 윗줄 벽은 머리글 뒤까지). 지금 앱 홈 화면과 같은 구도
+          if (_atlases.length > 1 && _rowSpots.length == _spaces.length)
+            Positioned.fill(
+              child: CustomPaint(
+                painter: ShelfPainter(
+                  rows: _case!.rows,
+                  atlases: _atlases,
+                  rowSpots: _rowSpots,
+                  spaces: _spaces,
+                  photos: _photos,
+                  bookKeys: _bookKeys,
+                  keys: _keys,
+                  contentTop: pad.top + homeHeaderHeight,
+                  bottomInset: navigationShelfReserve + pad.bottom,
+                ),
+              ),
+            ),
+          // 하단바 쪽 덮개: 책장이 하단바 뒤로 들어갈 때 벽 색으로 서서히 덮는다(지금 앱 TabBarFade)
+          Positioned(
+            left: 0,
+            right: 0,
+            bottom: 0,
+            height: pad.bottom + TabBarStyle.gap + TabBarStyle.height + TabBarStyle.fade,
+            child: IgnorePointer(
+              child: DecoratedBox(
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.topCenter,
+                    end: Alignment(0, -1 + 2 * TabBarStyle.fade / (pad.bottom + TabBarStyle.gap + TabBarStyle.height + TabBarStyle.fade)),
+                    colors: [for (final a in _fadeStops) Color.fromRGBO(255, 255, 255, a.$2)],
+                    stops: [for (final a in _fadeStops) a.$1],
+                  ),
+                ),
+              ),
+            ),
+          ),
+          // 머리줄: 왼쪽 '나의 책장'과 그 밑 해, 오른쪽 스토어·꾸미기·전체 책·더하기
+          Positioned(
+            left: 0,
+            right: 0,
+            top: pad.top,
+            child: MediaQuery(
+              data: MediaQuery.of(context).copyWith(textScaler: scale),
+              child: _Header(
+                year: DateTime.now().year,
+                // 측정 메뉴: 제목을 길게 누르면 다시 굽고 시간을 알린다(지금 앱 측정 번들의 책장 메뉴 자리)
+                onLongPress: _busy ? null : _run,
+                status: r == null ? _state : '굽기 ${r.bakeTotal}ms · 켠 뒤 ${r.sinceBoot}ms',
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// 하단바 덮개 농도(끝이 부드러운 곡선)
+const _fadeStops = [(0.0, 0.0), (0.2, 0.05), (0.4, 0.2), (0.6, 0.48), (0.8, 0.8), (1.0, 1.0)];
+
+/// 머리줄 높이: 위 16 + 제목 34 + 해 23(−2) + 아래 4
+const homeHeaderHeight = TabHeader.paddingTop + 34 + 23 - 2 + 4;
+
+/// 책장 줄 배치에서 하단바 몫(지금 앱 navigation.shelfReserve)
+const navigationShelfReserve = 78.0;
+
+/// 머리줄 오른쪽 아이콘: 칸 34, 그림 31, 맨 끝 칸 가운데가 화면 끝에서 24.3(시안에서 떠낸 그림)
+const _headerCell = 34.0;
+const _headerArt = 31.0;
+const _headerLastCenter = 24.3;
+
+class _Header extends StatelessWidget {
+  const _Header({required this.year, required this.status, this.onLongPress});
+  final int year;
+  final String status;
+  final VoidCallback? onLongPress;
+
+  @override
+  Widget build(BuildContext context) {
+    Widget icon(String name, String label) => Semantics(
+          button: true,
+          label: label,
+          child: _Pressable(
+            onTap: () => ScaffoldMessenger.maybeOf(context)?.showSnackBar(SnackBar(content: Text('$label: 아직 옮기는 중이에요'), duration: const Duration(seconds: 1))),
+            child: SizedBox(
+              width: _headerCell,
+              height: 44,
+              child: Center(child: Image.asset('assets/header/$name.png', width: _headerArt, height: _headerArt)),
+            ),
+          ),
+        );
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(TabHeader.paddingH, TabHeader.paddingTop, TabHeader.paddingH - (TabHeader.paddingH - (_headerLastCenter - _headerCell / 2)), 4),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Expanded(
+            child: GestureDetector(
+              onLongPress: onLongPress,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text('나의 책장', style: AppType.title, maxLines: 1),
+                  Transform.translate(
+                    offset: const Offset(0, -2),
+                    child: Tooltip(
+                      message: status,
+                      child: Text('$year', style: AppType.sub.copyWith(fontFamily: AppFonts.uiBold), maxLines: 1),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.only(top: 2.5),
+            child: Row(children: [icon('store', '스토어'), icon('decorate', '꾸미기'), icon('books', '전체 책'), icon('add', '책 더하기')]),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// 눌리는 동안 옅어지는 단추(지금 앱 press 0.55)
+class _Pressable extends StatefulWidget {
+  const _Pressable({required this.child, this.onTap});
+  final Widget child;
+  final VoidCallback? onTap;
+
+  @override
+  State<_Pressable> createState() => _PressableState();
+}
+
+class _PressableState extends State<_Pressable> {
+  bool _down = false;
+
+  @override
+  Widget build(BuildContext context) => GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTapDown: (_) => setState(() => _down = true),
+        onTapCancel: () => setState(() => _down = false),
+        onTapUp: (_) => setState(() => _down = false),
+        onTap: widget.onTap,
+        child: Opacity(opacity: _down ? pressOpacity : 1, child: widget.child),
+      );
+}
+
+/// 구운 줄들을 실제 책장처럼 쌓아 그린다(지금은 뒷벽만, ui/scene). 줄마다 카메라가 따로다
+class ShelfPainter extends CustomPainter {
+  ShelfPainter({
+    required this.rows,
+    required this.atlases,
+    required this.rowSpots,
+    required this.spaces,
+    required this.keys,
+    this.photos = const {},
+    this.bookKeys = const [],
+    this.contentTop = 78,
+    this.bottomInset = 0,
+  });
+
+  /// 콘텐츠(책장 줄) 위 끝과 아래 하단바 몫(화면 px)
+  final double contentTop;
+  final double bottomInset;
+  final Map<String, CoverPhoto> photos;
+  final List<Map<String, BookKey>> bookKeys;
+  final List<RowCase> rows;
+  final List<ui.Image> atlases;
+  final List<List<Spot>> rowSpots;
+  final List<double> spaces;
+  final List<({PlaneKey wall, PlaneKey floor})> keys;
+
+  static ShaderSlots? _lit;
+  static ShaderSlots? _book;
+  static ShaderSlots? _tab;
+  static GlyphMetrics? _glyphs;
+
+  /// 그리기 셰이더는 한 번만 올린다(미리 컴파일돼 있다)
+  static Future<void> load() async {
+    _lit ??= ShaderSlots(await ui.FragmentProgram.fromAsset('shaders/lit.frag'), litUniformNames);
+    _book ??= ShaderSlots(await ui.FragmentProgram.fromAsset('shaders/book.frag'), bookUniformNames);
+    _tab ??= ShaderSlots(await ui.FragmentProgram.fromAsset('shaders/tab.frag'), tabUniformNames);
+    _glyphs ??= await GlyphMetrics.load(titleFontAsset);
+  }
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final lit = _lit;
+    final book = _book;
+    if (lit == null || book == null) return;
+    final m = makeMetrics(size.width);
+    final cam = Cam(viewPitchMin);
+    // 머리글 아래가 콘텐츠 위 끝(지금 앱 홈 스크롤 영역)
+    final contentY = contentTop;
+    final geo = computeRows(rows.length, m.scale, viewportHeight: size.height - contentY, bottomInset: bottomInset);
+    Affine pxOf(RowGeom r) => Affine(m.scale, m.originX + sideMargin * m.scale, contentY + r.baseline);
+    for (var i = 0; i < rowSpots.length && i < atlases.length && i < geo.length; i++) {
+      final r = geo[i];
+      final px = pxOf(r);
+      // 줄 캔버스(지금 앱 RowCanvas): 칸 위로 맨 윗줄 벽 끝까지, 아래로 판 밑 벽까지. 윗선반 판 윤곽 안은 비운다(그 판이 보인다)
+      final y0 = math.max(0.0, r.top - headDu * m.scale);
+      final y1 = r.top + r.height + shelfCastExtent * m.scale;
+      canvas.save();
+      final area = Path()..addRect(Rect.fromLTRB(0, contentY + y0, size.width, contentY + y1));
+      final up = i > 0 ? plankOutlinePath((v) => toPx(cam, pxOf(geo[i - 1]), v), m.scale) : null;
+      canvas.clipPath(up == null ? area : Path.combine(PathOperation.difference, area, up));
+      drawRow(canvas, lit, book, cam, px, rows[i], rowSpots[i], atlases[i], r.space, keys[i], glyphs: _glyphs, photos: photos, tab: _tab, bookKeys: i < bookKeys.length ? bookKeys[i] : const {});
+      canvas.restore();
+      if (contentY + y0 > size.height) break;
+    }
+  }
+
+  @override
+  bool shouldRepaint(ShelfPainter old) =>
+      old.atlases != atlases || old.photos != photos || old.bookKeys != bookKeys || old.contentTop != contentTop || old.bottomInset != bottomInset;
+}
+
