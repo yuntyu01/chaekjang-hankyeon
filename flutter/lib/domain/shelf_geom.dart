@@ -49,6 +49,10 @@ ShelfFace _face(ui.Offset a, ui.Offset b, ui.Offset c, ui.Offset d) =>
   );
 }
 
+/// 3D 사각형(o에서 u·v) 하나를 투영한 면(지금 앱 quadFace)
+ShelfFace quadFace(ui.Offset Function(Vec3) project, Vec3 o, Vec3 u, Vec3 v) =>
+    _face(project(o), project(o + u), project(o + u + v), project(o + v));
+
 /// 면의 그림 칸(w × h) → 캔버스 px 행렬(행 우선 3×3). 네 꼭짓점이 평행사변형이 아니면 원근 항이 생긴다
 List<double> faceTextureMatrix(ShelfFace f, int w, int h, double s, double tx, double ty) {
   final a = f.poly[0], b = f.poly[1], c = f.poly[2], d = f.poly[3];

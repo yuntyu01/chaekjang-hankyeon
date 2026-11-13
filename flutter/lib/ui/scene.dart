@@ -9,6 +9,7 @@ import 'dart:ui' as ui;
 import '../domain/book3.dart';
 import '../domain/camera.dart';
 import '../domain/geometry.dart';
+import '../scene_config/skin.dart';
 import '../domain/shelf_geom.dart';
 import '../domain/shelf_row.dart';
 import '../domain/vec3.dart';
@@ -45,13 +46,6 @@ class Affine {
 }
 
 ui.Offset toPx(Cam c, Affine px, Vec3 v) => px.at(c.project(v));
-
-/// 평면: 한 점 O와 바깥 법선 n
-class Plane {
-  const Plane(this.o, this.n);
-  final Vec3 o;
-  final Vec3 n;
-}
 
 /// 캔버스 px (X, Y) → 평면 위 점을 셰이더가 풀 수 있게 1차식으로 넘긴다.
 /// P = N(X, Y) / w(X, Y)이고 N·w 모두 X·Y에 1차라, 원점 값과 한 칸 차이만 준다(지금 앱 scene-light-sksl planeFrame)
@@ -107,6 +101,7 @@ ui.FragmentShader planeShader({
   required List<double> cellToPx,
   PlaneKey key = PlaneKey.none,
   List<double> seed = const [0, 0],
+  ({List<double> box, List<double> r})? soft,
 }) {
   final sh = u.shader();
   void vec(String name, List<double> v) {
@@ -147,14 +142,14 @@ ui.FragmentShader planeShader({
   vec('Vy', f.vy);
   vec('Hw', f.hw);
   vec('tN', plane.n.list);
-  vec('bev0', _noEdge);
-  vec('bev1', _noEdge);
-  one('endR', 0);
+  vec('bev0', plane.edges.isNotEmpty ? plane.edges[0].u : _noEdge);
+  vec('bev1', plane.edges.length > 1 ? plane.edges[1].u : _noEdge);
+  one('endR', plane.endR);
   vec('rim', _noRim);
   one('rimCeil', 1e9);
   one('kS', 1);
-  vec('softBox', const [0, 0, 0, 0]);
-  vec('softR', const [0, 0]);
+  vec('softBox', soft?.box ?? const [0, 0, 0, 0]);
+  vec('softR', soft?.r ?? const [0, 0]);
   vec('cam4', [c.eye.x, c.eye.y, c.eye.z, viewDist]);
   one('keyOn', 1);
   one('liveEnv', 0);
@@ -188,16 +183,21 @@ ui.FragmentShader planeShader({
 }
 
 /// 벽 그림 칸 → 캔버스 px(벽 평면은 화면에 평행해 확대·이동뿐)
-List<double> _wallCellToPx(Cam c, Affine px, Spot spot, double space) {
-  final z = shelfDepth;
-  final o = toPx(c, px, Vec3(wallX0, space + shelfThick, z));
-  final e = toPx(c, px, Vec3(wallX1, -shelfThick, z));
+/// 벽 칸 → 캔버스 px(벽 평면은 화면에 평행해 확대·이동뿐, 지금 앱 wallMatrix)
+List<double> _wallCellToPx(Cam c, Affine px, BakeArea a) {
+  final o = toPx(c, px, a.o);
+  final e = toPx(c, px, Vec3(a.o.x + a.u.x, a.o.y + a.v.y, a.o.z));
   return <double>[
-    (e.dx - o.dx) / spot.w, 0, o.dx, //
-    0, (e.dy - o.dy) / spot.h, o.dy, //
+    e.dx - o.dx, 0, o.dx, //
+    0, e.dy - o.dy, o.dy, //
     0, 0, 1,
   ];
 }
+
+/// 움푹 파인 책장 뒷벽 꼭지점 둥글기·번짐(지금 앱 BACK_CORNER_R·SOFT_W), 천장 번짐(ROOF_SOFT)
+final _backCornerR = mm(look.cornerMm);
+final _softW = mm(look.softMm);
+final _roofSoft = (box: <double>[frameX0, frameX1, -far, far], r: <double>[0, _softW]);
 
 ui.Path _polyPath(List<ui.Offset> pts) {
   final p = ui.Path()..moveTo(pts[0].dx, pts[0].dy);
@@ -207,7 +207,8 @@ ui.Path _polyPath(List<ui.Offset> pts) {
   return p..close();
 }
 
-/// 줄 하나를 그린다: 뒷벽 → 판 윗면 → 판 앞면(판이 벽 위에 온다)
+/// 줄 하나를 그린다(지금 앱 ShelfScene 차례): 틀 안쪽 면 → 뒷벽 → 판 윗면·앞면 → 책.
+/// 틀 면은 뒷벽 아래에 깔려 뒷벽 둥근 꼭지점으로 깎인 자리와 양옆에만 보인다. 판은 이 줄 책 아래(책이 판 위에 선다)
 void drawRow(
   ui.Canvas canvas,
   ShaderSlots lit,
@@ -220,49 +221,73 @@ void drawRow(
   double space,
   ({PlaneKey wall, PlaneKey floor}) keys,
 ) {
-  // 뒷벽(면 0)
-  final top = toPx(c, px, Vec3(0, space + shelfThick, shelfDepth));
-  final bottom = toPx(c, px, Vec3(0, -shelfThick, shelfDepth));
-  final left = toPx(c, px, Vec3(frameX0, 0, shelfDepth));
-  final right = toPx(c, px, Vec3(frameX1, 0, shelfDepth));
-  canvas.drawRect(
-    ui.Rect.fromLTRB(left.dx, top.dy, right.dx, bottom.dy),
-    ui.Paint()
-      ..shader = planeShader(
-        u: lit,
-        c: c,
-        px: px,
-        plane: Plane(Vec3(0, 0, shelfDepth), const Vec3(0, 0, -1)),
-        row: row,
-        surface: wallSurface,
-        atlas: atlas,
-        spot: spots[0],
-        cellToPx: _wallCellToPx(c, px, spots[0], space),
-        key: keys.wall,
-      ),
-  );
-
-  // 책(면 3부터 책마다 bakeFaces 차례)
-  for (var i = 0; i < row.books.length; i++) {
-    final spots3 = <FaceId, Spot>{};
-    for (var k = 0; k < bakeFaces.length; k++) {
-      final at = 3 + i * bakeFaces.length + k;
-      if (at < spots.length) spots3[bakeFaces[k]] = spots[at];
-    }
-    final b = row.books[i];
-    final albedo = row.tones.length > i ? row.tones[i] : const C3(0.3, 0.25, 0.2);
-    drawBook(canvas, book, c, px, row, b, albedo, spots3, atlas, [i * 13.7 % 61, i * 7.1 % 53],
-        title: row.titles.length > i ? row.titles[i] : '');
+  Spot? spotOf(String key) {
+    final i = row.indexOf(key);
+    return i >= 0 && i < spots.length ? spots[i] : null;
   }
 
-  // 판(면 1 = 윗면, 면 2 = 앞면)
-  final faces = shelfFaces((v) => px.at(c.project(v)));
+  ui.Offset project(Vec3 v) => toPx(c, px, v);
+
+  // 틀 안쪽 면(옆·맨 윗줄 천장): 굽는 사각형보다 앞뒤로 늘려 그린다(앞은 평평한 벽 밑, 뒤는 뒷벽 밑으로 들어간다)
+  for (final part in row.frame) {
+    final spot = spotOf(part.key);
+    if (spot == null) continue;
+    final real = quadFace(project, part.o, part.u, part.v);
+    final drawn = quadFace(project, part.drawO, part.drawU, part.drawV);
+    canvas.drawPath(
+      _polyPath(drawn.poly),
+      ui.Paint()
+        ..shader = planeShader(
+          u: lit,
+          c: c,
+          px: px,
+          plane: part.area.plane,
+          row: row,
+          surface: frameSurface,
+          atlas: atlas,
+          spot: spot,
+          cellToPx: faceTextureMatrix(real, spot.w, spot.h, 1, 0, 0),
+          soft: part.area.plane.n.y < -0.5 ? _roofSoft : null,
+        ),
+    );
+  }
+
+  // 뒷벽: 움푹 파인 책장이면 안쪽 면 사이만(꼭지점 둥글기와 안쪽 면·천장으로 넘어가는 번짐은 셰이더가 투명도로)
+  final wallSpot = spotOf(wallBakeKey);
+  if (wallSpot != null) {
+    final roofed = row.top && frameOn;
+    final backY1 = frameOn ? space + shelfThick : space + shelfThick + (row.top ? headDu : 0);
+    final area = wallArea(-shelfThick, backY1);
+    final topY = roofed ? space : (row.top && !frameOn ? backY1 : space + shelfThick / 2);
+    final a = toPx(c, px, Vec3(0, topY, shelfDepth)).dy;
+    final b = toPx(c, px, Vec3(0, -shelfThick, shelfDepth)).dy;
+    final xl = frameOn ? toPx(c, px, Vec3(frameX0, 0, shelfDepth)).dx : -far;
+    final xr = frameOn ? toPx(c, px, Vec3(frameX1, 0, shelfDepth)).dx : far;
+    canvas.drawRect(
+      ui.Rect.fromLTRB(xl, a, xr, b),
+      ui.Paint()
+        ..shader = planeShader(
+          u: lit,
+          c: c,
+          px: px,
+          plane: area.plane,
+          row: row,
+          surface: wallSurface,
+          atlas: atlas,
+          spot: wallSpot,
+          cellToPx: _wallCellToPx(c, px, area),
+          key: keys.wall,
+          soft: frameOn ? (box: <double>[frameX0, frameX1, -far, roofed ? space : far], r: <double>[_backCornerR, _softW]) : null,
+        ),
+    );
+  }
+
+  // 판(윗면·앞면, 둥근 모서리는 셰이더가 법선을 돌린다)
+  final faces = shelfFaces(project);
   final seed = [space * 7.3 % 97, space * 3.1 % 89];
-  for (final (i, face, plane) in [
-    (1, faces.top, const Plane(Vec3(0, 0, 0), Vec3(0, 1, 0))),
-    (2, faces.front, Plane(Vec3(0, 0, -shelfFront), const Vec3(0, 0, 1))),
-  ]) {
-    final spot = spots[i];
+  for (final (key, face, plane) in [(topBakeKey, faces.top, topPlane), (frontBakeKey, faces.front, frontPlane)]) {
+    final spot = spotOf(key);
+    if (spot == null) continue;
     canvas.drawPath(
       _polyPath(face.poly),
       ui.Paint()
@@ -276,10 +301,21 @@ void drawRow(
           atlas: atlas,
           spot: spot,
           cellToPx: faceTextureMatrix(face, spot.w, spot.h, 1, 0, 0),
-          key: i == 1 ? keys.floor : PlaneKey.none,
+          key: key == topBakeKey ? keys.floor : PlaneKey.none,
           seed: seed,
         ),
     );
+  }
+
+  // 책(면마다 아틀라스 자리는 이름으로 찾는다)
+  for (var i = 0; i < row.books.length; i++) {
+    final b = row.books[i];
+    final spots3 = <FaceId, Spot>{
+      for (final f in FaceId.values) f: ?spotOf(faceKey(b.id, f)),
+    };
+    final albedo = row.tones.length > i ? row.tones[i] : const C3(0.3, 0.25, 0.2);
+    drawBook(canvas, book, c, px, row, b, albedo, spots3, atlas, [i * 13.7 % 61, i * 7.1 % 53],
+        title: row.titles.length > i ? row.titles[i] : '');
   }
 }
 

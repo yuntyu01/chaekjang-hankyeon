@@ -106,8 +106,10 @@ class _GatePageState extends State<GatePage> {
     // 서재(SQLite)에서 책과 자리를 읽어 줄을 만든다. 비어 있으면 보기 책을 넣는다
     await seedIfEmpty();
     final lib = await loadLibrary();
+    final shelves = placeShelves(lib);
     final c = _case ??= BakeCase([
-      for (final books in placeShelves(lib)) rowFromBooks(books, lib.books, _spaceOf(books)),
+      for (var i = 0; i < shelves.length; i++)
+        rowFromBooks(shelves[i], lib.books, _spaceOf(shelves[i]), top: i == 0, last: i == shelves.length - 1),
       probeRow(),
     ]);
     await ShelfPainter.load();
@@ -132,7 +134,7 @@ class _GatePageState extends State<GatePage> {
         images.add(hit);
         if (!probe) {
           spots.add(pack.at);
-          spaces.add(r.env.ceil);
+          spaces.add(r.space);
           keys.add(await rowKeys(r, _shadowScale));
           rows.add(RowRun(r.items.length, pack.w, pack.h, 0, 0));
         }
@@ -151,7 +153,7 @@ class _GatePageState extends State<GatePage> {
       unawaited(saveBake(key, atlas.image));
       if (!probe) {
         spots.add(atlas.at); // 면 0 = 뒷벽, 1 = 판 윗면, 2 = 판 앞면, 3부터 책 면
-        spaces.add(r.env.ceil);
+        spaces.add(r.space);
         keys.add(await rowKeys(r, _shadowScale));
       }
       final run = RowRun(r.items.length, atlas.w, atlas.h, gridMs, bakeMs);

@@ -16,21 +16,21 @@ layout(location = 0) out vec4 fragColor;
   uniform vec3 env;
 
   const float PI = 3.14159265;
-  const float AMB = 0.620000000;
+  const float AMB = 0.720000000;
   const vec3 SKYTILT = vec3(0.00000000, 0.250000000, -0.120000000);
-  const float DIFF = 0.500000000;
+  const float DIFF = 0.220000000;
   // 방 빛 하늘 가림 세기(light.occlusion, 모든 곳 같은 비율)
-  const float OCC = 0.150000000;
+  const float OCC = 0.300000000;
   const vec3 LU = vec3(-0.102940441, 0.173648178, -0.979412873);
   // 맞추기 값(스킨마다 다르다: 스토어에서 색을 고르면 셰이더를 다시 만들지 않고 값만 바꾼다, light-model lightSet().u)
   // 카메라 기준 빛(벽 대표 자리 빛 / 노출 기준 CAM.gain, 반사광을 장면 밝기로)
   uniform vec3 ECAM;
   const float LELEV = 0.175474740;
-  const float LRAD = 0.0698131701;
+  const float LRAD = 0.139626340;
   const float LAZ = -0.104719755;
   const float F0 = 0.0400000000;
   // 창빛 원반이 하이라이트를 넓히는 몫(light-model ggxKey): α² += (반지름/2)²
-  const float LR2 = 0.00121846968;
+  const float LR2 = 0.00487387872;
   const float FRONT = 53.3750000;
   const float DEPTH = 122.000000;
   const float THICK = 14.4875000;
@@ -54,8 +54,8 @@ layout(location = 0) out vec4 fragColor;
   const float PLANKR = 2.28750000;
   const float IG = 0.454545455;
   const float LOSS_G0 = 0.300000000;
-  const float LOSS_RP = 1.64730849;
-  const float LOSS_RN = 6.64385095;
+  const float LOSS_RP = 1.46730849;
+  const float LOSS_RN = 0.774616985;
   // 하늘 가림 그림 값 ↔ 가림(면이 받는 하늘 빛 sky, lossEncode·lossDecode)
   vec3 lossDec(vec3 g, vec3 sky) {
     vec3 a = (g - LOSS_G0) / (1.0 - LOSS_G0);
@@ -753,22 +753,22 @@ vec4 _grid(vec2 q) {
     return 0.5 * K * (1.0 - d / sqrt(d * d + H * H));
   }
   float jointXs(vec3 P, float w) {
-    return (1.0 - jointF(P.x - 0.00000000, 6.10000000, 0.150000000 * w)) * (1.0 - jointF(366.000000 - P.x, 6.10000000, 0.150000000 * w));
+    return (1.0 - jointF(P.x - 0.00000000, 6.10000000, 0.220000000 * w)) * (1.0 - jointF(366.000000 - P.x, 6.10000000, 0.220000000 * w));
   }
   float jointShade(vec3 P, vec3 n) {
     if (env.x < 1.5 || P.z < -56.9250000 || (abs(n.z) > 0.5 && P.z < -52.8750000)) return 0.0;
     float k = 1.0;
-    if (abs(n.x) > 0.5) k = (1.0 - jointF(env.z - P.y, 19.8250000, 0.350000000 * (0.450000000 + 0.550000000 * clamp((P.z + 56.4250000) / 178.425000, 0.0, 1.0)))) * (1.0 - jointF(P.y - env.y, 6.10000000, 0.400000000)) * (1.0 - jointF(DEPTH - P.z, 6.10000000, 0.0255000000));
+    if (abs(n.x) > 0.5) k = (1.0 - jointF(env.z - P.y, 19.8250000, 0.600000000 * (0.450000000 + 0.550000000 * clamp((P.z + 56.4250000) / 178.425000, 0.0, 1.0)))) * (1.0 - jointF(P.y - env.y, 6.10000000, 0.400000000)) * (1.0 - jointF(DEPTH - P.z, 6.10000000, 0.0374000000));
     else if (abs(n.z) > 0.5) {
       float fx = max(2.0 * jointF(P.x - 0.00000000, 19.8250000, 1.0), 2.0 * jointF(366.000000 - P.x, 19.8250000, 1.0));
       float fy = 2.0 * jointF(env.z - P.y, 19.8250000, 1.0);
-      k = (1.0 - jointF(env.z - P.y, 6.10000000, 0.150000000)) * jointXs(P, 0.300000000) * (1.0 - 0.150000000 * fx * fy);
+      k = (1.0 - jointF(env.z - P.y, 6.10000000, 0.220000000)) * jointXs(P, 0.300000000) * (1.0 - 0.220000000 * fx * fy);
     }
-    else if (n.y > 0.5) k = jointXs(P, 1.0) * (1.0 - jointF(DEPTH - P.z, 6.10000000, 0.0750000000));
+    else if (n.y > 0.5) k = jointXs(P, 1.0) * (1.0 - jointF(DEPTH - P.z, 6.10000000, 0.110000000));
     else {
       float t = clamp((P.z + 56.4250000) / 178.425000, 0.0, 1.0);
       float fx = max(2.0 * jointF(P.x - 0.00000000, 19.8250000, 1.0), 2.0 * jointF(366.000000 - P.x, 19.8250000, 1.0));
-      k = jointXs(P, 0.300000000) * (1.0 - jointF(DEPTH - P.z, 6.10000000, 0.0255000000)) * (1.0 - 0.250000000 * fx * (0.450000000 + 0.550000000 * t));
+      k = jointXs(P, 0.300000000) * (1.0 - jointF(DEPTH - P.z, 6.10000000, 0.0374000000)) * (1.0 - 0.250000000 * fx * (0.450000000 + 0.550000000 * t));
     }
     return 1.0 - k;
   }

@@ -7,6 +7,7 @@ library;
 import 'dart:math' as math;
 
 import 'geometry.dart';
+import 'camera.dart';
 import 'vec3.dart';
 
 class Dims {
@@ -85,6 +86,44 @@ Vec3 faceNormal(FaceId f) => switch (f) {
       FaceId.tail => const Vec3(0, -1, 0),
       FaceId.fore => const Vec3(0, 0, 1),
     };
+
+/// 면의 꼭짓점 번호(corners 차례, 지금 앱 faceCorners)
+List<int> faceCorners(FaceId f) => switch (f) {
+      FaceId.spine => const [0, 1, 3, 2],
+      FaceId.cover => const [1, 5, 7, 3],
+      FaceId.back => const [0, 2, 6, 4],
+      FaceId.head => const [2, 3, 7, 6],
+      FaceId.tail => const [0, 4, 5, 1],
+      FaceId.fore => const [4, 6, 7, 5],
+    };
+
+/// 면 가운데(월드)
+Vec3 faceCenter(Book3 b, FaceId f) {
+  final d = b.dims;
+  final n = faceNormal(f);
+  return toWorld(b, Vec3(d.t * (1 + n.x) / 2, d.h * (1 + n.y) / 2, d.w * (1 + n.z) / 2));
+}
+
+/// 면이 눈 쪽을 향하는 정도(원근이라 면 가운데에서 본 값, 지금 앱 facing)
+double facing(Eye e, Book3 b, FaceId f) {
+  final n = rot(b.roll, b.yaw, faceNormal(f), b.spin, b.pitch);
+  final c = faceCenter(b, f);
+  final k = viewAt(e, c.x, c.y, c.z);
+  final l = math.sqrt(k.kx * k.kx + k.ky * k.ky + 1);
+  return (n.x * k.kx + n.y * k.ky - n.z) / l;
+}
+
+/// 면이 보이는가: 눈 쪽을 향하고, 받침에 닿은 아래 면이 아닐 때(들린 아래 면은 보인다). 지금 앱 faceVisible
+bool faceVisible(Eye e, Book3 b, FaceId f) {
+  if (facing(e, b, f) <= 0.002) return false;
+  if (rot(b.roll, b.yaw, faceNormal(f), b.spin, b.pitch).y >= -0.5) return true;
+  final cs = corners(b);
+  var lo = double.infinity;
+  for (final c in cs) {
+    if (c.y < lo) lo = c.y;
+  }
+  return faceCorners(f).any((i) => cs[i].y > lo + 0.5);
+}
 
 /// 평면 조각: 원점 O에서 U(가로 끝), V(세로 끝)로 펼친 평행사변형. 그림 좌표 w×h(DU)가 이 조각에 붙는다
 class Panel {

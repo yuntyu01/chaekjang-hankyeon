@@ -30,3 +30,19 @@ double kyOf(double deg) => math.tan(deg * math.pi / 180);
   final scale = windowWidth / (designWidth + 2 * scenePad);
   return (scale: scale, originX: scenePad * scale);
 }
+
+/// 눈(원근 카메라): 줄 공간 (x, y, z = 0)에서 줄 앞 dist만큼 떨어져 있다. 지금 앱 camAt(deg).eye
+class Eye {
+  const Eye(this.x, this.y, this.dist);
+  final double x;
+  final double y;
+  final double dist;
+}
+
+Eye eyeAt(double deg) => Eye(viewCx, viewDist * kyOf(deg), viewDist);
+
+/// 점 p에서 본 시선 기울기(지금 앱 viewAt): 원근이라 자리마다 다르다
+({double kx, double ky}) viewAt(Eye e, double px, double py, double pz) {
+  final r = e.dist + pz;
+  return (kx: (e.x - px) / r, ky: (e.y - py) / r);
+}
