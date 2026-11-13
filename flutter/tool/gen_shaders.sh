@@ -23,7 +23,7 @@ fi
 echo "== SkSL·줄 구성 뽑기 (jest)"
 cd "$APP_SRC"
 PATH=$NODE_BIN:$PATH npx jest --silent=false \
-  --config "{\"preset\":\"jest-expo\",\"rootDir\":\".\",\"testEnvironment\":\"node\",\"modulePaths\":[\"<rootDir>/node_modules\"],\"roots\":[\"$ROOT/tool\"],\"testMatch\":[\"**/dump_sksl.test.ts\",\"**/dump_schema.test.ts\",\"**/dump_bookmark.test.ts\",\"**/dump_reading.test.ts\"],\"moduleNameMapper\":{\"^@/(.*)$\":\"<rootDir>/src/\$1\"}}" \
+  --config "{\"preset\":\"jest-expo\",\"rootDir\":\".\",\"testEnvironment\":\"node\",\"modulePaths\":[\"<rootDir>/node_modules\"],\"roots\":[\"$ROOT/tool\"],\"testMatch\":[\"**/dump_sksl.test.ts\",\"**/dump_schema.test.ts\",\"**/dump_bookmark.test.ts\",\"**/dump_reading.test.ts\",\"**/dump_rebinding.test.ts\",\"**/dump_physics.test.ts\",\"**/dump_locked.test.ts\",\"**/dump_qa_seed.test.ts\"],\"moduleNameMapper\":{\"^@/(.*)$\":\"<rootDir>/src/\$1\"}}" \
   2>&1 | grep -E "^\s+(console.log|\[dump\])|✓|✕|Tests:|Error|Cannot" | sed 's/^ *//'
 
 echo "== GLSL 로 바꾸기"

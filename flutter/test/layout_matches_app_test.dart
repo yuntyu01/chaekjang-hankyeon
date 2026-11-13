@@ -14,8 +14,12 @@ Pose poseOf(String s) => switch (s) { 'front' => Pose.front, 'horizontal' => Pos
 double? d(Object? v) => (v as num?)?.toDouble();
 
 void main() {
-  final json = jsonDecode(File('test/fixtures/layout_cases.json').readAsStringSync()) as Map<String, dynamic>;
-  for (final c in (json['layoutCases'] as List).cast<Map<String, dynamic>>()) {
+  // 실사 비교 책장(layout_cases)과 지금 앱 예시 책장 전부(physics_cases: 처음 예시·시안·재질 견본·물리 예시)
+  final cases = [
+    for (final f in ['test/fixtures/layout_cases.json', 'test/fixtures/physics_cases.json'])
+      if (File(f).existsSync()) ...((jsonDecode(File(f).readAsStringSync()) as Map<String, dynamic>)['layoutCases'] as List).cast<Map<String, dynamic>>(),
+  ];
+  for (final c in cases) {
     test('${c['name']} 책장이 지금 앱과 같다', () {
       final BookMap books = {
         for (final b in (c['books'] as List).cast<Map<String, dynamic>>())
