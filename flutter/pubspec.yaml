@@ -1,5 +1,5 @@
 name: chaekjang
-description: "A new Flutter project."
+description: "책장 한켠 (Flutter 이식)"
 publish_to: 'none'
 version: 0.1.0+1
 
@@ -17,3 +17,13 @@ dev_dependencies:
 
 flutter:
   uses-material-design: true
+
+  # 굽기 입력(지금 앱의 빛 모델이 뽑은 줄 하나, tool/gen_shaders.sh)
+  assets:
+    - assets/bake_case.json
+
+  # 빛 셰이더: 빌드할 때 impellerc가 미리 컴파일한다(기기에서 처음 그릴 때 컴파일하지 않는다).
+  # 소스는 tool/gen_shaders.sh 가 만든다(출처: ../app/src/ui/scene-light-sksl.ts)
+  shaders:
+    - shaders/grid.frag
+    - shaders/bake.frag
