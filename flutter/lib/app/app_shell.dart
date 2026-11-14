@@ -12,6 +12,7 @@ import '../features/reading/finish_screen.dart';
 import '../features/settings/settings_screen.dart';
 import '../features/reading/reading_screen.dart';
 import '../services/cover_colors.dart';
+import '../store/bookcase_store.dart';
 import '../store/library_model.dart';
 import '../store/mini_timer_store.dart';
 import '../store/reading_store.dart';
@@ -51,6 +52,9 @@ final _tabs = <_Tab>[
 /// 탭마다 지금 앱 경로(작은 타이머 자리·숨김을 정한다)
 const _tabPaths = ['/', '/bookmarks', '/read', '/stats', '/me'];
 
+/// 시험 빌드 전용: --dart-define=QA_SEED_YEAR=2025로 빌드하면 켤 때 지금 책장을 그해 책장으로 남긴다(지난 책장 화면 확인용)
+const _qaSeedYear = int.fromEnvironment('QA_SEED_YEAR');
+
 class _AppShellState extends State<AppShell> {
   int _index = 0;
 
@@ -66,11 +70,22 @@ class _AppShellState extends State<AppShell> {
     // 서재는 첫 화면이 뜬 뒤 미리 읽어 둔다(복구 창·다른 탭이 책을 바로 찾게)
     WidgetsBinding.instance.addPostFrameCallback((_) {
       LibraryModel.instance.load();
-      // 표지 색·두께·갈피 색 맞추기는 켠 뒤 조금 있다 뒤에서(지금 앱 _layout: 3초 뒤)
-      Future<void>.delayed(const Duration(seconds: 3), () => backfillCoverColors().catchError((Object e) {
-            // ignore: avoid_print
-            print('표지 색 맞추기 실패(다음 시작 때 다시) $e');
-          }));
+      // 해가 바뀌었으면 그해 책장을 남긴다(다른 저장보다 먼저: 새해에 먼저 고치면 마지막으로 손댄 해가 올해가 되어 지난해가 안 남는다).
+      // 시험 빌드(QA_SEED_YEAR)는 지금 책장을 그 해 책장으로 남긴다
+      final books = BookcaseStore.instance;
+      final first = _qaSeedYear > 0 ? books.seedYear(_qaSeedYear) : books.checkYear();
+      first.catchError((Object e) {
+        // ignore: avoid_print
+        print('연도 책장 확인 실패 $e');
+        return null;
+      }).whenComplete(() {
+        books.watch();
+        // 표지 색·두께·갈피 색 맞추기는 켠 뒤 조금 있다 뒤에서(지금 앱 _layout: 3초 뒤)
+        Future<void>.delayed(const Duration(seconds: 3), () => backfillCoverColors().catchError((Object e) {
+              // ignore: avoid_print
+              print('표지 색 맞추기 실패(다음 시작 때 다시) $e');
+            }));
+      });
     });
     reading.load().then((_) {
       if (mounted) WidgetsBinding.instance.addPostFrameCallback((_) => _askRecovery());

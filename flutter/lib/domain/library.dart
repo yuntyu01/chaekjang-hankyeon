@@ -143,6 +143,20 @@ class MyBook {
         hiddenAt: identical(hiddenAt, _keep) ? this.hiddenAt : hiddenAt as String?,
       );
 
+  /// 연도 책장에서 그때 값으로 본 사본(숨김 표시는 뺀다, 지금 앱 bookcaseLibrary)
+  MyBook asOf({required ReadStatus status, num? rating, String? note, String? ribbonColor, num? currentPage, String? bindingId}) => MyBook(
+        id: id,
+        editionId: editionId,
+        status: status,
+        createdAt: createdAt,
+        updatedAt: updatedAt,
+        rating: rating,
+        note: note,
+        ribbonColor: ribbonColor,
+        currentPage: currentPage,
+        bindingId: bindingId,
+      );
+
   /// 상태·현재 쪽을 바꾼 사본
   MyBook copyWith({ReadStatus? status, num? currentPage, required String updatedAt}) => MyBook(
         id: id,
@@ -347,6 +361,26 @@ class Binding {
   final String id, myBookId, spineColor, motif, source, status, createdAt, updatedAt;
   final num seed;
   final String? inkColor, accentColor, layout, material, coverArtUri, coverArtId, spineArtUri;
+
+  /// 다른 id·책으로 옮긴 같은 장정(연도 책장의 그해 장정 복사본)
+  Binding copyAs(String newId, String bookId) => Binding(
+        id: newId,
+        myBookId: bookId,
+        spineColor: spineColor,
+        motif: motif,
+        source: source,
+        status: status,
+        seed: seed,
+        createdAt: createdAt,
+        updatedAt: updatedAt,
+        inkColor: inkColor,
+        accentColor: accentColor,
+        layout: layout,
+        material: material,
+        coverArtUri: coverArtUri,
+        coverArtId: coverArtId,
+        spineArtUri: spineArtUri,
+      );
 
   /// 책 색·글자색·강조색만 바꾼 사본
   Binding withColors(String spine, String ink, String accent, String updated) => Binding(

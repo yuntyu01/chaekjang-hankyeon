@@ -3,6 +3,8 @@
 library;
 
 import '../db/local_db.dart';
+import '../domain/bookcase.dart';
+import '../domain/library.dart' show ReadStatus;
 import '../domain/cover_artworks.dart' show isCoverArtworkId;
 import '../domain/cover_url.dart';
 import '../domain/geometry.dart';
@@ -46,52 +48,55 @@ Pose _poseOf(String? v) => switch (v) {
       _ => Pose.upright,
     };
 
+/// 책 줄에서 읽는 열(책·판본·장정·첫 저자). 갈피 색·갈피 수는 부르는 쪽이 붙인다
+const _bookCols = '''b.id, e.title, e.width_mm, e.height_mm, e.page_count, e.cover_uri,
+           bd.spine_color, bd.ink_color, bd.cover_art_uri, bd.layout AS bd_layout, bd.material AS bd_material, bd.cover_art_id AS bd_art_id, e.art_layout,
+           (SELECT name FROM edition_authors a WHERE a.edition_id = e.id ORDER BY a.position LIMIT 1) AS author''';
+
+/// 서재 줄 → 책장 책(지금 앱 toShelfBook). 지금 책장과 연도 책장이 같이 쓴다
+Book _bookOf(Map<String, Object?> r) => Book(
+    id: r['id']! as String,
+    title: (r['title'] as String?) ?? '',
+    author: r['author'] as String?,
+    themeColor: _colorOf(r['spine_color'] as String?),
+    heightClass: _heightOf((r['height_mm'] as num?)?.toInt()),
+    thicknessClass: _thickOf((r['page_count'] as num?)?.toInt()),
+    physical: Physical(
+      widthMm: (r['width_mm'] as num?)?.toDouble(),
+      heightMm: (r['height_mm'] as num?)?.toDouble(),
+      pages: (r['page_count'] as num?)?.toInt(),
+    ),
+    // 그리는 크기: 판형이 없으면 흔한 판형(128×188mm, 250쪽), 두께는 책등 사진 비율이 있으면 그것(지금 앱 toShelfBook)
+    dims: realDimensions(
+      (r['width_mm'] as num?)?.toDouble() ?? 128,
+      (r['height_mm'] as num?)?.toDouble() ?? 188,
+      (r['page_count'] as num?)?.toInt() ?? 250,
+      spineRatioOf(r['cover_uri'] as String?),
+    ),
+    // 기본 정면 장정 그림을 골랐으면 실제 표지 사진은 쓰지 않는다(지금 앱 previewBook·toShelfBook)
+    coverArtUri: isCoverArtworkId(r['bd_art_id'] as String?) ? null : (r['cover_art_uri'] as String?) ?? coverAtSize(r['cover_uri'] as String?, 'L'),
+    material: r['bd_material'] as String?,
+    coverArtId: isCoverArtworkId(r['bd_art_id'] as String?) ? r['bd_art_id'] as String : null,
+    coverUri: r['cover_uri'] as String?,
+    inkColor: r['ink_color'] as String?,
+    ribbonColor: r['ribbon_color'] as String?,
+    // 책등 조판 변형: 장정 값 → 판본 추천 장정 값 → 기본(지금 앱 toShelfBook layoutArt)
+    titleTop: switch ((r['bd_layout'] as String?) ?? (r['art_layout'] as String?) ?? 'spine_a') { 'spine_b' => 0.16, 'spine_c' => 0.11, _ => null },
+    quotes: ((r['quotes'] as num?) ?? 0).toInt(),
+  );
+
 /// 서재 전체를 읽는다(지금 앱 bootStores의 서재 읽기와 같은 값)
 Future<Library> loadLibrary() async {
   final db = await openLibrary();
   final rows = await db.rawQuery('''
-    SELECT b.id, b.ribbon_color, e.title, e.width_mm, e.height_mm, e.page_count, e.cover_uri,
-           bd.spine_color, bd.ink_color, bd.cover_art_uri, bd.layout AS bd_layout, bd.material AS bd_material, bd.cover_art_id AS bd_art_id, e.art_layout,
-           (SELECT COUNT(*) FROM bookmarks m WHERE m.my_book_id = b.id) AS quotes,
-           (SELECT name FROM edition_authors a WHERE a.edition_id = e.id ORDER BY a.position LIMIT 1) AS author
+    SELECT $_bookCols, b.ribbon_color,
+           (SELECT COUNT(*) FROM bookmarks m WHERE m.my_book_id = b.id) AS quotes
       FROM my_books b
       JOIN editions e ON e.id = b.edition_id
       LEFT JOIN bindings bd ON bd.id = b.binding_id
      WHERE b.hidden_at IS NULL
   ''');
-  final books = [
-    for (final r in rows)
-      Book(
-        id: r['id']! as String,
-        title: (r['title'] as String?) ?? '',
-        author: r['author'] as String?,
-        themeColor: _colorOf(r['spine_color'] as String?),
-        heightClass: _heightOf((r['height_mm'] as num?)?.toInt()),
-        thicknessClass: _thickOf((r['page_count'] as num?)?.toInt()),
-        physical: Physical(
-          widthMm: (r['width_mm'] as num?)?.toDouble(),
-          heightMm: (r['height_mm'] as num?)?.toDouble(),
-          pages: (r['page_count'] as num?)?.toInt(),
-        ),
-        // 그리는 크기: 판형이 없으면 흔한 판형(128×188mm, 250쪽), 두께는 책등 사진 비율이 있으면 그것(지금 앱 toShelfBook)
-        dims: realDimensions(
-          (r['width_mm'] as num?)?.toDouble() ?? 128,
-          (r['height_mm'] as num?)?.toDouble() ?? 188,
-          (r['page_count'] as num?)?.toInt() ?? 250,
-          spineRatioOf(r['cover_uri'] as String?),
-        ),
-        // 기본 정면 장정 그림을 골랐으면 실제 표지 사진은 쓰지 않는다(지금 앱 previewBook·toShelfBook)
-        coverArtUri: isCoverArtworkId(r['bd_art_id'] as String?) ? null : (r['cover_art_uri'] as String?) ?? coverAtSize(r['cover_uri'] as String?, 'L'),
-        material: r['bd_material'] as String?,
-        coverArtId: isCoverArtworkId(r['bd_art_id'] as String?) ? r['bd_art_id'] as String : null,
-        coverUri: r['cover_uri'] as String?,
-        inkColor: r['ink_color'] as String?,
-        ribbonColor: r['ribbon_color'] as String?,
-        // 책등 조판 변형: 장정 값 → 판본 추천 장정 값 → 기본(지금 앱 toShelfBook layoutArt)
-        titleTop: switch ((r['bd_layout'] as String?) ?? (r['art_layout'] as String?) ?? 'spine_a') { 'spine_b' => 0.16, 'spine_c' => 0.11, _ => null },
-        quotes: ((r['quotes'] as num?) ?? 0).toInt(),
-      ),
-  ];
+  final books = [for (final r in rows) _bookOf(r)];
 
   final shown = {for (final b in books) b.id};
   final all = await loadLayout();
@@ -124,13 +129,17 @@ Future<Map<String, List<int>>> archivedYears(Iterable<String> ids) async {
 
 String _poseName(Pose p) => switch (p) { Pose.front => 'front', Pose.horizontal => 'horizontal', Pose.upright => 'spine' };
 
-/// 지금 책장 배치(선반·자리·서랍). 순서는 지금 앱과 같다: 선반 순서 → 선반 안 순서 → 쌓기 순서, 서랍은 서랍 순서
-Future<ShelfLayout> loadLayout() async {
+/// 지금 책장 배치(선반·자리·서랍), bookcaseId를 주면 그 연도 책장. 순서는 지금 앱과 같다: 선반 순서 → 선반 안 순서 → 쌓기 순서, 서랍은 서랍 순서
+Future<ShelfLayout> loadLayout([String? bookcaseId]) async {
   final db = await openLibrary();
-  final shelfRows = await db.rawQuery('SELECT id, position FROM shelves ORDER BY position, id');
+  const order = 'ORDER BY p.shelf_id IS NULL, s.position, p.shelf_id, p.position, p.stack_order IS NOT NULL, p.stack_order, p.book_id';
+  final shelfRows = bookcaseId == null
+      ? await db.rawQuery('SELECT id, position FROM shelves ORDER BY position, id')
+      : await db.rawQuery('SELECT id, position FROM bookcase_shelves WHERE bookcase_id = ? ORDER BY position, id', [bookcaseId]);
   final shelves = [for (final r in shelfRows) Shelf(r['id']! as String, (r['position']! as num).toInt())];
-  final rows = await db.rawQuery('SELECT p.* FROM shelf_placements p LEFT JOIN shelves s ON s.id = p.shelf_id '
-      'ORDER BY p.shelf_id IS NULL, s.position, p.shelf_id, p.position, p.stack_order IS NOT NULL, p.stack_order, p.book_id');
+  final rows = bookcaseId == null
+      ? await db.rawQuery('SELECT p.* FROM shelf_placements p LEFT JOIN shelves s ON s.id = p.shelf_id $order')
+      : await db.rawQuery('SELECT p.* FROM bookcase_placements p LEFT JOIN bookcase_shelves s ON s.bookcase_id = p.bookcase_id AND s.id = p.shelf_id WHERE p.bookcase_id = ? $order', [bookcaseId]);
   final placements = <BookPlacement>[];
   final drawer = <String>[];
   for (final r in rows) {
@@ -219,4 +228,81 @@ Future<void> saveLayout(ShelfLayout prev, ShelfLayout next) async {
     final rev = (await t.rawQuery('SELECT revision FROM sync_meta WHERE id=1')).first['revision'];
     await t.rawUpdate('UPDATE sync_meta SET layout_at=?, layout_dirty=1, layout_revision=? WHERE id=1', [DateTime.now().toUtc().toIso8601String(), rev]);
   });
+}
+
+// ---------- 연도 책장(지금 앱 local-db readBookcases·writeBookcase) ----------
+
+ReadStatus _statusOf(String v) => ReadStatus.values.firstWhere((s) => s.name == v, orElse: () => ReadStatus.want);
+
+/// 남긴 연도 책장(오래된 해부터)
+Future<List<Bookcase>> readBookcases() async {
+  final db = await openLibrary();
+  final out = <Bookcase>[];
+  for (final r in await db.rawQuery('SELECT id, year, created_at, updated_at FROM bookcases ORDER BY year')) {
+    final id = r['id']! as String;
+    final books = [
+      for (final b in await db.rawQuery('SELECT * FROM bookcase_books WHERE bookcase_id = ? ORDER BY rowid', [id]))
+        BookcaseBook(
+          bookId: b['book_id']! as String,
+          status: _statusOf(b['status']! as String),
+          bindingId: b['binding_id'] as String?,
+          rating: b['rating'] as num?,
+          note: b['note'] as String?,
+          ribbonColor: b['ribbon_color'] as String?,
+          currentPage: b['current_page'] as num?,
+        ),
+    ];
+    out.add(Bookcase(id: id, year: (r['year']! as num).toInt(), createdAt: r['created_at']! as String, updatedAt: r['updated_at']! as String, layout: await loadLayout(id), books: books));
+  }
+  return out;
+}
+
+/// 한 벌을 통째로 쓴다(같은 id나 같은 해가 있으면 지우고). 책 목록에 없는 책의 자리는 뺀다(외래키)
+Future<void> writeBookcase(Bookcase c) async {
+  final db = await openLibrary();
+  await db.transaction((t) async {
+    await t.rawDelete('DELETE FROM bookcases WHERE id = ? OR year = ?', [c.id, c.year]);
+    await t.rawInsert('INSERT INTO bookcases (id, year, created_at, updated_at, synced) VALUES (?, ?, ?, ?, 0)', [c.id, c.year, c.createdAt, c.updatedAt]);
+    final known = <String>{};
+    for (final b in c.books) {
+      if (!known.add(b.bookId)) continue;
+      await t.rawInsert('INSERT INTO bookcase_books (bookcase_id, book_id, binding_id, status, rating, note, ribbon_color, current_page) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+          [c.id, b.bookId, b.bindingId, b.status.name, b.rating, b.note, b.ribbonColor, b.currentPage]);
+    }
+    final rows = _layoutRows(ShelfLayout(c.layout.shelves, [for (final p in c.layout.placements) if (known.contains(p.bookId)) p], [for (final id in c.layout.drawer) if (known.contains(id)) id]));
+    for (final e in rows.shelves.entries) {
+      await t.rawInsert('INSERT INTO bookcase_shelves (bookcase_id, id, position) VALUES (?, ?, ?)', [c.id, e.key, e.value]);
+    }
+    for (final spot in rows.spots.values) {
+      await t.insert('bookcase_placements', {'bookcase_id': c.id, ...spot});
+    }
+  });
+}
+
+/// 배치를 마지막으로 고친 때(연도 책장 남길 해를 셀 때)
+Future<String?> layoutChangedAt() async {
+  final db = await openLibrary();
+  final r = await db.rawQuery('SELECT layout_at FROM sync_meta WHERE id = 1');
+  return r.isEmpty ? null : r.first['layout_at'] as String?;
+}
+
+/// 연도 책장을 그릴 책(지금 앱 year-shelf yearScene): 그때 장정·갈피 색, 그해가 끝나기 전에 남긴 갈피 수. 지금은 숨긴 책도 그린다.
+/// 배치는 남긴 그대로(서재에 없는 책의 자리만 뺀다)
+Future<Library> loadYearShelf(Bookcase c) async {
+  final db = await openLibrary();
+  final end = DateTime(c.year + 1).toUtc().toIso8601String();
+  final rows = await db.rawQuery('''
+    SELECT $_bookCols, cb.ribbon_color,
+           (SELECT COUNT(*) FROM bookmarks m WHERE m.my_book_id = b.id AND m.created_at < ?) AS quotes
+      FROM bookcase_books cb
+      JOIN my_books b ON b.id = cb.book_id
+      JOIN editions e ON e.id = b.edition_id
+      LEFT JOIN bindings bd ON bd.id = cb.binding_id
+     WHERE cb.bookcase_id = ?
+     ORDER BY cb.rowid
+  ''', [end, c.id]);
+  final books = [for (final r in rows) _bookOf(r)];
+  final shown = {for (final b in books) b.id};
+  final l = c.layout;
+  return Library(books, ShelfLayout(l.shelves, [for (final p in l.placements) if (shown.contains(p.bookId)) p], [for (final id in l.drawer) if (shown.contains(id)) id]));
 }
