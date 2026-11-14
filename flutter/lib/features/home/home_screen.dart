@@ -98,6 +98,25 @@ class _HomeScreenState extends State<HomeScreen> {
   /// 정보 시트를 연 책(시트가 열린 동안 윤곽 빛)
   String? _popId;
 
+  /// 그 책이 있는 줄이 화면 가운데쯤 오게 넘기고 2.5초 윤곽을 빛낸다
+  void _focusBook() {
+    final id = focusBookOnShelf.value, g = _geom, c = _case;
+    if (id == null || g == null || c == null) return;
+    focusBookOnShelf.value = null;
+    final i = [for (var k = 0; k < c.rows.length; k++) if (c.rows[k].books.any((b) => b.id == id)) k].firstOrNull;
+    if (i == null || i >= g.geo.length) return;
+    if (_scroll.hasClients) {
+      final r = g.geo[i];
+      final p = _scroll.position;
+      final target = (g.contentTop + r.top + r.height / 2 - p.viewportDimension / 2).clamp(0.0, p.maxScrollExtent);
+      _scroll.animateTo(target, duration: const Duration(milliseconds: 300), curve: Curves.easeOutCubic);
+    }
+    setState(() => _popId = id);
+    Future<void>.delayed(const Duration(milliseconds: 2500), () {
+      if (mounted && _popId == id) setState(() => _popId = null);
+    });
+  }
+
   /// 그린 책(잠긴 칸 빼고)마다 화면 윤곽(콘텐츠 좌표)과 가장 앞 깊이. 줄마다 그릴 때와 같은 카메라·변환
   Iterable<({String id, ui.Path path, double z})> _outlines([String? only]) sync* {
     final g = _geom, c = _case;
@@ -673,6 +692,7 @@ class _HomeScreenState extends State<HomeScreen> {
   void initState() {
     super.initState();
     shelfRefresh.addListener(_refresh);
+    focusBookOnShelf.addListener(_focusBook);
     _loadSnap();
     WidgetsBinding.instance.addPostFrameCallback((_) => _run());
   }
@@ -857,6 +877,7 @@ class _HomeScreenState extends State<HomeScreen> {
     _freezeTimer?.cancel();
     _autoScroll?.cancel();
     shelfRefresh.removeListener(_refresh);
+    focusBookOnShelf.removeListener(_focusBook);
     for (final i in _atlases) {
       i.dispose();
     }
@@ -1274,6 +1295,9 @@ class _RowDone {
   final Map<String, BookKey> bookKeys;
   final Map<String, C3> tabLoss;
 }
+
+/// 책장에서 이 책을 보여 달라(책 정보 '책장 위치로 이동', 지금 앱 uiBus.focusBook): 홈이 그 줄로 넘기고 잠깐 윤곽을 빛낸다
+final focusBookOnShelf = ValueNotifier<String?>(null);
 
 /// 시작 사진 파일(굳힌 책장 그림, 다음에 켤 때 먼저 보인다)
 Future<File> homeSnapshotFile() async => File('${(await imageDir()).parent.path}/home_snapshot.png');

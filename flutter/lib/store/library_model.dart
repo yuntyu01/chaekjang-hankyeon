@@ -180,6 +180,35 @@ class LibraryModel extends ChangeNotifier {
     return id;
   }
 
+  /// 책 정보 고치기(지금 앱 updateEdition): 판본 값을 통째로 바꾼다(비운 값은 '확인 전')
+  Future<void> updateEdition(String editionId, {required String title, required List<String> authors, String? publisher, String? publishedAt, String? isbn13, num? pageCount, num? widthMm, num? heightMm, String? coverUri, String? coverSource}) {
+    final e = lib.editions[editionId];
+    if (e == null) return Future.value();
+    final next = Edition(
+      id: e.id,
+      title: title,
+      authors: authors,
+      source: e.source,
+      createdAt: e.createdAt,
+      updatedAt: nowIso(),
+      isbn13: isbn13,
+      publisher: publisher,
+      publishedAt: publishedAt,
+      pageCount: pageCount,
+      widthMm: widthMm,
+      heightMm: heightMm,
+      coverUri: coverUri,
+      coverSource: coverSource,
+      category: e.category,
+      seriesTitle: e.seriesTitle,
+      sourceName: e.sourceName,
+      productId: e.productId,
+      link: e.link,
+      art: e.art,
+    );
+    return commitLib(lib.copy(editions: {...lib.editions, editionId: next}));
+  }
+
   /// 갈피 남기기(지금 앱 addBookmark): 새 id를 돌려준다. 저장이 끝날 때까지 기다린다(실패하면 던진다: 화면은 적은 내용을 그대로 둔다)
   Future<String> addBookmark({required String myBookId, required String text, num? page, String? memo, String? photoUri, num? photoRatio, String? sessionId, num? boardX, num? boardY, num? boardRot}) async {
     await load();

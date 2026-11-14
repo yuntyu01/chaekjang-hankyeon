@@ -24,6 +24,13 @@ import '../bookmark/ribbon_color_sheet.dart';
 import '../stats/stats_screen.dart';
 import 'labels.dart';
 import '../bookmark/new_bookmark_screen.dart';
+import '../../domain/layout.dart' show placementOf;
+import '../../store/library_store.dart' show archivedYears;
+import '../../store/placement_store.dart';
+import '../home/home_screen.dart' show focusBookOnShelf;
+import 'all_books.dart' show deleteNote, deleteSummary;
+import 'edit_book_screen.dart' show openEditBook;
+import 'place_books.dart' show placeWithChoice;
 
 const _views = [('info', '책 정보'), ('rate', '평가'), ('mine', '내 기록')];
 const _statuses = [ReadStatus.want, ReadStatus.reading, ReadStatus.read, ReadStatus.paused];
@@ -103,26 +110,78 @@ class _BookScreenState extends State<BookScreen> {
     _model.setStatus(id, s);
   }
 
-  void _menu() => showSheet<void>(
-        context,
-        builder: (ctx) => ListGroup(children: [
-          for (final (label, sub, danger) in [
-            ('이미지로 공유', '한 줄 감상·별점을 넣은 카드', false),
-            ('책 정보 수정', null, false),
-            ('장정 편집', null, false),
-            ('책 삭제', '갈피·읽은 기록까지 지워요', true),
-          ])
-            ListItem(
-              label: label,
-              sub: sub,
-              danger: danger,
-              onPress: () {
-                Navigator.pop(ctx);
-                _pending(context, label);
-              },
-            ),
-        ]),
-      );
+  /// 책 메뉴(지금 앱): 공유·정보 수정·장정 편집·책장 위치로·책장에서 빼기/진열·숨기기/삭제
+  Future<void> _menu() async {
+    final place = PlacementStore.instance;
+    await place.ensure();
+    final years = (await archivedYears([id]))[id] ?? const <int>[];
+    if (!mounted) return;
+    final onShelf = place.layout != null && placementOf(place.layout!, id) != null;
+    showSheet<void>(
+      context,
+      builder: (ctx) => ListGroup(children: [
+        ListItem(label: '이미지로 공유', sub: '한 줄 감상·별점을 넣은 카드', onPress: () {
+          Navigator.pop(ctx);
+          _pending(context, '이미지로 공유');
+        }),
+        ListItem(label: '책 정보 수정', onPress: () {
+          Navigator.pop(ctx);
+          openEditBook(context, id);
+        }),
+        ListItem(label: '장정 편집', onPress: () {
+          Navigator.pop(ctx);
+          _pending(context, '장정 편집');
+        }),
+        if (onShelf)
+          ListItem(label: '책장 위치로 이동', onPress: () {
+            Navigator.pop(ctx);
+            focusBookOnShelf.value = id;
+            Navigator.of(context).popUntil((r) => r.isFirst);
+          }),
+        // 책장에서 빼기는 배치만 푼다(책 정보·장정·독서 기록·갈피 그대로). 삭제(빨간 글자)는 책 데이터 자체를 지운다
+        if (onShelf)
+          ListItem(label: '책장에서 빼기', sub: '기록은 그대로, 전체 책에 남아요', onPress: () async {
+            Navigator.pop(ctx);
+            if (await place.toDrawer(id) && mounted) appAlert(context, '책장에서 뺐어요. 전체 책에 그대로 있어요.');
+          })
+        else
+          ListItem(label: '책장에 진열', onPress: () {
+            Navigator.pop(ctx);
+            placeWithChoice(context, [id]);
+          }),
+        if (years.isNotEmpty)
+          ListItem(label: '책 숨기기', sub: '${years.join('·')}년 책장에는 남아요', onPress: () {
+            Navigator.pop(ctx);
+            _confirmDelete(years);
+          })
+        else
+          ListItem(label: '책 삭제', sub: '갈피·읽은 기록까지 지워요', danger: true, onPress: () {
+            Navigator.pop(ctx);
+            _confirmDelete(years);
+          }),
+      ]),
+    );
+  }
+
+  /// 연도 책장에 있는 책은 지우지 않고 숨긴다(2026-11-06 사용자 '삭제 말고 숨기기로')
+  void _confirmDelete(List<int> years) {
+    final hide = years.isNotEmpty;
+    final lib = _model.lib;
+    appAlert(
+      context,
+      hide ? '책을 숨길까요?' : '책을 삭제할까요?',
+      hide ? '지금 책장과 책 목록에서 빠지고, ${years.join('·')}년 책장에는 그대로 남아요.\n전체 책 › 필터 › 숨긴 책 보기에서 다시 꺼낼 수 있어요.' : deleteNote(deleteSummary(lib, [id])),
+      [
+        const AlertButton('취소', style: AlertStyle.cancel),
+        AlertButton(hide ? '숨기기' : '삭제', style: hide ? AlertStyle.normal : AlertStyle.destructive, onPress: () async {
+          final nav = Navigator.of(context);
+          await _model.deleteBook(id, archived: hide);
+          await PlacementStore.instance.forget([id]);
+          nav.popUntil((r) => r.isFirst);
+        }),
+      ],
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
