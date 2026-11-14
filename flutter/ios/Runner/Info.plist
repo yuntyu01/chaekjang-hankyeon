@@ -28,7 +28,7 @@
 	<array>
 		<dict>
 			<key>CFBundleURLName</key>
-			<string>app.covebook.chaekjang</string>
+			<string>app.covebook</string>
 			<key>CFBundleURLSchemes</key>
 			<array>
 				<string>chaekjang</string>

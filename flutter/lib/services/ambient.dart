@@ -45,7 +45,7 @@ class Ambient extends ChangeNotifier {
   Future<void> play(String id) async {
     try {
       if (!_bgReady) {
-        await JustAudioBackground.init(androidNotificationChannelId: 'app.covebook.chaekjang.ambient', androidNotificationChannelName: '환경음', androidNotificationOngoing: true);
+        await JustAudioBackground.init(androidNotificationChannelId: 'app.covebook.ambient', androidNotificationChannelName: '환경음', androidNotificationOngoing: true);
         _bgReady = true;
       }
       if (scene != id || _player == null) {
