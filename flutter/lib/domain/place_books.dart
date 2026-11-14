@@ -7,11 +7,12 @@ import 'book3_physics.dart';
 import 'layout.dart';
 import 'shelf_scene.dart';
 
-/// 선반마다(선반 차례대로) 3D 책. 서랍에 있는 책은 그리지 않는다
-List<List<Book3>> placeShelves(Library lib) {
+/// 선반마다(선반 차례대로) 3D 책. 서랍에 있는 책은 그리지 않는다.
+/// frozen: 지난 연도 책장처럼 저장된 모습 그대로(기대기를 다시 풀지 않는다, 2026-11-09 사용자 '옛날은 물리법칙 구현할 필요도 없어')
+List<List<Book3>> placeShelves(Library lib, {bool frozen = false}) {
   final layout = lib.layout;
   final books = {for (final b in lib.books) b.id: b};
   return [
-    for (final s in sortedShelves(layout)) [for (final f in computeShelf(layout, books, s.id)) fromPlaced(f.box)],
+    for (final s in sortedShelves(layout)) [for (final f in computeShelf(layout, books, s.id, frozen)) fromPlaced(f.box)],
   ];
 }

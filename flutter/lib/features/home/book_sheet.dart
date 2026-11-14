@@ -38,11 +38,14 @@ String? latestMemo(Library lib, String bookId) {
   return best?.text;
 }
 
-Future<void> showBookSheet(BuildContext context, String bookId) async {
+/// view·status·readOnly: 지난 연도 책장(보기 전용)에서 그해 기록(그해 서재·'2025년 · 완독')으로 연다. 읽기·갈피 단추가 없고,
+/// 지금 서재에 보이지 않는 책(숨긴 책)은 '책 정보 보기'도 없다(지금 앱 BookSheet readOnly)
+Future<void> showBookSheet(BuildContext context, String bookId, {Library? view, String? status, bool readOnly = false}) async {
   final model = LibraryModel.instance;
   await model.load();
   if (!context.mounted) return;
-  final lib = model.lib;
+  final lib = view ?? model.lib;
+  final canOpen = model.lib.books.containsKey(bookId) && model.lib.books[bookId]!.hiddenAt == null;
   final b = lib.books[bookId];
   final e = b == null ? null : lib.editions[b.editionId];
   if (b == null || e == null) return;
@@ -104,7 +107,7 @@ Future<void> showBookSheet(BuildContext context, String bookId) async {
                         ),
                         Padding(
                           padding: const EdgeInsets.only(top: 8),
-                          child: Text(statusLabel[b.status]!, style: AppType.caption.copyWith(fontSize: 14, height: 20 / 14)),
+                          child: Text(status ?? statusLabel[b.status]!, style: AppType.caption.copyWith(fontSize: 14, height: 20 / 14)),
                         ),
                         if ((b.note ?? '').isNotEmpty)
                           Padding(padding: const EdgeInsets.only(top: Space.s), child: Text(b.note!, maxLines: 3, overflow: TextOverflow.ellipsis, style: AppType.sub.copyWith(color: AppColors.ink))),
@@ -125,7 +128,8 @@ Future<void> showBookSheet(BuildContext context, String bookId) async {
                     ),
                   ]),
                 ),
-                Padding(
+                if (canOpen)
+                  Padding(
                   padding: const EdgeInsets.only(top: 22),
                   child: Btn(
                     label: '책 정보 보기',
@@ -136,7 +140,8 @@ Future<void> showBookSheet(BuildContext context, String bookId) async {
                     },
                   ),
                 ),
-                Padding(
+                if (!readOnly)
+                  Padding(
                   padding: const EdgeInsets.only(top: 10),
                   child: Row(children: [
                     Expanded(

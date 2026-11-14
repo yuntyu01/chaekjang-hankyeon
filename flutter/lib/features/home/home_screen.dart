@@ -18,6 +18,9 @@ import 'book_sheet.dart';
 import '../book/all_books_screen.dart' show openAllBooks;
 import '../store/store_screen.dart' show openStore;
 import 'decorate_panel.dart';
+import 'year_pager.dart';
+import '../../domain/bookcase.dart' show Bookcase;
+import '../../store/bookcase_store.dart';
 import '../../app/app_shell.dart' show tabBarHidden;
 import '../../domain/geometry.dart' show maxFrontSpin, maxSpin;
 import '../../domain/layout.dart' show ShelfLayout, placementOf, shelfItems, sortedShelves;
@@ -88,6 +91,14 @@ class HomeScreen extends StatefulWidget {
 class _HomeScreenState extends State<HomeScreen> {
   final _scroll = ScrollController();
 
+  // ---------- 지난 연도 책장(지금 앱 YearPager) ----------
+  final _pagerKey = GlobalKey<YearPagerState>();
+  List<Bookcase> _bookcases = BookcaseStore.instance.bookcases;
+  bool _pinching = false;
+  void _bookcasesChanged() {
+    if (mounted) setState(() => _bookcases = BookcaseStore.instance.bookcases);
+  }
+
   // ---------- 누르기·꾸미기(책장 편집) ----------
   /// 마지막으로 그린 책장 기하(누른 책 찾기용): 줄 자리·화면 배율·머리글 아래 끝·잠긴 칸 시작
   ({ShelfMetrics m, List<RowGeom> geo, double contentTop, int lockedFrom})? _geom;
@@ -104,6 +115,8 @@ class _HomeScreenState extends State<HomeScreen> {
     final id = focusBookOnShelf.value, g = _geom, c = _case;
     if (id == null || g == null || c == null) return;
     focusBookOnShelf.value = null;
+    // 지난 책장을 보고 있었으면 지금 책장으로
+    _pagerKey.currentState?.goTo(0);
     final i = [for (var k = 0; k < c.rows.length; k++) if (c.rows[k].books.any((b) => b.id == id)) k].firstOrNull;
     if (i == null || i >= g.geo.length) return;
     if (_scroll.hasClients) {
@@ -694,6 +707,8 @@ class _HomeScreenState extends State<HomeScreen> {
     super.initState();
     shelfRefresh.addListener(_refresh);
     focusBookOnShelf.addListener(_focusBook);
+    BookcaseStore.instance.addListener(_bookcasesChanged);
+    if (!BookcaseStore.instance.loaded) BookcaseStore.instance.load();
     _loadSnap();
     WidgetsBinding.instance.addPostFrameCallback((_) => _run());
   }
@@ -879,6 +894,7 @@ class _HomeScreenState extends State<HomeScreen> {
     _autoScroll?.cancel();
     shelfRefresh.removeListener(_refresh);
     focusBookOnShelf.removeListener(_focusBook);
+    BookcaseStore.instance.removeListener(_bookcasesChanged);
     for (final i in _atlases) {
       i.dispose();
     }
@@ -890,7 +906,9 @@ class _HomeScreenState extends State<HomeScreen> {
     final r = _runs.isEmpty ? null : _runs.last;
     final pad = MediaQuery.paddingOf(context);
     final scale = MediaQuery.textScalerOf(context).clamp(maxScaleFactor: 1.3);
-    Widget header() => MediaQuery(
+    Widget header([double opacity = 1]) => Opacity(
+      opacity: opacity,
+      child: MediaQuery(
       data: MediaQuery.of(context).copyWith(textScaler: scale),
       child: _Header(
         year: DateTime.now().year,
@@ -900,30 +918,14 @@ class _HomeScreenState extends State<HomeScreen> {
         icons: !_decorating,
         status: r == null ? _state : '굽기 ${r.bakeTotal}ms · 켠 뒤 ${r.sinceBoot}ms',
       ),
+    ),
     );
     final ready = _atlases.length > 1 && _rowSpots.length == _spaces.length;
     final dpr = MediaQuery.devicePixelRatioOf(context);
     final snap = _snap;
-    return ColoredBox(
-      color: AppColors.bg,
-      child: Stack(
-        children: [
-          // 시작 사진(지금 앱 LoadingScreen 스냅샷): 진짜 책장이 준비될 때까지 지난번에 굳힌 책장 그림을 먼저 보인다
-          if (!ready && snap != null && snap.width == (MediaQuery.sizeOf(context).width * dpr).ceil()) ...[
-            Positioned(
-              left: 0,
-              top: 0,
-              child: IgnorePointer(
-                child: RawImage(image: snap, width: snap.width / dpr, height: snap.height / dpr, scale: dpr, filterQuality: FilterQuality.none, fit: BoxFit.fill),
-              ),
-            ),
-            Positioned(left: 0, right: 0, top: pad.top, child: header()),
-          ],
-          // 책장(머리글 아래부터, 맨 윗줄 벽은 머리글 뒤까지). 지금 앱 홈 화면과 같은 구도
-          if (ready)
-            Positioned.fill(
-              // 지금 앱: 스크롤 영역은 상태 표시줄 아래부터(위로 올라간 책은 상태 표시줄 밑에서 잘린다)
-              child: ClipRect(
+    // 지금 책장 쪽(머리글 불투명도: 모아 보기로 줄이면 사라진다)
+    // 지금 앱: 스크롤 영역은 상태 표시줄 아래부터(위로 올라간 책은 상태 표시줄 밑에서 잘린다)
+    Widget shelfPage(double headerOpacity) => ClipRect(
                 clipper: _BelowTop(pad.top),
                 child: LayoutBuilder(
                   builder: (context, box) {
@@ -948,7 +950,7 @@ class _HomeScreenState extends State<HomeScreen> {
                       child: SingleChildScrollView(
                         key: _viewportKey,
                         controller: _scroll,
-                        physics: _head != null ? const NeverScrollableScrollPhysics() : null,
+                        physics: _head != null || _pinching ? const NeverScrollableScrollPhysics() : null,
                         child: SizedBox(
                           width: box.maxWidth,
                           height: height,
@@ -980,7 +982,7 @@ class _HomeScreenState extends State<HomeScreen> {
                               // 고른 책 윤곽 빛(지금 앱 SelectGlow): 바깥으로 흰 얇은 선과 좁은 그림자 번짐, 책 면은 덮지 않고 바닥 면 아래로 새지 않는다
                               // 겹쳐 그리는 것은 있다 없다 하므로 키를 단다(없으면 아래 누르기 층이 새로 만들어져 끌던 손가락이 끊긴다)
                               if (_drag == null ? _outlineOf(_decorating ? _editId : _popId) : null case final path?)
-                                Positioned.fill(key: const ValueKey('glow'), child: IgnorePointer(child: CustomPaint(painter: _GlowPainter(path, _geom!.m.scale)))),
+                                Positioned.fill(key: const ValueKey('glow'), child: IgnorePointer(child: CustomPaint(painter: GlowPainter(path, _geom!.m.scale)))),
                               // 끄는 책: 잡은 책 윤곽이 손가락을 따라간다(놓을 수 없는 자리면 붉게)
                               if (_drag case final d?)
                                 Positioned.fill(
@@ -1060,7 +1062,7 @@ class _HomeScreenState extends State<HomeScreen> {
                                 ),
                               ],
                               // 머리줄(책장과 함께 스크롤: 지금 앱 2026-11-04 '상단 라인은 고정이 아니야'): 왼쪽 '나의 책장'과 그 밑 해, 오른쪽 스토어·꾸미기·전체 책·더하기
-                              Positioned(left: 0, right: 0, top: pad.top, child: header()),
+                              Positioned(left: 0, right: 0, top: pad.top, child: header(headerOpacity)),
                               // 잠긴 칸: 가운데 자물쇠, 누르면 선반 한 칸 더 열기
                               for (var i = lockedFrom; i < n && i < geo.length; i++)
                                 Positioned(
@@ -1086,7 +1088,35 @@ class _HomeScreenState extends State<HomeScreen> {
                     );
                   },
                 ),
+              );
+    return ColoredBox(
+      color: AppColors.bg,
+      child: Stack(
+        children: [
+          // 시작 사진(지금 앱 LoadingScreen 스냅샷): 진짜 책장이 준비될 때까지 지난번에 굳힌 책장 그림을 먼저 보인다
+          if (!ready && snap != null && snap.width == (MediaQuery.sizeOf(context).width * dpr).ceil()) ...[
+            Positioned(
+              left: 0,
+              top: 0,
+              child: IgnorePointer(
+                child: RawImage(image: snap, width: snap.width / dpr, height: snap.height / dpr, scale: dpr, filterQuality: FilterQuality.none, fit: BoxFit.fill),
               ),
+            ),
+            Positioned(left: 0, right: 0, top: pad.top, child: header()),
+          ],
+          // 책장(머리글 아래부터, 맨 윗줄 벽은 머리글 뒤까지). 지금 앱 홈 화면과 같은 구도
+          if (ready)
+            Positioned.fill(
+              // 지난 연도 책장이 있으면 옆으로 넘기고 두 손가락으로 모아 본다(지금 앱 YearPager)
+              child: _bookcases.isEmpty
+                  ? shelfPage(1)
+                  : YearPager(
+                      key: _pagerKey,
+                      bookcases: _bookcases,
+                      blocked: _decorating || _drag != null || _head != null,
+                      onPinch: (v) => setState(() => _pinching = v),
+                      current: shelfPage,
+                    ),
             ),
           // 화면 위 끝 덮개(지금 앱 HeaderVeil): 올라간 거리만큼(28dp까지) 진해지는 벽색 그라데이션
           Positioned(
@@ -1175,8 +1205,8 @@ class _BelowTop extends CustomClipper<Rect> {
   bool shouldReclip(_BelowTop old) => old.top != top;
 }
 
-class _GlowPainter extends CustomPainter {
-  _GlowPainter(this.path, this.scale);
+class GlowPainter extends CustomPainter {
+  GlowPainter(this.path, this.scale);
   final ui.Path path;
   final double scale;
 
@@ -1198,7 +1228,7 @@ class _GlowPainter extends CustomPainter {
   }
 
   @override
-  bool shouldRepaint(_GlowPainter old) => old.path != path || old.scale != scale;
+  bool shouldRepaint(GlowPainter old) => old.path != path || old.scale != scale;
 }
 
 /// 끄는 책: 굳힌 책장 그림(든 순간의 모습)에서 그 책 모양만 떠서 손가락을 따라 옮긴다(아래 그늘, 둘레 흰 선). 제자리는 그 줄에서 책을 빼고 다시 그린다.
