@@ -57,13 +57,6 @@ double aabbW(Placed p) {
   return (p.size.w * math.cos(r)).abs() + (p.size.d * math.sin(r)).abs();
 }
 
-double aabbD(Placed p) {
-  final s = p.spin;
-  if (s == null || s == 0) return p.size.d;
-  final r = _rad(s);
-  return (p.size.w * math.sin(r)).abs() + (p.size.d * math.cos(r)).abs();
-}
-
 /// 2D 점(선반 공간 x-y, y 위)
 class P2 {
   const P2(this.x, this.y);

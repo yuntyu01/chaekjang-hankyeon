@@ -38,11 +38,6 @@ double wallLeanRest(double t, double h, double pitch) {
   return pitch;
 }
 
-bool leanHolds(double t, double h, double angle, [double mu = floorFriction]) {
-  final a = angle.abs();
-  return a > tipAngle(t, h) && a <= slipAngle(t, h, mu);
-}
-
 double _cross(P2 a, P2 b) => a.x * b.y - a.y * b.x;
 
 /// 상자의 x-y 외곽(깊이 방향으로 본 실루엣)

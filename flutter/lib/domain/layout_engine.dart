@@ -360,12 +360,6 @@ bool stackSupported(List<Placed> boxes) {
   return (z0: z, z1: z + d);
 }
 
-/// 오른쪽 끝(점유 끝)
-double usedWidth(List<ShelfItem> items, ShelfLayout layout, BookMap books) {
-  final pos = itemPositions(items, layout, books);
-  return pos.isEmpty ? 0 : pos.last.x + pos.last.width - shelfInnerLeft;
-}
-
 /// 모든 책의 지금 자리(자리 왼쪽 끝)
 Map<String, double> bookXs(ShelfLayout layout, BookMap books) {
   final xs = <String, double>{};
@@ -938,19 +932,6 @@ EditResult setDepth(ShelfLayout layout, BookMap books, String bookId, double z, 
   return _finish(layout, r.layout, books);
 }
 
-/// 좌우 돌리기 한 단계(다이얼처럼): 눕힘 ← 왼쪽 기울임 ← 똑바로 → 오른쪽 기울임
-EditResult rotateStep(ShelfLayout layout, BookMap books, String bookId, int dir) {
-  final p = placementOf(layout, bookId);
-  if (p == null) return const EditResult.fail('unknown-book');
-  if (p.pose == Pose.front) return setPose(layout, books, bookId, Pose.upright);
-  if (p.pose == Pose.horizontal) return dir > 0 ? setPose(layout, books, bookId, Pose.upright) : const EditResult.fail('no-change');
-  final side = p.tilt.sign;
-  if (side == -dir) return setTilt(layout, books, bookId, 0);
-  if (side == 0) return setTilt(layout, books, bookId, tiltToward(dir));
-  if (dir > 0) return const EditResult.fail('no-change');
-  return setPose(layout, books, bookId, Pose.horizontal);
-}
-
 /// 눕힌 책을 선반 위에서 비스듬히(수직축 회전). 원하는 각이 안 되면 0 쪽으로 좁혀 가능한 가장 가까운 각
 EditResult setSpin(ShelfLayout layout, BookMap books, String bookId, double deg) {
   final p = placementOf(layout, bookId);
@@ -1095,11 +1076,6 @@ EditResult moveToShelf(ShelfLayout layout, BookMap books, String bookId, String 
 
 ShelfLayout addShelfTo(ShelfLayout layout, String id) => normalize(ShelfLayout([...layout.shelves, Shelf(id, layout.shelves.length)], layout.placements, layout.drawer));
 
-EditResult removeShelf(ShelfLayout layout, String shelfId) {
-  if (layout.placements.any((p) => p.shelfId == shelfId)) return const EditResult.fail('shelf-not-empty');
-  return EditResult.ok(normalize(ShelfLayout([for (final s in layout.shelves) if (s.id != shelfId) s], layout.placements, layout.drawer)));
-}
-
 /// 끄는 동안 놓을 자리: 눕힌 책(더미) 가운데 절반 위면 쌓기, 그 밖은 그 자리에 끼우기(0.5DU 단위)
 DropTarget findDropTarget(ShelfLayout detached, BookMap books, String shelfId, double centerX, Pose draggedPose, [double draggedWidth = 0]) {
   final positions = itemPositions(shelfItems(detached, shelfId), detached, books);
@@ -1174,15 +1150,6 @@ bool _samePos(ShelfLayout a, ShelfLayout b) {
   return true;
 }
 
-EditResult _placeAtFirstFit(ShelfLayout layout, BookMap books, String bookId) {
-  for (final shelf in sortedShelves(layout)) {
-    final count = shelfItems(layout, shelf.id).length;
-    final next = _insertItem(layout, BookPlacement(bookId: bookId, shelfId: '', order: 0), shelf.id, count, books);
-    if (checkSpace(next, books) == null) return EditResult.ok(next);
-  }
-  return const EditResult.fail('no-space');
-}
-
 /// 책장에 놓기 후보: 선반 순서대로, 그 선반 맨 끝에 세워 꽂아 넘치지 않는 배치들
 List<ShelfLayout> firstFitCandidates(ShelfLayout layout, BookMap books, String bookId) {
   final base = ShelfLayout(layout.shelves, layout.placements, [for (final id in layout.drawer) if (id != bookId) id]);
@@ -1194,19 +1161,6 @@ List<ShelfLayout> firstFitCandidates(ShelfLayout layout, BookMap books, String b
     if (checkSpace(next, books, shelf.id) == null) out.add(next);
   }
   return out;
-}
-
-EditResult placeFromDrawer(ShelfLayout layout, BookMap books, String bookId) {
-  if (!layout.drawer.contains(bookId)) return const EditResult.fail('unknown-book');
-  return _placeAtFirstFit(ShelfLayout(layout.shelves, layout.placements, [for (final id in layout.drawer) if (id != bookId) id]), books, bookId);
-}
-
-/// 새 책: 선반 빈 자리에 꽂고, 꽉 차 있으면 서랍에
-({ShelfLayout layout, String where}) addBookTo(ShelfLayout layout, BookMap books, String bookId) {
-  if (placementOf(layout, bookId) != null || layout.drawer.contains(bookId)) return (layout: layout, where: placementOf(layout, bookId) != null ? 'shelf' : 'drawer');
-  final r = _placeAtFirstFit(layout, books, bookId);
-  if (r.ok) return (layout: r.layout!, where: 'shelf');
-  return (layout: normalize(ShelfLayout(layout.shelves, layout.placements, [...layout.drawer, bookId])), where: 'drawer');
 }
 
 /// 같은 선반의 다른 자리와 서로 위치를 바꾼다
@@ -1568,7 +1522,7 @@ double _areaOf(List<P2> poly) {
   return a.abs() / 2;
 }
 
-/// 손을 놓은 책이 머무는 곳: 'pose'(st) / 'drawer' / 'stand'
+/// 손을 놓은 책이 머무는 곳: 'pose'(st) / 'stand'
 typedef _FrontRest = ({String kind, FrontState? st});
 _FrontRest _restPose(_FrontPose f) => (kind: 'pose', st: f.st);
 
@@ -1585,30 +1539,10 @@ _FrontRest _restAt(_FrontWorld w, _Fall fell) {
 }
 
 _FrontRest _edgeRest(_FrontWorld w, double spin) {
-  _FrontPose at(double depth) => _frontPose(w.book, w.qx, (depth: depth, pitch: 90, spin: spin));
-  final flat = at(((-shelfFront - frontExt(w.book, pitch: 90, spin: spin).z0) * 100).ceil() / 100);
-  if (_frontHit(w, flat, w.limit0) == null) return _restPose(flat);
-  var blocked = flat.st.depth;
-  double? free;
-  for (var d = blocked - 1; d > flat.st.depth - w.dims.h - w.dims.t - 2; d -= 1) {
-    if (_frontHit(w, at(d), w.limit0, false) == null) {
-      free = d;
-      break;
-    }
-    blocked = d;
-  }
-  if (free == null) return (kind: 'stand', st: null);
-  var ok = free;
-  for (var k = 0; k < 8; k++) {
-    final mid = (ok + blocked) / 2;
-    if (_frontHit(w, at(mid), w.limit0, false) != null) {
-      blocked = mid;
-    } else {
-      ok = mid;
-    }
-  }
-  final f = at(ok);
-  return f.st.depth + (f.e.z0 + f.e.z1) / 2 < -shelfFront ? (kind: 'drawer', st: null) : (kind: 'stand', st: null);
+  final flat = _frontPose(w.book, w.qx, (depth: ((-shelfFront - frontExt(w.book, pitch: 90, spin: spin).z0) * 100).ceil() / 100, pitch: 90, spin: spin));
+  // 판 앞 끝에 맞춰 눕힐 자리가 없으면 제자리에 선다. 선반 밖으로는 떨어지지 않는다
+  // (지금 앱은 앞으로 반 넘게 나가야 누울 수 있으면 서랍에 넣었다. 그 판정을 위한 바깥쪽 자리 찾기도 함께 뺐다)
+  return _frontHit(w, flat, w.limit0) == null ? _restPose(flat) : (kind: 'stand', st: null);
 }
 
 const _slideStep = 0.5, _slideCoarse = 2.0, _slideChecks = 24;
@@ -1709,17 +1643,14 @@ _FrontRest _releaseRest(_FrontWorld w, FrontState cur, double target) {
   return v.kind == 'slip' ? _slideRest(w, fell.pose) : v;
 }
 
-/// 손을 놓으면 무게중심 방향으로 넘어지며 받침·벽·바닥에서 멈춘다(다시 서기·기대기·눕기·미끄러짐·선반에서 떨어져 서랍)
+/// 손을 놓으면 무게중심 방향으로 넘어지며 받침·벽·바닥에서 멈춘다(다시 서기·기대기·눕기·미끄러짐). 선반 밖으로는 떨어지지 않는다
 ShelfLayout? frontRelease(ShelfLayout layout, BookMap books, String bookId, FrontState cur, double qx) {
   final dims = frontDims(books[bookId]!);
   final target = releasedPitch(dims, cur, shelfDepth);
   if ((target - cur.pitch).abs() < 0.01) return applyFront(layout, books, bookId, qx, cur);
   final w = _frontWorld(layout, books, bookId, qx, cur);
   final rest = _releaseRest(w, cur, target);
-  if (rest.kind == 'drawer') {
-    final r = moveToDrawer(layout, bookId, books);
-    if (r.ok) return r.layout;
-  } else if (rest.kind == 'pose') {
+  if (rest.kind == 'pose') {
     final placed = _placeFront(layout, books, bookId, qx, rest.st!);
     if (placed != null) return placed;
   }

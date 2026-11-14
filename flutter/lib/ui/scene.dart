@@ -413,13 +413,6 @@ void _flatWall(ui.Canvas canvas, ShaderSlots lit, Cam c, Affine px, RowCase row,
   );
 }
 
-/// 줄 하나가 화면에서 차지하는 높이(판 아랫면부터 위 판까지)
-double rowHeightPx(Cam c, Affine px, double space) {
-  final top = toPx(c, px, Vec3(0, space + shelfThick, shelfDepth));
-  final bottom = toPx(c, px, Vec3(0, -shelfThick, shelfDepth));
-  return math.max(1, bottom.dy - top.dy);
-}
-
 // ---------- 책 ----------
 // 책 한 권의 빛: 책 윤곽 안을 화소마다 광선으로(셰이더 book.frag가 보이는 면·속지 구멍을 찾는다).
 // 구운 하늘 가림은 면마다 아틀라스 칸(rect)으로 읽는다. 지금 앱 ui/SceneLight BookLight와 같다

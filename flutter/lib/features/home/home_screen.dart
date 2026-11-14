@@ -7,11 +7,25 @@ import 'dart:io';
 import 'dart:math' as math;
 import 'dart:ui' as ui;
 
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 
 import '../../services/cover_colors.dart';
 import '../../ui/kit.dart' show Btn, showSheet;
 import 'locked_rows.dart';
+import 'book_sheet.dart';
+import 'decorate_panel.dart';
+import '../../app/app_shell.dart' show tabBarHidden;
+import '../../domain/geometry.dart' show maxFrontSpin, maxSpin;
+import '../../domain/layout.dart' show ShelfLayout, placementOf, shelfItems, sortedShelves;
+import '../../domain/book3_physics.dart' show fromPlaced;
+import '../../domain/geometry.dart' show shelfUsableWidth;
+import '../../domain/layout_engine.dart';
+import '../../domain/types.dart' show Pose, tiltToward;
+import '../../domain/shelf_scene.dart' show resolveLeans;
+import '../../domain/vec3.dart' show C3, Vec3;
+import '../../domain/book3.dart' show corners;
+import '../../store/placement_store.dart';
 
 import '../../domain/camera.dart';
 import '../../domain/place_books.dart';
@@ -67,6 +81,231 @@ class HomeScreen extends StatefulWidget {
 
 class _HomeScreenState extends State<HomeScreen> {
   final _scroll = ScrollController();
+
+  // ---------- 누르기·꾸미기(책장 편집) ----------
+  /// 마지막으로 그린 책장 기하(누른 책 찾기용): 줄 자리·화면 배율·머리글 아래 끝·잠긴 칸 시작
+  ({ShelfMetrics m, List<RowGeom> geo, double contentTop, int lockedFrom})? _geom;
+  bool _decorating = false;
+  String? _editId;
+  String? _editMsg;
+  ({String title, Pose pose, int lean, ({bool left, bool right}) canLean, double spin, double spinMax, ({double lo, double hi})? spinRange, ({double lo, double hi, double z}) depth})? _panel;
+
+  /// 정보 시트를 연 책(시트가 열린 동안 윤곽 빛)
+  String? _popId;
+
+  /// 그린 책(잠긴 칸 빼고)마다 화면 윤곽(콘텐츠 좌표)과 가장 앞 깊이. 줄마다 그릴 때와 같은 카메라·변환
+  Iterable<({String id, ui.Path path, double z})> _outlines([String? only]) sync* {
+    final g = _geom, c = _case;
+    if (g == null || c == null) return;
+    final cam = Cam(viewPitchMin);
+    for (var i = 0; i < g.lockedFrom && i < g.geo.length && i < c.rows.length; i++) {
+      final px = Affine(g.m.scale, g.m.originX + sideMargin * g.m.scale, g.contentTop + g.geo[i].baseline);
+      for (final b in c.rows[i].books) {
+        if (only != null && b.id != only) continue;
+        yield (id: b.id, path: bookOutline(cam, px, b), z: corners(b).map((v) => v.z).reduce(math.min));
+      }
+    }
+  }
+
+  /// 누른 점 아래의 책: 윤곽 안에 든 것 중 가장 앞(깊이 작은) 책
+  String? _hitBook(Offset p) {
+    String? best;
+    var bestZ = double.infinity;
+    for (final o in _outlines()) {
+      if (o.z < bestZ && o.path.contains(p)) {
+        bestZ = o.z;
+        best = o.id;
+      }
+    }
+    return best;
+  }
+
+  ui.Path? _outlineOf(String? id) => id == null ? null : _outlines(id).firstOrNull?.path;
+
+  Future<void> _onTap(Offset p) async {
+    final id = _hitBook(p);
+    if (_decorating) {
+      setState(() {
+        _drag = null;
+        _editId = id;
+        _editMsg = null;
+      });
+      _computePanel();
+      return;
+    }
+    if (id == null) return;
+    setState(() => _popId = id);
+    await showBookSheet(context, id);
+    if (mounted) setState(() => _popId = null);
+  }
+
+  Future<void> _enterDecorate([String? id]) async {
+    await PlacementStore.instance.ensure();
+    if (!mounted) return;
+    setState(() {
+      _decorating = true;
+      _editId = id;
+      _editMsg = null;
+    });
+    tabBarHidden.value = true;
+    _computePanel();
+  }
+
+  void _exitDecorate() {
+    setState(() {
+      _drag = null;
+      _decorating = false;
+      _editId = null;
+      _panel = null;
+      _editMsg = null;
+    });
+    tabBarHidden.value = false;
+  }
+
+  /// 고른 책의 조작부 값(자세·기대기 가능 방향·회전 범위·앞뒤 범위)
+  void _computePanel() {
+    final s = PlacementStore.instance, l = s.layout, id = _editId;
+    final p = l == null || id == null ? null : placementOf(l, id);
+    if (l == null || id == null || p == null) {
+      setState(() => _panel = null);
+      return;
+    }
+    // 기울이면 실제로 기대는지(닿을 곳이 없으면 바로 선다). 그 선반만 풀어 본다
+    bool can(int d) {
+      if (p.pose != Pose.upright) return false;
+      if (p.tilt.sign == d) return true;
+      final r = setTilt(l, s.books, id, tiltToward(d));
+      return r.ok && (placementOf(resolveLeans(r.layout!, s.books, p.shelfId), id)?.tilt ?? 0) != 0;
+    }
+
+    final fs = p.pose == Pose.front ? frontStateOf(l, s.books, id) : null;
+    setState(() => _panel = (
+          title: s.books[id]?.title ?? '',
+          pose: p.pose == Pose.front && (p.pitch ?? 0) >= 89.95 ? Pose.horizontal : p.pose,
+          lean: p.tilt.sign,
+          canLean: (left: can(-1), right: can(1)),
+          spin: fs?.state.spin ?? p.spin ?? 0,
+          spinMax: p.pose == Pose.front ? maxFrontSpin : maxSpin,
+          spinRange: spinRangeOf(l, s.books, id),
+          depth: depthRange(l, s.books, id),
+        ));
+  }
+
+  /// 편집 결과 확정(실패면 까닭을 조작부에, 성공 알림은 note)
+  Future<void> _apply(EditResult r, [String? note]) async {
+    if (!r.ok) {
+      setState(() => _editMsg = r.reason == 'no-change' ? null : editFailText[r.reason] ?? editFailText['outside']);
+      return;
+    }
+    final ok = await PlacementStore.instance.commit(r.layout!);
+    if (!mounted) return;
+    setState(() => _editMsg = ok ? note : editFailText['no-space']);
+    _computePanel();
+  }
+
+  /// 고른 책에 편집 한 번(배치·책이 있을 때만)
+  void _edit(EditResult Function(ShelfLayout l, BookMap books, String id) op) {
+    final s = PlacementStore.instance, l = s.layout, id = _editId;
+    if (l == null || id == null) return;
+    _apply(op(l, s.books, id));
+  }
+
+  void _editPose(Pose pose) {
+    if (_panel?.pose != pose) _edit((l, b, id) => setPose(l, b, id, pose));
+  }
+
+  void _editLean(int d) {
+    if (_panel?.lean != d) _edit((l, b, id) => setTilt(l, b, id, tiltToward(d)));
+  }
+
+  void _editSpin(double deg) => _edit((l, b, id) {
+        if (placementOf(l, id)?.pose != Pose.front) return setSpin(l, b, id, deg);
+        final fs = frontStateOf(l, b, id);
+        final r = fs == null ? null : frontSpin(l, b, id, fs.state, fs.qx, deg);
+        return r == null ? const EditResult.fail('no-space') : EditResult.ok(r.layout);
+      });
+
+  void _editDepth(double z) => _edit((l, b, id) => setDepth(l, b, id, z));
+
+  // ---------- 끌어 옮기기(지금 앱 HomeScreen beginDrag·endDrag, useShelfDragPreview) ----------
+  /// 잡은 책: 잡은 곳(콘텐츠 좌표)·잡은 항목 가운데와 폭(설계 단위)·윤곽·끄는 책을 뺀 배치(끌기 한 번에 한 번만 계산)
+  ({String id, String shelfId, Offset start, double centerDU, double widthDU, ui.Path path, ShelfLayout detached})? _drag;
+  Offset _dragNow = Offset.zero;
+  bool _dragOk = true;
+
+  void _beginDrag(Offset at) {
+    final id = _hitBook(at);
+    final path = _outlineOf(id);
+    final s = PlacementStore.instance, l = s.layout;
+    final p = l == null || id == null ? null : placementOf(l, id);
+    if (l == null || p == null || path == null) return;
+    // 잡은 항목(더미의 받침이면 더미 전체)의 곧은 3D 상자: 가운데와 폭
+    final item = shelfItems(l, p.shelfId).where((it) => it.bookIds.contains(id)).firstOrNull;
+    final bx = boxOf(l, s.books, id!);
+    var lo = double.infinity, hi = double.negativeInfinity;
+    for (final c in bx == null ? const <Vec3>[] : corners(fromPlaced(bx))) {
+      lo = math.min(lo, c.x);
+      hi = math.max(hi, c.x);
+    }
+    setState(() {
+      _decorating = true;
+      _editId = id;
+      _editMsg = null;
+      _frozen = true; // 끄는 책은 굳힌 책장 그림에서 떠 온다
+      _dragNow = at;
+      _dragOk = true;
+      _drag = (
+        id: id,
+        shelfId: p.shelfId,
+        start: at,
+        centerDU: (lo + hi) / 2,
+        widthDU: item != null ? itemWidth(item, l, s.books) : hi - lo,
+        path: path,
+        detached: detach(l, id, s.books),
+      );
+    });
+    tabBarHidden.value = true;
+    _computePanel();
+  }
+
+  /// 손가락 자리에 놓으면 될 배치(늘 확정 배치에서 계산: 같은 줄이면 바꿔 놓기, 다른 줄이면 끄는 책을 뺀 배치에서 놓을 자리)
+  EditResult _dropAt(Offset at) {
+    final d = _drag, g = _geom, s = PlacementStore.instance, l = s.layout;
+    if (d == null || g == null || l == null) return const EditResult.fail('no-change');
+    final shelves = sortedShelves(l);
+    final cy = at.dy - g.contentTop;
+    final index = g.geo.isEmpty || cy < g.geo.first.top ? -1 : g.geo.indexWhere((r) => cy >= r.top && cy < r.top + r.height);
+    final centerDU = d.centerDU + (at.dx - d.start.dx) / g.m.scale;
+    final withinX = centerDU > -sideMargin && centerDU < shelfUsableWidth + sideMargin;
+    if (!withinX || index < 0 || index >= shelves.length) return const EditResult.fail('outside');
+    final shelfId = shelves[index].id;
+    if (shelfId == d.shelfId) return applySwapTarget(l, s.books, d.id, findSwapTarget(l, s.books, d.id, centerDU));
+    final p = placementOf(l, d.id)!;
+    return moveBook(l, s.books, d.id, findDropTarget(d.detached, s.books, shelfId, centerDU, p.pose, d.widthDU));
+  }
+
+  void _moveDrag(Offset at) {
+    if (_drag == null) return;
+    setState(() {
+      _dragNow = at;
+      final r = _dropAt(at);
+      _dragOk = r.ok || r.reason == 'no-change';
+    });
+  }
+
+  void _endDrag() {
+    if (_drag == null) return;
+    final r = _dropAt(_dragNow);
+    setState(() => _drag = null);
+    _apply(r, '배치를 바꿨어요');
+  }
+
+  Future<void> _undo() async {
+    await PlacementStore.instance.undo();
+    if (!mounted) return;
+    setState(() => _editMsg = null);
+    _computePanel();
+  }
 
   /// 책장 그림(입력이 같으면 다시 쓰고, 바뀌면 다시 그린다)
   ui.Image? _shelfImage;
@@ -163,6 +402,9 @@ class _HomeScreenState extends State<HomeScreen> {
   /// 줄마다 책이 받는 창빛 그림자(책 id → 면 칸 그림)
   List<Map<String, BookKey>> _bookKeys = const [];
 
+  /// 지난 굽기의 줄별 결과(굽기 열쇠 → 그림·그림자 열쇠·갈피 손실). 다음 굽기에서 바뀌지 않은 줄은 그대로 쓴다
+  Map<String, _RowDone> _rowDone = {};
+
   /// 받아 온 표지 사진(주소 → 그림). 받는 대로 다시 그린다(그 전까지는 코드로 그린 장정)
   Map<String, CoverPhoto> _photos = const {};
   bool _busy = false;
@@ -189,9 +431,12 @@ class _HomeScreenState extends State<HomeScreen> {
       _again = true;
       return;
     }
-    _case = null;
+    _rebuild = true;
     _run();
   }
+
+  /// 다음 굽기에서 줄을 서재로부터 새로 만든다(그동안 화면은 지난 줄·그림 그대로: 둘은 굽기가 끝날 때 함께 바꾼다)
+  bool _rebuild = false;
 
   Future<void> _run() async {
     if (_busy) return;
@@ -204,12 +449,15 @@ class _HomeScreenState extends State<HomeScreen> {
     // 서재(SQLite)에서 책과 자리를 읽어 줄을 만든다. 비어 있으면 보기 책을 넣는다
     await seedIfEmpty();
     final lib = await loadLibrary();
+    PlacementStore.instance.adopt(lib);
     _loadCovers([for (final b in lib.books) ?b.coverArtUri]);
     final shelves = placeShelves(lib);
     // 마지막 선반 아래 잠긴 칸(다섯 칸까지): 흐린 예시 책
     final locked = [for (var i = 0; i < lockedShelfCount(shelves.length); i++) await lockedRow(i)];
-    _lockedCount = locked.length;
-    final c = _case ??= BakeCase([
+    final lockedCount = locked.length;
+    final rebuild = _rebuild;
+    _rebuild = false;
+    final c = _case != null && !rebuild ? _case! : BakeCase([
       for (var i = 0; i < shelves.length; i++) rowFromBooks(shelves[i], lib.books, rowSpace, top: i == 0, last: i == shelves.length - 1 && locked.isEmpty),
       for (var i = 0; i < locked.length; i++) rowFromBooks(locked[i].bodies, locked[i].books, rowSpace, last: i == locked.length - 1),
       probeRow(),
@@ -225,60 +473,69 @@ class _HomeScreenState extends State<HomeScreen> {
     final spots = <List<Spot>>[];
     final spaces = <double>[];
     final keys = <({PlaneKey wall, PlaneKey floor})>[];
+    final bookKeys = <Map<String, BookKey>>[];
+    final done = <String, _RowDone>{};
     for (var ri = 0; ri < c.rows.length; ri++) {
       final r = c.rows[ri];
       final probe = ri == c.rows.length - 1; // 맨 뒤는 값 확인용(시간에 넣지 않는다)
-      // 같은 값으로 구워 담아 둔 그림이 있으면 굽지 않는다
       final key = bakeKey(r);
-      final hit = cachedBake(key);
-      if (hit != null) {
-        final pack = packAtlas(r.items);
-        images.add(hit);
-        r.tabLoss = await readTabLosses(r, hit, pack.at);
-        if (!probe) {
-          spots.add(pack.at);
-          spaces.add(r.space);
-          keys.add(await rowKeys(r, _shadowScale));
-          rows.add(RowRun(r.items.length, pack.w, pack.h, 0, 0));
-        }
-        // ignore: avoid_print
-        print('[flbake] ${r.items.length} items ${pack.w}x${pack.h} cached');
+      // 지난번과 같은 줄(책을 옮긴 줄 말고는 다 그렇다): 구운 그림·그림자 열쇠·갈피 손실을 그대로 쓴다(다시 읽거나 굽지 않는다)
+      final kept = probe ? null : _rowDone[key] ?? done[key];
+      if (kept != null) {
+        r.tabLoss = kept.tabLoss;
+        done[key] = kept;
+        images.add(kept.image.clone());
+        spots.add(kept.at);
+        spaces.add(r.space);
+        keys.add(kept.keys);
+        bookKeys.add(kept.bookKeys);
+        rows.add(RowRun(r.items.length, kept.image.width, kept.image.height, 0, 0));
         continue;
       }
-      final t1 = DateTime.now();
-      final grid = await solveGrid(gridSlots, c, r);
-      final gridMs = DateTime.now().difference(t1).inMilliseconds;
-      final t2 = DateTime.now();
-      final atlas = await bakeAtlas(bakeSlots, c, r, grid);
-      final bakeMs = DateTime.now().difference(t2).inMilliseconds;
-      grid.dispose();
-      images.add(atlas.image);
-      r.tabLoss = await readTabLosses(r, atlas.image, atlas.at);
-      unawaited(saveBake(key, atlas.image));
-      if (!probe) {
-        spots.add(atlas.at); // 면 0 = 뒷벽, 1 = 판 윗면, 2 = 판 앞면, 3부터 책 면
-        spaces.add(r.space);
-        keys.add(await rowKeys(r, _shadowScale));
+      // 같은 값으로 구워 담아 둔 그림이 있으면 굽지 않는다
+      final ui.Image image;
+      final List<Spot> at;
+      var gridMs = 0, bakeMs = 0;
+      final hit = await cachedBake(key);
+      if (hit != null) {
+        image = hit;
+        at = packAtlas(r.items).at;
+        // ignore: avoid_print
+        print('[flbake] ${r.items.length} items ${image.width}x${image.height} cached');
+      } else {
+        final t1 = DateTime.now();
+        final grid = await solveGrid(gridSlots, c, r);
+        gridMs = DateTime.now().difference(t1).inMilliseconds;
+        final t2 = DateTime.now();
+        final atlas = await bakeAtlas(bakeSlots, c, r, grid);
+        bakeMs = DateTime.now().difference(t2).inMilliseconds;
+        grid.dispose();
+        image = atlas.image;
+        at = atlas.at; // 면 0 = 뒷벽, 1 = 판 윗면, 2 = 판 앞면, 3부터 책 면
+        unawaited(saveBake(key, image));
+        // ignore: avoid_print
+        print('[flbake] ${r.items.length} items ${atlas.w}x${atlas.h} ms ${gridMs + bakeMs} grid $gridMs bake $bakeMs');
+        // 구운 값이 맞는지 보는 자국(시간 잰 뒤에 따로 읽는다): 평균과 고른 칸 몇 개.
+        // 같은 값을 지금 앱 셰이더(CanvasKit)로도 구워 견준다(tool/pixcheck.test.ts)
+        // ignore: avoid_print
+        print('[flpix] row $ri ${atlas.w}x${atlas.h} ${await _stamp(image)}');
       }
-      final run = RowRun(r.items.length, atlas.w, atlas.h, gridMs, bakeMs);
-      if (!probe) rows.add(run);
-      // ignore: avoid_print
-      print('[flbake] ${run.items} items ${run.w}x${run.h} ms ${run.total} grid $gridMs bake $bakeMs');
-      // 구운 값이 맞는지 보는 자국(시간 잰 뒤에 따로 읽는다): 평균과 고른 칸 몇 개.
-      // 같은 값을 지금 앱 셰이더(CanvasKit)로도 구워 견준다(tool/pixcheck.test.ts)
-      // ignore: avoid_print
-      print('[flpix] row $ri ${atlas.w}x${atlas.h} ${await _stamp(atlas.image)}');
-    }
-    // 책 면이 받는 창빛 그림자(다른 책이 가리는 몫): 줄마다 책마다(위 판이 막는 부분은 뺀 가리개)
-    final bookKeys = <Map<String, BookKey>>[];
-    for (var ri = 0; ri < c.rows.length - 1; ri++) {
-      final r = c.rows[ri];
+      images.add(image);
+      r.tabLoss = await readTabLosses(r, image, at);
+      if (probe) continue;
+      // 책 면이 받는 창빛 그림자(다른 책이 가리는 몫): 책마다(위 판이 막는 부분은 뺀 가리개)
       final keysOf = <String, BookKey>{};
       for (final b in r.books) {
-        final key = await bookKeyImage(b, receivedShadow3(b, occludersIn(r.books, b, r.space), _shadowScale), _shadowScale);
-        if (key != null) keysOf[b.id] = key;
+        final k = await bookKeyImage(b, receivedShadow3(b, occludersIn(r.books, b, r.space), _shadowScale), _shadowScale);
+        if (k != null) keysOf[b.id] = k;
       }
+      final row = _RowDone(image.clone(), at, await rowKeys(r, _shadowScale), keysOf, r.tabLoss);
+      done[key] = row;
+      spots.add(at);
+      spaces.add(r.space);
+      keys.add(row.keys);
       bookKeys.add(keysOf);
+      rows.add(RowRun(r.items.length, image.width, image.height, gridMs, bakeMs));
     }
     final run = Run(rows, loadMs, DateTime.now().difference(bootAt).inMilliseconds);
     // ignore: avoid_print
@@ -291,6 +548,8 @@ class _HomeScreenState extends State<HomeScreen> {
       return;
     }
     setState(() {
+      _case = c;
+      _lockedCount = lockedCount;
       for (final i in _atlases) {
         i.dispose();
       }
@@ -307,6 +566,10 @@ class _HomeScreenState extends State<HomeScreen> {
         ..clear()
         ..addAll(keys);
       _bookKeys = bookKeys;
+      for (final e in _rowDone.entries) {
+        if (!identical(done[e.key], e.value)) e.value.image.dispose();
+      }
+      _rowDone = done;
       _runs.add(run);
       _state = '${_runs.length}번째';
       _busy = false;
@@ -406,6 +669,8 @@ class _HomeScreenState extends State<HomeScreen> {
         year: DateTime.now().year,
         // 측정 메뉴: 제목을 길게 누르면 다시 굽고 시간을 알린다(지금 앱 측정 번들의 책장 메뉴 자리)
         onLongPress: _busy ? null : _run,
+        onDecorate: () => _enterDecorate(),
+        icons: !_decorating,
         status: r == null ? _state : '굽기 ${r.bakeTotal}ms · 켠 뒤 ${r.sinceBoot}ms',
       ),
     );
@@ -444,8 +709,10 @@ class _HomeScreenState extends State<HomeScreen> {
                     final last = geo.isEmpty ? null : geo.last;
                     // 끝 여백(지금 앱 contentEnd): 판 그늘 몫과 하단바 블록 + 덮개 0.6 중 큰 것
                     final tail = math.max((shelfCastExtent + 8) * m.scale, pad.bottom + TabBarStyle.gap + TabBarStyle.height + TabBarStyle.fade * 0.6);
-                    final height = math.max(box.maxHeight, last == null ? 0.0 : contentTop + last.top + last.height + tail);
+                    // 꾸미는 동안은 아래 조작부(약 280) 뒤에 숨는 줄도 위로 밀어 볼 수 있게 끝 여백을 늘린다
+                    final height = math.max(box.maxHeight, last == null ? 0.0 : contentTop + last.top + last.height + tail + (_decorating ? 280 : 0));
                     final lockedFrom = n - _lockedCount;
+                    _geom = (m: m, geo: geo, contentTop: contentTop, lockedFrom: lockedFrom);
                     return NotificationListener<ScrollStartNotification>(
                       onNotification: (_) {
                         if (!_frozen) setState(() => _frozen = true);
@@ -479,6 +746,40 @@ class _HomeScreenState extends State<HomeScreen> {
                                     Size(box.maxWidth, height),
                                     MediaQuery.devicePixelRatioOf(context),
                                   ),
+                                ),
+                              ),
+                              // 고른 책 윤곽 빛(지금 앱 SelectGlow): 바깥으로 흰 얇은 선과 좁은 그림자 번짐, 책 면은 덮지 않고 바닥 면 아래로 새지 않는다
+                              // 겹쳐 그리는 것은 있다 없다 하므로 키를 단다(없으면 아래 누르기 층이 새로 만들어져 끌던 손가락이 끊긴다)
+                              if (_drag == null ? _outlineOf(_decorating ? _editId : _popId) : null case final path?)
+                                Positioned.fill(key: const ValueKey('glow'), child: IgnorePointer(child: CustomPaint(painter: _GlowPainter(path, _geom!.m.scale)))),
+                              // 끄는 책: 잡은 책 윤곽이 손가락을 따라간다(놓을 수 없는 자리면 붉게)
+                              if (_drag case final d?)
+                                Positioned.fill(
+                                  key: const ValueKey('drag'),
+                                  child: IgnorePointer(
+                                    child: CustomPaint(painter: _DragPainter(d.path, _dragNow - d.start, _geom!.m.scale, _dragOk, _shelfImage, MediaQuery.devicePixelRatioOf(context))),
+                                  ),
+                                ),
+                              // 누르기: 책 정보 시트(꾸미는 중이면 고르기), 꾹 누르기: 꾸미기
+                              Positioned.fill(
+                                key: const ValueKey('touch'),
+                                child: RawGestureDetector(
+                                  behavior: HitTestBehavior.translucent,
+                                  gestures: {
+                                    TapGestureRecognizer: GestureRecognizerFactoryWithHandlers<TapGestureRecognizer>(
+                                      TapGestureRecognizer.new,
+                                      (g) => g.onTapUp = (e) => _onTap(e.localPosition),
+                                    ),
+                                    // 꾹 눌러(지금 앱 motion.longPress 350ms) 책을 집으면 꾸미기가 시작되고 손가락을 따라 옮긴다(놓으면 그 자리로)
+                                    LongPressGestureRecognizer: GestureRecognizerFactoryWithHandlers<LongPressGestureRecognizer>(
+                                      () => LongPressGestureRecognizer(duration: const Duration(milliseconds: 350)),
+                                      (g) => g
+                                        ..onLongPressStart = ((e) => _beginDrag(e.localPosition))
+                                        ..onLongPressMoveUpdate = ((e) => _moveDrag(e.localPosition))
+                                        ..onLongPressEnd = ((_) => _endDrag())
+                                        ..onLongPressCancel = (() => setState(() => _drag = null)),
+                                    ),
+                                  },
                                 ),
                               ),
                               // 머리줄(책장과 함께 스크롤: 지금 앱 2026-11-04 '상단 라인은 고정이 아니야'): 왼쪽 '나의 책장'과 그 밑 해, 오른쪽 스토어·꾸미기·전체 책·더하기
@@ -552,6 +853,31 @@ class _HomeScreenState extends State<HomeScreen> {
               ),
             ),
           ),
+          if (_decorating)
+            Positioned(
+              left: 0,
+              right: 0,
+              bottom: 0,
+              child: DecoratePanel(
+                bookKey: _editId,
+                title: _panel?.title,
+                pose: _panel?.pose,
+                lean: _panel?.lean ?? 0,
+                canLean: _panel?.canLean ?? (left: false, right: false),
+                msg: _editMsg,
+                spin: _panel?.spin ?? 0,
+                spinMax: _panel?.spinMax ?? maxSpin,
+                spinRange: _panel?.spinRange,
+                depth: _panel?.depth,
+                canUndo: PlacementStore.instance.canUndo,
+                onPose: _editPose,
+                onLean: _editLean,
+                onSpin: _editSpin,
+                onDepth: _editDepth,
+                onUndo: _undo,
+                onDone: _exitDecorate,
+              ),
+            ),
         ],
       ),
     );
@@ -571,6 +897,82 @@ class _BelowTop extends CustomClipper<Rect> {
   bool shouldReclip(_BelowTop old) => old.top != top;
 }
 
+class _GlowPainter extends CustomPainter {
+  _GlowPainter(this.path, this.scale);
+  final ui.Path path;
+  final double scale;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final b = path.getBounds();
+    canvas.save();
+    // 책 면은 덮지 않는다(선의 바깥 절반만), 받치는 면 아래로는 새지 않는다
+    canvas.clipPath(ui.Path.combine(ui.PathOperation.difference, ui.Path()..addRect(Rect.fromLTRB(-4000, b.bottom - 4000, 8000, b.bottom)), path));
+    canvas.drawPath(path, Paint()
+      ..color = const Color(0x521F2533) // rgba(31,37,51,0.32)
+      ..maskFilter = MaskFilter.blur(BlurStyle.outer, 3.2 * scale));
+    canvas.drawPath(path, Paint()
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 3 * scale
+      ..strokeJoin = StrokeJoin.round
+      ..color = const Color(0xFFFFFFFF));
+    canvas.restore();
+  }
+
+  @override
+  bool shouldRepaint(_GlowPainter old) => old.path != path || old.scale != scale;
+}
+
+/// 끄는 책: 제자리는 비워 보이게 옅게 덮고, 굳힌 책장 그림에서 그 책 모양만 떠서 손가락을 따라 옮긴다(아래 그늘, 둘레 흰 선).
+/// 놓을 수 없는 자리면 붉게 덮는다. 굳힌 그림이 없으면 흰 윤곽만
+class _DragPainter extends CustomPainter {
+  _DragPainter(this.path, this.delta, this.scale, this.ok, this.image, this.dpr);
+  final ui.Path path;
+  final Offset delta;
+  final double scale;
+  final bool ok;
+  final ui.Image? image;
+  final double dpr;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    canvas.drawPath(path, Paint()..color = AppColors.bg.withValues(alpha: 0.72));
+    final moved = path.shift(delta);
+    canvas.drawPath(moved.shift(Offset(0, 4 * scale)), Paint()
+      ..color = const Color(0x521F2533)
+      ..maskFilter = MaskFilter.blur(BlurStyle.normal, 6 * scale));
+    final img = image;
+    canvas.save();
+    canvas.clipPath(moved);
+    if (img != null) {
+      canvas.translate(delta.dx, delta.dy);
+      canvas.scale(1 / dpr);
+      canvas.drawImage(img, Offset.zero, Paint()..filterQuality = FilterQuality.low);
+    } else {
+      canvas.drawPath(moved, Paint()..color = const Color(0x66FFFFFF));
+    }
+    canvas.restore();
+    if (!ok) canvas.drawPath(moved, Paint()..color = const Color(0x40D9534F));
+    canvas.drawPath(moved, Paint()
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 3 * scale
+      ..strokeJoin = StrokeJoin.round
+      ..color = const Color(0xFFFFFFFF));
+  }
+
+  @override
+  bool shouldRepaint(_DragPainter old) => old.delta != delta || old.ok != ok || old.image != image || old.path != path;
+}
+
+class _RowDone {
+  _RowDone(this.image, this.at, this.keys, this.bookKeys, this.tabLoss);
+  final ui.Image image;
+  final List<Spot> at;
+  final ({PlaneKey wall, PlaneKey floor}) keys;
+  final Map<String, BookKey> bookKeys;
+  final Map<String, C3> tabLoss;
+}
+
 /// 하단바 덮개 농도(끝이 부드러운 곡선)
 const _fadeStops = [(0.0, 0.0), (0.2, 0.05), (0.4, 0.2), (0.6, 0.48), (0.8, 0.8), (1.0, 1.0)];
 
@@ -586,10 +988,14 @@ const _headerArt = 31.0;
 const _headerLastCenter = 24.3;
 
 class _Header extends StatelessWidget {
-  const _Header({required this.year, required this.status, this.onLongPress});
+  const _Header({required this.year, required this.status, this.onLongPress, this.onDecorate, this.icons = true});
   final int year;
   final String status;
   final VoidCallback? onLongPress;
+  final VoidCallback? onDecorate;
+
+  /// 꾸미는 동안은 오른쪽 아이콘을 숨긴다(지금 앱 editing ? null)
+  final bool icons;
 
   @override
   Widget build(BuildContext context) {
@@ -597,7 +1003,9 @@ class _Header extends StatelessWidget {
       button: true,
       label: label,
       child: _Pressable(
-        onTap: () => ScaffoldMessenger.maybeOf(context)?.showSnackBar(SnackBar(content: Text('$label: 아직 옮기는 중이에요'), duration: const Duration(seconds: 1))),
+        onTap: name == 'decorate' && onDecorate != null
+            ? onDecorate!
+            : () => ScaffoldMessenger.maybeOf(context)?.showSnackBar(SnackBar(content: Text('$label: 아직 옮기는 중이에요'), duration: const Duration(seconds: 1))),
         child: SizedBox(
           width: _headerCell,
           height: 44,
@@ -634,7 +1042,7 @@ class _Header extends StatelessWidget {
           ),
           Padding(
             padding: const EdgeInsets.only(top: 2.5),
-            child: Row(children: [icon('store', '스토어'), icon('decorate', '꾸미기'), icon('books', '전체 책'), icon('add', '책 더하기')]),
+            child: icons ? Row(children: [icon('store', '스토어'), icon('decorate', '꾸미기'), icon('books', '전체 책'), icon('add', '책 더하기')]) : const SizedBox(height: 44),
           ),
         ],
       ),

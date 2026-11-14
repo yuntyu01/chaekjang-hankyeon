@@ -14,12 +14,19 @@ import 'package:path_provider/path_provider.dart';
 
 import '../domain/shelf_row.dart';
 import '../gen/light_uniforms.g.dart' as cal;
+import '../services/cover_cache.dart' show decodeImageInLine;
 
 /// 남겨 두는 그림 수(줄 수보다 넉넉히: 책을 옮기면 그 줄은 새 열쇠가 된다). 오래된 것부터 지운다
 const _keep = 40;
 
 Directory? _dir;
+
+/// 읽어 둔 그림(이 캐시가 가진 것: 내줄 때는 clone, 받는 쪽이 자기 것을 버린다)
 final Map<String, ui.Image> _mem = {};
+
+/// 폴더에 있는 그림 파일(열쇠 → 파일). 그림은 필요할 때 하나씩 읽는다(켤 때 40장을 다 풀지 않는다)
+final Map<String, File> _files = {};
+Future<void>? _ready;
 
 /// 굽기 결과를 정하는 값 전부 → 짧은 이름
 String bakeKey(RowCase r) {
@@ -43,46 +50,61 @@ String bakeKey(RowCase r) {
   return sha1.convert(utf8.encode(b.toString())).toString().substring(0, 20);
 }
 
-/// 시작할 때 담아 둔 그림을 읽는다(첫 굽기보다 먼저). 실패하면 그냥 굽는다
-Future<void> loadBakeCache() async {
-  try {
-    final base = await getTemporaryDirectory();
-    final d = Directory('${base.path}/bake-v1');
-    if (!d.existsSync()) d.createSync(recursive: true);
-    _dir = d;
-    final files = d.listSync().whereType<File>().where((f) => f.path.endsWith('.png')).toList()
-      ..sort((a, b) => b.statSync().modified.compareTo(a.statSync().modified));
-    for (final f in files.skip(_keep)) {
-      f.deleteSync();
+/// 담아 둔 그림 목록을 한 번만 훑는다(오래된 것은 지운다). 실패하면 그냥 굽는다
+Future<void> loadBakeCache() => _ready ??= () async {
+      try {
+        final base = await getTemporaryDirectory();
+        final d = Directory('${base.path}/bake-v1');
+        if (!d.existsSync()) d.createSync(recursive: true);
+        _dir = d;
+        final files = d.listSync().whereType<File>().where((f) => f.path.endsWith('.png')).toList()
+          ..sort((a, b) => b.statSync().modified.compareTo(a.statSync().modified));
+        for (final f in files.skip(_keep)) {
+          f.deleteSync();
+        }
+        for (final f in files.take(_keep)) {
+          _files[f.uri.pathSegments.last.replaceAll('.png', '')] = f;
+        }
+      } catch (e) {
+        _dir = null;
+      }
+    }();
+
+/// 같은 열쇠로 구워 둔 그림(받는 쪽 몫의 clone). 없으면 null
+Future<ui.Image?> cachedBake(String key) async {
+  var img = _mem[key];
+  if (img == null) {
+    final f = _files[key];
+    if (f == null) return null;
+    try {
+      img = await decodeImageInLine(await f.readAsBytes());
+    } catch (_) {
+      img = null;
     }
-    for (final f in files.take(_keep)) {
-      final bytes = await f.readAsBytes();
-      final codec = await ui.instantiateImageCodec(bytes);
-      final frame = await codec.getNextFrame();
-      _mem[f.uri.pathSegments.last.replaceAll('.png', '')] = frame.image;
-    }
-  } catch (e) {
-    // 캐시를 못 읽어도 굽기는 된다
-    _dir = null;
+    if (img == null) return null;
+    _mem[key] = img;
   }
+  return img.clone();
 }
 
-ui.Image? cachedBake(String key) => _mem[key];
-
-/// 새로 구운 그림을 담는다(PNG). 화면이 한가할 때 부른다
+/// 새로 구운 그림을 담는다(PNG). 넘겨준 그림은 받는 쪽 것 그대로 두고 캐시는 clone을 가진다
 Future<void> saveBake(String key, ui.Image image) async {
-  _mem[key] = image;
+  _mem.remove(key)?.dispose();
+  final own = image.clone();
+  _mem[key] = own;
   final d = _dir;
   if (d == null) return;
   try {
-    final data = await image.toByteData(format: ui.ImageByteFormat.png);
+    final data = await own.toByteData(format: ui.ImageByteFormat.png);
     if (data == null) return;
-    await File('${d.path}/$key.png').writeAsBytes(data.buffer.asUint8List(), flush: false);
+    final f = File('${d.path}/$key.png');
+    await f.writeAsBytes(data.buffer.asUint8List(), flush: false);
+    _files[key] = f;
   } catch (_) {
     // 담지 못해도 그리기에는 지장이 없다
   }
 }
 
 /// 담아 둔 그림 수(측정 로그용)
-int get cachedCount => _mem.length;
+int get cachedCount => _files.length;
 

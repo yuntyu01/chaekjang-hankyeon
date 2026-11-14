@@ -236,7 +236,3 @@ Future<Database> openLibrary({String? path}) async {
   return _db!;
 }
 
-Future<void> closeLibrary() async {
-  await _db?.close();
-  _db = null;
-}

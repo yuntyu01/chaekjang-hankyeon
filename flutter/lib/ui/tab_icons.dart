@@ -80,12 +80,3 @@ Widget profileTabIcon(Color color, {double size = 26, bool filled = false}) {
   );
 }
 
-/// 커뮤니티: 말풍선 두 개
-Widget communityTabIcon(Color color, Color bg, {double size = 26, bool filled = false}) {
-  final c = _hex(color), b = _hex(bg);
-  return _svg(
-    '<path d="M9.4 7.6 V6.8 A2.6 2.6 0 0 1 12 4.2 H20.2 A2.6 2.6 0 0 1 22.8 6.8 V12.2 A2.6 2.6 0 0 1 20.2 14.8 H20 V17.4 L17.2 14.8" fill="${filled ? c : 'none'}" stroke="$c" stroke-width="$_w" $_round/>'
-    '<path d="M5.8 8.6 H14.2 A2.6 2.6 0 0 1 16.8 11.2 V16.6 A2.6 2.6 0 0 1 14.2 19.2 H9.6 L6.2 21.9 V19.2 H5.8 A2.6 2.6 0 0 1 3.2 16.6 V11.2 A2.6 2.6 0 0 1 5.8 8.6 Z" fill="${filled ? c : b}" stroke="${filled ? b : c}" stroke-width="${filled ? 2.4 : _w}" $_round/>',
-    (width: size, height: size, viewBox: '0 -0.6 26 26'),
-  );
-}

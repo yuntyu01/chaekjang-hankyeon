@@ -21,6 +21,9 @@ import '../features/stats/stats_screen.dart';
 import '../ui/tab_icons.dart';
 import '../ui/theme.dart';
 
+/// 꾸미기 중 탭 바 숨기기(홈이 켠다)
+final tabBarHidden = ValueNotifier<bool>(false);
+
 class AppShell extends StatefulWidget {
   const AppShell({super.key});
 
@@ -142,7 +145,9 @@ class _AppShellState extends State<AppShell> {
             index: _index,
             children: [for (var i = 0; i < _tabs.length; i++) _opened.contains(i) ? _tabs[i].build(context) : const SizedBox.shrink()],
           ),
-          Positioned(
+          ValueListenableBuilder<bool>(
+            valueListenable: tabBarHidden,
+            builder: (context, hidden, _) => hidden ? const SizedBox.shrink() : Positioned(
             left: TabBarStyle.side,
             right: TabBarStyle.side,
             bottom: bottom + TabBarStyle.gap,
@@ -174,6 +179,7 @@ class _AppShellState extends State<AppShell> {
                 ),
               ),
             ),
+          ),
           ),
         ],
       ),

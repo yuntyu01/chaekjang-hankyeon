@@ -1,6 +1,7 @@
 // 선반 한 칸의 책 프레임 계산(순수): 저장된 자리 → 선반 공간 3D 상자, 기댄 책은 옆 책·옆 벽에 처음 닿는 각과
 // 그 각에서 버티는지(넘어짐·미끄러짐·받침 넘어감)를 정역학으로 푼다. 지금 앱 domain/shelf-scene.ts의 computeShelf와 그 풀이를 옮긴 것.
-// 받침을 잃고 넘어진 책을 배치로 옮기는 resolveLeans·withLeans·layFallen(편집 확정)도 함께
+// 받침을 잃고 넘어진 책을 배치로 옮기는 resolveLeans·layFallen(편집 확정)도 함께.
+// 책장은 양옆이 벽인 움푹 파인 칸이라 책이 선반 밖으로 떨어지지 않는다(지금 앱의 '판 끝에서 떨어져 서랍으로'는 옮기지 않았다)
 library;
 
 import '../scene_config/skin.dart';
@@ -364,9 +365,8 @@ _Rest _restOf(BookFrame f, List<Placed> others, ({double angle, String on, doubl
 
 const _slideStepFall = 1.0;
 const _maxFallShove = 20.0;
-const _noShove = 0.5;
 
-/// 넘어져 머무는 곳: lean(기대 섬) · lie(눕기) · stand(다시 섬) · drawer(선반에서 떨어짐) · null(못 찾음)
+/// 넘어져 머무는 곳: lean(기대 섬) · lie(눕기) · stand(다시 섬) · null(못 찾음). 옆 벽이 받으므로 선반 밖으로는 안 간다
 typedef _FallRest = ({String kind, double x, double angle, String on, double? slide, int d});
 
 _FallRest? _fallRest(Placed up, int d, List<Placed> row) {
@@ -404,12 +404,7 @@ _FallRest? _fallRest(Placed up, int d, List<Placed> row) {
   bool blocked(double s) => hits(probe(s));
   // 'slip'은 kind == 'slip'
   _FallRest settleAt(({Placed at, LeanContact c, Placed lean}) q, double s) {
-    if (!q.c.found) {
-      final span = fallenSpan(q.at, d);
-      final center = (span.x0 + span.x1) / 2;
-      if (center < plankBounds.min + overhangMargin || center > plankBounds.max - overhangMargin) return (kind: 'drawer', x: 0, angle: 0, on: '', slide: null, d: d);
-      return (kind: 'lie', x: span.x0, angle: 0, on: '', slide: null, d: d);
-    }
+    if (!q.c.found) return (kind: 'lie', x: fallenSpan(q.at, d).x0, angle: 0, on: '', slide: null, d: d);
     if (q.c.angle <= tipAngle(t, h)) return (kind: 'stand', x: layoutX(s), angle: 0, on: '', slide: null, d: d);
     final support = ahead.firstWhere((o) => o.bookId == q.c.on);
     final st = leanStatics(q.lean, contactOf(q.lean, support));
@@ -425,13 +420,10 @@ _FallRest? _fallRest(Placed up, int d, List<Placed> row) {
     return st.reason == 'tip' ? (kind: 'stand', x: layoutX(s), angle: 0, on: '', slide: null, d: d) : (kind: 'slip', x: 0, angle: 0, on: '', slide: null, d: d);
   }
 
-  double footX(Placed at) => d > 0 ? at.x + t : at.x;
   var prev = 0.0, from = 0.0;
   for (var s = 0.0; s <= h; s += _slideStepFall) {
     final q = probe(s, from);
     if (q.c.found) from = math.max(0, q.c.angle - 0.5);
-    final fx = footX(q.at);
-    if (s > 0 && (fx < plankBounds.min || fx > plankBounds.max)) return (kind: 'drawer', x: 0, angle: 0, on: '', slide: null, d: d);
     if (s > 0 && hits(q)) {
       var lo = prev, hi = s;
       for (var i = 0; i < 14; i++) {
@@ -471,17 +463,11 @@ double? _aFrame(Placed a, Placed b, List<Placed> others) {
   return holds(qa, qb, 1) && holds(qb, qa, -1) ? c.angle : null;
 }
 
-ShelfLayout _detachToDrawer(ShelfLayout layout, BookMap books, String bookId, int d, Map<String, int> falls) {
-  final r = moveToDrawer(layout, bookId, books);
-  if (!r.ok) return layout;
-  falls[bookId] = d;
-  return r.layout!;
-}
-
 ShelfLayout _lp(ShelfLayout l, List<BookPlacement> placements) => ShelfLayout(l.shelves, placements, l.drawer);
 
-/// 넘어진 책을 머무는 자리에 둔다(넘어지는 쪽 앞선 책부터 한 권씩). simple: 자리 찾기 없이 넘어진 쪽에 눕힌다(되풀이 끊기)
-ShelfLayout _layFallen(ShelfLayout layout, BookMap books, List<BookFrame> fallen, Map<String, int> falls, [bool simple = false]) {
+/// 넘어진 책을 머무는 자리에 둔다(넘어지는 쪽 앞선 책부터 한 권씩). simple: 자리 찾기 없이 넘어진 쪽에 눕힌다(되풀이 끊기).
+/// 누울 자리도 없으면(이웃을 크게 밀어야 하면) 제자리에 다시 선다: 책은 늘 선반에 남는다
+ShelfLayout _layFallen(ShelfLayout layout, BookMap books, List<BookFrame> fallen, [bool simple = false]) {
   var next = layout;
   final paired = <String>{};
   if (!simple) {
@@ -522,10 +508,6 @@ ShelfLayout _layFallen(ShelfLayout layout, BookMap books, List<BookFrame> fallen
     final without = _lp(next, [for (final q in next.placements) if (q.bookId != f.bookId) q]);
     final others = [for (final o in computeShelf(without, books, p.shelfId)) o.box];
     final rest = simple ? null : _fallRest(f.box.copyWith(angle: 0), d, others);
-    if (rest?.kind == 'drawer') {
-      next = _detachToDrawer(next, books, f.bookId, d, falls);
-      continue;
-    }
     if (rest?.kind == 'stand') {
       final desired = bookXs(next, books)..[f.bookId] = rest!.x;
       final stood = settle(normalize(_lp(next, [for (final q in next.placements) q.bookId == f.bookId ? q.copyWith(tilt: 0, pos: rest.x).withoutLean() : q])), books, desired, p.shelfId);
@@ -553,13 +535,12 @@ ShelfLayout _layFallen(ShelfLayout layout, BookMap books, List<BookFrame> fallen
     final h = f.box.size.h;
     const lo = shelfInnerLeft, hi = shelfInnerLeft + shelfUsableW;
     ({ShelfLayout laid, double moved, double shoved, bool space}) tryAt(double x) {
-      final over = x < lo - 0.01 || x + h > hi + 0.01;
       final desired = bookXs(next, books)..[f.bookId] = x;
       final laid = settle(
           normalize(_lp(next, [
             for (final q in next.placements)
               q.bookId == f.bookId
-                  ? q.copyWith(pose: Pose.horizontal, tilt: 0, pos: x, spin: unset, pitch: unset, depth: f.box.z, flip: d > 0, overhang: over).withoutLean()
+                  ? q.copyWith(pose: Pose.horizontal, tilt: 0, pos: x, spin: unset, pitch: unset, depth: f.box.z, flip: d > 0, overhang: false).withoutLean()
                   : q,
           ])),
           books,
@@ -575,39 +556,11 @@ ShelfLayout _layFallen(ShelfLayout layout, BookMap books, List<BookFrame> fallen
       return (laid: laid, moved: moved, shoved: shoved, space: checkSpace(laid, books, p.shelfId) == null);
     }
 
-    if (rest?.kind == 'lie' && (lie < lo - 0.01 || lie + h > hi + 0.01)) {
-      final inside = math.max(lo, math.min(hi - h, lie));
-      final vis = frameOn ? inside : math.max(-12 + edgePad, math.min(hi + 12 - edgePad - h, lie));
-      bool ok(({ShelfLayout laid, double moved, double shoved, bool space}) r) => r.space && r.moved.abs() < 0.5 && r.shoved <= _noShove;
-      final a = tryAt(inside);
-      if (ok(a)) {
-        next = a.laid;
-        continue;
-      }
-      final b = tryAt(vis);
-      if (!ok(b)) {
-        next = _detachToDrawer(next, books, f.bookId, d, falls);
-        continue;
-      }
-      var good = vis, bad = inside;
-      var best = b;
-      for (var i = 0; i < 10; i++) {
-        final m = (good + bad) / 2;
-        final r = tryAt(m);
-        if (ok(r)) {
-          good = m;
-          best = r;
-        } else {
-          bad = m;
-        }
-      }
-      next = best.laid;
-      continue;
-    }
-    final x = math.max(lo, math.min(hi - h, lie));
-    final r = tryAt(x);
-    final fits = r.space && r.moved > -1 && r.moved < h && r.shoved <= _maxFallShove;
-    next = fits ? r.laid : _detachToDrawer(next, books, f.bookId, d, falls);
+    // 옆 벽 안쪽으로 당겨 눕힌다. 이웃을 크게 밀어야 하면(누울 자리가 없으면) 제자리에 다시 선다
+    final r = tryAt(math.max(lo, math.min(hi - h, lie)));
+    next = r.space && r.moved > -1 && r.moved < h && r.shoved <= _maxFallShove
+        ? r.laid
+        : _lp(next, [for (final q in next.placements) q.bookId == f.bookId ? q.copyWith(tilt: 0).withoutLean() : q]);
   }
   return next;
 }
@@ -639,10 +592,9 @@ String _placementsKey(ShelfLayout l) => [
         '${p.bookId},${p.shelfId},${p.order},${p.pose.index},${p.tilt},${p.stackId},${p.stackOrder},${p.pos},${p.leanAngle},${p.leanOn},${p.leanSlide},${p.depth},${p.spin},${p.pitch},${p.stackDx},${p.stackDz},${p.flip},${p.overhang},${p.wallLean}',
     ].join(';');
 
-/// 확정할 때 기대기 결과를 저장한다: 기댈 수 없던 책은 바로 서고, 받침을 잃고 넘어진 책은 눕히고(또는 서랍), 넘어간 받침은 기운 책으로.
-/// falls: 서랍으로 떨어진 책의 방향(연출용). only: 그 선반만
-({ShelfLayout layout, Map<String, int> falls}) resolveLeans(ShelfLayout layout, BookMap books, [String? only]) {
-  final falls = <String, int>{};
+/// 확정할 때 기대기 결과를 저장한다: 기댈 수 없던 책은 바로 서고, 받침을 잃고 넘어진 책은 기대거나 눕고(자리 없으면 다시 섬), 넘어간 받침은 기운 책으로.
+/// only: 그 선반만
+ShelfLayout resolveLeans(ShelfLayout layout, BookMap books, [String? only]) {
   var cur = layout;
   final tried = <String>{};
   for (var pass = 0; pass < 16; pass++) {
@@ -667,7 +619,7 @@ String _placementsKey(ShelfLayout l) => [
     if (fallen.isEmpty) {
       if (_placementsKey(next) == _placementsKey(cur)) {
         final fronts = _settleFronts(next, books, only);
-        if (identical(fronts, next)) return (layout: next, falls: falls);
+        if (identical(fronts, next)) return next;
         cur = fronts;
         continue;
       }
@@ -675,10 +627,10 @@ String _placementsKey(ShelfLayout l) => [
       continue;
     }
     final key = _placementsKey(next);
-    cur = _layFallen(next, books, fallen, falls, tried.contains(key));
+    cur = _layFallen(next, books, fallen, tried.contains(key));
     tried.add(key);
   }
-  return (layout: cur, falls: falls);
+  return cur;
 }
 
 /// 젖힌 채 받침을 잃은 표지 책: 조금 더 젖혀도 벽·옆 벽·다른 책에 닿지 않으면 놓은 것처럼 넘어진다
@@ -707,6 +659,3 @@ ShelfLayout _settleFronts(ShelfLayout layout, BookMap books, [String? only]) {
   }
   return cur;
 }
-
-/// 배치만 필요할 때(떨어지는 연출에는 resolveLeans의 falls도)
-ShelfLayout withLeans(ShelfLayout layout, BookMap books, [String? only]) => resolveLeans(layout, books, only).layout;

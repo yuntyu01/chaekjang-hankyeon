@@ -9,7 +9,7 @@ import 'shelf_scene.dart';
 
 /// 선반마다(선반 차례대로) 3D 책. 서랍에 있는 책은 그리지 않는다
 List<List<Book3>> placeShelves(Library lib) {
-  final layout = ShelfLayout(lib.shelves, lib.placements.where((p) => p.shelfId.isNotEmpty).toList());
+  final layout = lib.layout;
   final books = {for (final b in lib.books) b.id: b};
   return [
     for (final s in sortedShelves(layout)) [for (final f in computeShelf(layout, books, s.id)) fromPlaced(f.box)],

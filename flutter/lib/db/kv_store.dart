@@ -6,7 +6,6 @@ import 'package:sqflite/sqflite.dart';
 
 import 'local_db.dart';
 
-Database? _kv;
 Future<Database>? _opening;
 
 Future<Database> _open() => _opening ??= () async {
@@ -17,7 +16,7 @@ Future<Database> _open() => _opening ??= () async {
         await t.execute('CREATE TABLE IF NOT EXISTS storage (key TEXT PRIMARY KEY NOT NULL, value TEXT);');
         if (v < 1) await t.execute('PRAGMA user_version = 1');
       });
-      return _kv = d;
+      return d;
     }();
 
 abstract final class KvStore {
@@ -32,9 +31,3 @@ abstract final class KvStore {
   static Future<void> remove(String key) async => (await _open()).rawDelete('DELETE FROM storage WHERE key = ?', [key]);
 }
 
-/// 시험용: 열린 저장소를 닫는다
-Future<void> closeKv() async {
-  await _kv?.close();
-  _kv = null;
-  _opening = null;
-}
