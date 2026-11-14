@@ -46,6 +46,8 @@ flutter:
     - assets/covers/artworks/
     # 공유 그림 바탕·오버레이(지금 앱 assets/share: 시안에서 글자·책을 지운 바탕, 책 빛 지도, 선반 그늘)
     - assets/share/
+    # Google 로그인 공식 단추 그림(지금 앱 assets/google-signin-light.png)
+    - assets/auth/
 
   # 제목 글꼴(지금 앱과 같은 함렛 SemiBold)
   fonts:

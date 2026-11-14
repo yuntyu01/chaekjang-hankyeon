@@ -19,6 +19,7 @@ import '../store/files.dart' show imageDir;
 import '../store/library_model.dart';
 import '../store/library_store.dart' show layoutState, markBookcasesSynced, readBookcases, saveRemoteLayout, unsyncedBookcaseIds, writeBookcase;
 import '../store/placement_store.dart';
+import 'auth_link.dart';
 
 const syncBase = String.fromEnvironment('SYNC_URL');
 
@@ -485,6 +486,60 @@ class SyncService extends ChangeNotifier with WidgetsBindingObserver {
     _setAccount((kakao: false, google: false, nickname: ''));
     _set(state: SyncState.idle, error: null);
     await syncNow();
+  }
+
+  // ---------- 소셜 로그인(선택) ----------
+  // 공급자의 코드는 서버에서 교환한다. 앱은 기기 토큰에 묶인 일회용 티켓만 받는다
+
+  Future<({bool ok, bool cancelled, bool switched, String message})> linkKakao() => _linkSocial('kakao');
+  Future<({bool ok, bool cancelled, bool switched, String message})> linkGoogle() => _linkSocial('google');
+
+  Future<({bool ok, bool cancelled, bool switched, String message})> _linkSocial(String provider) async {
+    ({bool ok, bool cancelled, bool switched, String message}) fail(String m, {bool cancelled = false}) => (ok: false, cancelled: cancelled, switched: false, message: m);
+    if (_base.isEmpty) return fail('이 빌드에는 서버 주소가 없어요');
+    if (_linking) return fail('로그인 처리 중이에요');
+    _linking = true;
+    var syncAfter = false;
+    try {
+      // 기존 계정의 받기 커서가 새 계정에 기록되지 않도록 동기화와 계정 변경을 겹치지 않는다
+      await _runningDone?.future;
+      await _loadPause();
+      if (paused) throw StateError('동기화가 중지되어 있어요. 먼저 동기화를 다시 시작해 주세요.');
+      final token = await _ensureToken();
+      final returnUrl = 'chaekjang://auth/$provider';
+      final start = (await api('POST', '/auth/$provider/start', token, {'returnUrl': returnUrl, 'accountLifecycle': '1'}))! as Map;
+      final back = await openAuthSession(start['url']! as String);
+      if (back == null) return fail('로그인을 취소했어요', cancelled: true);
+      final q = back.queryParameters;
+      if (q['error'] != null) return fail(q['error'] == 'denied' ? '로그인을 취소했어요' : '로그인을 마치지 못했어요. 잠시 뒤 다시 시도해 주세요', cancelled: q['error'] == 'denied');
+      final ticket = q['ticket'];
+      if (ticket == null) return fail('로그인 응답을 읽지 못했어요');
+      final c = (await api('POST', '/auth/$provider/claim', token, {'ticket': ticket}))! as Map;
+      final switched = c['switched'] == true;
+      final nickname = (c['nickname'] as String?) ?? '';
+      if (switched) {
+        // 다른 계정으로 바뀌었다: 처음부터 받고, 이 기기 기록을 모두 올린다
+        await KvStore.set(_revKey, '0');
+        await KvStore.set(_filesKey, '[]');
+        await LibraryModel.instance.flushPending();
+        await queueAllChanges(fullDirty(LibraryModel.instance.lib));
+      }
+      await KvStore.set(_tokenKey, c['token']! as String);
+      _verifiedToken = null;
+      _setAccount(switched
+          ? (kakao: provider == 'kakao', google: provider == 'google', nickname: nickname)
+          : (kakao: account.kakao || provider == 'kakao', google: account.google || provider == 'google', nickname: nickname));
+      syncAfter = true;
+      return (ok: true, cancelled: false, switched: switched, message: nickname);
+    } catch (e) {
+      return fail(e is StateError ? e.message : '$e');
+    } finally {
+      _linking = false;
+      if (syncAfter || _again) {
+        _again = false;
+        _schedule(const Duration(milliseconds: 500));
+      }
+    }
   }
 
   Future<void> _refreshAccount(String token) async {

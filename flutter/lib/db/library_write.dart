@@ -184,3 +184,10 @@ Future<void> applyRemoteChanges(List<LocalChange> changes) async {
     }
   });
 }
+
+// ---------- 서재 통째로 바꾸기(백업 복원, 지금 앱 replaceLib markDirty) ----------
+
+Future<void> writeLibraryItem(DatabaseExecutor d, LibKind kind, Object item) => _writeItem(d, kind, item);
+Future<int> nextRevisionIn(DatabaseExecutor d) => _nextRevision(d);
+Future<void> putPendingIn(DatabaseExecutor d, LibKind kind, String id, {required bool deleted, required String at, required int revision}) =>
+    _putPending(d, deleted ? LocalChange.delete(kind, id, at) : LocalChange.put(kind, id, const Object(), at), revision);

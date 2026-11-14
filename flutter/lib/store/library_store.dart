@@ -2,7 +2,8 @@
 // 책장을 그리는 데 필요한 읽기만 먼저 옮긴 것. 숨긴 책(hidden_at: 지웠지만 연도 책장에 남긴 책)은 화면용 서재에서 뺀다. 쓰기·동기화는 아직
 library;
 
-import '../db/library_write.dart' show localDataChanged;
+import '../db/library_write.dart' show LibKind, libTable, localDataChanged, nextRevisionIn, putPendingIn, writeLibraryItem;
+import '../domain/library.dart' as dl show Library;
 import '../db/local_db.dart';
 import '../domain/layout_json.dart';
 import '../domain/bookcase.dart';
@@ -12,7 +13,7 @@ import '../domain/cover_url.dart';
 import '../domain/geometry.dart';
 import '../domain/layout.dart';
 import '../domain/types.dart';
-import 'package:sqflite/sqflite.dart' show ConflictAlgorithm;
+import 'package:sqflite/sqflite.dart' show ConflictAlgorithm, DatabaseExecutor;
 
 /// 서재 한 벌: 책과 선반·자리
 class Library {
@@ -263,23 +264,81 @@ Future<List<Bookcase>> readBookcases() async {
 /// 한 벌을 통째로 쓴다(같은 id나 같은 해가 있으면 지우고). 책 목록에 없는 책의 자리는 뺀다(외래키)
 Future<void> writeBookcase(Bookcase c, {bool synced = false}) async {
   final db = await openLibrary();
-  await db.transaction((t) async {
-    await t.rawDelete('DELETE FROM bookcases WHERE id = ? OR year = ?', [c.id, c.year]);
-    await t.rawInsert('INSERT INTO bookcases (id, year, created_at, updated_at, synced) VALUES (?, ?, ?, ?, ?)', [c.id, c.year, c.createdAt, c.updatedAt, synced ? 1 : 0]);
-    final known = <String>{};
-    for (final b in c.books) {
-      if (!known.add(b.bookId)) continue;
-      await t.rawInsert('INSERT INTO bookcase_books (bookcase_id, book_id, binding_id, status, rating, note, ribbon_color, current_page) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
-          [c.id, b.bookId, b.bindingId, b.status.name, b.rating, b.note, b.ribbonColor, b.currentPage]);
-    }
-    final rows = _layoutRows(ShelfLayout(c.layout.shelves, [for (final p in c.layout.placements) if (known.contains(p.bookId)) p], [for (final id in c.layout.drawer) if (known.contains(id)) id]));
+  await db.transaction((t) => _writeBookcaseIn(t, c, synced));
+}
+
+Future<void> _writeBookcaseIn(DatabaseExecutor t, Bookcase c, bool synced) async {
+  await t.rawDelete('DELETE FROM bookcases WHERE id = ? OR year = ?', [c.id, c.year]);
+  await t.rawInsert('INSERT INTO bookcases (id, year, created_at, updated_at, synced) VALUES (?, ?, ?, ?, ?)', [c.id, c.year, c.createdAt, c.updatedAt, synced ? 1 : 0]);
+  final known = <String>{};
+  for (final b in c.books) {
+    if (!known.add(b.bookId)) continue;
+    await t.rawInsert('INSERT INTO bookcase_books (bookcase_id, book_id, binding_id, status, rating, note, ribbon_color, current_page) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+        [c.id, b.bookId, b.bindingId, b.status.name, b.rating, b.note, b.ribbonColor, b.currentPage]);
+  }
+  final rows = _layoutRows(ShelfLayout(c.layout.shelves, [for (final p in c.layout.placements) if (known.contains(p.bookId)) p], [for (final id in c.layout.drawer) if (known.contains(id)) id]));
+  for (final e in rows.shelves.entries) {
+    await t.rawInsert('INSERT INTO bookcase_shelves (bookcase_id, id, position) VALUES (?, ?, ?)', [c.id, e.key, e.value]);
+  }
+  for (final spot in rows.spots.values) {
+    await t.insert('bookcase_placements', {'bookcase_id': c.id, ...spot});
+  }
+}
+
+/// 배치 JSON을 표로(읽을 수 없는 형식이면 그대로 둔다)
+Future<void> _storeLayoutIn(DatabaseExecutor t, String? json) async {
+  await t.rawDelete('DELETE FROM shelf_placements');
+  await t.rawDelete('DELETE FROM shelves');
+  final layout = json == null ? null : layoutFromJson(json);
+  if (layout != null) {
+    final rows = _layoutRows(layout);
     for (final e in rows.shelves.entries) {
-      await t.rawInsert('INSERT INTO bookcase_shelves (bookcase_id, id, position) VALUES (?, ?, ?)', [c.id, e.key, e.value]);
+      await t.rawInsert('INSERT INTO shelves (id, position) VALUES (?, ?)', [e.key, e.value]);
     }
     for (final spot in rows.spots.values) {
-      await t.insert('bookcase_placements', {'bookcase_id': c.id, ...spot});
+      await t.insert('shelf_placements', spot);
     }
+  }
+  await t.rawUpdate('UPDATE sync_meta SET layout = ?, layout_stored = ? WHERE id = 1', [layout == null ? json : null, layout == null ? 0 : 1]);
+}
+
+/// 서재·배치·연도 책장을 통째로 바꾼다(백업 복원). 이번 사용자 변경이라 모두 올릴 변경으로 표시하고, 없어진 항목은 삭제 표시를 남긴다
+Future<void> replaceAllLibrary(dl.Library lib, {required String? layoutJson, required String at, List<Bookcase>? bookcases}) async {
+  final db = await openLibrary();
+  await db.transaction((t) async {
+    await t.execute('PRAGMA defer_foreign_keys = ON');
+    final revision = await nextRevisionIn(t);
+    final tables = <LibKind, Map<String, Object>>{
+      LibKind.editions: lib.editions,
+      LibKind.books: lib.books,
+      LibKind.rounds: lib.rounds,
+      LibKind.sessions: lib.sessions,
+      LibKind.bookmarks: lib.bookmarks,
+      LibKind.bindings: lib.bindings,
+    };
+    for (final e in tables.entries) {
+      final table = libTable[e.key]!;
+      for (final r in await t.rawQuery('SELECT id FROM $table')) {
+        final id = r['id']! as String;
+        if (!e.value.containsKey(id)) await putPendingIn(t, e.key, id, deleted: true, at: at, revision: revision);
+      }
+      if (e.key == LibKind.editions) await t.rawDelete('DELETE FROM edition_authors');
+      await t.rawDelete('DELETE FROM $table');
+      for (final item in e.value.entries) {
+        await writeLibraryItem(t, e.key, item.value);
+        await putPendingIn(t, e.key, item.key, deleted: false, at: at, revision: revision);
+      }
+    }
+    if (bookcases != null) {
+      await t.rawDelete('DELETE FROM bookcases');
+      for (final c in bookcases) {
+        await _writeBookcaseIn(t, c, false);
+      }
+    }
+    await _storeLayoutIn(t, layoutJson);
+    await t.rawUpdate('UPDATE sync_meta SET layout_at = ?, layout_dirty = 1, layout_revision = ? WHERE id = 1', [at, revision]);
   });
+  localDataChanged.value++;
 }
 
 /// 배치를 마지막으로 고친 때(연도 책장 남길 해를 셀 때)
@@ -331,20 +390,9 @@ Future<bool> saveRemoteLayout(String json, String at) async {
     final cur = DateTime.tryParse((m?['layout_at'] as String?) ?? '');
     final next = DateTime.tryParse(at);
     if (next == null || (cur != null && !next.isAfter(cur))) return false;
-    final layout = layoutFromJson(json);
-    await t.rawDelete('DELETE FROM shelf_placements');
-    await t.rawDelete('DELETE FROM shelves');
-    if (layout != null) {
-      final rows = _layoutRows(layout);
-      for (final e in rows.shelves.entries) {
-        await t.rawInsert('INSERT INTO shelves (id, position) VALUES (?, ?)', [e.key, e.value]);
-      }
-      for (final spot in rows.spots.values) {
-        await t.insert('shelf_placements', spot);
-      }
-    }
+    await _storeLayoutIn(t, json);
     await t.rawUpdate('UPDATE sync_meta SET revision=revision+1 WHERE id=1');
-    await t.rawUpdate('UPDATE sync_meta SET layout = ?, layout_stored = ?, layout_at = ? WHERE id = 1', [layout == null ? json : null, layout == null ? 0 : 1, at]);
+    await t.rawUpdate('UPDATE sync_meta SET layout_at = ? WHERE id = 1', [at]);
     return true;
   });
 }

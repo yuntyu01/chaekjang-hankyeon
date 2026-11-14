@@ -53,6 +53,9 @@ class SettingsStore extends ChangeNotifier {
         notifyListeners();
       }();
 
+  /// 저장할 값 전부(백업)
+  Map<String, Object?> get raw => {..._s};
+
   void set(Map<String, Object?> patch) {
     _s = {..._s, ..._fixScene(patch)};
     notifyListeners();
