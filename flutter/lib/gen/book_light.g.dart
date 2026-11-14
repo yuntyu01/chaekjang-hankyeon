@@ -15,12 +15,12 @@ C3 get erefWall => skinLight.erefWall;
 
 /// 구운 하늘 가림 담기(scene-light-sksl lossEncode·lossDecode): 0을 가운데 G0로 양쪽 제곱근 곡선
 const lossG0 = 0.3;
-const lossRP = 1.4673084924772408;
-const lossRN = 0.7746169849544818;
+const lossRP = 1.647308492477241;
+const lossRN = 6.643850954863446;
 
 /// 하늘 빛(skyIrr = SKYC · (AMB + SKYTILT·n))
 const skyC = C3(1, 1, 1);
-const ambient = 0.72;
+const ambient = 0.62;
 const skyTilt = (0, 0.25, -0.12);
 
 /// 장정 재질마다 대표 자리 빛·반사광(고운 종이·린넨·무광·줄무늬 종이, 스킨마다)

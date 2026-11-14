@@ -56,7 +56,9 @@ class Light {
 
 // 움푹 파인 책장: 2026-11-04 사용자가 사진으로 고른 c1을 시안 그늘 길이에 맞춘 값(위 10°, 왼쪽 6°, 반지름 8°).
 // 전 책장(틀 없음, 사용자가 아직 고르는 중): 2026-11-03 '수정안 2'
-final _niche = Light(dir: _keyDir(10, 6), radius: 8 * math.pi / 180, ambient: 0.72, diffuse: 0.22, occlusion: 0.3, overhead: 3.2);
+// 2026-11-10 사용자 '책장 안쪽은 좀 더 밝게, 그림자는 좀 더 눈에 보이게': 창빛 0.22 → 0.5, 원반 8° → 4°(그림자 가장자리 또렷), 방 빛 0.72 → 0.62, 방 빛 가림 0.3 → 0.15
+// 2026-11-15 사용자 '그림자도 경계선이 있는 느낌': 원반 4° → 6°(반그늘이 넓어 그늘 끝이 선처럼 보이지 않는다)
+final _niche = Light(dir: _keyDir(10, 6), radius: 6 * math.pi / 180, ambient: 0.62, diffuse: 0.5, occlusion: 0.15, overhead: 3.2);
 final _open = Light(dir: _keyDir(17, 10), radius: 14 * math.pi / 180, ambient: 0.55, diffuse: 0.35, occlusion: 0.3, overhead: 0);
 
 final light = frameOn ? _niche : _open;

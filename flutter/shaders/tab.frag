@@ -26,21 +26,21 @@ layout(location = 0) out vec4 fragColor;
   uniform vec3 env;
 
   const float PI = 3.14159265;
-  const float AMB = 0.720000000;
+  const float AMB = 0.620000000;
   const vec3 SKYTILT = vec3(0.00000000, 0.250000000, -0.120000000);
-  const float DIFF = 0.220000000;
+  const float DIFF = 0.500000000;
   // 방 빛 하늘 가림 세기(light.occlusion, 모든 곳 같은 비율)
-  const float OCC = 0.300000000;
+  const float OCC = 0.150000000;
   const vec3 LU = vec3(-0.102940441, 0.173648178, -0.979412873);
   // 맞추기 값(스킨마다 다르다: 스토어에서 색을 고르면 셰이더를 다시 만들지 않고 값만 바꾼다, light-model lightSet().u)
   // 카메라 기준 빛(벽 대표 자리 빛 / 노출 기준 CAM.gain, 반사광을 장면 밝기로)
   uniform vec3 ECAM;
   const float LELEV = 0.175474740;
-  const float LRAD = 0.139626340;
+  const float LRAD = 0.104719755;
   const float LAZ = -0.104719755;
   const float F0 = 0.0400000000;
   // 창빛 원반이 하이라이트를 넓히는 몫(light-model ggxKey): α² += (반지름/2)²
-  const float LR2 = 0.00487387872;
+  const float LR2 = 0.00274155678;
   const float FRONT = 53.3750000;
   const float DEPTH = 122.000000;
   const float THICK = 14.4875000;
@@ -64,8 +64,8 @@ layout(location = 0) out vec4 fragColor;
   const float PLANKR = 2.28750000;
   const float IG = 0.454545455;
   const float LOSS_G0 = 0.300000000;
-  const float LOSS_RP = 1.46730849;
-  const float LOSS_RN = 0.774616985;
+  const float LOSS_RP = 1.64730849;
+  const float LOSS_RN = 6.64385095;
   // 하늘 가림 그림 값 ↔ 가림(면이 받는 하늘 빛 sky, lossEncode·lossDecode)
   vec3 lossDec(vec3 g, vec3 sky) {
     vec3 a = (g - LOSS_G0) / (1.0 - LOSS_G0);
@@ -398,8 +398,8 @@ layout(location = 0) out vec4 fragColor;
     return r > 0.0 ? clamp(1.0 - dist / r, 0.0, 1.0) : 0.0;
   }
   float slope(float t) { return t / sqrt(max(1e-4, 1.0 - t * t)); }
-  const float RIMR = 3.05000000;
-  const float RIMC = 1.50000000;
+  const float RIMR = 6.10000000;
+  const float RIMC = 6.00000000;
   // 점 P(법선 n, 재질 색 a, 하늘 가림 loss: 선형 RGB)의 빛. 눈 쪽 방향 v, eref: 그 재질의 대표 자리 빛. 채널마다 계산한다
   // 받는 빛 = 하늘·천장·창빛(위 판이 가린 창빛 몫 빼고) − 하늘 가림. 반사광 = 거울 방향의 둘레·하늘(이웃 책의 반사는 뺀다) + GGX 창빛
   // rough: 표면 거칠기(재질, 그리지 못한 미세 높이 몫 포함), alb: 반사율 결(배수, 평균 1),

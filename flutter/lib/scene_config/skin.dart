@@ -23,7 +23,8 @@ const plankSkins = <String, SkinPart>{
 };
 
 const frameSkins = <String, SkinPart?>{
-  'white': SkinPart('흰 벽', 0xECE7E4, SkinMat.paint),
+  // 흰 벽 틀 = 벽지 흰 벽과 같은 칠(2026-11-15 사용자 '벽이 이어진 느낌이 안 나', 예전 0xECE7E4)
+  'white': SkinPart('흰 벽', wallColor, SkinMat.paint),
   'pine': SkinPart('밝은 나무 벽', 0xF2D7BC, SkinMat.wood),
   'walnut': SkinPart('호두나무 벽', 0x8F6950, SkinMat.wood),
   'none': null,
@@ -89,22 +90,24 @@ const frameOn = true;
 /// 손으로 정한 모양 값(mm·DU). dist 눈 거리, eyeY 눈 높이, thickMm 판 두께,
 /// jointMm·jointK 안쪽 모서리 그늘, rimMm 테 반지름, coveMm 곡면, cornerMm 꼭지점 둥글기,
 /// sideMm·sideK 옆면 그늘, plankSpec 판 윤기, cornerK 꼭지점 그늘, softMm 번짐, rimCorner 테 모서리, lipMm 벽 앞 거리
+// 2026-11-10 사용자 '책장 모서리 좀 더 둥글게', '안쪽은 좀 더 밝게': 테 반지름 4 → 8mm, 구멍 모서리 1.5 → 6DU, 안쪽 모서리·옆면·꼭지점 그늘 0.22·0.6·0.22 → 0.15·0.35·0.15
+// 2026-11-15: 안쪽 모서리 곡면 7 → 12mm(맞닿은 면의 빛을 모서리에서 같게 잇는 폭), 테는 8mm 그대로(14mm는 흐린 번짐처럼 보였다)
 class Look {
   const Look();
   final double dist = 3300;
   final double eyeY = 150;
   final double thickMm = 19;
   final double jointMm = 8;
-  final double jointK = 0.22;
-  final double rimMm = 4;
-  final double coveMm = 7;
+  final double jointK = 0.15;
+  final double rimMm = 8;
+  final double coveMm = 12;
   final double cornerMm = 9;
   final double sideMm = 26;
-  final double sideK = 0.6;
+  final double sideK = 0.35;
   final double plankSpec = 2;
-  final double cornerK = 0.22;
+  final double cornerK = 0.15;
   final double softMm = 3;
-  final double rimCorner = 1.5;
+  final double rimCorner = 6;
   final double lipMm = 4;
 }
 

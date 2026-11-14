@@ -51,21 +51,21 @@ layout(location = 0) out vec4 fragColor;
   uniform vec3 env;
 
   const float PI = 3.14159265;
-  const float AMB = 0.720000000;
+  const float AMB = 0.620000000;
   const vec3 SKYTILT = vec3(0.00000000, 0.250000000, -0.120000000);
-  const float DIFF = 0.220000000;
+  const float DIFF = 0.500000000;
   // 방 빛 하늘 가림 세기(light.occlusion, 모든 곳 같은 비율)
-  const float OCC = 0.300000000;
+  const float OCC = 0.150000000;
   const vec3 LU = vec3(-0.102940441, 0.173648178, -0.979412873);
   // 맞추기 값(스킨마다 다르다: 스토어에서 색을 고르면 셰이더를 다시 만들지 않고 값만 바꾼다, light-model lightSet().u)
   // 카메라 기준 빛(벽 대표 자리 빛 / 노출 기준 CAM.gain, 반사광을 장면 밝기로)
   uniform vec3 ECAM;
   const float LELEV = 0.175474740;
-  const float LRAD = 0.139626340;
+  const float LRAD = 0.104719755;
   const float LAZ = -0.104719755;
   const float F0 = 0.0400000000;
   // 창빛 원반이 하이라이트를 넓히는 몫(light-model ggxKey): α² += (반지름/2)²
-  const float LR2 = 0.00487387872;
+  const float LR2 = 0.00274155678;
   const float FRONT = 53.3750000;
   const float DEPTH = 122.000000;
   const float THICK = 14.4875000;
@@ -89,8 +89,8 @@ layout(location = 0) out vec4 fragColor;
   const float PLANKR = 2.28750000;
   const float IG = 0.454545455;
   const float LOSS_G0 = 0.300000000;
-  const float LOSS_RP = 1.46730849;
-  const float LOSS_RN = 0.774616985;
+  const float LOSS_RP = 1.64730849;
+  const float LOSS_RN = 6.64385095;
   // 하늘 가림 그림 값 ↔ 가림(면이 받는 하늘 빛 sky, lossEncode·lossDecode)
   vec3 lossDec(vec3 g, vec3 sky) {
     vec3 a = (g - LOSS_G0) / (1.0 - LOSS_G0);
@@ -672,8 +672,8 @@ vec4 _tex2(vec2 q) {
     return r > 0.0 ? clamp(1.0 - dist / r, 0.0, 1.0) : 0.0;
   }
   float slope(float t) { return t / sqrt(max(1e-4, 1.0 - t * t)); }
-  const float RIMR = 3.05000000;
-  const float RIMC = 1.50000000;
+  const float RIMR = 6.10000000;
+  const float RIMC = 6.00000000;
   // 점 P(법선 n, 재질 색 a, 하늘 가림 loss: 선형 RGB)의 빛. 눈 쪽 방향 v, eref: 그 재질의 대표 자리 빛. 채널마다 계산한다
   // 받는 빛 = 하늘·천장·창빛(위 판이 가린 창빛 몫 빼고) − 하늘 가림. 반사광 = 거울 방향의 둘레·하늘(이웃 책의 반사는 뺀다) + GGX 창빛
   // rough: 표면 거칠기(재질, 그리지 못한 미세 높이 몫 포함), alb: 반사율 결(배수, 평균 1),
@@ -725,11 +725,11 @@ vec4 _tex2(vec2 q) {
   // 안쪽 모서리 곡면(light-model coveNormal): 벽·틀·판이 맞닿는 곳에서 면 법선이 맞닿은 면 법선 쪽으로 돈다
   float jointF2(float h) {
     float d = max(0.0, h);
-    return 0.300000000 * (1.0 - d / sqrt(d * d + 393.030625));
+    return 0.175000000 * (1.0 - d / sqrt(d * d + 393.030625));
   }
   float coveB(float d, float end) {
     float t = max(0.0, d);
-    return t < 5.33750000 ? tan(end * (1.0 - t / 5.33750000)) : 0.0;
+    return t < 9.15000000 ? tan(end * (1.0 - t / 9.15000000)) : 0.0;
   }
   // 안쪽 모서리 번짐: 뒷벽·천장·판 윗면은 맞닿은 면 위에 그려진다. 실제 모서리는 곡면이라 한 면의 빛이 다른 면의 빛으로 서서히 넘어가므로, 그린 면이 모서리 쪽에서 투명해져 밑면이 비치게 한다.
   // 면 좌표: 뒷벽은 (x, y), 천장·판 윗면은 (x, z × 눌림): 화면에서 눌린 깊이를 눌린 만큼 줄여 폭이 화면에서 같게 보인다. 둥근 사각형 안쪽 거리라 꼭지점도 둥글다
@@ -765,6 +765,11 @@ vec4 _tex2(vec2 q) {
     if (abs(tN.x) < 0.5 && tN.y > -0.5) c.x += coveB(P.x - 0.00000000, 0.785398163) - coveB(366.000000 - P.x, 0.785398163);
     return c;
   }
+  // 판 윗면 쪽 곡면만(아래 모서리): 옆벽·천장 모서리를 이어 그리는 곳에서도 판 쪽 곡면은 그대로 둔다
+  float coveFloor(vec3 P) {
+    if (env.x < 1.5 || false || P.z < -56.9250000 || (abs(tN.z) > 0.5 && P.z < -52.8750000) || abs(tN.y) > 0.5) return 0.0;
+    return coveB(P.y - env.y, 0.436332313);
+  }
   
 void main() {
   vec2 p = FlutterFragCoord().xy;
@@ -778,7 +783,49 @@ void main() {
     float b1 = slope(arc(bev1.w - dot(P, bev1.xyz), PLANKR));
     // 판 앞면 양 끝: 윤곽(PLANK_END_R)과 같은 반지름으로 법선이 옆으로 돈다. 윤곽만 둥글고 빛이 평면이면 곡면으로 보이지 않는다(2026-11-05 사용자 '선반 끝 곡선')
     float be = endR > 0.0 ? slope(arc(366.000000 - P.x, endR)) - slope(arc(P.x - 0.00000000, endR)) : 0.0;
-    vec3 n = normalize(tN + bev0.xyz * b0 + bev1.xyz * b1 + coveOf(P) + vec3(be, 0.0, 0.0));
+    // 안쪽 모서리 곡면(Flutter 2026-11-15 사용자 '벽 이음새가 부자연스럽다'): 옆벽·천장·뒷벽이 맞닿은 모서리 선 위 점은 두 면에 같은 점이고
+    // 곡면에서는 같은 법선(두 면의 이등분)이라 빛이 같아야 한다. 면마다 평평한 법선으로 따로 구워 모서리에서 값이 어긋났다(옆벽 188 / 뒷벽 201, 천장 150 / 옆벽 180).
+    // 곡면 폭(COVE_R) 안에서는 법선과 가림을 모서리 선 위 점(이등분 법선)에서 잰 값으로 옮겨 간다: 두 면이 같은 식이라 모서리에서 값이 같다.
+    // 책·접촉 그늘 몫(구운 값 − 둘레 몫)은 그 면 것을 그대로 더한다. 판 윗면 쪽 모서리는 하지 않는다(책 뒤 그늘이 모이는 곳)
+    // 두 모서리가 만나는 꼭지점 근처는 두 모서리를 거리 비율로 함께 섞는다(가까운 하나만 고르면 거리가 같은 대각선에서 값이 바뀌어 밝은 대각선이 생겼다)
+    float filA = 0.0;
+    float filB = 0.0;
+    vec3 filPA = P;
+    vec3 filNA = tN;
+    vec3 filPB = P;
+    vec3 filNB = tN;
+    if (env.x > 1.5 && P.z > -FFRONT + 0.5) {
+      float R = 9.15000000;
+      float h = 0.70710678;
+      float dl = max(0.0, P.x - 0.00000000);
+      float dr = max(0.0, 366.000000 - P.x);
+      float dc = max(0.0, env.z - P.y);
+      float db = max(0.0, DEPTH - P.z);
+      // A: 세로 모서리(옆벽 쪽), B: 위 모서리(천장 쪽). 천장 자신은 A = 옆벽 쪽, B = 뒷벽 쪽
+      if (tN.z < -0.5 && P.z > DEPTH - 1.0) {
+        if (dl < dr) { filA = 1.0 - dl / R; filPA = vec3(0.00000000, P.y, DEPTH); filNA = vec3(h, 0.0, -h); }
+        else { filA = 1.0 - dr / R; filPA = vec3(366.000000, P.y, DEPTH); filNA = vec3(-h, 0.0, -h); }
+        filB = 1.0 - dc / R; filPB = vec3(P.x, env.z, DEPTH); filNB = vec3(0.0, -h, -h);
+      } else if (abs(tN.x) > 0.5) {
+        float xs = tN.x > 0.0 ? 0.00000000 : 366.000000;
+        filA = 1.0 - db / R; filPA = vec3(xs, P.y, DEPTH); filNA = vec3(tN.x * h, 0.0, -h);
+        filB = 1.0 - dc / R; filPB = vec3(xs, env.z, P.z); filNB = vec3(tN.x * h, -h, 0.0);
+      } else if (tN.y < -0.5) {
+        if (dl < dr) { filA = 1.0 - dl / R; filPA = vec3(0.00000000, env.z, P.z); filNA = vec3(h, -h, 0.0); }
+        else { filA = 1.0 - dr / R; filPA = vec3(366.000000, env.z, P.z); filNA = vec3(-h, -h, 0.0); }
+        filB = 1.0 - db / R; filPB = vec3(P.x, env.z, DEPTH); filNB = vec3(0.0, -h, -h);
+      }
+      // 섞는 몫은 부드러운 계단(smoothstep): 곧은 몫(1 − d/R)이면 곡면 폭 끝에서 밝기 기울기가 꺾여 세로 선(마하 띠)으로 보였다
+      filA = clamp(filA, 0.0, 1.0);
+      filB = clamp(filB, 0.0, 1.0);
+      filA = filA * filA * (3.0 - 2.0 * filA);
+      filB = filB * filB * (3.0 - 2.0 * filB);
+    }
+    float filT = max(filA, filB);
+    vec3 n0 = normalize(tN + bev0.xyz * b0 + bev1.xyz * b1 + vec3(be, 0.0, 0.0));
+    vec3 n = filT > 0.0
+      ? normalize(n0 + (filNA - tN) * filA + (filNB - tN) * filB + vec3(0.0, coveFloor(P), 0.0))
+      : normalize(tN + bev0.xyz * b0 + bev1.xyz * b1 + coveOf(P) + vec3(be, 0.0, 0.0));
     float rimLoss = 0.0;
     // 구멍 앞 끝 둥근 테(반지름 RIMR): 구멍(둥근 사각형, 모서리 RIMC)까지 거리 d로 벽 법선이 구멍 안쪽 면 법선 쪽으로 돈다
     if (rim.x < rim.y) {
@@ -814,7 +861,17 @@ void main() {
     vec3 loss = liveEnv > 0.5 ? envLoss(Pb, tN) : lossDec(vec3(_tex(pb).rgb), skyIrr(tN));
     if (liveEnv < 0.5 && mixT < 1.0) loss = mix(lossDec(vec3(_tex2(pb).rgb), skyIrr(tN)), loss, mixT);
     if (rimLoss > 0.0) loss += rimLoss * (skyIrr(tN) + KEYC * (DIFF * max(0.0, dot(tN, LU)))) / OCC;
-    vec4 g = shade(P, n, tN, normalize(vec3(cam4.x, cam4.y, cam4.z - cam4.w) - P), loss, albedo, eref, ms.w, ms.z, float(_keyTex(vec2(dot(P, kU), dot(P, kV)) + kO).a), sref, kS);
+    vec3 nfF = tN;
+    if (filT > 0.0) {
+      // 모서리 선 위 점은 두 면 위에 있어 그대로 재면 면이 자기를 가린다: 이등분 법선 쪽으로 조금 띄운다. 두 모서리 값은 섞는 몫대로 평균
+      vec3 own = max(vec3(0.0), loss - envLoss(P, tN));
+      vec3 tgt = vec3(0.0);
+      if (filA > 0.0) tgt += envLoss(filPA + filNA * 0.3, filNA) * filA;
+      if (filB > 0.0) tgt += envLoss(filPB + filNB * 0.3, filNB) * filB;
+      loss = mix(loss, tgt / (filA + filB) + own, filT);
+      nfF = normalize(tN + (filNA - tN) * filA + (filNB - tN) * filB);
+    }
+    vec4 g = shade(P, n, nfF, normalize(vec3(cam4.x, cam4.y, cam4.z - cam4.w) - P), loss, albedo, eref, ms.w, ms.z, float(_keyTex(vec2(dot(P, kU), dot(P, kV)) + kO).a), sref, kS);
     if (DODGE > 1.5) {
       float softA = softR.y > 0.0 ? softEdge(P) : 1.0;
       { fragColor = vec4(vec3(min(base * vec3(g.rgb), vec3(1.0))) * softA, softA); return; }

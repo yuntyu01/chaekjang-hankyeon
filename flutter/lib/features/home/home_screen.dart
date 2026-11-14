@@ -12,7 +12,7 @@ import 'package:flutter/scheduler.dart' show SchedulerBinding, Ticker;
 import 'package:flutter/material.dart';
 
 import '../../services/cover_colors.dart';
-import '../../ui/kit.dart' show Btn, showSheet;
+import '../../ui/kit.dart' show Btn, PullUp, showSheet;
 import 'locked_rows.dart';
 import 'book_sheet.dart';
 import '../book/all_books_screen.dart' show openAllBooks;
@@ -1465,8 +1465,10 @@ Future<void> dropHomeSnapshot() async {
 /// 하단바 덮개 농도(끝이 부드러운 곡선)
 const _fadeStops = [(0.0, 0.0), (0.2, 0.05), (0.4, 0.2), (0.6, 0.48), (0.8, 0.8), (1.0, 1.0)];
 
-/// 머리줄 높이(지금 앱은 배치에서 잰다): 위 16 + 제목 줄 34 + 4 + 해 줄 23 + 아래 12. 글자 줄은 지금 앱처럼 화소로 올린 높이(rnPx)
-double get homeHeaderHeight => TabHeader.paddingTop + rnPx(34) + 4 + rnPx(23) + TabHeader.paddingBottom;
+/// 머리줄 높이(지금 앱은 배치에서 잰다): 위 16 + 제목 줄 34 − 2 + 해 줄 23 + 아래 4. 글자 줄은 지금 앱처럼 화소로 올린 높이(rnPx)
+/// (2026-11-10 사용자 '책장 좀 더 높이', '2026이랑 나의 책장 사이 간격 줄이고': 아래 여백 12 → 4, 해 위 4 → −2)
+const _headerBottom = 4.0;
+double get homeHeaderHeight => TabHeader.paddingTop + rnPx(34) - 2 + rnPx(23) + _headerBottom;
 
 /// 책장 줄 배치에서 하단바 몫(지금 앱 navigation.shelfReserve)
 const navigationShelfReserve = 78.0;
@@ -1511,9 +1513,8 @@ class _Header extends StatelessWidget {
       ),
     );
     return Padding(
-      // 지금 앱(커밋된 HomeScreen): 머리줄 아래 여백 = tabHeader 12, 해는 제목 밑 4dp·보통 굵기(headerType.sub).
-      // 다른 세션의 11-10 미커밋 조정(아래 여백 4·해 −2dp SemiBold)은 커밋되면 함께 옮긴다
-      padding: const EdgeInsets.fromLTRB(TabHeader.paddingH, TabHeader.paddingTop, TabHeader.paddingH - (TabHeader.paddingH - (_headerLastCenter - _headerCell / 2)), TabHeader.paddingBottom),
+      // 머리줄 아래 여백 4, 해는 제목 바로 밑(−2dp, 지금 앱 11-10 조정). 굵기는 보통(2026-11-15 사용자 '두께는 전이 나은 느낌')
+      padding: const EdgeInsets.fromLTRB(TabHeader.paddingH, TabHeader.paddingTop, TabHeader.paddingH - (TabHeader.paddingH - (_headerLastCenter - _headerCell / 2)), _headerBottom),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -1524,8 +1525,8 @@ class _Header extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text('나의 책장', style: AppType.title, maxLines: 1),
-                  Padding(
-                    padding: const EdgeInsets.only(top: 4),
+                  PullUp(
+                    dy: 2,
                     child: Tooltip(
                       message: status,
                       child: Text('$year', style: AppType.sub, maxLines: 1),
