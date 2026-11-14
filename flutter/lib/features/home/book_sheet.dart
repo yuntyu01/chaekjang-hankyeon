@@ -139,7 +139,6 @@ Future<void> showBookSheet(BuildContext context, String bookId, {Library? view, 
                   padding: const EdgeInsets.only(top: 22),
                   child: Btn(
                     label: '책 정보 보기',
-                    kind: 'secondary',
                     onPress: () {
                       Navigator.pop(ctx);
                       openBook(context, bookId);
@@ -149,26 +148,17 @@ Future<void> showBookSheet(BuildContext context, String bookId, {Library? view, 
                 if (!readOnly)
                   Padding(
                   padding: const EdgeInsets.only(top: 10),
+                  // 보조 행동 두 개(지금 앱 TextActions): 본문색 보통 글씨, 사이 얇은 세로선, 누르는 칸 48
                   child: Row(children: [
-                    Expanded(
-                      child: TextLink(
-                        label: '읽기 시작',
-                        onPress: () {
-                          Navigator.pop(ctx);
-                          openReadingScene(context, bookId: bookId);
-                        },
-                      ),
-                    ),
-                    Container(width: 1, height: 14, color: AppColors.line),
-                    Expanded(
-                      child: TextLink(
-                        label: '갈피 남기기',
-                        onPress: () {
-                          Navigator.pop(ctx);
-                          openNewBookmark(context, book: bookId);
-                        },
-                      ),
-                    ),
+                    _textAction('읽기 시작', () {
+                      Navigator.pop(ctx);
+                      openReadingScene(context, bookId: bookId);
+                    }),
+                    Container(width: 1, height: 18, color: AppColors.line),
+                    _textAction('갈피 남기기', () {
+                      Navigator.pop(ctx);
+                      openNewBookmark(context, book: bookId);
+                    }),
                   ]),
                 ),
               ]),
@@ -231,7 +221,6 @@ Future<void> _sampleSheet(BuildContext context, Book sample) => showModalBottomS
               padding: const EdgeInsets.only(top: 22),
               child: Btn(
                 label: '이 책을 내 서재에 추가',
-                kind: 'secondary',
                 onPress: () {
                   Navigator.pop(ctx);
                   openAddBook(context, q: sample.title);
@@ -241,4 +230,23 @@ Future<void> _sampleSheet(BuildContext context, Book sample) => showModalBottomS
           ]),
         );
       },
+    );
+
+Widget _textAction(String label, VoidCallback onPress) => Expanded(
+      child: Semantics(
+        button: true,
+        label: label,
+        excludeSemantics: true,
+        onTap: onPress,
+        child: Pressable(
+          onPress: onPress,
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(minHeight: 48),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 8),
+              child: Center(child: Text(label, textAlign: TextAlign.center, style: AppType.sub.copyWith(color: AppColors.ink))),
+            ),
+          ),
+        ),
+      ),
     );

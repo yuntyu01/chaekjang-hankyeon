@@ -2,6 +2,7 @@
 // (읽기 상태는 2026-11-10 시안부터 카드에 넣지 않는다)
 library;
 
+import 'labels.dart' show ymd;
 import '../../domain/library.dart';
 import '../../domain/types.dart';
 import '../share/share_scene.dart' show ShareSceneInput;
@@ -21,7 +22,7 @@ class BookShareData {
   BookShareData withNote(String? n) => BookShareData(id: id, book: book, title: title, author: author, note: n, rating: rating, readTime: readTime, period: period);
 }
 
-String _dot(String d) => d.substring(0, 10).replaceAll('-', '.');
+String _dot(String d) => ymd(d);
 
 /// 읽은 기간: 첫 회차 시작 — 마지막 완독(같은 해면 끝은 월.일만). 읽는 중이면 '부터', 시작일 없이 완독만 있으면 완독일
 String? readPeriod([String? start, String? end, bool reading = false]) {

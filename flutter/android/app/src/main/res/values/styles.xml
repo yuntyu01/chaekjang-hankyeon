@@ -8,5 +8,7 @@
         <item name="android:windowBackground">@color/splashscreen_background</item>
         <item name="android:statusBarColor">@android:color/transparent</item>
         <item name="android:navigationBarColor">@android:color/transparent</item>
+        <!-- 키보드·리모컨 입력으로 터치 모드가 풀리면 안드로이드가 화면 전체(FlutterView)에 기본 포커스 테두리(연두색)를 그린다: 끈다(포커스 표시는 Flutter가 그린다) -->
+        <item name="android:defaultFocusHighlightEnabled">false</item>
     </style>
 </resources>

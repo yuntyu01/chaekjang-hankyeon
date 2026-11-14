@@ -109,6 +109,10 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   /// 마지막으로 그린 책장 기하(누른 책 찾기용): 줄 자리·화면 배율·머리글 아래 끝·잠긴 칸 시작
   ({ShelfMetrics m, List<RowGeom> geo, double contentTop, int lockedFrom})? _geom;
   bool _decorating = false;
+
+  /// 꾸미는 동안은 머리글(제목·연도·버튼)을 빼고 책장을 위로 붙여 넓게 쓴다(되돌리기·완료는 조작부 제목 줄, 지금 앱 bare).
+  /// 꾹 눌러 끌며 꾸미기를 시작했으면 놓은 뒤에 뺀다(끄는 도중 손가락 아래 책장이 밀리지 않게)
+  bool _bare = false;
   String? _editId;
   String? _editMsg;
   ({String title, Pose pose, int lean, ({bool left, bool right}) canLean, double spin, double spinMax, ({double lo, double hi})? spinRange, ({double lo, double hi, double z}) depth})? _panel;
@@ -1038,11 +1042,16 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                 clipper: _BelowTop(pad.top),
                 child: LayoutBuilder(
                   builder: (context, box) {
-                    final contentTop = pad.top + homeHeaderHeight;
+                    if (!_decorating) {
+                      _bare = false;
+                    } else if (_drag == null) {
+                      _bare = true;
+                    }
+                    final contentTop = pad.top + (_bare ? 0 : homeHeaderHeight);
                     final bottomInset = navigationShelfReserve + pad.bottom;
                     final m = makeMetrics(box.maxWidth);
                     final n = _rowSpots.length;
-                    final geo = computeRows(n, m.scale, viewportHeight: box.maxHeight - contentTop, bottomInset: bottomInset);
+                    final geo = computeRows(n, m.scale, viewportHeight: box.maxHeight - contentTop, bottomInset: bottomInset, real: n - _lockedCount);
                     // 잠긴 칸까지 다 보이게 세로로 넘긴다(머리줄도 함께, 지금 앱 홈 스크롤)
                     final last = geo.isEmpty ? null : geo.last;
                     // 끝 여백(지금 앱 contentEnd): 판 그늘 몫과 하단바 블록 + 덮개 0.6 중 큰 것
@@ -1171,7 +1180,8 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                                 ),
                               ],
                               // 머리줄(책장과 함께 스크롤: 지금 앱 2026-11-04 '상단 라인은 고정이 아니야'): 왼쪽 '나의 책장'과 그 밑 해, 오른쪽 스토어·꾸미기·전체 책·더하기
-                              Positioned(left: 0, right: 0, top: pad.top, child: header(headerOpacity)),
+                              // 자식 목록 자리는 그대로 둔다(있다 없다 하면 뒤의 누르기 층이 새로 만들어져 끌던 손가락이 끊긴다)
+                              Positioned(left: 0, right: 0, top: pad.top, child: _bare ? const SizedBox.shrink() : header(headerOpacity)),
                               // 잠긴 칸: 가운데 자물쇠, 누르면 선반 한 칸 더 열기
                               for (var i = lockedFrom; i < n && i < geo.length; i++)
                                 Positioned(
@@ -1527,7 +1537,7 @@ class _Header extends StatelessWidget {
           ),
           Padding(
             padding: const EdgeInsets.only(top: 2.5),
-            child: icons ? Row(children: [icon('store', '스토어'), icon('decorate', '꾸미기'), icon('books', '전체 책'), icon('add', '책 더하기')]) : const SizedBox(height: 44),
+            child: icons ? Row(children: [icon('store', '스토어'), icon('decorate', '꾸미기'), icon('books', '전체 책'), icon('add', '책 추가')]) : const SizedBox(height: 44),
           ),
         ],
       ),
@@ -1657,7 +1667,7 @@ class ShelfPainter extends CustomPainter {
     final cam = Cam(viewPitchMin);
     // 머리글 아래가 콘텐츠 위 끝(지금 앱 홈 스크롤 영역)
     final contentY = contentTop;
-    final geo = computeRows(rows.length, m.scale, viewportHeight: (viewport ?? size.height) - contentY, bottomInset: bottomInset);
+    final geo = computeRows(rows.length, m.scale, viewportHeight: (viewport ?? size.height) - contentY, bottomInset: bottomInset, real: math.min(rows.length, frostedFrom));
     Affine pxOf(RowGeom r) => Affine(m.scale, m.originX + sideMargin * m.scale, contentY + r.baseline);
     for (var i = 0; i < rowSpots.length && i < atlases.length && i < geo.length; i++) {
       final r = geo[i];

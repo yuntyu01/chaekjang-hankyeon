@@ -2,6 +2,7 @@
 // 거르고 정렬한다. 책 정보는 서재 한 곳에만 있고, 책장 배치는 같은 책 ID로 따로 본다. 숨긴 책(연도 책장에 남긴 책)은 목록에 없다
 library;
 
+import '../../domain/title_layout.dart' show compareKoTitle;
 import '../../domain/layout.dart';
 import '../../domain/layout_engine.dart' show BookMap;
 import '../../domain/library.dart';
@@ -31,11 +32,11 @@ List<AllBooksRow> listAllBooks(Library lib, BookMap books, ShelfLayout layout,
     rows.add((book: book, onShelf: onShelf));
   }
   if (sort == AllBooksSort.title) {
-    rows.sort((a, b) => a.book.title.compareTo(b.book.title));
+    rows.sort((a, b) => compareKoTitle(a.book.title, b.book.title));
   } else {
     rows.sort((a, b) {
       final c = lib.books[b.book.id]!.createdAt.compareTo(lib.books[a.book.id]!.createdAt);
-      return c != 0 ? c : a.book.title.compareTo(b.book.title);
+      return c != 0 ? c : compareKoTitle(a.book.title, b.book.title);
     });
   }
   return rows;

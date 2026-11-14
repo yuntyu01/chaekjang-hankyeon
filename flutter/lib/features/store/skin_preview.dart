@@ -1,6 +1,6 @@
-// 스토어 미리보기(지금 앱 features/store/SkinPreview.tsx): 홈 책장과 같은 그림(빛·재질·카메라)으로 선반 한 칸에 책 두 권을 세운다.
-// 지금 앱은 예시 책 '데미안'(린넨 책등)·'느린 계절'(그림 표지)을 쓰지만, 그 그림 표지(무늬·풍경)는 아직 Flutter에 없어서
-// 내 책장의 책등 한 권과 표지 한 권을 같은 자리(판 112·142DU)에 세운다. 스킨을 고르면 그 스킨 값으로 다시 굽는다
+// 스토어 미리보기(지금 앱 features/store/SkinPreview.tsx): 홈 책장과 같은 그림(빛·재질·카메라)으로 선반 한 칸에 예시 책 두 권을 세운다:
+// 린넨 책등 '데미안'과 그림 표지 '느린 계절'(새 서재 예시 책장과 같은 책, domain/reference_home), 판 112·142DU. 스킨을 고르면 그 스킨 값으로 다시 굽는다.
+// 예시 책은 실제 표지가 없어 책 측면 모양은 미리보기에 보이지 않는다(지금 앱과 같다: 안내 문구)
 library;
 
 import 'dart:ui' as ui;
@@ -11,6 +11,7 @@ import '../../domain/book3_physics.dart' show fromPlaced;
 import '../../domain/layout.dart';
 import '../../domain/shelf_scene.dart' show computeShelf;
 import '../../domain/shelf_row.dart';
+import '../../domain/reference_home.dart' show referenceBooks;
 import '../../domain/types.dart';
 import '../../scene_config/skin.dart';
 import '../../scene_config/spine_look.dart';
@@ -34,15 +35,25 @@ double skinPreviewHeight(double width) {
   return _top + r.top + r.height + shelfCastExtent * 0.5 * m.scale;
 }
 
-/// 미리보기에 세울 두 권: 내 책장의 책등 한 권과 표지 한 권(없으면 책등 두 권)
-List<BookPlacement> _picks(ShelfLayout l) {
+/// 미리보기에 세울 두 권(지금 앱 PICKS: b02 책등 112, b04 표지 142). 예시 책을 못 읽었으면 내 책장의 책등·표지 한 권씩
+({List<BookPlacement> picks, Map<String, Book> books}) _picks(ShelfLayout l, Map<String, Book> mine) {
+  const want = [('home-reference-b02', Pose.upright, 112.0), ('home-reference-b04', Pose.front, 142.0)];
+  if (want.every((w) => referenceBooks.containsKey(w.$1))) {
+    return (
+      picks: [for (final (i, w) in want.indexed) BookPlacement(bookId: w.$1, shelfId: _shelfId, order: i, pose: w.$2, tilt: 0, pos: w.$3)],
+      books: {for (final w in want) w.$1: referenceBooks[w.$1]!},
+    );
+  }
   final spine = [for (final p in l.placements) if (p.pose == Pose.upright && p.stackId == null) p.bookId];
   final front = [for (final p in l.placements) if (p.pose == Pose.front && p.stackId == null) p.bookId];
   final ids = [if (spine.isNotEmpty) spine.first, if (front.isNotEmpty) front.first else if (spine.length > 1) spine[1]];
-  return [
-    for (final (i, id) in ids.indexed)
-      BookPlacement(bookId: id, shelfId: _shelfId, order: i, pose: i == 1 && front.isNotEmpty ? Pose.front : Pose.upright, tilt: 0, pos: i == 0 ? 112 : 142),
-  ];
+  return (
+    picks: [
+      for (final (i, id) in ids.indexed)
+        BookPlacement(bookId: id, shelfId: _shelfId, order: i, pose: i == 1 && front.isNotEmpty ? Pose.front : Pose.upright, tilt: 0, pos: i == 0 ? 112 : 142),
+    ],
+    books: mine,
+  );
 }
 
 class SkinPreview extends StatefulWidget {
@@ -60,6 +71,7 @@ class _SkinPreviewState extends State<SkinPreview> {
   RowCase? _row;
   BakedRow? _baked;
   Map<String, CoverPhoto> _photos = const {};
+  Map<String, Book> _books = const {};
   var _token = 0;
 
   @override
@@ -73,10 +85,9 @@ class _SkinPreviewState extends State<SkinPreview> {
   Future<void> _spineChanged() async {
     final r = _row;
     if (r == null) return;
-    final s = PlacementStore.instance;
     final photos = <String, CoverPhoto>{};
     for (final id in [for (final b in r.books) b.id]) {
-      final uri = s.books[id]?.coverArtUri;
+      final uri = _books[id]?.coverArtUri;
       if (uri == null) continue;
       final p = await loadCoverPhoto(uri);
       if (p != null) photos[uri] = p;
@@ -101,9 +112,11 @@ class _SkinPreviewState extends State<SkinPreview> {
     final token = ++_token;
     final s = PlacementStore.instance;
     await s.ensure();
-    final layout = ShelfLayout([const Shelf(_shelfId, 0)], _picks(s.layout!));
-    final books = [for (final p in layout.placements) s.books[p.bookId]!];
-    final bodies = [for (final f in computeShelf(layout, s.books, _shelfId)) fromPlaced(f.box)];
+    final pick = _picks(s.layout!, s.books);
+    _books = pick.books;
+    final layout = ShelfLayout([const Shelf(_shelfId, 0)], pick.picks);
+    final books = [for (final p in layout.placements) pick.books[p.bookId]!];
+    final bodies = [for (final f in computeShelf(layout, pick.books, _shelfId)) fromPlaced(f.box)];
     final row = rowFromBooks(bodies, books, rowSpace, top: true, last: true);
     await ShelfPainter.load();
     final grid = ShaderSlots(await ui.FragmentProgram.fromAsset('shaders/grid.frag'), gridUniformNames);

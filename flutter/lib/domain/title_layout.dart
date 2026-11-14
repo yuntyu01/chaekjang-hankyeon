@@ -204,3 +204,33 @@ CoverTitle coverTitleLayout(String title, double wDU, double hDU) {
   final fit = math.min(wDU * 0.86 / math.max(1.0, f.lines.map(width).reduce(math.max)), hDU * 0.3 / (f.lines.length * coverLineH));
   return CoverTitle(f.lines, desired <= fit ? desired : (fit * 10).floorToDouble() / 10);
 }
+
+/// 제목 비교(지금 앱 localeCompare(…, 'ko')와 같은 순서): 숫자·기호 → 한글 → 로마자(대소문자 무시, 같으면 소문자 먼저).
+/// Dart 기본 비교는 글자 코드 순이라 로마자가 한글보다 먼저 와 '제목순'이 지금 앱과 달랐다
+int compareKoTitle(String a, String b) {
+  int group(int c) {
+    if (c >= 0xAC00 && c <= 0xD7A3 || c >= 0x3131 && c <= 0x318E) return 1;
+    if (c >= 0x41 && c <= 0x5A || c >= 0x61 && c <= 0x7A) return 2;
+    return 0;
+  }
+
+  final ra = a.runes.toList(), rb = b.runes.toList();
+  for (var i = 0; i < ra.length && i < rb.length; i++) {
+    final x = ra[i], y = rb[i];
+    if (x == y) continue;
+    final gx = group(x), gy = group(y);
+    if (gx != gy) return gx - gy;
+    if (gx == 2) {
+      final lx = x | 0x20, ly = y | 0x20;
+      if (lx != ly) return lx - ly;
+      continue; // 대소문자만 다르면 뒤에서 가린다
+    }
+    return x - y;
+  }
+  if (ra.length != rb.length) return ra.length - rb.length;
+  // 대소문자만 다른 제목: 소문자 먼저
+  for (var i = 0; i < ra.length; i++) {
+    if (ra[i] != rb[i]) return rb[i] - ra[i];
+  }
+  return 0;
+}

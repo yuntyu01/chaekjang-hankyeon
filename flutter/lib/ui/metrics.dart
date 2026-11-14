@@ -49,10 +49,11 @@ class RowGeom {
 
 /// 줄 칸의 기준 보기는 기본 보기 각이다: 칸 경계 = 윗선반 앞면 아래 모서리를 기본 보기로 본 자리.
 /// 줄 기준선 사이 화면 거리가 3D 줄 간격과 정확히 같다(다른 줄로 옮겨 가는 책이 튀지 않게)
-List<RowGeom> computeRows(int n, double scale, {double viewportHeight = 0, double bottomInset = 0}) {
+/// real: 화면 가운데에 놓을 때 세는 줄 수(잠긴 칸은 빼고, 지금 앱은 진짜 선반만 세고 잠긴 칸은 그 아래 이어 붙인다). 없으면 n
+List<RowGeom> computeRows(int n, double scale, {double viewportHeight = 0, double bottomInset = 0, int? real}) {
   final height = (rowSpace + shelfThick) * scale;
   final clear = rowSpace - shelfFront * kyOf(viewPitchMin);
-  var top = math.max(contentTop, (viewportHeight - bottomInset - height * n) / 2 * topGap);
+  var top = math.max(contentTop, (viewportHeight - bottomInset - height * (real ?? n)) / 2 * topGap);
   return [
     for (var i = 0; i < n; i++) RowGeom(top + i * height, clear, rowSpace, height, top + i * height + clear * scale),
   ];
