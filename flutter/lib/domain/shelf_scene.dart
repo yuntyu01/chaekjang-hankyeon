@@ -1,9 +1,13 @@
 // 선반 한 칸의 책 프레임 계산(순수): 저장된 자리 → 선반 공간 3D 상자, 기댄 책은 옆 책·옆 벽에 처음 닿는 각과
 // 그 각에서 버티는지(넘어짐·미끄러짐·받침 넘어감)를 정역학으로 푼다. 지금 앱 domain/shelf-scene.ts의 computeShelf와 그 풀이를 옮긴 것.
-// (넘어진 책을 배치로 옮기는 withLeans·layFallen은 편집 쪽이라 아직)
+// 받침을 잃고 넘어진 책을 배치로 옮기는 resolveLeans·withLeans·layFallen(편집 확정)도 함께
 library;
 
 import '../scene_config/skin.dart';
+import 'dart:math' as math;
+
+import 'book3.dart';
+import 'book3_physics.dart';
 import 'geometry.dart';
 import 'layout.dart';
 import 'layout_engine.dart';
@@ -53,8 +57,8 @@ final sideWalls = frameOn ? [_wallBox(wallL, shelfX0 - _wallT), _wallBox(wallR, 
 
 bool _inside(List<P2> poly) => poly.every((p) => p.x >= plankBounds.min - 0.01 && p.x <= plankBounds.max + 0.01);
 
-/// 선반 한 칸의 상자 배치와 프레임(기대기까지 푼 것)
-List<BookFrame> computeShelf(ShelfLayout layout, BookMap books, String shelfId) {
+/// 선반 한 칸의 상자 배치와 프레임(기대기까지 푼 것). frozen: 저장된 기대기 각 그대로(지난 연도 책장)
+List<BookFrame> computeShelf(ShelfLayout layout, BookMap books, String shelfId, [bool frozen = false]) {
   final positions = itemPositions(shelfItems(layout, shelfId), layout, books);
   final frames = <BookFrame>[];
   for (final pos in positions) {
@@ -66,7 +70,23 @@ List<BookFrame> computeShelf(ShelfLayout layout, BookMap books, String shelfId) 
           pos.item.stacked ? i : 0, box));
     }
   }
-  return _solveBoth(frames, layout);
+  return frozen ? _frozenLeans(frames, layout) : _solveBoth(frames, layout);
+}
+
+/// 저장된 기대기 각·발 미끄러짐을 그대로 쓴다(지난 연도 책장: 물리 없이 고정)
+List<BookFrame> _frozenLeans(List<BookFrame> frames, ShelfLayout layout) {
+  for (final f in frames) {
+    if (f.pose != Pose.upright || f.stackIndex != 0 || f.tilt == 0) continue;
+    final p = placementOf(layout, f.bookId);
+    final a = p?.leanAngle;
+    if (a == null || a == 0 || _sign(a) != _sign(f.tilt)) continue;
+    final d = _sign(f.tilt);
+    final slide = p!.leanSlide ?? 0;
+    f.box = f.box.copyWith(x: f.box.x - d * slide, angle: a);
+    f.slide = slide == 0 ? null : slide;
+    f.leanOn = p.leanOn;
+  }
+  return frames;
 }
 
 /// 왼쪽·오른쪽으로 기대는 책이 함께 있으면 두 순서로 풀고 좌우와 상관없는 기준으로 고른다
@@ -338,3 +358,355 @@ _Rest _restOf(BookFrame f, List<Placed> others, ({double angle, String on, doubl
   if (!c.found) return const _Rest(0, failed: true);
   return holds(c);
 }
+
+
+// ---------- 받침을 잃고 넘어진 책을 머무는 자리에 두기(지금 앱 shelf-scene.ts fallRest·aFrame·layFallen·resolveLeans) ----------
+
+const _slideStepFall = 1.0;
+const _maxFallShove = 20.0;
+const _noShove = 0.5;
+
+/// 넘어져 머무는 곳: lean(기대 섬) · lie(눕기) · stand(다시 섬) · drawer(선반에서 떨어짐) · null(못 찾음)
+typedef _FallRest = ({String kind, double x, double angle, String on, double? slide, int d});
+
+_FallRest? _fallRest(Placed up, int d, List<Placed> row) {
+  final others = [...row, ...sideWalls];
+  final t = up.size.w, h = up.size.h;
+  final mid = up.x + t / 2;
+  final ahead = [for (final o in others) if (_sign(centerXY(o).x - mid) == d) o];
+  final behind = [for (final o in others) if (_sign(centerXY(o).x - mid) != d) o];
+  final ends = d > 0 ? (min: double.negativeInfinity, max: plankBounds.max) : (min: plankBounds.min, max: double.infinity);
+  Placed atOf(double s) => up.copyWith(x: up.x - d * s);
+  ({Placed at, LeanContact c, Placed lean}) probe(double s, [double from = 0]) {
+    final at = atOf(s);
+    final c = leanContact(at, d, ahead, ends, from, 90);
+    return (at: at, c: c, lean: at.copyWith(angle: d * c.angle));
+  }
+
+  bool upHit(double s) => behind.any((o) => collide(atOf(s), o, 0));
+  var upMax = h;
+  for (var s = 0.0; s <= h; s += _slideStepFall / 2) {
+    if (!upHit(s)) continue;
+    var lo = math.max(0.0, s - _slideStepFall / 2), hi = s;
+    for (var i = 0; i < 12; i++) {
+      final m = (lo + hi) / 2;
+      if (upHit(m)) {
+        hi = m;
+      } else {
+        lo = m;
+      }
+    }
+    upMax = lo;
+    break;
+  }
+  double layoutX(double s) => up.x - d * math.min(s, upMax);
+  bool hits(({Placed at, LeanContact c, Placed lean}) q) => behind.any((o) => collide(q.c.found ? q.lean : q.at, o, contactTol));
+  bool blocked(double s) => hits(probe(s));
+  // 'slip'은 kind == 'slip'
+  _FallRest settleAt(({Placed at, LeanContact c, Placed lean}) q, double s) {
+    if (!q.c.found) {
+      final span = fallenSpan(q.at, d);
+      final center = (span.x0 + span.x1) / 2;
+      if (center < plankBounds.min + overhangMargin || center > plankBounds.max - overhangMargin) return (kind: 'drawer', x: 0, angle: 0, on: '', slide: null, d: d);
+      return (kind: 'lie', x: span.x0, angle: 0, on: '', slide: null, d: d);
+    }
+    if (q.c.angle <= tipAngle(t, h)) return (kind: 'stand', x: layoutX(s), angle: 0, on: '', slide: null, d: d);
+    final support = ahead.firstWhere((o) => o.bookId == q.c.on);
+    final st = leanStatics(q.lean, contactOf(q.lean, support));
+    final x = layoutX(s);
+    final slide = jsRound((s - math.min(s, upMax)) * 100) / 100;
+    final kept = up.copyWith(x: x - d * slide, angle: jsRound(d * q.c.angle * 1000) / 1000);
+    final braced = st.floor.y > 0 && _sign(st.floor.x) == d && isBacked(kept, -d, [for (final o in behind) if (o.angle == 0) o]);
+    if (st.ok || (st.reason == 'slip' && braced)) {
+      return _inside(frontPoly(up.copyWith(x: x))) && _inside(frontPoly(q.lean))
+          ? (kind: 'lean', x: x, angle: d * q.c.angle, on: q.c.on!, slide: slide > 0 ? slide : null, d: d)
+          : (kind: 'slip', x: 0, angle: 0, on: '', slide: null, d: d);
+    }
+    return st.reason == 'tip' ? (kind: 'stand', x: layoutX(s), angle: 0, on: '', slide: null, d: d) : (kind: 'slip', x: 0, angle: 0, on: '', slide: null, d: d);
+  }
+
+  double footX(Placed at) => d > 0 ? at.x + t : at.x;
+  var prev = 0.0, from = 0.0;
+  for (var s = 0.0; s <= h; s += _slideStepFall) {
+    final q = probe(s, from);
+    if (q.c.found) from = math.max(0, q.c.angle - 0.5);
+    final fx = footX(q.at);
+    if (s > 0 && (fx < plankBounds.min || fx > plankBounds.max)) return (kind: 'drawer', x: 0, angle: 0, on: '', slide: null, d: d);
+    if (s > 0 && hits(q)) {
+      var lo = prev, hi = s;
+      for (var i = 0; i < 14; i++) {
+        final m = (lo + hi) / 2;
+        if (blocked(m)) {
+          hi = m;
+        } else {
+          lo = m;
+        }
+      }
+      final r = settleAt(probe(lo), lo);
+      return r.kind == 'slip' ? null : r;
+    }
+    final r = settleAt(q, s);
+    if (r.kind != 'slip') return r;
+    prev = s;
+  }
+  return null;
+}
+
+/// 서로 쪽으로 넘어지는 이웃 두 권(a 오른쪽, b 왼쪽): 가운데서 처음 닿는 각에서 둘 다 버티면 그 각
+double? _aFrame(Placed a, Placed b, List<Placed> others) {
+  bool ok(double d) {
+    final qa = a.copyWith(angle: d), qb = b.copyWith(angle: -d);
+    return !others.any((o) => collide(qa, o) || collide(qb, o)) && _inside(frontPoly(qa)) && _inside(frontPoly(qb));
+  }
+
+  final c = firstContact((d) => collide(a.copyWith(angle: d), b.copyWith(angle: -d), contactTol) || !ok(d), 0, 90);
+  if (!c.found || !ok(c.angle) || !collide(a.copyWith(angle: c.angle + 0.6), b.copyWith(angle: -(c.angle + 0.6)), contactTol)) return null;
+  if (c.angle <= tipAngle(a.size.w, a.size.h) || c.angle <= tipAngle(b.size.w, b.size.h)) return null;
+  final qa = a.copyWith(angle: c.angle), qb = b.copyWith(angle: -c.angle);
+  bool holds(Placed q, Placed s, int dir) {
+    final st = leanStatics(q, contactOf(q, s));
+    return st.ok || (st.reason == 'slip' && st.floor.y > 0 && _sign(st.floor.x) == dir && isBacked(q, -dir, [for (final o in others) if (o.angle == 0) o]));
+  }
+
+  return holds(qa, qb, 1) && holds(qb, qa, -1) ? c.angle : null;
+}
+
+ShelfLayout _detachToDrawer(ShelfLayout layout, BookMap books, String bookId, int d, Map<String, int> falls) {
+  final r = moveToDrawer(layout, bookId, books);
+  if (!r.ok) return layout;
+  falls[bookId] = d;
+  return r.layout!;
+}
+
+ShelfLayout _lp(ShelfLayout l, List<BookPlacement> placements) => ShelfLayout(l.shelves, placements, l.drawer);
+
+/// 넘어진 책을 머무는 자리에 둔다(넘어지는 쪽 앞선 책부터 한 권씩). simple: 자리 찾기 없이 넘어진 쪽에 눕힌다(되풀이 끊기)
+ShelfLayout _layFallen(ShelfLayout layout, BookMap books, List<BookFrame> fallen, Map<String, int> falls, [bool simple = false]) {
+  var next = layout;
+  final paired = <String>{};
+  if (!simple) {
+    final byX = stableSorted(fallen, (a, b) => a.box.x.compareTo(b.box.x));
+    for (var i = 0; i + 1 < byX.length; i++) {
+      final a = byX[i], b = byX[i + 1];
+      if (a.fell != 1 || b.fell != -1 || a.shelfId != b.shelfId) continue;
+      final rest = [for (final q in next.placements) if (q.bookId != a.bookId && q.bookId != b.bookId) q];
+      final others = [for (final o in computeShelf(_lp(next, rest), books, a.shelfId)) o.box];
+      final ua = a.box.copyWith(angle: 0), ub = b.box.copyWith(angle: 0);
+      if (others.any((o) => centerXY(o).x > ua.x + ua.size.w / 2 && centerXY(o).x < ub.x + ub.size.w / 2)) continue;
+      final c = _aFrame(ua, ub, others);
+      if (c == null) continue;
+      final angle = jsRound(c * 1000) / 1000;
+      next = _lp(next, [
+        for (final q in next.placements)
+          q.bookId == a.bookId
+              ? q.copyWith(tilt: 7, leanAngle: angle, leanOn: b.bookId, leanSlide: unset)
+              : q.bookId == b.bookId
+                  ? q.copyWith(tilt: -7, leanAngle: -angle, leanOn: a.bookId, leanSlide: unset)
+                  : q,
+      ]);
+      paired
+        ..add(a.bookId)
+        ..add(b.bookId);
+      i++;
+    }
+  }
+  double aheadOf(BookFrame f) => f.fell! > 0 ? f.box.x : shelfUsableW - f.box.x - f.box.size.w;
+  final order = stableSorted([for (final f in fallen) if (!paired.contains(f.bookId)) f], (a, b) {
+    final c = aheadOf(b).compareTo(aheadOf(a));
+    return c != 0 ? c : a.bookId.compareTo(b.bookId);
+  });
+  for (final f in order) {
+    final p = placementOf(next, f.bookId);
+    if (p == null) continue;
+    final d = f.fell!;
+    final without = _lp(next, [for (final q in next.placements) if (q.bookId != f.bookId) q]);
+    final others = [for (final o in computeShelf(without, books, p.shelfId)) o.box];
+    final rest = simple ? null : _fallRest(f.box.copyWith(angle: 0), d, others);
+    if (rest?.kind == 'drawer') {
+      next = _detachToDrawer(next, books, f.bookId, d, falls);
+      continue;
+    }
+    if (rest?.kind == 'stand') {
+      final desired = bookXs(next, books)..[f.bookId] = rest!.x;
+      final stood = settle(normalize(_lp(next, [for (final q in next.placements) q.bookId == f.bookId ? q.copyWith(tilt: 0, pos: rest.x).withoutLean() : q])), books, desired, p.shelfId);
+      if (checkSpace(stood, books, p.shelfId) == null) {
+        next = stood;
+        continue;
+      }
+    }
+    if (rest?.kind == 'lean') {
+      final desired = bookXs(next, books)..[f.bookId] = rest!.x;
+      final leant = settle(
+          normalize(_lp(next, [
+            for (final q in next.placements)
+              q.bookId == f.bookId ? q.copyWith(tilt: tiltToward(d), leanAngle: jsRound(rest.angle * 1000) / 1000, leanOn: rest.on, leanSlide: rest.slide ?? unset, pos: rest.x) : q,
+          ])),
+          books,
+          desired,
+          p.shelfId);
+      if (checkSpace(leant, books, p.shelfId) == null) {
+        next = leant;
+        continue;
+      }
+    }
+    final lie = rest?.kind == 'lie' ? rest!.x : fallenSpan(f.box.copyWith(angle: 0), d).x0;
+    final h = f.box.size.h;
+    const lo = shelfInnerLeft, hi = shelfInnerLeft + shelfUsableW;
+    ({ShelfLayout laid, double moved, double shoved, bool space}) tryAt(double x) {
+      final over = x < lo - 0.01 || x + h > hi + 0.01;
+      final desired = bookXs(next, books)..[f.bookId] = x;
+      final laid = settle(
+          normalize(_lp(next, [
+            for (final q in next.placements)
+              q.bookId == f.bookId
+                  ? q.copyWith(pose: Pose.horizontal, tilt: 0, pos: x, spin: unset, pitch: unset, depth: f.box.z, flip: d > 0, overhang: over).withoutLean()
+                  : q,
+          ])),
+          books,
+          desired,
+          p.shelfId);
+      final after = bookXs(laid, books);
+      final moved = ((after[f.bookId] ?? x) - x) * -d;
+      var shoved = 0.0;
+      for (final e in desired.entries) {
+        if (e.key == f.bookId) continue;
+        shoved = math.max(shoved, ((after[e.key] ?? e.value) - e.value).abs());
+      }
+      return (laid: laid, moved: moved, shoved: shoved, space: checkSpace(laid, books, p.shelfId) == null);
+    }
+
+    if (rest?.kind == 'lie' && (lie < lo - 0.01 || lie + h > hi + 0.01)) {
+      final inside = math.max(lo, math.min(hi - h, lie));
+      final vis = frameOn ? inside : math.max(-12 + edgePad, math.min(hi + 12 - edgePad - h, lie));
+      bool ok(({ShelfLayout laid, double moved, double shoved, bool space}) r) => r.space && r.moved.abs() < 0.5 && r.shoved <= _noShove;
+      final a = tryAt(inside);
+      if (ok(a)) {
+        next = a.laid;
+        continue;
+      }
+      final b = tryAt(vis);
+      if (!ok(b)) {
+        next = _detachToDrawer(next, books, f.bookId, d, falls);
+        continue;
+      }
+      var good = vis, bad = inside;
+      var best = b;
+      for (var i = 0; i < 10; i++) {
+        final m = (good + bad) / 2;
+        final r = tryAt(m);
+        if (ok(r)) {
+          good = m;
+          best = r;
+        } else {
+          bad = m;
+        }
+      }
+      next = best.laid;
+      continue;
+    }
+    final x = math.max(lo, math.min(hi - h, lie));
+    final r = tryAt(x);
+    final fits = r.space && r.moved > -1 && r.moved < h && r.shoved <= _maxFallShove;
+    next = fits ? r.laid : _detachToDrawer(next, books, f.bookId, d, falls);
+  }
+  return next;
+}
+
+/// 불러올 때: 예전 규칙으로 저장돼 버티지 못하는 각에 걸려 있던 기댄 책은 메뉴로 기울일 때처럼 틈을 맞춰 다시 기대게 한다
+({ShelfLayout layout, bool changed}) ensureLeanGaps(ShelfLayout layout, BookMap books) {
+  var cur = layout;
+  var changed = false;
+  bool leaning(ShelfLayout l, BookPlacement p) {
+    for (final f in computeShelf(l, books, p.shelfId)) {
+      if (f.bookId == p.bookId) return f.box.angle != 0 && !f.leanFailed && f.fell == null;
+    }
+    return false;
+  }
+
+  for (final p in layout.placements) {
+    if (p.pose != Pose.upright || p.tilt == 0 || p.stackId != null) continue;
+    if (leaning(cur, p)) continue;
+    final r = setTilt(cur, books, p.bookId, p.tilt);
+    if (!r.ok || !leaning(r.layout!, p)) continue;
+    cur = r.layout!;
+    changed = true;
+  }
+  return (layout: cur, changed: changed);
+}
+
+String _placementsKey(ShelfLayout l) => [
+      for (final p in l.placements)
+        '${p.bookId},${p.shelfId},${p.order},${p.pose.index},${p.tilt},${p.stackId},${p.stackOrder},${p.pos},${p.leanAngle},${p.leanOn},${p.leanSlide},${p.depth},${p.spin},${p.pitch},${p.stackDx},${p.stackDz},${p.flip},${p.overhang},${p.wallLean}',
+    ].join(';');
+
+/// 확정할 때 기대기 결과를 저장한다: 기댈 수 없던 책은 바로 서고, 받침을 잃고 넘어진 책은 눕히고(또는 서랍), 넘어간 받침은 기운 책으로.
+/// falls: 서랍으로 떨어진 책의 방향(연출용). only: 그 선반만
+({ShelfLayout layout, Map<String, int> falls}) resolveLeans(ShelfLayout layout, BookMap books, [String? only]) {
+  final falls = <String, int>{};
+  var cur = layout;
+  final tried = <String>{};
+  for (var pass = 0; pass < 16; pass++) {
+    final result = <String, BookFrame>{};
+    for (final shelf in cur.shelves) {
+      if (only != null && shelf.id != only) continue;
+      for (final f in computeShelf(cur, books, shelf.id)) {
+        result[f.bookId] = f;
+      }
+    }
+    final next = _lp(cur, [
+      for (final p in cur.placements)
+        () {
+          if (only != null && p.shelfId != only) return p;
+          final f = result[p.bookId];
+          if (f == null || p.pose != Pose.upright || f.tilt == 0 || f.stackIndex != 0) return p.leanAngle != null || p.leanOn != null ? p.withoutLean() : p;
+          if (f.leanFailed || f.fell != null || f.leanOn == null) return p.copyWith(tilt: 0).withoutLean();
+          return p.copyWith(tilt: f.tilt, leanAngle: jsRound(f.box.angle * 1000) / 1000, leanOn: f.leanOn, leanSlide: f.slide != null && f.slide != 0 ? f.slide : unset);
+        }(),
+    ]);
+    final fallen = [for (final f in result.values) if (f.fell != null) f];
+    if (fallen.isEmpty) {
+      if (_placementsKey(next) == _placementsKey(cur)) {
+        final fronts = _settleFronts(next, books, only);
+        if (identical(fronts, next)) return (layout: next, falls: falls);
+        cur = fronts;
+        continue;
+      }
+      cur = next;
+      continue;
+    }
+    final key = _placementsKey(next);
+    cur = _layFallen(next, books, fallen, falls, tried.contains(key));
+    tried.add(key);
+  }
+  return (layout: cur, falls: falls);
+}
+
+/// 젖힌 채 받침을 잃은 표지 책: 조금 더 젖혀도 벽·옆 벽·다른 책에 닿지 않으면 놓은 것처럼 넘어진다
+const _frontFreeStep = 0.6;
+ShelfLayout _settleFronts(ShelfLayout layout, BookMap books, [String? only]) {
+  var cur = layout;
+  for (final p in layout.placements) {
+    if (p.pose != Pose.front || p.stackId != null || (only != null && p.shelfId != only)) continue;
+    final pitch = p.pitch ?? 0;
+    if (pitch <= 0.05 || pitch >= 89.9) continue;
+    final frames = computeShelf(cur, books, p.shelfId);
+    BookFrame? me;
+    for (final f in frames) {
+      if (f.bookId == p.bookId) me = f;
+    }
+    if (me == null) continue;
+    final more = fromPlaced(Placed(me.box.bookId, me.box.pose, me.box.size, me.box.x, me.box.y, me.box.z, me.box.angle,
+        spin: me.box.spin, pitch: (me.box.pitch ?? 0) + _frontFreeStep, flip: me.box.flip));
+    final cs = corners(more);
+    final held = cs.any((c) => c.z > shelfDepth + 0.01 || (frameOn && (c.x < shelfX0 - 0.01 || c.x > shelfX1 + 0.01))) ||
+        frames.any((f) => !identical(f, me) && gap(more, fromPlaced(f.box)) < -contactTol);
+    if (held) continue;
+    final st = frontStateOf(cur, books, p.bookId);
+    final fell = st != null ? frontRelease(cur, books, p.bookId, st.state, st.qx) : null;
+    if (fell != null) cur = fell;
+  }
+  return cur;
+}
+
+/// 배치만 필요할 때(떨어지는 연출에는 resolveLeans의 falls도)
+ShelfLayout withLeans(ShelfLayout layout, BookMap books, [String? only]) => resolveLeans(layout, books, only).layout;

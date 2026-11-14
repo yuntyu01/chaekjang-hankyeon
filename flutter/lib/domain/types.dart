@@ -129,7 +129,71 @@ class BookPlacement {
 
   /// (예전 저장본) 표지 책이 벽에 기대 있는지. 지금은 pitch로 저장한다
   final bool wallLean;
+
+  /// 값 바꾸기(지금 앱 { ...p, k: v }). 비울 수 있는 값은 [unset]을 넘기면 지운다(undefined)
+  BookPlacement copyWith({
+    String? shelfId,
+    int? order,
+    Pose? pose,
+    int? tilt,
+    Object? stackId = _keep,
+    Object? stackOrder = _keep,
+    Object? pos = _keep,
+    Object? leanAngle = _keep,
+    Object? leanOn = _keep,
+    Object? leanSlide = _keep,
+    Object? depth = _keep,
+    Object? spin = _keep,
+    Object? pitch = _keep,
+    Object? stackDx = _keep,
+    Object? stackDz = _keep,
+    bool? flip,
+    bool? overhang,
+    bool? wallLean,
+  }) {
+    T? v<T>(Object? next, T? cur) => identical(next, _keep) ? cur : (identical(next, unset) ? null : next as T?);
+    return BookPlacement(
+      bookId: bookId,
+      shelfId: shelfId ?? this.shelfId,
+      order: order ?? this.order,
+      pose: pose ?? this.pose,
+      tilt: tilt ?? this.tilt,
+      stackId: v<String>(stackId, this.stackId),
+      stackOrder: v<int>(stackOrder, this.stackOrder),
+      pos: v<double>(pos, this.pos),
+      leanAngle: v<double>(leanAngle, this.leanAngle),
+      leanOn: v<String>(leanOn, this.leanOn),
+      leanSlide: v<double>(leanSlide, this.leanSlide),
+      depth: v<double>(depth, this.depth),
+      spin: v<double>(spin, this.spin),
+      pitch: v<double>(pitch, this.pitch),
+      stackDx: v<double>(stackDx, this.stackDx),
+      stackDz: v<double>(stackDz, this.stackDz),
+      flip: flip ?? this.flip,
+      overhang: overhang ?? this.overhang,
+      wallLean: wallLean ?? this.wallLean,
+    );
+  }
+
+  /// 기대기 값 지우기(lean: undefined)
+  BookPlacement withoutLean() => copyWith(leanAngle: unset, leanOn: unset, leanSlide: unset);
 }
+
+const Object _keep = _Keep();
+
+/// copyWith에서 값을 지울 때(지금 앱 undefined)
+const Object unset = _Unset();
+
+class _Keep {
+  const _Keep();
+}
+
+class _Unset {
+  const _Unset();
+}
+
+/// 기울기 방향 → 저장 값(지금 앱 tiltToward)
+int tiltToward(int dir) => dir * 7;
 
 /// 선반 하나
 class Shelf {

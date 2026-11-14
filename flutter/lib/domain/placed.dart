@@ -116,3 +116,7 @@ List<P2> hull2(List<P2> points) {
   }
   return [...lower.sublist(0, lower.length - 1), ...upper.sublist(0, upper.length - 1)];
 }
+
+
+/// 지금 앱 Math.round와 같은 반올림(.5는 +∞ 쪽: −5337.5 → −5337). Dart round()는 0에서 먼 쪽이라 음수 반올림이 0.01씩 어긋났다
+double jsRound(double v) => (v + 0.5).floorToDouble();
