@@ -9,7 +9,7 @@ import 'types.dart';
 import 'vec3.dart' show C3, linearOf;
 
 class BookLook {
-  const BookLook(this.title, this.face, this.tone, this.ink, {this.titleTop, this.coverUri, this.ribbons = 0, this.ribbon, this.material, this.artwork});
+  const BookLook(this.title, this.face, this.tone, this.ink, {this.titleTop, this.coverUri, this.ribbons = 0, this.ribbon, this.material, this.artwork, this.reference, this.plainCover = false});
   final String title;
 
   /// 장정 색(제목 색을 고르는 바탕), 재질 색(몸체·책등·표지와 빛 셰이더의 반사율), 제목 색(모두 #rrggbb)
@@ -34,8 +34,12 @@ class BookLook {
   /// 기본 정면 장정 그림 id(있으면 앞표지는 그 그림 + 그림의 제목 색)
   final String? artwork;
 
+  /// 시안 그림 표지(새 서재 예시 책, 지금 앱 ReferenceCover)와 앞표지에 제목을 쓰지 않는지
+  final String? reference;
+  final bool plainCover;
+
   /// 그림 책(표지 사진 또는 정면 장정 그림): 빛 셰이더가 그림 겹으로 그린다(지금 앱 bookLightRef picture)
-  bool get picture => photo || artwork != null;
+  bool get picture => photo || artwork != null || reference != null;
 
   /// 빛 계산 기준 색: 그림 책은 그림이 색을 가지므로 중립 회색(사진 표지와 같은 규칙).
   /// 지금 앱은 기본 그림 표지를 책 색 기준으로 계산해 그림이 책 색에 물들었다(초록 책 → 청록 그림). 여기서는 고쳐 옮긴다
@@ -55,5 +59,5 @@ BookLook lookOf(Book b) {
           ? accent
           : (isNeutralColor(theme) ? null : theme);
   return BookLook(b.title, face, bookToneOf(face, photo: photo), displayInk(b.inkColor, face),
-      titleTop: b.titleTop, coverUri: b.coverArtUri, ribbons: b.quotes, ribbon: ribbon, material: b.material, artwork: b.coverArtId);
+      titleTop: b.titleTop, coverUri: b.coverArtUri, ribbons: b.quotes, ribbon: ribbon, material: b.material, artwork: b.coverArtId, reference: b.reference, plainCover: b.plainCover);
 }

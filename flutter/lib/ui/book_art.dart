@@ -128,6 +128,9 @@ void drawBookArt(ui.Canvas canvas, Book3 b, BookLook look, GlyphMetrics glyphs, 
       canvas.drawImageRect(art, ui.Rect.fromLTWH(0, 0, art.width.toDouble(), art.height.toDouble()), ui.Rect.fromLTWH(r.x, r.y, r.width, r.height),
           ui.Paint()..filterQuality = ui.FilterQuality.medium);
       if (look.title.isNotEmpty) _coverTitle(canvas, look, b.dims, glyphs, ink: modernInk(artworkInk[coverArtwork(look.artwork)!.ink]!));
+    } else if (f == FaceId.cover && look.reference != null && referenceImage(look.reference!) != null) {
+      // 시안 그림 표지(새 서재 예시 책): 그림 안에 제목이 있다
+      _referenceCover(canvas, referenceImage(look.reference!)!, pn.w, pn.h);
     } else if (f == FaceId.cover && photo != null) {
       // 표지 사진이 있으면 앞표지는 사진만(제목은 사진 안에 있다)
       drawPhotoCover(canvas, photo, pn.w, pn.h);
@@ -144,12 +147,28 @@ void drawBookArt(ui.Canvas canvas, Book3 b, BookLook look, GlyphMetrics glyphs, 
         final op = titleOpacity(b.roll);
         if (op.v > 0.001) _verticalTitle(canvas, look, b.dims, glyphs, op.v);
         if (op.h > 0.001) _lyingTitle(canvas, look, b.dims, glyphs, op.h);
-      } else {
+      } else if (!look.plainCover) {
         _coverTitle(canvas, look, b.dims, glyphs);
       }
     }
     canvas.restore();
   }
+}
+
+/// 시안 그림 표지(지금 앱 ReferenceCover): 시안 책은 모서리가 둥글어 오린 사각형 네 귀퉁이에 시안 벽(크림색)이 묻어 있다.
+/// 귀퉁이 반지름만큼 안쪽을 늘여 바닥에 깔고 그 위에 원래 그림을 둥글게 잘라 얹어, 귀퉁이도 표지 가장자리 색이 되게 한다
+void _referenceCover(ui.Canvas canvas, ui.Image img, double w, double h) {
+  final iw = img.width.toDouble(), ih = img.height.toDouble();
+  final sx = w / iw, sy = h / ih;
+  final rc = math.min(2 * edgeR, math.min(w / 2, h / 2));
+  final paint = ui.Paint()..filterQuality = ui.FilterQuality.medium;
+  final dst = ui.Rect.fromLTWH(0, 0, w, h);
+  canvas.save();
+  canvas.clipRect(dst);
+  canvas.drawImageRect(img, ui.Rect.fromLTWH(rc / sx, rc / sy, iw - 2 * rc / sx, ih - 2 * rc / sy), dst, paint);
+  canvas.clipRRect(ui.RRect.fromRectXY(dst, rc, rc));
+  canvas.drawImageRect(img, ui.Rect.fromLTWH(0, 0, iw, ih), dst, paint);
+  canvas.restore();
 }
 
 // ---------- 제목 ----------

@@ -1,0 +1,601 @@
+{
+ "note": "지금 앱 새 서재 예시 책장(tool/dump_reference.test.ts). 손으로 고치지 말 것",
+ "key": "home-reference:2026-10",
+ "profile": {
+  "b01": {
+   "bookId": "home-reference-b01"
+  },
+  "b02": {
+   "bookId": "home-reference-b02"
+  },
+  "b03": {
+   "bookId": "home-reference-b03"
+  },
+  "b04": {
+   "bookId": "home-reference-b04"
+  },
+  "b05": {
+   "bookId": "home-reference-b05"
+  },
+  "b17": {
+   "bookId": "home-reference-b17"
+  },
+  "b06": {
+   "bookId": "home-reference-b06"
+  },
+  "b07": {
+   "bookId": "home-reference-b07"
+  },
+  "b08": {
+   "bookId": "home-reference-b08"
+  },
+  "b09": {
+   "bookId": "home-reference-b09"
+  },
+  "b10": {
+   "bookId": "home-reference-b10"
+  },
+  "b18": {
+   "bookId": "home-reference-b18"
+  },
+  "b11": {
+   "bookId": "home-reference-b11"
+  },
+  "b12": {
+   "bookId": "home-reference-b12"
+  },
+  "b13": {
+   "bookId": "home-reference-b13"
+  },
+  "b14": {
+   "bookId": "home-reference-b14"
+  },
+  "b15": {
+   "bookId": "home-reference-b15"
+  },
+  "b16": {
+   "bookId": "home-reference-b16"
+  }
+ },
+ "layout": {
+  "version": 2,
+  "shelves": [
+   {
+    "id": "shelf-1",
+    "order": 0
+   },
+   {
+    "id": "shelf-2",
+    "order": 1
+   },
+   {
+    "id": "shelf-3",
+    "order": 2
+   }
+  ],
+  "placements": [
+   {
+    "bookId": "home-reference-b01",
+    "shelfId": "shelf-1",
+    "order": 0,
+    "pose": "spine",
+    "tilt": 0,
+    "pos": 15.8
+   },
+   {
+    "bookId": "home-reference-b02",
+    "shelfId": "shelf-1",
+    "order": 1,
+    "pose": "spine",
+    "tilt": 0,
+    "pos": 42.8
+   },
+   {
+    "bookId": "home-reference-b03",
+    "shelfId": "shelf-1",
+    "order": 2,
+    "pose": "spine",
+    "tilt": 0,
+    "pos": 77.6
+   },
+   {
+    "bookId": "home-reference-b04",
+    "shelfId": "shelf-1",
+    "order": 3,
+    "pose": "front",
+    "tilt": 0,
+    "pos": 114.4
+   },
+   {
+    "bookId": "home-reference-b05",
+    "shelfId": "shelf-1",
+    "order": 4,
+    "pose": "spine",
+    "tilt": 0,
+    "pos": 232.4
+   },
+   {
+    "bookId": "home-reference-b17",
+    "shelfId": "shelf-1",
+    "order": 5,
+    "pose": "spine",
+    "tilt": 0,
+    "pos": 265.2
+   },
+   {
+    "bookId": "home-reference-b06",
+    "shelfId": "shelf-1",
+    "order": 6,
+    "pose": "spine",
+    "tilt": -7,
+    "pos": 334.2
+   },
+   {
+    "bookId": "home-reference-b07",
+    "shelfId": "shelf-2",
+    "order": 0,
+    "pose": "front",
+    "tilt": 0,
+    "pos": 18.5
+   },
+   {
+    "bookId": "home-reference-b08",
+    "shelfId": "shelf-2",
+    "order": 1,
+    "pose": "spine",
+    "tilt": 0,
+    "pos": 156.5
+   },
+   {
+    "bookId": "home-reference-b09",
+    "shelfId": "shelf-2",
+    "order": 2,
+    "pose": "spine",
+    "tilt": 0,
+    "pos": 187.3
+   },
+   {
+    "bookId": "home-reference-b10",
+    "shelfId": "shelf-2",
+    "order": 3,
+    "pose": "spine",
+    "tilt": 0,
+    "pos": 218.1
+   },
+   {
+    "bookId": "home-reference-b18",
+    "shelfId": "shelf-2",
+    "order": 4,
+    "pose": "spine",
+    "tilt": 0,
+    "pos": 261.9
+   },
+   {
+    "bookId": "home-reference-b11",
+    "shelfId": "shelf-2",
+    "order": 5,
+    "pose": "spine",
+    "tilt": -7,
+    "pos": 332.6
+   },
+   {
+    "bookId": "home-reference-b12",
+    "shelfId": "shelf-3",
+    "order": 0,
+    "pose": "horizontal",
+    "tilt": 0,
+    "stackId": "home-reference-stack:b12",
+    "stackOrder": 0,
+    "pos": 4.9
+   },
+   {
+    "bookId": "home-reference-b13",
+    "shelfId": "shelf-3",
+    "order": 0,
+    "pose": "horizontal",
+    "tilt": 0,
+    "stackId": "home-reference-stack:b12",
+    "stackOrder": 1,
+    "pos": 4.9
+   },
+   {
+    "bookId": "home-reference-b14",
+    "shelfId": "shelf-3",
+    "order": 1,
+    "pose": "spine",
+    "tilt": 0,
+    "pos": 165.9
+   },
+   {
+    "bookId": "home-reference-b15",
+    "shelfId": "shelf-3",
+    "order": 2,
+    "pose": "spine",
+    "tilt": 0,
+    "pos": 198.3
+   },
+   {
+    "bookId": "home-reference-b16",
+    "shelfId": "shelf-3",
+    "order": 3,
+    "pose": "front",
+    "tilt": 0,
+    "pos": 230.8
+   }
+  ],
+  "drawer": []
+ },
+ "books": [
+  {
+   "id": "home-reference-b01",
+   "title": "모순",
+   "themeColor": "#FDF0E0",
+   "heightClass": "medium",
+   "thicknessClass": "medium",
+   "coverAspectRatio": 0.6808510638297872,
+   "dims": {
+    "height": 149.7,
+    "thickness": 27,
+    "coverWidth": 114
+   },
+   "titleTop": 0.25,
+   "ribbon": null,
+   "ribbons": 0,
+   "material": null,
+   "plainCover": false,
+   "cover": null
+  },
+  {
+   "id": "home-reference-b02",
+   "title": "데미안",
+   "themeColor": "#5E6D5B",
+   "heightClass": "tall",
+   "thicknessClass": "medium",
+   "coverAspectRatio": 0.5866666666666667,
+   "dims": {
+    "height": 170,
+    "thickness": 34.8,
+    "coverWidth": 118
+   },
+   "titleTop": 0.24,
+   "ribbon": "#98AC9E",
+   "ribbons": 2,
+   "material": "linen",
+   "plainCover": false,
+   "cover": null
+  },
+  {
+   "id": "home-reference-b03",
+   "title": "어린 왕자",
+   "themeColor": "#FBD392",
+   "heightClass": "medium",
+   "thicknessClass": "thin",
+   "coverAspectRatio": 0.6808510638297872,
+   "dims": {
+    "height": 170,
+    "thickness": 36.8,
+    "coverWidth": 119
+   },
+   "titleTop": 0.22,
+   "ribbon": "#E9A562",
+   "ribbons": 1,
+   "material": null,
+   "plainCover": false,
+   "cover": null
+  },
+  {
+   "id": "home-reference-b04",
+   "title": "느린 계절",
+   "themeColor": "#475B7A",
+   "heightClass": "medium",
+   "thicknessClass": "medium",
+   "coverAspectRatio": 0.675,
+   "dims": {
+    "height": 169,
+    "thickness": 33.8,
+    "coverWidth": 118
+   },
+   "titleTop": null,
+   "ribbon": "#7D9CC4",
+   "ribbons": 2,
+   "material": "matte",
+   "plainCover": false,
+   "cover": "night"
+  },
+  {
+   "id": "home-reference-b05",
+   "title": "문장 수집",
+   "themeColor": "#CE886F",
+   "heightClass": "medium",
+   "thicknessClass": "thin",
+   "coverAspectRatio": 0.6808510638297872,
+   "dims": {
+    "height": 169,
+    "thickness": 32.8,
+    "coverWidth": 115
+   },
+   "titleTop": 0.21,
+   "ribbon": "#D98A7C",
+   "ribbons": 2,
+   "material": null,
+   "plainCover": false,
+   "cover": null
+  },
+  {
+   "id": "home-reference-b17",
+   "title": "느린 하루",
+   "themeColor": "#88A4BA",
+   "heightClass": "medium",
+   "thicknessClass": "thin",
+   "coverAspectRatio": 0.6808510638297872,
+   "dims": {
+    "height": 162,
+    "thickness": 37.9,
+    "coverWidth": 117
+   },
+   "titleTop": 0.18,
+   "ribbon": null,
+   "ribbons": 0,
+   "material": null,
+   "plainCover": false,
+   "cover": null
+  },
+  {
+   "id": "home-reference-b06",
+   "title": "흰",
+   "themeColor": "#FDF0DF",
+   "heightClass": "medium",
+   "thicknessClass": "thin",
+   "coverAspectRatio": 0.6648936170212766,
+   "dims": {
+    "height": 148.5,
+    "thickness": 27.8,
+    "coverWidth": 116
+   },
+   "titleTop": 0.322,
+   "ribbon": null,
+   "ribbons": 0,
+   "material": null,
+   "plainCover": false,
+   "cover": null
+  },
+  {
+   "id": "home-reference-b07",
+   "title": "여름의 숲",
+   "themeColor": "#E6D6BC",
+   "heightClass": "tall",
+   "thicknessClass": "thick",
+   "coverAspectRatio": 0.6755555555555556,
+   "dims": {
+    "height": 161.4,
+    "thickness": 36.8,
+    "coverWidth": 133
+   },
+   "titleTop": null,
+   "ribbon": null,
+   "ribbons": 0,
+   "material": "matte",
+   "plainCover": false,
+   "cover": "forest"
+  },
+  {
+   "id": "home-reference-b08",
+   "title": "여행의 이유",
+   "themeColor": "#819AB1",
+   "heightClass": "medium",
+   "thicknessClass": "thin",
+   "coverAspectRatio": 0.6808510638297872,
+   "dims": {
+    "height": 157,
+    "thickness": 30.8,
+    "coverWidth": 113
+   },
+   "titleTop": 0.245,
+   "ribbon": "#8EAAD0",
+   "ribbons": 2,
+   "material": null,
+   "plainCover": false,
+   "cover": null
+  },
+  {
+   "id": "home-reference-b09",
+   "title": "작은 것들의 기쁨",
+   "themeColor": "#FDECD4",
+   "heightClass": "medium",
+   "thicknessClass": "medium",
+   "coverAspectRatio": 0.6808510638297872,
+   "dims": {
+    "height": 158,
+    "thickness": 30.8,
+    "coverWidth": 114
+   },
+   "titleTop": 0.175,
+   "ribbon": null,
+   "ribbons": 0,
+   "material": null,
+   "plainCover": false,
+   "cover": null
+  },
+  {
+   "id": "home-reference-b10",
+   "title": "사람의 마음이란",
+   "themeColor": "#3E5374",
+   "heightClass": "medium",
+   "thicknessClass": "medium",
+   "coverAspectRatio": 0.6666666666666666,
+   "dims": {
+    "height": 158,
+    "thickness": 43.8,
+    "coverWidth": 115
+   },
+   "titleTop": 0.155,
+   "ribbon": null,
+   "ribbons": 0,
+   "material": "linen",
+   "plainCover": false,
+   "cover": null
+  },
+  {
+   "id": "home-reference-b18",
+   "title": "아주 보통의 하루",
+   "themeColor": "#A7AF95",
+   "heightClass": "medium",
+   "thicknessClass": "medium",
+   "coverAspectRatio": 0.6829268292682927,
+   "dims": {
+    "height": 163,
+    "thickness": 35.8,
+    "coverWidth": 116
+   },
+   "titleTop": 0.195,
+   "ribbon": null,
+   "ribbons": 0,
+   "material": null,
+   "plainCover": false,
+   "cover": null
+  },
+  {
+   "id": "home-reference-b11",
+   "title": "너라는 계절",
+   "themeColor": "#F0BDA0",
+   "heightClass": "medium",
+   "thicknessClass": "medium",
+   "coverAspectRatio": 0.6666666666666666,
+   "dims": {
+    "height": 151,
+    "thickness": 31.8,
+    "coverWidth": 118
+   },
+   "titleTop": 0.215,
+   "ribbon": "#E9A070",
+   "ribbons": 1,
+   "material": null,
+   "plainCover": false,
+   "cover": null
+  },
+  {
+   "id": "home-reference-b12",
+   "title": "찰나의 마음",
+   "themeColor": "#F3B497",
+   "heightClass": "medium",
+   "thicknessClass": "thick",
+   "coverAspectRatio": 0.6904761904761905,
+   "dims": {
+    "height": 161,
+    "thickness": 40.5,
+    "coverWidth": 122
+   },
+   "titleTop": null,
+   "ribbon": null,
+   "ribbons": 0,
+   "material": null,
+   "plainCover": true,
+   "cover": null
+  },
+  {
+   "id": "home-reference-b13",
+   "title": "좋은 문장은 이렇게 온다",
+   "themeColor": "#F8E6CF",
+   "heightClass": "medium",
+   "thicknessClass": "medium",
+   "coverAspectRatio": 0.6829268292682927,
+   "dims": {
+    "height": 156.8,
+    "thickness": 33,
+    "coverWidth": 120
+   },
+   "titleTop": null,
+   "ribbon": null,
+   "ribbons": 0,
+   "material": null,
+   "plainCover": true,
+   "cover": null
+  },
+  {
+   "id": "home-reference-b14",
+   "title": "고요한 우연",
+   "themeColor": "#8D4F4E",
+   "heightClass": "medium",
+   "thicknessClass": "medium",
+   "coverAspectRatio": 0.6808510638297872,
+   "dims": {
+    "height": 142,
+    "thickness": 32.4,
+    "coverWidth": 114
+   },
+   "titleTop": 0.205,
+   "ribbon": null,
+   "ribbons": 0,
+   "material": "linen",
+   "plainCover": false,
+   "cover": null
+  },
+  {
+   "id": "home-reference-b15",
+   "title": "아무튼, 독서",
+   "themeColor": "#FDECD5",
+   "heightClass": "short",
+   "thicknessClass": "thin",
+   "coverAspectRatio": 0.6285714285714286,
+   "dims": {
+    "height": 146,
+    "thickness": 32.5,
+    "coverWidth": 113
+   },
+   "titleTop": 0.24,
+   "ribbon": null,
+   "ribbons": 0,
+   "material": null,
+   "plainCover": false,
+   "cover": null
+  },
+  {
+   "id": "home-reference-b16",
+   "title": "우리가 빛의 속도로 갈 수 없다면",
+   "themeColor": "#F4BFA2",
+   "heightClass": "medium",
+   "thicknessClass": "medium",
+   "coverAspectRatio": 0.675,
+   "dims": {
+    "height": 147.2,
+    "thickness": 33.8,
+    "coverWidth": 122
+   },
+   "titleTop": null,
+   "ribbon": null,
+   "ribbons": 0,
+   "material": "matte",
+   "plainCover": false,
+   "cover": "sunset"
+  }
+ ],
+ "covers": {
+  "night": {
+   "sourceRect": {
+    "x": 290,
+    "y": 321,
+    "width": 258,
+    "height": 369
+   },
+   "printedTitle": "느린 계절"
+  },
+  "forest": {
+   "sourceRect": {
+    "x": 67,
+    "y": 806,
+    "width": 291,
+    "height": 351
+   },
+   "printedTitle": "여름의 숲"
+  },
+  "sunset": {
+   "sourceRect": {
+    "x": 546,
+    "y": 1248,
+    "width": 267,
+    "height": 322
+   },
+   "printedTitle": "우리가 빛의 속도로 갈 수 없다면"
+  }
+ }
+}

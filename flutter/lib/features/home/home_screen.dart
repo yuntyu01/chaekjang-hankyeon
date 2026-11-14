@@ -41,7 +41,7 @@ import '../../domain/shelf_row.dart';
 import '../../services/cover_cache.dart';
 import '../../store/files.dart' show imageDir;
 import '../../store/library_store.dart';
-import '../../store/seed.dart';
+import '../../store/first_shelf.dart';
 import '../../ui/artwork_images.dart' show loadArtworkImages;
 import '../../ui/bake.dart';
 import '../../ui/bake_cache.dart';
@@ -841,7 +841,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     final t0 = DateTime.now();
     // 셰이더는 빌드할 때 미리 컴파일돼 있다(impellerc). 여기서는 읽어 올리기만 한다
     // 서재(SQLite)에서 책과 자리를 읽어 줄을 만든다. 비어 있으면 보기 책을 넣는다
-    await seedIfEmpty();
+    await prepareFirstShelf();
     final lib = await loadLibrary();
     PlacementStore.instance.adopt(lib);
     _loadCovers([for (final b in lib.books) ?b.coverArtUri]);

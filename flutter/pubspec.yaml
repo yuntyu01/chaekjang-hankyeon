@@ -42,6 +42,9 @@ flutter:
     - assets/qa_seed.json
     # 잠긴 칸 안 흐린 예시 책(tool/dump_locked.test.ts)
     - assets/locked_preview.json
+    # 새 서재 예시 책장(tool/dump_reference.test.ts)과 시안 그림 표지 3장(시안 원본에서 표지 자리를 잘라 둔 것)
+    - assets/reference_home.json
+    - assets/reference/
     # 기본 정면 장정 그림 6종(지금 앱 assets/covers/artworks: 표지 720×1080, 고르기 썸네일 180×270)
     - assets/covers/artworks/
     # 공유 그림 바탕·오버레이(지금 앱 assets/share: 시안에서 글자·책을 지운 바탕, 책 빛 지도, 선반 그늘)

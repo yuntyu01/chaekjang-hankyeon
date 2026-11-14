@@ -11,8 +11,17 @@ import '../services/cover_cache.dart' show decodeImageInLine;
 final Map<String, ui.Image> _images = {};
 Future<void>? _loading;
 
-/// 그림 6장을 푼다(한 번만, 한 장씩)
+/// 그림 6장과 새 서재 예시 책의 시안 그림 표지 3장을 푼다(한 번만, 한 장씩)
 Future<void> loadArtworkImages() => _loading ??= () async {
+      for (final k in referenceCovers) {
+        try {
+          final data = await rootBundle.load('assets/reference/$k.png');
+          final img = await decodeImageInLine(data.buffer.asUint8List());
+          if (img != null) _references[k] = img;
+        } catch (_) {
+          // 못 풀면 그 예시 책은 책 색 표지로
+        }
+      }
       for (final a in coverArtworks) {
         try {
           final data = await rootBundle.load(artworkAsset(a.id));
@@ -25,3 +34,8 @@ Future<void> loadArtworkImages() => _loading ??= () async {
     }();
 
 ui.Image? artworkImage(String id) => _images[id];
+
+/// 시안 그림 표지(지금 앱 LANDSCAPES: 시안 원본에서 표지 자리를 잘라 둔 것, tool/dump_reference.test.ts)
+const referenceCovers = ['night', 'forest', 'sunset'];
+final Map<String, ui.Image> _references = {};
+ui.Image? referenceImage(String key) => _references[key];

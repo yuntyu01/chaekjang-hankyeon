@@ -3,6 +3,7 @@ import 'dart:io';
 
 import 'package:flutter/material.dart';
 
+import 'domain/reference_home.dart';
 import 'scene_config/spine_look.dart';
 import 'store/skin_store.dart';
 import 'package:flutter/services.dart';
@@ -34,6 +35,8 @@ Future<void> main() async {
   // 고른 스킨(선반·벽지·벽)·책 측면 모양: 책장을 굽기 전에
   await loadSkin();
   await loadSpineLook();
+  // 새 서재 예시 책장(표시 전용 예시 책): 책장을 읽기 전에
+  await loadReferenceHome();
   runApp(const ChaekjangApp());
 }
 

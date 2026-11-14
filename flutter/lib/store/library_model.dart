@@ -12,7 +12,7 @@ import '../domain/library.dart';
 import '../domain/reading.dart';
 import '../domain/session_edit.dart';
 import 'library_read.dart';
-import 'seed.dart';
+import 'first_shelf.dart';
 
 const Object _keep = Object();
 
@@ -27,7 +27,7 @@ class LibraryModel extends ChangeNotifier {
   Future<void> _writes = Future.value();
 
   // 예시 서재(빈 서재에만 넣는다)를 다 넣은 뒤에 읽는다
-  Future<void> load() => _loading ??= seedIfEmpty().then((_) => loadFullLibrary()).then((l) {
+  Future<void> load() => _loading ??= prepareFirstShelf().then((_) => loadFullLibrary()).then((l) {
         lib = l;
         loaded = true;
         notifyListeners();

@@ -8,6 +8,10 @@ import 'package:flutter/material.dart';
 
 import '../../domain/cover_url.dart';
 import '../../domain/library.dart';
+import '../../domain/reference_home.dart' show referenceBooks;
+import '../../domain/types.dart' show Book;
+import '../../ui/standalone_book.dart' show StandaloneBook;
+import '../book/add_book_screen.dart' show openAddBook;
 import '../../store/library_model.dart';
 import '../../ui/book_visual.dart';
 import '../../ui/kit.dart';
@@ -48,6 +52,8 @@ Future<void> showBookSheet(BuildContext context, String bookId, {Library? view, 
   final canOpen = model.lib.books.containsKey(bookId) && model.lib.books[bookId]!.hiddenAt == null;
   final b = lib.books[bookId];
   final e = b == null ? null : lib.editions[b.editionId];
+  // 새 서재 예시 책(표시 전용, 서재에 없음): 읽기·갈피 대신 '이 책을 내 서재에 추가'(지금 앱 BookSheet sample)
+  if (b == null && view == null && referenceBooks[bookId] != null) return _sampleSheet(context, referenceBooks[bookId]!);
   if (b == null || e == null) return;
   await showModalBottomSheet<void>(
     context: context,
@@ -173,3 +179,66 @@ Future<void> showBookSheet(BuildContext context, String bookId, {Library? view, 
     },
   );
 }
+
+/// 예시 책 시트: 책장과 같은 그림의 앞모습, 제목, '예시 책이에요 / 내 서재에는 없어요', 같은 제목으로 책 추가
+Future<void> _sampleSheet(BuildContext context, Book sample) => showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      barrierColor: Colors.transparent,
+      builder: (ctx) {
+        final insets = MediaQuery.paddingOf(ctx);
+        final dims = sample.dims;
+        return Container(
+          decoration: const BoxDecoration(
+            color: AppColors.bg,
+            borderRadius: BorderRadius.vertical(top: Radius.circular(Shape.sheet)),
+            boxShadow: [BoxShadow(color: Color(0x1A6F5843), blurRadius: 16, offset: Offset(0, -2))],
+          ),
+          padding: EdgeInsets.fromLTRB(Space.page + 4, 0, Space.page + 4, insets.bottom + 14),
+          child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+            Center(
+              child: Container(
+                width: 38,
+                height: 4.5,
+                margin: const EdgeInsets.only(top: 10),
+                decoration: BoxDecoration(color: AppColors.line, borderRadius: BorderRadius.circular(3)),
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.only(top: 24),
+              child: Row(crossAxisAlignment: CrossAxisAlignment.center, children: [
+                SizedBox(
+                  width: _coverW + 6,
+                  child: Center(child: StandaloneBook(book: sample, scale: _coverW / (dims?.coverWidth ?? 118))),
+                ),
+                const SizedBox(width: 18),
+                Expanded(
+                  child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                    Semantics(
+                      header: true,
+                      child: Text(sample.title, style: const TextStyle(fontFamily: AppFonts.uiMedium, fontSize: 20, height: 27 / 20, letterSpacing: -0.2, color: AppColors.ink)),
+                    ),
+                    Padding(
+                      padding: const EdgeInsets.only(top: 8),
+                      child: Text('예시 책이에요\n내 서재에는 없어요', style: AppType.caption.copyWith(fontSize: 14, height: 20 / 14)),
+                    ),
+                  ]),
+                ),
+              ]),
+            ),
+            Padding(
+              padding: const EdgeInsets.only(top: 22),
+              child: Btn(
+                label: '이 책을 내 서재에 추가',
+                kind: 'secondary',
+                onPress: () {
+                  Navigator.pop(ctx);
+                  openAddBook(context, q: sample.title);
+                },
+              ),
+            ),
+          ]),
+        );
+      },
+    );
