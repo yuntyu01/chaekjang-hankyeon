@@ -23,6 +23,7 @@ class DecoratePanel extends StatelessWidget {
     required this.lean,
     required this.canLean,
     required this.msg,
+    this.angles,
     required this.spin,
     required this.spinMax,
     required this.spinRange,
@@ -42,6 +43,9 @@ class DecoratePanel extends StatelessWidget {
   final int lean;
   final ({bool left, bool right}) canLean;
   final String? msg;
+
+  /// 표지 책: 지금 뒤로 젖힌 각도(머리 손잡이)
+  final String? angles;
   final double spin;
   final double spinMax;
   final ({double lo, double hi})? spinRange;
@@ -139,6 +143,8 @@ class DecoratePanel extends StatelessWidget {
                   ],
                 ]),
               ),
+            if (angles != null && pose == Pose.front)
+              Padding(padding: const EdgeInsets.only(left: 48), child: Align(alignment: Alignment.centerLeft, child: Text(angles!, style: AppType.caption))),
           ]),
         ),
       ]),

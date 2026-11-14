@@ -8,6 +8,7 @@ import 'dart:math' as math;
 import 'dart:ui' as ui;
 
 import 'package:flutter/gestures.dart';
+import 'package:flutter/scheduler.dart' show SchedulerBinding;
 import 'package:flutter/material.dart';
 
 import '../../services/cover_colors.dart';
@@ -26,7 +27,9 @@ import '../../domain/layout_engine.dart';
 import '../../domain/types.dart' show Book, Pose, tiltToward;
 import '../../domain/shelf_scene.dart' show computeShelf, resolveLeans;
 import '../../domain/vec3.dart' show C3, Vec3;
-import '../../domain/book3.dart' show corners;
+import '../../domain/book3.dart' show corners, toWorld;
+import '../../domain/front_pose.dart' show FrontState;
+import '../../domain/placed.dart' show jsRound;
 import '../../store/placement_store.dart';
 
 import '../../domain/camera.dart';
@@ -433,6 +436,119 @@ class _HomeScreenState extends State<HomeScreen> {
     if (_previewRows.isNotEmpty) _setPreviewRows(const {});
   }
 
+  // ---------- 표지 책 머리 손잡이(지금 앱 HeadHandle·onHandle): 위아래로 끌면 뒤로 젖히기, 좌우로 끌면 돌리기 ----------
+  static const _tiltPerDu = 0.35; // 머리를 1DU 밀면 0.35° 젖힘(20°에 약 57DU)
+  static const _spinPerDu = 0.9; // 좌우 1DU에 0.9°
+  static const _handleHit = 48.0;
+  static const _handleLiftDu = 7.0; // 머리보다 이만큼 위(3D 세로)에 손잡이
+
+  ({String id, String shelfId, double qx, FrontState start})? _head;
+  FrontState? _headCur;
+  ShelfLayout? _headLast;
+  bool? _headTilt; // 끄는 방향(조금 움직인 뒤 한 번 정한다): true 젖히기, false 돌리기
+  ({double d, double a}) _headBase = (d: 0, a: 0);
+  Offset _headDrag = Offset.zero, _headOff = Offset.zero;
+  bool _headStepQueued = false;
+
+  /// 손잡이 자리(콘텐츠 좌표): 고른 표지 책 머리 앞 가운데 바로 위
+  Offset? _handlePoint() {
+    final id = _editId, g = _geom, c = _case, l = PlacementStore.instance.layout;
+    if (!_decorating || _drag != null || id == null || g == null || c == null || l == null || placementOf(l, id)?.pose != Pose.front) return null;
+    final cam = Cam(viewPitchMin);
+    for (var i = 0; i < g.lockedFrom && i < g.geo.length && i < c.rows.length; i++) {
+      for (final b in c.rows[i].books) {
+        if (b.id != id) continue;
+        final head = toWorld(b, Vec3(b.dims.t, b.dims.h, b.dims.w / 2));
+        return toPx(cam, Affine(g.m.scale, g.m.originX + sideMargin * g.m.scale, g.contentTop + g.geo[i].baseline), Vec3(head.x, head.y + _handleLiftDu, head.z));
+      }
+    }
+    return null;
+  }
+
+  int? _headPointer;
+
+  bool _headBegin() {
+    final s = PlacementStore.instance, l = s.layout, id = _editId;
+    final f = l == null || id == null ? null : frontStateOf(l, s.books, id);
+    final shelfId = l == null || id == null ? null : placementOf(l, id)?.shelfId;
+    if (f == null || shelfId == null) return false;
+    setState(() {
+      _head = (id: id!, shelfId: shelfId, qx: f.qx, start: f.state);
+      _headCur = f.state;
+      _headLast = null;
+      _headTilt = null;
+      _headDrag = Offset.zero;
+      _headOff = Offset.zero;
+      _editMsg = null;
+    });
+    return true;
+  }
+
+  void _headMove(Offset d) {
+    _headDrag += d;
+    if (_headStepQueued) return;
+    _headStepQueued = true;
+    SchedulerBinding.instance.scheduleFrameCallback((_) => _headStep());
+  }
+
+  /// 끈 거리 → 원하는 각도 → 실제로 되는 각도(옆 책·벽에 막히면 거기까지). 그 줄은 미리 보기로 바로 그린다
+  void _headStep() {
+    _headStepQueued = false;
+    final h = _head, g = _geom, s = PlacementStore.instance, l = s.layout, cur = _headCur;
+    if (h == null || g == null || l == null || cur == null) return;
+    if (_headTilt == null) {
+      if (_headDrag.distance < 4) return;
+      _headTilt = _headDrag.dy.abs() >= _headDrag.dx.abs();
+      _headBase = (d: 0, a: _headTilt! ? h.start.pitch : h.start.spin);
+    }
+    final tilt = _headTilt!;
+    final gain = tilt ? _tiltPerDu : _spinPerDu;
+    final d = (tilt ? -_headDrag.dy : _headDrag.dx) / g.m.scale; // 잡은 지점에서 축 방향으로 끈 거리(DU, 위·오른쪽이 +)
+    final want = _headBase.a + (d - _headBase.d) * gain;
+    final r = tilt ? frontTilt(l, s.books, h.id, cur, h.qx, want) : frontSpin(l, s.books, h.id, cur, h.qx, want);
+    if (r == null) return;
+    final got = tilt ? r.state.pitch : r.state.spin;
+    // 돌리기는 0 근처에서 살짝 붙는다(frontSpin): 그만큼은 막힌 것이 아니다
+    final aim = !tilt && want.abs() < 0.8 ? 0.0 : want;
+    if ((got - aim).abs() > 0.05) _headBase = (d: d, a: got);
+    _headCur = r.state;
+    _headLast = r.layout;
+    _showPreview(r.layout, {h.shelfId}, key: 'head:${r.state.pitch}:${r.state.spin}:${r.state.depth}');
+    final off = (got - (tilt ? h.start.pitch : h.start.spin)) / gain * g.m.scale;
+    setState(() => _headOff = tilt ? Offset(0, -off) : Offset(off, 0));
+  }
+
+  /// 놓으면: 받침을 잃은 표지 책은 무게중심에 따라 넘어져 벽·책·바닥에서 멈춘 자세로 저장한다(끄는 동안 마지막 배치에서)
+  Future<void> _headEnd() async {
+    if (_headStepQueued) _headStep();
+    final h = _head, last = _headLast, cur = _headCur, s = PlacementStore.instance;
+    setState(() {
+      _head = null;
+      _headOff = Offset.zero;
+    });
+    if (h == null || last == null || cur == null) {
+      _clearPreview();
+      return;
+    }
+    final fin = frontRelease(last, s.books, h.id, cur, h.qx);
+    if (!await _apply(fin != null ? EditResult.ok(fin) : const EditResult.fail('no-space'))) _clearPreview();
+  }
+
+  void _headCancel() {
+    setState(() {
+      _head = null;
+      _headOff = Offset.zero;
+    });
+    _clearPreview();
+  }
+
+  /// 표지 책 뒤로 젖힌 각도 글자(조작부)
+  String? get _anglesText {
+    final s = PlacementStore.instance, l = s.layout, id = _editId;
+    final pitch = _head != null ? _headCur?.pitch : (l == null || id == null ? null : frontStateOf(l, s.books, id)?.state.pitch);
+    return pitch != null && pitch >= 0.5 ? '머리를 끌어 뒤로 ${jsRound(pitch).toInt()}° 젖혔어요' : null;
+  }
+
   Future<void> _undo() async {
     await PlacementStore.instance.undo();
     if (!mounted) return;
@@ -809,6 +925,7 @@ class _HomeScreenState extends State<HomeScreen> {
                       child: SingleChildScrollView(
                         key: _viewportKey,
                         controller: _scroll,
+                        physics: _head != null ? const NeverScrollableScrollPhysics() : null,
                         child: SizedBox(
                           width: box.maxWidth,
                           height: height,
@@ -883,6 +1000,42 @@ class _HomeScreenState extends State<HomeScreen> {
                                   },
                                 ),
                               ),
+                              // 표지 책 머리 손잡이: 보이는 점은 작게, 잡는 칸은 넓게. 끄는 동안 손가락을 따라 실제로 된 각도만큼 옮겨 가고, 제자리와 가는 선으로 잇는다
+                              if (_handlePoint() case final hp?) ...[
+                                if (_headOff.distance >= 2)
+                                  Positioned.fill(key: const ValueKey('tether'), child: IgnorePointer(child: CustomPaint(painter: _TetherPainter(hp, hp + _headOff)))),
+                                Positioned(
+                                  key: const ValueKey('handle'),
+                                  left: hp.dx + _headOff.dx - _handleHit / 2,
+                                  top: hp.dy + _headOff.dy - _handleHit / 2,
+                                  width: _handleHit,
+                                  height: _handleHit,
+                                  child: Semantics(
+                                    label: '머리 손잡이: 위아래로 끌면 뒤로 젖히기, 좌우로 끌면 돌리기',
+                                    // 닿는 순간 잡는다(지금 앱 manualActivation): 손가락 이벤트를 바로 받고, 잡는 동안은 스크롤을 끈다(스크롤 끌기가 손잡이를 가로채지 않게)
+                                    child: Listener(
+                                      behavior: HitTestBehavior.opaque,
+                                      onPointerDown: (e) {
+                                        if (_headPointer == null && _headBegin()) _headPointer = e.pointer;
+                                      },
+                                      onPointerMove: (e) {
+                                        if (e.pointer == _headPointer) _headMove(e.delta);
+                                      },
+                                      onPointerUp: (e) {
+                                        if (e.pointer != _headPointer) return;
+                                        _headPointer = null;
+                                        _headEnd();
+                                      },
+                                      onPointerCancel: (e) {
+                                        if (e.pointer != _headPointer) return;
+                                        _headPointer = null;
+                                        _headCancel();
+                                      },
+                                      child: Center(child: _Knob(scale: _geom!.m.scale)),
+                                    ),
+                                  ),
+                                ),
+                              ],
                               // 머리줄(책장과 함께 스크롤: 지금 앱 2026-11-04 '상단 라인은 고정이 아니야'): 왼쪽 '나의 책장'과 그 밑 해, 오른쪽 스토어·꾸미기·전체 책·더하기
                               Positioned(left: 0, right: 0, top: pad.top, child: header()),
                               // 잠긴 칸: 가운데 자물쇠, 누르면 선반 한 칸 더 열기
@@ -966,6 +1119,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 lean: _panel?.lean ?? 0,
                 canLean: _panel?.canLean ?? (left: false, right: false),
                 msg: _editMsg,
+                angles: _anglesText,
                 spin: _panel?.spin ?? 0,
                 spinMax: _panel?.spinMax ?? maxSpin,
                 spinRange: _panel?.spinRange,
@@ -1062,6 +1216,42 @@ class _DragPainter extends CustomPainter {
 
   @override
   bool shouldRepaint(_DragPainter old) => old.delta != delta || old.ok != ok || old.image != image || old.path != path;
+}
+
+/// 손잡이 점(지금 앱 knob: 옅은 종이색 원, 나무색 테두리·가운데 점, 옅은 그림자)
+class _Knob extends StatelessWidget {
+  const _Knob({required this.scale});
+  final double scale;
+
+  @override
+  Widget build(BuildContext context) => Container(
+        width: 16 * scale,
+        height: 16 * scale,
+        decoration: BoxDecoration(
+          shape: BoxShape.circle,
+          color: const Color(0xF2FFFCF6),
+          border: Border.all(color: const Color(0x8CA07858)),
+          boxShadow: const [BoxShadow(color: Color(0x2E3B3330), blurRadius: 3, offset: Offset(0, 1))],
+        ),
+        child: Center(
+          child: Container(width: 5 * scale, height: 5 * scale, decoration: const BoxDecoration(shape: BoxShape.circle, color: Color(0xCCA06E46))),
+        ),
+      );
+}
+
+/// 머리 위 제자리와 손잡이를 잇는 가는 선(무엇을 젖히거나 돌리는지 보이게)
+class _TetherPainter extends CustomPainter {
+  _TetherPainter(this.from, this.to);
+  final Offset from, to;
+
+  @override
+  void paint(Canvas canvas, Size size) => canvas.drawLine(from, to, Paint()
+    ..strokeWidth = 1.5
+    ..strokeCap = StrokeCap.round
+    ..color = const Color(0x8CA07858));
+
+  @override
+  bool shouldRepaint(_TetherPainter old) => old.from != from || old.to != to;
 }
 
 class _PreviewRow {
