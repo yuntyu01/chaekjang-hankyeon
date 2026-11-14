@@ -23,8 +23,8 @@ import '../../domain/layout.dart' show ShelfLayout, placementOf, shelfItems, sor
 import '../../domain/book3_physics.dart' show fromPlaced;
 import '../../domain/geometry.dart' show shelfUsableWidth;
 import '../../domain/layout_engine.dart';
-import '../../domain/types.dart' show Pose, tiltToward;
-import '../../domain/shelf_scene.dart' show resolveLeans;
+import '../../domain/types.dart' show Book, Pose, tiltToward;
+import '../../domain/shelf_scene.dart' show computeShelf, resolveLeans;
 import '../../domain/vec3.dart' show C3, Vec3;
 import '../../domain/book3.dart' show corners;
 import '../../store/placement_store.dart';
@@ -153,6 +153,7 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   void _exitDecorate() {
+    _clearPreview();
     setState(() {
       _drag = null;
       _decorating = false;
@@ -193,15 +194,16 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   /// 편집 결과 확정(실패면 까닭을 조작부에, 성공 알림은 note)
-  Future<void> _apply(EditResult r, [String? note]) async {
+  Future<bool> _apply(EditResult r, [String? note]) async {
     if (!r.ok) {
       setState(() => _editMsg = r.reason == 'no-change' ? null : editFailText[r.reason] ?? editFailText['outside']);
-      return;
+      return false;
     }
     final ok = await PlacementStore.instance.commit(r.layout!);
-    if (!mounted) return;
+    if (!mounted) return ok;
     setState(() => _editMsg = ok ? note : editFailText['no-space']);
     _computePanel();
+    return ok;
   }
 
   /// 고른 책에 편집 한 번(배치·책이 있을 때만)
@@ -267,22 +269,50 @@ class _HomeScreenState extends State<HomeScreen> {
     });
     tabBarHidden.value = true;
     _computePanel();
+    _dragTarget = null;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (_drag?.id == id) _showPreview(l, {p.shelfId}, hide: id, key: 'lifted');
+    });
   }
 
-  /// 손가락 자리에 놓으면 될 배치(늘 확정 배치에서 계산: 같은 줄이면 바꿔 놓기, 다른 줄이면 끄는 책을 뺀 배치에서 놓을 자리)
-  EditResult _dropAt(Offset at) {
+  /// 손가락 자리의 놓을 자리(늘 확정 배치에서 계산: 같은 줄이면 바꿔 놓기, 다른 줄이면 끄는 책을 뺀 배치에서 놓을 자리).
+  /// key가 같으면 놓은 배치도 같다(손가락이 움직여도 자리가 그대로면 다시 계산하지 않는다)
+  ({String key, String? shelfId, EditResult Function() run}) _targetAt(Offset at) {
     final d = _drag, g = _geom, s = PlacementStore.instance, l = s.layout;
-    if (d == null || g == null || l == null) return const EditResult.fail('no-change');
+    if (d == null || g == null || l == null) return (key: 'none', shelfId: null, run: () => const EditResult.fail('no-change'));
     final shelves = sortedShelves(l);
     final cy = at.dy - g.contentTop;
     final index = g.geo.isEmpty || cy < g.geo.first.top ? -1 : g.geo.indexWhere((r) => cy >= r.top && cy < r.top + r.height);
     final centerDU = d.centerDU + (at.dx - d.start.dx) / g.m.scale;
     final withinX = centerDU > -sideMargin && centerDU < shelfUsableWidth + sideMargin;
-    if (!withinX || index < 0 || index >= shelves.length) return const EditResult.fail('outside');
+    if (!withinX || index < 0 || index >= shelves.length) return (key: 'outside', shelfId: null, run: () => const EditResult.fail('outside'));
     final shelfId = shelves[index].id;
-    if (shelfId == d.shelfId) return applySwapTarget(l, s.books, d.id, findSwapTarget(l, s.books, d.id, centerDU));
-    final p = placementOf(l, d.id)!;
-    return moveBook(l, s.books, d.id, findDropTarget(d.detached, s.books, shelfId, centerDU, p.pose, d.widthDU));
+    if (shelfId == d.shelfId) {
+      final t = findSwapTarget(l, s.books, d.id, centerDU);
+      return (key: 'same:${t.kind}:${t.itemKey}:${t.index}:${t.x}:${t.dx}', shelfId: shelfId, run: () => applySwapTarget(l, s.books, d.id, t));
+    }
+    final t = findDropTarget(d.detached, s.books, shelfId, centerDU, placementOf(l, d.id)!.pose, d.widthDU);
+    return (key: 'other:$shelfId:${t.kind}:${t.itemKey}:${t.index}:${t.x}', shelfId: shelfId, run: () => moveBook(l, s.books, d.id, t));
+  }
+
+  /// 마지막으로 본 놓을 자리와 그 결과
+  ({String key, EditResult result})? _dragTarget;
+
+  EditResult _dropAt(Offset at) {
+    final t = _targetAt(at);
+    final last = _dragTarget;
+    if (last != null && last.key == t.key) return last.result;
+    final r = t.run();
+    _dragTarget = (key: t.key, result: r);
+    // 미리 보기: 놓을 수 있으면 그 배치(기대기까지 그 줄에서 풀어 둔다: 놓는 순간 각도가 튀지 않게), 아니면 확정 배치에서 든 책만 빠진다
+    final d = _drag!, l = PlacementStore.instance.layout!, books = PlacementStore.instance.books;
+    if (r.ok && t.shelfId != null) {
+      final src = t.shelfId == d.shelfId ? r.layout! : resolveLeans(r.layout!, books, d.shelfId);
+      _showPreview(resolveLeans(src, books, t.shelfId), {d.shelfId, t.shelfId!}, hide: d.id, key: t.key);
+    } else {
+      _showPreview(l, {d.shelfId}, hide: d.id, key: 'lifted');
+    }
+    return r;
   }
 
   // 가장자리 자동 스크롤(지금 앱 autoScroll: 끄는 동안만, 화면 위아래 72 안이면 한 틀에 최대 14씩). 스크롤하면서도 손가락 자리로 놓을 자리를 다시 본다
@@ -313,19 +343,94 @@ class _HomeScreenState extends State<HomeScreen> {
 
   void _moveDrag(Offset at) {
     if (_drag == null) return;
+    final r = _dropAt(at);
     setState(() {
       _dragNow = at;
-      final r = _dropAt(at);
       _dragOk = r.ok || r.reason == 'no-change';
     });
   }
 
-  void _endDrag() {
+  Future<void> _endDrag() async {
     _stopAutoScroll();
     if (_drag == null) return;
     final r = _dropAt(_dragNow);
     setState(() => _drag = null);
-    _apply(r); // 성공은 알리지 않는다(바뀐 책장이 보이고, 바로 위에 되돌리기)
+    _dragTarget = null;
+    // 성공은 알리지 않는다(바뀐 책장이 보이고, 바로 위에 되돌리기). 놓았으면 새로 굽기가 끝날 때까지 미리 보기를 그대로 둔다(옛 자리로 튀지 않게)
+    if (!await _apply(r)) _clearPreview();
+  }
+
+  // ---------- 미리 보기(끄는 동안 바뀐 선반만 그 배치로 그린다, 지금 앱 previewShelf) ----------
+  /// 선반 차례 → 미리 보는 줄. 바로는 지난 그림의 빛(면 이름으로 자리를 옮겨 쓴다)으로, 잠시 뒤 그 배치로 구운 그림으로
+  Map<int, _PreviewRow> _previewRows = const {};
+  String? _previewKey;
+  Timer? _previewBake;
+
+  /// 그릴 줄 목록(미리 보는 줄을 끼운 것). 미리 보기가 바뀔 때만 새로 만든다(손가락이 움직일 때마다 책장을 다시 그리지 않게)
+  ({List<RowCase> rows, List<ui.Image> atlases, List<List<Spot>> spots, List<({PlaneKey wall, PlaneKey floor})> keys, List<Map<String, BookKey>> bookKeys})? _shown;
+
+  void _showPreview(ShelfLayout l, Set<String> shelfIds, {String? hide, required String key}) {
+    final c = _case, s = PlacementStore.instance, committed = s.layout;
+    if (c == null || committed == null || key == _previewKey) return;
+    final shelves = sortedShelves(committed);
+    final next = <int, _PreviewRow>{};
+    for (final id in shelfIds) {
+      final i = shelves.indexWhere((x) => x.id == id);
+      if (i < 0 || i >= _rowSpots.length) continue;
+      final bodies = [for (final f in computeShelf(l, s.books, id)) if (f.bookId != hide) fromPlaced(f.box)];
+      final old = c.rows[i], oldSpots = _rowSpots[i];
+      final row = rowFromBooks(bodies, _libBooks, rowSpace, top: old.top, last: old.last)..tabLoss = old.tabLoss;
+      final spots = [
+        for (final it in row.items)
+          switch (old.indexOf(it.key)) { final k when k >= 0 && k < oldSpots.length => oldSpots[k], _ => oldSpots.first },
+      ];
+      next[i] = _PreviewRow(row, spots);
+    }
+    _previewKey = key;
+    _setPreviewRows(next);
+    _previewBake?.cancel();
+    _previewBake = Timer(const Duration(milliseconds: 150), () => _bakePreview(key));
+  }
+
+  Future<void> _bakePreview(String key) async {
+    final grid = _gridSlots, bake = _bakeSlots;
+    if (grid == null || bake == null) return;
+    for (final e in Map.of(_previewRows).entries) {
+      if (e.value.atlas != null) continue;
+      // 차례를 기다리는 동안 손가락이 다른 자리로 가면 굽지 않는다
+      final b = await bakeRow(grid, bake, BakeCase([e.value.row]), e.value.row, persist: false, tag: ' preview', wanted: () => mounted && _previewKey == key);
+      if (b == null) return;
+      if (!mounted || _previewKey != key) {
+        b.image.dispose();
+        return;
+      }
+      _setPreviewRows({..._previewRows, e.key: _PreviewRow(e.value.row, b.at, b.image, b.keys, b.bookKeys)});
+    }
+  }
+
+  void _setPreviewRows(Map<int, _PreviewRow> next) {
+    for (final e in _previewRows.entries) {
+      if (!identical(next[e.key]?.atlas, e.value.atlas)) e.value.atlas?.dispose();
+    }
+    final c = _case;
+    setState(() {
+      _previewRows = next;
+      _shown = next.isEmpty || c == null
+          ? null
+          : (
+              rows: [for (var i = 0; i < c.rows.length; i++) next[i]?.row ?? c.rows[i]],
+              atlases: [for (var i = 0; i < _atlases.length; i++) next[i]?.atlas ?? _atlases[i]],
+              spots: [for (var i = 0; i < _rowSpots.length; i++) next[i]?.spots ?? _rowSpots[i]],
+              keys: [for (var i = 0; i < _keys.length; i++) next[i]?.keys ?? _keys[i]],
+              bookKeys: [for (var i = 0; i < _bookKeys.length; i++) next[i]?.bookKeys ?? _bookKeys[i]],
+            );
+    });
+  }
+
+  void _clearPreview() {
+    _previewBake?.cancel();
+    _previewKey = null;
+    if (_previewRows.isNotEmpty) _setPreviewRows(const {});
   }
 
   Future<void> _undo() async {
@@ -381,7 +486,8 @@ class _HomeScreenState extends State<HomeScreen> {
     _freezeTimer ??= Timer(const Duration(seconds: 6), () {
       if (mounted && !_frozen) setState(() => _frozen = true);
     });
-    if (!_frozen || !ShelfPainter.ready || h > 8192 || w > 8192) return CustomPaint(painter: painter);
+    // 미리 보는 동안은 그대로 그린다(굳힌 그림은 끄는 책을 떠 오는 데 쓰고, 미리 보기가 끝나면 다시 굳힌다)
+    if (_shown != null || !_frozen || !ShelfPainter.ready || h > 8192 || w > 8192) return CustomPaint(painter: painter);
     final key = (
       _runs.length,
       painter.rows,
@@ -429,6 +535,9 @@ class _HomeScreenState extends State<HomeScreen> {
 
   /// 줄마다 책이 받는 창빛 그림자(책 id → 면 칸 그림)
   List<Map<String, BookKey>> _bookKeys = const [];
+
+  /// 지금 책장의 책 정보(줄을 다시 만들 때)
+  List<Book> _libBooks = const [];
 
   /// 지난 굽기의 줄별 결과(굽기 열쇠 → 그림·그림자 열쇠·갈피 손실). 다음 굽기에서 바뀌지 않은 줄은 그대로 쓴다
   Map<String, _RowDone> _rowDone = {};
@@ -521,7 +630,7 @@ class _HomeScreenState extends State<HomeScreen> {
         continue;
       }
       // 같은 값으로 구워 담아 둔 그림이 있으면 굽지 않는다(row_bake)
-      final b = await bakeRow(gridSlots, bakeSlots, c, r, probe: probe, stamp: true);
+      final b = (await bakeRow(gridSlots, bakeSlots, c, r, probe: probe, stamp: true))!;
       images.add(b.image);
       if (probe) continue;
       final row = _RowDone(b.image.clone(), b.at, b.keys, b.bookKeys, r.tabLoss);
@@ -566,9 +675,13 @@ class _HomeScreenState extends State<HomeScreen> {
       }
       _rowDone = done;
       _runs.add(run);
+      _libBooks = lib.books;
       _state = '${_runs.length}번째';
       _busy = false;
     });
+    // 새 그림이 나왔으니 미리 보기는 걷는다(미리 보는 줄은 지난 그림의 자리를 쓰고 있었다). 끄는 중이면 다음 손가락 움직임에 다시 만든다
+    _dragTarget = null;
+    _clearPreview();
     if (_again) {
       _again = false;
       _refresh();
@@ -707,13 +820,13 @@ class _HomeScreenState extends State<HomeScreen> {
                                 child: RepaintBoundary(
                                   child: _shelfLayer(
                                     ShelfPainter(
-                                      rows: _case!.rows,
-                                      atlases: _atlases,
-                                      rowSpots: _rowSpots,
+                                      rows: _shown?.rows ?? _case!.rows,
+                                      atlases: _shown?.atlases ?? _atlases,
+                                      rowSpots: _shown?.spots ?? _rowSpots,
                                       spaces: _spaces,
                                       photos: _photos,
-                                      bookKeys: _bookKeys,
-                                      keys: _keys,
+                                      bookKeys: _shown?.bookKeys ?? _bookKeys,
+                                      keys: _shown?.keys ?? _keys,
                                       contentTop: contentTop,
                                       bottomInset: bottomInset,
                                       viewport: box.maxHeight,
@@ -763,6 +876,8 @@ class _HomeScreenState extends State<HomeScreen> {
                                         ..onLongPressCancel = (() {
                                           _stopAutoScroll();
                                           setState(() => _drag = null);
+                                          _dragTarget = null;
+                                          _clearPreview();
                                         }),
                                     ),
                                   },
@@ -909,7 +1024,7 @@ class _GlowPainter extends CustomPainter {
   bool shouldRepaint(_GlowPainter old) => old.path != path || old.scale != scale;
 }
 
-/// 끄는 책: 제자리는 비워 보이게 옅게 덮고, 굳힌 책장 그림에서 그 책 모양만 떠서 손가락을 따라 옮긴다(아래 그늘, 둘레 흰 선).
+/// 끄는 책: 굳힌 책장 그림(든 순간의 모습)에서 그 책 모양만 떠서 손가락을 따라 옮긴다(아래 그늘, 둘레 흰 선). 제자리는 그 줄에서 책을 빼고 다시 그린다.
 /// 놓을 수 없는 자리면 붉게 덮는다. 굳힌 그림이 없으면 흰 윤곽만
 class _DragPainter extends CustomPainter {
   _DragPainter(this.path, this.delta, this.scale, this.ok, this.image, this.dpr);
@@ -922,7 +1037,6 @@ class _DragPainter extends CustomPainter {
 
   @override
   void paint(Canvas canvas, Size size) {
-    canvas.drawPath(path, Paint()..color = AppColors.bg.withValues(alpha: 0.72));
     final moved = path.shift(delta);
     canvas.drawPath(moved.shift(Offset(0, 4 * scale)), Paint()
       ..color = const Color(0x521F2533)
@@ -948,6 +1062,17 @@ class _DragPainter extends CustomPainter {
 
   @override
   bool shouldRepaint(_DragPainter old) => old.delta != delta || old.ok != ok || old.image != image || old.path != path;
+}
+
+class _PreviewRow {
+  _PreviewRow(this.row, this.spots, [this.atlas, this.keys, this.bookKeys]);
+  final RowCase row;
+  final List<Spot> spots;
+
+  /// 그 배치로 구운 그림(없으면 지난 그림을 쓴다). 이 미리 보기 것: 걷을 때 버린다
+  final ui.Image? atlas;
+  final ({PlaneKey wall, PlaneKey floor})? keys;
+  final Map<String, BookKey>? bookKeys;
 }
 
 class _RowDone {

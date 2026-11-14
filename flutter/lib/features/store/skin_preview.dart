@@ -91,7 +91,8 @@ class _SkinPreviewState extends State<SkinPreview> {
     await ShelfPainter.load();
     final grid = ShaderSlots(await ui.FragmentProgram.fromAsset('shaders/grid.frag'), gridUniformNames);
     final bake = ShaderSlots(await ui.FragmentProgram.fromAsset('shaders/bake.frag'), bakeUniformNames);
-    final baked = await bakeRow(grid, bake, BakeCase([row]), row, tag: ' store');
+    final baked = await bakeRow(grid, bake, BakeCase([row]), row, tag: ' store', wanted: () => mounted && token == _token);
+    if (baked == null) return;
     final photos = <String, CoverPhoto>{..._photos};
     for (final b in books) {
       final uri = b.coverArtUri;

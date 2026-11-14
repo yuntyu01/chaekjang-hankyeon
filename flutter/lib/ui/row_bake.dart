@@ -29,7 +29,18 @@ class BakedRow {
 }
 
 /// 한 줄을 굽는다(r.tabLoss도 채운다). probe: 값 확인용 줄(그림자 열쇠는 만들지 않는다). stamp: 구운 그림의 자국을 로그에(지금 앱과 화소 견주기)
-Future<BakedRow> bakeRow(ShaderSlots gridSlots, ShaderSlots bakeSlots, BakeCase c, RowCase r, {bool probe = false, bool stamp = false, String tag = ''}) async {
+/// persist: 굽기 캐시(기기 파일)에도 담는다(끄는 동안의 미리 보기처럼 잠깐 쓰는 그림은 담지 않는다).
+/// 굽기는 한 번에 하나씩(GPU를 나눠 쓰면 서로 느려진다). wanted: 차례가 왔을 때 아직 필요한지(아니면 굽지 않고 null)
+Future<BakedRow?> bakeRow(ShaderSlots gridSlots, ShaderSlots bakeSlots, BakeCase c, RowCase r,
+    {bool probe = false, bool stamp = false, bool persist = true, String tag = '', bool Function()? wanted}) {
+  final done = _gpu.then<BakedRow?>((_) => wanted == null || wanted() ? _bake(gridSlots, bakeSlots, c, r, probe, stamp, persist, tag) : Future.value());
+  _gpu = done.then((_) {}, onError: (_) {});
+  return done;
+}
+
+Future<void> _gpu = Future.value();
+
+Future<BakedRow> _bake(ShaderSlots gridSlots, ShaderSlots bakeSlots, BakeCase c, RowCase r, bool probe, bool stamp, bool persist, String tag) async {
   final key = bakeKey(r);
   final ui.Image image;
   final List<Spot> at;
@@ -48,7 +59,7 @@ Future<BakedRow> bakeRow(ShaderSlots gridSlots, ShaderSlots bakeSlots, BakeCase 
     grid.dispose();
     image = atlas.image;
     at = atlas.at; // 면 0 = 뒷벽, 1 = 판 윗면, 2 = 판 앞면, 3부터 책 면
-    unawaited(saveBake(key, image));
+    if (persist) unawaited(saveBake(key, image));
   }
   // ignore: avoid_print
   print(hit != null
