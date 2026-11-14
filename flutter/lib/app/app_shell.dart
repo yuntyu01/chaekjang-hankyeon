@@ -12,6 +12,7 @@ import '../features/reading/finish_screen.dart';
 import '../features/settings/settings_screen.dart';
 import '../features/reading/reading_screen.dart';
 import '../services/cover_colors.dart';
+import '../services/sync.dart';
 import '../store/bookcase_store.dart';
 import '../store/library_model.dart';
 import '../store/mini_timer_store.dart';
@@ -80,6 +81,8 @@ class _AppShellState extends State<AppShell> {
         return null;
       }).whenComplete(() {
         books.watch();
+        // 서버 동기화(서버 주소가 있는 빌드만): 연도 책장 확인 뒤에 시작한다(받는 도중의 서재로 한 해를 남기지 않게)
+        SyncService.instance.start();
         // 표지 색·두께·갈피 색 맞추기는 켠 뒤 조금 있다 뒤에서(지금 앱 _layout: 3초 뒤)
         Future<void>.delayed(const Duration(seconds: 3), () => backfillCoverColors().catchError((Object e) {
               // ignore: avoid_print

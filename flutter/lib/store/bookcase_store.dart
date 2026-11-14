@@ -6,10 +6,14 @@ import 'dart:async';
 
 import 'package:flutter/widgets.dart';
 
+import '../db/kv_store.dart';
 import '../domain/bookcase.dart';
 import '../domain/library.dart' show Library;
 import 'library_model.dart';
 import 'library_store.dart' show layoutChangedAt, loadLayout, readBookcases, writeBookcase;
+
+/// 서버에서 서재 전체를 처음부터 받는 중(services/sync가 쓰고 지운다). 그동안 연도 책장을 남기지 않는다(반쯤 받은 서재로 한 해를 고정하지 않게)
+const pullAllKey = 'sync-pulling-all:v1';
 
 // 손대지 않은 지금 앱 예시 책(지금 앱 home-reference checkSampleBooks): 연도 책장에 남기지 않는다
 final _sampleId = RegExp(r'^home-reference-b\d{2}(-\d+)?$');
@@ -43,6 +47,9 @@ class BookcaseStore extends ChangeNotifier with WidgetsBindingObserver {
 
   List<Bookcase> bookcases = const [];
   bool loaded = false;
+
+  /// 동기화가 도는 동안은 확인하지 않는다(받는 도중의 서재로 남기지 않게)
+  bool syncBusy = false;
   Future<int?>? _checking;
   Timer? _timer;
   bool _watching = false;
@@ -57,6 +64,7 @@ class BookcaseStore extends ChangeNotifier with WidgetsBindingObserver {
   Future<int?> checkYear([DateTime? now]) => _checking ??= _check(now ?? DateTime.now()).whenComplete(() => _checking = null);
 
   Future<int?> _check(DateTime now) async {
+    if (syncBusy || await KvStore.get(pullAllKey) != null) return null;
     final model = LibraryModel.instance;
     await model.load();
     if (!loaded) await load();

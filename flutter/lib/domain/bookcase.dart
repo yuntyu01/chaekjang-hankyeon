@@ -7,6 +7,7 @@ library;
 
 import 'library.dart';
 import 'layout.dart' show ShelfLayout;
+import 'layout_json.dart' show layoutFromMap, placementToJson;
 import 'types.dart';
 
 class BookcaseBook {
@@ -174,4 +175,59 @@ Library bookcaseLibrary(Library full, Bookcase c) {
     if (lib.books.containsKey(m.myBookId) && before(m.createdAt)) lib.bookmarks[m.id] = m;
   }
   return lib;
+}
+
+// ---- 전송 형식(서버 sync_bookcase.go와 같은 모양, 지금 앱 bookcaseToWire·bookcaseFromWire) ----
+Map<String, Object?> bookcaseToWire(Bookcase c) => {
+      'id': c.id,
+      'year': c.year,
+      'createdAt': c.createdAt,
+      'updatedAt': c.updatedAt,
+      'shelves': [for (final s in c.layout.shelves) {'id': s.id, 'order': s.position}],
+      'placements': [for (final p in c.layout.placements) placementToJson(p)],
+      'drawer': c.layout.drawer,
+      'books': [
+        for (final b in c.books)
+          {
+            'bookId': b.bookId,
+            'status': b.status.name,
+            if (b.bindingId != null) 'bindingId': b.bindingId,
+            if (b.rating != null) 'rating': b.rating,
+            if (b.note != null) 'note': b.note,
+            if (b.ribbonColor != null) 'ribbonColor': b.ribbonColor,
+            if (b.currentPage != null) 'currentPage': b.currentPage,
+          },
+      ],
+    };
+
+/// 받은 값은 서버가 검사했지만 모양만 다시 확인한다(모르는 값은 버린다)
+Bookcase? bookcaseFromWire(Object? raw) {
+  if (raw is! Map) return null;
+  final w = raw.cast<String, Object?>();
+  final id = w['id'], year = w['year'], created = w['createdAt'];
+  if (id is! String || id.isEmpty || year is! num || created is! String) return null;
+  final books = <BookcaseBook>[];
+  for (final x in (w['books'] as List?) ?? const []) {
+    if (x is! Map || x['bookId'] is! String) continue;
+    final status = ReadStatus.values.where((s) => s.name == x['status']).firstOrNull;
+    if (status == null) continue;
+    String? str(Object? v) => v is String && v.isNotEmpty ? v : null;
+    books.add(BookcaseBook(
+      bookId: x['bookId'] as String,
+      status: status,
+      bindingId: str(x['bindingId']),
+      rating: x['rating'] is num ? x['rating'] as num : null,
+      note: str(x['note']),
+      ribbonColor: str(x['ribbonColor']),
+      currentPage: x['currentPage'] is num ? x['currentPage'] as num : null,
+    ));
+  }
+  return Bookcase(
+    id: id,
+    year: year.toInt(),
+    createdAt: created,
+    updatedAt: (w['updatedAt'] as String?) ?? created,
+    layout: layoutFromMap({'shelves': w['shelves'], 'placements': w['placements'], 'drawer': w['drawer']}),
+    books: books,
+  );
 }

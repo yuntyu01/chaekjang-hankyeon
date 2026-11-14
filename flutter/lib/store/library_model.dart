@@ -51,6 +51,38 @@ class LibraryModel extends ChangeNotifier {
     return _writes;
   }
 
+  /// 진행 중인 저장이 끝날 때까지(동기화가 DB를 읽기 전에)
+  Future<void> flushPending() => _writes.catchError((_) {});
+
+  /// 서버에서 받은 변경을 지금 서재에 얹는다(올릴 변경으로 표시하지 않는다, 지금 앱 applyRemote).
+  /// 합친 뒤 저장 사이에 바뀐 다른 항목을 잃지 않게, 받은 항목만 지금 서재에 덮어쓴다
+  Future<void> applyRemote(List<({LibKind kind, Object item, String id})> writes, List<({LibKind kind, String id})> erases) async {
+    if (writes.isEmpty && erases.isEmpty) return;
+    final ed = {...lib.editions}, bk = {...lib.books}, rd = {...lib.rounds}, ss = {...lib.sessions}, bm = {...lib.bookmarks}, bd = {...lib.bindings};
+    Map<String, Object> table(LibKind k) => switch (k) {
+          LibKind.editions => ed,
+          LibKind.books => bk,
+          LibKind.rounds => rd,
+          LibKind.sessions => ss,
+          LibKind.bookmarks => bm,
+          LibKind.bindings => bd,
+        };
+    for (final w in writes) {
+      table(w.kind)[w.id] = w.item;
+    }
+    for (final e in erases) {
+      table(e.kind).remove(e.id);
+    }
+    lib = Library(editions: ed, books: bk, rounds: rd, sessions: ss, bookmarks: bm, bindings: bd);
+    notifyListeners();
+    final done = _writes.catchError((_) {}).then((_) => applyRemoteChanges([
+          for (final w in writes) LocalChange.put(w.kind, w.id, w.item, ''),
+          for (final e in erases) LocalChange.delete(e.kind, e.id, ''),
+        ]));
+    _writes = done.catchError((_) {});
+    await done;
+  }
+
   Library _withBookmarks(Map<String, Bookmark> bookmarks) =>
       Library(editions: lib.editions, books: lib.books, rounds: lib.rounds, sessions: lib.sessions, bookmarks: bookmarks, bindings: lib.bindings);
 

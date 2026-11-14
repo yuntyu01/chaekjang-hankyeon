@@ -1,6 +1,6 @@
 // 설정(지금 앱 app/settings.tsx, 하단 '내 정보' 탭): 독서 환경(진동·움직임 줄이기) / 내 기록(백업 및 복원) / 앱 안내(문의·개인정보·앱 정보).
 // 흰 바탕, 줄 사이 선 없음, 묶음 사이 화면 끝까지 닿는 1dp 선. 다른 화면으로 가는 줄에만 화살표.
-// 동기화(서버)는 아직 옮기지 않아 '이 기기에만 저장' 쪽 문구를 쓴다(지금 앱도 서버를 못 쓰면 같은 문구)
+// 서버 주소가 없는 빌드는 '이 기기에만 저장' 쪽 문구를 쓴다(지금 앱도 서버를 못 쓰면 같은 문구)
 library;
 
 import 'package:flutter/material.dart';
@@ -10,7 +10,9 @@ import 'package:url_launcher/url_launcher.dart';
 import '../../store/settings_store.dart';
 import '../../ui/alert.dart';
 import '../../ui/kit.dart';
+import '../../services/sync.dart';
 import '../../ui/theme.dart';
+import 'backup_screen.dart' show openBackup;
 
 const _privacyUrl = 'https://midi-broccoli-56c.notion.site/Covebook-3eb50284670881b0a0e2c6029cea29c7';
 const _mail = 'yuntyu01@gmail.com';
@@ -20,13 +22,8 @@ const _motion = [
   (id: 'off', label: '끄기', short: '끔'),
 ];
 
-/// 서버 동기화를 쓸 수 있는지(동기화를 옮기면 그쪽 상태를 읽는다)
-const _syncAvailable = false;
-
-/// 아직 옮기지 않은 화면
-Future<void> _pending(BuildContext context, String title) => Navigator.of(context).push(MaterialPageRoute<void>(
-      builder: (_) => Screen(title: title, children: const [Empty(title: '준비 중이에요', body: '이 화면은 다음 단계에서 옮겨요.')]),
-    ));
+/// 서버 동기화를 쓸 수 있는지(서버 주소가 있는 빌드)
+bool get _syncAvailable => SyncService.instance.available;
 
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key, this.tab = false});
@@ -127,7 +124,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
         ]),
         const SectionBand(),
         ListGroup(title: '내 기록', children: [
-          ListItem(label: '백업 및 복원', sub: _syncAvailable ? '기록은 이 기기와 서버에 저장돼요' : '기록은 이 기기에 저장돼요', chevron: true, onPress: () => _pending(context, '백업 및 복원')),
+          ListItem(label: '백업 및 복원', sub: _syncAvailable ? '기록은 이 기기와 서버에 저장돼요' : '기록은 이 기기에 저장돼요', chevron: true, onPress: () => openBackup(context)),
         ]),
         const SectionBand(),
         ListGroup(title: '앱 안내', children: [

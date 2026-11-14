@@ -3,6 +3,7 @@
 // 행 값(valuesOf)이 지금 앱이 저장한 행과 같은지는 test/library_write_matches_app_test.dart
 library;
 
+import 'package:flutter/foundation.dart' show ValueNotifier;
 import 'package:sqflite/sqflite.dart';
 
 import '../domain/library.dart';
@@ -118,6 +119,68 @@ Future<void> applyLocalChanges(List<LocalChange> changes, [Database? d]) async {
       await _putPending(tx, c, revision);
     }
   });
+  localDataChanged.value++;
 }
 
 String nowIso() => DateTime.now().toUtc().toIso8601String().replaceFirstMapped(RegExp(r'\.(\d{3})\d*Z$'), (m) => '.${m[1]}Z');
+
+// ---------- 동기화(지금 앱 local-db readPending·acknowledgePending·queueAllChanges·applyRemoteChanges) ----------
+
+/// 이 기기에서 서재·배치를 바꿨을 때 하나씩 올린다(동기화가 4초 뒤 묶어 올린다)
+final localDataChanged = ValueNotifier<int>(0);
+
+/// 올릴 변경(키 "kind:id" → 삭제 여부·때·쓴 차례)
+typedef Pending = Map<String, ({bool deleted, String at, int revision})>;
+
+Future<Pending> readPending([DatabaseExecutor? d]) async {
+  final db = d ?? await openLibrary();
+  final rows = await db.rawQuery('SELECT kind,id,deleted,updated_at,revision FROM sync_outbox');
+  return {
+    for (final r in rows) '${r['kind']}:${r['id']}': (deleted: ((r['deleted'] as num?) ?? 0) != 0, at: r['updated_at']! as String, revision: (r['revision']! as num).toInt()),
+  };
+}
+
+/// 올린 변경을 지운다. 올린 뒤 다시 바뀐 항목(차례가 다른 것)은 남긴다
+Future<void> acknowledgePending(Pending sent, int? layoutRevision) async {
+  final db = await openLibrary();
+  await db.transaction((t) async {
+    for (final e in sent.entries) {
+      final i = e.key.indexOf(':');
+      if (i < 1) continue;
+      await t.rawDelete('DELETE FROM sync_outbox WHERE kind=? AND id=? AND revision=?', [e.key.substring(0, i), e.key.substring(i + 1), e.value.revision]);
+    }
+    if (layoutRevision != null) await t.rawUpdate('UPDATE sync_meta SET layout_dirty=0 WHERE id=1 AND layout_revision=?', [layoutRevision]);
+  });
+}
+
+/// 서재 전체를 올릴 변경으로(처음 연결·계정 바꿈·참조 오류). 이미 표시된 변경은 그대로 둔다
+Future<void> queueAllChanges(Map<String, ({bool deleted, String at})> all) async {
+  final db = await openLibrary();
+  await db.transaction((t) async {
+    final revision = await _nextRevision(t);
+    for (final e in all.entries) {
+      final i = e.key.indexOf(':');
+      if (i < 1 || !LibKind.values.any((k) => k.name == e.key.substring(0, i))) continue;
+      await t.rawInsert('INSERT INTO sync_outbox(kind,id,deleted,updated_at,revision) VALUES(?,?,?,?,?) ON CONFLICT(kind,id) DO NOTHING',
+          [e.key.substring(0, i), e.key.substring(i + 1), e.value.deleted ? 1 : 0, e.value.at, revision]);
+    }
+    await t.rawUpdate('UPDATE sync_meta SET layout_dirty=1,layout_revision=? WHERE id=1', [revision]);
+    await t.rawUpdate('UPDATE bookcases SET synced=0');
+  });
+  localDataChanged.value++;
+}
+
+/// 서버에서 받은 항목: 올릴 변경으로 표시하지 않는다
+Future<void> applyRemoteChanges(List<LocalChange> changes) async {
+  if (changes.isEmpty) return;
+  final db = await openLibrary();
+  await db.transaction((tx) async {
+    for (final c in changes) {
+      if (c.deleted) {
+        await _deleteItem(tx, c.kind, c.id);
+      } else {
+        await _writeItem(tx, c.kind, c.item!);
+      }
+    }
+  });
+}

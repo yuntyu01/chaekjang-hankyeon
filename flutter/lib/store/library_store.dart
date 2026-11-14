@@ -2,7 +2,9 @@
 // 책장을 그리는 데 필요한 읽기만 먼저 옮긴 것. 숨긴 책(hidden_at: 지웠지만 연도 책장에 남긴 책)은 화면용 서재에서 뺀다. 쓰기·동기화는 아직
 library;
 
+import '../db/library_write.dart' show localDataChanged;
 import '../db/local_db.dart';
+import '../domain/layout_json.dart';
 import '../domain/bookcase.dart';
 import '../domain/library.dart' show ReadStatus;
 import '../domain/cover_artworks.dart' show isCoverArtworkId;
@@ -228,6 +230,7 @@ Future<void> saveLayout(ShelfLayout prev, ShelfLayout next) async {
     final rev = (await t.rawQuery('SELECT revision FROM sync_meta WHERE id=1')).first['revision'];
     await t.rawUpdate('UPDATE sync_meta SET layout_at=?, layout_dirty=1, layout_revision=? WHERE id=1', [DateTime.now().toUtc().toIso8601String(), rev]);
   });
+  localDataChanged.value++;
 }
 
 // ---------- 연도 책장(지금 앱 local-db readBookcases·writeBookcase) ----------
@@ -258,11 +261,11 @@ Future<List<Bookcase>> readBookcases() async {
 }
 
 /// 한 벌을 통째로 쓴다(같은 id나 같은 해가 있으면 지우고). 책 목록에 없는 책의 자리는 뺀다(외래키)
-Future<void> writeBookcase(Bookcase c) async {
+Future<void> writeBookcase(Bookcase c, {bool synced = false}) async {
   final db = await openLibrary();
   await db.transaction((t) async {
     await t.rawDelete('DELETE FROM bookcases WHERE id = ? OR year = ?', [c.id, c.year]);
-    await t.rawInsert('INSERT INTO bookcases (id, year, created_at, updated_at, synced) VALUES (?, ?, ?, ?, 0)', [c.id, c.year, c.createdAt, c.updatedAt]);
+    await t.rawInsert('INSERT INTO bookcases (id, year, created_at, updated_at, synced) VALUES (?, ?, ?, ?, ?)', [c.id, c.year, c.createdAt, c.updatedAt, synced ? 1 : 0]);
     final known = <String>{};
     for (final b in c.books) {
       if (!known.add(b.bookId)) continue;
@@ -305,4 +308,55 @@ Future<Library> loadYearShelf(Bookcase c) async {
   final shown = {for (final b in books) b.id};
   final l = c.layout;
   return Library(books, ShelfLayout(l.shelves, [for (final p in l.placements) if (shown.contains(p.bookId)) p], [for (final id in l.drawer) if (shown.contains(id)) id]));
+}
+
+// ---------- 동기화용 배치·연도 책장(지금 앱 local-db layoutOf·saveLayout(원격)·markBookcasesSynced) ----------
+
+/// 지금 배치 JSON(표에서 모은 것, 표로 못 쓴 예전 저장본이면 그대로)과 마지막으로 고친 때·올릴지·쓴 차례
+Future<({String? json, String? at, bool dirty, int revision})> layoutState() async {
+  final db = await openLibrary();
+  final m = (await db.rawQuery('SELECT layout, layout_at, layout_dirty, layout_revision, layout_stored FROM sync_meta WHERE id = 1')).firstOrNull ?? const {};
+  // 이 앱은 배치를 늘 표에 둔다(예시 서재는 표에 바로 넣어 표시가 0일 수 있다). 표로 못 쓴 예전 저장본(JSON)만 그대로 보낸다
+  final raw = ((m['layout_stored'] as num?) ?? 0) != 0 ? null : m['layout'] as String?;
+  final layout = raw == null ? await loadLayout() : null;
+  final json = raw ?? (layout!.shelves.isEmpty && layout.placements.isEmpty && layout.drawer.isEmpty ? null : layoutToJson(layout));
+  return (json: json, at: m['layout_at'] as String?, dirty: ((m['layout_dirty'] as num?) ?? 0) != 0, revision: ((m['layout_revision'] as num?) ?? 0).toInt());
+}
+
+/// 서버에서 받은 배치: 이 기기 배치보다 새로울 때만 쓴다(올릴 변경으로 표시하지 않는다). 썼으면 true
+Future<bool> saveRemoteLayout(String json, String at) async {
+  final db = await openLibrary();
+  return db.transaction((t) async {
+    final m = (await t.rawQuery('SELECT layout_at FROM sync_meta WHERE id = 1')).firstOrNull;
+    final cur = DateTime.tryParse((m?['layout_at'] as String?) ?? '');
+    final next = DateTime.tryParse(at);
+    if (next == null || (cur != null && !next.isAfter(cur))) return false;
+    final layout = layoutFromJson(json);
+    await t.rawDelete('DELETE FROM shelf_placements');
+    await t.rawDelete('DELETE FROM shelves');
+    if (layout != null) {
+      final rows = _layoutRows(layout);
+      for (final e in rows.shelves.entries) {
+        await t.rawInsert('INSERT INTO shelves (id, position) VALUES (?, ?)', [e.key, e.value]);
+      }
+      for (final spot in rows.spots.values) {
+        await t.insert('shelf_placements', spot);
+      }
+    }
+    await t.rawUpdate('UPDATE sync_meta SET revision=revision+1 WHERE id=1');
+    await t.rawUpdate('UPDATE sync_meta SET layout = ?, layout_stored = ?, layout_at = ? WHERE id = 1', [layout == null ? json : null, layout == null ? 0 : 1, at]);
+    return true;
+  });
+}
+
+/// 아직 서버에 올리지 않은 연도 책장
+Future<Set<String>> unsyncedBookcaseIds() async {
+  final db = await openLibrary();
+  return {for (final r in await db.rawQuery('SELECT id FROM bookcases WHERE synced = 0')) r['id']! as String};
+}
+
+Future<void> markBookcasesSynced(List<String> ids) async {
+  if (ids.isEmpty) return;
+  final db = await openLibrary();
+  await db.rawUpdate('UPDATE bookcases SET synced = 1 WHERE id IN (${ids.map((_) => '?').join(',')})', ids);
 }
