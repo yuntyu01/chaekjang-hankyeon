@@ -1684,3 +1684,136 @@ class _DateBodyState extends State<_DateBody> {
     ]);
   }
 }
+
+/// 시각 칸('HH:MM', 지금 앱 ui/pickers TimeField): 누르면 시·분 두 돌림 목록 시트
+class TimeField extends StatelessWidget {
+  const TimeField({super.key, required this.label, required this.value, required this.onChange});
+  final String label, value;
+  final ValueChanged<String> onChange;
+
+  @override
+  Widget build(BuildContext context) => SelectField(
+        label: label,
+        value: value.isNotEmpty ? value : null,
+        placeholder: '시각 고르기',
+        onPress: () async {
+          final r = await showSheet<String>(context, title: label.replaceAll(RegExp(r' \(.+\)$'), ''), builder: (_) => _TimeBody(value: value));
+          if (r != null && r != value) onChange(r);
+        },
+      );
+}
+
+class _TimeBody extends StatefulWidget {
+  const _TimeBody({required this.value});
+  final String value;
+
+  @override
+  State<_TimeBody> createState() => _TimeBodyState();
+}
+
+class _TimeBodyState extends State<_TimeBody> {
+  late int _h, _m;
+
+  @override
+  void initState() {
+    super.initState();
+    final mt = RegExp(r'^(\d{1,2}):(\d{2})$').firstMatch(widget.value);
+    final now = DateTime.now();
+    _h = mt == null ? now.hour : math.min(23, int.parse(mt[1]!));
+    _m = mt == null ? now.minute : math.min(59, int.parse(mt[2]!));
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    String p2(int n) => n.toString().padLeft(2, '0');
+    return Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+      SizedBox(
+        height: _wheelRow * _wheelVisible,
+        child: Stack(children: [
+          // 가운데 고른 줄(입력칸 색 띠)
+          Positioned(
+            left: 0,
+            right: 0,
+            top: _wheelRow * (_wheelVisible - 1) / 2,
+            height: _wheelRow,
+            child: DecoratedBox(decoration: BoxDecoration(color: AppColors.input, borderRadius: BorderRadius.circular(10))),
+          ),
+          Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+            _Wheel(count: 24, index: _h, unit: '시', onChange: (h) => setState(() => _h = h)),
+            const SizedBox(width: Space.s),
+            const Text(':', style: TextStyle(fontFamily: AppFonts.uiBold, fontSize: 20, color: AppColors.ink)),
+            const SizedBox(width: Space.s),
+            _Wheel(count: 60, index: _m, unit: '분', onChange: (m) => setState(() => _m = m)),
+          ]),
+        ]),
+      ),
+      const SizedBox(height: Space.l),
+      Btn(label: '확인', onPress: () => Navigator.pop(context, '${p2(_h)}:${p2(_m)}')),
+    ]);
+  }
+}
+
+const _wheelRow = 44.0;
+const _wheelVisible = 5;
+
+/// 돌리는 목록 하나: 가운데 줄이 고른 값. 손을 떼면 가까운 줄에 멈춘다. 화면 읽기에서는 위아래로 쓸어 한 칸씩 바꾼다
+class _Wheel extends StatefulWidget {
+  const _Wheel({required this.count, required this.index, required this.unit, required this.onChange});
+  final int count, index;
+  final String unit;
+  final ValueChanged<int> onChange;
+
+  @override
+  State<_Wheel> createState() => _WheelState();
+}
+
+class _WheelState extends State<_Wheel> {
+  late final _c = FixedExtentScrollController(initialItem: widget.index);
+  late int _cur = widget.index;
+
+  @override
+  void dispose() {
+    _c.dispose();
+    super.dispose();
+  }
+
+  void _step(int k) {
+    final i = (_cur + k).clamp(0, widget.count - 1);
+    _c.animateToItem(i, duration: const Duration(milliseconds: 200), curve: Curves.easeOutCubic);
+  }
+
+  @override
+  Widget build(BuildContext context) => Semantics(
+        slider: true,
+        label: '$_cur${widget.unit}',
+        onIncrease: () => _step(1),
+        onDecrease: () => _step(-1),
+        child: SizedBox(
+          width: 76,
+          height: _wheelRow * _wheelVisible,
+          child: ListWheelScrollView.useDelegate(
+            controller: _c,
+            itemExtent: _wheelRow,
+            diameterRatio: 100, // 평평하게(지금 앱은 그냥 목록)
+            physics: const FixedExtentScrollPhysics(),
+            onSelectedItemChanged: (i) {
+              setState(() => _cur = i);
+              widget.onChange(i);
+            },
+            childDelegate: ListWheelChildBuilderDelegate(
+              childCount: widget.count,
+              builder: (_, i) => GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onTap: () => _step(i - _cur),
+                child: Center(
+                  child: Text(
+                    i.toString().padLeft(2, '0'),
+                    style: TextStyle(fontFamily: i == _cur ? AppFonts.uiBold : AppFonts.ui, fontSize: 20, color: i == _cur ? AppColors.ink : AppColors.inkFaint, fontFeatures: const [FontFeature.tabularFigures()]),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
+}

@@ -10,6 +10,7 @@ import '../domain/color.dart';
 import '../domain/cover_url.dart';
 import '../domain/library.dart';
 import '../domain/reading.dart';
+import '../domain/session_edit.dart';
 import 'library_read.dart';
 import 'seed.dart';
 
@@ -270,6 +271,12 @@ class LibraryModel extends ChangeNotifier {
     bookmarks[id] = m.withBoard(x, y, rot, t, w: w);
     return commitLib(lib.copy(bookmarks: bookmarks));
   }
+
+  /// 독서 기록 고치기(지금 앱 updateSession): 준 필드만
+  Future<void> updateSession(String id, SessionPatch patch) => commitLib(updateSessionIn(lib, id, patch, nowIso()));
+
+  /// 독서 기록 지우기(연결된 갈피는 연결만 비운다)
+  Future<void> deleteSession(String id) => commitLib(deleteSessionIn(lib, id, nowIso()));
 
   Future<void> updateBookmark(String id, {required String text, Object? page = _keep, Object? memo = _keep, Object? photoUri = _keep, Object? photoRatio = _keep}) {
     final m = lib.bookmarks[id];

@@ -285,6 +285,24 @@ class Bookmark {
         boardW: boardW,
       );
 
+  /// 독서 기록 연결만 비운 사본(그 기록을 지웠을 때)
+  Bookmark withoutSession(String updated) => Bookmark(
+        id: id,
+        myBookId: myBookId,
+        text: text,
+        createdAt: createdAt,
+        updatedAt: updated,
+        page: page,
+        memo: memo,
+        photoUri: photoUri,
+        photoRatio: photoRatio,
+        savedAt: savedAt,
+        boardX: boardX,
+        boardY: boardY,
+        boardRot: boardRot,
+        boardW: boardW,
+      );
+
   /// 보드 자리를 바꾼 사본(폭은 주지 않으면 그대로)
   Bookmark withBoard(num x, num y, num rot, String updated, {num? w}) => Bookmark(
         id: id,

@@ -9,6 +9,7 @@ import '../../domain/library.dart' as lib_d show today;
 import '../../store/library_model.dart';
 import '../../ui/kit.dart';
 import '../../ui/theme.dart';
+import 'session_edit_screen.dart' show openSessionEdit;
 import 'chart_data.dart';
 import 'stats_widgets.dart';
 
@@ -195,6 +196,7 @@ class _StatsScreenState extends State<StatsScreen> {
               for (final s in selSessions)
                 row(
                   id: s.myBookId,
+                  onPress: () => openSessionEdit(context, s.id),
                   label: '${title(s.myBookId) ?? '책 없음'}, ${timeRange(s.startedAt, s.endedAt)}, ${_shortMs(s.durationMs)}',
                   middle: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                     Text(title(s.myBookId) ?? '책 없음', maxLines: 1, overflow: TextOverflow.ellipsis, style: AppType.rowStrong),
