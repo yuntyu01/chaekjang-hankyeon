@@ -271,6 +271,25 @@ class Bookmark {
         boardW: boardW,
       );
 
+  /// 보드 자리를 바꾼 사본(폭은 주지 않으면 그대로)
+  Bookmark withBoard(num x, num y, num rot, String updated, {num? w}) => Bookmark(
+        id: id,
+        myBookId: myBookId,
+        text: text,
+        createdAt: createdAt,
+        updatedAt: updated,
+        page: page,
+        memo: memo,
+        photoUri: photoUri,
+        photoRatio: photoRatio,
+        sessionId: sessionId,
+        savedAt: savedAt,
+        boardX: x,
+        boardY: y,
+        boardRot: rot,
+        boardW: w ?? boardW,
+      );
+
   /// 아껴둔 때를 바꾼 사본(null이면 아껴둔 표시를 뺀다)
   Bookmark withSaved(String? at, String updated) => Bookmark(
         id: id,

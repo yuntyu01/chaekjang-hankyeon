@@ -13,9 +13,18 @@ class AppNav extends ChangeNotifier {
   /// 읽기 탭에 넘겨준 책(읽기 탭이 읽고 비운다)
   String? readBook;
 
+  /// 갈피 탭에 넘겨준 책 거르기(갈피 탭이 읽고 비운다)
+  String? bookmarkBook;
+
   void goTab(int i) {
     tab = i;
     notifyListeners();
+  }
+
+  /// 갈피 탭으로 가서 그 책 갈피만(지금 앱 보드 '목록 보기': dismissTo('/bookmarks', {book}))
+  void goBookmarks(String bookId) {
+    bookmarkBook = bookId;
+    goTab(1);
   }
 
   /// 읽기 탭으로 가서 그 책을 맨 앞에(시작은 재생을 눌러서)

@@ -29,6 +29,7 @@ import '../../store/library_store.dart' show archivedYears;
 import '../../store/placement_store.dart';
 import '../home/home_screen.dart' show focusBookOnShelf;
 import 'all_books.dart' show deleteNote, deleteSummary;
+import '../bookmark/board_screen.dart' show openBookmarkBoard;
 import 'binding_screen.dart' show openBindingEditor;
 import 'edit_book_screen.dart' show openEditBook;
 import 'place_books.dart' show placeWithChoice;
@@ -428,7 +429,7 @@ class _BookScreenState extends State<BookScreen> {
                   ),
                 ),
             ]),
-            Padding(padding: const EdgeInsets.only(top: Space.m), child: Btn(label: '갈피 보드로 보기', kind: 'secondary', onPress: () => _pending(context, '갈피 보드'))),
+            Padding(padding: const EdgeInsets.only(top: Space.m), child: Btn(label: '갈피 보드로 보기', kind: 'secondary', onPress: () => openBookmarkBoard(context, id))),
           ] else
             Empty(title: '아직 남긴 갈피가 없어요', action: '첫 갈피 남기기', actionKind: 'secondary', onAction: () => openNewBookmark(context, book: widget.id)),
         ]);

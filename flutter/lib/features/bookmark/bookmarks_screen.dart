@@ -6,6 +6,7 @@ import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 
+import '../../app/app_nav.dart';
 import '../../domain/library.dart';
 import '../../store/library_model.dart';
 import '../../store/mini_timer_store.dart';
@@ -14,6 +15,7 @@ import '../../ui/kit.dart';
 import '../../ui/theme.dart';
 import '../book/labels.dart';
 import '../stats/stats_widgets.dart';
+import 'board_screen.dart' show openBookmarkBoard;
 import 'bookmark_card.dart';
 import 'bookmark_detail_screen.dart';
 import 'bookmark_empty.dart';
@@ -23,11 +25,6 @@ enum _Kind { all, text, photo }
 
 const _kindLabel = {_Kind.all: '모든 유형', _Kind.text: '문장 갈피', _Kind.photo: '사진 갈피'};
 const _views = [(id: 'all', label: '전체 갈피'), (id: 'saved', label: '아껴둔')];
-
-/// 아직 옮기지 않은 화면(갈피 남기기·갈피 보기·보드)
-Future<void> _pending(BuildContext context, String title) => Navigator.of(context).push(MaterialPageRoute<void>(
-      builder: (_) => Screen(title: title, children: const [Empty(title: '준비 중이에요', body: '이 화면은 다음 단계에서 옮겨요.')]),
-    ));
 
 class BookmarksScreen extends StatefulWidget {
   const BookmarksScreen({super.key, this.initialBook});
@@ -48,7 +45,9 @@ class _BookmarksScreenState extends State<BookmarksScreen> {
   @override
   void initState() {
     super.initState();
-    _book = widget.initialBook;
+    _book = AppNav.instance.bookmarkBook ?? widget.initialBook;
+    AppNav.instance.bookmarkBook = null;
+    AppNav.instance.addListener(_nav);
     _model.addListener(_changed);
     ReadingStore.instance.addListener(_changed);
     _model.load();
@@ -58,7 +57,16 @@ class _BookmarksScreenState extends State<BookmarksScreen> {
   void dispose() {
     _model.removeListener(_changed);
     ReadingStore.instance.removeListener(_changed);
+    AppNav.instance.removeListener(_nav);
     super.dispose();
+  }
+
+  // 보드 '목록 보기': 그 책 갈피만 보이게
+  void _nav() {
+    final book = AppNav.instance.bookmarkBook;
+    if (book == null || !mounted) return;
+    AppNav.instance.bookmarkBook = null;
+    setState(() => _book = book);
   }
 
   void _changed() {
@@ -173,7 +181,7 @@ class _BookmarksScreenState extends State<BookmarksScreen> {
                 onPress: () {
                   Navigator.pop(ctx);
                   if (board) {
-                    _pending(context, '갈피 보드');
+                    openBookmarkBoard(context, x.id);
                   } else {
                     setState(() => _book = x.id);
                   }
@@ -188,7 +196,7 @@ class _BookmarksScreenState extends State<BookmarksScreen> {
   void _openBoard(List<({String id, int count, String title})> books) {
     final only = _book ?? (books.length == 1 ? books.first.id : null);
     if (only != null) {
-      _pending(context, '갈피 보드');
+      openBookmarkBoard(context, only);
     } else {
       _openBooks(board: true);
     }

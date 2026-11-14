@@ -255,6 +255,22 @@ class LibraryModel extends ChangeNotifier {
   }
 
   /// 갈피 고치기
+  /// 보드에서 갈피 한 장을 옮기거나 폭을 바꿨다(지금 앱 updateBoard). 아직 자동 자리인 다른 갈피는 지금 자리를 함께 적어 둔다
+  /// (그 갈피들이 이 갈피의 칸을 이어받아 밀려 오지 않게). 함께 적는 갈피는 1ms 앞선 때로 적어 '나중에 만진 갈피가 위' 순서를 지킨다
+  Future<void> updateBoard(List<({String id, double x, double y, double rot})> spots, String id, {required double x, required double y, required double rot, double? w}) {
+    final m = lib.bookmarks[id];
+    if (m == null) return Future.value();
+    final t = nowIso();
+    final before = DateTime.parse(t).subtract(const Duration(milliseconds: 1)).toUtc().toIso8601String();
+    final bookmarks = {...lib.bookmarks};
+    for (final s in spots) {
+      final o = bookmarks[s.id];
+      if (o != null && s.id != id && o.boardX == null) bookmarks[s.id] = o.withBoard(s.x, s.y, s.rot, before);
+    }
+    bookmarks[id] = m.withBoard(x, y, rot, t, w: w);
+    return commitLib(lib.copy(bookmarks: bookmarks));
+  }
+
   Future<void> updateBookmark(String id, {required String text, Object? page = _keep, Object? memo = _keep, Object? photoUri = _keep, Object? photoRatio = _keep}) {
     final m = lib.bookmarks[id];
     if (m == null) return Future.value();
