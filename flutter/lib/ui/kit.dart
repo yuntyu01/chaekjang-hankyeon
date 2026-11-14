@@ -97,6 +97,8 @@ class Screen extends StatelessWidget {
     this.bottomPad = 0,
     this.footer,
     this.compact = false,
+    this.left,
+    this.headerField,
   });
   final List<Widget> children;
   final String? title;
@@ -109,10 +111,16 @@ class Screen extends StatelessWidget {
   final Widget? footer;
   final bool compact;
 
+  /// 뒤로 대신 왼쪽에 둘 것(예: 고르는 중 '취소')
+  final Widget? left;
+
+  /// 검색이 주인공인 화면: 제목 대신 뒤로 옆에 검색창
+  final Widget? headerField;
+
   @override
   Widget build(BuildContext context) {
     final insets = MediaQuery.paddingOf(context);
-    final large = back && !compact && title != null;
+    final large = back && !compact && headerField == null && title != null;
     Widget tabHead() => Padding(
           padding: const EdgeInsets.fromLTRB(TabHeader.paddingH, TabHeader.paddingTop, TabHeader.paddingH, TabHeader.paddingBottom),
           child: ConstrainedBox(
@@ -209,7 +217,7 @@ class Screen extends StatelessWidget {
                 height: 60,
                 child: Stack(
                   children: [
-                    if (!large && title != null)
+                    if (!large && title != null && headerField == null)
                       Positioned(
                         left: 64,
                         right: 64,
@@ -217,22 +225,27 @@ class Screen extends StatelessWidget {
                         bottom: 0,
                         child: Center(child: Text(title!, style: AppType.navTitle, maxLines: 1, overflow: TextOverflow.ellipsis)),
                       ),
-                    Positioned(
-                      left: 8,
+                    Positioned.fill(
                       top: 4,
-                      bottom: 0,
-                      child: Center(
-                        child: Semantics(
-                          button: true,
-                          label: '뒤로',
-                          child: Pressable(
-                            onPress: () => Navigator.maybePop(context),
-                            child: const SizedBox(width: Space.touch, height: Space.touch, child: Center(child: LucideIcon('ChevronLeft', size: 28))),
+                      child: Row(children: [
+                        if (left != null)
+                          Padding(padding: const EdgeInsets.only(left: Space.page), child: left)
+                        else
+                          Padding(
+                            padding: const EdgeInsets.only(left: 8),
+                            child: Semantics(
+                              button: true,
+                              label: '뒤로',
+                              child: Pressable(
+                                onPress: () => Navigator.maybePop(context),
+                                child: const SizedBox(width: Space.touch, height: Space.touch, child: Center(child: LucideIcon('ChevronLeft', size: 28))),
+                              ),
+                            ),
                           ),
-                        ),
-                      ),
+                        if (headerField != null) Expanded(child: Padding(padding: const EdgeInsets.only(left: 2, right: Space.s), child: headerField)) else const Spacer(),
+                        if (right != null) Padding(padding: const EdgeInsets.only(right: 10), child: right) else if (headerField != null) const SizedBox(width: Space.page),
+                      ]),
                     ),
-                    if (right != null) Positioned(right: 10, top: 4, bottom: 0, child: Center(child: right)),
                   ],
                 ),
               )

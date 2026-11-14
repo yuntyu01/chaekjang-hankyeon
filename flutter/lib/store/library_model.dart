@@ -127,6 +127,50 @@ class LibraryModel extends ChangeNotifier {
     return commitLib(lib.copy(bookmarks: {...lib.bookmarks}..remove(id)));
   }
 
+  // ---------- 책 지우기·숨기기(지금 앱 library-store deleteBook·unhideBook·hiddenBooks) ----------
+
+  /// 숨긴 책(연도 책장에 있어 지우는 대신 숨긴 책), 숨긴 순서
+  List<MyBook> get hiddenBooks => [for (final b in lib.books.values) if (b.hiddenAt != null) b]..sort((a, b) => a.hiddenAt!.compareTo(b.hiddenAt!));
+
+  /// 책 지우기. 연도 책장(archived)에 있는 책은 지우지 않고 숨긴다(장정·회차·갈피·독서 기록 연결이 그대로 남는다).
+  /// 지우면 장정·회차·갈피도 지우고, 독서 기록은 책 연결만 비워 통계에 남긴다. 같은 판본을 쓰는 책이 없으면 판본도 지운다
+  Future<void> deleteBook(String id, {required bool archived}) {
+    final b = lib.books[id];
+    if (b == null) return Future.value();
+    final t = nowIso();
+    if (archived) return commitLib(lib.copy(books: {...lib.books, id: b.patch(hiddenAt: t, updatedAt: t)}));
+    final books = {...lib.books}..remove(id);
+    final editions = {...lib.editions};
+    if (!books.values.any((o) => o.editionId == b.editionId)) editions.remove(b.editionId);
+    final rounds = {...lib.rounds}..removeWhere((_, r) => r.myBookId == id);
+    final bookmarks = {...lib.bookmarks}..removeWhere((_, m) => m.myBookId == id);
+    final bindings = {...lib.bindings}..removeWhere((_, x) => x.myBookId == id);
+    final sessions = {
+      for (final e in lib.sessions.entries)
+        e.key: e.value.myBookId != id
+            ? e.value
+            : Session(
+                id: e.value.id,
+                startedAt: e.value.startedAt,
+                endedAt: e.value.endedAt,
+                durationMs: e.value.durationMs,
+                createdAt: e.value.createdAt,
+                updatedAt: t,
+                startPage: e.value.startPage,
+                pagesRead: e.value.pagesRead,
+                memo: e.value.memo,
+              ),
+    };
+    return commitLib(Library(editions: editions, books: books, rounds: rounds, sessions: sessions, bookmarks: bookmarks, bindings: bindings));
+  }
+
+  /// 숨긴 책을 다시 보이게(숨긴 때만 지운다). 책장 자리는 부르는 쪽이 '책장에 없는 책'으로 넣는다
+  Future<void> unhideBook(String id) {
+    final b = lib.books[id];
+    if (b == null || b.hiddenAt == null) return Future.value();
+    return commitLib(lib.copy(books: {...lib.books, id: b.patch(hiddenAt: null, updatedAt: nowIso())}));
+  }
+
   /// 갈피 아껴두기 켜고 끄기
   Future<void> toggleSaved(String id) {
     final m = lib.bookmarks[id];

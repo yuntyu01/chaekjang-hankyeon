@@ -14,6 +14,7 @@ import '../../services/cover_colors.dart';
 import '../../ui/kit.dart' show Btn, showSheet;
 import 'locked_rows.dart';
 import 'book_sheet.dart';
+import '../book/all_books_screen.dart' show openAllBooks;
 import 'decorate_panel.dart';
 import '../../app/app_shell.dart' show tabBarHidden;
 import '../../domain/geometry.dart' show maxFrontSpin, maxSpin;
@@ -297,7 +298,7 @@ class _HomeScreenState extends State<HomeScreen> {
     if (_drag == null) return;
     final r = _dropAt(_dragNow);
     setState(() => _drag = null);
-    _apply(r, '배치를 바꿨어요');
+    _apply(r); // 성공은 알리지 않는다(바뀐 책장이 보이고, 바로 위에 되돌리기)
   }
 
   Future<void> _undo() async {
@@ -592,10 +593,9 @@ class _HomeScreenState extends State<HomeScreen> {
         size: 'l',
         onPress: () async {
           Navigator.pop(ctx);
-          final ok = await addShelf();
+          final ok = await PlacementStore.instance.addShelf();
           if (!mounted) return;
           ScaffoldMessenger.maybeOf(context)?.showSnackBar(SnackBar(content: Text(ok ? '선반을 열었어요.' : '지금은 바꿀 수 없어요.'), duration: const Duration(seconds: 2)));
-          if (ok) _refresh();
         },
       ),
     ),
@@ -1005,7 +1005,9 @@ class _Header extends StatelessWidget {
       child: _Pressable(
         onTap: name == 'decorate' && onDecorate != null
             ? onDecorate!
-            : () => ScaffoldMessenger.maybeOf(context)?.showSnackBar(SnackBar(content: Text('$label: 아직 옮기는 중이에요'), duration: const Duration(seconds: 1))),
+            : name == 'books'
+                ? () => openAllBooks(context)
+                : () => ScaffoldMessenger.maybeOf(context)?.showSnackBar(SnackBar(content: Text('$label: 아직 옮기는 중이에요'), duration: const Duration(seconds: 1))),
         child: SizedBox(
           width: _headerCell,
           height: 44,

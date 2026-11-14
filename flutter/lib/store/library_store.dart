@@ -95,21 +95,25 @@ Future<Library> loadLibrary() async {
 }
 
 
-/// 선반 한 칸 더 열기(지금 앱 placementStore.addShelf): 맨 끝에 빈 선반을 붙이고 책장 배치를 올릴 변경으로 표시한다
-Future<bool> addShelf() async {
+/// 연도 책장(지난해 책장)에 자리가 있는 책: 지우지 않고 숨긴다
+Future<Set<String>> archivedBookIds() async {
   final db = await openLibrary();
-  try {
-    await db.transaction((t) async {
-      final n = (await t.rawQuery('SELECT COUNT(*) AS n FROM shelves')).first['n']! as int;
-      await t.insert('shelves', {'id': 'shelf-${DateTime.now().millisecondsSinceEpoch.toRadixString(36)}', 'position': n});
-      await t.rawUpdate('UPDATE sync_meta SET revision=revision+1 WHERE id=1');
-      final rev = (await t.rawQuery('SELECT revision FROM sync_meta WHERE id=1')).first['revision'];
-      await t.rawUpdate('UPDATE sync_meta SET layout_at=?, layout_dirty=1, layout_revision=? WHERE id=1', [DateTime.now().toUtc().toIso8601String(), rev]);
-    });
-    return true;
-  } catch (_) {
-    return false;
+  final rows = await db.rawQuery('SELECT DISTINCT book_id FROM bookcase_placements');
+  return {for (final r in rows) r['book_id']! as String};
+}
+
+/// 그 책이 남아 있는 연도 책장의 해(오래된 순)
+Future<Map<String, List<int>>> archivedYears(Iterable<String> ids) async {
+  final want = ids.toSet();
+  if (want.isEmpty) return {};
+  final db = await openLibrary();
+  final rows = await db.rawQuery('SELECT DISTINCT p.book_id, c.year FROM bookcase_placements p JOIN bookcases c ON c.id = p.bookcase_id ORDER BY c.year');
+  final out = <String, List<int>>{};
+  for (final r in rows) {
+    final id = r['book_id']! as String;
+    if (want.contains(id)) (out[id] ??= []).add((r['year']! as num).toInt());
   }
+  return out;
 }
 
 // ---------- 책장 배치 읽기·쓰기(지금 앱 local-db loadLayoutRows·saveLayout) ----------

@@ -3,10 +3,14 @@
 // 되돌리기는 바로 앞 한 번. 배치는 홈이 책장을 그리려고 읽은 서재를 그대로 받는다(adopt: 따로 DB를 다시 읽지 않는다)
 library;
 
+import 'dart:convert';
+
 import 'package:flutter/foundation.dart';
 
 import '../domain/layout.dart';
 import '../domain/layout_engine.dart';
+import '../domain/placed.dart' show jsRound;
+import '../domain/types.dart' show BookPlacement;
 import '../domain/shelf_scene.dart';
 import '../services/cover_colors.dart' show shelfRefresh;
 import 'library_store.dart';
@@ -26,6 +30,9 @@ class PlacementStore {
     books = {for (final b in lib.books) b.id: b};
     layout = lib.layout;
   }
+
+  /// 서재를 다시 읽는다(숨긴 책을 되돌린 뒤처럼 책 목록이 바뀌었을 때)
+  Future<void> reload() async => adopt(await loadLibrary());
 
   /// 아직 받은 게 없을 때만 읽는다
   Future<void> ensure() async {
@@ -59,6 +66,65 @@ class PlacementStore {
     _undo = cur;
     await _write(next);
     return true;
+  }
+
+  // ---------- 책장에 놓기·빼기(지금 앱 placement-store addToShelf·fromDrawer·addToDrawer·toDrawer·addShelf) ----------
+
+  /// 책장에 놓기는 다른 책을 건드리지 않는다(2026-10-31 지시): 선반마다 맨 끝 후보를 기대기까지 풀어 보고,
+  /// 다른 책의 선반·자세·자리·깊이·쌓기·기대기가 모두 그대로인 첫 후보만 쓴다
+  static double? _r2(double? v) => v == null ? null : jsRound(v * 100) / 100;
+  static String _spot(BookPlacement p) =>
+      jsonEncode([p.shelfId, p.pose.index, p.tilt, _r2(p.pos), _r2(p.depth), _r2(p.spin), _r2(p.pitch), p.stackId, p.stackOrder, _r2(p.leanAngle), p.leanOn]);
+
+  bool _undisturbed(ShelfLayout next) {
+    final after = {for (final p in resolveLeans(ensureShelves(next), books).placements) p.bookId: p};
+    return layout!.placements.every((p) {
+      final q = after[p.bookId];
+      return q != null && _spot(q) == _spot(p);
+    });
+  }
+
+  /// 책장에 놓기(서랍에 있든 처음이든). 놓았으면 true, 자리가 없으면 false
+  Future<bool> placeOnShelf(String bookId) async {
+    final l = layout;
+    if (l == null || placementOf(l, bookId) != null) return l != null;
+    for (final next in firstFitCandidates(l, books, bookId)) {
+      if (_undisturbed(next)) return commit(next);
+    }
+    return false;
+  }
+
+  /// 책장에 없는 책으로 둔다(이미 어디든 있으면 그대로)
+  Future<bool> addToDrawer(String bookId) async {
+    final l = layout;
+    if (l == null) return false;
+    if (l.drawer.contains(bookId) || placementOf(l, bookId) != null) return true;
+    return commit(normalize(ShelfLayout(l.shelves, l.placements, [bookId, ...l.drawer])));
+  }
+
+  /// 책장에서 빼기(책은 전체 책에 남는다)
+  Future<bool> toDrawer(String bookId) async {
+    final l = layout;
+    final r = l == null ? null : moveToDrawer(l, bookId, books);
+    return r != null && r.ok && await commit(r.layout!);
+  }
+
+  /// 선반 한 칸 더 열기(맨 끝에 빈 선반)
+  Future<bool> addShelf() async {
+    final l = layout;
+    return l != null && await commit(addShelfTo(l, 'shelf-${DateTime.now().millisecondsSinceEpoch.toRadixString(36)}'));
+  }
+
+  /// 지우거나 숨긴 책을 배치에서 뺀다(지금 앱 syncBooks: 서재에 없는 책은 배치에서 빠진다)
+  Future<void> forget(Iterable<String> ids) async {
+    final l = layout;
+    final gone = ids.toSet();
+    if (l == null || gone.isEmpty) return;
+    books = {for (final e in books.entries) if (!gone.contains(e.key)) e.key: e.value};
+    final next = resolveLeans(
+        normalize(ShelfLayout(l.shelves, [for (final p in l.placements) if (!gone.contains(p.bookId)) p], [for (final id in l.drawer) if (!gone.contains(id)) id])), books);
+    _undo = null;
+    await _write(next);
   }
 
   Future<bool> undo() async {
