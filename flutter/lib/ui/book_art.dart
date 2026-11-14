@@ -10,10 +10,13 @@ import 'dart:ui' as ui;
 import '../domain/book3.dart';
 import '../domain/book_look.dart';
 import '../domain/camera.dart';
+import '../domain/color.dart' show modernInk;
+import '../domain/cover_artworks.dart';
 import '../domain/geometry.dart';
 import '../domain/shelf_geom.dart';
 import '../domain/title_layout.dart';
 import '../domain/vec3.dart';
+import 'artwork_images.dart';
 import 'cover_photo.dart';
 import 'glyph_metrics.dart';
 import 'outline.dart';
@@ -117,8 +120,15 @@ void drawBookArt(ui.Canvas canvas, Book3 b, BookLook look, GlyphMetrics glyphs, 
     // 면 그림 좌표: (0, 0) = 그림 왼쪽 위, (w, h) = 오른쪽 아래(DU)
     canvas.transform(toM44(m));
     canvas.scale(1 / pn.w, 1 / pn.h);
-    // 표지 사진이 있으면 앞표지는 사진만(제목은 사진 안에 있다)
-    if (f == FaceId.cover && photo != null) {
+    // 기본 정면 장정 그림: 늘이지 않고 면을 채우고(위아래가 잘리면 위에서 focusY만큼), 제목은 그림마다 정한 색으로 위 여백에(지금 앱 CoverFaceArt)
+    final art = f == FaceId.cover && look.artwork != null ? artworkImage(look.artwork!) : null;
+    if (art != null) {
+      final r = focusedRect(art.width.toDouble(), art.height.toDouble(), pn.w, pn.h, artworkFocusY);
+      canvas.drawImageRect(art, ui.Rect.fromLTWH(0, 0, art.width.toDouble(), art.height.toDouble()), ui.Rect.fromLTWH(r.x, r.y, r.width, r.height),
+          ui.Paint()..filterQuality = ui.FilterQuality.medium);
+      if (look.title.isNotEmpty) _coverTitle(canvas, look, b.dims, glyphs, ink: modernInk(artworkInk[coverArtwork(look.artwork)!.ink]!));
+    } else if (f == FaceId.cover && photo != null) {
+      // 표지 사진이 있으면 앞표지는 사진만(제목은 사진 안에 있다)
       drawPhotoCover(canvas, photo, pn.w, pn.h);
     } else if (look.title.isNotEmpty) {
       if (f == FaceId.spine) {
@@ -225,14 +235,14 @@ void _lyingTitle(ui.Canvas canvas, BookLook look, Dims d, GlyphMetrics g, double
 }
 
 /// 앞표지 제목: 표지 위에서 11%(벡터 장정), 제본 홈을 뺀 면의 가운데에 고르게 나눈 줄로
-void _coverTitle(ui.Canvas canvas, BookLook look, Dims d, GlyphMetrics g) {
+void _coverTitle(ui.Canvas canvas, BookLook look, Dims d, GlyphMetrics g, {String? ink}) {
   final cw = d.w, h = d.h;
   final ct = coverTitleLayout(look.title, d.w, d.h);
   final cfs = ct.fontSize;
   final lh = cfs * coverLineH;
   final top = math.max(0.08, 0.11) * h;
   final cx0 = (cw + grooveAt) / 2;
-  final ink = _color(look.ink);
+  final color = _color(ink ?? look.ink);
   for (var i = 0; i < ct.lines.length; i++) {
     final chars = [for (final r in ct.lines[i].runes) r];
     final ws = [
@@ -245,7 +255,7 @@ void _coverTitle(ui.Canvas canvas, BookLook look, Dims d, GlyphMetrics g) {
     var x = cx0 - total / 2;
     final base = top + i * lh + lh / 2 - (g.ascent(cfs) + g.descent(cfs)) / 2;
     for (var j = 0; j < chars.length; j++) {
-      if (chars[j] != 0x20) _glyph(canvas, String.fromCharCode(chars[j]), x, base, cfs, ink);
+      if (chars[j] != 0x20) _glyph(canvas, String.fromCharCode(chars[j]), x, base, cfs, color);
       x += ws[j] + cfs * coverTrack;
     }
   }

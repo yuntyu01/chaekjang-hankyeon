@@ -29,6 +29,7 @@ import '../../store/library_store.dart' show archivedYears;
 import '../../store/placement_store.dart';
 import '../home/home_screen.dart' show focusBookOnShelf;
 import 'all_books.dart' show deleteNote, deleteSummary;
+import 'binding_screen.dart' show openBindingEditor;
 import 'edit_book_screen.dart' show openEditBook;
 import 'place_books.dart' show placeWithChoice;
 
@@ -130,7 +131,7 @@ class _BookScreenState extends State<BookScreen> {
         }),
         ListItem(label: '장정 편집', onPress: () {
           Navigator.pop(ctx);
-          _pending(context, '장정 편집');
+          openBindingEditor(context, id);
         }),
         if (onShelf)
           ListItem(label: '책장 위치로 이동', onPress: () {

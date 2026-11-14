@@ -129,7 +129,7 @@ class MyBook {
   final String? note, ribbonColor, bindingId, hiddenAt;
 
   /// 고친 사본: 별점·감상·현재 쪽·갈피 색은 null을 주면 비운다(주지 않으면 그대로)
-  MyBook patch({ReadStatus? status, Object? rating = _keep, Object? note = _keep, Object? currentPage = _keep, Object? ribbonColor = _keep, Object? hiddenAt = _keep, required String updatedAt}) => MyBook(
+  MyBook patch({ReadStatus? status, Object? rating = _keep, Object? note = _keep, Object? currentPage = _keep, Object? ribbonColor = _keep, Object? hiddenAt = _keep, String? bindingId, required String updatedAt}) => MyBook(
         id: id,
         editionId: editionId,
         status: status ?? this.status,
@@ -139,7 +139,7 @@ class MyBook {
         note: identical(note, _keep) ? this.note : note as String?,
         ribbonColor: identical(ribbonColor, _keep) ? this.ribbonColor : ribbonColor as String?,
         currentPage: identical(currentPage, _keep) ? this.currentPage : currentPage as num?,
-        bindingId: bindingId,
+        bindingId: bindingId ?? this.bindingId,
         hiddenAt: identical(hiddenAt, _keep) ? this.hiddenAt : hiddenAt as String?,
       );
 

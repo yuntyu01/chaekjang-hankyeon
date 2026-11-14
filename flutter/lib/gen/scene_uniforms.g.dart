@@ -38,6 +38,9 @@ class BookSurface {
 // 스킨마다 다른 값(지금 스킨 scene_config/skin.dart skinLight에서 읽는다. 표는 skin_lights.g.dart)
 BookSurface get bookFine => skinLight.bookFine;
 
+/// 장정 재질의 책 표면(없거나 모르는 재질이면 고운 종이)
+BookSurface bookSurfaceOf(String? material) => skinLight.books[material ?? 'fine'] ?? skinLight.bookFine;
+
 /// 갈피 탭 종이(무광 종이): 대표 자리 빛 · 반사광 · 표면
 ({C3 eref, C3 sref, Mat mat}) get tabPaper => skinLight.tabPaper;
 

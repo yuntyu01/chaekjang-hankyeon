@@ -31,7 +31,7 @@ class PlacementStore {
     layout = lib.layout;
   }
 
-  /// 서재를 다시 읽는다(숨긴 책을 되돌린 뒤처럼 책 목록이 바뀌었을 때).
+  /// 서재를 다시 읽는다(숨긴 책을 되돌린 뒤·책 정보나 장정을 고친 뒤처럼 책이 바뀌었을 때). 홈 책장도 다시 그린다.
   /// 책 크기(판형·쪽수)가 바뀐 책이 선반에 있으면 그 틈을 지키며 새 크기로 맞추고, 안 들어가면 끝 책을 책장에서 뺀다(지금 앱 syncBooks). 뺀 책 수
   Future<int> reload() async {
     final before = books, l = layout;
@@ -41,7 +41,10 @@ class PlacementStore {
       final a = before[p.bookId]?.dims, b = books[p.bookId]?.dims;
       return a != null && b != null && (a.height != b.height || a.thickness != b.thickness || a.coverWidth != b.coverWidth);
     });
-    if (!resized) return 0;
+    if (!resized) {
+      shelfRefresh.value++;
+      return 0;
+    }
     final fit = fitToShelf(keepGaps(l, before, books), books);
     final next = resolveLeans(fit.layout, books);
     _undo = null;

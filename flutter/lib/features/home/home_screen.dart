@@ -39,6 +39,7 @@ import '../../services/cover_cache.dart';
 import '../../store/files.dart' show imageDir;
 import '../../store/library_store.dart';
 import '../../store/seed.dart';
+import '../../ui/artwork_images.dart' show loadArtworkImages;
 import '../../ui/bake.dart';
 import '../../ui/bake_cache.dart';
 import '../../ui/book_key.dart';
@@ -1491,6 +1492,10 @@ class ShelfPainter extends CustomPainter {
   static ShaderSlots? _tab;
   static GlyphMetrics? _glyphs;
 
+  /// 책 셰이더·제목 글꼴(선반 밖에서 한 권만 그릴 때도 쓴다)
+  static ShaderSlots? get bookSlots => _book;
+  static GlyphMetrics? get glyphs => _glyphs;
+
   /// 그리기 셰이더가 다 올라왔는지(그림으로 굳히기 전에 본다)
   static bool get ready => _lit != null && _book != null && _tab != null && _glyphs != null;
 
@@ -1500,6 +1505,8 @@ class ShelfPainter extends CustomPainter {
     _book ??= ShaderSlots(await ui.FragmentProgram.fromAsset('shaders/book.frag'), bookUniformNames);
     _tab ??= ShaderSlots(await ui.FragmentProgram.fromAsset('shaders/tab.frag'), tabUniformNames);
     _glyphs ??= await GlyphMetrics.load(titleFontAsset);
+    // 기본 정면 장정 그림(고른 책의 앞표지)
+    await loadArtworkImages();
   }
 
   @override

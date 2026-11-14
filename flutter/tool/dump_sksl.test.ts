@@ -338,6 +338,9 @@ class BookSurface {
 // 스킨마다 다른 값(지금 스킨 scene_config/skin.dart skinLight에서 읽는다. 표는 skin_lights.g.dart)
 BookSurface get bookFine => skinLight.bookFine;
 
+/// 장정 재질의 책 표면(없거나 모르는 재질이면 고운 종이)
+BookSurface bookSurfaceOf(String? material) => skinLight.books[material ?? 'fine'] ?? skinLight.bookFine;
+
 /// 갈피 탭 종이(무광 종이): 대표 자리 빛 · 반사광 · 표면
 ({C3 eref, C3 sref, Mat mat}) get tabPaper => skinLight.tabPaper;
 
@@ -366,6 +369,7 @@ Surface get frameSurface => skinLight.frame;
     bookErefOf: {${ms.map((m) => `'${m}': ${c3(bookEref(m))}`).join(', ')}},
     bookSrefOf: {${ms.map((m) => `'${m}': ${c3(bookSref(m))}`).join(', ')}},
     bookFine: BookSurface(${c3(bookEref('fine'))}, ${c3(bookSref('fine'))}, ${SPEC_K.fine}, ${matOf('fine')}, ${matOf('pages')}, ${c3(SREF.paper)}),
+    books: {${ms.map((m) => `'${m}': BookSurface(${c3(bookEref(m))}, ${c3(bookSref(m))}, ${SPEC_K[m]}, ${matOf(m)}, ${matOf('pages')}, ${c3(SREF.paper)})`).join(', ')}},
     tabPaper: (eref: ${c3(bookEref('paper'))}, sref: ${c3(bookSref('paper'))}, mat: ${matOf('paper')}),
     wall: ${surf('wall')},
     plank: ${surf('plank')},
@@ -384,7 +388,7 @@ import '../domain/vec3.dart';
 import 'scene_uniforms.g.dart';
 
 class SkinLight {
-  const SkinLight({required this.u, required this.camGain, required this.erefWall, required this.bookErefOf, required this.bookSrefOf, required this.bookFine, required this.tabPaper, required this.wall, required this.plank, required this.frame});
+  const SkinLight({required this.u, required this.camGain, required this.erefWall, required this.bookErefOf, required this.bookSrefOf, required this.bookFine, required this.books, required this.tabPaper, required this.wall, required this.plank, required this.frame});
 
   /// 셰이더 맞추기 값(light-model lightSet().u)
   final Map<String, C3> u;
@@ -393,6 +397,9 @@ class SkinLight {
   final Map<String, C3> bookErefOf;
   final Map<String, C3> bookSrefOf;
   final BookSurface bookFine;
+
+  /// 장정 재질마다(고운 종이·린넨·무광·줄무늬 종이) 책 표면(지금 앱 BookLight material)
+  final Map<String, BookSurface> books;
   final ({C3 eref, C3 sref, Mat mat}) tabPaper;
   final Surface wall;
   final Surface plank;

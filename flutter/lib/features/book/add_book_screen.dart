@@ -22,6 +22,7 @@ import '../../ui/kit.dart';
 import '../../ui/theme.dart';
 import '../bookmark/book_picker.dart' show statusLabel;
 import 'all_books_screen.dart' show openAllBooks;
+import 'binding_editor.dart';
 import 'book_screen.dart' show BookScreen;
 import 'place_books.dart';
 
@@ -54,7 +55,10 @@ class AddBookScreen extends StatefulWidget {
 }
 
 class _AddBookScreenState extends State<AddBookScreen> {
-  late String _step = widget.title != null ? 'confirm' : 'find'; // find · confirm
+  late String _step = widget.title != null ? 'confirm' : 'find'; // find · confirm · binding
+  // 장정 직접 고르기: 추천 장정 계산값과 고르는 장정
+  BookArtParams? _art;
+  BindingDraft? _binding;
   late _Draft _draft = _Draft('manual')..title = widget.title ?? '';
   String? _notice;
   bool _saving = false, _more = false;
@@ -142,9 +146,11 @@ class _AddBookScreenState extends State<AddBookScreen> {
 
   /// 등록 완료: shelf(기본)는 바로 책장에 놓고, keep은 책장에 없는 책으로 보관만 한다
   Future<void> _add({bool keep = false}) async {
+    if (_saving) return;
     setState(() => _saving = true);
     try {
-      final art = await _prepareArt();
+      final picked = _step == 'binding' ? _binding : null;
+      final art = picked != null && _art != null ? _art! : await _prepareArt();
       final d = _draft;
       var coverUri = d.coverUri;
       if (coverUri != null && d.coverSource == 'photo') coverUri = await keepImage(coverUri, 'cover');
@@ -168,6 +174,7 @@ class _AddBookScreenState extends State<AddBookScreen> {
         link: d.link,
         productId: d.productId,
         status: d.status,
+        binding: picked,
       );
       // 책장 쪽 책 목록에 새 책을 넣고 놓는다
       await PlacementStore.instance.reload();
@@ -257,8 +264,55 @@ class _AddBookScreenState extends State<AddBookScreen> {
     }
   }
 
+  /// 장정 직접 고르기: 추천 장정을 계산해 두고 미리보기 단계로
+  Future<void> _toBinding() async {
+    setState(() => _saving = true);
+    try {
+      final art = await _prepareArt();
+      if (!mounted) return;
+      setState(() {
+        _art = art;
+        _binding = BindingDraft.of(art);
+        _step = 'binding';
+      });
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
+    if (_step == 'binding' && _art != null && _binding != null) {
+      // 뒤로 가면 책 확인으로(고른 장정은 버린다)
+      return PopScope(
+        canPop: false,
+        onPopInvokedWithResult: (didPop, _) {
+          if (!didPop && !_saving) setState(() => _step = 'confirm');
+        },
+        child: Screen(
+          title: '장정 미리보기',
+          footer: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+            Btn(label: '추가하고 책장에 진열', busy: _saving, onPress: () => _add()),
+            Padding(
+              padding: const EdgeInsets.only(top: Space.xs),
+              child: Center(child: TextLink(label: '보관만 하기', soft: true, disabled: _saving, onPress: () => _add(keep: true))),
+            ),
+          ]),
+          children: [
+            BindingEditor(
+              title: _draft.title,
+              author: _draft.authors,
+              size: _size,
+              pages: _num(_draft.pages),
+              value: _binding!,
+              recommended: BindingDraft.of(_art!),
+              realCover: _draft.coverUri,
+              onChange: (v) => setState(() => _binding = v),
+            ),
+          ],
+        ),
+      );
+    }
     if (_step == 'find') {
       return _FindStep(initial: widget.q, notice: _notice, onPick: _fromCandidate, onManual: (q) => _toConfirm(_Draft('manual')..title = q));
     }
@@ -271,7 +325,7 @@ class _AddBookScreenState extends State<AddBookScreen> {
         Btn(label: '추천 장정으로 추가', disabled: !ready, busy: _saving, onPress: () => _confirmDuplicate(() => _add())),
         Padding(
           padding: const EdgeInsets.only(top: Space.xs),
-          child: Center(child: TextLink(label: '보관만 하기', soft: true, disabled: !ready, onPress: () => _confirmDuplicate(() => _add(keep: true)))),
+          child: Center(child: TextLink(label: '장정 직접 고르기', soft: true, disabled: !ready, onPress: () => _confirmDuplicate(_toBinding))),
         ),
       ]),
       children: [

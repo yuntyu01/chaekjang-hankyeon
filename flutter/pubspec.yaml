@@ -42,6 +42,8 @@ flutter:
     - assets/qa_seed.json
     # 잠긴 칸 안 흐린 예시 책(tool/dump_locked.test.ts)
     - assets/locked_preview.json
+    # 기본 정면 장정 그림 6종(지금 앱 assets/covers/artworks: 표지 720×1080, 고르기 썸네일 180×270)
+    - assets/covers/artworks/
 
   # 제목 글꼴(지금 앱과 같은 함렛 SemiBold)
   fonts:

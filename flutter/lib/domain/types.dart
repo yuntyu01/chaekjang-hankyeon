@@ -45,6 +45,8 @@ class Book {
     this.quotes = 0,
     this.startedAt,
     this.finishedAt,
+    this.material,
+    this.coverArtId,
   });
 
   final String id;
@@ -80,6 +82,12 @@ class Book {
   final int quotes;
   final String? startedAt;
   final String? finishedAt;
+
+  /// 장정 재질(fine 고운 종이·linen 린넨·matte 매끈 무광·laid 줄무늬 종이, 없으면 고운 종이)
+  final String? material;
+
+  /// 고른 기본 정면 장정 그림(cover-artworks id). 있으면 실제 표지 사진 대신 이 그림
+  final String? coverArtId;
 }
 
 /// 책 하나의 자리(선반 안에서)

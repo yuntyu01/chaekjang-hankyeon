@@ -30,6 +30,11 @@ class Cam {
   Cam(this.deg)
       : ky = kyOf(deg),
         eye = Vec3(viewCx, viewDist * kyOf(deg), 0);
+
+  /// 같은 보기 각에서 눈을 가로로 옮긴 카메라(선반 밖에서 한 권만 그릴 때: 그 책 가운데에서 본다, 지금 앱 camCenteredAt)
+  Cam.centeredAt(this.deg, double x)
+      : ky = kyOf(deg),
+        eye = Vec3(x, viewDist * kyOf(deg), 0);
   final double deg;
   final double ky;
   final Vec3 eye;
@@ -360,7 +365,7 @@ void drawRow(
     final albedo = row.tones.length > i ? row.tones[i] : const C3(0.3, 0.25, 0.2);
     final look = row.looks.length > i ? row.looks[i] : null;
     final photo = look?.coverUri == null ? null : photos[look!.coverUri];
-    drawBook(canvas, book, c, px, row, b, albedo, spots3, atlas, seedOf(b.id), look: look, glyphs: glyphs, photo: photo, key: bookKeys[b.id]);
+    drawBook(canvas, book, c, px, row.env.u, b, albedo, spots3, atlas, seedOf(b.id), look: look, glyphs: glyphs, photo: photo, key: bookKeys[b.id]);
     // 갈피 탭(책 위에, 같은 차례)
     if (tab != null && look != null) drawRibbons(canvas, tab, c, px, row, b, look, row.tabLoss[b.id]);
   }
@@ -458,7 +463,7 @@ void drawBook(
   ShaderSlots bookSlots,
   Cam c,
   Affine px,
-  RowCase row,
+  List<double> env,
   Book3 b,
   C3 albedo,
   Map<FaceId, Spot> faceSpots,
@@ -481,7 +486,8 @@ void drawBook(
     canvas.drawPath(path, ui.Paint()..color = srgbOf(albedo));
   }
   // 겹(지금 앱 passOf): 보통 책은 곱하기·닷지, 사진 책은 곱하기·닷지(반사광 뺌) + 반사광 더하기
-  final passes = look?.photo == true
+  final surf = bookSurfaceOf(look?.material);
+  final passes = look?.picture == true
       ? const [(0.0, 1.0, ui.BlendMode.multiply), (1.0, 1.0, ui.BlendMode.colorDodge), (3.0, 0.0, ui.BlendMode.plus)]
       : const [(0.0, 0.0, ui.BlendMode.multiply), (1.0, 0.0, ui.BlendMode.colorDodge)];
   for (final (dodge, split, blend) in passes) {
@@ -532,20 +538,20 @@ void drawBook(
     one('mixT', 1);
     one('keyOn', 1);
     vec('albedo', albedo.list);
-    vec('erefB', bookFine.eref.list);
-    vec('srefB', bookFine.sref.list);
-    vec('srefP', bookFine.srefPaper.list);
-    one('specK', bookFine.specK);
-    vec('mR', bookFine.mat.rough);
-    vec('mB', bookFine.mat.bump);
-    vec('mG', bookFine.mat.grain);
-    vec('mS', bookFine.mat.gsize);
+    vec('erefB', surf.eref.list);
+    vec('srefB', surf.sref.list);
+    vec('srefP', surf.srefPaper.list);
+    one('specK', surf.specK);
+    vec('mR', surf.mat.rough);
+    vec('mB', surf.mat.bump);
+    vec('mG', surf.mat.grain);
+    vec('mS', surf.mat.gsize);
     vec('mSeed', seed);
-    vec('pR', bookFine.pages.rough);
-    vec('pB', bookFine.pages.bump);
-    vec('pG', bookFine.pages.grain);
-    vec('pS', bookFine.pages.gsize);
-    vec('env', row.env.u);
+    vec('pR', surf.pages.rough);
+    vec('pB', surf.pages.bump);
+    vec('pG', surf.pages.grain);
+    vec('pS', surf.pages.gsize);
+    vec('env', env);
     vec('ECAM', cal.ECAM.list);
     vec('RADF', cal.RADF.list);
     vec('RADU', cal.RADU.list);

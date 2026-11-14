@@ -3,6 +3,7 @@
 library;
 
 import '../db/local_db.dart';
+import '../domain/cover_artworks.dart' show isCoverArtworkId;
 import '../domain/cover_url.dart';
 import '../domain/geometry.dart';
 import '../domain/layout.dart';
@@ -50,7 +51,7 @@ Future<Library> loadLibrary() async {
   final db = await openLibrary();
   final rows = await db.rawQuery('''
     SELECT b.id, b.ribbon_color, e.title, e.width_mm, e.height_mm, e.page_count, e.cover_uri,
-           bd.spine_color, bd.ink_color, bd.cover_art_uri, bd.layout AS bd_layout, e.art_layout,
+           bd.spine_color, bd.ink_color, bd.cover_art_uri, bd.layout AS bd_layout, bd.material AS bd_material, bd.cover_art_id AS bd_art_id, e.art_layout,
            (SELECT COUNT(*) FROM bookmarks m WHERE m.my_book_id = b.id) AS quotes,
            (SELECT name FROM edition_authors a WHERE a.edition_id = e.id ORDER BY a.position LIMIT 1) AS author
       FROM my_books b
@@ -79,7 +80,10 @@ Future<Library> loadLibrary() async {
           (r['page_count'] as num?)?.toInt() ?? 250,
           spineRatioOf(r['cover_uri'] as String?),
         ),
-        coverArtUri: (r['cover_art_uri'] as String?) ?? coverAtSize(r['cover_uri'] as String?, 'L'),
+        // 기본 정면 장정 그림을 골랐으면 실제 표지 사진은 쓰지 않는다(지금 앱 previewBook·toShelfBook)
+        coverArtUri: isCoverArtworkId(r['bd_art_id'] as String?) ? null : (r['cover_art_uri'] as String?) ?? coverAtSize(r['cover_uri'] as String?, 'L'),
+        material: r['bd_material'] as String?,
+        coverArtId: isCoverArtworkId(r['bd_art_id'] as String?) ? r['bd_art_id'] as String : null,
         coverUri: r['cover_uri'] as String?,
         inkColor: r['ink_color'] as String?,
         ribbonColor: r['ribbon_color'] as String?,

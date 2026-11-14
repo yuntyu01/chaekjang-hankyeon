@@ -166,7 +166,7 @@ RowCase rowFromBooks(List<Book3> books, List<Book> meta, double space, {bool top
       byId[b.id] != null ? lookOf(byId[b.id]!) : BookLook('', '#8F6E55', bookToneOf('#8F6E55'), displayInk(null, '#8F6E55')),
   ];
   // 굽기 상자 색 = 장정 색의 실제 반사율(되비침), 그리는 빛의 반사율 = 재질 색(사진 책은 회색: 색은 그림이 낸다)
-  final row = buildRow(books, space, tones: [for (final l in looks) bookAlbedo(l.tone)], top: top, last: last);
+  final row = buildRow(books, space, tones: [for (final l in looks) bookAlbedo(l.tone, l.material ?? 'fine')], top: top, last: last);
   // 갈피 탭: 탭 가운데 한 점의 하늘 가림을 줄 굽기에 한 칸으로 함께 굽는다(지금 앱은 같은 값을 JS 빛 모델 bakedLossAt으로 구한다)
   for (var i = 0; i < books.length; i++) {
     final l = looks[i];
@@ -178,6 +178,6 @@ RowCase rowFromBooks(List<Book3> books, List<Book> meta, double space, {bool top
     row.items.add(BakeItem(tabBakeKey(books[i].id), at - ax.ax * 0.005 - ax.up * 0.005, ax.ax * 0.01, ax.up * 0.01, ax.n, 1, 1, i.toDouble()));
   }
   row.looks = looks;
-  row.tones = [for (final l in looks) l.photo ? pictureAlbedo : linearOf(rgbOf(l.tone))];
+  row.tones = [for (final l in looks) l.lightAlbedo];
   return row;
 }

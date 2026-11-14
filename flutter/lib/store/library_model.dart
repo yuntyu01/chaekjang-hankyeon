@@ -5,6 +5,7 @@ library;
 import 'package:flutter/foundation.dart';
 
 import '../db/library_write.dart';
+import '../domain/binding_draft.dart';
 import '../domain/color.dart';
 import '../domain/cover_url.dart';
 import '../domain/library.dart';
@@ -113,7 +114,7 @@ class LibraryModel extends ChangeNotifier {
     return commitLib(lib.copy(rounds: {...lib.rounds, roundId: r.copyWith(startedAt: startedAt, finishedAt: finishedAt, updatedAt: nowIso())}));
   }
 
-  /// 책 추가(지금 앱 addBook): 판본 + 내 책 + 장정(추천 장정 그대로) + 읽기 상태에 맞는 회차. 새 책 id를 돌려준다(저장까지 기다린다)
+  /// 책 추가(지금 앱 addBook): 판본 + 내 책 + 장정(고른 장정, 없으면 추천 장정 그대로) + 읽기 상태에 맞는 회차. 새 책 id를 돌려준다(저장까지 기다린다)
   Future<String> addBook({
     required String title,
     required List<String> authors,
@@ -133,6 +134,7 @@ class LibraryModel extends ChangeNotifier {
     String? sourceName,
     String? link,
     String? productId,
+    BindingDraft? binding,
   }) async {
     await load();
     final t = nowIso();
@@ -159,26 +161,46 @@ class LibraryModel extends ChangeNotifier {
       art: art,
     );
     final id = newId('bk');
-    final bd = Binding(
-      id: newId('bd'),
-      myBookId: id,
-      spineColor: art?.baseColor ?? '#8F6E55',
-      motif: art?.motifId ?? 'none',
-      inkColor: art?.inkColor,
-      accentColor: art?.accentColor,
-      layout: art?.layoutVariant,
-      source: 'default',
-      status: 'ready',
-      seed: 0,
-      createdAt: t,
-      updatedAt: t,
-    );
+    final bd = _bindingOf(
+        id,
+        binding ??
+            BindingDraft(spineColor: art?.baseColor ?? '#8F6E55', motif: art?.motifId ?? 'none', inkColor: art?.inkColor, accentColor: art?.accentColor, layout: art?.layoutVariant),
+        null,
+        t);
     final b = MyBook(id: id, editionId: e.id, status: ReadStatus.want, bindingId: bd.id, createdAt: t, updatedAt: t);
     var next = lib.copy(editions: {...lib.editions, e.id: e}, books: {...lib.books, id: b}, bindings: {...lib.bindings, bd.id: bd});
     if (status != ReadStatus.want) next = applyStatus(next, id, status, t);
     await commitLib(next);
     return id;
   }
+
+  /// 장정 바꾸기(지금 앱 setBinding): 그 책의 장정을 고른 값으로(없으면 새로). 재질·표지 그림이 비면 예전 값도 지운다
+  Future<void> setBinding(String myBookId, BindingDraft v) {
+    final b = lib.books[myBookId];
+    if (b == null) return Future.value();
+    final t = nowIso();
+    final bd = _bindingOf(myBookId, v, b.bindingId == null ? null : lib.bindings[b.bindingId], t);
+    return commitLib(lib.copy(bindings: {...lib.bindings, bd.id: bd}, books: {...lib.books, myBookId: b.patch(bindingId: bd.id, updatedAt: t)}));
+  }
+
+  Binding _bindingOf(String myBookId, BindingDraft v, Binding? old, String t) => Binding(
+        id: old?.id ?? newId('bd'),
+        myBookId: myBookId,
+        spineColor: v.spineColor,
+        motif: v.motif,
+        source: v.source,
+        status: old?.status ?? 'ready',
+        seed: v.seed,
+        createdAt: old?.createdAt ?? t,
+        updatedAt: t,
+        inkColor: v.inkColor ?? old?.inkColor,
+        accentColor: v.accentColor ?? old?.accentColor,
+        layout: v.layout ?? old?.layout,
+        material: v.material,
+        coverArtUri: old?.coverArtUri,
+        coverArtId: v.coverArtId,
+        spineArtUri: old?.spineArtUri,
+      );
 
   /// 책 정보 고치기(지금 앱 updateEdition): 판본 값을 통째로 바꾼다(비운 값은 '확인 전')
   Future<void> updateEdition(String editionId, {required String title, required List<String> authors, String? publisher, String? publishedAt, String? isbn13, num? pageCount, num? widthMm, num? heightMm, String? coverUri, String? coverSource}) {
