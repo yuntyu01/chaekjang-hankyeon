@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 바탕 없는 위젯(벽 없이·투명): 그림 한 장(ShelfWidgetRenderer.renderNiche·renderCut), 그림 밖은 투명 -->
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+  android:layout_width="match_parent"
+  android:layout_height="match_parent">
+  <ImageView
+    android:id="@+id/shelf_widget_image"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:contentDescription="@string/shelf_widget_cut_label"
+    android:scaleType="fitCenter"
+    android:src="@drawable/shelf_widget_cut_preview" />
+</FrameLayout>

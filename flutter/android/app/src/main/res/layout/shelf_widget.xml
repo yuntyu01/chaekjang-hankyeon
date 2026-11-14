@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 위젯 전체가 그림 한 장(카드·책장을 ShelfWidgetRenderer가 위젯 크기에 맞춰 그린다). 뿌리 id가 background라 런처가 시스템 모서리로 깎는다 -->
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+  android:id="@android:id/background"
+  android:layout_width="match_parent"
+  android:layout_height="match_parent">
+  <ImageView
+    android:id="@+id/shelf_widget_image"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:contentDescription="@string/shelf_widget_label"
+    android:scaleType="fitCenter"
+    android:src="@drawable/shelf_widget_preview" />
+</FrameLayout>

@@ -48,6 +48,9 @@ import '../../ui/bake_cache.dart';
 import '../../ui/book_key.dart';
 import '../../ui/cover_photo.dart';
 import '../../scene_config/spine_look.dart';
+import '../../scene_config/skin.dart' show skinChoice;
+import '../../domain/ribbon_design.dart' show ribbonDesign;
+import '../../services/shelf_widget.dart';
 import '../../ui/glyph_metrics.dart';
 import '../../ui/metrics.dart';
 import '../../ui/outline.dart';
@@ -597,6 +600,75 @@ class _HomeScreenState extends State<HomeScreen> {
   bool _frozen = false;
   Timer? _freezeTimer;
 
+  /// 홈 화면 위젯 칸 넘기기: 책장 그림을 새로 굳히고 2초 동안 그대로면(표지 사진이 하나씩 올 때마다 다시 굳힌다) 넘긴다
+  Timer? _widgetTimer;
+  void _scheduleWidget() {
+    _widgetTimer?.cancel();
+    _widgetTimer = Timer(const Duration(seconds: 2), _sendWidget);
+  }
+
+  Future<void> _sendWidget() async {
+    if (!mounted || _decorating || _drag != null || _shown != null || _head != null) return;
+    final img = _shelfImage;
+    if (img == null) return;
+    final copy = img.clone();
+    try {
+      await sendShelfWidget(copy, MediaQuery.devicePixelRatioOf(context), _widgetRows(), AppColors.bg);
+    } finally {
+      copy.dispose();
+    }
+  }
+
+  /// 위젯에 넘길 칸(잠긴 칸 빼고 위에서 네 칸): 자를 범위, 열쇠(칸 자리·책 자리·그림에 영향 주는 책 값·스킨·책 측면·표지 사진이 왔는지),
+  /// 투명 위젯용 모양(책 윤곽·갈피 띠·선반 판 윤곽, 지금 앱 shelfCutShapes)
+  List<WidgetRow> _widgetRows() {
+    final g = _geom, c = _case;
+    if (g == null || c == null) return const [];
+    final cam = Cam(viewPitchMin);
+    final s = g.m.scale;
+    final n = [widgetRowsMax, g.lockedFrom, g.geo.length, c.rows.length].reduce(math.min);
+    String f(double v) => v.toStringAsFixed(2);
+    return [
+      for (var i = 0; i < n; i++)
+        () {
+          final r = g.geo[i], row = c.rows[i];
+          final px = Affine(s, g.m.originX + sideMargin * s, g.contentTop + r.baseline);
+          final books = <List<double>>[], ribbons = <List<double>>[];
+          final sig = StringBuffer('$i|${r.top.round()}|${r.height.round()}|${(s * 1000).round()}|${g.m.originX.round()}|${skinChoice.key}|${spineLook.value.name}');
+          for (var j = 0; j < row.books.length; j++) {
+            final b = row.books[j];
+            final look = j < row.looks.length ? row.looks[j] : null;
+            sig.write('|${b.id},${f(b.t.x)},${f(b.t.y)},${f(b.t.z)},${f(b.roll)},${f(b.yaw)},${f(b.spin)},${f(b.pitch)},${f(b.dims.t)},${f(b.dims.h)},${f(b.dims.w)}');
+            if (look != null) {
+              sig.write(',${look.title},${look.tone},${look.ink},${look.ribbons},${look.ribbon},${look.material},${look.artwork},${look.coverUri},${_photos.containsKey(look.coverUri)}');
+            }
+            final pts = bookOutlinePoints(cam, px, b);
+            if (pts.length < 3) continue;
+            books.add([for (final p in pts) ...[p.dx, p.dy]]);
+            if (look != null && look.ribbons > 0) {
+              final out = ribbonDesign(b.id, look.ribbons).map((t) => t.out).reduce(math.max);
+              final up = (out + 3) * s;
+              final xs = pts.map((p) => p.dx), ys = pts.map((p) => p.dy);
+              final minX = xs.reduce(math.min), maxX = xs.reduce(math.max), minY = ys.reduce(math.min);
+              ribbons.add([minX, minY - up, maxX - minX, up + 2 * s]);
+            }
+          }
+          final board = plankShape((v) => toPx(cam, px, v), s).outline;
+          return WidgetRow(
+            key: widgetHash(sig.toString()),
+            top: i == 0 ? g.contentTop : g.contentTop + r.top,
+            bottom: g.contentTop + r.top + r.height,
+            rel: i == 0 ? 0 : r.top,
+            books: books,
+            ribbons: ribbons,
+            boards: [
+              [for (final p in board) ...[p.dx, p.dy]],
+            ],
+          );
+        }(),
+    ];
+  }
+
   /// 시작 사진(files/home_snapshot.png): 굳힌 책장 그림을 저장해 두고 다음에 켤 때 먼저 보인다
   ui.Image? _snap;
   static Future<File> _snapFile() => homeSnapshotFile();
@@ -665,6 +737,7 @@ class _HomeScreenState extends State<HomeScreen> {
       pic.dispose();
       final saved = _shelfImage!;
       WidgetsBinding.instance.addPostFrameCallback((_) => _saveSnap(saved));
+      _scheduleWidget();
       // 시작 사진은 진짜 책장이 떴으니 놓는다
       final s0 = _snap;
       if (s0 != null) {
@@ -895,6 +968,7 @@ class _HomeScreenState extends State<HomeScreen> {
     _shelfImage?.dispose();
     _snap?.dispose();
     _freezeTimer?.cancel();
+    _widgetTimer?.cancel();
     _autoScroll?.cancel();
     shelfRefresh.removeListener(_refresh);
     spineLook.removeListener(_spineLookChanged);

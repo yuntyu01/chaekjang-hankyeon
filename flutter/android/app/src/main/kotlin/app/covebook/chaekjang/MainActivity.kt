@@ -56,6 +56,8 @@ class MainActivity : AudioServiceActivity() {
 
   override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
     super.configureFlutterEngine(flutterEngine)
+    // 홈 화면 위젯 칸 넘기기(services/shelf_widget.dart)
+    app.covebook.shelfwidget.ShelfWidgetChannel.register(this, flutterEngine.dartExecutor.binaryMessenger)
     authChannel = MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "app.covebook/auth")
     // 백업 파일: 다운로드/책장한켠에 저장(Android 10+는 MediaStore로 권한 없이), 파일 고르기(문서 열기)
     MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "app.covebook/files").setMethodCallHandler { call, result ->

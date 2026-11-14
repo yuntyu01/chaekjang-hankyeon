@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 기본 4×2(책장 한 칸), 세로로 늘리면 두 칸(2026-11-11 사용자 시안 두 장). 그림은 앱이 떠 둔 것이라 주기 갱신은 하지 않는다 -->
+<appwidget-provider xmlns:android="http://schemas.android.com/apk/res/android"
+  android:minWidth="250dp"
+  android:minHeight="110dp"
+  android:minResizeWidth="110dp"
+  android:minResizeHeight="100dp"
+  android:targetCellWidth="4"
+  android:targetCellHeight="2"
+  android:resizeMode="horizontal|vertical"
+  android:updatePeriodMillis="0"
+  android:initialLayout="@layout/shelf_widget"
+  android:previewImage="@drawable/shelf_widget_preview"
+  android:description="@string/shelf_widget_description"
+  android:widgetCategory="home_screen" />

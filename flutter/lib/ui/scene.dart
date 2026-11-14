@@ -433,7 +433,10 @@ const bookUniformNames = [
 const _shaderFaces = [FaceId.spine, FaceId.cover, FaceId.back, FaceId.head, FaceId.tail, FaceId.fore];
 
 /// 책 윤곽(캔버스 px): 꼭짓점 여덟을 투영한 볼록 껍질. 지금 앱은 모서리를 둥글린다(나중에)
-ui.Path bookOutline(Cam c, Affine px, Book3 b) {
+ui.Path bookOutline(Cam c, Affine px, Book3 b) => _polyPath(bookOutlinePoints(c, px, b));
+
+/// 책 윤곽의 꼭짓점들(위젯 오려 내기처럼 다각형이 필요할 때)
+List<ui.Offset> bookOutlinePoints(Cam c, Affine px, Book3 b) {
   final pts = corners(b).map((v) => px.at(c.project(v))).toList();
   // 볼록 껍질(Andrew monotone chain)
   pts.sort((p, q) => p.dx == q.dx ? p.dy.compareTo(q.dy) : p.dx.compareTo(q.dx));
@@ -454,7 +457,7 @@ ui.Path bookOutline(Cam c, Affine px, Book3 b) {
     hull.add(p);
   }
   hull.removeLast();
-  return _polyPath(hull);
+  return hull;
 }
 
 /// 책 한 권을 그린다(곱하기 · 컬러 닷지 두 겹). faceSpots: 면마다 아틀라스 자리(없으면 null)

@@ -53,6 +53,37 @@
                 <action android:name="android.media.browse.MediaBrowserService" />
             </intent-filter>
         </service>
+        <!-- 홈 화면 위젯 세 가지(지금 앱 modules/shelf-widget과 같은 클래스). 그림은 앱이 홈 책장 그림에서 떠 둔 칸(filesDir/shelf-widget) -->
+        <!-- '나의 책장': 책장(틀 포함)이 위젯을 채운다 -->
+        <receiver
+            android:name="app.covebook.shelfwidget.ShelfWidgetProvider"
+            android:exported="false"
+            android:label="@string/shelf_widget_label">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data android:name="android.appwidget.provider" android:resource="@xml/shelf_widget_info" />
+        </receiver>
+        <!-- '나의 책장(벽 없이)': 책장 구멍 가장자리가 위젯 경계(바깥 벽 없음) -->
+        <receiver
+            android:name="app.covebook.shelfwidget.ShelfNicheWidgetProvider"
+            android:exported="false"
+            android:label="@string/shelf_widget_niche_label">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data android:name="android.appwidget.provider" android:resource="@xml/shelf_widget_niche_info" />
+        </receiver>
+        <!-- '나의 책장(투명)': 선반 판과 책만, 뒤는 투명 -->
+        <receiver
+            android:name="app.covebook.shelfwidget.ShelfCutWidgetProvider"
+            android:exported="false"
+            android:label="@string/shelf_widget_cut_label">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data android:name="android.appwidget.provider" android:resource="@xml/shelf_widget_cut_info" />
+        </receiver>
         <receiver android:name="com.ryanheise.audioservice.MediaButtonReceiver"
             android:exported="true">
             <intent-filter>
