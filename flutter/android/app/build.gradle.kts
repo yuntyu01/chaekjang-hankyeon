@@ -34,6 +34,8 @@ android {
             // TODO: Add your own signing config for the release build.
             // Signing with the debug keys for now, so `flutter run --release` works.
             signingConfig = signingConfigs.getByName("debug")
+            // ML Kit 리플렉션 클래스 지키기(proguard-rules.pro)
+            proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
         }
     }
 }
@@ -46,4 +48,9 @@ kotlin {
 
 flutter {
     source = "../.."
+}
+
+// 기기 안 문장 인식(지금 앱 modules/text-recognition과 같은 모델): ML Kit 한국어(한글·라틴). 모델이 앱에 들어 있어 인터넷 없이 동작하고 사진은 밖으로 보내지 않는다
+dependencies {
+    implementation("com.google.mlkit:text-recognition-korean:16.0.1")
 }

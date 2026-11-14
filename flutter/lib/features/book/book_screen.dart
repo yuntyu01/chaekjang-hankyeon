@@ -23,6 +23,7 @@ import '../bookmark/photo_plate.dart' show BookmarkPhoto;
 import '../bookmark/ribbon_color_sheet.dart';
 import '../stats/stats_screen.dart';
 import 'labels.dart';
+import '../bookmark/new_bookmark_screen.dart';
 
 const _views = [('info', '책 정보'), ('rate', '평가'), ('mine', '내 기록')];
 const _statuses = [ReadStatus.want, ReadStatus.reading, ReadStatus.read, ReadStatus.paused];
@@ -369,7 +370,7 @@ class _BookScreenState extends State<BookScreen> {
             ]),
             Padding(padding: const EdgeInsets.only(top: Space.m), child: Btn(label: '갈피 보드로 보기', kind: 'secondary', onPress: () => _pending(context, '갈피 보드'))),
           ] else
-            Empty(title: '아직 남긴 갈피가 없어요', action: '첫 갈피 남기기', actionKind: 'secondary', onAction: () => _pending(context, '갈피 남기기')),
+            Empty(title: '아직 남긴 갈피가 없어요', action: '첫 갈피 남기기', actionKind: 'secondary', onAction: () => openNewBookmark(context, book: widget.id)),
         ]);
 
     return Screen(
@@ -379,7 +380,7 @@ class _BookScreenState extends State<BookScreen> {
         IconBtn(label: '더 보기', onPress: _menu, child: const LucideIcon('MoreHorizontal')),
       ]),
       footer: Row(children: [
-        Expanded(child: Btn(label: '갈피 남기기', kind: 'secondary', size: 'l', onPress: () => _pending(context, '갈피 남기기'))),
+        Expanded(child: Btn(label: '갈피 남기기', kind: 'secondary', size: 'l', onPress: () => openNewBookmark(context, book: widget.id))),
         const SizedBox(width: Space.s),
         Expanded(
           child: Btn(

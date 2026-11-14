@@ -16,6 +16,7 @@ import '../book/book_screen.dart' show openBook;
 import '../bookmark/book_picker.dart' show statusLabel;
 import '../reading/reading_screen.dart' show openReadingScene;
 import '../stats/stats_widgets.dart' show CoverImage;
+import '../bookmark/new_bookmark_screen.dart';
 
 /// 시안(폭 393dp) 실측: 표지 폭 약 104
 const _coverW = 104.0;
@@ -153,7 +154,7 @@ Future<void> showBookSheet(BuildContext context, String bookId) async {
                         label: '갈피 남기기',
                         onPress: () {
                           Navigator.pop(ctx);
-                          ScaffoldMessenger.maybeOf(context)?.showSnackBar(const SnackBar(content: Text('갈피 남기기: 아직 옮기는 중이에요'), duration: Duration(seconds: 1)));
+                          openNewBookmark(context, book: bookId);
                         },
                       ),
                     ),

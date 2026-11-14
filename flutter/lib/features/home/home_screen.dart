@@ -51,6 +51,7 @@ import '../../ui/ribbons.dart';
 import '../../ui/row_bake.dart';
 import '../../ui/scene.dart';
 import '../../ui/theme.dart';
+import '../book/add_book_screen.dart' show openAddBook;
 
 /// 앱이 깨어난 때(main이 채운다). 켜고 책장이 다 될 때까지를 잰다
 DateTime bootAt = DateTime.now();
@@ -1323,7 +1324,9 @@ class _Header extends StatelessWidget {
                 ? () => openAllBooks(context)
                 : name == 'store'
                     ? () => openStore(context)
-                    : () => ScaffoldMessenger.maybeOf(context)?.showSnackBar(SnackBar(content: Text('$label: 아직 옮기는 중이에요'), duration: const Duration(seconds: 1))),
+                    : name == 'add'
+                        ? () => openAddBook(context)
+                        : () => ScaffoldMessenger.maybeOf(context)?.showSnackBar(SnackBar(content: Text('$label: 아직 옮기는 중이에요'), duration: const Duration(seconds: 1))),
         child: SizedBox(
           width: _headerCell,
           height: 44,

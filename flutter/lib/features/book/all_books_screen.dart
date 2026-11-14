@@ -25,6 +25,7 @@ import 'all_books.dart';
 import 'book_screen.dart' show openBook;
 import 'labels.dart' show ymd;
 import 'place_books.dart';
+import 'add_book_screen.dart' show openAddBook;
 
 const _statuses = [ReadStatus.want, ReadStatus.reading, ReadStatus.read, ReadStatus.paused];
 const _cellMin = 96.0; // 격자 칸 최소 폭: 휴대폰은 3칸, 넓은 화면은 칸을 늘린다
@@ -186,7 +187,7 @@ class _AllBooksScreenState extends State<AllBooksScreen> {
     final empty = Padding(
       padding: const EdgeInsets.only(top: Space.xxl),
       child: total == 0
-          ? Empty(title: '아직 등록한 책이 없어요', body: '책을 추가하면 여기에서 모두 볼 수 있어요.', action: '책 추가', onAction: () => _notYet('책 추가'))
+          ? Empty(title: '아직 등록한 책이 없어요', body: '책을 추가하면 여기에서 모두 볼 수 있어요.', action: '책 추가', onAction: () => openAddBook(context))
           : Empty(
               title: _q.trim().isNotEmpty ? '‘${_q.trim()}’에 맞는 책이 없어요' : '이 조건에 맞는 책이 없어요',
               body: _q.trim().isNotEmpty ? '제목이나 저자의 일부만 입력해 보세요.' : '다른 읽기 상태를 고르거나 조건을 풀어 보세요.',
@@ -295,7 +296,7 @@ class _AllBooksScreenState extends State<AllBooksScreen> {
         headerField: _selecting != null
             ? null
             : SearchField(value: _q, onChange: (v) => setState(() => _q = v), placeholder: total > 0 ? '책 $total권에서 찾기' : '제목, 저자 검색', label: '전체 책에서 찾기'),
-        right: _selecting != null ? null : IconBtn(label: '책 추가', onPress: () => _notYet('책 추가'), child: const LucideIcon('Plus')),
+        right: _selecting != null ? null : IconBtn(label: '책 추가', onPress: () => openAddBook(context), child: const LucideIcon('Plus')),
         footer: switch (_selecting) {
           _Pick.manage => Row(children: [
               Expanded(
@@ -319,8 +320,6 @@ class _AllBooksScreenState extends State<AllBooksScreen> {
   }
 
   String _selectedTitle(int n) => n > 0 ? '$n권 선택' : '책 선택';
-
-  void _notYet(String what) => ScaffoldMessenger.maybeOf(context)?.showSnackBar(SnackBar(content: Text('$what: 아직 옮기는 중이에요'), duration: const Duration(seconds: 1)));
 
   void _openFilter(List<int> years, int offCount, int hiddenCount) => showSheet<void>(
         context,

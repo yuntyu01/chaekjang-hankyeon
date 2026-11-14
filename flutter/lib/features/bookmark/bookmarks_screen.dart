@@ -17,6 +17,7 @@ import '../stats/stats_widgets.dart';
 import 'bookmark_card.dart';
 import 'bookmark_detail_screen.dart';
 import 'bookmark_empty.dart';
+import 'new_bookmark_screen.dart';
 
 enum _Kind { all, text, photo }
 
@@ -201,7 +202,7 @@ class _BookmarksScreenState extends State<BookmarksScreen> {
     final all = _all;
     if (all.isEmpty) {
       return Screen(title: '갈피', back: false, scroll: false, children: [
-        Expanded(child: BookmarkEmpty(onAdd: () => _pending(context, '갈피 남기기'))),
+        Expanded(child: BookmarkEmpty(onAdd: () => openNewBookmark(context))),
       ]);
     }
     final books = _booksOf(all);
@@ -240,7 +241,7 @@ class _BookmarksScreenState extends State<BookmarksScreen> {
           child: LucideIcon(_searching ? 'X' : 'Search'),
         ),
         const SizedBox(width: 4),
-        IconBtn(label: '갈피 추가', onPress: () => _pending(context, '갈피 남기기'), child: const LucideIcon('Plus')),
+        IconBtn(label: '갈피 추가', onPress: () => openNewBookmark(context, book: _book, photoOnly: _kind == _Kind.photo), child: const LucideIcon('Plus')),
       ]),
       children: [
         if (_searching)

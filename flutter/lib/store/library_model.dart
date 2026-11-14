@@ -113,6 +113,96 @@ class LibraryModel extends ChangeNotifier {
     return commitLib(lib.copy(rounds: {...lib.rounds, roundId: r.copyWith(startedAt: startedAt, finishedAt: finishedAt, updatedAt: nowIso())}));
   }
 
+  /// 책 추가(지금 앱 addBook): 판본 + 내 책 + 장정(추천 장정 그대로) + 읽기 상태에 맞는 회차. 새 책 id를 돌려준다(저장까지 기다린다)
+  Future<String> addBook({
+    required String title,
+    required List<String> authors,
+    required String source,
+    required ReadStatus status,
+    BookArtParams? art,
+    String? publisher,
+    String? publishedAt,
+    String? isbn13,
+    num? pageCount,
+    num? widthMm,
+    num? heightMm,
+    String? category,
+    String? seriesTitle,
+    String? coverUri,
+    String? coverSource,
+    String? sourceName,
+    String? link,
+    String? productId,
+  }) async {
+    await load();
+    final t = nowIso();
+    final e = Edition(
+      id: newId('ed'),
+      title: title,
+      authors: authors,
+      source: source,
+      createdAt: t,
+      updatedAt: t,
+      isbn13: isbn13,
+      publisher: publisher,
+      publishedAt: publishedAt,
+      pageCount: pageCount,
+      widthMm: widthMm,
+      heightMm: heightMm,
+      coverUri: coverUri,
+      coverSource: coverSource,
+      category: category,
+      seriesTitle: seriesTitle,
+      sourceName: sourceName,
+      productId: productId,
+      link: link,
+      art: art,
+    );
+    final id = newId('bk');
+    final bd = Binding(
+      id: newId('bd'),
+      myBookId: id,
+      spineColor: art?.baseColor ?? '#8F6E55',
+      motif: art?.motifId ?? 'none',
+      inkColor: art?.inkColor,
+      accentColor: art?.accentColor,
+      layout: art?.layoutVariant,
+      source: 'default',
+      status: 'ready',
+      seed: 0,
+      createdAt: t,
+      updatedAt: t,
+    );
+    final b = MyBook(id: id, editionId: e.id, status: ReadStatus.want, bindingId: bd.id, createdAt: t, updatedAt: t);
+    var next = lib.copy(editions: {...lib.editions, e.id: e}, books: {...lib.books, id: b}, bindings: {...lib.bindings, bd.id: bd});
+    if (status != ReadStatus.want) next = applyStatus(next, id, status, t);
+    await commitLib(next);
+    return id;
+  }
+
+  /// 갈피 남기기(지금 앱 addBookmark): 새 id를 돌려준다. 저장이 끝날 때까지 기다린다(실패하면 던진다: 화면은 적은 내용을 그대로 둔다)
+  Future<String> addBookmark({required String myBookId, required String text, num? page, String? memo, String? photoUri, num? photoRatio, String? sessionId, num? boardX, num? boardY, num? boardRot}) async {
+    await load();
+    final t = nowIso();
+    final m = Bookmark(
+      id: newId('bm'),
+      myBookId: myBookId,
+      text: text,
+      createdAt: t,
+      updatedAt: t,
+      page: page,
+      memo: memo,
+      photoUri: photoUri,
+      photoRatio: photoRatio,
+      sessionId: sessionId,
+      boardX: boardX,
+      boardY: boardY,
+      boardRot: boardRot,
+    );
+    await _commit(_withBookmarks({...lib.bookmarks, m.id: m}), [LocalChange.put(LibKind.bookmarks, m.id, m, t)]);
+    return m.id;
+  }
+
   /// 갈피 고치기
   Future<void> updateBookmark(String id, {required String text, Object? page = _keep, Object? memo = _keep, Object? photoUri = _keep, Object? photoRatio = _keep}) {
     final m = lib.bookmarks[id];

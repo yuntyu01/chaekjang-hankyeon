@@ -86,6 +86,28 @@ Future<double?> coverSpineRatio(String coverUri) async {
   return isSpineImage(img.width, img.height) ? img.width / img.height : 0;
 }
 
+/// 새로 들인 책 한 권의 표지에서 책등 비율·갈피 색을 재어 둔다(책 추가: 처음 놓을 때부터 실제 두께·표지 색 갈피로)
+Future<void> measureCover(String uri) async {
+  try {
+    if (needsSpineRatio(uri)) {
+      final r = await coverSpineRatio(uri);
+      if (r != null) {
+        rememberSpineRatio(uri, r);
+        await KvStore.set(_spineKey, jsonEncode(spineRatioEntries()));
+      }
+    }
+    if (needsCoverAccent(uri)) {
+      final a = await coverAccentColor(coverAtSize(uri, 'M'));
+      if (a != null) {
+        rememberCoverAccent(uri, a.color ?? '');
+        await KvStore.set(_accentKey, jsonEncode(coverAccentEntries()));
+      }
+    }
+  } catch (_) {
+    // 못 재면 다음 시작 때 맞춘다
+  }
+}
+
 /// 표지 색이 바뀌어 책장을 다시 그려야 할 때 하나씩 올린다(홈이 듣는다)
 final shelfRefresh = ValueNotifier<int>(0);
 

@@ -4,6 +4,8 @@ library;
 
 import 'package:flutter/material.dart';
 
+import '../book/add_book_screen.dart' show openAddBook;
+
 import '../../domain/library.dart';
 import '../../domain/reading.dart';
 import '../../ui/kit.dart';
@@ -20,16 +22,28 @@ class MultiPick {
 }
 
 /// 한 권 고르기: 고른 책 id(책 없이면 null)를 돌려준다. 닫으면 (picked: false)
-Future<({bool picked, String? id})> pickBook(BuildContext context, Library lib, {bool allowNone = false}) async {
+/// addNew: 맨 위 '+ 새 책 등록'(책 추가로 갔다가 등록한 책을 고른 것으로 돌아온다)
+Future<({bool picked, String? id})> pickBook(BuildContext context, Library lib, {bool allowNone = false, bool addNew = false}) async {
   final r = await showSheet<({bool picked, String? id})>(
     context,
     title: '책 고르기',
     maxHeight: 0.85,
     fit: true,
-    builder: (ctx) => _Picker(lib: lib, allowNone: allowNone, onPick: (id) => Navigator.pop(ctx, (picked: true, id: id))),
+    builder: (ctx) => _Picker(
+      lib: lib,
+      allowNone: allowNone,
+      onPick: (id) => Navigator.pop(ctx, (picked: true, id: id)),
+      onAddNew: addNew ? () => Navigator.pop(ctx, (picked: false, id: _addNew)) : null,
+    ),
   );
+  if (r?.id == _addNew && context.mounted) {
+    final id = await openAddBook(context, pick: true);
+    return id != null ? (picked: true, id: id) : (picked: false, id: null);
+  }
   return r ?? (picked: false, id: null);
 }
+
+const _addNew = '\u0000new';
 
 /// 여러 권 고르기: 새로 고른 것(고른 순서). 닫거나 하나도 안 고르면 빈 목록
 Future<List<String>> pickBooks(BuildContext context, Library lib, MultiPick multi, {bool allowNone = false}) async {
@@ -45,12 +59,13 @@ Future<List<String>> pickBooks(BuildContext context, Library lib, MultiPick mult
 }
 
 class _Picker extends StatefulWidget {
-  const _Picker({required this.lib, this.allowNone = false, this.multi, this.onPick, this.onDone});
+  const _Picker({required this.lib, this.allowNone = false, this.multi, this.onPick, this.onDone, this.onAddNew});
   final Library lib;
   final bool allowNone;
   final MultiPick? multi;
   final ValueChanged<String?>? onPick;
   final ValueChanged<List<String>>? onDone;
+  final VoidCallback? onAddNew;
 
   @override
   State<_Picker> createState() => _PickerState();
@@ -101,8 +116,9 @@ class _PickerState extends State<_Picker> {
   @override
   Widget build(BuildContext context) {
     final lib = widget.lib, m = widget.multi;
-    final recent = recentBookIds(lib);
-    final rest = lib.books.keys.where((id) => !recent.contains(id));
+    // 숨긴 책(연도 책장에만 남긴 책)은 고를 책에서 뺀다(지금 앱 서재에는 숨긴 책이 없다)
+    final recent = [for (final id in recentBookIds(lib)) if (lib.books[id]?.hiddenAt == null) id];
+    final rest = lib.books.keys.where((id) => !recent.contains(id) && lib.books[id]!.hiddenAt == null);
     final t = _q.trim();
     final list = [
       for (final id in [...recent, ...rest])
@@ -116,6 +132,15 @@ class _PickerState extends State<_Picker> {
       ),
       Flexible(
         child: ListView(shrinkWrap: true, keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag, children: [
+          if (widget.onAddNew != null)
+            _item(
+              fixed: false,
+              checked: null,
+              label: '새 책 등록',
+              onPress: widget.onAddNew!,
+              child: Text('+ 새 책 등록', style: AppType.row.copyWith(color: AppColors.accent)),
+            ),
+          if (widget.allowNone && widget.onAddNew != null) const AppDivider(),
           if (widget.allowNone)
             _item(
               fixed: noneFixed,
@@ -127,7 +152,7 @@ class _PickerState extends State<_Picker> {
               ]),
             ),
           for (final (i, id) in list.indexed) ...[
-            if (i > 0 || widget.allowNone) const AppDivider(),
+            if (i > 0 || widget.allowNone || widget.onAddNew != null) const AppDivider(),
             Builder(builder: (_) {
               final b = lib.books[id]!;
               final e = lib.editions[b.editionId];
