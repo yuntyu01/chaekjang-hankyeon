@@ -2,5 +2,5 @@
 <!-- 지금 앱(app/android res/values/colors.xml)과 같은 시작 화면·아이콘 색 -->
 <resources>
   <color name="splashscreen_background">#FFFFFF</color>
-  <color name="iconBackground">#FEFDFA</color>
+  <color name="iconBackground">#E5E5E7</color>
 </resources>
