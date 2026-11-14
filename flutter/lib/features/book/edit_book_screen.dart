@@ -98,7 +98,8 @@ class _EditBookScreenState extends State<EditBookScreen> {
     _released = true;
     final nav = Navigator.of(context);
     if (moved > 0) await appAlert(context, '선반 크기가 바뀌어 들어가지 않는 책 $moved권을 책장에서 뺐어요. 전체 책에서 다시 진열할 수 있어요.');
-    nav.maybePop();
+    // 저장했으니 PopScope(고친 내용 버릴까요)를 거치지 않고 닫는다
+    nav.pop();
   }
 
   @override
@@ -117,7 +118,7 @@ class _EditBookScreenState extends State<EditBookScreen> {
           const AlertButton('계속 쓰기', style: AlertStyle.cancel),
           AlertButton('버리기', style: AlertStyle.destructive, onPress: () {
             _released = true;
-            Navigator.of(context).maybePop();
+            Navigator.of(context).pop();
           }),
         ]);
       },

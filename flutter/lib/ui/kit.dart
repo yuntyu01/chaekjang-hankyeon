@@ -84,6 +84,23 @@ class _PressableState extends State<Pressable> {
 
 /// 화면 틀: 위 안전 영역 + 머리줄(뒤로·가운데 제목·오른쪽 행동) + 스크롤 본문. 뒤로가 없는 화면(탭 첫 화면)은 제목을 왼쪽에 크게(책장 홈 머리줄과 같은 기준).
 /// 뒤로가 있는 화면은 머리줄에 뒤로·행동만, 제목은 내용 맨 위 왼쪽에 크게(24 Bold). bottomPad: 떠 있는 하단바 등에 가리지 않게 더할 아래 여백
+/// 화면 본문 줄마다 양옆 여백(24). 직속 Bleed(또는 Expanded 속 Bleed)는 여백 없이 화면 폭 그대로 둔다:
+/// 부모 범위 안에 있어야 넓힌 자리(양옆 24)에서도 누르고 끌 수 있다(지금 앱 marginHorizontal: -space.page와 같은 결과)
+List<Widget> _padded(List<Widget> children) {
+  Widget pad(Widget c) => Padding(padding: const EdgeInsets.symmetric(horizontal: Space.page), child: c);
+  return [
+    for (final c in children)
+      if (c is Bleed && c.by == Space.page)
+        c.child ?? const SizedBox.shrink()
+      else if (c is Spacer)
+        c
+      else if (c is Flexible)
+        Flexible(key: c.key, flex: c.flex, fit: c.fit, child: c.child is Bleed && (c.child as Bleed).by == Space.page ? (c.child as Bleed).child ?? const SizedBox.shrink() : pad(c.child))
+      else
+        pad(c),
+  ];
+}
+
 class Screen extends StatelessWidget {
   const Screen({
     super.key,
@@ -160,7 +177,6 @@ class Screen extends StatelessWidget {
             ),
           )
         : null;
-    const pad = Space.page;
     final content = Center(
       child: ConstrainedBox(
         constraints: const BoxConstraints(maxWidth: contentMax + Space.page * 2),
@@ -170,13 +186,10 @@ class Screen extends StatelessWidget {
           children: [
             // 탭 첫 화면 제목도 내용과 함께 올라간다(머리줄 고정 아님)
             if (!back && title != null && scroll) tabHead(),
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: pad),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                mainAxisSize: MainAxisSize.min,
-                children: [?largeTitle, ...children],
-              ),
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              mainAxisSize: MainAxisSize.min,
+              children: _padded([?largeTitle, ...children]),
             ),
           ],
         ),
@@ -187,10 +200,7 @@ class Screen extends StatelessWidget {
       alignment: Alignment.topCenter,
       child: ConstrainedBox(
         constraints: const BoxConstraints(maxWidth: contentMax + Space.page * 2),
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: pad),
-          child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [?largeTitle, ...children]),
-        ),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: _padded([?largeTitle, ...children])),
       ),
     );
     // 독서 중이면 작은 타이머에 마지막 내용이 가리지 않게 아래를 더 비운다
@@ -757,6 +767,56 @@ class SectionBand extends StatelessWidget {
           ),
         ),
       );
+}
+
+/// 내용 폭 밖으로 양옆 [by]만큼 넓혀 화면 끝까지(지금 앱 marginHorizontal: -space.page). 넓힌 자리도 누를 수 있다
+class Bleed extends SingleChildRenderObjectWidget {
+  const Bleed({super.key, this.by = Space.page, super.child});
+  final double by;
+
+  @override
+  RenderObject createRenderObject(BuildContext context) => _RenderBleed(by);
+
+  @override
+  void updateRenderObject(BuildContext context, RenderObject renderObject) => (renderObject as _RenderBleed).by = by;
+}
+
+class _RenderBleed extends RenderShiftedBox {
+  _RenderBleed(this._by) : super(null);
+  double _by;
+
+  set by(double v) {
+    if (v == _by) return;
+    _by = v;
+    markNeedsLayout();
+  }
+
+  @override
+  void performLayout() {
+    final c = constraints, child = this.child;
+    if (child == null) {
+      size = c.smallest;
+      return;
+    }
+    if (!c.hasBoundedWidth) {
+      child.layout(c, parentUsesSize: true);
+      (child.parentData! as BoxParentData).offset = Offset.zero;
+      size = child.size;
+      return;
+    }
+    final w = c.maxWidth + 2 * _by;
+    child.layout(BoxConstraints(minWidth: w, maxWidth: w, minHeight: c.minHeight, maxHeight: c.maxHeight), parentUsesSize: true);
+    (child.parentData! as BoxParentData).offset = Offset(-_by, 0);
+    size = c.constrain(Size(c.maxWidth, child.size.height));
+  }
+
+  @override
+  bool hitTest(BoxHitTestResult result, {required Offset position}) {
+    if (position.dx < -_by || position.dx >= size.width + _by || position.dy < 0 || position.dy >= size.height) return false;
+    if (!hitTestChildren(result, position: position)) return false;
+    result.add(BoxHitTestEntry(this, position));
+    return true;
+  }
 }
 
 class AppDivider extends StatelessWidget {
@@ -1420,10 +1480,13 @@ class SelectField extends StatelessWidget {
 
 /// 글자 버튼(밑줄 없이 굵은 갈색 = 이어서 할 일, 회색 = 조심스러운 일)
 class TextLink extends StatelessWidget {
-  const TextLink({super.key, required this.label, required this.onPress, this.soft = false, this.disabled = false});
+  const TextLink({super.key, required this.label, required this.onPress, this.soft = false, this.disabled = false, this.start = false});
   final String label;
   final VoidCallback onPress;
   final bool soft, disabled;
+
+  /// 가운데가 아니라 왼쪽에 글자 폭만큼(지금 앱 alignSelf: 'flex-start')
+  final bool start;
 
   @override
   Widget build(BuildContext context) => Semantics(
@@ -1434,13 +1497,16 @@ class TextLink extends StatelessWidget {
         excludeSemantics: true,
         child: Opacity(
           opacity: disabled ? 0.4 : 1,
-          child: Center(
+          child: Align(
+            alignment: start ? Alignment.centerLeft : Alignment.center,
+            widthFactor: start ? 1 : null,
             child: Pressable(
               onPress: disabled ? null : onPress,
               child: ConstrainedBox(
                 constraints: const BoxConstraints(minHeight: Space.touch),
+                // 가운데 정렬은 양옆 8을 누르는 자리로 둔다(지금 앱 hitSlop 8). 왼쪽 정렬은 글자가 위 글줄과 맞게 여백 없이
                 child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 8),
+                  padding: EdgeInsets.symmetric(horizontal: start ? 0 : 8),
                   child: Center(widthFactor: 1, child: Text(label, style: AppType.sub.copyWith(fontFamily: AppFonts.uiBold, color: soft ? AppColors.inkSoft : AppColors.accent))),
                 ),
               ),

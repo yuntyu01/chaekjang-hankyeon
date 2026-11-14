@@ -34,6 +34,7 @@ import 'binding_screen.dart' show openBindingEditor;
 import 'book_share_screen.dart' show openBookShare;
 import 'edit_book_screen.dart' show openEditBook;
 import 'place_books.dart' show placeWithChoice;
+import '../community/book_reviews.dart';
 
 const _views = [('info', '책 정보'), ('rate', '평가'), ('mine', '내 기록')];
 const _statuses = [ReadStatus.want, ReadStatus.reading, ReadStatus.read, ReadStatus.paused];
@@ -62,6 +63,16 @@ class _BookScreenState extends State<BookScreen> {
   final _note = TextEditingController();
   final _page = TextEditingController();
   bool _noteLoaded = false;
+  BookReviewsState? _reviews; // 같은 판본(ISBN-13)의 공개 후기. 판본 ISBN을 고치면 새로 받는다
+  String? _reviewsIsbn;
+
+  BookReviewsState _reviewsOf(String? isbn13) {
+    final r = _reviews;
+    if (r != null && _reviewsIsbn == isbn13) return r;
+    r?.dispose();
+    _reviewsIsbn = isbn13;
+    return _reviews = BookReviewsState(isbn13)..addListener(_changed);
+  }
 
   @override
   void initState() {
@@ -80,6 +91,7 @@ class _BookScreenState extends State<BookScreen> {
     }
     _note.dispose();
     _page.dispose();
+    _reviews?.dispose();
     super.dispose();
   }
 
@@ -202,6 +214,7 @@ class _BookScreenState extends State<BookScreen> {
     final done = completions(lib, id);
     final pub = [?e.publisher, if (e.publishedAt != null && e.publishedAt!.length >= 4) e.publishedAt!.substring(0, 4)].where((x) => x.isNotEmpty).join(' · ');
     final last = rounds.isEmpty ? null : rounds.last;
+    final reviews = _reviewsOf(e.isbn13);
     final hair = 1 / MediaQuery.devicePixelRatioOf(context);
     final readLabel = b.status == ReadStatus.reading || b.status == ReadStatus.paused
         ? '이어서 읽기'
@@ -284,6 +297,10 @@ class _BookScreenState extends State<BookScreen> {
               ),
             ),
           ),
+          if (reviews.available) ...[
+            const SectionBand(),
+            Padding(padding: const EdgeInsets.only(top: Space.xl), child: ReviewsPane(title: e.title, myRating: b.rating, state: reviews)),
+          ],
         ]);
 
     void togglePage() => setState(() {
@@ -470,6 +487,7 @@ class _BookScreenState extends State<BookScreen> {
             ),
             if (e.authors.isNotEmpty)
               Padding(padding: const EdgeInsets.only(top: Space.xs), child: Text(e.authors.join(', '), textAlign: TextAlign.center, style: AppType.sub.copyWith(fontSize: 16, height: 22 / 16))),
+            ReaderRating(data: reviews.data),
           ]),
         ),
         Padding(

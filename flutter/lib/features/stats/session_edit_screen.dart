@@ -1,6 +1,6 @@
 // 독서 기록 수정(지금 앱 app/session/[id].tsx): 잘못 저장한 시간·날짜·책 연결을 고치거나 삭제한다.
 // 고친 칸만 저장한다(domain/session_edit): 메모만 고치면 시작·끝 시각과 초 단위 독서 시간이 그대로 남는다. 고친 칸이 있으면 나가기 전에 묻는다.
-// (커뮤니티에 공유하기는 커뮤니티를 옮길 때 넣는다)
+// 책과 연결된 기록은 커뮤니티가 열려 있으면 공유할 수 있다(고른 것만 공개)
 library;
 
 import 'package:flutter/material.dart';
@@ -12,6 +12,7 @@ import '../../ui/alert.dart';
 import '../../ui/kit.dart';
 import '../../ui/theme.dart';
 import '../bookmark/book_picker.dart' show pickBook;
+import '../community/community_screens.dart' show communityOpen, openCommunityShare;
 
 Future<void> openSessionEdit(BuildContext context, String id) =>
     Navigator.of(context, rootNavigator: true).push(MaterialPageRoute<void>(settings: const RouteSettings(name: '/session'), builder: (_) => SessionEditScreen(id: id)));
@@ -43,9 +44,10 @@ class _SessionEditScreenState extends State<SessionEditScreen> {
         memo: memo ?? _f.memo,
       ));
 
+  // 나가기로 정했으면 PopScope를 거치지 않고 닫는다(setState 없이 바꾼 _released는 PopScope가 아직 모른다)
   void _leave() {
     _released = true;
-    Navigator.of(context).maybePop();
+    Navigator.of(context).pop();
   }
 
   @override
@@ -115,6 +117,8 @@ class _SessionEditScreenState extends State<SessionEditScreen> {
           Padding(
             padding: const EdgeInsets.only(top: Space.tight),
             child: ListGroup(children: [
+              if (s.myBookId != null && communityOpen.value)
+                ListItem(label: '커뮤니티에 공유하기', sub: '고른 것만 공개돼요', chevron: true, onPress: () => openCommunityShare(context, widget.id)),
               ListItem(
                 label: '이 기록 삭제',
                 danger: true,

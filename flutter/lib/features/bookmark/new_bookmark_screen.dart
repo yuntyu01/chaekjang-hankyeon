@@ -162,7 +162,7 @@ class _NewBookmarkScreenState extends State<NewBookmarkScreen> {
         const AlertButton('계속 쓰기', style: AlertStyle.cancel),
         AlertButton('버리기', style: AlertStyle.destructive, onPress: () {
           _released = true;
-          Navigator.of(context).maybePop();
+          Navigator.of(context).pop();
         }),
       ]);
 

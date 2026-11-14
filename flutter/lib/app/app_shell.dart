@@ -1,10 +1,11 @@
-// 앱 틀: 하단 탭(책장 · 갈피 · 읽기 · 기록 · 내 정보, 서버가 열면 커뮤니티). 지금 앱 app/(tabs)/_layout.tsx와 ui/tabBar.ts를 옮긴 것.
+// 앱 틀: 하단 탭(책장 · 갈피 · 읽기 · 기록 · [커뮤니티: 서버가 열었을 때만] · 내 정보). 지금 앱 app/(tabs)/_layout.tsx와 ui/tabBar.ts를 옮긴 것.
 // 하단바는 화면 양옆·아래에서 띄운 흰 알약(옅은 그림자), 글자 없이 아이콘만: 고르지 않은 탭은 속이 빈 회색, 고른 탭은 검정으로 속이 찬 모양
 library;
 
 import 'package:flutter/material.dart';
 
 import '../features/bookmark/bookmarks_screen.dart';
+import '../features/community/community_screens.dart' show CommunityTab, communityOpen, watchCommunityOpen;
 import '../domain/library.dart';
 import 'app_nav.dart';
 import '../features/home/home_screen.dart';
@@ -47,11 +48,15 @@ final _tabs = <_Tab>[
   _Tab('갈피', (c, f) => bookmarkTabIcon(c, size: TabBarStyle.icon, filled: f), (_) => const BookmarksScreen()),
   _Tab('읽기', (c, f) => readTabIcon(c, AppColors.bg, size: TabBarStyle.icon, filled: f), (_) => const ReadList()),
   _Tab('기록', (c, f) => recordTabIcon(c, AppColors.bg, size: TabBarStyle.icon, filled: f), (_) => const StatsScreen()),
+  _Tab('커뮤니티', (c, f) => communityTabIcon(c, AppColors.bg, size: TabBarStyle.icon, filled: f), (_) => const CommunityTab()),
   _Tab('내 정보', (c, f) => profileTabIcon(c, size: TabBarStyle.icon, filled: f), (_) => const SettingsScreen(tab: true)),
 ];
 
 /// 탭마다 지금 앱 경로(작은 타이머 자리·숨김을 정한다)
-const _tabPaths = ['/', '/bookmarks', '/read', '/stats', '/me'];
+const _tabPaths = ['/', '/bookmarks', '/read', '/stats', '/community', '/me'];
+
+/// 커뮤니티 탭 자리: 서버가 열었을 때만 하단바에 보인다(서버 스위치, 지금 앱 _layout href null)
+const _communityTab = 4;
 
 /// 시험 빌드 전용: --dart-define=QA_SEED_YEAR=2025로 빌드하면 켤 때 지금 책장을 그해 책장으로 남긴다(지난 책장 화면 확인용)
 const _qaSeedYear = int.fromEnvironment('QA_SEED_YEAR');
@@ -67,6 +72,7 @@ class _AppShellState extends State<AppShell> {
     super.initState();
     // 지난 독서가 중간에 멈췄거나 끝낸 기록을 저장하지 않았으면 다시 켰을 때 묻는다(지금 앱 RecoveryDialog)
     AppNav.instance.addListener(_nav);
+    communityOpen.addListener(_communityChanged);
     final reading = ReadingStore.instance;
     // 서재는 첫 화면이 뜬 뒤 미리 읽어 둔다(복구 창·다른 탭이 책을 바로 찾게)
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -83,6 +89,7 @@ class _AppShellState extends State<AppShell> {
         books.watch();
         // 서버 동기화(서버 주소가 있는 빌드만): 연도 책장 확인 뒤에 시작한다(받는 도중의 서재로 한 해를 남기지 않게)
         SyncService.instance.start();
+        watchCommunityOpen();
         // 표지 색·두께·갈피 색 맞추기는 켠 뒤 조금 있다 뒤에서(지금 앱 _layout: 3초 뒤)
         Future<void>.delayed(const Duration(seconds: 3), () => backfillCoverColors().catchError((Object e) {
               // ignore: avoid_print
@@ -109,9 +116,20 @@ class _AppShellState extends State<AppShell> {
         MiniTimerPlace.instance.setTab(_tabPaths[i]);
       });
 
+  // 커뮤니티가 닫히면(서버 스위치) 그 탭을 보고 있던 사람은 책장으로
+  void _communityChanged() {
+    if (!mounted) return;
+    if (!communityOpen.value && _index == _communityTab) {
+      _select(0);
+    } else {
+      setState(() {});
+    }
+  }
+
   @override
   void dispose() {
     AppNav.instance.removeListener(_nav);
+    communityOpen.removeListener(_communityChanged);
     super.dispose();
   }
 
@@ -181,6 +199,7 @@ class _AppShellState extends State<AppShell> {
                 child: Row(
                   children: [
                     for (var i = 0; i < _tabs.length; i++)
+                      if (i != _communityTab || communityOpen.value)
                       Expanded(
                         child: Semantics(
                           button: true,
