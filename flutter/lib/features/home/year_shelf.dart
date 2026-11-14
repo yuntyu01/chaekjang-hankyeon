@@ -15,7 +15,7 @@ import '../../domain/book3.dart' show corners;
 import '../../domain/camera.dart';
 import '../../domain/place_books.dart';
 import '../../domain/shelf_row.dart';
-import '../../services/cover_cache.dart' show loadCover;
+import '../../scene_config/spine_look.dart';
 import '../../services/share_image.dart';
 import '../../store/library_model.dart';
 import '../../store/library_store.dart';
@@ -71,11 +71,13 @@ class _YearShelfState extends State<YearShelf> {
   @override
   void initState() {
     super.initState();
+    spineLook.addListener(_loadPhotos);
     _load();
   }
 
   @override
   void dispose() {
+    spineLook.removeListener(_loadPhotos);
     for (final i in _atlases) {
       i.dispose();
     }
@@ -115,12 +117,16 @@ class _YearShelfState extends State<YearShelf> {
       _keys.addAll(keys);
       _bookKeys = bookKeys;
     });
-    // 표지 사진: 받는 대로 다시 그린다(그 전까지는 코드로 그린 장정)
+    _loadPhotos();
+  }
+
+  /// 표지 사진: 받는 대로 다시 그린다(그 전까지는 코드로 그린 장정). 책등 모양이 바뀌어도 다시
+  void _loadPhotos() {
+    final lib = _lib;
+    if (lib == null) return;
     for (final uri in {for (final b in lib.books) ?b.coverArtUri}) {
-      loadCover(uri).then((img) async {
-        if (img == null || !mounted) return;
-        final p = await CoverPhoto.of(img);
-        if (mounted) setState(() => _photos = {..._photos, uri: p});
+      loadCoverPhoto(uri).then((p) {
+        if (p != null && mounted) setState(() => _photos = {..._photos, uri: p});
       });
     }
   }

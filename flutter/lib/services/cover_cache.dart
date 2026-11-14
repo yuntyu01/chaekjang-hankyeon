@@ -51,6 +51,27 @@ Future<void> _decoding = Future.value();
 /// 다른 그림(책장 시작 사진 등)도 표지와 같은 줄에서 한 장씩 해독한다(에뮬 Impeller GLES에서 동시에 맡기면 getNextFrame이 끝나지 않는다)
 Future<ui.Image?> decodeImageInLine(Uint8List bytes) => _decode(bytes);
 
+/// 화소(RGBA 8비트, 한 줄씩)로 그림을 만든다. 표지 해독과 같은 줄에서 한 장씩
+Future<ui.Image?> rawImageInLine(Uint8List rgba, int width, int height) {
+  final done = _decoding.then((_) async {
+    try {
+      final buf = await ui.ImmutableBuffer.fromUint8List(rgba);
+      final desc = ui.ImageDescriptor.raw(buf, width: width, height: height, pixelFormat: ui.PixelFormat.rgba8888);
+      final codec = await desc.instantiateCodec();
+      final img = (await codec.getNextFrame()).image;
+      codec.dispose();
+      desc.dispose();
+      buf.dispose();
+      return img;
+    } catch (e) {
+      debugPrint('[flcover] raw image failed $e');
+      return null;
+    }
+  });
+  _decoding = done.then((_) {}, onError: (_) {});
+  return done;
+}
+
 Future<ui.Image?> _decode(Uint8List bytes) {
   final done = _decoding.then((_) => _decodeNow(bytes));
   _decoding = done.then((_) {}, onError: (_) {});

@@ -13,7 +13,7 @@ import '../../domain/shelf_scene.dart' show computeShelf;
 import '../../domain/shelf_row.dart';
 import '../../domain/types.dart';
 import '../../scene_config/skin.dart';
-import '../../services/cover_cache.dart' show loadCover;
+import '../../scene_config/spine_look.dart';
 import '../../store/placement_store.dart';
 import '../../ui/bake.dart';
 import '../../ui/cover_photo.dart';
@@ -65,7 +65,23 @@ class _SkinPreviewState extends State<SkinPreview> {
   @override
   void initState() {
     super.initState();
+    spineLook.addListener(_spineChanged);
     _bake();
+  }
+
+  /// 책등 모양을 고르면 그 모양으로 표지 사진을 다시 준비한다(실물 측면이면 책등 사진도)
+  Future<void> _spineChanged() async {
+    final r = _row;
+    if (r == null) return;
+    final s = PlacementStore.instance;
+    final photos = <String, CoverPhoto>{};
+    for (final id in [for (final b in r.books) b.id]) {
+      final uri = s.books[id]?.coverArtUri;
+      if (uri == null) continue;
+      final p = await loadCoverPhoto(uri);
+      if (p != null) photos[uri] = p;
+    }
+    if (mounted) setState(() => _photos = photos);
   }
 
   @override
@@ -76,6 +92,7 @@ class _SkinPreviewState extends State<SkinPreview> {
 
   @override
   void dispose() {
+    spineLook.removeListener(_spineChanged);
     _baked?.image.dispose();
     super.dispose();
   }
@@ -97,8 +114,8 @@ class _SkinPreviewState extends State<SkinPreview> {
     for (final b in books) {
       final uri = b.coverArtUri;
       if (uri == null || photos.containsKey(uri)) continue;
-      final img = await loadCover(uri);
-      if (img != null) photos[uri] = await CoverPhoto.of(img);
+      final p = await loadCoverPhoto(uri);
+      if (p != null) photos[uri] = p;
     }
     if (!mounted || token != _token) {
       baked.image.dispose();

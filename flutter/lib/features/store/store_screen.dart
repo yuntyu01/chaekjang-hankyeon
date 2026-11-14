@@ -1,12 +1,13 @@
 // 스토어(지금 앱 app/store.tsx, 2026-11-04 사용자 '선반·벽지·벽 여부를 골라 바꾸게'): 부품을 고르면 위 미리보기(홈 책장과 같은 그림)가 그 자리에서 바뀌고,
 // '적용하기'를 누르면 홈 책장에 바로 반영된다(2026-11-10 '실시간으로'). 고르기만 하고 나가면 원래 스킨으로 되돌린다.
 // Flutter는 벽 있는 책장만: '벽 없이 선반만'(틀 없음)은 옆 벽이 없어 떨어짐 물리가 다시 필요하고 카메라·판 모양이 달라 아직 두지 않는다.
-// 책 측면(색 한 가지·실물 측면·표지 이어 쌓기)은 책장 그림이 아직 한 가지라 고르기를 두지 않았다
+// 책 측면(색 한 가지·실물 측면·표지 이어 쌓기, scene_config/spine_look)도 고른다. 미리보기가 내 책장 책(실물 표지)이라 고르면 미리보기에서 바로 보인다
 library;
 
 import 'package:flutter/material.dart';
 
 import '../../scene_config/skin.dart';
+import '../../scene_config/spine_look.dart';
 import '../../services/cover_colors.dart' show shelfRefresh;
 import '../../store/skin_store.dart';
 import '../../ui/kit.dart';
@@ -24,16 +25,34 @@ class StoreScreen extends StatefulWidget {
   State<StoreScreen> createState() => _StoreScreenState();
 }
 
+/// 책 측면 선택지(지금 앱 ko.store.spines)
+const _spines = [
+  (SpineLook.color, '색 한 가지', '표지에서 뽑은 색으로 칠하고 제목을 써요'),
+  (SpineLook.photo, '실물 측면', '실제 책 측면 사진이에요. 사진이 없는 책은 색 한 가지로'),
+  (SpineLook.stripe, '표지 이어 쌓기', '표지 가장자리 색을 측면까지 줄무늬로 이어요'),
+];
+
 class _StoreScreenState extends State<StoreScreen> {
   final _saved = skinChoice;
   late SkinChoice _choice = skinChoice;
+  final _savedSpine = spineLook.value;
+  late SpineLook _spine = spineLook.value;
   bool _applied = false;
 
   @override
   void dispose() {
-    // 고르기만 하고 나가면 원래 스킨으로
-    if (!_applied) setSkin(_saved);
+    // 고르기만 하고 나가면 원래 스킨·책 측면으로
+    if (!_applied) {
+      setSkin(_saved);
+      spineLook.value = _savedSpine;
+    }
     super.dispose();
+  }
+
+  // 책 측면은 고르는 대로 미리보기(와 뒤의 홈)에 보이고, 적용해야 저장된다
+  void _pickSpine(SpineLook v) {
+    spineLook.value = v;
+    setState(() => _spine = v);
   }
 
   void _pick(SkinChoice next) {
@@ -44,6 +63,7 @@ class _StoreScreenState extends State<StoreScreen> {
   Future<void> _apply() async {
     _applied = true;
     await saveSkin(_choice);
+    if (_spine != _savedSpine) await saveSpineLook(_spine);
     await dropHomeSnapshot();
     // 홈 책장을 새 스킨 값으로 다시 굽는다(굽기 열쇠에 맞추기 값이 들어 있어 바뀐 줄은 새로 굽는다)
     shelfRefresh.value++;
@@ -81,7 +101,7 @@ class _StoreScreenState extends State<StoreScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final changed = _choice != _saved;
+    final changed = _choice != _saved || _spine != _savedSpine;
     return Screen(
       title: '스토어',
       footer: Btn(label: '적용하기', size: 'l', disabled: !changed, onPress: _apply),
@@ -107,6 +127,16 @@ class _StoreScreenState extends State<StoreScreen> {
         _options(wallSkins, _choice.wall, (k) => _choice.copyWith(wall: k)),
         const H2('벽'),
         _options(frameSkins, _choice.frame, (k) => _choice.copyWith(frame: k)),
+        const H2('책 측면'),
+        for (final (i, (k, label, sub)) in _spines.indexed)
+          Padding(
+            padding: EdgeInsets.only(top: i == 0 ? 0 : Space.s),
+            child: Choice(label: label, sub: sub, selected: _spine == k, onPress: () => _pickSpine(k)),
+          ),
+        Padding(
+          padding: const EdgeInsets.only(top: Space.s),
+          child: Text('실제 표지가 있는 책에만 쓰여요. 적용하면 책장에서 바로 바뀌어요.', style: AppType.sub),
+        ),
         Padding(
           padding: const EdgeInsets.only(top: Space.l),
           child: Text('선반·벽지·벽 색은 바로 바뀌어요. 책과 기록은 그대로예요.', style: AppType.sub),

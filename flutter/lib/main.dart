@@ -1,6 +1,9 @@
 // 책장한켠(Flutter). 지금 앱(React Native, ../app)을 옮기는 중이다.
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 
+import 'scene_config/spine_look.dart';
 import 'store/skin_store.dart';
 import 'package:flutter/services.dart';
 
@@ -12,14 +15,25 @@ import 'ui/bake.dart';
 import 'store/mini_timer_store.dart';
 import 'ui/theme.dart';
 
+/// 시험 빌드 전용 프록시(예: --dart-define=QA_PROXY=127.0.0.1:8899 + adb reverse): 인터넷이 끊긴 에뮬레이터에서 표지·책 검색을 호스트로 보낸다. 출시 빌드는 비어 있다
+const _qaProxy = String.fromEnvironment('QA_PROXY');
+
+class _QaProxy extends HttpOverrides {
+  @override
+  HttpClient createHttpClient(SecurityContext? context) => super.createHttpClient(context)
+    ..findProxy = (uri) => uri.host == '127.0.0.1' || uri.host == 'localhost' ? 'DIRECT' : 'PROXY $_qaProxy';
+}
+
 Future<void> main() async {
+  if (_qaProxy.isNotEmpty) HttpOverrides.global = _QaProxy();
   bootAt = DateTime.now();
   WidgetsFlutterBinding.ensureInitialized();
   await initBake();
   // 기기에 재 둔 책등 비율·갈피 색(책장 책 크기·갈피 색)
   await loadCoverMeasures();
-  // 고른 스킨(선반·벽지·벽): 책장을 굽기 전에
+  // 고른 스킨(선반·벽지·벽)·책 측면 모양: 책장을 굽기 전에
   await loadSkin();
+  await loadSpineLook();
   runApp(const ChaekjangApp());
 }
 

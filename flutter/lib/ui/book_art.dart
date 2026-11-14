@@ -122,6 +122,7 @@ void drawBookArt(ui.Canvas canvas, Book3 b, BookLook look, GlyphMetrics glyphs, 
     canvas.scale(1 / pn.w, 1 / pn.h);
     // 기본 정면 장정 그림: 늘이지 않고 면을 채우고(위아래가 잘리면 위에서 focusY만큼), 제목은 그림마다 정한 색으로 위 여백에(지금 앱 CoverFaceArt)
     final art = f == FaceId.cover && look.artwork != null ? artworkImage(look.artwork!) : null;
+    final sp = f == FaceId.spine ? spineArtOf(photo) : null;
     if (art != null) {
       final r = focusedRect(art.width.toDouble(), art.height.toDouble(), pn.w, pn.h, artworkFocusY);
       canvas.drawImageRect(art, ui.Rect.fromLTWH(0, 0, art.width.toDouble(), art.height.toDouble()), ui.Rect.fromLTWH(r.x, r.y, r.width, r.height),
@@ -130,6 +131,14 @@ void drawBookArt(ui.Canvas canvas, Book3 b, BookLook look, GlyphMetrics glyphs, 
     } else if (f == FaceId.cover && photo != null) {
       // 표지 사진이 있으면 앞표지는 사진만(제목은 사진 안에 있다)
       drawPhotoCover(canvas, photo, pn.w, pn.h);
+    } else if (sp != null) {
+      // 고른 책등 모양(실물 측면 사진·표지 이어 쌓기 줄무늬). 사진은 제목이 사진 안에 있어 쓰지 않는다
+      drawSpineImage(canvas, sp.image, pn.w, pn.h);
+      if (sp.ink != null && look.title.isNotEmpty) {
+        final op = titleOpacity(b.roll);
+        if (op.v > 0.001) _verticalTitle(canvas, look, b.dims, glyphs, op.v, inkAt: sp.ink);
+        if (op.h > 0.001) _lyingTitle(canvas, look, b.dims, glyphs, op.h, inkAt: sp.ink);
+      }
     } else if (look.title.isNotEmpty) {
       if (f == FaceId.spine) {
         final op = titleOpacity(b.roll);
@@ -166,9 +175,12 @@ void _glyph(ui.Canvas canvas, String ch, double x, double baseline, double fs, u
 
 ui.Color _alpha(ui.Color c, double a) => c.withValues(alpha: a);
 
+/// 제목 색: 한 색(look.ink), 또는 글자가 놓인 책등 세로 구간(머리 0 ~ 꼬리 1)마다 고르는 색(줄무늬 책등)
+typedef InkAt = String Function(double f0, double f1);
+
 /// 세운 책등 제목(세로 조판): 글자를 바로 세워 열로 쌓는다. 글자마다 나아가기 폭의 가운데를 열 가운데에 둔다.
 /// 쉼표·마침표는 앞 글자 오른쪽 아래(지금 앱 verticalTitlePicture)
-void _verticalTitle(ui.Canvas canvas, BookLook look, Dims d, GlyphMetrics g, double opacity) {
+void _verticalTitle(ui.Canvas canvas, BookLook look, Dims d, GlyphMetrics g, double opacity, {InkAt? inkAt}) {
   final w = d.t, h = d.h;
   final textEnd = look.titleTop != null ? 0.79 : 0.88;
   final t = spineTitleLayout(look.title, h, d.t * spineFace, textEnd, textEnd + 0.12);
@@ -200,8 +212,9 @@ void _verticalTitle(ui.Canvas canvas, BookLook look, Dims d, GlyphMetrics g, dou
       final code = cell.ch.runes.first;
       final gx = cx - g.advance(code, fs) / 2;
       final cy = y + cellH / 2;
-      _glyph(canvas, cell.ch, gx, cy + gy, fs, ink);
-      if (cell.punct != null) _glyph(canvas, cell.punct!, gx + g.ink(code, fs).x1 - fs * 0.05, cy + fs * 0.5, fs, ink);
+      final c = inkAt == null ? ink : _alpha(_color(inkAt(y / h, (y + cellH) / h)), opacity);
+      _glyph(canvas, cell.ch, gx, cy + gy, fs, c);
+      if (cell.punct != null) _glyph(canvas, cell.punct!, gx + g.ink(code, fs).x1 - fs * 0.05, cy + fs * 0.5, fs, c);
       y += cellH + (cell.punct != null ? fs * 0.36 : 0);
     }
   }
@@ -211,7 +224,7 @@ void _verticalTitle(ui.Canvas canvas, BookLook look, Dims d, GlyphMetrics g, dou
 const _titleLift = 0.06;
 
 /// 눕힌 책등 제목(가로 한 줄): 머리(위) → 꼬리(아래)로 쓰고 글자 위쪽은 앞표지 쪽을 향한다. 두께 방향 가운데
-void _lyingTitle(ui.Canvas canvas, BookLook look, Dims d, GlyphMetrics g, double opacity) {
+void _lyingTitle(ui.Canvas canvas, BookLook look, Dims d, GlyphMetrics g, double opacity, {InkAt? inkAt}) {
   final w = d.t, h = d.h;
   final t = lyingTitleLayout(look.title, h, d.t);
   final fs = t.fontSize;
@@ -228,8 +241,9 @@ void _lyingTitle(ui.Canvas canvas, BookLook look, Dims d, GlyphMetrics g, double
       continue;
     }
     final box = g.ink(r, fs);
-    _glyph(canvas, ch, x, gy, fs, ink);
-    x += (box.x1 - box.x0) + fs * lyingTrack;
+    final cw = box.x1 - box.x0;
+    _glyph(canvas, ch, x, gy, fs, inkAt == null ? ink : _alpha(_color(inkAt((t.start * h + x) / h, (t.start * h + x + cw) / h)), opacity));
+    x += cw + fs * lyingTrack;
   }
   canvas.restore();
 }

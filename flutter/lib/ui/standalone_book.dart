@@ -16,7 +16,7 @@ import '../domain/placed.dart';
 import '../domain/types.dart';
 import '../domain/vec3.dart';
 import '../features/home/home_screen.dart' show ShelfPainter;
-import '../services/cover_cache.dart' show loadCover;
+import '../scene_config/spine_look.dart';
 import 'bake.dart' show emptyImage;
 import 'cover_photo.dart';
 import 'outline.dart' show seedOf;
@@ -63,10 +63,25 @@ class _BookPainter extends CustomPainter {
   bool shouldRepaint(_BookPainter old) => old.b != b || old.book != book || old.photo != photo || old.px.s != px.s;
 }
 
-/// 표지 사진(있으면) 받기
+/// 표지 사진(있으면) 받기. 책등 모양(스토어)이 바뀌면 그 모양으로 다시
 mixin _CoverPhotoLoad<T extends StatefulWidget> on State<T> {
   CoverPhoto? photo;
   bool _ready = ShelfPainter.ready;
+  String? _uri;
+
+  @override
+  void initState() {
+    super.initState();
+    spineLook.addListener(_again);
+  }
+
+  @override
+  void dispose() {
+    spineLook.removeListener(_again);
+    super.dispose();
+  }
+
+  void _again() => _fetch(_uri);
 
   void loadPhoto(String? uri) {
     if (!_ready) {
@@ -75,11 +90,14 @@ mixin _CoverPhotoLoad<T extends StatefulWidget> on State<T> {
       });
     }
     photo = null;
+    _fetch(uri);
+  }
+
+  void _fetch(String? uri) {
+    _uri = uri;
     if (uri == null) return;
-    loadCover(uri).then((img) async {
-      if (img == null || !mounted) return;
-      final p = await CoverPhoto.of(img);
-      if (mounted) setState(() => photo = p);
+    loadCoverPhoto(uri).then((p) {
+      if (p != null && mounted && _uri == uri) setState(() => photo = p);
     });
   }
 }

@@ -47,6 +47,7 @@ import '../../ui/bake.dart';
 import '../../ui/bake_cache.dart';
 import '../../ui/book_key.dart';
 import '../../ui/cover_photo.dart';
+import '../../scene_config/spine_look.dart';
 import '../../ui/glyph_metrics.dart';
 import '../../ui/metrics.dart';
 import '../../ui/outline.dart';
@@ -706,6 +707,7 @@ class _HomeScreenState extends State<HomeScreen> {
   void initState() {
     super.initState();
     shelfRefresh.addListener(_refresh);
+    spineLook.addListener(_spineLookChanged);
     focusBookOnShelf.addListener(_focusBook);
     BookcaseStore.instance.addListener(_bookcasesChanged);
     if (!BookcaseStore.instance.loaded) BookcaseStore.instance.load();
@@ -861,9 +863,14 @@ class _HomeScreenState extends State<HomeScreen> {
     ),
   );
 
+  /// 책등 모양(스토어)이 바뀌었다: 표지 사진을 그 모양으로 다시 준비한다(실물 측면이면 책등 사진도 받는다). 오는 대로 바꿔 그린다
+  void _spineLookChanged() {
+    if (mounted) _loadCovers([for (final b in _libBooks) ?b.coverArtUri], again: true);
+  }
+
   /// 표지 사진을 받는다(기기에 있으면 바로). 하나 올 때마다 다시 그린다
   bool _pruned = false;
-  void _loadCovers(List<String> uris) {
+  void _loadCovers(List<String> uris, {bool again = false}) {
     if (!_pruned) {
       _pruned = true;
       pruneCoverCache();
@@ -871,15 +878,12 @@ class _HomeScreenState extends State<HomeScreen> {
     final t0 = DateTime.now();
     var left = uris.toSet().length;
     for (final uri in uris.toSet()) {
-      if (_photos.containsKey(uri)) {
+      if (!again && _photos.containsKey(uri)) {
         left--;
         continue;
       }
-      loadCover(uri).then((img) async {
-        if (img != null && mounted) {
-          final photo = await CoverPhoto.of(img);
-          setState(() => _photos = {..._photos, uri: photo});
-        }
+      loadCoverPhoto(uri).then((photo) {
+        if (photo != null && mounted) setState(() => _photos = {..._photos, uri: photo});
         if (--left == 0) debugPrint('[flcover] ${uris.length} covers ${DateTime.now().difference(t0).inMilliseconds}ms got ${_photos.length}');
       });
     }
@@ -893,6 +897,7 @@ class _HomeScreenState extends State<HomeScreen> {
     _freezeTimer?.cancel();
     _autoScroll?.cancel();
     shelfRefresh.removeListener(_refresh);
+    spineLook.removeListener(_spineLookChanged);
     focusBookOnShelf.removeListener(_focusBook);
     BookcaseStore.instance.removeListener(_bookcasesChanged);
     for (final i in _atlases) {
