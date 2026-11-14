@@ -8,7 +8,7 @@ import 'dart:math' as math;
 import 'dart:ui' as ui;
 
 import 'package:flutter/gestures.dart';
-import 'package:flutter/scheduler.dart' show SchedulerBinding;
+import 'package:flutter/scheduler.dart' show SchedulerBinding, Ticker;
 import 'package:flutter/material.dart';
 
 import '../../services/cover_colors.dart';
@@ -51,6 +51,8 @@ import '../../scene_config/spine_look.dart';
 import '../../scene_config/skin.dart' show skinChoice;
 import '../../domain/ribbon_design.dart' show ribbonDesign;
 import '../../services/shelf_widget.dart';
+import 'row_tween.dart';
+import '../../store/settings_store.dart' show SettingsStore;
 import '../../ui/glyph_metrics.dart';
 import '../../ui/metrics.dart';
 import '../../ui/outline.dart';
@@ -92,7 +94,7 @@ class HomeScreen extends StatefulWidget {
   State<HomeScreen> createState() => _HomeScreenState();
 }
 
-class _HomeScreenState extends State<HomeScreen> {
+class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   final _scroll = ScrollController();
 
   // ---------- 지난 연도 책장(지금 앱 YearPager) ----------
@@ -600,6 +602,33 @@ class _HomeScreenState extends State<HomeScreen> {
   bool _frozen = false;
   Timer? _freezeTimer;
 
+  // ---------- 책 옮겨 가기(지금 앱 planner의 밀림·미리 보기 움직임, MOTION_MS 230, row_tween.dart) ----------
+  static const _tweenMs = 230;
+  final _tween = RowTween();
+  double _tweenT = 1;
+  Ticker? _tweenTicker;
+  bool get _tweening => _tweenT < 1 && _tween.active;
+
+  bool get _reduceMotion {
+    final m = SettingsStore.instance.reduceMotion;
+    return m == 'on' || (m == 'system' && MediaQuery.disableAnimationsOf(context));
+  }
+
+  /// 그릴 줄: 그릴 줄 목록이 바뀌면(미리 보기·새로 굽기) 지금 보이던 자세에서 움직임을 시작하고, 움직이는 동안은 섞은 자세의 줄
+  List<RowCase> _moving(List<RowCase> target) {
+    if (_tween.retarget(target, animate: !_reduceMotion)) {
+      _tweenTicker ??= createTicker((elapsed) {
+        if (!mounted) return;
+        setState(() => _tweenT = math.min(1.0, elapsed.inMilliseconds / _tweenMs));
+        if (_tweenT >= 1) _tweenTicker!.stop();
+      });
+      _tweenTicker!.stop();
+      _tweenT = _tween.active ? 0 : 1;
+      if (_tween.active) _tweenTicker!.start();
+    }
+    return _tween.at(Curves.easeOutCubic.transform(_tweenT));
+  }
+
   /// 홈 화면 위젯 칸 넘기기: 책장 그림을 새로 굳히고 2초 동안 그대로면(표지 사진이 하나씩 올 때마다 다시 굳힌다) 넘긴다
   Timer? _widgetTimer;
   void _scheduleWidget() {
@@ -710,7 +739,7 @@ class _HomeScreenState extends State<HomeScreen> {
       if (mounted && !_frozen) setState(() => _frozen = true);
     });
     // 미리 보는 동안은 그대로 그린다(굳힌 그림은 끄는 책을 떠 오는 데 쓰고, 미리 보기가 끝나면 다시 굳힌다)
-    if (_shown != null || !_frozen || !ShelfPainter.ready || h > 8192 || w > 8192) return CustomPaint(painter: painter);
+    if (_shown != null || _tweening || !_frozen || !ShelfPainter.ready || h > 8192 || w > 8192) return CustomPaint(painter: painter);
     final key = (
       _runs.length,
       painter.rows,
@@ -969,6 +998,7 @@ class _HomeScreenState extends State<HomeScreen> {
     _snap?.dispose();
     _freezeTimer?.cancel();
     _widgetTimer?.cancel();
+    _tweenTicker?.dispose();
     _autoScroll?.cancel();
     shelfRefresh.removeListener(_refresh);
     spineLook.removeListener(_spineLookChanged);
@@ -1041,7 +1071,7 @@ class _HomeScreenState extends State<HomeScreen> {
                                 child: RepaintBoundary(
                                   child: _shelfLayer(
                                     ShelfPainter(
-                                      rows: _shown?.rows ?? _case!.rows,
+                                      rows: _moving(_shown?.rows ?? _case!.rows),
                                       atlases: _shown?.atlases ?? _atlases,
                                       rowSpots: _shown?.spots ?? _rowSpots,
                                       spaces: _spaces,

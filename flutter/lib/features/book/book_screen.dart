@@ -43,7 +43,7 @@ const _statuses = [ReadStatus.want, ReadStatus.reading, ReadStatus.read, ReadSta
 Future<void> openBook(BuildContext context, String id) =>
     Navigator.of(context, rootNavigator: true).push(MaterialPageRoute<void>(settings: const RouteSettings(name: '/book'), builder: (_) => BookScreen(id: id)));
 
-/// 아직 옮기지 않은 화면
+/// 책 정보 화면
 class BookScreen extends StatefulWidget {
   const BookScreen({super.key, required this.id, this.onRead});
   final String id;

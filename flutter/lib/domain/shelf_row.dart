@@ -64,6 +64,12 @@ class RowCase {
 
   int get cells => items.fold(0, (t, it) => t + it.w * it.h);
 
+  /// 같은 줄을 책 자세만 바꿔 그린다(옮겨 가는 동안): 굽기 입력·그림 재료·갈피 가림은 그대로
+  RowCase withBooks(List<Book3> moved) => RowCase(env, bx, items, books: moved, space: space, top: top, last: last, frame: frame)
+    ..looks = looks
+    ..tones = tones
+    ..tabLoss = tabLoss;
+
   late final Map<String, int> _at = {for (var i = 0; i < items.length; i++) items[i].key: i};
 
   /// 이름으로 면 번호(아틀라스 자리 차례). 없으면 −1

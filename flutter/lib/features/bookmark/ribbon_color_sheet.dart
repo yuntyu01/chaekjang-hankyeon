@@ -1,11 +1,13 @@
 // 갈피 색 고르기(지금 앱 features/bookmark/RibbonColorSheet.tsx): 책마다 하나. 책장 갈피 탭·갈피 카드 뒤 종이·테이프가 함께 바뀐다.
-// 자동 = 표지에서 고른 색. 기본 색 중에서 고를 수 있고, 자동으로 되돌릴 수 있다.
-// (표지에서 뽑은 색 몇 개를 보여 주는 '표지 색' 묶음은 표지 색 뽑기를 옮길 때 함께 넣는다)
+// 자동 = 표지에서 고른 색. 표지에서 뽑은 색 몇 개(무채색 빼고)와 기본 색 중에서 고를 수 있고, 자동으로 되돌릴 수 있다
 library;
 
 import 'package:flutter/material.dart';
 
 import '../../domain/color.dart';
+import '../../domain/cover_url.dart' show coverAtSize;
+import '../../domain/rebinding.dart' show coverSwatches;
+import '../../services/cover_colors.dart' show coverPalette;
 import '../../store/library_model.dart';
 import '../../ui/kit.dart';
 import '../../ui/theme.dart';
@@ -20,9 +22,32 @@ Future<void> showRibbonColorSheet(BuildContext context, String bookId) => showSh
       builder: (ctx) => ListenableBuilder(listenable: LibraryModel.instance, builder: (ctx, _) => _Body(bookId)),
     );
 
-class _Body extends StatelessWidget {
+class _Body extends StatefulWidget {
   const _Body(this.bookId);
   final String bookId;
+
+  @override
+  State<_Body> createState() => _BodyState();
+}
+
+class _BodyState extends State<_Body> {
+  /// 표지에서 뽑은 색(무채색 빼고, 표지를 못 읽으면 비어 있다)
+  List<String> _fromCover = const [];
+
+  String get bookId => widget.bookId;
+
+  @override
+  void initState() {
+    super.initState();
+    final lib = LibraryModel.instance.lib;
+    final b = lib.books[bookId];
+    final uri = b == null ? null : lib.editions[b.editionId]?.coverUri;
+    if (uri != null) {
+      coverPalette(coverAtSize(uri, 'M'), 6).then((p) {
+        if (mounted) setState(() => _fromCover = [for (final c in coverSwatches(p)) if (!isNeutralColor(c)) c]);
+      });
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -105,6 +130,7 @@ class _Body extends StatelessWidget {
         ),
       ),
       FilterGroup(title: '자동', first: true, children: [FilterOption(label: '표지에서 고른 색', selected: b.ribbonColor == null, onPress: () => pick(null))]),
+      if (_fromCover.isNotEmpty) FilterGroup(title: '표지 색', children: [swatches(_fromCover)]),
       FilterGroup(title: '다른 색', children: [swatches(ribbonPalette)]),
     ]);
   }
