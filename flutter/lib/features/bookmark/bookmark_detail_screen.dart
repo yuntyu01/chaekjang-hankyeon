@@ -1,7 +1,7 @@
 // 갈피 보기(지금 앱 app/bookmark/[id].tsx): 같은 책의 갈피를 좌우로 넘기며 읽는다. 카드는 길면 세로로 스크롤.
 // 아래 막대: 책장 한켠 · 수정 · 공유. 오른쪽 위 더 보기: 수정 · 메모 포함해 공유 · 갈피 색 · 연결된 책 열기 · 삭제.
 // 공유는 화면 밖에 그린 같은 카드를 그림으로 떠서 공유창으로 보낸다(개인 메모는 기본 제외).
-// (지금 앱의 문장 공유 두 모양 '책 페이지·종이 메모'는 공유 그림을 옮길 때 함께 넣는다)
+// 문장 갈피의 공유는 두 모양 '책 페이지·종이 메모'(mark_share_sheet). 문장 없는 사진 갈피와 '메모 포함해 공유'는 같은 카드를 이미지로 뜬다
 library;
 
 import 'dart:io';
@@ -24,6 +24,7 @@ import '../../ui/theme.dart';
 import '../book/book_screen.dart';
 import '../book/labels.dart';
 import 'bookmark_card.dart';
+import 'mark_share_sheet.dart' show showMarkShareSheet;
 import 'photo_plate.dart';
 import 'ribbon_color_sheet.dart';
 
@@ -270,8 +271,8 @@ class _BookmarkDetailScreenState extends State<BookmarkDetailScreen> {
                       onPageChanged: (i) => setState(() => _index = i),
                       itemBuilder: (context, i) {
                         final d = cardData(lib, list[i]);
-                        return SingleChildScrollView(
-                          padding: EdgeInsets.only(top: scale > 1.2 ? 18 : math.max(24, math.min(62, size.height * 0.073 - 4)), bottom: 4),
+                        return _CardPage(
+                          top: scale > 1.2 ? 18 : math.max(24, math.min(62, size.height * 0.073 - 4)),
                           child: Center(child: d == null ? const SizedBox.shrink() : BookmarkCard(data: d, showMemo: true, width: math.min(size.width, 440), seed: list[i].id)),
                         );
                       },
@@ -307,7 +308,12 @@ class _BookmarkDetailScreenState extends State<BookmarkDetailScreen> {
                           icon: 'Share',
                           label: _busy ? '준비 중' : '공유',
                           busy: _busy,
-                          onPress: _busy || curData == null ? null : () => _shoot(false, cur, curData),
+                          // 문장이 있으면 두 모양(책 페이지·종이 메모) 중 골라 공유, 문장 없는 사진 갈피는 같은 카드를 이미지로 뜬다
+                          onPress: _busy || curData == null
+                              ? null
+                              : curData.text.trim().isNotEmpty
+                                  ? () => showMarkShareSheet(context, (text: curData.text, title: curData.title, author: curData.author, page: curData.page))
+                                  : () => _shoot(false, cur, curData),
                         ),
                       ]),
                     ]),
@@ -454,4 +460,52 @@ class _EditBookmarkState extends State<_EditBookmark> {
       ),
     );
   }
+}
+
+/// 갈피 한 장 칸: 카드가 화면보다 길면 내려서 끝까지 본다. 아래에 더 있을 때만 아래 끝을 옅게 흐려 '더 있음'을 보이고
+/// (지금 앱은 긴 카드 아래가 막대에 뚝 잘렸다, 2026-11-14 사용자 '밑에 짤리는 거 고쳐'), 끝까지 내리면 카드 그림자·뒤 종이까지 다 보이게 아래 여백을 둔다
+class _CardPage extends StatefulWidget {
+  const _CardPage({required this.top, required this.child});
+  final double top;
+  final Widget child;
+
+  @override
+  State<_CardPage> createState() => _CardPageState();
+}
+
+class _CardPageState extends State<_CardPage> {
+  bool _more = false;
+
+  // 처음 그린 뒤(크기 알림)와 내릴 때(움직임 알림) 모두 아래에 남은 길이를 본다
+  bool _see(ScrollMetrics m) {
+    final more = m.extentAfter > 1;
+    if (more != _more) setState(() => _more = more);
+    return false;
+  }
+
+  @override
+  Widget build(BuildContext context) => NotificationListener<ScrollMetricsNotification>(
+        onNotification: (n) => _see(n.metrics),
+        child: NotificationListener<ScrollNotification>(
+          onNotification: (ScrollNotification n) => _see(n.metrics),
+          child: Stack(children: [
+            SingleChildScrollView(padding: EdgeInsets.only(top: widget.top, bottom: 28), child: widget.child),
+            Positioned(
+              left: 0,
+              right: 0,
+              bottom: 0,
+              height: 36,
+              child: IgnorePointer(
+                child: AnimatedOpacity(
+                  opacity: _more ? 1 : 0,
+                  duration: const Duration(milliseconds: 160),
+                  child: const DecoratedBox(
+                    decoration: BoxDecoration(gradient: LinearGradient(begin: Alignment.topCenter, end: Alignment.bottomCenter, colors: [Color(0x00FFFFFF), AppColors.bg])),
+                  ),
+                ),
+              ),
+            ),
+          ]),
+        ),
+      );
 }

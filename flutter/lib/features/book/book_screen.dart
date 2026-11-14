@@ -31,6 +31,7 @@ import '../home/home_screen.dart' show focusBookOnShelf;
 import 'all_books.dart' show deleteNote, deleteSummary;
 import '../bookmark/board_screen.dart' show openBookmarkBoard;
 import 'binding_screen.dart' show openBindingEditor;
+import 'book_share_screen.dart' show openBookShare;
 import 'edit_book_screen.dart' show openEditBook;
 import 'place_books.dart' show placeWithChoice;
 
@@ -42,10 +43,6 @@ Future<void> openBook(BuildContext context, String id) =>
     Navigator.of(context, rootNavigator: true).push(MaterialPageRoute<void>(settings: const RouteSettings(name: '/book'), builder: (_) => BookScreen(id: id)));
 
 /// 아직 옮기지 않은 화면
-Future<void> _pending(BuildContext context, String title) => Navigator.of(context).push(MaterialPageRoute<void>(
-      builder: (_) => Screen(title: title, children: const [Empty(title: '준비 중이에요', body: '이 화면은 다음 단계에서 옮겨요.')]),
-    ));
-
 class BookScreen extends StatefulWidget {
   const BookScreen({super.key, required this.id, this.onRead});
   final String id;
@@ -124,7 +121,7 @@ class _BookScreenState extends State<BookScreen> {
       builder: (ctx) => ListGroup(children: [
         ListItem(label: '이미지로 공유', sub: '한 줄 감상·별점을 넣은 카드', onPress: () {
           Navigator.pop(ctx);
-          _pending(context, '이미지로 공유');
+          openBookShare(context, id);
         }),
         ListItem(label: '책 정보 수정', onPress: () {
           Navigator.pop(ctx);
@@ -375,7 +372,7 @@ class _BookScreenState extends State<BookScreen> {
             Padding(
               padding: const EdgeInsets.only(top: Space.s),
               child: Row(children: [
-                Btn(label: '완독 카드 공유', kind: 'ghost', size: 's', onPress: () => _pending(context, '완독 카드 공유')),
+                Btn(label: '완독 카드 공유', kind: 'ghost', size: 's', onPress: () => openBookShare(context, id)),
                 const SizedBox(width: Space.l),
                 Btn(label: '다시 읽기 시작(새 회차)', kind: 'ghost', size: 's', onPress: () => _chooseStatus(b, last, ReadStatus.reading)),
               ]),
@@ -437,7 +434,7 @@ class _BookScreenState extends State<BookScreen> {
     return Screen(
       compact: true,
       right: Row(mainAxisSize: MainAxisSize.min, children: [
-        IconBtn(label: '책 공유', onPress: () => _pending(context, '책 공유'), child: const LucideIcon('Share')),
+        IconBtn(label: '책 공유', onPress: () => openBookShare(context, id), child: const LucideIcon('Share')),
         IconBtn(label: '더 보기', onPress: _menu, child: const LucideIcon('MoreHorizontal')),
       ]),
       footer: Row(children: [

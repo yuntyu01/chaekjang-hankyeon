@@ -44,6 +44,8 @@ flutter:
     - assets/locked_preview.json
     # 기본 정면 장정 그림 6종(지금 앱 assets/covers/artworks: 표지 720×1080, 고르기 썸네일 180×270)
     - assets/covers/artworks/
+    # 공유 그림 바탕·오버레이(지금 앱 assets/share: 시안에서 글자·책을 지운 바탕, 책 빛 지도, 선반 그늘)
+    - assets/share/
 
   # 제목 글꼴(지금 앱과 같은 함렛 SemiBold)
   fonts:
@@ -64,6 +66,12 @@ flutter:
       fonts:
         - asset: assets/fonts/Pretendard-Bold.otf
     # 갈피 문장·대체 표지 글꼴(지금 앱 ReadingSerif = 본명조 Noto Serif KR)
+    - family: MaruBuriRegular
+      fonts:
+        - asset: assets/fonts/MaruBuri-Regular.ttf
+    - family: MaruBuriSemiBold
+      fonts:
+        - asset: assets/fonts/MaruBuri-SemiBold.ttf
     - family: ReadingSerif
       fonts:
         - asset: assets/fonts/NotoSerifKR-Regular.otf
@@ -76,3 +84,5 @@ flutter:
     - shaders/lit.frag
     - shaders/book.frag
     - shaders/tab.frag
+    - shaders/share_cover.frag
+    - shaders/share_shade.frag
