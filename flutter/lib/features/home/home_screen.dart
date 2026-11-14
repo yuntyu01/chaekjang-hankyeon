@@ -285,6 +285,32 @@ class _HomeScreenState extends State<HomeScreen> {
     return moveBook(l, s.books, d.id, findDropTarget(d.detached, s.books, shelfId, centerDU, p.pose, d.widthDU));
   }
 
+  // 가장자리 자동 스크롤(지금 앱 autoScroll: 끄는 동안만, 화면 위아래 72 안이면 한 틀에 최대 14씩). 스크롤하면서도 손가락 자리로 놓을 자리를 다시 본다
+  final _viewportKey = GlobalKey();
+  Offset? _dragGlobal;
+  Timer? _autoScroll;
+
+  void _autoScrollTick() {
+    final g = _dragGlobal, box = _viewportKey.currentContext?.findRenderObject() as RenderBox?;
+    if (_drag == null || g == null || box == null || !_scroll.hasClients) return;
+    const edge = 72.0, speed = 14.0;
+    final y = box.globalToLocal(g).dy, h = box.size.height;
+    final delta = y < edge ? -speed * math.min(1, (edge - y) / edge) : y > h - edge ? speed * math.min(1, (y - (h - edge)) / edge) : 0.0;
+    if (delta == 0) return;
+    final p = _scroll.position;
+    final next = (p.pixels + delta).clamp(0.0, p.maxScrollExtent);
+    if (next == p.pixels) return;
+    _scroll.jumpTo(next);
+    final local = box.globalToLocal(g);
+    _moveDrag(Offset(local.dx, local.dy + next));
+  }
+
+  void _stopAutoScroll() {
+    _autoScroll?.cancel();
+    _autoScroll = null;
+    _dragGlobal = null;
+  }
+
   void _moveDrag(Offset at) {
     if (_drag == null) return;
     setState(() {
@@ -295,6 +321,7 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   void _endDrag() {
+    _stopAutoScroll();
     if (_drag == null) return;
     final r = _dropAt(_dragNow);
     setState(() => _drag = null);
@@ -598,6 +625,7 @@ class _HomeScreenState extends State<HomeScreen> {
     _shelfImage?.dispose();
     _snap?.dispose();
     _freezeTimer?.cancel();
+    _autoScroll?.cancel();
     shelfRefresh.removeListener(_refresh);
     for (final i in _atlases) {
       i.dispose();
@@ -666,6 +694,7 @@ class _HomeScreenState extends State<HomeScreen> {
                         return false;
                       },
                       child: SingleChildScrollView(
+                        key: _viewportKey,
                         controller: _scroll,
                         child: SizedBox(
                           width: box.maxWidth,
@@ -721,10 +750,20 @@ class _HomeScreenState extends State<HomeScreen> {
                                     LongPressGestureRecognizer: GestureRecognizerFactoryWithHandlers<LongPressGestureRecognizer>(
                                       () => LongPressGestureRecognizer(duration: const Duration(milliseconds: 350)),
                                       (g) => g
-                                        ..onLongPressStart = ((e) => _beginDrag(e.localPosition))
-                                        ..onLongPressMoveUpdate = ((e) => _moveDrag(e.localPosition))
+                                        ..onLongPressStart = ((e) {
+                                          _beginDrag(e.localPosition);
+                                          _dragGlobal = e.globalPosition;
+                                          _autoScroll ??= Timer.periodic(const Duration(milliseconds: 16), (_) => _autoScrollTick());
+                                        })
+                                        ..onLongPressMoveUpdate = ((e) {
+                                          _dragGlobal = e.globalPosition;
+                                          _moveDrag(e.localPosition);
+                                        })
                                         ..onLongPressEnd = ((_) => _endDrag())
-                                        ..onLongPressCancel = (() => setState(() => _drag = null)),
+                                        ..onLongPressCancel = (() {
+                                          _stopAutoScroll();
+                                          setState(() => _drag = null);
+                                        }),
                                     ),
                                   },
                                 ),
