@@ -8,6 +8,7 @@ import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 
+import '../../domain/geometry.dart' show mm;
 import '../../domain/layout.dart' show placementOf;
 import '../../domain/library.dart';
 import '../../domain/types.dart' show Book;
@@ -556,8 +557,12 @@ class _PickMark extends StatelessWidget {
       );
 }
 
-/// 작은 앞모습(목록 줄 왼쪽, 칸 폭 64)
-Widget _thumb(Library lib, String id) => SizedBox(width: 64, child: Center(child: ExcludeSemantics(child: BookVisual(lib: lib, id: id, width: 56))));
+/// 작은 앞모습(목록 줄 왼쪽, 칸 폭 64): 지금 앱 StandaloneBook 앞면 배율 0.42(설계 단위 → dp)와 같은 크기
+Widget _thumb(Library lib, String id) {
+  final e = lib.editions[lib.books[id]?.editionId];
+  final w = (mm((e?.widthMm ?? 128).toDouble()) + 8) * 0.42; // 표지 폭 + 둘레 여백 4DU×2
+  return SizedBox(width: 64, child: Center(child: ExcludeSemantics(child: BookVisual(lib: lib, id: id, width: w))));
+}
 
 /// 목록 한 줄(시안): 표지 + 제목 + 저자·상태 + 한 줄 감상 두 줄. 메모가 있으면 오른쪽 위 메모 아이콘을 눌러 작은 상자로 본다
 class _BookListRow extends StatelessWidget {

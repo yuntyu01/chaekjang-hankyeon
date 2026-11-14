@@ -1,5 +1,7 @@
 // 책장한켠(Flutter). 지금 앱(React Native, ../app)을 옮기는 중이다.
 import 'package:flutter/material.dart';
+
+import 'store/skin_store.dart';
 import 'package:flutter/services.dart';
 
 import 'app/app_shell.dart';
@@ -16,6 +18,8 @@ Future<void> main() async {
   await initBake();
   // 기기에 재 둔 책등 비율·갈피 색(책장 책 크기·갈피 색)
   await loadCoverMeasures();
+  // 고른 스킨(선반·벽지·벽): 책장을 굽기 전에
+  await loadSkin();
   runApp(const ChaekjangApp());
 }
 

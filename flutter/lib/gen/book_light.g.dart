@@ -2,15 +2,16 @@
 library;
 
 import '../domain/vec3.dart';
+import '../scene_config/skin.dart' show skinLight;
 
 /// 화면 톤 곡선(발끝·어깨)
 const toneToe = 0.18;
 const toneK = 0.15;
 const toneShoulder = 0.95;
 
-/// 카메라 이득과 벽 대표 자리 빛
-const camGain = 1.4458048374;
-const erefWall = C3(1.03574590869, 1.03574590869, 1.03574590869);
+/// 카메라 이득과 벽 대표 자리 빛(스킨마다)
+double get camGain => skinLight.camGain;
+C3 get erefWall => skinLight.erefWall;
 
 /// 구운 하늘 가림 담기(scene-light-sksl lossEncode·lossDecode): 0을 가운데 G0로 양쪽 제곱근 곡선
 const lossG0 = 0.3;
@@ -22,6 +23,6 @@ const skyC = C3(1, 1, 1);
 const ambient = 0.72;
 const skyTilt = (0, 0.25, -0.12);
 
-/// 장정 재질마다 대표 자리 빛·반사광(고운 종이·린넨·무광·줄무늬 종이)
-const bookErefOf = {'fine': C3(1.0376979051809119, 1.033862723063727, 1.0302571220848937), 'linen': C3(1.0219887965520371, 1.0182116730395672, 1.0146606551693302), 'matte': C3(1.0339867882503542, 1.0301653218872588, 1.0265726156119521), 'laid': C3(1.0376979051809119, 1.033862723063727, 1.0302571220848937)};
-const bookSrefOf = {'fine': C3(0.00962361445751, 0.00958620836279, 0.00955104146646), 'linen': C3(0.0334867530005, 0.0333633401703, 0.0332473150616), 'matte': C3(0.0152222938005, 0.0151645694904, 0.0151103006649), 'laid': C3(0.00962361445751, 0.00958620836279, 0.00955104146646)};
+/// 장정 재질마다 대표 자리 빛·반사광(고운 종이·린넨·무광·줄무늬 종이, 스킨마다)
+Map<String, C3> get bookErefOf => skinLight.bookErefOf;
+Map<String, C3> get bookSrefOf => skinLight.bookSrefOf;

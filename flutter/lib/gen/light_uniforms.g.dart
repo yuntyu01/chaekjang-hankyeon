@@ -1,18 +1,19 @@
 // 지금 앱의 빛 맞추기 값(light-model lightSet().u). tool/gen_shaders.sh 가 만든다 — 손으로 고치지 말 것.
-// 재질 색(시안 색)에서 거꾸로 구한 반사율·카메라 기준 빛이라, 빛 설정이나 스킨이 바뀌면 다시 만들어야 한다
-// ignore_for_file: constant_identifier_names
+// 재질 색(시안 색)에서 거꾸로 구한 반사율·카메라 기준 빛이라 스킨마다 다르다: 지금 스킨(scene_config/skin.dart skinLight)의 값을 읽는다
+// ignore_for_file: non_constant_identifier_names
 library;
 
 import '../domain/vec3.dart';
+import '../scene_config/skin.dart' show skinLight;
 
-const ALB_PLANK = C3(0.591213683582, 0.473892845995, 0.348023063018);
-const ALB_WALL = C3(0.725141178486, 0.725141178486, 0.725141178486);
-const ECAM = C3(0.7163801654949422, 0.7163801654949422, 0.7163801654949422);
-const EREF_PAPER = C3(1.02547810963, 1.02168809012, 1.01812494823);
-const PAPER = C3(0.598344652887, 0.583804912269, 0.542111338464);
-const RADE = C3(0.43906300759267564, 0.35193505160196226, 0.25845824784450344);
-const RADF = C3(0.5960631724030089, 0.47777999902076396, 0.3508777566768706);
-const RADSL = C3(0.5876635750002748, 0.5595172427135849, 0.5429247014620747);
-const RADSR = C3(0.6040129287835014, 0.5754456730082201, 0.5587084615457142);
-const RADU = C3(0.27787043128354, 0.22272963761764997, 0.16357083961846);
-const RADW = C3(0.7653653630333923, 0.7653653630333923, 0.7653653630333923);
+C3 get ALB_PLANK => skinLight.u['ALB_PLANK']!;
+C3 get ALB_WALL => skinLight.u['ALB_WALL']!;
+C3 get ECAM => skinLight.u['ECAM']!;
+C3 get EREF_PAPER => skinLight.u['EREF_PAPER']!;
+C3 get PAPER => skinLight.u['PAPER']!;
+C3 get RADE => skinLight.u['RADE']!;
+C3 get RADF => skinLight.u['RADF']!;
+C3 get RADSL => skinLight.u['RADSL']!;
+C3 get RADSR => skinLight.u['RADSR']!;
+C3 get RADU => skinLight.u['RADU']!;
+C3 get RADW => skinLight.u['RADW']!;

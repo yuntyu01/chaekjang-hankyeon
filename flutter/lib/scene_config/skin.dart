@@ -1,6 +1,9 @@
 // 책장 겉모습(스킨)과 손으로 정한 모양 값. app/src/scene-config/skin.ts를 옮긴 것(값은 커밋된 것 그대로).
-// 이식 1단계에서는 고르기(저장된 스킨 읽기·바꾸기)를 빼고 기본값만 둔다. 셰이더 소스가 이 값을 박아 쓴다.
+// 스킨은 실행 중에 바꾼다(스토어): 색·재질과 그 스킨의 빛 맞추기 값(gen/skin_lights.g.dart 표)을 함께.
+// Flutter는 벽 있는 책장(틀 있음)만 둔다: 옆 벽이 있어 책이 선반 밖으로 떨어지지 않는다(떨어짐 물리를 뺐다)
 library;
+
+import '../gen/skin_lights.g.dart';
 
 /// 재질: 나무 · 칠 · 벽지
 enum SkinMat { wood, paint, wallpaper }
@@ -40,16 +43,48 @@ class SkinChoice {
   final String plank;
   final String frame;
   final String wall;
+
+  /// 저장·표 열쇠 '선반,틀,벽지'(지금 앱 skinToString)
+  String get key => '$plank,$frame,$wall';
+
+  SkinChoice copyWith({String? plank, String? frame, String? wall}) => SkinChoice(plank: plank ?? this.plank, frame: frame ?? this.frame, wall: wall ?? this.wall);
+
+  @override
+  bool operator ==(Object other) => other is SkinChoice && other.key == key;
+
+  @override
+  int get hashCode => key.hashCode;
+
+  /// '선반,틀,벽지' → 고를 수 있는 스킨(벽 있는 조합만), 아니면 null
+  static SkinChoice? parse(String? s) {
+    final p = s?.split(',');
+    if (p == null || p.length != 3) return null;
+    final c = SkinChoice(plank: p[0], frame: p[1], wall: p[2]);
+    return skinLights.containsKey(c.key) ? c : null;
+  }
 }
 
 const defaultSkin = SkinChoice(plank: 'pine', frame: 'white', wall: 'white');
 
-final skinPlank = plankSkins[defaultSkin.plank]!;
-final skinFrame = frameSkins[defaultSkin.frame];
-final skinWall = wallSkins[defaultSkin.wall]!;
+/// 지금 스킨(시작할 때 저장된 값, 스토어에서 바꾼다)
+var skinChoice = defaultSkin;
 
-/// 움푹 파인 책장(틀이 있는 책장)인지. 빛 값과 셰이더 갈래가 이것으로 갈린다
-final frameOn = skinFrame != null;
+/// 지금 스킨의 빛 맞추기 값
+SkinLight get skinLight => skinLights[skinChoice.key]!;
+
+/// 스킨 바꾸기(벽 있는 조합만). 바꿨으면 true
+bool setSkin(SkinChoice c) {
+  if (!skinLights.containsKey(c.key)) return false;
+  skinChoice = c;
+  return true;
+}
+
+SkinPart get skinPlank => plankSkins[skinChoice.plank]!;
+SkinPart? get skinFrame => frameSkins[skinChoice.frame];
+SkinPart get skinWall => wallSkins[skinChoice.wall]!;
+
+/// 움푹 파인 책장(틀이 있는 책장)인지. Flutter는 늘 그렇다(틀 없는 스킨은 고를 수 없다)
+const frameOn = true;
 
 /// 손으로 정한 모양 값(mm·DU). dist 눈 거리, eyeY 눈 높이, thickMm 판 두께,
 /// jointMm·jointK 안쪽 모서리 그늘, rimMm 테 반지름, coveMm 곡면, cornerMm 꼭지점 둥글기,

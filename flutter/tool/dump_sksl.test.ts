@@ -42,6 +42,8 @@ import { FRAME_ON } from '@/scene-config/skin';
 import { bookAlbedo, bookEref, bookSref, DESIGN, EREF, SKY_C, SPEC_K, SREF, TONE } from '@/domain/light-model';
 import { MAT_UNIFORMS } from '@/domain/surface-pattern';
 import { light, surfaceMats, surfaces } from '@/scene-config/lighting';
+import { switchSkin } from '@/domain/light-model';
+import { FRAME_SKINS, PLANK_SKINS, SKIN_CHOICE, WALL_SKINS, type SkinChoice } from '@/scene-config/skin';
 
 const ROOT = join(__dirname, '..');
 const SKSL = join(ROOT, 'build', 'sksl');
@@ -114,14 +116,16 @@ test('dump sksl + bake case', () => {
   const calDart = Object.keys(cal).sort().map((k) => {
     const v = cal[k];
     const a = typeof v === 'number' ? [v] : v;
-    return a.length === 1 ? `const double ${k} = ${a[0]};` : `const ${k} = C3(${a.map((x) => (Number.isInteger(x) ? `${x}.0` : x)).join(', ')});`;
+    if (a.length !== 3) throw new Error(`맞추기 값 ${k}는 C3여야 한다(스킨 표가 C3만 담는다)`);
+    return `C3 get ${k} => skinLight.u['${k}']!;`;
   }).join('\n');
   write(join(ROOT, 'lib', 'gen'), 'light_uniforms.g.dart', `// 지금 앱의 빛 맞추기 값(light-model lightSet().u). tool/gen_shaders.sh 가 만든다 — 손으로 고치지 말 것.
-// 재질 색(시안 색)에서 거꾸로 구한 반사율·카메라 기준 빛이라, 빛 설정이나 스킨이 바뀌면 다시 만들어야 한다
-// ignore_for_file: constant_identifier_names
+// 재질 색(시안 색)에서 거꾸로 구한 반사율·카메라 기준 빛이라 스킨마다 다르다: 지금 스킨(scene_config/skin.dart skinLight)의 값을 읽는다
+// ignore_for_file: non_constant_identifier_names
 library;
 
 import '../domain/vec3.dart';
+import '../scene_config/skin.dart' show skinLight;
 
 ${calDart}
 `);
@@ -226,15 +230,16 @@ ${realPlacements}
 library;
 
 import '../domain/vec3.dart';
+import '../scene_config/skin.dart' show skinLight;
 
 /// 화면 톤 곡선(발끝·어깨)
 const toneToe = ${TONE.toe};
 const toneK = ${TONE.k};
 const toneShoulder = ${TONE.shoulder};
 
-/// 카메라 이득과 벽 대표 자리 빛
-const camGain = ${L.gain};
-const erefWall = C3(${L.eref.wall.join(', ')});
+/// 카메라 이득과 벽 대표 자리 빛(스킨마다)
+double get camGain => skinLight.camGain;
+C3 get erefWall => skinLight.erefWall;
 
 /// 구운 하늘 가림 담기(scene-light-sksl lossEncode·lossDecode): 0을 가운데 G0로 양쪽 제곱근 곡선
 const lossG0 = ${LOSS_G0};
@@ -246,9 +251,9 @@ const skyC = C3(${SKY_C.join(', ')});
 const ambient = ${light.ambient};
 const skyTilt = (${light.skyTilt.x}, ${light.skyTilt.y}, ${light.skyTilt.z});
 
-/// 장정 재질마다 대표 자리 빛·반사광(고운 종이·린넨·무광·줄무늬 종이)
-const bookErefOf = {${(['fine', 'linen', 'matte', 'laid'] as const).map((m) => `'${m}': C3(${bookEref(m).join(', ')})`).join(', ')}};
-const bookSrefOf = {${(['fine', 'linen', 'matte', 'laid'] as const).map((m) => `'${m}': C3(${bookSref(m).join(', ')})`).join(', ')}};
+/// 장정 재질마다 대표 자리 빛·반사광(고운 종이·린넨·무광·줄무늬 종이, 스킨마다)
+Map<String, C3> get bookErefOf => skinLight.bookErefOf;
+Map<String, C3> get bookSrefOf => skinLight.bookSrefOf;
 `);
 
   // 화면 아이콘(지금 앱 ui/icons.ts가 가져오는 lucide 아이콘만): SVG 마크업 그대로. {c} 색, {w} 선 굵기
@@ -294,10 +299,11 @@ ${Object.entries(bindingProfiles as Record<string, { colors: string[]; positions
   };
   const surf = (k: 'wall' | 'plank' | 'frame') => `Surface(${c3(DESIGN[k])}, ${c3(EREF[k])}, ${c3(SREF[k])}, ${matOf(surfaceMats[k])}, 0x${surfaces[k].slice(1).toUpperCase()})`;
   write(join(ROOT, 'lib', 'gen'), 'scene_uniforms.g.dart', `// 장면을 그리는 데 쓰는 값(재질 색 DESIGN · 대표 자리 빛 EREF · 반사광 SREF · 표면 재질 materials · 보이는 색 surfaces).
-// tool/gen_shaders.sh 가 만든다 — 손으로 고치지 말 것. 빛 설정이나 스킨이 바뀌면 다시 만들어야 한다
+// tool/gen_shaders.sh 가 만든다 — 손으로 고치지 말 것. 빛 설정이 바뀌면 다시 만들어야 한다
 library;
 
 import '../domain/vec3.dart';
+import '../scene_config/skin.dart' show skinLight;
 
 /// 표면 재질 uniform(거칠기·법선 무늬·반사율 무늬·무늬 크기)
 class Mat {
@@ -329,15 +335,75 @@ class BookSurface {
   final C3 srefPaper;
 }
 
-const bookFine = BookSurface(${c3(bookEref('fine'))}, ${c3(bookSref('fine'))}, ${SPEC_K.fine}, ${matOf('fine')}, ${matOf('pages')}, ${c3(SREF.paper)});
+// 스킨마다 다른 값(지금 스킨 scene_config/skin.dart skinLight에서 읽는다. 표는 skin_lights.g.dart)
+BookSurface get bookFine => skinLight.bookFine;
 
 /// 갈피 탭 종이(무광 종이): 대표 자리 빛 · 반사광 · 표면
-const tabPaper = (eref: ${c3(bookEref('paper'))}, sref: ${c3(bookSref('paper'))}, mat: ${matOf('paper')});
+({C3 eref, C3 sref, Mat mat}) get tabPaper => skinLight.tabPaper;
 
-const wallSurface = ${surf('wall')};
-const plankSurface = ${surf('plank')};
-const frameSurface = ${surf('frame')};
+Surface get wallSurface => skinLight.wall;
+Surface get plankSurface => skinLight.plank;
+Surface get frameSurface => skinLight.frame;
 `);
+
+  // 스킨마다 빛 맞추기 값(지금 앱 light-calibration.generated의 표 → switchSkin): 스토어에서 실행 중에 스킨을 바꿀 때 쓴다.
+  // 벽 있는 책장(틀 있음)만: Flutter는 옆 벽이 있어 떨어짐 물리를 뺐고, 틀 없는 책장은 카메라·판 모양이 달라 실행 중에 못 바꾼다
+  {
+    const start: SkinChoice = { ...SKIN_CHOICE };
+    const entries: string[] = [];
+    for (const plank of Object.keys(PLANK_SKINS) as SkinChoice['plank'][]) {
+      for (const frame of Object.keys(FRAME_SKINS) as SkinChoice['frame'][]) {
+        if (!FRAME_SKINS[frame]) continue;
+        for (const wall of Object.keys(WALL_SKINS) as SkinChoice['wall'][]) {
+          if (!switchSkin({ plank, frame, wall })) throw new Error(`스킨 맞추기 없음 ${plank},${frame},${wall}`);
+          const L2 = lightSet();
+          const u = L2.u as Record<string, number[]>;
+          const ms = ['fine', 'linen', 'matte', 'laid'] as const;
+          entries.push(`  '${plank},${frame},${wall}': SkinLight(
+    u: {${Object.keys(u).sort().map((k) => `'${k}': ${c3(u[k])}`).join(', ')}},
+    camGain: ${L2.gain},
+    erefWall: ${c3(L2.eref.wall)},
+    bookErefOf: {${ms.map((m) => `'${m}': ${c3(bookEref(m))}`).join(', ')}},
+    bookSrefOf: {${ms.map((m) => `'${m}': ${c3(bookSref(m))}`).join(', ')}},
+    bookFine: BookSurface(${c3(bookEref('fine'))}, ${c3(bookSref('fine'))}, ${SPEC_K.fine}, ${matOf('fine')}, ${matOf('pages')}, ${c3(SREF.paper)}),
+    tabPaper: (eref: ${c3(bookEref('paper'))}, sref: ${c3(bookSref('paper'))}, mat: ${matOf('paper')}),
+    wall: ${surf('wall')},
+    plank: ${surf('plank')},
+    frame: ${surf('frame')},
+  ),`);
+        }
+      }
+    }
+    switchSkin(start);
+    write(join(ROOT, 'lib', 'gen'), 'skin_lights.g.dart', `// 스킨(선반,틀,벽지)마다 빛 맞추기 값(지금 앱 light-calibration.generated → switchSkin → lightSet). tool/gen_shaders.sh 가 만든다 — 손으로 고치지 말 것.
+// 벽 있는 책장만(${entries.length}가지). 스토어에서 스킨을 고르면 scene_config/skin.dart의 skinLight가 이 표에서 바뀐다
+// ignore_for_file: non_constant_identifier_names
+library;
+
+import '../domain/vec3.dart';
+import 'scene_uniforms.g.dart';
+
+class SkinLight {
+  const SkinLight({required this.u, required this.camGain, required this.erefWall, required this.bookErefOf, required this.bookSrefOf, required this.bookFine, required this.tabPaper, required this.wall, required this.plank, required this.frame});
+
+  /// 셰이더 맞추기 값(light-model lightSet().u)
+  final Map<String, C3> u;
+  final double camGain;
+  final C3 erefWall;
+  final Map<String, C3> bookErefOf;
+  final Map<String, C3> bookSrefOf;
+  final BookSurface bookFine;
+  final ({C3 eref, C3 sref, Mat mat}) tabPaper;
+  final Surface wall;
+  final Surface plank;
+  final Surface frame;
+}
+
+const skinLights = <String, SkinLight>{
+${entries.join('\n')}
+};
+`);
+  }
 
   expect(rows.length).toBe(7);
   const cells = rows.reduce((s2, r) => s2 + r.items.reduce((t, it) => t + it.w * it.h, 0), 0);

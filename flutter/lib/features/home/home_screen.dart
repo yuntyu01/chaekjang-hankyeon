@@ -15,6 +15,7 @@ import '../../ui/kit.dart' show Btn, showSheet;
 import 'locked_rows.dart';
 import 'book_sheet.dart';
 import '../book/all_books_screen.dart' show openAllBooks;
+import '../store/store_screen.dart' show openStore;
 import 'decorate_panel.dart';
 import '../../app/app_shell.dart' show tabBarHidden;
 import '../../domain/geometry.dart' show maxFrontSpin, maxSpin;
@@ -30,7 +31,6 @@ import '../../store/placement_store.dart';
 
 import '../../domain/camera.dart';
 import '../../domain/place_books.dart';
-import '../../domain/received3.dart';
 import '../../domain/shelf_row.dart';
 import '../../services/cover_cache.dart';
 import '../../store/files.dart' show imageDir;
@@ -45,6 +45,7 @@ import '../../ui/metrics.dart';
 import '../../ui/outline.dart';
 import '../../ui/plane_key.dart';
 import '../../ui/ribbons.dart';
+import '../../ui/row_bake.dart';
 import '../../ui/scene.dart';
 import '../../ui/theme.dart';
 
@@ -71,7 +72,6 @@ class Run {
 }
 
 /// 창빛 그림자 그림의 배율(설계 단위 → 그림 칸). 지금 앱은 화면 배율을 쓴다
-const _shadowScale = 2.0;
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -316,7 +316,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
   /// 시작 사진(files/home_snapshot.png): 굳힌 책장 그림을 저장해 두고 다음에 켤 때 먼저 보인다
   ui.Image? _snap;
-  static Future<File> _snapFile() async => File('${(await imageDir()).parent.path}/home_snapshot.png');
+  static Future<File> _snapFile() => homeSnapshotFile();
 
   Future<void> _loadSnap() async {
     try {
@@ -493,50 +493,17 @@ class _HomeScreenState extends State<HomeScreen> {
         rows.add(RowRun(r.items.length, kept.image.width, kept.image.height, 0, 0));
         continue;
       }
-      // 같은 값으로 구워 담아 둔 그림이 있으면 굽지 않는다
-      final ui.Image image;
-      final List<Spot> at;
-      var gridMs = 0, bakeMs = 0;
-      final hit = await cachedBake(key);
-      if (hit != null) {
-        image = hit;
-        at = packAtlas(r.items).at;
-        // ignore: avoid_print
-        print('[flbake] ${r.items.length} items ${image.width}x${image.height} cached');
-      } else {
-        final t1 = DateTime.now();
-        final grid = await solveGrid(gridSlots, c, r);
-        gridMs = DateTime.now().difference(t1).inMilliseconds;
-        final t2 = DateTime.now();
-        final atlas = await bakeAtlas(bakeSlots, c, r, grid);
-        bakeMs = DateTime.now().difference(t2).inMilliseconds;
-        grid.dispose();
-        image = atlas.image;
-        at = atlas.at; // 면 0 = 뒷벽, 1 = 판 윗면, 2 = 판 앞면, 3부터 책 면
-        unawaited(saveBake(key, image));
-        // ignore: avoid_print
-        print('[flbake] ${r.items.length} items ${atlas.w}x${atlas.h} ms ${gridMs + bakeMs} grid $gridMs bake $bakeMs');
-        // 구운 값이 맞는지 보는 자국(시간 잰 뒤에 따로 읽는다): 평균과 고른 칸 몇 개.
-        // 같은 값을 지금 앱 셰이더(CanvasKit)로도 구워 견준다(tool/pixcheck.test.ts)
-        // ignore: avoid_print
-        print('[flpix] row $ri ${atlas.w}x${atlas.h} ${await _stamp(image)}');
-      }
-      images.add(image);
-      r.tabLoss = await readTabLosses(r, image, at);
+      // 같은 값으로 구워 담아 둔 그림이 있으면 굽지 않는다(row_bake)
+      final b = await bakeRow(gridSlots, bakeSlots, c, r, probe: probe, stamp: true);
+      images.add(b.image);
       if (probe) continue;
-      // 책 면이 받는 창빛 그림자(다른 책이 가리는 몫): 책마다(위 판이 막는 부분은 뺀 가리개)
-      final keysOf = <String, BookKey>{};
-      for (final b in r.books) {
-        final k = await bookKeyImage(b, receivedShadow3(b, occludersIn(r.books, b, r.space), _shadowScale), _shadowScale);
-        if (k != null) keysOf[b.id] = k;
-      }
-      final row = _RowDone(image.clone(), at, await rowKeys(r, _shadowScale), keysOf, r.tabLoss);
+      final row = _RowDone(b.image.clone(), b.at, b.keys, b.bookKeys, r.tabLoss);
       done[key] = row;
-      spots.add(at);
+      spots.add(b.at);
       spaces.add(r.space);
-      keys.add(row.keys);
-      bookKeys.add(keysOf);
-      rows.add(RowRun(r.items.length, image.width, image.height, gridMs, bakeMs));
+      keys.add(b.keys);
+      bookKeys.add(b.bookKeys);
+      rows.add(RowRun(r.items.length, b.image.width, b.image.height, b.gridMs, b.bakeMs));
     }
     final run = Run(rows, loadMs, DateTime.now().difference(bootAt).inMilliseconds);
     // ignore: avoid_print
@@ -623,26 +590,6 @@ class _HomeScreenState extends State<HomeScreen> {
         if (--left == 0) debugPrint('[flcover] ${uris.length} covers ${DateTime.now().difference(t0).inMilliseconds}ms got ${_photos.length}');
       });
     }
-  }
-
-  /// 구운 그림의 자국: 평균 R,G,B와 고른 칸 여덟
-  Future<String> _stamp(ui.Image img) async {
-    final data = await img.toByteData(format: ui.ImageByteFormat.rawRgba);
-    if (data == null) return 'null';
-    final b = data.buffer.asUint8List();
-    var sr = 0, sg = 0, sb = 0;
-    for (var i = 0; i < b.length; i += 4) {
-      sr += b[i];
-      sg += b[i + 1];
-      sb += b[i + 2];
-    }
-    final n = b.length ~/ 4;
-    final picks = <String>[];
-    for (var k = 1; k <= 8; k++) {
-      final i = ((n * k) ~/ 9) * 4;
-      picks.add('${b[i]},${b[i + 1]},${b[i + 2]}');
-    }
-    return 'mean ${(sr / n).toStringAsFixed(2)},${(sg / n).toStringAsFixed(2)},${(sb / n).toStringAsFixed(2)} at ${picks.join(' ')}';
   }
 
   @override
@@ -973,6 +920,19 @@ class _RowDone {
   final Map<String, C3> tabLoss;
 }
 
+/// 시작 사진 파일(굳힌 책장 그림, 다음에 켤 때 먼저 보인다)
+Future<File> homeSnapshotFile() async => File('${(await imageDir()).parent.path}/home_snapshot.png');
+
+/// 시작 사진을 버린다(스킨처럼 책장 모습이 바뀌었을 때: 다음에 켤 때 옛 모습이 먼저 뜨지 않게)
+Future<void> dropHomeSnapshot() async {
+  try {
+    final f = await homeSnapshotFile();
+    if (f.existsSync()) f.deleteSync();
+  } catch (_) {
+    // 못 지워도 다음 굳히기 때 덮어쓴다
+  }
+}
+
 /// 하단바 덮개 농도(끝이 부드러운 곡선)
 const _fadeStops = [(0.0, 0.0), (0.2, 0.05), (0.4, 0.2), (0.6, 0.48), (0.8, 0.8), (1.0, 1.0)];
 
@@ -1007,7 +967,9 @@ class _Header extends StatelessWidget {
             ? onDecorate!
             : name == 'books'
                 ? () => openAllBooks(context)
-                : () => ScaffoldMessenger.maybeOf(context)?.showSnackBar(SnackBar(content: Text('$label: 아직 옮기는 중이에요'), duration: const Duration(seconds: 1))),
+                : name == 'store'
+                    ? () => openStore(context)
+                    : () => ScaffoldMessenger.maybeOf(context)?.showSnackBar(SnackBar(content: Text('$label: 아직 옮기는 중이에요'), duration: const Duration(seconds: 1))),
         child: SizedBox(
           width: _headerCell,
           height: 44,
