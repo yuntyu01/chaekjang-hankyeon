@@ -1,10 +1,12 @@
-// 설정(지금 앱 app/settings.tsx, 하단 '내 정보' 탭): 독서 환경(진동·움직임 줄이기) / 내 기록(백업 및 복원) / 앱 안내(문의·개인정보·앱 정보).
+// 설정(지금 앱 app/settings.tsx, 하단 '내 정보' 탭): 독서 환경(진동·움직임 줄이기) / 내 기록(백업 및 복원·커뮤니티 공개 프로필) / 앱 안내(문의·개인정보·앱 정보).
 // 흰 바탕, 줄 사이 선 없음, 묶음 사이 화면 끝까지 닿는 1dp 선. 다른 화면으로 가는 줄에만 화살표.
 // 서버 주소가 없는 빌드는 '이 기기에만 저장' 쪽 문구를 쓴다(지금 앱도 서버를 못 쓰면 같은 문구)
 library;
 
 import 'package:flutter/material.dart';
 import 'package:package_info_plus/package_info_plus.dart';
+
+import '../community/community_screens.dart' show communityOpen, openCommunityProfile;
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../store/settings_store.dart';
@@ -43,6 +45,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   void initState() {
     super.initState();
     _s.addListener(_changed);
+    communityOpen.addListener(_changed);
     _s.load();
     PackageInfo.fromPlatform().then((p) {
       if (mounted) setState(() => _version = p.version);
@@ -52,6 +55,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   @override
   void dispose() {
     _s.removeListener(_changed);
+    communityOpen.removeListener(_changed);
     super.dispose();
   }
 
@@ -125,6 +129,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
         const SectionBand(),
         ListGroup(title: '내 기록', children: [
           ListItem(label: '백업 및 복원', sub: _syncAvailable ? '기록은 이 기기와 서버에 저장돼요' : '기록은 이 기기에 저장돼요', chevron: true, onPress: () => openBackup(context)),
+          // 커뮤니티가 열렸고 서버를 쓰는 빌드일 때만
+          if (communityOpen.value && _syncAvailable) ListItem(label: '커뮤니티 공개 프로필', chevron: true, onPress: () => openCommunityProfile(context)),
         ]),
         const SectionBand(),
         ListGroup(title: '앱 안내', children: [

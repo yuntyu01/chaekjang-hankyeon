@@ -1,9 +1,11 @@
 // 소셜 로그인 창(지금 앱 expo-web-browser openAuthSessionAsync 자리): 로그인 주소를 브라우저 탭(Custom Tabs)으로 열고,
 // 서버가 돌려보내는 chaekjang://auth/<공급자>?ticket=… 주소를 기다린다(MainActivity가 받아 채널로 넘긴다).
-// 창을 닫고 앱으로 돌아왔는데 주소가 오지 않으면 취소로 본다
+// 창을 닫고 앱으로 돌아왔는데 주소가 오지 않으면 취소로 본다.
+// iOS는 시스템 로그인 창(ASWebAuthenticationSession, AppDelegate)이 돌아온 주소를 바로 돌려주고 닫으면 null이다
 library;
 
 import 'dart:async';
+import 'dart:io';
 
 import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
@@ -35,6 +37,10 @@ class _Resume with WidgetsBindingObserver {
 
 /// 로그인 창을 열고 돌아온 주소(취소면 null)
 Future<Uri?> openAuthSession(String url) async {
+  if (Platform.isIOS) {
+    final back = await _channel.invokeMethod<String>('authenticate', {'url': url, 'scheme': 'chaekjang'});
+    return back == null ? null : Uri.tryParse(back);
+  }
   _init();
   final w = _waiting = Completer<Uri?>();
   Timer? giveUp;

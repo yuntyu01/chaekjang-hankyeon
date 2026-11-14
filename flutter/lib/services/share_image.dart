@@ -33,7 +33,7 @@ bool? _canSave;
 Future<bool> gallerySaveAvailable() async {
   if (_canSave != null) return _canSave!;
   try {
-    return _canSave = Platform.isAndroid && (await _channel.invokeMethod<bool>('canSave') ?? false);
+    return _canSave = (Platform.isAndroid || Platform.isIOS) && (await _channel.invokeMethod<bool>('canSave') ?? false);
   } catch (_) {
     return _canSave = false;
   }

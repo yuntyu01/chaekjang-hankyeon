@@ -2,6 +2,8 @@
 // 2026-11-01 토스식: 세로로 쌓인 버튼 대신 누르는 줄 목록, 설명은 한 줄
 library;
 
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 
 import '../../services/sync.dart';
@@ -111,7 +113,9 @@ class _BackupScreenState extends State<BackupScreen> {
         const H2('백업 파일', first: true),
         Padding(padding: const EdgeInsets.only(bottom: Space.s), child: Text('책·독서 기록·갈피·장정·책장 배치·설정·사진이 들어가요. 진행 중인 타이머는 빠져요.', style: AppType.sub)),
         ListGroup(children: [
-          ListItem(label: '다운로드 폴더에 백업 파일 저장', sub: '다운로드/책장한켠에 저장돼요', chevron: _busy != 'export', right: _spin('export'), onPress: _busy != null ? null : _saveToDownloads),
+          // iOS에는 다운로드 폴더가 없다: 공유창의 '파일에 저장'을 쓴다
+          if (Platform.isAndroid)
+            ListItem(label: '다운로드 폴더에 백업 파일 저장', sub: '다운로드/책장한켠에 저장돼요', chevron: _busy != 'export', right: _spin('export'), onPress: _busy != null ? null : _saveToDownloads),
           ListItem(label: '공유로 보내기', sub: '메신저·드라이브로 보내요', chevron: _busy != 'share', right: _spin('share'), onPress: _busy != null ? null : _share),
           ListItem(label: '백업에서 복원', sub: '지금 기기의 기록이 백업 내용으로 바뀌어요', chevron: _busy != 'restore', right: _spin('restore'), onPress: _busy != null ? null : _restore),
         ]),
